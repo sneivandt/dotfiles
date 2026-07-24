@@ -101,6 +101,7 @@ impl Operation for ReloadConfigOperation<'_> {
 impl Task for ReloadConfig {
     task_metadata! {
         name: "Reload configuration",
+        visibility: crate::engine::TaskVisibility::Internal,
         deps: [crate::domains::repository::update::UpdateRepository],
     }
 

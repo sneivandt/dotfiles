@@ -72,25 +72,38 @@ other domains.
 
 Every task exposes:
 
-- a human-readable name
+- a scheduler identity
+- a stable CLI selector
+- a human-readable display label
+- user-facing or internal visibility
 - command membership such as update-only behavior
-- a stable identity
 - dependency identities
 - an applicability guard
 - optional elevation planning
 - execution returning a structured task result
 
+These identities are independent: `TaskId` is the DAG key, `selector()` is the
+CLI interface used by `--only`, `name()` is presentation, and `visibility()`
+controls discovery, normal console rows, and totals.
+
 The scheduler validates a dependency graph and runs ready tasks in parallel.
 Every ordering requirement is an explicit dependency edge; the order of entries
 in `catalog.rs` is not execution order. Failed prerequisites block dependents,
-and duplicate identities or cycles fail before execution.
+and duplicate identities or cycles fail before execution. Visible rows retain
+natural completion order; completed work is not sorted or grouped afterward.
 
 `Task::update_only()` is command membership metadata, not an ordering class.
 `install` excludes update-only tasks, while `update` includes them in the same
 graph as ordinary install tasks.
 
 Dynamic overlay tasks use per-instance hashed identities because multiple
-configured scripts share one Rust task type.
+configured scripts share one Rust task type. They use
+`script-<normalized-script-name>` selectors.
+
+`dotfiles tasks` merges visible metadata across command catalogs by selector and
+prints selector, label, and command membership in discovery order. `--only`
+performs exact normalized selector matching; exact full-label matching remains
+available for compatibility. Internal tasks are not discoverable or selectable.
 
 ## Resources
 
@@ -173,8 +186,16 @@ Errors propagate with context; they are not converted into success-shaped
 fallbacks. Non-applicability and optional-tool absence are separate structured
 results.
 
-The logger records stages, actions, warnings, summaries, and diagnostic detail.
-`dotfiles log --verbose` prefers the diagnostic log for post-run investigation.
+The logger records stages, structured results, actions, warnings, summaries, and
+diagnostic detail. Internal orchestration remains in diagnostic/file logs but is
+excluded from normal task rows and totals.
+
+Visible rows use explicit `CHANGED`, `PASSED`, `PLAN`, `SKIP`, `FAILED`, and dim
+`OK` statuses. Normal output keeps detail compact; verbose output shows every
+applicable visible task and full messages. Aggregate summaries count actions,
+affected tasks, skipped or failed tasks, and elapsed time rather than equating
+tasks with changes. `dotfiles log --verbose` prefers the diagnostic log for
+post-run investigation.
 
 ## Extension points
 

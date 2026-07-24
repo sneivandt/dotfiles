@@ -1,28 +1,29 @@
 ---
 source: tests/install_command.rs
+assertion_line: 44
 expression: "task_names.join(\"\\n\")"
 ---
-Enable developer mode
-Materialize excluded symlinks
-Configure sparse checkout
-Update repository
-Configure Git
-Configure Copilot
-Install Git hooks
-Install shell completions
-Install packages
-Install paru
-Install AUR packages
-Install symlinks
-Configure file permissions
-Configure default shell
-Configure systemd units
-Configure registry settings
-Install VS Code extensions
-Install APM packages
-Update APM packages
-Configure WSL
+Windows Developer Mode
+Excluded home files
+Sparse checkout
+Dotfiles repository
+Git settings
+Copilot settings
+Git hooks
+Shell completions
+System packages
+Paru package manager
+AUR packages
+Home symlinks
+File permissions
+Default shell
+Systemd units
+Windows registry
+VS Code extensions
+APM packages
+APM package updates
+WSL configuration files
 Report overlay scripts
-Install wrapper
-Configure PATH
+Dotfiles launcher
+Shell PATH
 Reload configuration

@@ -42,6 +42,7 @@ After installation, `~\.local\bin\dotfiles` is the normal entry point.
 | `update` | Runs the install graph and includes version-advancing update tasks |
 | `uninstall` | Removes managed integrations while preserving user files and broader machine state |
 | `test` | Validates configuration and runs available script analyzers |
+| `tasks` | Lists visible task selectors, labels, and command membership |
 | `log` | Prints the latest run log |
 | `completions <shell>` | Hidden support command that emits shell completion definitions |
 
@@ -77,29 +78,39 @@ dependencies preserve ordering.
 ### Select tasks
 
 `--only` and `--skip` accept comma-separated, case-insensitive task selectors.
-Each selector is normalized to hyphenated words and must match one of:
-
-- the full display name, such as `configure-systemd-units`
-- the display name without a leading action word, such as `systemd-units`
-- the first word of that canonical name, such as `systemd`
+Punctuation and whitespace are normalized to hyphens. Each value must exactly
+match either a task's stable selector or its full normalized display label.
+Use `dotfiles tasks` to discover the supported selectors.
 
 ```bash
 dotfiles install --only symlinks
-dotfiles install --only "packages,Git hooks"
+dotfiles install --only "packages,git-hooks"
 dotfiles install --skip "systemd,registry"
 ```
 
 Both selectors can be used together: `--only` first limits the candidate set,
-then `--skip` removes matches. A selector operates on task display names, not
-Rust type names. It is not an arbitrary substring: `repository` matches
-**Update repository**, but `update` does not. Unmatched selectors produce a
-warning. See [Task reference](TASKS.md) for the exact names.
+then `--skip` removes matches. Matching is not based on Rust type names,
+arbitrary substrings, action-prefix removal, or the first word of a label.
+For example, `repository` and `dotfiles-repository` both match **Dotfiles
+repository**, but `dotfiles` does not. Unmatched selectors produce a warning.
+Internal orchestration tasks are omitted from discovery and cannot be selected.
+
+## Discover tasks
+
+```bash
+dotfiles tasks
+```
+
+The output contains `SELECTOR`, `TASK`, and `COMMANDS` columns. It combines
+install, update, uninstall, test, and active overlay-script tasks, while hiding
+internal orchestration. Rows retain catalog/discovery order; the command does
+not sort them. A selector is rejected if it maps to conflicting display labels.
 
 ## Update
 
 ```bash
 dotfiles update
-dotfiles update --only APM
+dotfiles update --only apm,apm-update
 ```
 
 `update` uses the same dependency scheduler and selectors as `install`. The
@@ -109,6 +120,30 @@ dependency versions. Normal repeatable convergence should use `install`.
 Repository synchronization occurs during both commands when the checkout can be
 updated. If the repository changes, the CLI reloads configuration before
 downstream tasks consume it.
+
+## Console output
+
+Visible task rows are printed as tasks complete, so independent parallel tasks
+may appear in a different order between runs. Statuses distinguish the outcome:
+
+| Status | Meaning |
+|---|---|
+| `CHANGED` | The task applied one or more changes |
+| `PLAN` | Dry-run changes were planned but not applied |
+| `PASSED` | A validation task passed |
+| `SKIP` | The task was intentionally skipped |
+| `FAILED` | The task failed |
+| `OK` | The applicable task required no change |
+
+Changed, planned, skipped, and failed rows include useful indented, dimmed
+details. Normal output shows at most eight detail lines and then points to
+`-v`; verbose mode shows complete task messages and one completion row for
+every applicable visible task. Internal orchestration remains available in
+diagnostic logs but is excluded from normal rows and totals.
+
+The final line reports actual action counts and affected task counts, for
+example `Applied 4 changes across 2 tasks · 1 skipped · 2.3s` or
+`6 passed · 1 skipped · 1.4s`.
 
 ## Uninstall
 

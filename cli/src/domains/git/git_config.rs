@@ -7,7 +7,8 @@ use crate::engine::{ProcessOpts, config_resource_task};
 config_resource_task! {
     /// Configure global git settings.
     pub ConfigureGit {
-        name: "Configure Git",
+        name: "Git settings",
+        selector: "git",
         config: Vec<GitSetting>,
         items: |settings| settings.clone(),
         build: |setting, _ctx| GitConfigResource::new(setting.key, setting.value),

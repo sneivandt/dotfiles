@@ -14,10 +14,10 @@ subsystem is also touched, and do not recursively load companions.
 | [`ci-cd-patterns`](./skills/ci-cd-patterns/SKILL.md) | Editing workflows, release/docker publishing, or CI reproduction | `cross-platform-verification`, `testing-patterns` |
 | [`config-validation`](./skills/config-validation/SKILL.md) | Adding/changing config validators, test command validation tasks, or config drift tests | `toml-configuration`, `testing-patterns` |
 | [`cross-platform-verification`](./skills/cross-platform-verification/SKILL.md) | Running the canonical local Rust/cross-platform verification sequence and wrapper checks | `windows-specific-patterns`, `shell-patterns` |
-| [`engine-orchestration`](./skills/engine-orchestration/SKILL.md) | Task dependencies, scheduler behavior, process modes, operation workflows, or resource parallelism | `resource-implementation`, `logging-patterns`, `error-handling-patterns` |
+| [`engine-orchestration`](./skills/engine-orchestration/SKILL.md) | Task identity/selectors/visibility/discovery, dependencies, scheduling, process modes, operations, or resource parallelism | `resource-implementation`, `logging-patterns`, `error-handling-patterns` |
 | [`error-handling-patterns`](./skills/error-handling-patterns/SKILL.md) | Idempotency, dry-run, task results, and resource/task error handling | `logging-patterns` |
 | [`git-hooks-patterns`](./skills/git-hooks-patterns/SKILL.md) | Hook installation, hook behavior, and sensitive-data scanning in `hooks/` | `shell-patterns`, `ci-cd-patterns` |
-| [`logging-patterns`](./skills/logging-patterns/SKILL.md) | Logger usage, task recording, buffered output, or summary behavior | `testing-patterns` |
+| [`logging-patterns`](./skills/logging-patterns/SKILL.md) | Logger usage, task statuses/visibility, buffered output, compact details, or summary behavior | `testing-patterns` |
 | [`module-organization`](./skills/module-organization/SKILL.md) | Moving/splitting/adding Rust modules under `cli/src/` | `rust-patterns`, `testing-patterns` |
 | [`overlay-scripts`](./skills/overlay-scripts/SKILL.md) | Overlay config loading, convention-based script resources, or dynamic script tasks | `resource-implementation`, `profile-system`, `toml-configuration` |
 | [`package-management`](./skills/package-management/SKILL.md) | Pacman/paru/winget package resource and task behavior | `resource-implementation`, `windows-specific-patterns` |

@@ -575,10 +575,10 @@ fn git_config_is_idempotent_when_isolated_value_matches() {
 /// Tasks that require an executor (packages, shell, git operations) are
 /// excluded — they are not filesystem-only and would panic on the stub.
 const FILESYSTEM_TASKS: &[&str] = &[
-    "Install symlinks",
-    "Install Git hooks",
-    "Configure file permissions",
-    "Configure Git",
+    "Home symlinks",
+    "Git hooks",
+    "File permissions",
+    "Git settings",
 ];
 
 #[test]

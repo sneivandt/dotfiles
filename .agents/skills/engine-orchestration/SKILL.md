@@ -26,8 +26,18 @@ description: >
 
 - Keep identity, command membership, eligibility, elevation prediction, and
   dependencies in `Task`; keep convergence logic in resources or `Operation`.
+- Keep task metadata distinct: `TaskId` is scheduler identity, `selector()` is
+  the stable CLI interface, `name()` is the display label, and `visibility()`
+  controls discovery, normal rows, and totals.
+- `--only` exact-matches normalized selectors, with exact full-label matching
+  retained for compatibility. Do not add action-prefix, first-word, or substring
+  matching.
+- `dotfiles tasks` merges visible command membership by selector in discovery
+  order. Conflicting labels for one selector are errors; internal tasks are not
+  discoverable or selectable.
 - Ordering comes only from explicit dependency edges. Catalog order is not
-  scheduling policy.
+  scheduling policy. Completed rows remain in natural completion order; do not
+  sort or regroup them.
 - `update_only()` controls whether a task belongs only to `dotfiles update`; it
   does not create an ordering barrier.
 - Task-level parallelism uses scoped OS threads; resource-level parallelism uses
@@ -43,7 +53,8 @@ description: >
 2. **Scheduler wiring:** keep dependency channels strict; failed dependency
    blocks dependents.
 3. **Command membership:** filter update-only tasks before applying `--only`
-   and `--skip`; filtering must not expand hidden prerequisites.
+   and `--skip`; filtering must not expand hidden prerequisites. Preserve
+   selector uniqueness and visibility rules in discovery.
 4. **Dynamic discovery:** when refreshed configuration can change the task set,
    run the discovery boundary's dependency closure, rebuild dynamic tasks, then
    schedule them with remaining static tasks. If the boundary is absent after

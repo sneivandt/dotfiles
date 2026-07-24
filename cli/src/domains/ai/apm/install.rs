@@ -28,7 +28,8 @@ pub struct InstallApmPackages;
 
 impl Task for InstallApmPackages {
     task_metadata! {
-        name: "Install APM packages",
+        name: "APM packages",
+        selector: "apm",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

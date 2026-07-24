@@ -40,7 +40,8 @@ impl UpdateRepository {
 
 impl Task for UpdateRepository {
     task_metadata! {
-        name: "Update repository",
+        name: "Dotfiles repository",
+        selector: "repository",
         deps: [crate::domains::repository::sparse_checkout::ConfigureSparseCheckout],
     }
 

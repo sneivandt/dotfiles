@@ -272,7 +272,7 @@ fn execute_records_ok_task() {
 }
 
 #[test]
-fn execute_records_check_passed_task_as_changed() {
+fn execute_records_check_passed_task_as_passed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, log) = make_static_context(config);
 
@@ -280,7 +280,7 @@ fn execute_records_check_passed_task_as_changed() {
 
     let entries = log.task_entries();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].status, TaskStatus::Changed);
+    assert_eq!(entries[0].status, TaskStatus::Passed);
     assert_eq!(entries[0].name, "check-passed");
 }
 

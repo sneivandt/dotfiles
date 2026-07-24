@@ -70,6 +70,7 @@ fn script_task_name_matches_entry() {
     };
     let task = OverlayScriptTask::new(entry, PathBuf::from("/overlay"));
     assert_eq!(task.name(), "Setup database");
+    assert_eq!(task.selector(), "script-setup-database");
 }
 
 #[test]

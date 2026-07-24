@@ -7,7 +7,8 @@ use crate::engine::{ProcessOpts, config_resource_task};
 config_resource_task! {
     /// Apply Windows registry settings.
     pub ApplyRegistry {
-        name: "Configure registry settings",
+        name: "Windows registry",
+        selector: "registry",
         config: Vec<RegistryEntry>,
         guard: |_cfg, ctx| ctx.platform().has_registry(),
         items: |cfg| cfg.clone(),

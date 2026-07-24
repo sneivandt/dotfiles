@@ -23,12 +23,6 @@ impl ActionCounts {
         self.skipped = self.skipped.saturating_add(other.skipped);
         self.failed = self.failed.saturating_add(other.failed);
     }
-
-    /// Return whether all action counters are zero.
-    #[must_use]
-    pub const fn is_empty(self) -> bool {
-        self.applied == 0 && self.planned == 0 && self.skipped == 0 && self.failed == 0
-    }
 }
 
 /// Task execution result for summary reporting.
@@ -42,6 +36,8 @@ pub struct TaskEntry {
     pub message: Option<String>,
     /// Structured action totals produced by the task.
     pub actions: ActionCounts,
+    /// Whether the task contributes to user-facing rows and totals.
+    pub visible: bool,
 }
 
 /// Status of a completed task.
@@ -51,6 +47,8 @@ pub enum TaskStatus {
     Changed,
     /// Task completed successfully without a recorded state change.
     Ok,
+    /// A validation check passed.
+    Passed,
     /// Task was skipped because it does not apply to the current platform or profile.
     NotApplicable,
     /// Task was explicitly skipped (e.g., tool not found, config empty).
@@ -66,7 +64,7 @@ impl TaskStatus {
     #[must_use]
     pub(in crate::infra::logging) const fn text_style(self) -> Option<TextStyle> {
         match self {
-            Self::Changed => Some(TextStyle::Green),
+            Self::Changed | Self::Passed => Some(TextStyle::Green),
             Self::Ok => Some(TextStyle::Dim),
             Self::Skipped => Some(TextStyle::Yellow),
             Self::DryRun => Some(TextStyle::Magenta),
@@ -163,6 +161,18 @@ pub trait TaskRecorder: Send + Sync {
     ) {
         self.record_task(name, status, message);
     }
+
+    /// Record a task result with presentation metadata.
+    fn record_task_with_metadata(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        _visible: bool,
+    ) {
+        self.record_task_with_actions(name, status, message, actions);
+    }
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -207,6 +217,7 @@ mod tests {
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),
             actions: ActionCounts::default(),
+            visible: true,
         };
         let cloned = entry.clone();
         assert_eq!(cloned.name, entry.name);

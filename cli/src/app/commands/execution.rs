@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 
-use crate::engine::{Context, Task, TaskId};
-use crate::infra::logging::Logger;
+use crate::engine::{Context, Task, TaskId, TaskVisibility};
+use crate::infra::logging::{ActionCounts, Logger};
 
 use super::error::TaskFailures;
 
@@ -155,10 +155,12 @@ fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) 
                 let span = tracing::info_span!("task", name = task.name());
                 let _enter = span.enter();
                 log.debug(reason);
-                log.record_task(
+                log.record_task_with_metadata(
                     task.name(),
                     crate::infra::logging::TaskStatus::Skipped,
                     Some(reason),
+                    ActionCounts::default(),
+                    task.visibility() == TaskVisibility::Visible,
                 );
                 log.emit_task_result_and_redraw(task.name());
                 false

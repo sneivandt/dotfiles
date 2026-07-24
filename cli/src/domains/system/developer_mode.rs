@@ -6,7 +6,8 @@ use crate::engine::{ProcessOpts, resource_task};
 resource_task! {
     /// Enable Windows Developer Mode (allows symlink creation without admin).
     pub EnableDeveloperMode {
-        name: "Enable developer mode",
+        name: "Windows Developer Mode",
+        selector: "developer-mode",
         guard: |ctx| ctx.platform().is_windows(),
         items: |_ctx| vec![()],
         build: |_unit, _ctx| DeveloperModeResource::new(),

@@ -34,18 +34,33 @@ pub(crate) use task_deps;
 /// ```ignore
 /// task_metadata! {
 ///     name: "Install packages",
+///     selector: "packages",
 ///     deps: [InstallParu],
 /// }
 /// ```
 macro_rules! task_metadata {
     (
         name: $task_name:expr,
+        $(selector: $selector:expr,)?
+        $(visibility: $visibility:expr,)?
         $(update_only: $update_only:expr,)?
         $(deps: [$($dep:ty),+ $(,)?],)?
     ) => {
         fn name(&self) -> &'static str {
             $task_name
         }
+
+        $(
+            fn selector(&self) -> &'static str {
+                $selector
+            }
+        )?
+
+        $(
+            fn visibility(&self) -> $crate::engine::TaskVisibility {
+                $visibility
+            }
+        )?
 
         $(
             fn update_only(&self) -> bool {
@@ -111,6 +126,8 @@ macro_rules! __impl_resource_task {
     (
         $name:ident {
             name: $task_name:expr,
+            $(selector: $selector:expr,)?
+            $(visibility: $visibility:expr,)?
             $(update_only: $update_only:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_self:ident, $guard_ctx:ident| $guard_expr:expr,)?
@@ -121,6 +138,18 @@ macro_rules! __impl_resource_task {
             fn name(&self) -> &'static str {
                 $task_name
             }
+
+            $(
+            fn selector(&self) -> &'static str {
+                $selector
+            }
+            )?
+
+            $(
+            fn visibility(&self) -> $crate::engine::TaskVisibility {
+                $visibility
+            }
+            )?
 
             $(
             fn update_only(&self) -> bool {
@@ -175,6 +204,8 @@ macro_rules! resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
+            $(selector: $selector:expr,)?
+            $(visibility: $visibility:expr,)?
             $(update_only: $update_only:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
@@ -224,6 +255,8 @@ macro_rules! resource_task {
         $crate::__impl_resource_task! {
             $name {
                 name: $task_name,
+                $(selector: $selector,)?
+                $(visibility: $visibility,)?
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
                 $(guard: |_task, $guard_ctx| $guard_expr,)?
@@ -239,6 +272,8 @@ macro_rules! resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
+            $(selector: $selector:expr,)?
+            $(visibility: $visibility:expr,)?
             $(update_only: $update_only:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
@@ -283,6 +318,8 @@ macro_rules! resource_task {
         $crate::__impl_resource_task! {
             $name {
                 name: $task_name,
+                $(selector: $selector,)?
+                $(visibility: $visibility,)?
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
                 $(guard: |_task, $guard_ctx| $guard_expr,)?
@@ -310,6 +347,8 @@ macro_rules! config_resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
+            $(selector: $selector:expr,)?
+            $(visibility: $visibility:expr,)?
             $(update_only: $update_only:expr,)?
             config: $cfg_ty:ty,
             $(deps: [$($dep:ty),+ $(,)?],)?
@@ -372,6 +411,8 @@ macro_rules! config_resource_task {
         $crate::__impl_resource_task! {
             $name {
                 name: $task_name,
+                $(selector: $selector,)?
+                $(visibility: $visibility,)?
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
                 $(
@@ -393,6 +434,8 @@ macro_rules! config_resource_task {
         $(#[$meta:meta])*
         $vis:vis $name:ident {
             name: $task_name:expr,
+            $(selector: $selector:expr,)?
+            $(visibility: $visibility:expr,)?
             $(update_only: $update_only:expr,)?
             config: $cfg_ty:ty,
             $(deps: [$($dep:ty),+ $(,)?],)?
@@ -450,6 +493,8 @@ macro_rules! config_resource_task {
         $crate::__impl_resource_task! {
             $name {
                 name: $task_name,
+                $(selector: $selector,)?
+                $(visibility: $visibility,)?
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
                 $(

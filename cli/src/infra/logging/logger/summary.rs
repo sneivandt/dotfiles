@@ -108,15 +108,16 @@ fn task_result_lines(
         .map(compact_detail_line)
         .collect::<Vec<String>>();
     for detail in detail_lines.iter().take(MAX_NON_VERBOSE_DETAIL_LINES) {
-        lines.push(format!("  {}", detail.trim_start()));
+        lines.push(style.paint(TextStyle::Dim, &format!("  {}", detail.trim_start())));
     }
 
     let remaining = detail_lines
         .len()
         .saturating_sub(MAX_NON_VERBOSE_DETAIL_LINES);
     if remaining > 0 {
-        lines.push(format!(
-            "  \u{2026} {remaining} more; use -v for the full plan"
+        lines.push(style.paint(
+            TextStyle::Dim,
+            &format!("  \u{2026} {remaining} more; use -v for the full plan"),
         ));
     }
     lines
@@ -139,11 +140,7 @@ fn compact_detail_line(line: &str) -> String {
     let line = line.trim_start();
     for (prefix, verb) in ACTION_PREFIXES {
         if let Some(detail) = line.strip_prefix(prefix) {
-            let target = detail
-                .split_once(" \u{2190} ")
-                .or_else(|| detail.split_once(" -> "))
-                .map_or(detail, |(target, _)| target);
-            return format!("{verb} {target}");
+            return format!("{verb} {detail}");
         }
     }
     for verb in ["configure", "install", "link", "remove", "update"] {
@@ -151,11 +148,7 @@ fn compact_detail_line(line: &str) -> String {
             .strip_prefix(verb)
             .and_then(|rest| rest.strip_prefix(' '))
         {
-            let target = detail
-                .split_once(" \u{2190} ")
-                .or_else(|| detail.split_once(" -> "))
-                .map_or(detail, |(target, _)| target);
-            return format!("{verb} {target}");
+            return format!("{verb} {detail}");
         }
     }
     line.to_string()
@@ -164,7 +157,11 @@ fn compact_detail_line(line: &str) -> String {
 const fn should_emit_task_result(status: TaskStatus) -> bool {
     matches!(
         status,
-        TaskStatus::Changed | TaskStatus::Skipped | TaskStatus::DryRun | TaskStatus::Failed
+        TaskStatus::Changed
+            | TaskStatus::Passed
+            | TaskStatus::Skipped
+            | TaskStatus::DryRun
+            | TaskStatus::Failed
     )
 }
 
@@ -187,6 +184,8 @@ impl SummaryMode {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct SummaryCounts {
     changed: u32,
+    passed: u32,
+    ok: u32,
     skipped: u32,
     dry_run: u32,
     failed: u32,
@@ -197,9 +196,14 @@ impl SummaryCounts {
     fn from_tasks(tasks: &[TaskEntry]) -> Self {
         let mut counts = Self::default();
         for task in tasks {
+            if !task.visible {
+                continue;
+            }
             match task.status {
                 TaskStatus::Changed => counts.changed = counts.changed.saturating_add(1),
-                TaskStatus::Ok | TaskStatus::NotApplicable => {}
+                TaskStatus::Passed => counts.passed = counts.passed.saturating_add(1),
+                TaskStatus::Ok => counts.ok = counts.ok.saturating_add(1),
+                TaskStatus::NotApplicable => {}
                 TaskStatus::Skipped => counts.skipped = counts.skipped.saturating_add(1),
                 TaskStatus::DryRun => counts.dry_run = counts.dry_run.saturating_add(1),
                 TaskStatus::Failed => counts.failed = counts.failed.saturating_add(1),
@@ -210,7 +214,12 @@ impl SummaryCounts {
     }
 
     const fn has_visible_tasks(self) -> bool {
-        self.changed > 0 || self.skipped > 0 || self.dry_run > 0 || self.failed > 0
+        self.changed > 0
+            || self.passed > 0
+            || self.ok > 0
+            || self.skipped > 0
+            || self.dry_run > 0
+            || self.failed > 0
     }
 }
 
@@ -221,89 +230,84 @@ fn format_summary_lines(
     elapsed: &str,
     style: StyleChoice,
 ) -> Vec<String> {
-    if mode == SummaryMode::Standard && !counts.has_visible_tasks() {
-        return vec![format_completion_line(
-            "Already up to date",
-            None,
-            elapsed,
-            style,
-        )];
-    }
-
-    let (label, label_style) = if counts.failed > 0 {
-        ("Failed", Some(TextStyle::Red))
-    } else if mode == SummaryMode::Standard && dry_run {
-        ("Preview complete", None)
-    } else {
-        ("Complete", None)
-    };
-    let mut lines = vec![format_completion_line(label, label_style, elapsed, style)];
-
-    let totals = match mode {
-        SummaryMode::Standard => format_standard_totals(counts, style),
+    let mut parts = match mode {
+        SummaryMode::Standard => format_standard_totals(counts, dry_run, style),
         SummaryMode::Test => format_test_totals(counts, style),
     };
-    if let Some(totals) = totals {
-        lines.push(totals);
-    }
-    lines
+    parts.push(style.paint(TextStyle::Dim, elapsed));
+    vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
 }
 
-fn format_completion_line(
-    label: &str,
-    label_style: Option<TextStyle>,
-    elapsed: &str,
-    style: StyleChoice,
-) -> String {
-    format!(
-        "{} {}",
-        label_style.map_or_else(
-            || label.to_string(),
-            |text_style| style.paint(text_style, label)
-        ),
-        style.paint(TextStyle::Dim, &format!("\u{00b7} {elapsed}"))
-    )
-}
-
-fn format_standard_totals(counts: SummaryCounts, style: StyleChoice) -> Option<String> {
-    let mut task_parts = Vec::new();
-    if counts.changed > 0 {
-        task_parts.push(style.paint(TextStyle::Green, &format!("{} changed", counts.changed)));
-    }
-    if counts.dry_run > 0 {
-        task_parts.push(style.paint(
-            TextStyle::Magenta,
-            &format!("{} would change", counts.dry_run),
-        ));
-    }
-    if counts.skipped > 0 {
-        task_parts.push(style.paint(TextStyle::Yellow, &format!("{} skipped", counts.skipped)));
-    }
-    if counts.failed > 0 {
-        task_parts.push(style.paint(TextStyle::Red, &format!("{} failed", counts.failed)));
-    }
-
-    let mut groups = Vec::new();
-    if !task_parts.is_empty() {
-        groups.push(format!("{} {}", "Tasks:", task_parts.join(", ")));
-    }
-    if !counts.actions.is_empty() {
-        groups.push(format_action_totals(counts.actions, style));
-    }
-    if groups.is_empty() {
-        None
-    } else {
-        Some(groups.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}"))))
-    }
-}
-
-fn format_action_totals(counts: ActionCounts, style: StyleChoice) -> String {
+fn format_standard_totals(counts: SummaryCounts, dry_run: bool, style: StyleChoice) -> Vec<String> {
     let mut parts = Vec::new();
-    if counts.applied > 0 {
-        parts.push(style.paint(TextStyle::Green, &format!("{} applied", counts.applied)));
+    if counts.failed > 0 {
+        parts.push(style.paint(TextStyle::Red, "Failed"));
+        if counts.actions.applied > 0 {
+            parts.push(style.paint(
+                TextStyle::Green,
+                &format!(
+                    "Applied {} {} across {} {}",
+                    counts.actions.applied,
+                    pluralize(counts.actions.applied, "change", "changes"),
+                    counts.changed,
+                    pluralize(counts.changed, "task", "tasks")
+                ),
+            ));
+        } else if counts.changed > 0 {
+            parts.push(style.paint(
+                TextStyle::Green,
+                &format!(
+                    "Changed {} {}",
+                    counts.changed,
+                    pluralize(counts.changed, "task", "tasks")
+                ),
+            ));
+        }
+    } else if dry_run && counts.actions.planned > 0 {
+        parts.push(style.paint(
+            TextStyle::Magenta,
+            &format!(
+                "{} {} planned across {} {}",
+                counts.actions.planned,
+                pluralize(counts.actions.planned, "change", "changes"),
+                counts.dry_run,
+                pluralize(counts.dry_run, "task", "tasks")
+            ),
+        ));
+    } else if counts.actions.applied > 0 {
+        parts.push(style.paint(
+            TextStyle::Green,
+            &format!(
+                "Applied {} {} across {} {}",
+                counts.actions.applied,
+                pluralize(counts.actions.applied, "change", "changes"),
+                counts.changed,
+                pluralize(counts.changed, "task", "tasks")
+            ),
+        ));
+    } else if counts.changed > 0 {
+        parts.push(style.paint(
+            TextStyle::Green,
+            &format!(
+                "Changed {} {}",
+                counts.changed,
+                pluralize(counts.changed, "task", "tasks")
+            ),
+        ));
+    } else if counts.dry_run > 0 {
+        parts.push(style.paint(
+            TextStyle::Magenta,
+            &format!(
+                "Changes planned across {} {}",
+                counts.dry_run,
+                pluralize(counts.dry_run, "task", "tasks")
+            ),
+        ));
+    } else {
+        parts.push("No changes".to_string());
     }
-    if counts.planned > 0 {
-        parts.push(style.paint(TextStyle::Magenta, &format!("{} planned", counts.planned)));
+    if counts.ok > 0 {
+        parts.push(style.paint(TextStyle::Dim, &format!("{} up to date", counts.ok)));
     }
     if counts.skipped > 0 {
         parts.push(style.paint(TextStyle::Yellow, &format!("{} skipped", counts.skipped)));
@@ -311,13 +315,17 @@ fn format_action_totals(counts: ActionCounts, style: StyleChoice) -> String {
     if counts.failed > 0 {
         parts.push(style.paint(TextStyle::Red, &format!("{} failed", counts.failed)));
     }
-    format!("{} {}", "Actions:", parts.join(", "))
+    parts
 }
 
-fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Option<String> {
+const fn pluralize(count: u32, singular: &'static str, plural: &'static str) -> &'static str {
+    if count == 1 { singular } else { plural }
+}
+
+fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> {
     let mut parts = Vec::new();
-    if counts.changed > 0 {
-        parts.push(style.paint(TextStyle::Green, &format!("{} passed", counts.changed)));
+    if counts.passed > 0 {
+        parts.push(style.paint(TextStyle::Green, &format!("{} passed", counts.passed)));
     }
     if counts.skipped > 0 {
         parts.push(style.paint(TextStyle::Yellow, &format!("{} skipped", counts.skipped)));
@@ -326,10 +334,9 @@ fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Option<Strin
         parts.push(style.paint(TextStyle::Red, &format!("{} failed", counts.failed)));
     }
     if parts.is_empty() {
-        None
-    } else {
-        Some(format!("{} {}", "Checks:", parts.join(", ")))
+        parts.push("No checks ran".to_string());
     }
+    parts
 }
 
 fn should_space_before_totals(command: &str, verbose: bool, has_visible_tasks: bool) -> bool {
@@ -337,27 +344,26 @@ fn should_space_before_totals(command: &str, verbose: bool, has_visible_tasks: b
 }
 
 fn format_task_line(task: &TaskEntry, mode: SummaryMode, style: StyleChoice) -> String {
-    if task.status == TaskStatus::Changed && mode == SummaryMode::Standard {
-        return task.name.clone();
-    }
-
     let Some(text_style) = task.status.text_style() else {
         return task.name.clone();
     };
     let status = match task.status {
-        TaskStatus::Changed => "passed",
-        TaskStatus::DryRun => "would change",
-        TaskStatus::Skipped => "skipped",
-        TaskStatus::Failed => "failed",
-        TaskStatus::Ok => "unchanged",
+        TaskStatus::Changed => {
+            if mode == SummaryMode::Test {
+                "PASSED"
+            } else {
+                "CHANGED"
+            }
+        }
+        TaskStatus::Passed => "PASSED",
+        TaskStatus::DryRun => "PLAN",
+        TaskStatus::Skipped => "SKIP",
+        TaskStatus::Failed => "FAILED",
+        TaskStatus::Ok => "OK",
         TaskStatus::NotApplicable => return task.name.clone(),
     };
-    format!(
-        "{} {} {}",
-        task.name,
-        style.paint(TextStyle::Dim, "\u{00b7}"),
-        style.paint(text_style, status)
-    )
+    let padded_status = format!("{status:<7}");
+    format!("{} {}", style.paint(text_style, &padded_status), task.name)
 }
 
 fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<String> {
@@ -439,7 +445,7 @@ mod tests {
             StyleChoice::plain(),
         );
 
-        assert_eq!(lines, ["Already up to date · 1.2s"]);
+        assert_eq!(lines, ["No changes · 1.2s"]);
     }
 
     #[test]
@@ -447,6 +453,8 @@ mod tests {
         let lines = format_summary_lines(
             SummaryCounts {
                 changed: 3,
+                passed: 0,
+                ok: 0,
                 skipped: 1,
                 dry_run: 0,
                 failed: 1,
@@ -465,16 +473,7 @@ mod tests {
 
         assert_eq!(
             lines,
-            [
-                "Failed · 2.0s",
-                "Tasks: 3 changed, 1 skipped, 1 failed · Actions: 87 applied, 2 skipped, 1 failed",
-            ]
-        );
-        assert!(
-            !lines
-                .get(1)
-                .expect("summary totals should exist")
-                .contains("unchanged")
+            ["Failed · Applied 87 changes across 3 tasks · 1 skipped · 1 failed · 2.0s"]
         );
     }
 
@@ -483,6 +482,8 @@ mod tests {
         let lines = format_summary_lines(
             SummaryCounts {
                 changed: 0,
+                passed: 0,
+                ok: 0,
                 skipped: 0,
                 dry_run: 1,
                 failed: 0,
@@ -497,13 +498,7 @@ mod tests {
             StyleChoice::plain(),
         );
 
-        assert_eq!(
-            lines,
-            [
-                "Preview complete · 0.8s",
-                "Tasks: 1 would change · Actions: 81 planned",
-            ]
-        );
+        assert_eq!(lines, ["81 changes planned across 1 task · 0.8s"]);
     }
 
     #[test]
@@ -511,6 +506,8 @@ mod tests {
         let lines = format_summary_lines(
             SummaryCounts {
                 changed: 2,
+                passed: 0,
+                ok: 0,
                 skipped: 0,
                 dry_run: 0,
                 failed: 0,
@@ -522,14 +519,16 @@ mod tests {
             StyleChoice::plain(),
         );
 
-        assert_eq!(lines, ["Complete · 1.0s", "Tasks: 2 changed"]);
+        assert_eq!(lines, ["Changed 2 tasks · 1.0s"]);
     }
 
     #[test]
     fn test_summary_uses_check_vocabulary_and_omits_not_run() {
         let lines = format_summary_lines(
             SummaryCounts {
-                changed: 7,
+                changed: 0,
+                passed: 7,
+                ok: 0,
                 skipped: 2,
                 dry_run: 0,
                 failed: 1,
@@ -541,16 +540,7 @@ mod tests {
             StyleChoice::plain(),
         );
 
-        assert_eq!(
-            lines,
-            ["Failed · 3.4s", "Checks: 7 passed, 2 skipped, 1 failed"]
-        );
-        assert!(
-            !lines
-                .get(1)
-                .expect("check totals should exist")
-                .contains("not run")
-        );
+        assert_eq!(lines, ["7 passed · 2 skipped · 1 failed · 3.4s"]);
     }
 
     #[test]
@@ -572,16 +562,17 @@ mod tests {
             name: "symlinks".to_string(),
             status: TaskStatus::Changed,
             message: Some("3 changed, 8 already ok".to_string()),
+            visible: true,
             actions: ActionCounts::default(),
         };
 
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::colored()),
-            "symlinks"
+            "\x1b[32mCHANGED\x1b[0m symlinks"
         );
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
-            "symlinks"
+            "CHANGED symlinks"
         );
     }
 
@@ -591,16 +582,17 @@ mod tests {
             name: "Install packages".to_string(),
             status: TaskStatus::Ok,
             message: None,
+            visible: true,
             actions: ActionCounts::default(),
         };
 
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
-            "Install packages · unchanged"
+            "OK      Install packages"
         );
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::colored()),
-            "Install packages \x1b[2m·\x1b[0m \x1b[2munchanged\x1b[0m"
+            "\x1b[2mOK     \x1b[0m Install packages"
         );
     }
 
@@ -610,6 +602,7 @@ mod tests {
             name: "symlinks".to_string(),
             status: TaskStatus::Changed,
             message: Some("2 changed, 1 already ok".to_string()),
+            visible: true,
             actions: ActionCounts::default(),
         };
         let details = vec![TaskDetailEntry {
@@ -632,6 +625,7 @@ mod tests {
             name: "skip-task".to_string(),
             status: TaskStatus::Skipped,
             message: Some("dependency failed".to_string()),
+            visible: true,
             actions: ActionCounts::default(),
         };
         let details = vec![TaskDetailEntry {
@@ -651,6 +645,7 @@ mod tests {
             name: "custom task".to_string(),
             status: TaskStatus::Changed,
             message: Some("generated private config".to_string()),
+            visible: true,
             actions: ActionCounts::default(),
         };
 
@@ -666,6 +661,7 @@ mod tests {
             name: "changed-task".to_string(),
             status: TaskStatus::Changed,
             message: None,
+            visible: true,
             actions: ActionCounts::default(),
         };
         let details = vec![TaskDetailEntry {
@@ -680,7 +676,10 @@ mod tests {
                 SummaryMode::Standard,
                 StyleChoice::colored(),
             ),
-            vec!["changed-task", "  link ~/.example"]
+            vec![
+                "\x1b[32mCHANGED\x1b[0m changed-task",
+                "\x1b[2m  link ~/.example\x1b[0m"
+            ]
         );
     }
 
@@ -690,6 +689,7 @@ mod tests {
             name: "Install symlinks".to_string(),
             status: TaskStatus::DryRun,
             message: None,
+            visible: true,
             actions: ActionCounts {
                 planned: 1,
                 ..ActionCounts::default()
@@ -702,7 +702,10 @@ mod tests {
 
         assert_eq!(
             task_result_lines(&task, &details, SummaryMode::Standard, StyleChoice::plain(),),
-            ["Install symlinks · would change", "  link ~/.bashrc"]
+            [
+                "PLAN    Install symlinks",
+                "  link ~/.bashrc \u{2190} symlinks/bashrc"
+            ]
         );
     }
 
@@ -712,6 +715,7 @@ mod tests {
             name: "large-plan".to_string(),
             status: TaskStatus::DryRun,
             message: None,
+            visible: true,
             actions: ActionCounts::default(),
         };
         let details = vec![TaskDetailEntry {
@@ -729,7 +733,7 @@ mod tests {
         assert_eq!(lines.len(), 10);
         assert_eq!(
             lines.first().expect("task status line should exist"),
-            "large-plan · would change"
+            "PLAN    large-plan"
         );
         assert_eq!(
             lines.get(8).expect("eighth detail line should exist"),
@@ -747,6 +751,7 @@ mod tests {
             name: "unchanged-task".to_string(),
             status: TaskStatus::Ok,
             message: None,
+            visible: true,
             actions: ActionCounts::default(),
         };
 
@@ -759,14 +764,15 @@ mod tests {
     fn validation_task_line_uses_passed_status() {
         let task = TaskEntry {
             name: "Validate config".to_string(),
-            status: TaskStatus::Changed,
+            status: TaskStatus::Passed,
             message: None,
+            visible: true,
             actions: ActionCounts::default(),
         };
 
         assert_eq!(
             format_task_line(&task, SummaryMode::Test, StyleChoice::plain()),
-            "Validate config · passed"
+            "PASSED  Validate config"
         );
     }
 

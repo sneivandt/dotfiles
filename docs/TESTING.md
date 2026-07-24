@@ -80,7 +80,7 @@ actions:
 
 ```bash
 dotfiles --root . install --only symlinks --dry-run --verbose
-dotfiles --root . update --only APM --dry-run --verbose
+dotfiles --root . update --only apm,apm-update --dry-run --verbose
 dotfiles --root . uninstall --dry-run --verbose
 ```
 

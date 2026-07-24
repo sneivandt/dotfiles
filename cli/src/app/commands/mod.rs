@@ -2,6 +2,7 @@
 
 pub mod install;
 pub mod log;
+pub mod tasks;
 pub mod test;
 pub mod uninstall;
 pub mod update;

@@ -76,6 +76,20 @@ fn install_task_names_are_unique() {
     }
 }
 
+/// No two install tasks may share the same selector.
+#[test]
+fn install_task_selectors_are_unique() {
+    let tasks = install_tasks();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for task in &tasks {
+        assert!(
+            seen.insert(task.selector()),
+            "duplicate install task selector: '{}'",
+            task.selector()
+        );
+    }
+}
+
 /// No two install tasks may share the same [`TaskId`].
 #[test]
 fn install_task_type_ids_are_unique() {
@@ -117,14 +131,18 @@ fn skip_filter_excludes_matching_tasks() {
 
     let filtered: Vec<&str> = all_tasks
         .iter()
-        .filter(|t| !task_matches_filter(t.name(), skip_keyword))
+        .filter(|t| !task_matches_filter(t.as_ref(), skip_keyword))
         .map(|t| t.name())
         .collect();
 
-    for name in &filtered {
+    for task in all_tasks
+        .iter()
+        .filter(|task| filtered.contains(&task.name()))
+    {
         assert!(
-            !task_matches_filter(name, skip_keyword),
-            "task '{name}' should have been excluded by --skip {skip_keyword}",
+            !task_matches_filter(task.as_ref(), skip_keyword),
+            "task '{}' should have been excluded by --skip {skip_keyword}",
+            task.name(),
         );
     }
     // At least one task was removed
@@ -143,7 +161,7 @@ fn skip_filter_with_no_match_returns_all_tasks() {
 
     let filtered_count = all_tasks
         .iter()
-        .filter(|t| !task_matches_filter(t.name(), skip_keyword))
+        .filter(|t| !task_matches_filter(t.as_ref(), skip_keyword))
         .count();
 
     assert_eq!(
@@ -164,13 +182,13 @@ fn only_filter_includes_only_matching_tasks() {
 
     let filtered: Vec<&str> = all_tasks
         .iter()
-        .filter(|t| task_matches_filter(t.name(), only_keyword))
+        .filter(|t| task_matches_filter(t.as_ref(), only_keyword))
         .map(|t| t.name())
         .collect();
 
     assert_eq!(
         filtered,
-        vec!["Install symlinks"],
+        vec!["Home symlinks"],
         "--only symlinks should return exactly one task"
     );
 }
@@ -181,15 +199,15 @@ fn only_filter_disambiguates_update_tasks() {
     let all_tasks = install_tasks();
     let filtered: Vec<&str> = all_tasks
         .iter()
-        .filter(|t| task_matches_filter(t.name(), "repository"))
+        .filter(|t| task_matches_filter(t.as_ref(), "repository"))
         .map(|t| t.name())
         .collect();
 
-    assert_eq!(filtered, vec!["Update repository"]);
+    assert_eq!(filtered, vec!["Dotfiles repository"]);
 
     let unmatched = all_tasks
         .iter()
-        .any(|t| task_matches_filter(t.name(), "update"));
+        .any(|t| task_matches_filter(t.as_ref(), "update"));
 
     assert!(
         !unmatched,
@@ -197,17 +215,15 @@ fn only_filter_disambiguates_update_tasks() {
     );
 }
 
-/// Canonical selector leading tokens should match non-generic task names.
+/// Internal task labels do not create heuristic selectors.
 #[test]
-fn only_filter_matches_reload_task_by_keyword() {
+fn only_filter_does_not_match_reload_task_by_keyword() {
     let all_tasks = install_tasks();
-    let filtered: Vec<&str> = all_tasks
+    let no_match = !all_tasks
         .iter()
-        .filter(|t| task_matches_filter(t.name(), "reload"))
-        .map(|t| t.name())
-        .collect();
+        .any(|t| task_matches_filter(t.as_ref(), "reload"));
 
-    assert_eq!(filtered, vec!["Reload configuration"]);
+    assert!(no_match);
 }
 
 /// When `--only` matches nothing the result is an empty list.
@@ -218,7 +234,7 @@ fn only_filter_with_no_match_returns_empty() {
 
     let any_match = all_tasks
         .iter()
-        .any(|t| task_matches_filter(t.name(), only_keyword));
+        .any(|t| task_matches_filter(t.as_ref(), only_keyword));
 
     assert!(
         !any_match,
@@ -278,36 +294,36 @@ fn install_tasks_form_acyclic_dependency_graph() {
 // Expected task presence
 // ---------------------------------------------------------------------------
 
-/// The install task list must contain "Install symlinks".
+/// The install task list must contain the home symlink task.
 #[test]
 fn install_task_list_contains_install_symlinks() {
     let tasks = install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Install symlinks"),
-        "expected 'Install symlinks' in install task list, got: {names:?}"
+        names.contains(&"Home symlinks"),
+        "expected 'Home symlinks' in install task list, got: {names:?}"
     );
 }
 
-/// The install task list must contain "Install git hooks".
+/// The install task list must contain the Git hooks task.
 #[test]
 fn install_task_list_contains_install_git_hooks() {
     let tasks = install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Install Git hooks"),
-        "expected 'Install Git hooks' in install task list, got: {names:?}"
+        names.contains(&"Git hooks"),
+        "expected 'Git hooks' in install task list, got: {names:?}"
     );
 }
 
-/// The install task list must contain "Configure Git".
+/// The install task list must contain the Git settings task.
 #[test]
 fn install_task_list_contains_configure_git() {
     let tasks = install_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Configure Git"),
-        "expected 'Configure Git' in install task list, got: {names:?}"
+        names.contains(&"Git settings"),
+        "expected 'Git settings' in install task list, got: {names:?}"
     );
 }
 
@@ -361,16 +377,20 @@ fn skip_with_multiple_keywords_excludes_all_matching() {
         .filter(|t| {
             !skip_keywords
                 .iter()
-                .any(|kw| task_matches_filter(t.name(), kw))
+                .any(|kw| task_matches_filter(t.as_ref(), kw))
         })
         .map(|t| t.name())
         .collect();
 
-    for name in &filtered {
+    for task in all_tasks
+        .iter()
+        .filter(|task| filtered.contains(&task.name()))
+    {
         for kw in &skip_keywords {
             assert!(
-                !task_matches_filter(name, kw),
-                "task '{name}' should have been excluded by --skip {kw}",
+                !task_matches_filter(task.as_ref(), kw),
+                "task '{}' should have been excluded by --skip {kw}",
+                task.name(),
             );
         }
     }
@@ -396,18 +416,24 @@ fn only_with_multiple_keywords_includes_all_matching() {
         .filter(|t| {
             only_keywords
                 .iter()
-                .any(|kw| task_matches_filter(t.name(), kw))
+                .any(|kw| task_matches_filter(t.as_ref(), kw))
         })
         .map(|t| t.name())
         .collect();
 
-    assert!(filtered.contains(&"Install symlinks"));
-    assert!(filtered.contains(&"Install Git hooks"));
+    assert!(filtered.contains(&"Home symlinks"));
+    assert!(filtered.contains(&"Git hooks"));
 
-    for name in &filtered {
+    for task in all_tasks
+        .iter()
+        .filter(|task| filtered.contains(&task.name()))
+    {
         assert!(
-            only_keywords.iter().any(|kw| task_matches_filter(name, kw)),
-            "task '{name}' should not have been included"
+            only_keywords
+                .iter()
+                .any(|kw| task_matches_filter(task.as_ref(), kw)),
+            "task '{}' should not have been included",
+            task.name()
         );
     }
 }

@@ -6,7 +6,8 @@ use crate::engine::{ProcessOpts, resource_task};
 resource_task! {
     /// Configure the default shell to zsh.
     pub ConfigureShell {
-        name: "Configure default shell",
+        name: "Default shell",
+        selector: "shell",
         guard: |ctx| {
             let system = ctx.system();
             system.platform().is_linux() && system.which("zsh") && !system.is_ci()

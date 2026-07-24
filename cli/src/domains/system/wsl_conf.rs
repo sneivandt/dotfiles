@@ -14,7 +14,8 @@ pub struct InstallWslConf;
 
 impl Task for InstallWslConf {
     task_metadata! {
-        name: "Configure WSL",
+        name: "WSL configuration files",
+        selector: "wsl-config",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

@@ -86,7 +86,7 @@ pub(crate) fn run_pipeline(
     filter::warn_unmatched_filters(&known_task_refs, &opts.skip, "--skip", &**log);
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
-        .filter(|task| task_passes_filters(task.name(), &opts.only, &opts.skip))
+        .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
         .map(Box::as_ref)
         .collect();
 
@@ -106,7 +106,7 @@ pub(crate) fn run_pipeline(
             runner
                 .overlay_script_tasks()
                 .into_iter()
-                .filter(|task| task_passes_filters(task.name(), &opts.only, &opts.skip))
+                .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
                 .collect()
         },
     )

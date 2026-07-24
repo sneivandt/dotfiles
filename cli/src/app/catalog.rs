@@ -267,19 +267,19 @@ mod tests {
                 .expect("task present")
         };
         assert!(
-            find("Configure sparse checkout")
+            find("Sparse checkout")
                 .dependencies()
                 .contains(&id::<MaterializeExcludedSymlinks>()),
             "sparse checkout must preserve excluded managed symlinks first"
         );
         assert!(
-            find("Configure systemd units")
+            find("Systemd units")
                 .dependencies()
                 .contains(&id::<InstallSymlinks>()),
             "systemd must depend on symlinks (app-injected)"
         );
         assert!(
-            find("Install shell completions")
+            find("Shell completions")
                 .dependencies()
                 .contains(&id::<UpdateRepository>()),
             "completions must depend on repository update (app-injected)"
@@ -291,7 +291,7 @@ mod tests {
             "overlay script report must depend on reload (app-injected)"
         );
         assert!(
-            find("Install Git hooks")
+            find("Git hooks")
                 .dependencies()
                 .contains(&id::<UpdateRepository>()),
             "git hooks must depend on repository update (app-injected)"

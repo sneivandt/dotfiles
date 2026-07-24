@@ -63,7 +63,8 @@ impl MaterializeExcludedSymlinks {
 
 impl Task for MaterializeExcludedSymlinks {
     task_metadata! {
-        name: "Materialize excluded symlinks",
+        name: "Excluded home files",
+        selector: "excluded-symlinks",
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

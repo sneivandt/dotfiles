@@ -25,7 +25,8 @@ impl InstallVsCodeExtensions {
 
 impl Task for InstallVsCodeExtensions {
     task_metadata! {
-        name: "Install VS Code extensions",
+        name: "VS Code extensions",
+        selector: "vscode-extensions",
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

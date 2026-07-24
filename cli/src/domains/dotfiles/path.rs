@@ -9,7 +9,8 @@ pub struct ConfigurePath;
 
 impl Task for ConfigurePath {
     task_metadata! {
-        name: "Configure PATH",
+        name: "Shell PATH",
+        selector: "path",
         deps: [crate::domains::dotfiles::wrapper::InstallWrapper],
     }
 

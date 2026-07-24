@@ -26,14 +26,22 @@ description: >
 - Task result recording is owned by `engine::execute()`; tasks should not call
   `record_task()` directly.
 - Verbose console output shows one completion-order status row for every
-  applicable task. Unchanged statuses are dim, non-applicable tasks are hidden,
-  and task messages follow beneath the status row.
+  applicable visible task. Internal tasks remain in diagnostic/file logs but do
+  not produce normal rows or contribute to visible totals. Unchanged statuses
+  are dim, non-applicable tasks are hidden, and task messages follow beneath the
+  status row with a two-space indent and dim styling.
+- Statuses are explicit: `CHANGED`, `PASSED`, `PLAN`, `SKIP`, `FAILED`, and dim
+  `OK`.
+- Normal output caps compact detail at eight lines and reports the omitted
+  count. Verbose output prints full messages.
+- Summaries count structured actions and affected tasks separately, plus skipped
+  or failed tasks and elapsed time. Never infer counts from display text.
 - Debug-level detail may be suppressed on terminal in non-verbose mode, but
   persistent logs remain complete.
 
 Canonical implementations:
 - `cli/src/infra/logging/mod.rs`
-- `cli/src/infra/logging/subscriber.rs`
+- `cli/src/infra/logging/subscriber/`
 - `cli/src/infra/logging/logger/`
 - `cli/src/engine/task/execute.rs` (task result recording)
 
@@ -47,8 +55,9 @@ Canonical implementations:
    - `always`: output that must always be user-visible
 2. Keep task code focused on behavior; rely on buffered logging mechanics already
    provided by scheduler/task execution.
-3. If changing summary semantics, verify completion-order task rows and final
-   totals stay coherent in both verbose and non-verbose modes.
+3. If changing summary semantics, verify explicit statuses, visibility, compact
+   details, completion-order rows, and action/task totals stay coherent in both
+   verbose and non-verbose modes.
 
 ## Validation
 

@@ -14,6 +14,15 @@ pub(crate) use macros::{
 };
 pub use types::TaskId;
 
+/// Whether a task is part of the user-facing workflow or internal orchestration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskVisibility {
+    /// Show the task in discovery, completed rows, and aggregate totals.
+    Visible,
+    /// Keep the task in scheduling and diagnostics, but hide it from normal output.
+    Internal,
+}
+
 use std::any::TypeId;
 
 use anyhow::Result;
@@ -50,6 +59,18 @@ where
 pub trait Task: Send + Sync + 'static {
     /// Human-readable task name.
     fn name(&self) -> &str;
+
+    /// Stable selector used by `--only` and `--skip`.
+    ///
+    /// Production tasks should override this with an action-independent ID.
+    fn selector(&self) -> &str {
+        self.name()
+    }
+
+    /// Whether this task is shown in user-facing discovery and results.
+    fn visibility(&self) -> TaskVisibility {
+        TaskVisibility::Visible
+    }
 
     /// Whether this task is included only by the `update` command.
     fn update_only(&self) -> bool {
@@ -179,6 +200,14 @@ impl std::fmt::Debug for TaskWithExtraDeps {
 impl Task for TaskWithExtraDeps {
     fn name(&self) -> &str {
         self.inner.name()
+    }
+
+    fn selector(&self) -> &str {
+        self.inner.selector()
+    }
+
+    fn visibility(&self) -> TaskVisibility {
+        self.inner.visibility()
     }
 
     fn update_only(&self) -> bool {

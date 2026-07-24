@@ -20,7 +20,8 @@ pub struct InstallWrapper;
 
 impl Task for InstallWrapper {
     task_metadata! {
-        name: "Install wrapper",
+        name: "Dotfiles launcher",
+        selector: "launcher",
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
@@ -42,7 +43,8 @@ pub struct UninstallWrapper;
 
 impl Task for UninstallWrapper {
     task_metadata! {
-        name: "Remove wrapper",
+        name: "Dotfiles launcher",
+        selector: "launcher",
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {

@@ -33,6 +33,7 @@ impl ValidateConfigWarnings {
 impl Task for ValidateConfigWarnings {
     task_metadata! {
         name: "Validate config warnings",
+        selector: "config-warnings",
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -77,6 +78,7 @@ impl ValidateSymlinkSources {
 impl Task for ValidateSymlinkSources {
     task_metadata! {
         name: "Validate symlink sources",
+        selector: "symlink-sources",
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -118,6 +120,7 @@ pub struct ValidateConfigFiles;
 impl Task for ValidateConfigFiles {
     task_metadata! {
         name: "Validate config files",
+        selector: "config-files",
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -173,6 +176,7 @@ pub struct ValidateManifestSync;
 impl Task for ValidateManifestSync {
     task_metadata! {
         name: "Validate manifest sync",
+        selector: "manifest-sync",
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -230,6 +234,7 @@ pub struct ValidateApmPlugins;
 impl Task for ValidateApmPlugins {
     task_metadata! {
         name: "Validate APM plugins",
+        selector: "apm-plugins",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -280,6 +285,7 @@ pub struct RunShellcheck;
 impl Task for RunShellcheck {
     task_metadata! {
         name: "Shellcheck",
+        selector: "shellcheck",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -333,6 +339,7 @@ pub struct RunPSScriptAnalyzer;
 impl Task for RunPSScriptAnalyzer {
     task_metadata! {
         name: "PSScriptAnalyzer",
+        selector: "psscriptanalyzer",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

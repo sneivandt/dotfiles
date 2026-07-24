@@ -283,7 +283,7 @@ At command start, the loader:
 5. Runs section and aggregate validation.
 6. Stores values in shared handles used by tasks.
 
-If **Update repository** changes tracked content, **Reload configuration**
+If **Dotfiles repository** changes tracked content, the internal **Reload configuration**
 repeats the load and updates those handles. Later tasks therefore observe the
 new configuration in the same command invocation.
 

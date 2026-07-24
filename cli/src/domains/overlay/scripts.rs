@@ -14,7 +14,8 @@ use anyhow::Result;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
+    Context, Operation, OperationState, Task, TaskResult, TaskStats, TaskVisibility,
+    process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::ConfigHandle;
@@ -43,6 +44,10 @@ impl ReportOverlayScriptSnapshot {
 impl Task for ReportOverlayScriptSnapshot {
     fn name(&self) -> &'static str {
         "Report overlay scripts"
+    }
+
+    fn visibility(&self) -> TaskVisibility {
+        TaskVisibility::Internal
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -90,6 +95,7 @@ impl Task for ReportOverlayScriptSnapshot {
 pub struct OverlayScriptTask {
     entry: ScriptEntry,
     overlay_root: PathBuf,
+    selector: String,
 }
 
 #[derive(Debug, Clone)]
@@ -150,17 +156,33 @@ impl Operation for OverlayScriptOperation {
 impl OverlayScriptTask {
     /// Create a new overlay script task.
     #[must_use]
-    pub const fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
+    pub fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
+        let selector = overlay_script_selector(&entry.name);
         Self {
             entry,
             overlay_root,
+            selector,
         }
     }
+}
+
+fn overlay_script_selector(name: &str) -> String {
+    let suffix = name
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>()
+        .join("-");
+    format!("script-{suffix}")
 }
 
 impl Task for OverlayScriptTask {
     fn name(&self) -> &str {
         &self.entry.name
+    }
+
+    fn selector(&self) -> &str {
+        &self.selector
     }
 
     /// Returns a per-instance [`TaskId::Dynamic`](crate::engine::TaskId::Dynamic) derived from the script's

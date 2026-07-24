@@ -48,22 +48,22 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_tasks_contain_materialize_symlinks() {
+    fn uninstall_tasks_contain_home_symlinks() {
         let tasks = crate::app::catalog::all_uninstall_tasks(&store());
         let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
         assert!(
-            names.contains(&"Materialize symlinks"),
-            "expected 'Materialize symlinks' in {names:?}"
+            names.contains(&"Home symlinks"),
+            "expected 'Home symlinks' in {names:?}"
         );
     }
 
     #[test]
-    fn uninstall_tasks_contain_remove_git_hooks() {
+    fn uninstall_tasks_contain_git_hooks() {
         let tasks = crate::app::catalog::all_uninstall_tasks(&store());
         let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
         assert!(
-            names.contains(&"Remove Git hooks"),
-            "expected 'Remove Git hooks' in {names:?}"
+            names.contains(&"Git hooks"),
+            "expected 'Git hooks' in {names:?}"
         );
     }
 

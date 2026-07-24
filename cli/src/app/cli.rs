@@ -75,6 +75,8 @@ pub enum Command {
     Uninstall(UninstallOpts),
     /// Validate configuration and run self-tests
     Test(TestOpts),
+    /// List task selectors and command membership
+    Tasks,
     /// Show the latest run log
     Log(LogOpts),
     /// Generate shell completions for the given shell
@@ -85,11 +87,11 @@ pub enum Command {
 /// Options for the `install` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct InstallOpts {
-    /// Skip matching tasks (comma-separated)
+    /// Skip task selectors (comma-separated; see `dotfiles tasks`)
     #[arg(long, value_delimiter = ',', value_name = "TASKS")]
     pub skip: Vec<String>,
 
-    /// Run only matching tasks (comma-separated)
+    /// Run only task selectors (comma-separated; see `dotfiles tasks`)
     #[arg(long, value_delimiter = ',', value_name = "TASKS")]
     pub only: Vec<String>,
 }
@@ -242,11 +244,15 @@ mod tests {
         for command in ["install", "update"] {
             let help = display_output(&["dotfiles", command, "--help"], ErrorKind::DisplayHelp);
             assert!(
-                help.contains("--only <TASKS>       Run only matching tasks (comma-separated)"),
+                help.contains(
+                    "--only <TASKS>       Run only task selectors (comma-separated; see `dotfiles tasks`)"
+                ),
                 "{command} help should describe --only in one line"
             );
             assert!(
-                help.contains("--skip <TASKS>       Skip matching tasks (comma-separated)"),
+                help.contains(
+                    "--skip <TASKS>       Skip task selectors (comma-separated; see `dotfiles tasks`)"
+                ),
                 "{command} help should describe --skip in one line"
             );
             assert!(
@@ -366,6 +372,12 @@ mod tests {
     fn parse_test() {
         let cli = Cli::parse_from(["dotfiles", "test"]);
         assert!(matches!(cli.command, Command::Test(_)));
+    }
+
+    #[test]
+    fn parse_tasks() {
+        let cli = Cli::parse_from(["dotfiles", "tasks"]);
+        assert!(matches!(cli.command, Command::Tasks));
     }
 
     #[test]

@@ -12,8 +12,8 @@ resolution and materialization.
 | `symlinks\apm\config\*.yml` | Profile-specific APM source fragments |
 | `conf\symlinks.toml` | Selects and links applicable fragments and local plugins |
 | `conf\manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
-| Install APM packages task | Merges fragments and converges installed state |
-| Update APM packages task | Advances eligible pinned versions during `dotfiles update` |
+| APM packages task | Merges fragments and converges installed state |
+| APM package updates task | Advances eligible pinned versions during `dotfiles update` |
 | APM itself | Resolves packages and distributes their content |
 
 Agent directories should generally receive APM-managed content through APM
@@ -43,7 +43,7 @@ available without publishing a package.
 
 ## Install behavior
 
-**Install APM packages** depends on:
+**APM packages** depends on:
 
 - regular packages
 - AUR packages
@@ -62,15 +62,15 @@ available. The task:
 Re-running `dotfiles install` should not advance pinned dependency versions.
 
 ```bash
-dotfiles install --only APM --dry-run --verbose
-dotfiles install --only APM
+dotfiles install --only apm --dry-run --verbose
+dotfiles install --only apm
 ```
 
 ## Update behavior
 
-**Update APM packages** is marked update-only, so it runs with
+**APM package updates** is marked update-only, so it runs with
 `dotfiles update` but not `dotfiles install`. It depends on
-**Install APM packages**.
+**APM packages**.
 
 Before advancing versions, it verifies that the installed state corresponds to
 the current merged-manifest fingerprint. If install convergence did not succeed,
@@ -82,7 +82,7 @@ lockfile before and after to report whether refs advanced instead of parsing
 human-readable `apm outdated` output.
 
 ```bash
-dotfiles update --only APM
+dotfiles update --only apm,apm-update
 ```
 
 ## Overlays
@@ -96,7 +96,7 @@ Validate the combined setup:
 
 ```bash
 dotfiles test --overlay C:\Code\private-dotfiles
-dotfiles install --overlay C:\Code\private-dotfiles --only APM --dry-run
+dotfiles install --overlay C:\Code\private-dotfiles --only apm --dry-run
 ```
 
 ## Validation
@@ -119,7 +119,7 @@ APM changes should also preserve:
 2. Add a pinned or policy-compliant package declaration.
 3. If the fragment is conditional, confirm its symlink and manifest categories.
 4. Run `dotfiles test`.
-5. Preview with `dotfiles install --only APM --dry-run`.
+5. Preview with `dotfiles install --only apm --dry-run`.
 6. Run install before using `dotfiles update` to advance versions.
 
 Do not manually edit generated merged state or lock data when the same change

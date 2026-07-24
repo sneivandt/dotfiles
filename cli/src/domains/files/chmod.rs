@@ -7,7 +7,8 @@ use crate::engine::{ProcessOpts, config_resource_task};
 config_resource_task! {
     /// Configure file permissions from chmod.toml.
     pub ApplyFilePermissions {
-        name: "Configure file permissions",
+        name: "File permissions",
+        selector: "file-permissions",
         config: Vec<ChmodEntry>,
         deps: [crate::domains::files::symlinks::InstallSymlinks],
         guard: |_cfg, ctx| ctx.system().platform().supports_chmod(),

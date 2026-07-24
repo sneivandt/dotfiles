@@ -302,14 +302,37 @@ impl Logger {
         message: Option<&str>,
         actions: ActionCounts,
     ) {
+        self.record_task_with_metadata(name, status, message, actions, true);
+    }
+
+    /// Record a task result with structured action totals and presentation metadata.
+    pub fn record_task_with_metadata(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        visible: bool,
+    ) {
         if let Ok(mut guard) = self.tasks.lock() {
             guard.push(TaskEntry {
                 name: name.to_string(),
                 status,
                 message: message.map(String::from),
                 actions,
+                visible,
             });
         }
+    }
+
+    pub(in crate::infra::logging) fn task_is_visible(&self, name: &str) -> bool {
+        self.tasks.lock().map_or(true, |guard| {
+            guard
+                .iter()
+                .rev()
+                .find(|task| task.name == name)
+                .is_none_or(|task| task.visible)
+        })
     }
 
     /// Record buffered user-facing detail lines for a completed task.
@@ -365,6 +388,17 @@ impl TaskRecorder for Logger {
         actions: ActionCounts,
     ) {
         self.record_task_with_actions(name, status, message, actions);
+    }
+
+    fn record_task_with_metadata(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        visible: bool,
+    ) {
+        self.record_task_with_metadata(name, status, message, actions, visible);
     }
 }
 
@@ -596,7 +630,7 @@ mod tests {
             "file summary should not repeat individual task names: {contents}"
         );
         assert!(
-            contents.contains("Complete ·"),
+            contents.contains("No checks ran ·"),
             "file summary should include the final completion line: {contents}"
         );
         let lower_contents = contents.to_lowercase();

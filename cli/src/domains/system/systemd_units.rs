@@ -23,7 +23,11 @@ impl ConfigureSystemd {
 
 impl Task for ConfigureSystemd {
     fn name(&self) -> &'static str {
-        "Configure systemd units"
+        "Systemd units"
+    }
+
+    fn selector(&self) -> &'static str {
+        "systemd"
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

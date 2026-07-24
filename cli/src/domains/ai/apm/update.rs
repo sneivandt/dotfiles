@@ -33,7 +33,8 @@ pub struct UpdateApmPackages;
 
 impl Task for UpdateApmPackages {
     task_metadata! {
-        name: "Update APM packages",
+        name: "APM package updates",
+        selector: "apm-update",
         update_only: true,
     }
 

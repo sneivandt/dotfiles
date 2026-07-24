@@ -280,7 +280,8 @@ impl ConfigureSparseCheckout {
 
 impl Task for ConfigureSparseCheckout {
     task_metadata! {
-        name: "Configure sparse checkout",
+        name: "Sparse checkout",
+        selector: "sparse-checkout",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

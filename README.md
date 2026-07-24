@@ -31,6 +31,7 @@ For a first run, preview the selected profile before applying it:
 | Update dependencies | `dotfiles update` |
 | Detach managed files | `dotfiles uninstall` |
 | Validate config | `dotfiles test` |
+| Discover task selectors | `dotfiles tasks` |
 | Inspect logs | `dotfiles log` |
 | Show version | `dotfiles --version` |
 
@@ -38,6 +39,14 @@ Use `install` for normal repeatable convergence. Use `update` only when you
 also want to advance pinned dependency versions. `uninstall` detaches managed
 links/hooks/wrappers, materializes symlinks, and leaves broader machine state
 alone.
+
+Use `dotfiles tasks` to list the stable selectors accepted by `--only` and
+`--skip`, together with the commands that include each task:
+
+```bash
+dotfiles tasks
+dotfiles install --only symlinks,git -d
+```
 
 See the [Usage Guide](docs/USAGE.md) for the full command reference.
 

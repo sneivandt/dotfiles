@@ -203,6 +203,7 @@ impl BufferedLog {
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 std::mem::take(&mut *guard)
             };
+            let visible = self.inner.task_is_visible(task_name);
             if should_record_task_details(status) {
                 let detail_lines: Vec<String> = entries
                     .iter()
@@ -213,14 +214,18 @@ impl BufferedLog {
             }
             let span = tracing::info_span!("task", name = task_name);
             let _enter = span.enter();
-            if status == TaskStatus::NotApplicable {
+            if status == TaskStatus::NotApplicable || !visible {
                 for entry in &entries {
                     entry.replay_file_only();
                 }
             } else if self.inner.is_verbose() {
                 self.inner.emit_recorded_task_status(task_name);
                 for entry in &entries {
-                    entry.replay_verbose_task_detail();
+                    if status == TaskStatus::Ok {
+                        entry.replay_non_verbose(status);
+                    } else {
+                        entry.replay_verbose_task_detail();
+                    }
                 }
             } else {
                 let has_visible_entries = entries
@@ -237,7 +242,7 @@ impl BufferedLog {
                 }
             }
             self.inner.remove_active_task_locked(task_name);
-            if !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
+            if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
                 self.inner.emit_recorded_task_result(task_name);
             }
             self.inner.redraw_active_status_locked(show_progress);
@@ -283,6 +288,18 @@ impl TaskRecorder for BufferedLog {
     ) {
         self.inner
             .record_task_with_actions(name, status, message, actions);
+    }
+
+    fn record_task_with_metadata(
+        &self,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        visible: bool,
+    ) {
+        self.inner
+            .record_task_with_metadata(name, status, message, actions, visible);
     }
 }
 

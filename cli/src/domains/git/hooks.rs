@@ -75,7 +75,8 @@ impl Default for InstallGitHooks {
 
 impl Task for InstallGitHooks {
     task_metadata! {
-        name: "Install Git hooks",
+        name: "Git hooks",
+        selector: "git-hooks",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -123,7 +124,8 @@ impl Default for UninstallGitHooks {
 
 impl Task for UninstallGitHooks {
     task_metadata! {
-        name: "Remove Git hooks",
+        name: "Git hooks",
+        selector: "git-hooks",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

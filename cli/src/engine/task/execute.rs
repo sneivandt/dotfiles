@@ -4,7 +4,7 @@
 //! [`Task`](super::Task) trait object it decides applicability, runs the task,
 //! and records the outcome into the logger.
 
-use crate::engine::{Context, TaskResult};
+use crate::engine::{Context, TaskResult, TaskVisibility};
 use crate::infra::logging::{ActionCounts, DiagEvent, TaskStatus, diag_task_context};
 
 use super::Task;
@@ -17,10 +17,17 @@ pub(super) fn not_applicable_reason<T: Task + ?Sized>(task: &T, ctx: &Context) -
     }
 }
 
-fn record_not_applicable(ctx: &Context, name: &str, reason: &str) {
-    ctx.log().diag_task(DiagEvent::TaskSkip, name, reason);
+fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: &str) {
+    ctx.log()
+        .diag_task(DiagEvent::TaskSkip, task.name(), reason);
     ctx.debug_fmt(|| format!("not applicable: {reason}"));
-    ctx.log().record_task(name, TaskStatus::NotApplicable, None);
+    ctx.log().record_task_with_metadata(
+        task.name(),
+        TaskStatus::NotApplicable,
+        None,
+        ActionCounts::default(),
+        task.visibility() == TaskVisibility::Visible,
+    );
 }
 
 /// Execute a task, recording the result in the logger.
@@ -38,7 +45,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let _enter = span.enter();
     let _diag_context = diag_task_context(task.name());
     if let Some(reason) = not_applicable_reason(task, ctx) {
-        record_not_applicable(ctx, task.name(), &reason);
+        record_not_applicable(ctx, task, &reason);
         return TaskStatus::NotApplicable;
     }
 
@@ -54,8 +61,13 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
 /// interruptions as real failures.
 fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let rec = |status: TaskStatus, msg: Option<&str>, actions: ActionCounts| {
-        ctx.log()
-            .record_task_with_actions(task.name(), status, msg, actions);
+        ctx.log().record_task_with_metadata(
+            task.name(),
+            status,
+            msg,
+            actions,
+            task.visibility() == TaskVisibility::Visible,
+        );
         status
     };
     match task.run_configured(ctx) {
@@ -63,8 +75,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
             ctx.log()
                 .diag_task(DiagEvent::TaskSkip, task.name(), "nothing configured");
             ctx.log().debug("nothing configured");
-            ctx.log()
-                .record_task(task.name(), TaskStatus::NotApplicable, None);
+            rec(TaskStatus::NotApplicable, None, ActionCounts::default());
             TaskStatus::NotApplicable
         }
         Ok(Some(result)) => match result {
@@ -75,14 +86,13 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
             TaskResult::CheckPassed => {
                 ctx.log()
                     .diag_task(DiagEvent::TaskDone, task.name(), "passed");
-                rec(TaskStatus::Changed, None, ActionCounts::default())
+                rec(TaskStatus::Passed, None, ActionCounts::default())
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log()
                     .diag_task(DiagEvent::TaskSkip, task.name(), &reason);
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
-                ctx.log()
-                    .record_task(task.name(), TaskStatus::NotApplicable, None);
+                rec(TaskStatus::NotApplicable, None, ActionCounts::default());
                 TaskStatus::NotApplicable
             }
             TaskResult::Skipped(reason) => {

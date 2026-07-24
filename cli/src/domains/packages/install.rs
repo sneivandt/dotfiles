@@ -41,7 +41,8 @@ impl InstallPackages {
 
 impl Task for InstallPackages {
     task_metadata! {
-        name: "Install packages",
+        name: "System packages",
+        selector: "packages",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -141,7 +142,8 @@ impl InstallAurPackages {
 
 impl Task for InstallAurPackages {
     task_metadata! {
-        name: "Install AUR packages",
+        name: "AUR packages",
+        selector: "aur-packages",
         deps: [InstallParu],
     }
 
@@ -164,7 +166,8 @@ pub struct InstallParu;
 
 impl Task for InstallParu {
     task_metadata! {
-        name: "Install paru",
+        name: "Paru package manager",
+        selector: "paru",
         deps: [InstallPackages],
     }
 

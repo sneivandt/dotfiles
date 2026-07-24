@@ -22,8 +22,16 @@ pub fn run(
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
     let runner = super::CommandRunner::new(global, log, token)?;
-    let handle = runner.config_handle();
-    let tasks: Vec<Box<dyn Task>> = vec![
+    let tasks = validation_tasks(runner.config_handle());
+    runner.run(tasks.iter().map(Box::as_ref))
+}
+
+/// Build the complete task set used by the `test` command.
+#[must_use]
+pub(crate) fn validation_tasks(
+    handle: crate::infra::ConfigHandle<crate::app::config::Config>,
+) -> Vec<Box<dyn Task>> {
+    vec![
         Box::new(ValidateConfigWarnings::new(handle.clone())),
         Box::new(ValidateSymlinkSources::new(handle)),
         Box::new(ValidateConfigFiles),
@@ -31,6 +39,5 @@ pub fn run(
         Box::new(ValidateApmPlugins),
         Box::new(RunShellcheck),
         Box::new(RunPSScriptAnalyzer),
-    ];
-    runner.run(tasks.iter().map(Box::as_ref))
+    ]
 }

@@ -11,7 +11,8 @@ config_resource_task! {
     /// disturbing keys the Copilot CLI manages itself.  Processing is forced
     /// sequential because every resource reads and rewrites the same file.
     pub ConfigureCopilot {
-        name: "Configure Copilot",
+        name: "Copilot settings",
+        selector: "copilot",
         config: Vec<CopilotSetting>,
         items: |cfg| cfg.clone(),
         build: |s, ctx| CopilotSettingResource::new(

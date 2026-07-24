@@ -38,7 +38,7 @@ entry point missing.
 
 ## Developer Mode and symlinks
 
-**Install symlinks** depends on **Enable developer mode**, so the capability is
+**Home symlinks** depends on **Windows Developer Mode**, so the capability is
 enabled before symlinks are provisioned.
 Developer Mode allows normal users to create symbolic links without running the
 entire CLI elevated.
@@ -124,7 +124,7 @@ reports the module error.
 
 ## WSL
 
-When the Linux binary runs inside WSL, **Configure WSL** enables systemd and
+When the Linux binary runs inside WSL, **WSL configuration files** enables systemd and
 disables Windows PATH injection in `/etc/wsl.conf` while preserving unrelated
 settings. This is separate from running the Windows executable on the host.
 

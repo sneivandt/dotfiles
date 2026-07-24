@@ -92,7 +92,11 @@ impl GenerateCompletions {
 
 impl Task for GenerateCompletions {
     fn name(&self) -> &'static str {
-        "Install shell completions"
+        "Shell completions"
+    }
+
+    fn selector(&self) -> &'static str {
+        "completions"
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

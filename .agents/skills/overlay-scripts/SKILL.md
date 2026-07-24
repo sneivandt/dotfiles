@@ -70,6 +70,11 @@ task creation happens at that reload discovery boundary. If filtering removes
 the boundary, discover tasks from current configuration before running one
 graph.
 
+Reload and reporting tasks are internal: they stay in diagnostic/file logs but
+do not appear in `dotfiles tasks`, normal rows, or totals. Each visible dynamic
+script task uses the stable selector `script-<normalized-script-name>`.
+Discovery appends active scripts in configuration order; do not sort them.
+
 All subprocesses go through the executor abstraction. Preserve interpreter
 selection and non-interactive PowerShell behavior when changing command
 construction.
@@ -80,8 +85,9 @@ construction.
 2. Preserve path validation and overlay-root containment.
 3. Keep all four script modes wired.
 4. Update dynamic task creation and reload-boundary assumptions together.
-5. Add focused tests for exit-code mapping, dry-run failures, path rejection,
-   and overlay merging.
+5. Preserve internal reporting visibility and unique `script-...` selectors.
+6. Add focused tests for exit-code mapping, dry-run failures, path rejection,
+   overlay merging, and dynamic discovery.
 
 ## Privacy
 

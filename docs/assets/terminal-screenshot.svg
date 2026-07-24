@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="438" viewBox="0 0 960 438" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles terminal preview</title>
-  <desc id="desc">Compact example of symlinks, packages, and a default shell being installed by the dotfiles CLI.</desc>
+  <desc id="desc">Example of symlinks, packages, and a default shell being installed with completion-order status rows and an aggregate summary.</desc>
   <defs>
     <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
       <feDropShadow dx="0" dy="0" stdDeviation="16" flood-color="#16161e" flood-opacity="0.45"/>
@@ -15,18 +15,23 @@
   <circle cx="64" cy="39" r="6" fill="#e0af68"/>
   <circle cx="84" cy="39" r="6" fill="#9ece6a"/>
   <text x="480" y="44" text-anchor="middle" fill="#a9b1d6" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">user@workstation: ~</text>
-  <text x="34" y="80" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#e0af68">~</tspan></text>
-  <text x="34" y="100" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
-  <text x="34" y="126" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install · profile desktop · Arch Linux</tspan></text>
-  <text x="34" y="158" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install symlinks</tspan></text>
-  <text x="34" y="179" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.config/git/config</tspan></text>
-  <text x="34" y="200" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.config/nvim</tspan></text>
-  <text x="34" y="221" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  link ~/.zshrc</tspan></text>
-  <text x="34" y="253" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Install packages</tspan></text>
-  <text x="34" y="274" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  install neovim</tspan></text>
-  <text x="34" y="295" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  install ripgrep</tspan></text>
-  <text x="34" y="327" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Configure default shell</tspan></text>
-  <text x="34" y="348" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">  configure default shell → zsh</tspan></text>
-  <text x="34" y="382" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5" font-weight="700">Complete</tspan><tspan fill="#565f89"> · 1.3s</tspan></text>
-  <text x="34" y="404" font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve"><tspan fill="#c0caf5">Tasks:</tspan><tspan fill="#9ece6a"> 3 changed</tspan><tspan fill="#565f89"> · </tspan><tspan fill="#c0caf5">Actions:</tspan><tspan fill="#9ece6a"> 6 applied</tspan></text>
+  <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve">
+    <text x="34" y="80"><tspan fill="#e0af68">~</tspan></text>
+    <text x="34" y="100"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
+    <text x="34" y="126" fill="#c0caf5">Install · profile desktop · Arch Linux</text>
+
+    <text x="34" y="158"><tspan fill="#9ece6a" font-weight="700">CHANGED</tspan><tspan fill="#c0caf5"> Home symlinks</tspan></text>
+    <text x="52" y="179" fill="#a9b1d6">link ~/.config/git/config</text>
+    <text x="52" y="200" fill="#a9b1d6">link ~/.config/nvim</text>
+    <text x="52" y="221" fill="#a9b1d6">link ~/.zshrc</text>
+
+    <text x="34" y="253"><tspan fill="#9ece6a" font-weight="700">CHANGED</tspan><tspan fill="#c0caf5"> System packages</tspan></text>
+    <text x="52" y="274" fill="#a9b1d6">install neovim</text>
+    <text x="52" y="295" fill="#a9b1d6">install ripgrep</text>
+
+    <text x="34" y="327"><tspan fill="#9ece6a" font-weight="700">CHANGED</tspan><tspan fill="#c0caf5"> Default shell</tspan></text>
+    <text x="52" y="348" fill="#a9b1d6">configure default shell → zsh</text>
+
+    <text x="34" y="392"><tspan fill="#9ece6a" font-weight="700">Applied 6 changes across 3 tasks</tspan><tspan fill="#565f89"> · 1.3s</tspan></text>
+  </g>
 </svg>

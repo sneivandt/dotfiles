@@ -80,6 +80,20 @@ fn uninstall_task_names_are_unique() {
     }
 }
 
+/// No two uninstall tasks may share the same selector.
+#[test]
+fn uninstall_task_selectors_are_unique() {
+    let tasks = uninstall_tasks();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for task in &tasks {
+        assert!(
+            seen.insert(task.selector()),
+            "duplicate uninstall task selector: '{}'",
+            task.selector()
+        );
+    }
+}
+
 /// No two uninstall tasks may share the same [`TaskId`].
 #[test]
 fn uninstall_task_type_ids_are_unique() {
@@ -113,25 +127,25 @@ fn uninstall_task_dependencies_are_resolvable() {
 // Expected task presence
 // ---------------------------------------------------------------------------
 
-/// "Materialize symlinks" must be present in the uninstall task list.
+/// "Home symlinks" must be present in the uninstall task list.
 #[test]
-fn uninstall_task_list_contains_materialize_symlinks() {
+fn uninstall_task_list_contains_home_symlinks() {
     let tasks = uninstall_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Materialize symlinks"),
-        "expected 'Materialize symlinks' in uninstall task list, got: {names:?}"
+        names.contains(&"Home symlinks"),
+        "expected 'Home symlinks' in uninstall task list, got: {names:?}"
     );
 }
 
-/// "Remove Git hooks" must be present in the uninstall task list.
+/// "Git hooks" must be present in the uninstall task list.
 #[test]
-fn uninstall_task_list_contains_remove_git_hooks() {
+fn uninstall_task_list_contains_git_hooks() {
     let tasks = uninstall_tasks();
     let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
     assert!(
-        names.contains(&"Remove Git hooks"),
-        "expected 'Remove Git hooks' in uninstall task list, got: {names:?}"
+        names.contains(&"Git hooks"),
+        "expected 'Git hooks' in uninstall task list, got: {names:?}"
     );
 }
 

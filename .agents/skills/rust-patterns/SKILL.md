@@ -87,6 +87,11 @@ cli/src/
   check -> dry-run -> mutate order manually.
 - Keep applicability centralized: `should_run()` decides eligibility, while
   `run_configured()` only suppresses tasks with no configured work.
+- Keep task metadata distinct: `TaskId` is scheduler identity, `selector()` is
+  the stable exact-match CLI interface, `name()` is the display label, and
+  `visibility()` controls discovery, normal rows, and totals.
+- Preserve discovery insertion order and natural parallel completion-order
+  output; do not sort completed task rows.
 - Inject typed `ConfigHandle<T>` values into config-backed tasks and keep read
   guards out of long-running or parallel work.
 - Keep behaviour idempotent: re-running should converge to the same state.

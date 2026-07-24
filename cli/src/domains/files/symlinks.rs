@@ -46,7 +46,8 @@ pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<Symlin
 config_resource_task! {
     /// Create symlinks from symlinks/ to $HOME.
     pub InstallSymlinks {
-        name: "Install symlinks",
+        name: "Home symlinks",
+        selector: "symlinks",
         config: Vec<Symlink>,
         items: |cfg| cfg.clone(),
         build: |s, ctx| {
@@ -74,7 +75,11 @@ impl UninstallSymlinks {
 
 impl Task for UninstallSymlinks {
     fn name(&self) -> &'static str {
-        "Materialize symlinks"
+        "Home symlinks"
+    }
+
+    fn selector(&self) -> &'static str {
+        "symlinks"
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

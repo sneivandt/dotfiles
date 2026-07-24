@@ -111,19 +111,19 @@ A task can be absent from execution because:
 - its command membership excludes it (`install` excludes update-only tasks)
 - it is not applicable to the host
 - its configuration list is empty
-- `--only` did not match its display name
+- `--only` did not match its stable selector or full display label
 - `--skip` removed it
 - a dependency failed
 - current state already matches desired state
 
-Retry with the full display name or a canonical selector and verbose output.
-Selectors are normalized whole names or tokens, not arbitrary substrings:
+Run `dotfiles tasks` to discover stable selectors, then retry with one exact
+selector and verbose output:
 
 ```bash
-dotfiles install --only "Configure systemd units" --dry-run --verbose
+dotfiles install --only systemd --dry-run --verbose
 ```
 
-Use `dotfiles update` for **Update APM packages**.
+Use `dotfiles update` for **APM package updates**.
 
 ## A symlink cannot be created on Windows
 
@@ -139,8 +139,8 @@ elevated when only a specific capability requires it.
 
 ## A profile switch would remove files
 
-Conditional sources may leave the sparse checkout. **Configure sparse
-checkout** depends on **Materialize excluded symlinks**, which copies linked
+Conditional sources may leave the sparse checkout. **Sparse checkout** depends
+on **Excluded home files**, which copies linked
 content into the home target before applying exclusions.
 
 Always preview profile transitions:
@@ -181,7 +181,7 @@ tasks:
 dotfiles install --only packages --dry-run --verbose
 ```
 
-An AUR failure may originate in **Install paru** before **Install AUR packages**.
+An AUR failure may originate in **Paru package manager** before **AUR packages**.
 Do not mark a provider failure as already installed.
 
 ## APM update is skipped
@@ -190,8 +190,8 @@ APM updates require a successful install fingerprint for the current merged
 manifest. First converge install state:
 
 ```bash
-dotfiles install --only APM --verbose
-dotfiles update --only APM --dry-run --verbose
+dotfiles install --only apm --verbose
+dotfiles update --only apm,apm-update --dry-run --verbose
 ```
 
 Also confirm active main and overlay fragments are valid and APM is available.

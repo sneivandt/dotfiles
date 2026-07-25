@@ -5,7 +5,7 @@
 //! and records the outcome into the logger.
 
 use crate::engine::{Context, TaskResult, TaskVisibility};
-use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, log_task_context};
+use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, format_elapsed, log_task_context};
 
 use super::Task;
 use crate::infra::logging::OutputExt as _;
@@ -41,6 +41,11 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: &str) {
 /// [`TaskResult::Failed`] or an error, the failure is downgraded to
 /// [`TaskStatus::Skipped`] with an "interrupted" message so the
 /// summary does not count signal-induced failures.
+///
+/// Every executed task also emits a [`LogEvent::TaskTiming`] entry recording
+/// how long it ran. Under parallel scheduling the interleaved run log cannot
+/// be used to infer per-task duration by subtracting timestamps, so the
+/// measurement is taken here.
 pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
@@ -52,7 +57,14 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
 
     ctx.log()
         .run_task_event(LogEvent::TaskStart, task.name(), "executing");
-    record_run_outcome(task, ctx)
+    let started = std::time::Instant::now();
+    let status = record_run_outcome(task, ctx);
+    ctx.log().run_task_event(
+        LogEvent::TaskTiming,
+        task.name(),
+        &format!("elapsed {}", format_elapsed(started.elapsed())),
+    );
+    status
 }
 
 /// Run a task and record its outcome.

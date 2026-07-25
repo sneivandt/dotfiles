@@ -8,6 +8,36 @@ use sha2::{Digest, Sha256};
 
 use super::REPO;
 
+/// Number of attempts made for a single GET before the failure is reported.
+const MAX_GET_ATTEMPTS: u32 = 3;
+
+/// Failure fragments that indicate a retryable network or server condition.
+///
+/// Matching on the rendered error keeps the classification independent of the
+/// concrete [`HttpClient`], so injected clients exercise the same code path as
+/// [`UreqClient`].
+const TRANSIENT_HTTP_ERROR_MARKERS: &[&str] = &[
+    "broken pipe",
+    "connection closed",
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "dns",
+    "failed to lookup address",
+    "http status: 408",
+    "http status: 425",
+    "http status: 429",
+    "http status: 500",
+    "http status: 502",
+    "http status: 503",
+    "http status: 504",
+    "network is unreachable",
+    "operation timed out",
+    "temporary failure in name resolution",
+    "timed out",
+    "unexpected eof",
+];
+
 /// Trait for making HTTP GET requests, enabling test injection.
 ///
 /// Production code uses [`UreqClient`]; tests inject a mock that returns
@@ -62,10 +92,52 @@ pub(super) const fn default_http_client() -> UreqClient {
     UreqClient::new(120)
 }
 
+/// Perform a GET, retrying transient network and server failures.
+///
+/// Self-update runs unattended at the end of `dotfiles update`, so a single
+/// dropped connection should not fail the run when a retry would succeed.
+/// Permanent failures (404, checksum host misconfiguration, TLS errors) are
+/// returned on the first attempt so genuine problems stay fast and visible.
+fn get_with_retry(client: &dyn HttpClient, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+    let mut attempt = 1_u32;
+    loop {
+        match client.get(url, headers) {
+            Ok(body) => return Ok(body),
+            Err(error) if attempt < MAX_GET_ATTEMPTS && is_transient_http_error(&error) => {
+                tracing::warn!(
+                    "transient failure for GET {url} (attempt {attempt}/{MAX_GET_ATTEMPTS}), retrying: {error:#}"
+                );
+                std::thread::sleep(retry_delay(attempt));
+                attempt = attempt.saturating_add(1);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+/// Report whether `error` describes a condition worth retrying.
+fn is_transient_http_error(error: &anyhow::Error) -> bool {
+    let message = format!("{error:#}").to_ascii_lowercase();
+    TRANSIENT_HTTP_ERROR_MARKERS
+        .iter()
+        .any(|marker| message.contains(marker))
+}
+
+#[cfg(not(test))]
+fn retry_delay(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_secs(u64::from(attempt))
+}
+
+#[cfg(test)]
+const fn retry_delay(_attempt: u32) -> std::time::Duration {
+    std::time::Duration::ZERO
+}
+
 /// Query the GitHub API for the latest release tag.
 pub(super) fn fetch_latest_tag(client: &dyn HttpClient) -> Result<Option<String>> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let Ok(body_bytes) = client.get(
+    let Ok(body_bytes) = get_with_retry(
+        client,
         &url,
         &[
             ("Accept", "application/vnd.github.v3+json"),
@@ -86,8 +158,7 @@ pub(super) fn fetch_latest_tag(client: &dyn HttpClient) -> Result<Option<String>
 
 /// Download a URL and return the bytes.
 pub(super) fn download_bytes(client: &dyn HttpClient, url: &str) -> Result<Vec<u8>> {
-    client
-        .get(url, &[("User-Agent", "dotfiles-cli")])
+    get_with_retry(client, url, &[("User-Agent", "dotfiles-cli")])
         .with_context(|| format!("downloading {url}"))
 }
 
@@ -212,6 +283,61 @@ mod tests {
         let client = MockHttpClient::new(vec![Err(anyhow::anyhow!("timeout"))]);
         let result = download_bytes(&client, "https://example.com/file");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn download_bytes_retries_transient_failure_then_succeeds() {
+        let client = MockHttpClient::new(vec![
+            Err(anyhow::anyhow!("connection reset by peer")),
+            Ok(b"binary data".to_vec()),
+        ]);
+        let result = download_bytes(&client, "https://example.com/file").unwrap();
+        assert_eq!(
+            result, b"binary data",
+            "a retried download should return the successful response body"
+        );
+    }
+
+    #[test]
+    fn download_bytes_gives_up_after_the_attempt_limit() {
+        let responses = (0..MAX_GET_ATTEMPTS)
+            .map(|_| Err(anyhow::anyhow!("http status: 503")))
+            .collect();
+        let client = MockHttpClient::new(responses);
+        let error = download_bytes(&client, "https://example.com/file").unwrap_err();
+        let msg = format!("{error:#}");
+        assert!(
+            msg.contains("503"),
+            "the final transient failure should be reported, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn download_bytes_does_not_retry_permanent_failures() {
+        let client = MockHttpClient::new(vec![
+            Err(anyhow::anyhow!("http status: 404")),
+            Ok(b"never reached".to_vec()),
+        ]);
+        let error = download_bytes(&client, "https://example.com/file").unwrap_err();
+        let msg = format!("{error:#}");
+        assert!(
+            msg.contains("404"),
+            "a permanent failure should surface immediately, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn fetch_latest_tag_retries_transient_failure() {
+        let client = MockHttpClient::new(vec![
+            Err(anyhow::anyhow!("temporary failure in name resolution")),
+            Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec()),
+        ]);
+        let result = fetch_latest_tag(&client).unwrap();
+        assert_eq!(
+            result,
+            Some("v1.2.3".to_string()),
+            "a transient DNS failure should not be treated as offline"
+        );
     }
 
     #[test]

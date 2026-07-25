@@ -188,7 +188,9 @@ Prints the most recent run log. Each run writes a single
 `$XDG_CACHE_HOME/dotfiles/<command>.log` containing every event in the order it
 actually happened, including messages the console suppresses. Lines are
 `seq | elapsed_us | wall_utc | context | event | message`, where `context` is the
-task that produced the event, so parallel execution can be reconstructed.
+task that produced the event, so parallel execution can be reconstructed. Each
+executed task also emits a `task_timing` event recording how long it ran, which
+is otherwise not derivable from a parallel run's interleaved timestamps.
 
 ## Repository and overlay paths
 

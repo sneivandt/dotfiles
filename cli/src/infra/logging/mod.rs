@@ -27,7 +27,7 @@ pub use types::{ActionCounts, Log, MsgKind, Output, OutputExt, TaskStatus};
 // module; production code uses the `super::types` path directly.
 #[cfg(test)]
 pub use types::TaskRecorder;
-pub(crate) use utils::dotfiles_cache_dir_readonly;
+pub(crate) use utils::{dotfiles_cache_dir_readonly, format_elapsed};
 
 /// Initialise logging for a command run.
 ///

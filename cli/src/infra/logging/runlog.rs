@@ -98,6 +98,8 @@ pub enum LogEvent {
     TaskSkip,
     /// A task failed (e.g. returned an error or panicked).
     TaskFail,
+    /// How long a task spent executing.
+    TaskTiming,
     /// Resource state check.
     ResourceCheck,
     /// Resource apply (mutation).
@@ -123,6 +125,7 @@ impl LogEvent {
             Self::TaskDone => "task_done",
             Self::TaskSkip => "task_skip",
             Self::TaskFail => "task_fail",
+            Self::TaskTiming => "task_timing",
             Self::ResourceCheck => "resource_check",
             Self::ResourceApply => "resource_apply",
             Self::ResourceResult => "resource_result",

@@ -3,8 +3,6 @@
 //! Owns the summary mode, the visible-task tally, and the single totals line
 //! rendered at the end of a run.
 
-use std::time::Duration;
-
 use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus};
 
@@ -209,15 +207,4 @@ pub(super) fn should_space_before_totals(
     has_visible_tasks: bool,
 ) -> bool {
     verbose || has_visible_tasks || !matches!(command, "install" | "update" | "uninstall")
-}
-/// Format a duration as a human-readable string (e.g., "1.2s", "2m 5s").
-pub(super) fn format_elapsed(d: Duration) -> String {
-    let secs = d.as_secs();
-    if secs < 60 {
-        format!("{:.1}s", d.as_secs_f64())
-    } else {
-        let mins = secs / 60;
-        let remaining = secs % 60;
-        format!("{mins}m {remaining}s")
-    }
 }

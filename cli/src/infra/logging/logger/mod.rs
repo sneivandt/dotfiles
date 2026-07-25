@@ -137,6 +137,23 @@ impl Logger {
         self.dry_run = dry_run;
     }
 
+    /// Acquire the console flush lock, recovering from poisoning.
+    ///
+    /// A panicking task poisons this lock, but the mutex guards console
+    /// cursor sequencing rather than shared data, so there is no invariant to
+    /// restore: recovering keeps the remaining tasks and the final summary
+    /// visible instead of turning one panic into a cascade of them.
+    #[allow(
+        clippy::print_stderr,
+        reason = "the console is the only sink able to report that console sequencing degraded"
+    )]
+    pub(in crate::infra::logging) fn lock_flush(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.flush_lock.lock().unwrap_or_else(|e| {
+            eprintln!("warning: flush lock was poisoned, recovering");
+            e.into_inner()
+        })
+    }
+
     /// Return a handle to the run log, if available.
     pub(in crate::infra::logging) fn run_log_handle(&self) -> Option<Arc<RunLog>> {
         self.run_log.clone()

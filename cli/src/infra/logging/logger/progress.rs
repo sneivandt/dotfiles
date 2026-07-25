@@ -30,11 +30,7 @@ fn transient_display_line(line: &str, cols: usize) -> String {
     format!("{truncated}{PROGRESS_ELLIPSIS}")
 }
 
-#[allow(
-    clippy::print_stdout,
-    clippy::print_stderr,
-    reason = "intentional user-facing output"
-)]
+#[allow(clippy::print_stdout, reason = "intentional user-facing output")]
 impl Logger {
     /// Erase the transient status area from the console.
     ///
@@ -131,10 +127,7 @@ impl Logger {
 
     /// Clear any transient status rows from the console.
     pub(in crate::infra::logging) fn clear_status(&self) {
-        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let _guard = self.lock_flush();
         self.clear_progress();
     }
 }

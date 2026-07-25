@@ -59,7 +59,6 @@ impl BufferedLog {
     ///
     /// Entries are already present in the run log, so anything not replayed
     /// here is simply not shown on the console.
-    #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
     pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
         let entries = {
             let mut guard = self
@@ -78,10 +77,7 @@ impl BufferedLog {
         }
 
         let show_progress = stdout_supports_progress();
-        let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let _guard = self.inner.lock_flush();
         if show_progress {
             self.inner.clear_progress();
         }

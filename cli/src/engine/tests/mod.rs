@@ -1,5 +1,8 @@
 mod apply_tests;
+mod failure_paths;
+mod graph_invariants;
 mod orchestrate;
+mod parallel;
 mod resource_contracts;
 mod stats;
 

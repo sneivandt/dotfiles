@@ -395,7 +395,11 @@ jobs:
           path: bin/
       - name: Install dotfiles with base profile
         shell: pwsh
-        run: .\bin\dotfiles.exe --root . -p base install -v --skip apm
+        # Skip packages as well as apm: unlike the Linux runner, where the
+        # package task finds no supported manager and no-ops, winget is present
+        # on windows-latest and its installs fail inside CI. This job validates
+        # the git symlink and config chain, not package installation.
+        run: .\bin\dotfiles.exe --root . -p base install -v --skip apm,packages
       - name: Test ${{ matrix.application }}
         shell: pwsh
         run: |

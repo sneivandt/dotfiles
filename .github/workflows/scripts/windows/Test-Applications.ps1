@@ -59,12 +59,11 @@ function Assert-GitConfig
         [Parameter(Mandatory = $true)][string]$Expected
     )
 
-    # Read from the global scope explicitly. `git config --get` alone resolves
-    # local > global > system, and the CI checkout carries a repository-local
-    # core.autocrlf that would mask the value under test. The global scope
-    # covers both ~/.gitconfig and $XDG_CONFIG_HOME/git/config, and follows
-    # [include] directives, which is exactly the chain being validated.
-    $actual = & git config --global --get $Key 2>$null
+    # Resolve with git's normal file discovery. Callers run these assertions
+    # from outside any repository, so local configuration cannot shadow the
+    # user-level chain under test. An explicit --global scope is not usable
+    # here: on Windows it does not pick up ~/.config/git/config.
+    $actual = & git config --get $Key 2>$null
     if ($LASTEXITCODE -ne 0)
     {
         $actual = ''
@@ -75,6 +74,35 @@ function Assert-GitConfig
         throw "Assertion failed: $Key"
     }
     Write-TestPass "$Key = $actual"
+}
+
+function Invoke-OutsideRepository
+{
+    <#
+    .SYNOPSIS
+        Run a script block from a scratch directory outside any git repository.
+    .DESCRIPTION
+        Git resolves configuration as local > global > system. Running from the
+        CI checkout would let repository-local values shadow the user-level
+        configuration these tests validate. An explicit --global scope is not a
+        usable substitute: on Windows it does not pick up ~/.config/git/config.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Body
+    )
+
+    $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+    New-Item -ItemType Directory -Path $scratch -Force | Out-Null
+    Push-Location $scratch
+    try
+    {
+        & $Body
+    }
+    finally
+    {
+        Pop-Location
+        Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -98,16 +126,22 @@ function Test-GitConfig
     }
     Write-TestPass "custom git config found: $configPath"
 
-    Assert-GitConfig -Key 'init.defaultBranch' -Expected 'main'
-    Assert-GitConfig -Key 'pull.rebase' -Expected 'true'
-    Assert-GitConfig -Key 'merge.conflictstyle' -Expected 'zdiff3'
-    Assert-GitConfig -Key 'push.autoSetupRemote' -Expected 'true'
-    Assert-GitConfig -Key 'diff.algorithm' -Expected 'histogram'
+    # Evaluate outside any repository. The CI checkout carries a
+    # repository-local core.autocrlf, and local config outranks the user-level
+    # chain this test validates.
+    Invoke-OutsideRepository {
+        Assert-GitConfig -Key 'init.defaultBranch' -Expected 'main'
+        Assert-GitConfig -Key 'pull.rebase' -Expected 'true'
+        Assert-GitConfig -Key 'merge.conflictstyle' -Expected 'zdiff3'
+        Assert-GitConfig -Key 'push.autoSetupRemote' -Expected 'true'
+        Assert-GitConfig -Key 'diff.algorithm' -Expected 'histogram'
 
-    # Windows-specific override supplied by symlinks/config/git/windows, which
-    # the base config pulls in via [include]. On Linux the same key resolves to
-    # 'input', so this asserts the Windows symlink chain end to end.
-    Assert-GitConfig -Key 'core.autocrlf' -Expected 'true'
+        # Windows-specific override supplied by symlinks/config/git/windows,
+        # which the base config pulls in via [include]. On Linux the same key
+        # resolves to 'input', so this asserts the Windows symlink chain end to
+        # end.
+        Assert-GitConfig -Key 'core.autocrlf' -Expected 'true'
+    }
 }
 
 function Test-GitAlias
@@ -119,15 +153,17 @@ function Test-GitAlias
     }
     Write-TestStage 'Testing git aliases'
 
-    foreach ($alias in @('st', 'br', 'lo', 'ci'))
-    {
-        $value = & git config --global --get "alias.$alias" 2>$null
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($value))
+    Invoke-OutsideRepository {
+        foreach ($alias in @('st', 'br', 'lo', 'ci'))
         {
-            Write-TestFail "alias.$alias not defined"
-            throw "Assertion failed: alias.$alias"
+            $value = & git config --get "alias.$alias" 2>$null
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($value))
+            {
+                Write-TestFail "alias.$alias not defined"
+                throw "Assertion failed: alias.$alias"
+            }
+            Write-TestPass "alias.$alias = $value"
         }
-        Write-TestPass "alias.$alias = $value"
     }
 }
 

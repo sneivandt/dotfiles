@@ -78,14 +78,14 @@ mutation failures.
 
 #### Dotfiles launcher
 
-Copies the appropriate bootstrap wrapper into `~\.local\bin` as `dotfiles`.
+Copies the appropriate bootstrap wrapper into `~/.local/bin` as `dotfiles`.
 The wrapper remains thin: it locates, downloads, verifies, or builds the Rust
 binary and forwards all CLI arguments. Re-running the task replaces stale
 wrapper content but does not create a second behavioral implementation.
 
 #### Shell PATH
 
-Runs after **Dotfiles launcher** and ensures `~\.local\bin` can be resolved by the
+Runs after **Dotfiles launcher** and ensures `~/.local/bin` can be resolved by the
 user. Platform-specific capability methods perform the actual PATH convergence.
 
 ### Repository and source tasks
@@ -103,8 +103,8 @@ Runs after preservation. It converts excluded manifest categories into Git
 sparse-checkout patterns and applies them to the checkout. It only runs when Git
 and an appropriate repository are available.
 
-`conf\manifest.toml` is deliberately not merged from overlays; sparse checkout
-describes the main repository's tracked `symlinks\` tree.
+`conf/manifest.toml` is deliberately not merged from overlays; sparse checkout
+describes the main repository's tracked `symlinks/` tree.
 
 #### Dotfiles repository
 
@@ -116,7 +116,7 @@ explicitly marked update-only are exclusive to the update command.
 #### Git hooks
 
 Runs after **Dotfiles repository**, ensuring the latest hook sources are used.
-Hook files are installed from `hooks\` into the checkout's Git hook directory.
+Hook files are installed from `hooks/` into the checkout's Git hook directory.
 The task is not applicable outside a Git checkout or when hook sources are
 absent.
 
@@ -137,25 +137,25 @@ dynamic tasks, then runs the remaining static and dynamic tasks together.
 #### Report overlay scripts
 
 Runs after **Reload configuration** when an overlay was supplied and
-`conf\scripts.toml` produced at least one active script. It only reports the
+`conf/scripts.toml` produced at least one active script. It only reports the
 discovered count. Actual execution is handled by dynamically injected tasks.
 
 ### System convergence tasks
 
 #### Git settings
 
-Reads `conf\git-config.toml` and converges each selected setting using global Git
+Reads `conf/git-config.toml` and converges each selected setting using global Git
 configuration. Empty configuration produces no work.
 
 #### Copilot settings
 
-Reads `conf\copilot.toml` and updates only the declared dot-separated keys in
-`~\.copilot\settings.json`. Undeclared and volatile CLI-owned keys are
+Reads `conf/copilot.toml` and updates only the declared dot-separated keys in
+`~/.copilot/settings.json`. Undeclared and volatile CLI-owned keys are
 preserved.
 
 #### System packages
 
-Reads `conf\packages.toml`, separates regular packages from AUR entries, and
+Reads `conf/packages.toml`, separates regular packages from AUR entries, and
 uses the active platform provider:
 
 - pacman on Arch Linux
@@ -171,19 +171,19 @@ packages are selected and the helper is unavailable.
 
 #### AUR packages
 
-Installs package entries marked `{ aur = true }` in `conf\packages.toml`. It
+Installs package entries marked `{ aur = true }` in `conf/packages.toml`. It
 uses the AUR helper after its bootstrap prerequisite has completed.
 
 #### Home symlinks
 
-Reads `conf\symlinks.toml`, expands supported source globs, computes
+Reads `conf/symlinks.toml`, expands supported source globs, computes
 home-relative targets, and creates or corrects links. Main and overlay entries
 retain their source repository provenance. On Windows, Developer Mode capability
 is established earlier in the graph.
 
 #### File permissions
 
-Linux-only task driven by `conf\chmod.toml`. Directory entries preserve
+Linux-only task driven by `conf/chmod.toml`. Directory entries preserve
 traversal bits while ordinary files in a recursively processed tree have
 execute bits cleared unless explicitly targeted by another entry.
 
@@ -194,25 +194,25 @@ installation so the desired shell executable can be present.
 
 #### Systemd units
 
-Reads `conf\systemd-units.toml` and enables/starts selected user units. It runs
+Reads `conf/systemd-units.toml` and enables/starts selected user units. It runs
 after package, AUR, and symlink tasks because a unit may depend on installed
 binaries and linked unit definitions.
 
 #### Windows registry
 
-Windows-only task driven by `conf\registry.toml`. It creates or updates
+Windows-only task driven by `conf/registry.toml`. It creates or updates
 current-user registry values while preserving undeclared values.
 
 #### VS Code extensions
 
-Reads `conf\vscode-extensions.toml` and installs missing extensions using an
+Reads `conf/vscode-extensions.toml` and installs missing extensions using an
 available VS Code CLI. It runs after regular and AUR package installation so a
 newly installed editor can be used in the same run.
 
 #### APM packages
 
 Builds the active APM desired state from repository-managed fragments under
-`symlinks\apm\config\`, including overlay contributions, then converges the
+`symlinks/apm/config/`, including overlay contributions, then converges the
 generated manifest, lock state, plugins, and skills. It runs after package,
 AUR, and symlink tasks so the APM executable and inputs are available.
 
@@ -258,7 +258,7 @@ script from mutating state if the script violates that contract. Although the
 underlying resource supports `--remove`, dynamic script tasks are not registered
 in the current uninstall catalog.
 
-Scripts are never loaded from the public repository's `conf\` directory. See
+Scripts are never loaded from the public repository's `conf/` directory. See
 [Overlay scripts](CONFIGURATION.md#overlay-scripts).
 
 ## Uninstall tasks
@@ -269,7 +269,7 @@ Uninstall reuses the stable selectors and labels shown in discovery:
 |---|---|---|
 | `symlinks` | Home symlinks | Replaces every managed home symlink with copied content |
 | `git-hooks` | Git hooks | Removes hooks installed from this repository |
-| `launcher` | Dotfiles launcher | Removes the installed `~\.local\bin\dotfiles` wrapper |
+| `launcher` | Dotfiles launcher | Removes the installed `~/.local/bin/dotfiles` wrapper |
 
 **Home symlinks** preserves user-visible files; it does not delete them.
 The uninstall command does not attempt to reverse package-manager, systemd,
@@ -284,7 +284,7 @@ scheduler:
 |---|---|---|
 | `config-warnings` | Validate config warnings | Emits non-fatal diagnostics collected while loading configuration |
 | `symlink-sources` | Validate symlink sources | Confirms configured symlink sources exist and globs resolve |
-| `config-files` | Validate config files | Requires and parses core TOML files; warns when `hooks\` is absent |
+| `config-files` | Validate config files | Requires and parses core TOML files; warns when `hooks/` is absent |
 | `manifest-sync` | Validate manifest sync | Checks exact category-section synchronization between symlinks and sparse-checkout manifest |
 | `apm-plugins` | Validate APM plugins | Validates active APM plugin and package references when APM is available |
 | `shellcheck` | Shellcheck | Runs ShellCheck on repository shell scripts when installed |
@@ -292,10 +292,10 @@ scheduler:
 
 The required core files are:
 
-- `conf\profiles.toml`
-- `conf\symlinks.toml`
-- `conf\packages.toml`
-- `conf\manifest.toml`
+- `conf/profiles.toml`
+- `conf/symlinks.toml`
+- `conf/packages.toml`
+- `conf/manifest.toml`
 
 ShellCheck and APM validation are not applicable when their executables are
 missing. PSScriptAnalyzer is different: the task is selected when `pwsh` is

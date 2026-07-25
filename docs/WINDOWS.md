@@ -60,7 +60,7 @@ Administrator by default.
 
 ## Packages
 
-Windows package identifiers in `conf\packages.toml` are winget package IDs:
+Windows package identifiers in `conf/packages.toml` are winget package IDs:
 
 ```toml
 [windows]
@@ -75,7 +75,7 @@ Windows.
 
 ## Registry settings
 
-`conf\registry.toml` declares named paths and value tables. Current
+`conf/registry.toml` declares named paths and value tables. Current
 configuration covers console colors and behavior, PSReadLine colors, regional
 formatting, Explorer, taskbar, search, Start, desktop icons, and window
 management.
@@ -115,7 +115,7 @@ Open a new terminal after the first installation before relying on the bare
 
 ## PowerShell configuration
 
-PowerShell profile files are delivered from the repository's `symlinks\` tree.
+PowerShell profile files are delivered from the repository's `symlinks/` tree.
 The active Windows category selects them, and normal symlink convergence keeps
 the home targets pointed at the checkout.
 

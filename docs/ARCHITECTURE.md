@@ -31,14 +31,14 @@ dotfiles.sh / dotfiles.ps1
 | Path | Responsibility |
 |---|---|
 | `dotfiles.sh`, `dotfiles.ps1` | Binary bootstrap/build and argument forwarding |
-| `cli\src\app\` | CLI definitions, command composition, catalog, aggregate config, validation |
-| `cli\src\engine\` | Task scheduling, resource convergence, operations, logging contracts |
-| `cli\src\domains\` | Git, packages, files, system, AI, editor, repository, shell, and overlay behavior |
-| `cli\src\infra\` | Platform detection and concrete system adapters |
-| `conf\` | Declarative desired state |
-| `symlinks\` | Versioned files linked into the user's home directory |
-| `hooks\` | Repository-maintained Git hooks and checks |
-| `.github\workflows\` | CI, release, and container publishing |
+| `cli/src/app/` | CLI definitions, command composition, catalog, aggregate config, validation |
+| `cli/src/engine/` | Task scheduling, resource convergence, operations, logging contracts |
+| `cli/src/domains/` | Git, packages, files, system, AI, editor, repository, shell, and overlay behavior |
+| `cli/src/infra/` | Platform detection and concrete system adapters |
+| `conf/` | Declarative desired state |
+| `symlinks/` | Versioned files linked into the user's home directory |
+| `hooks/` | Repository-maintained Git hooks and checks |
+| `.github/workflows/` | CI, release, and container publishing |
 
 ## Wrappers
 

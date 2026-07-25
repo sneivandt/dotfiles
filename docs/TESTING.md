@@ -51,7 +51,7 @@ cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D war
 
 ## Integration test suites
 
-The Rust integration tests under `cli\tests\` cover distinct boundaries:
+The Rust integration tests under `cli/tests/` cover distinct boundaries:
 
 | Test target | Focus |
 |---|---|
@@ -126,7 +126,7 @@ CI-maintained integration scripts live under:
 They cover wrapper forwarding and download behavior, install/uninstall flows,
 configuration, application availability, Git hooks, static analysis, and
 platform-specific cases. Shared Linux helpers live under
-`scripts\linux\lib\`.
+`scripts/linux/lib/`.
 
 The pre-commit checks can also be run directly:
 

@@ -29,7 +29,7 @@ On Windows, the wrapper can build and invoke the local binary in one step:
 ## Before editing
 
 1. Identify the owning layer and read the nearest implementation.
-2. Treat `conf\` and the command/task catalogs as authoritative.
+2. Treat `conf/` and the command/task catalogs as authoritative.
 3. Check whether an existing resource, provider, task, or operation can be
    reused.
 4. Preserve user-owned working-tree changes and private overlay content.
@@ -41,9 +41,9 @@ bootstrap and forward.
 
 ### Configuration-only change
 
-1. Edit the appropriate `conf\*.toml`.
+1. Edit the appropriate `conf/*.toml`.
 2. Keep platform and role entries in the narrowest category.
-3. If a conditional symlink changes, update `conf\manifest.toml`.
+3. If a conditional symlink changes, update `conf/manifest.toml`.
 4. Run the configuration drift test and `dotfiles test`.
 5. Preview the affected task with `--dry-run`.
 
@@ -57,7 +57,7 @@ config type -> loader -> validator -> conf entry -> resource/provider
 ```
 
 Static install or uninstall tasks must be registered in
-`cli\src\app\catalog.rs`. Command-specific tasks belong in that command's task
+`cli/src/app/catalog.rs`. Command-specific tasks belong in that command's task
 list.
 
 ### New task
@@ -126,14 +126,14 @@ See [Testing](TESTING.md) for script, wrapper, hook, and integration checks.
 
 ## CI and publishing
 
-`.github\workflows\ci.yml` is the pull-request and push gate. Its build, lint,
+`.github/workflows/ci.yml` is the pull-request and push gate. Its build, lint,
 test, security, validation, wrapper, hook, and integration jobs are reflected
 in a final `ci-success` gate. Coverage is informational.
 
 Release and Docker publishing run only after successful same-repository pushes
 to `main`. Publishing builds use release mode; ordinary CI uses the `ci`
 profile. Recurring integration logic belongs in
-`.github\workflows\scripts\`, not large inline workflow blocks.
+`.github/workflows/scripts/`, not large inline workflow blocks.
 
 Releases are tagged `vYYYY.MM.DD.N`, where `N` starts at 1 and increments for
 each additional release published on the same day. A dedicated `version` job

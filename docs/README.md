@@ -33,12 +33,12 @@ configuration, and the workflows used to develop and operate it.
 
 ## Source-of-truth boundaries
 
-- `conf\` contains declarative desired state.
-- `cli\src\app\catalog.rs` contains the static install and uninstall task
+- `conf/` contains declarative desired state.
+- `cli/src/app/catalog.rs` contains the static install and uninstall task
   catalogs.
-- `cli\src\app\commands\test.rs` contains the validation task list.
+- `cli/src/app/commands/test.rs` contains the validation task list.
 - `dotfiles.sh` and `dotfiles.ps1` only bootstrap a binary and forward CLI
   arguments.
-- `.github\workflows\` is authoritative for CI and publishing behavior.
+- `.github/workflows/` is authoritative for CI and publishing behavior.
 
 The documentation explains those sources; it does not replace them.

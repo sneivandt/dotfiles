@@ -1,6 +1,6 @@
 # Git Hooks
 
-The repository installs a pre-commit orchestrator from `hooks\`. It protects the
+The repository installs a pre-commit orchestrator from `hooks/`. It protects the
 checkout from obvious secret exposure and Rust quality regressions before CI.
 
 ## Files
@@ -15,8 +15,8 @@ checkout from obvious secret exposure and Rust quality regressions before CI.
 | `check-ci-guards.sh` | Verifies CI publishing and gate invariants |
 
 The installed hook resolves the repository root at runtime and invokes the
-source scripts from `hooks\`. This keeps hook logic versioned rather than
-duplicated inside `.git\hooks`.
+source scripts from `hooks/`. This keeps hook logic versioned rather than
+duplicated inside `.git/hooks`.
 
 ## Default pre-commit flow
 
@@ -53,7 +53,7 @@ dotfiles install --only git-hooks
 dotfiles uninstall --dry-run
 ```
 
-If `hooks\` is absent, repository validation reports a warning rather than
+If `hooks/` is absent, repository validation reports a warning rather than
 treating the whole configuration as invalid.
 
 ## Running checks manually

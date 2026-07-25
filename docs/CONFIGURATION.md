@@ -1,6 +1,6 @@
 # Configuration Reference
 
-The Rust CLI treats `conf\` as declarative desired state. Configuration is
+The Rust CLI treats `conf/` as declarative desired state. Configuration is
 loaded before task construction, filtered by active categories, validated, and
 exposed to tasks through shared handles.
 
@@ -19,7 +19,7 @@ exposed to tasks through shared handles.
 | `systemd-units.toml` | Category sections containing user unit names | systemd configuration |
 | `vscode-extensions.toml` | Category sections containing extension identifiers | VS Code extensions |
 
-An overlay may additionally provide `conf\scripts.toml`. The main repository
+An overlay may additionally provide `conf/scripts.toml`. The main repository
 does not load scripts from that filename.
 
 ## Category sections
@@ -65,7 +65,7 @@ profile controls a set of categories.
 
 ## Symlinks
 
-`symlinks.toml` entries are paths relative to `symlinks\`. Their home target is
+`symlinks.toml` entries are paths relative to `symlinks/`. Their home target is
 the same path prefixed with a dot where appropriate:
 
 ```toml
@@ -78,7 +78,7 @@ symlinks = [
 
 Source globs are supported, for example `apm/plugins/*`. Each resolved source
 becomes an independently managed link. Overlay symlinks resolve from the
-overlay's own `symlinks\` tree, not the main repository.
+overlay's own `symlinks/` tree, not the main repository.
 
 Every non-`base` symlink category must have an exact section in
 `manifest.toml`, and every manifest section must exist in `symlinks.toml`.
@@ -88,7 +88,7 @@ sections, and that manifest paths exist.
 
 ## Sparse-checkout manifest
 
-`manifest.toml` lists paths relative to `symlinks\` that may be excluded:
+`manifest.toml` lists paths relative to `symlinks/` that may be excluded:
 
 ```toml
 [arch]
@@ -150,7 +150,7 @@ settings = [
 ]
 ```
 
-Keys are dot-separated paths into `~\.copilot\settings.json`. Only declared
+Keys are dot-separated paths into `~/.copilot/settings.json`. Only declared
 keys are managed. Sibling properties and volatile Copilot CLI state remain
 untouched.
 
@@ -235,7 +235,7 @@ dotfiles install --overlay C:\path\to\private-dotfiles --dry-run
 
 ## Overlay scripts
 
-An overlay's `conf\scripts.toml` defines convention-based script tasks. Each
+An overlay's `conf/scripts.toml` defines convention-based script tasks. Each
 entry has a unique task name and a path relative to the overlay:
 
 ```toml
@@ -268,8 +268,8 @@ its name.
 
 ## APM configuration
 
-APM's source fragments are YAML files under `symlinks\apm\config\`, not a TOML
-file in `conf\`. The active profile determines which fragments are present in
+APM's source fragments are YAML files under `symlinks/apm/config/`, not a TOML
+file in `conf/`. The active profile determines which fragments are present in
 the sparse checkout and linked configuration. See [APM](APM.md).
 
 ## Loading and reload behavior

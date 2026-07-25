@@ -41,7 +41,7 @@ description: >
 - Use executor abstraction for subprocesses.
 
 Canonical references:
-- `cli/src/engine/resource.rs`
+- `cli/src/engine/resource/`
 - `cli/src/engine/orchestrate.rs`
 - `cli/src/engine/mode.rs`
 - `cli/src/engine/task/macros.rs`

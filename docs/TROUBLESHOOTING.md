@@ -86,7 +86,7 @@ git config --local --get dotfiles.profile
 ```
 
 An unknown explicit profile is an error; use a name declared in
-`conf\profiles.toml`.
+`conf/profiles.toml`.
 
 ## Configuration does not parse
 

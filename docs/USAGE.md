@@ -20,7 +20,7 @@ reimplementing its behavior.
 .\dotfiles.ps1 install --profile desktop
 ```
 
-By default, a wrapper uses `bin\dotfiles` or `bin\dotfiles.exe`. If the binary
+By default, a wrapper uses `bin/dotfiles` or `bin\dotfiles.exe`. If the binary
 is absent, it downloads the latest compatible GitHub Release asset, verifies its
 SHA-256 checksum, and verifies its build provenance attestation when the `gh`
 CLI is available. Use wrapper-only `--build` to compile the CLI with Cargo:
@@ -33,7 +33,7 @@ CLI is available. Use wrapper-only `--build` to compile the CLI with Cargo:
 .\dotfiles.ps1 --build test
 ```
 
-After installation, `~\.local\bin\dotfiles` is the normal entry point.
+After installation, `~/.local/bin/dotfiles` is the normal entry point.
 
 ## Command summary
 
@@ -207,7 +207,7 @@ to the main configuration:
 dotfiles install --overlay C:\Code\private-dotfiles
 ```
 
-Only overlay repositories can define `conf\scripts.toml`. See
+Only overlay repositories can define `conf/scripts.toml`. See
 [Configuration overlays](CONFIGURATION.md#overlays).
 
 ## Exit behavior

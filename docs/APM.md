@@ -9,9 +9,9 @@ resolution and materialization.
 
 | Layer | Responsibility |
 |---|---|
-| `symlinks\apm\config\*.yml` | Profile-specific APM source fragments |
-| `conf\symlinks.toml` | Selects and links applicable fragments and local plugins |
-| `conf\manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
+| `symlinks/apm/config/*.yml` | Profile-specific APM source fragments |
+| `conf/symlinks.toml` | Selects and links applicable fragments and local plugins |
+| `conf/manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
 | APM packages task | Merges fragments and converges installed state |
 | APM package updates task | Advances eligible pinned versions during `dotfiles update` |
 | APM itself | Resolves packages and distributes their content |
@@ -122,7 +122,7 @@ APM changes should also preserve:
 
 ## Adding an APM package
 
-1. Choose the narrowest applicable fragment in `symlinks\apm\config\`.
+1. Choose the narrowest applicable fragment in `symlinks/apm/config/`.
 2. Add a pinned or policy-compliant package declaration.
 3. If the fragment is conditional, confirm its symlink and manifest categories.
 4. Run `dotfiles test`.

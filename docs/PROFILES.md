@@ -69,8 +69,8 @@ $env:DOTFILES_PROFILE = "base"
 ## Sparse checkout
 
 Profiles affect both desired state and which platform-specific files remain in
-the checkout. `conf\manifest.toml` maps category exclusions to paths under
-`symlinks\`.
+the checkout. `conf/manifest.toml` maps category exclusions to paths under
+`symlinks/`.
 
 When switching from `desktop` to `base`, desktop paths may be removed from the
 sparse checkout. Before applying those exclusions, the CLI materializes managed
@@ -85,9 +85,9 @@ dotfiles install --profile base --dry-run --verbose
 
 ## Adding a profile or category
 
-1. Add the role definition to `conf\profiles.toml`.
+1. Add the role definition to `conf/profiles.toml`.
 2. Add category sections to relevant configuration files.
-3. Add matching sparse-checkout coverage to `conf\manifest.toml` for every
+3. Add matching sparse-checkout coverage to `conf/manifest.toml` for every
    non-`base` symlink section.
 4. Run `dotfiles test`.
 5. Preview both inclusion and exclusion transitions with `--dry-run`.

@@ -81,8 +81,8 @@ desired state and executable scripts. The public repository:
 
 - appends supported overlay configuration
 - resolves overlay symlink sources from the overlay root
-- executes only scripts listed in the overlay's `conf\scripts.toml`
-- does not load scripts from its own public `conf\`
+- executes only scripts listed in the overlay's `conf/scripts.toml`
+- does not load scripts from its own public `conf/`
 
 Review an overlay before using `--overlay`; dry-run reduces mutation risk but
 does not make an untrusted executable safe to inspect or invoke. The engine
@@ -94,14 +94,14 @@ when a script violates that convention.
 Do not place credentials, private keys, tokens, connection strings, or
 machine-specific secret values in:
 
-- `conf\`
-- `symlinks\`
+- `conf/`
+- `symlinks/`
 - test fixtures
 - logs
 - documentation examples
 - GitHub workflow files
 
-The pre-commit hook scans staged content using `hooks\sensitive-patterns.ini`.
+The pre-commit hook scans staged content using `hooks/sensitive-patterns.ini`.
 This is defense in depth, not a guarantee. Generated command output and overlay
 script output are logged, so scripts must avoid printing sensitive values.
 

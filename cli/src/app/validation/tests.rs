@@ -9,15 +9,21 @@ use crate::test_helpers::{empty_config, make_context, make_linux_context};
 
 #[test]
 fn display_diagnostics_formats_severity_and_code() {
+    use crate::infra::config::DiagnosticCode;
     use crate::infra::logging::isolated_logger;
 
     let (logger, _tmp, _guard) = isolated_logger();
     let diagnostics = vec![
-        Diagnostic::warning("pkg.toml", "git", "package.empty-name", "name is empty"),
+        Diagnostic::warning(
+            "pkg.toml",
+            "git",
+            DiagnosticCode::new("package", "empty-name"),
+            "name is empty",
+        ),
         Diagnostic::error(
             "sym.toml",
             ".bashrc",
-            "symlink.parent-in-source",
+            DiagnosticCode::new("symlink", "parent-in-source"),
             "unsafe path",
         ),
     ];

@@ -4,7 +4,19 @@ use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `symlink.absolute-source`.
+const SYMLINK_ABSOLUTE_SOURCE: DiagnosticCode = DiagnosticCode::new("symlink", "absolute-source");
+/// Diagnostic code: `symlink.absolute-target`.
+const SYMLINK_ABSOLUTE_TARGET: DiagnosticCode = DiagnosticCode::new("symlink", "absolute-target");
+/// Diagnostic code: `symlink.parent-in-source`.
+const SYMLINK_PARENT_IN_SOURCE: DiagnosticCode = DiagnosticCode::new("symlink", "parent-in-source");
+/// Diagnostic code: `symlink.parent-in-target`.
+const SYMLINK_PARENT_IN_TARGET: DiagnosticCode = DiagnosticCode::new("symlink", "parent-in-target");
+/// Diagnostic code: `symlink.source-missing`.
+const SYMLINK_SOURCE_MISSING: DiagnosticCode = DiagnosticCode::new("symlink", "source-missing");
 
 mod glob_expansion;
 mod target_capture;
@@ -191,12 +203,12 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
                     vec![
                         check(
                             is_absolute_like(t),
-                            "symlink.absolute-target",
+                            SYMLINK_ABSOLUTE_TARGET,
                             "target path should be relative to $HOME directory",
                         ),
                         check_error(
                             has_parent_component(t),
-                            "symlink.parent-in-target",
+                            SYMLINK_PARENT_IN_TARGET,
                             "target path must not contain '..' components",
                         ),
                     ]
@@ -204,17 +216,17 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
                 let mut checks: Vec<CheckItem> = vec![
                     check(
                         !source_path.exists(),
-                        "symlink.source-missing",
+                        SYMLINK_SOURCE_MISSING,
                         format!("source file does not exist: {}", source_path.display()),
                     ),
                     check(
                         is_absolute_like(&s.source),
-                        "symlink.absolute-source",
+                        SYMLINK_ABSOLUTE_SOURCE,
                         "source path should be relative to symlinks/ directory",
                     ),
                     check_error(
                         has_parent_component(&s.source),
-                        "symlink.parent-in-source",
+                        SYMLINK_PARENT_IN_SOURCE,
                         "source path must not contain '..' components",
                     ),
                 ];

@@ -1,136 +1,60 @@
-//! Buffered logger for parallel task execution.
+//! Console output buffering for parallel task execution.
+use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
-use super::diagnostic::{DiagEvent, DiagnosticLog};
 use super::logger::{Logger, stdout_supports_progress};
-use super::types::{ActionCounts, Output, TaskRecorder, TaskStatus};
+use super::runlog::RunLog;
+use super::types::{ActionCounts, MsgKind, Output, TaskRecorder, TaskStatus, emit_console_event};
 
-/// A single buffered log entry, replayed when flushed.
+/// A single buffered console entry, replayed when the task completes.
+///
+/// Only entries that can reach the console are buffered.  Everything is
+/// already recorded in the run log at the moment it is produced, so replay is
+/// purely a console-rendering concern.
 #[derive(Debug, Clone)]
-enum LogEntry {
-    /// A stage header entry.
-    Stage(String),
-    /// An unstyled task-name entry.
-    TaskStage(String),
-    /// An informational entry.
-    Info(String),
-    /// A debug entry.
-    Debug(String),
-    /// A warning entry.
-    Warn(String),
-    /// An error entry.
-    Error(String),
-    /// A dry-run entry.
-    DryRun(String),
-    /// An always-visible entry.
-    Always(String),
+struct LogEntry {
+    /// What kind of message this is.
+    kind: MsgKind,
+    /// The message text, with the caller's allocation taken over.
+    msg: String,
 }
 
 impl LogEntry {
-    /// Replay this entry to the console and log file via tracing.
-    ///
-    /// Does **not** write to the diagnostic log because the entry was
-    /// already recorded there in real-time when it was buffered.
+    /// Replay this entry to the console via tracing.
     fn replay(&self) {
-        match self {
-            Self::Stage(msg) => tracing::info!(target: "dotfiles::stage", "{msg}"),
-            Self::TaskStage(msg) => tracing::info!(target: "dotfiles::task_stage", "{msg}"),
-            Self::Info(msg) => tracing::info!("{msg}"),
-            Self::Debug(msg) => tracing::debug!("{msg}"),
-            Self::Warn(msg) => tracing::warn!("{msg}"),
-            Self::Error(msg) => tracing::error!("{msg}"),
-            Self::DryRun(msg) => tracing::info!(target: "dotfiles::dry_run", "{msg}"),
-            Self::Always(msg) => tracing::info!(target: "dotfiles::always", "{msg}"),
+        emit_console_event!(self.kind, &self.msg);
+    }
+
+    /// Replay this entry as verbose task detail.
+    ///
+    /// Task-name headers are suppressed because the task status line already
+    /// names the task.
+    fn replay_verbose(&self) {
+        if self.kind != MsgKind::TaskStage {
+            self.replay();
         }
     }
 
-    fn replay_verbose_task_detail(&self) {
-        match self {
-            Self::TaskStage(_) => self.replay_file_only(),
-            Self::Stage(_)
-            | Self::Info(_)
-            | Self::Debug(_)
-            | Self::Warn(_)
-            | Self::Error(_)
-            | Self::DryRun(_)
-            | Self::Always(_) => self.replay(),
-        }
-    }
-
+    /// The summary detail line contributed by this entry, if any.
     fn detail_line(&self, status: TaskStatus) -> Option<&str> {
-        match self {
-            Self::Info(msg) | Self::DryRun(msg) | Self::Always(msg) => Some(msg),
-            Self::Warn(msg) | Self::Error(msg) if status == TaskStatus::Failed => Some(msg),
-            Self::Stage(_)
-            | Self::TaskStage(_)
-            | Self::Debug(_)
-            | Self::Warn(_)
-            | Self::Error(_) => None,
+        match self.kind {
+            MsgKind::Info | MsgKind::DryRun | MsgKind::Always => Some(&self.msg),
+            MsgKind::Warn | MsgKind::Error if status == TaskStatus::Failed => Some(&self.msg),
+            MsgKind::Stage
+            | MsgKind::TaskStage
+            | MsgKind::Debug
+            | MsgKind::Warn
+            | MsgKind::Error => None,
         }
     }
 
-    fn replay_file_only(&self) {
-        match self {
-            Self::Stage(msg) => tracing::info!(target: "dotfiles::file_only_stage", "{msg}"),
-            Self::TaskStage(msg) => {
-                tracing::info!(target: "dotfiles::file_only_task_stage", "{msg}");
-            }
-            Self::Info(msg) => {
-                tracing::info!(target: "dotfiles::file_only", "{msg}");
-            }
-            Self::Debug(msg) => tracing::info!(target: "dotfiles::file_only_debug", "{msg}"),
-            Self::Warn(msg) => tracing::info!(target: "dotfiles::file_only_warn", "{msg}"),
-            Self::Error(msg) => tracing::info!(target: "dotfiles::file_only_error", "{msg}"),
-            Self::DryRun(msg) | Self::Always(msg) => {
-                tracing::info!(target: "dotfiles::file_only", "{msg}");
-            }
-        }
-    }
-
-    fn replay_non_verbose(&self, status: TaskStatus) {
-        if status == TaskStatus::Failed {
-            self.replay_file_only();
-            return;
-        }
-
-        match self {
-            Self::Stage(_)
-            | Self::TaskStage(_)
-            | Self::Info(_)
-            | Self::Debug(_)
-            | Self::DryRun(_)
-            | Self::Always(_) => self.replay_file_only(),
-            Self::Warn(_) | Self::Error(_) => self.replay(),
-        }
-    }
-
+    /// Whether this entry appears on the console in non-verbose mode.
+    ///
+    /// A failed task reports through its summary entry instead, so its
+    /// buffered output stays in the run log only.
     fn is_visible_in_non_verbose(&self, status: TaskStatus) -> bool {
-        status != TaskStatus::Failed && matches!(self, Self::Warn(_) | Self::Error(_))
+        status != TaskStatus::Failed && matches!(self.kind, MsgKind::Warn | MsgKind::Error)
     }
-}
-
-/// Implement the display methods of [`Output`] by buffering each message into
-/// `self.entries` as the corresponding [`LogEntry`] variant.
-///
-/// Each method also forwards the message to the diagnostic log in real-time
-/// (bypassing the buffer) so that the true chronological order of events
-/// during parallel execution is preserved.
-///
-/// The `record_task` method is **not** included because it forwards to
-/// `self.inner` instead of buffering.
-macro_rules! buffer_log_methods {
-    ($($method:ident => $variant:ident => $diag:ident),+ $(,)?) => {
-        $(
-            fn $method(&self, msg: &str) {
-                if let Some(d) = &self.inner.diagnostic {
-                    d.emit(DiagEvent::$diag, msg);
-                }
-                if let Ok(mut guard) = self.entries.lock() {
-                    guard.push(LogEntry::$variant(msg.to_string()));
-                }
-            }
-        )+
-    };
 }
 
 /// Buffered logger for parallel task execution.
@@ -160,89 +84,81 @@ impl BufferedLog {
     /// Replay all buffered entries to the backing [`Logger`].
     #[cfg(test)]
     pub fn flush(&self) {
-        let entries = self
-            .entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        if self.inner.is_verbose() {
-            for entry in &entries {
+        let entries = std::mem::take(
+            &mut *self
+                .entries
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        for entry in &entries {
+            if self.inner.is_verbose() || entry.is_visible_in_non_verbose(TaskStatus::Ok) {
                 entry.replay();
-            }
-        } else {
-            for entry in &entries {
-                entry.replay_non_verbose(TaskStatus::Ok);
             }
         }
     }
 
-    /// Flush all buffered entries and remove the task from the active set.
+    /// Flush buffered console output and remove the task from the active set.
     ///
     /// Acquires the flush lock on the backing [`Logger`] to prevent
     /// interleaved console output when multiple tasks complete concurrently.
     /// After replaying the buffered entries, appends the completed task result
     /// and updates the active-task display.
     ///
-    /// In non-verbose mode verbose task output is written to the log file only,
-    /// then a compact task result is written to the console immediately.
+    /// Entries are already present in the run log, so anything not replayed
+    /// here is simply not shown on the console.
     #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
     pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
-        {
-            let show_progress = stdout_supports_progress();
-            let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
-                eprintln!("warning: flush lock was poisoned, recovering");
-                e.into_inner()
-            });
-            if show_progress {
-                self.inner.clear_progress();
-            }
-            let entries = {
-                let mut guard = self
-                    .entries
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                std::mem::take(&mut *guard)
-            };
-            let visible = self.inner.task_is_visible(task_name);
-            if should_record_task_details(status) {
-                let detail_lines: Vec<String> = entries
-                    .iter()
-                    .filter_map(|entry| entry.detail_line(status))
-                    .map(ToString::to_string)
-                    .collect();
-                self.inner.record_task_details(task_name, detail_lines);
-            }
-            let span = tracing::info_span!("task", name = task_name);
-            let _enter = span.enter();
-            if matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) || !visible {
-                for entry in &entries {
-                    entry.replay_file_only();
-                }
-            } else if self.inner.is_verbose() {
-                self.inner.emit_recorded_task_status(task_name);
-                for entry in &entries {
-                    entry.replay_verbose_task_detail();
-                }
-            } else {
-                let has_visible_entries = entries
-                    .iter()
-                    .any(|entry| entry.is_visible_in_non_verbose(status));
-                if has_visible_entries {
-                    self.inner.separate_from_startup();
-                }
-                for entry in &entries {
-                    entry.replay_non_verbose(status);
-                }
-                if has_visible_entries {
-                    self.inner.mark_task_console_output();
-                }
-            }
-            self.inner.remove_active_task_locked(task_name);
-            if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
-                self.inner.emit_recorded_task_result(task_name);
-            }
-            self.inner.redraw_active_status_locked(show_progress);
+        let entries = {
+            let mut guard = self
+                .entries
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            std::mem::take(&mut *guard)
+        };
+        if should_record_task_details(status) {
+            let detail_lines: Vec<String> = entries
+                .iter()
+                .filter_map(|entry| entry.detail_line(status))
+                .map(ToString::to_string)
+                .collect();
+            self.inner.record_task_details(task_name, detail_lines);
         }
+
+        let show_progress = stdout_supports_progress();
+        let _guard = self.inner.flush_lock.lock().unwrap_or_else(|e| {
+            eprintln!("warning: flush lock was poisoned, recovering");
+            e.into_inner()
+        });
+        if show_progress {
+            self.inner.clear_progress();
+        }
+        let visible = self.inner.task_is_visible(task_name);
+        if matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) || !visible {
+            // Nothing to show: the entries live in the run log only.
+        } else if self.inner.is_verbose() {
+            self.inner.emit_recorded_task_status(task_name);
+            for entry in &entries {
+                entry.replay_verbose();
+            }
+        } else {
+            let has_visible_entries = entries
+                .iter()
+                .any(|entry| entry.is_visible_in_non_verbose(status));
+            if has_visible_entries {
+                self.inner.separate_from_startup();
+                for entry in &entries {
+                    if entry.is_visible_in_non_verbose(status) {
+                        entry.replay();
+                    }
+                }
+                self.inner.mark_task_console_output();
+            }
+        }
+        self.inner.remove_active_task_locked(task_name);
+        if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
+            self.inner.emit_recorded_task_result(task_name);
+        }
+        self.inner.redraw_active_status_locked(show_progress);
     }
 }
 
@@ -254,19 +170,30 @@ const fn should_record_task_details(status: TaskStatus) -> bool {
 }
 
 impl Output for BufferedLog {
-    buffer_log_methods! {
-        stage      => Stage      => Stage,
-        task_stage => TaskStage  => Stage,
-        info       => Info       => Info,
-        debug      => Debug      => Debug,
-        warn       => Warn       => Warn,
-        error      => Error      => Error,
-        dry_run    => DryRun     => DryRun,
-        always     => Always     => Info,
+    /// Record the message in the run log immediately and buffer it for later
+    /// console replay.
+    ///
+    /// Writing to the run log first (rather than at flush time) is what
+    /// preserves the true chronological order of events during parallel
+    /// execution.  Debug messages are never console-visible and are never used
+    /// for task detail lines, so they are not buffered at all.
+    fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
+        if let Some(run_log) = &self.inner.run_log {
+            run_log.emit(kind.log_event(), &msg);
+        }
+        if kind == MsgKind::Debug {
+            return;
+        }
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(LogEntry {
+                kind,
+                msg: msg.into_owned(),
+            });
+        }
     }
 
-    fn diagnostic(&self) -> Option<&DiagnosticLog> {
-        self.inner.diagnostic.as_ref()
+    fn run_log(&self) -> Option<&RunLog> {
+        self.inner.run_log.as_deref()
     }
 }
 
@@ -307,8 +234,17 @@ impl TaskRecorder for BufferedLog {
     reason = "test code uses panicking helpers"
 )]
 mod tests {
+    use super::super::types::OutputExt as _;
     use super::*;
     use crate::infra::logging::isolated_logger;
+
+    /// Build a buffered entry of the given kind for replay assertions.
+    fn entry(kind: MsgKind, msg: &str) -> LogEntry {
+        LogEntry {
+            kind,
+            msg: msg.to_string(),
+        }
+    }
     use std::fs;
     use std::sync::Arc;
 
@@ -335,27 +271,6 @@ mod tests {
         buf.record_task_with_actions("task-a", TaskStatus::Changed, None, actions);
 
         assert_eq!(log.task_entries()[0].actions, actions);
-    }
-
-    #[test]
-    fn buffered_log_flush_replays_to_file() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
-        let marker = format!("buf-marker-{}", std::process::id());
-        buf.info(&marker);
-        let path = log.log_path().expect("log path");
-        let before = fs::read_to_string(path).unwrap();
-        assert!(
-            !before.contains(&marker),
-            "buffered output should not be written before flush"
-        );
-        buf.flush();
-        let after = fs::read_to_string(path).unwrap();
-        assert!(
-            after.contains(&marker),
-            "buffered output should appear after flush"
-        );
     }
 
     #[test]
@@ -394,17 +309,17 @@ mod tests {
     }
 
     #[test]
-    fn buffered_log_writes_to_diagnostic_immediately() {
+    fn buffered_log_writes_to_run_log_immediately() {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
-        let marker = format!("buf-diag-{}", std::process::id());
+        let marker = format!("buf-runlog-{}", std::process::id());
         buf.info(&marker);
-        let diag = log.diagnostic.as_ref().expect("diagnostic log");
-        let contents = fs::read_to_string(diag.path()).unwrap();
+        let path = log.log_path().expect("log path");
+        let contents = fs::read_to_string(path).unwrap();
         assert!(
             contents.contains(&marker),
-            "BufferedLog should write to diagnostic immediately, not after flush"
+            "BufferedLog should write to the run log immediately, not after flush"
         );
     }
 
@@ -414,12 +329,12 @@ mod tests {
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
         let pid = std::process::id();
-        buf.stage(&format!("replay-stage-{pid}"));
-        buf.info(&format!("replay-info-{pid}"));
-        buf.debug(&format!("replay-debug-{pid}"));
-        buf.warn(&format!("replay-warn-{pid}"));
-        buf.error(&format!("replay-error-{pid}"));
-        buf.dry_run(&format!("replay-dryrun-{pid}"));
+        buf.stage(format!("replay-stage-{pid}"));
+        buf.info(format!("replay-info-{pid}"));
+        buf.debug(format!("replay-debug-{pid}"));
+        buf.warn(format!("replay-warn-{pid}"));
+        buf.error(format!("replay-error-{pid}"));
+        buf.dry_run(format!("replay-dryrun-{pid}"));
         buf.flush();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
@@ -437,11 +352,11 @@ mod tests {
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
         let pid = std::process::id();
-        buf.info(&format!("all-info-{pid}"));
-        buf.warn(&format!("all-warn-{pid}"));
-        buf.error(&format!("all-error-{pid}"));
-        buf.dry_run(&format!("all-dryrun-{pid}"));
-        buf.debug(&format!("all-debug-{pid}"));
+        buf.info(format!("all-info-{pid}"));
+        buf.warn(format!("all-warn-{pid}"));
+        buf.error(format!("all-error-{pid}"));
+        buf.dry_run(format!("all-dryrun-{pid}"));
+        buf.debug(format!("all-debug-{pid}"));
         buf.flush();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
@@ -474,7 +389,40 @@ mod tests {
     }
 
     #[test]
-    fn non_verbose_replay_only_demotes_verbose_detail_entries() {
+    fn non_verbose_replay_only_shows_warnings_and_errors() {
+        for entry in [
+            entry(MsgKind::Stage, "stage"),
+            entry(MsgKind::TaskStage, "task"),
+            entry(MsgKind::Info, "info"),
+            entry(MsgKind::DryRun, "dry-run"),
+            entry(MsgKind::Always, "always"),
+        ] {
+            assert!(
+                !entry.is_visible_in_non_verbose(TaskStatus::Ok),
+                "{entry:?} should be deferred to the summary in non-verbose replay"
+            );
+        }
+
+        for entry in [entry(MsgKind::Warn, "warn"), entry(MsgKind::Error, "error")] {
+            assert!(
+                entry.is_visible_in_non_verbose(TaskStatus::Ok),
+                "{entry:?} must reach the console in non-verbose replay"
+            );
+        }
+    }
+
+    #[test]
+    fn non_verbose_failed_replay_keeps_errors_off_the_console() {
+        for entry in [entry(MsgKind::Warn, "warn"), entry(MsgKind::Error, "error")] {
+            assert!(
+                !entry.is_visible_in_non_verbose(TaskStatus::Failed),
+                "failed-task output surfaces through the summary, not a separate console line"
+            );
+        }
+    }
+
+    #[test]
+    fn verbose_replay_targets_console_ui() {
         use tracing_subscriber::layer::SubscriberExt as _;
 
         let targets = Arc::new(Mutex::new(Vec::new()));
@@ -485,54 +433,13 @@ mod tests {
         let _guard = crate::infra::logging::test_dispatch_guard(&dispatch);
 
         for entry in [
-            LogEntry::Stage("stage".to_string()),
-            LogEntry::Info("info".to_string()),
-            LogEntry::Debug("debug".to_string()),
-            LogEntry::Warn("warn".to_string()),
-            LogEntry::Error("error".to_string()),
-            LogEntry::DryRun("dry-run".to_string()),
-            LogEntry::Always("always".to_string()),
+            entry(MsgKind::Stage, "stage"),
+            entry(MsgKind::TaskStage, "task"),
+            entry(MsgKind::Info, "info"),
+            entry(MsgKind::Warn, "warn"),
         ] {
-            entry.replay_non_verbose(TaskStatus::Ok);
+            entry.replay_verbose();
         }
-
-        let targets = targets
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
-        assert_eq!(targets[0], "dotfiles::file_only_stage");
-        assert_eq!(targets[1], "dotfiles::file_only");
-        assert_eq!(targets[2], "dotfiles::file_only_debug");
-        assert!(
-            !targets.contains(&"dotfiles::dry_run".to_string()),
-            "dry-run task details should be deferred to the summary in non-verbose replay: {targets:?}"
-        );
-        assert!(
-            !targets.contains(&"dotfiles::always".to_string()),
-            "always task details should be deferred to the summary in non-verbose replay: {targets:?}"
-        );
-        assert!(
-            !targets.iter().any(|target| matches!(
-                target.as_str(),
-                "dotfiles::file_only_warn" | "dotfiles::file_only_error"
-            )),
-            "warnings and errors must not be demoted to file-only replay: {targets:?}"
-        );
-    }
-
-    #[test]
-    fn non_verbose_failed_replay_keeps_errors_file_only() {
-        use tracing_subscriber::layer::SubscriberExt as _;
-
-        let targets = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(TargetCaptureLayer {
-            targets: Arc::clone(&targets),
-        });
-        let dispatch = tracing::Dispatch::new(subscriber);
-        let _guard = crate::infra::logging::test_dispatch_guard(&dispatch);
-
-        LogEntry::Warn("warn".to_string()).replay_non_verbose(TaskStatus::Failed);
-        LogEntry::Error("error".to_string()).replay_non_verbose(TaskStatus::Failed);
 
         let targets = targets
             .lock()
@@ -540,15 +447,19 @@ mod tests {
             .clone();
         assert_eq!(
             targets,
-            vec!["dotfiles::file_only_warn", "dotfiles::file_only_error"],
-            "failed-task errors should be persisted without separate console lines"
+            vec![
+                "dotfiles::ui::stage",
+                "dotfiles::ui::info",
+                "dotfiles::ui::warn"
+            ],
+            "verbose replay renders console targets and suppresses the task-name header"
         );
     }
 
     #[test]
     fn failed_task_errors_become_task_details() {
-        let warning = LogEntry::Warn("failed: package install".to_string());
-        let error = LogEntry::Error("packages: command failed".to_string());
+        let warning = entry(MsgKind::Warn, "failed: package install");
+        let error = entry(MsgKind::Error, "packages: command failed");
 
         assert_eq!(
             warning.detail_line(TaskStatus::Failed),
@@ -563,16 +474,14 @@ mod tests {
     }
 
     #[test]
-    fn buffered_log_diagnostic_returns_inner_diag() {
+    fn buffered_log_run_log_returns_inner_run_log() {
         let (log, _tmp, _guard) = isolated_logger();
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
-        let buf_diag = buf.diagnostic();
-        let log_diag = log.diagnostic.as_ref();
         assert_eq!(
-            buf_diag.is_some(),
-            log_diag.is_some(),
-            "BufferedLog::diagnostic() should match the logger's diagnostic"
+            buf.run_log().is_some(),
+            log.run_log().is_some(),
+            "BufferedLog::run_log() should match the logger's run log"
         );
     }
 
@@ -594,7 +503,7 @@ mod tests {
 
     /// Regression test: tasks that produce stats output by calling
     /// `ctx.log().info()` inside `run()` — as `process_resources` does via
-    /// central stats reporting — must have their `==>` stage header replayed
+    /// central stats reporting — must have their stage header recorded
     /// by `flush_and_complete()`.
     ///
     /// Before this was caught, tasks producing `"0 changed, X already ok"`
@@ -617,7 +526,7 @@ mod tests {
         let contents = fs::read_to_string(path).unwrap();
 
         let stage_pos = contents
-            .find("==> install-task")
+            .find("[stage] install-task")
             .expect("stage header must appear in log after flush_and_complete");
         let info_pos = contents
             .find("0 changed, 37 already ok")
@@ -650,7 +559,7 @@ mod tests {
         let contents = fs::read_to_string(path).unwrap();
 
         assert!(
-            contents.contains("==> parallel-task"),
+            contents.contains("[stage] parallel-task"),
             "stage header must appear after flush_and_complete even when progress row was active\nlog:\n{contents}"
         );
         assert!(
@@ -719,12 +628,8 @@ mod tests {
             "dry-run details should still be written to the persistent log"
         );
         assert!(
-            !contents.contains("[dry-run]"),
-            "dry-run detail replay should not add a redundant dry-run tag\nlog:\n{contents}"
-        );
-        assert!(
-            contents.contains("] [Configure Copilot] [info] would configure beep = true"),
-            "dry-run detail replay should use the info text level in the persistent log\nlog:\n{contents}"
+            contents.contains("[dry_run] would configure beep = true"),
+            "dry-run details are recorded under the dry_run event kind\nlog:\n{contents}"
         );
     }
 }

@@ -7,7 +7,7 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::stats::TaskStats;
 use crate::engine::{IntrinsicState, Resource, ResourceState};
-use crate::infra::logging::{diag_thread_name, set_diag_thread_name};
+use crate::infra::logging::{log_thread_name, set_log_thread_name};
 
 /// Process resource-like items in parallel using Rayon.
 ///
@@ -69,11 +69,11 @@ fn collect_parallel_stats<T: Send>(
     cancelled: impl Fn() -> bool + Sync + Send,
 ) -> Result<TaskStats> {
     use rayon::prelude::*;
-    let task_name = diag_thread_name();
+    let task_name = log_thread_name();
     items
         .into_par_iter()
         .try_fold(TaskStats::default, |mut acc, item| {
-            set_diag_thread_name(&task_name);
+            set_log_thread_name(&task_name);
             if cancelled() {
                 return Ok(acc);
             }

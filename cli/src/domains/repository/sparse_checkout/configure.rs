@@ -10,6 +10,7 @@ use crate::engine::{
 };
 use crate::infra::ConfigHandle;
 use crate::infra::fs::{FileSystemOps, SystemFileSystemOps};
+use crate::infra::logging::OutputExt as _;
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
@@ -323,7 +324,7 @@ impl Operation for SparseCheckoutOperation {
         if is_up_to_date(&sparse_file, &patterns_str)
             && sparse_checkout_config_enabled(ctx, ctx.root())
         {
-            ctx.log().debug(&format!(
+            ctx.log().debug(format!(
                 "already configured ({} files excluded)",
                 excluded_files.len()
             ));
@@ -339,7 +340,7 @@ impl Operation for SparseCheckoutOperation {
     fn preview(&self, ctx: &Context, excluded_files: &Self::Plan) -> Result<TaskResult> {
         ctx.log().dry_run("configure git sparse checkout");
         for file in excluded_files {
-            ctx.log().dry_run(&format!("  exclude: {file}"));
+            ctx.log().dry_run(format!("  exclude: {file}"));
         }
         Ok(TaskStats::changed().finish())
     }
@@ -372,7 +373,7 @@ impl Operation for SparseCheckoutOperation {
         reset_excluded_to_head(ctx, root, excluded_files);
         apply_read_tree_with_restore(ctx, root, &sparse_file, previous_patterns.as_deref())?;
 
-        ctx.log().info(&format!(
+        ctx.log().info(format!(
             "excluded {} files from checkout",
             excluded_files.len()
         ));

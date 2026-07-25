@@ -5,14 +5,15 @@
 
 [ -n "$(command -v fzf)"    ] || { echo "ERROR: fzf not installed"    1>&2 && return 1; }
 [ -n "$(command -v sudo)"   ] || { echo "ERROR: sudo not installed"   1>&2 && return 1; }
-[ -n "$(command -v vim)"    ] || { echo "ERROR: vim not installed"    1>&2 && return 1; }
+command -v "${EDITOR:-vim}" >/dev/null 2>&1 || { echo "ERROR: ${EDITOR:-vim} not installed" 1>&2 && return 1; }
 
 if ! command -v locate >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
   echo "ERROR: neither locate nor fd installed" 1>&2
   return 1
 fi
 
-local opts=$(getopt -o e -n ff -- "$@") || return 1
+local opts
+opts=$(getopt -o e -n ff -- "$@") || return 1
 eval set -- "$opts"
 
 while [ $# -gt 0 ]

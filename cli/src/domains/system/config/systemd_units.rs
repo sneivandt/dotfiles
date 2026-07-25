@@ -2,7 +2,19 @@
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `systemd.empty-name`.
+const SYSTEMD_EMPTY_NAME: DiagnosticCode = DiagnosticCode::new("systemd", "empty-name");
+/// Diagnostic code: `systemd.invalid-extension`.
+const SYSTEMD_INVALID_EXTENSION: DiagnosticCode =
+    DiagnosticCode::new("systemd", "invalid-extension");
+/// Diagnostic code: `systemd.invalid-scope`.
+const SYSTEMD_INVALID_SCOPE: DiagnosticCode = DiagnosticCode::new("systemd", "invalid-scope");
+/// Diagnostic code: `systemd.platform-unsupported`.
+const SYSTEMD_PLATFORM_UNSUPPORTED: DiagnosticCode =
+    DiagnosticCode::new("systemd", "platform-unsupported");
 
 /// A systemd unit to enable.
 #[derive(Debug, Clone)]
@@ -79,7 +91,7 @@ pub fn validate(
     Validator::new(SYSTEMD_UNITS_TOML)
         .warn_if(
             !units.is_empty() && !platform.supports_systemd(),
-            "systemd.platform-unsupported",
+            SYSTEMD_PLATFORM_UNSUPPORTED,
             "systemd units",
             "systemd units defined but platform does not support systemd",
         )
@@ -93,15 +105,15 @@ pub fn validate(
                 .iter()
                 .any(|ext| u.name.ends_with(ext));
             [
-                check(u.name.trim().is_empty(), "systemd.empty-name", "unit name is empty"),
+                check(u.name.trim().is_empty(), SYSTEMD_EMPTY_NAME, "unit name is empty"),
                 check(
                     matches!(u.scope, UnitScope::Invalid(_)),
-                    "systemd.invalid-scope",
+                    SYSTEMD_INVALID_SCOPE,
                     "unit scope should be 'user' or 'system'",
                 ),
                 check(
                     !has_valid_ext,
-                    "systemd.invalid-extension",
+                    SYSTEMD_INVALID_EXTENSION,
                     "unit name should end with a valid systemd extension (.service, .timer, .socket, etc.)",
                 ),
             ]
@@ -241,7 +253,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         assert!(
             warnings
                 .iter()
-                .any(|warning| warning.code == "systemd.invalid-scope")
+                .any(|warning| warning.code.to_string() == "systemd.invalid-scope")
         );
     }
 }

@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use super::*;
 use crate::engine::{TaskResult, TaskStats, execute, task_deps};
-use crate::infra::logging::{Output, TaskRecorder};
+use crate::infra::logging::{MsgKind, Output, TaskRecorder};
 use crate::test_helpers::{ContextBuilder, empty_config, make_static_context};
 
 fn make_test_log_and_ctx() -> (Arc<Logger>, Context, logging::TestDispatchLock) {
@@ -415,29 +415,21 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
     }
 
     impl Output for RecordingLog {
-        fn stage(&self, _msg: &str) {}
-
-        fn info(&self, msg: &str) {
-            self.info_lines
-                .lock()
+        fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
+            let sink = match kind {
+                MsgKind::Info => &self.info_lines,
+                MsgKind::Debug => &self.debug_lines,
+                MsgKind::Stage
+                | MsgKind::TaskStage
+                | MsgKind::Warn
+                | MsgKind::Error
+                | MsgKind::DryRun
+                | MsgKind::Always => return,
+            };
+            sink.lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(msg.to_string());
+                .push(msg.into_owned());
         }
-
-        fn debug(&self, msg: &str) {
-            self.debug_lines
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(msg.to_string());
-        }
-
-        fn warn(&self, _msg: &str) {}
-
-        fn error(&self, _msg: &str) {}
-
-        fn dry_run(&self, _msg: &str) {}
-
-        fn always(&self, _msg: &str) {}
     }
 
     impl TaskRecorder for RecordingLog {
@@ -771,7 +763,7 @@ fn stage_header_present_when_info_logged_in_run() {
     let contents = std::fs::read_to_string(path).unwrap();
 
     let stage_pos = contents
-        .find("==> stats-task")
+        .find("[stage] stats-task")
         .expect("stage header must appear in log for task that calls ctx.log().info in run()");
     let info_pos = contents
         .find("0 changed, 37 already ok")
@@ -786,7 +778,7 @@ fn stage_header_present_when_info_logged_in_run() {
 /// Regression test: stage header must be present for multiple parallel tasks
 /// that all produce stats output.  Simulates the scenario where 6 dependent
 /// tasks start after `ReloadConfig` and all complete with `"0 changed, X
-/// already ok"` output, none of which should be missing their `==>` header.
+/// already ok"` output, none of which should be missing their stage header.
 #[test]
 fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
     let (log, _tmp, _guard) = logging::isolated_logger();
@@ -819,7 +811,7 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
 
     for (name, count) in tasks_to_run {
         assert!(
-            contents.contains(&format!("==> {name}")),
+            contents.contains(&format!("[stage] {name}")),
             "stage header must appear for task '{name}'; log:\n{contents}"
         );
         assert!(
@@ -921,7 +913,7 @@ fn task_status_not_lost_after_debug_fmt_call() {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
     assert!(
-        targets.iter().any(|t| t == "dotfiles::task_result"),
+        targets.iter().any(|t| t == "dotfiles::ui::task_result"),
         "task status must reach the INFO-filtered layer after debug_fmt() was called;\nreceived targets:\n{targets:?}"
     );
 }

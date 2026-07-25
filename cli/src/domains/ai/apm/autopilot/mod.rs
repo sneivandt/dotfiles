@@ -28,6 +28,7 @@
 use std::collections::HashSet;
 
 use crate::engine::Context;
+use crate::infra::logging::OutputExt as _;
 
 mod db;
 mod lockfile;
@@ -92,7 +93,7 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
             return;
         }
         WorkflowDbProbe::DbPathNotUtf8 { path } => {
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "skipping autopilot fixup: database path {path} is not valid UTF-8"
             ));
             return;
@@ -137,7 +138,7 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
                 // and `next_run_at`). Surface it loudly and name the contract so
                 // the scripts can be updated, rather than letting a renamed
                 // column degrade to a generic failure line.
-                ctx.log().warn(&format!(
+                ctx.log().warn(format!(
                     "autopilot fixup: ~/.copilot/data.db no longer matches the expected workflows \
                      schema (columns id, name, prompt, mode, enabled, interval, schedule_hour, \
                      schedule_minute, schedule_day, next_run_at); the Copilot App database format \
@@ -145,13 +146,13 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
                      report this so the dotfiles autopilot scripts can be updated: {stderr}"
                 ));
             } else {
-                ctx.log().warn(&format!(
+                ctx.log().warn(format!(
                     "autopilot fixup failed (the apm operation still succeeded): {stderr}"
                 ));
             }
         }
         Err(e) => {
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "autopilot fixup could not run {python} (the apm operation still succeeded): {e:#}"
             ));
         }

@@ -398,6 +398,103 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
     );
 }
 
+/// Build a realistic APM lockfile whose only variable is the `generated_at`
+/// bookkeeping timestamp that apm stamps on every serialization.
+fn lock_with_timestamp(stamp: &str) -> String {
+    format!(
+        "lockfile_version: '1'\ngenerated_at: '{stamp}'\napm_version: 0.26.0\ndependencies:\n- \
+         repo_url: example/plugin\n  resolved_commit: abc123\n"
+    )
+}
+
+#[test]
+fn update_ignores_lockfile_timestamp_rewrites() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+    std::fs::write(
+        dir.path().join(".apm").join("apm.lock.yaml"),
+        lock_with_timestamp("2026-07-25T16:28:24.149463+00:00"),
+    )
+    .expect("write realistic lock");
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, _, args, _| {
+            assert_eq!(args, ["update", "-g", "--yes"]);
+            Ok(ok_result(
+                "All dependencies already at their latest matching refs.\n",
+            ))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |cwd, _, args, _| {
+            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+            // apm re-serializes the lockfile on every write, stamping a fresh
+            // `generated_at` even when no dependency ref advanced.
+            std::fs::write(
+                cwd.join(".apm").join("apm.lock.yaml"),
+                lock_with_timestamp("2026-07-25T16:29:53.449377+00:00"),
+            )
+            .expect("rewrite lock");
+            Ok(ok_result("installed workflows\n"))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected Ok when only the lockfile timestamp changed, got {result:?}"
+    );
+}
+
+#[test]
+fn update_reports_change_when_resolved_ref_advances_alongside_timestamp() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+    std::fs::write(
+        dir.path().join(".apm").join("apm.lock.yaml"),
+        lock_with_timestamp("2026-07-25T16:28:24.149463+00:00"),
+    )
+    .expect("write realistic lock");
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |cwd, _, args, _| {
+            assert_eq!(args, ["update", "-g", "--yes"]);
+            std::fs::write(
+                cwd.join(".apm").join("apm.lock.yaml"),
+                lock_with_timestamp("2026-07-25T16:29:53.449377+00:00").replace("abc123", "def456"),
+            )
+            .expect("rewrite lock");
+            Ok(ok_result("updated\n"))
+        });
+    mock.expect_run_in_with_env()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |_, _, args, _| {
+            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+            Ok(ok_result("installed workflows\n"))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        "expected changed result when a resolved ref advanced, got {result:?}"
+    );
+}
+
 #[test]
 fn update_propagates_lockfile_read_failures() {
     let dir = tempfile::tempdir().expect("create temp dir");

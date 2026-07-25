@@ -2,7 +2,15 @@
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `git.empty-key`.
+const GIT_EMPTY_KEY: DiagnosticCode = DiagnosticCode::new("git", "empty-key");
+/// Diagnostic code: `git.empty-value`.
+const GIT_EMPTY_VALUE: DiagnosticCode = DiagnosticCode::new("git", "empty-value");
+/// Diagnostic code: `git.key-missing-section`.
+const GIT_KEY_MISSING_SECTION: DiagnosticCode = DiagnosticCode::new("git", "key-missing-section");
 
 /// A git config key-value pair to apply globally.
 #[derive(Debug, Clone, Deserialize)]
@@ -29,17 +37,17 @@ pub fn validate(settings: &[GitSetting]) -> Vec<Diagnostic> {
                 [
                     check(
                         setting.key.trim().is_empty(),
-                        "git.empty-key",
+                        GIT_EMPTY_KEY,
                         "config key is empty",
                     ),
                     check(
                         setting.value.trim().is_empty(),
-                        "git.empty-value",
+                        GIT_EMPTY_VALUE,
                         "config value is empty",
                     ),
                     check(
                         !setting.key.contains('.'),
-                        "git.key-missing-section",
+                        GIT_KEY_MISSING_SECTION,
                         "config key should contain a section separator (e.g. 'core.autocrlf')",
                     ),
                 ]

@@ -1,6 +1,8 @@
 //! Structured configuration diagnostics shared by config loaders, validators,
 //! and validation tasks.
 
+use std::fmt;
+
 /// Severity level of a configuration diagnostic.
 ///
 /// Severity affects rendering and metadata only — both variants cause
@@ -25,6 +27,43 @@ impl Severity {
     }
 }
 
+/// A stable machine-readable rule code, rendered as `domain.rule`.
+///
+/// Diagnostic codes appear in `dotfiles test` output and are therefore a
+/// de-facto public contract: they must stay stable across releases so that
+/// users can grep for or suppress a specific finding.
+///
+/// The code is a distinct type rather than a bare `&str` so that a message can
+/// never be passed where a code is expected, and so that the two-part
+/// `domain.rule` shape is enforced at construction. Each domain declares its
+/// own codes as constants next to the validator that raises them, which keeps
+/// rule ownership with the domain that defines the rule.
+///
+/// ```ignore
+/// const INVALID_MODE: DiagnosticCode = DiagnosticCode::new("chmod", "invalid-mode");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DiagnosticCode {
+    /// Config domain the rule belongs to (e.g. `"chmod"`, `"symlink"`).
+    domain: &'static str,
+    /// Kebab-case rule name within the domain (e.g. `"invalid-mode"`).
+    rule: &'static str,
+}
+
+impl DiagnosticCode {
+    /// Declare a diagnostic code.
+    #[must_use]
+    pub const fn new(domain: &'static str, rule: &'static str) -> Self {
+        Self { domain, rule }
+    }
+}
+
+impl fmt::Display for DiagnosticCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.domain, self.rule)
+    }
+}
+
 /// A structured diagnostic emitted during configuration validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
@@ -34,8 +73,8 @@ pub struct Diagnostic {
     pub item: String,
     /// Severity of the finding.
     pub severity: Severity,
-    /// Stable machine-readable rule code (e.g., `"package.empty-name"`).
-    pub code: &'static str,
+    /// Stable machine-readable rule code (e.g. `package.empty-name`).
+    pub code: DiagnosticCode,
     /// Human-readable description.
     pub message: String,
 }
@@ -47,7 +86,7 @@ impl Diagnostic {
         source: impl Into<String>,
         item: impl Into<String>,
         severity: Severity,
-        code: &'static str,
+        code: DiagnosticCode,
         message: impl Into<String>,
     ) -> Self {
         Self {
@@ -64,7 +103,7 @@ impl Diagnostic {
     pub fn warning(
         source: impl Into<String>,
         item: impl Into<String>,
-        code: &'static str,
+        code: DiagnosticCode,
         message: impl Into<String>,
     ) -> Self {
         Self::new(source, item, Severity::Warning, code, message)
@@ -75,7 +114,7 @@ impl Diagnostic {
     pub fn error(
         source: impl Into<String>,
         item: impl Into<String>,
-        code: &'static str,
+        code: DiagnosticCode,
         message: impl Into<String>,
     ) -> Self {
         Self::new(source, item, Severity::Error, code, message)

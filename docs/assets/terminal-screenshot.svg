@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="438" viewBox="0 0 960 438" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="422" viewBox="0 0 960 422" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles terminal preview</title>
   <desc id="desc">Example of symlinks, packages, and a default shell being installed with completion-order status rows and an aggregate summary.</desc>
   <defs>
@@ -8,7 +8,7 @@
     </filter>
   </defs>
   <rect width="100%" height="100%" rx="28" fill="#1a1b26"/>
-  <rect x="18" y="18" width="924" height="402" rx="14" fill="#1a1b26" opacity="0.96" filter="url(#shadow)"/>
+  <rect x="18" y="18" width="924" height="386" rx="14" fill="#1a1b26" opacity="0.96" filter="url(#shadow)"/>
   <path d="M32 18h896a14 14 0 0 1 14 14v28H18V32a14 14 0 0 1 14-14z" fill="#24283b"/>
   <line x1="18" y1="60" x2="942" y2="60" stroke="#414868" stroke-opacity="0.75"/>
   <circle cx="44" cy="39" r="6" fill="#f7768e"/>
@@ -16,22 +16,20 @@
   <circle cx="84" cy="39" r="6" fill="#9ece6a"/>
   <text x="480" y="44" text-anchor="middle" fill="#a9b1d6" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">user@workstation: ~</text>
   <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve">
-    <text x="34" y="80"><tspan fill="#e0af68">~</tspan></text>
-    <text x="34" y="100"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
-    <text x="34" y="126" fill="#c0caf5">Install · profile desktop · Arch Linux</text>
+    <text x="34" y="82"><tspan fill="#e0af68">~</tspan></text>
+    <text x="34" y="103"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
+    <text x="34" y="124" fill="#c0caf5">Install · profile desktop · Arch Linux</text>
 
-    <text x="34" y="158"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Home symlinks</tspan></text>
-    <text x="52" y="179" fill="#a9b1d6">link ~/.config/git/config</text>
-    <text x="52" y="200" fill="#a9b1d6">link ~/.config/nvim</text>
-    <text x="52" y="221" fill="#a9b1d6">link ~/.zshrc</text>
+    <text x="34" y="166"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Home symlinks</tspan></text>
+    <text x="52" y="187" fill="#a9b1d6">link ~/.config/git/config</text>
+    <text x="52" y="208" fill="#a9b1d6">link ~/.config/nvim</text>
+    <text x="52" y="229" fill="#a9b1d6">link ~/.zshrc</text>
+    <text x="34" y="250"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> System packages</tspan></text>
+    <text x="52" y="271" fill="#a9b1d6">install neovim</text>
+    <text x="52" y="292" fill="#a9b1d6">install ripgrep</text>
+    <text x="34" y="313"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Default shell</tspan></text>
+    <text x="52" y="334" fill="#a9b1d6">configure default shell → zsh</text>
 
-    <text x="34" y="253"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> System packages</tspan></text>
-    <text x="52" y="274" fill="#a9b1d6">install neovim</text>
-    <text x="52" y="295" fill="#a9b1d6">install ripgrep</text>
-
-    <text x="34" y="327"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Default shell</tspan></text>
-    <text x="52" y="348" fill="#a9b1d6">configure default shell → zsh</text>
-
-    <text x="34" y="392"><tspan fill="#9ece6a" font-weight="700">Applied 6 changes across 3 tasks</tspan><tspan fill="#565f89"> · 1.3s</tspan></text>
+    <text x="34" y="376"><tspan fill="#9ece6a" font-weight="700">Applied 6 changes across 3 tasks</tspan><tspan fill="#565f89"> · 1.3s</tspan></text>
   </g>
 </svg>

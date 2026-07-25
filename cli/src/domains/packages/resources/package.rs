@@ -55,13 +55,34 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// Returns an error if the installation command fails.
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange>;
 
+    /// Build a single command invocation that installs every name in `names`.
+    ///
+    /// Providers whose package manager resolves an entire set in one solver
+    /// run override this; the default returns `None`, which makes
+    /// [`PackageProvider::install_missing`] fall back to installing one
+    /// package at a time.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the invocation cannot be constructed, for example
+    /// when a required privilege-escalation helper is unavailable.
+    fn batch_invocation<'a>(
+        &self,
+        names: &[&'a str],
+        executor: &dyn Executor,
+    ) -> Result<Option<(&'static str, Vec<&'a str>)>> {
+        let _ = (names, executor);
+        Ok(None)
+    }
+
     /// Install all missing package resources using this provider's preferred
     /// strategy.
     ///
-    /// Providers with native batch support override this to install everything
-    /// in one solver invocation. Providers without batch support keep the
-    /// default one-at-a-time implementation, which continues after individual
-    /// failures and reports them in the returned [`PackageInstallReport`].
+    /// Providers with native batch support (see
+    /// [`PackageProvider::batch_invocation`]) install everything in one solver
+    /// invocation. Providers without batch support install one at a time,
+    /// continuing after individual failures and reporting them in the returned
+    /// [`PackageInstallReport`].
     ///
     /// # Errors
     ///
@@ -71,6 +92,21 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         resources: &[&PackageResource],
         executor: &dyn Executor,
     ) -> Result<PackageInstallReport> {
+        let names: Vec<&str> = resources
+            .iter()
+            .map(|resource| resource.name.as_str())
+            .collect();
+
+        if let Some((program, args)) = self.batch_invocation(&names, executor)? {
+            executor.run(program, &args)?;
+            return Ok(PackageInstallReport::applied(
+                resources
+                    .iter()
+                    .map(|resource| resource.name.clone())
+                    .collect(),
+            ));
+        }
+
         let mut report = PackageInstallReport::new();
         for resource in resources {
             match self.install(&resource.name, executor) {

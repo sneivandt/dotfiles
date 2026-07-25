@@ -62,6 +62,7 @@ fn nibble_to_upper(n: u8) -> char {
 use anyhow::Result;
 
 use crate::infra::logging::Output;
+use crate::infra::logging::OutputExt as _;
 /// GitHub repository used for release lookups.
 pub(super) const REPO: &str = "sneivandt/dotfiles";
 
@@ -162,11 +163,11 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
         UpdateCheck::UpdateAvailable { latest, current } => {
             if dry_run {
-                log.info(&format!("update available: {current} → {latest}"));
+                log.info(format!("update available: {current} → {latest}"));
                 return Ok(false);
             }
             log.stage("Self update");
-            log.info(&format!("updating: {current} → {latest}"));
+            log.info(format!("updating: {current} → {latest}"));
             download_and_install(root, &latest, &client)?;
 
             #[cfg(windows)]

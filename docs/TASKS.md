@@ -63,7 +63,7 @@ idempotency and dry-run safety depend on the script honoring its contract.
 | `path` | Shell PATH | install, update | Ensures the launcher directory is on user PATH |
 
 `Reload configuration` and `Report overlay scripts` are internal orchestration
-tasks. They keep their scheduler identities and diagnostic logs, but do not
+tasks. They keep their scheduler identities and run-log entries, but do not
 appear in `dotfiles tasks`, normal console rows, or aggregate totals.
 
 ### Host capability and wrapper tasks
@@ -234,7 +234,8 @@ only for `dotfiles update` and only after APM install state matches the active
 merged-manifest fingerprint. That guard prevents a failed or partially
 converged install from advancing the lockfile. It invokes APM's idempotent
 update directly and compares the lockfile before and after to determine whether
-dependency refs advanced.
+dependency refs advanced. The comparison ignores APM's volatile `generated_at`
+stamp so a re-serialized-but-unchanged lockfile is not reported as a change.
 
 ## Dynamic overlay tasks
 

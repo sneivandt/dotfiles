@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use super::{Logger, TaskDetailEntry};
+use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::style::{StyleChoice, TextStyle, stdout_style};
 use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus};
 
@@ -100,18 +101,19 @@ fn task_result_lines(
     }
 
     let mut lines = vec![format_task_line(task, mode, style)];
-    let detail_lines = task_detail_lines(details, task)
+    let details = task_detail_lines(details, task);
+    let candidates: Vec<&str> = details
         .iter()
         .flat_map(|detail| detail.lines())
         .filter(|line| !line.trim().is_empty())
         .filter(|line| !is_stats_summary(line))
-        .map(compact_detail_line)
-        .collect::<Vec<String>>();
-    for detail in detail_lines.iter().take(MAX_NON_VERBOSE_DETAIL_LINES) {
-        lines.push(style.paint(TextStyle::Dim, &format!("  {}", detail.trim_start())));
+        .collect();
+    for detail in candidates.iter().take(MAX_NON_VERBOSE_DETAIL_LINES) {
+        let compacted = compact_detail_line(detail);
+        lines.push(style.paint(TextStyle::Dim, &format!("  {}", compacted.trim_start())));
     }
 
-    let remaining = detail_lines
+    let remaining = candidates
         .len()
         .saturating_sub(MAX_NON_VERBOSE_DETAIL_LINES);
     if remaining > 0 {

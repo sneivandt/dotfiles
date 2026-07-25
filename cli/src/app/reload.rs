@@ -14,6 +14,7 @@ use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskStats, UpdateSignal,
     process_operation, task_metadata,
 };
+use crate::infra::logging::OutputExt as _;
 
 /// Re-parse all configuration files after `UpdateRepository` has pulled the
 /// latest changes and swap the freshly-loaded values into the shared store.

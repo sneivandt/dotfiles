@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Emit waybar JSON for the active Hyprland window; updates instantly via IPC."""
 
+import html
 import json
 import os
 import socket
@@ -18,7 +19,13 @@ def emit() -> None:
     if not title:
         payload = {"text": "", "class": "empty", "alt": "empty"}
     else:
-        payload = {"text": title[:80], "class": "active", "alt": "active"}
+        # Waybar renders module text as Pango markup, so titles containing
+        # &, < or > must be escaped or the module fails to render at all.
+        payload = {
+            "text": html.escape(title[:80], quote=False),
+            "class": "active",
+            "alt": "active",
+        }
     print(json.dumps(payload), flush=True)
 
 

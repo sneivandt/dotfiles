@@ -11,6 +11,7 @@ use crate::engine::{
     task_metadata,
 };
 use crate::infra::ConfigHandle;
+use crate::infra::logging::OutputExt as _;
 
 /// Preserve managed files that are about to leave the sparse checkout.
 #[derive(Debug)]

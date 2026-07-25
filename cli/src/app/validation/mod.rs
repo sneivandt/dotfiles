@@ -11,18 +11,19 @@ pub use checks::{
 
 use crate::infra::config::Diagnostic;
 use crate::infra::logging::Output;
+use crate::infra::logging::OutputExt as _;
 
 pub(crate) fn display_diagnostics(diagnostics: &[Diagnostic], output: &dyn Output) {
     if diagnostics.is_empty() {
         return;
     }
 
-    output.warn(&format!(
+    output.warn(format!(
         "found {} configuration diagnostic(s):",
         diagnostics.len()
     ));
     for diagnostic in diagnostics {
-        output.warn(&format!(
+        output.warn(format!(
             "  [{}] {} [{}] ({}): {}",
             diagnostic.severity.label(),
             diagnostic.source,

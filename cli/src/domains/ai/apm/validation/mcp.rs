@@ -5,7 +5,15 @@ use std::path::Path;
 use serde_yaml_ng::Value as YamlValue;
 
 use super::path_item;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::validation::Validator;
+
+/// Diagnostic code: `apm.mcp-invalid-entry`.
+const APM_MCP_INVALID_ENTRY: DiagnosticCode = DiagnosticCode::new("apm", "mcp-invalid-entry");
+/// Diagnostic code: `apm.mcp-missing-endpoint`.
+const APM_MCP_MISSING_ENDPOINT: DiagnosticCode = DiagnosticCode::new("apm", "mcp-missing-endpoint");
+/// Diagnostic code: `apm.mcp-missing-name`.
+const APM_MCP_MISSING_NAME: DiagnosticCode = DiagnosticCode::new("apm", "mcp-missing-name");
 
 /// Validate `dependencies.mcp` entries declared directly in a fragment.
 ///
@@ -31,7 +39,7 @@ pub(super) fn validate_dependencies(
         }
         if !entry.is_mapping() {
             validator.warn(
-                "apm.mcp-invalid-entry",
+                APM_MCP_INVALID_ENTRY,
                 item(root, fragment, index, entry),
                 "dependencies.mcp entry is neither a registry string nor a mapping",
             );
@@ -44,7 +52,7 @@ pub(super) fn validate_dependencies(
             .is_none_or(|name| name.trim().is_empty())
         {
             validator.warn(
-                "apm.mcp-missing-name",
+                APM_MCP_MISSING_NAME,
                 item(root, fragment, index, entry),
                 "dependencies.mcp entry is missing a non-empty 'name'",
             );
@@ -60,7 +68,7 @@ pub(super) fn validate_dependencies(
             .is_some_and(|url| !url.trim().is_empty());
         if !has_command && !has_url {
             validator.warn(
-                "apm.mcp-missing-endpoint",
+                APM_MCP_MISSING_ENDPOINT,
                 item(root, fragment, index, entry),
                 "dependencies.mcp entry must define a 'command' (stdio) or 'url' (http) field",
             );

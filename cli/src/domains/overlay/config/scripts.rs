@@ -9,7 +9,16 @@ use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `scripts.duplicate-identity`.
+const SCRIPTS_DUPLICATE_IDENTITY: DiagnosticCode =
+    DiagnosticCode::new("scripts", "duplicate-identity");
+/// Diagnostic code: `scripts.invalid-path`.
+const SCRIPTS_INVALID_PATH: DiagnosticCode = DiagnosticCode::new("scripts", "invalid-path");
+/// Diagnostic code: `scripts.empty-name`.
+const SCRIPTS_EMPTY_NAME: DiagnosticCode = DiagnosticCode::new("scripts", "empty-name");
 
 /// A custom script entry loaded from `scripts.toml`.
 #[derive(Debug, Clone, Deserialize)]
@@ -52,19 +61,15 @@ pub fn validate(entries: &[ScriptEntry]) -> Vec<Diagnostic> {
                 [
                     check_error(
                         entry.name.trim().is_empty(),
-                        "scripts.empty-name",
+                        SCRIPTS_EMPTY_NAME,
                         "script name must not be empty",
                     ),
                     validate_relative_script_path(entry).err().map(|error| {
-                        (
-                            "scripts.invalid-path",
-                            Severity::Error,
-                            error.to_string(),
-                        )
+                        (SCRIPTS_INVALID_PATH, Severity::Error, error.to_string())
                     }),
                     check_error(
                         duplicates.contains(&(entry.name.as_str(), entry.path.as_str())),
-                        "scripts.duplicate-identity",
+                        SCRIPTS_DUPLICATE_IDENTITY,
                         "duplicate script name and path would create the same dynamic task identity",
                     ),
                 ]
@@ -182,11 +187,11 @@ scripts = [
         let diagnostics = validate(&entries);
         let codes = diagnostics
             .iter()
-            .map(|diagnostic| diagnostic.code)
+            .map(|diagnostic| diagnostic.code.to_string())
             .collect::<Vec<_>>();
-        assert!(codes.contains(&"scripts.empty-name"));
-        assert!(codes.contains(&"scripts.invalid-path"));
-        assert!(codes.contains(&"scripts.duplicate-identity"));
+        assert!(codes.contains(&"scripts.empty-name".to_string()));
+        assert!(codes.contains(&"scripts.invalid-path".to_string()));
+        assert!(codes.contains(&"scripts.duplicate-identity".to_string()));
     }
 
     #[test]

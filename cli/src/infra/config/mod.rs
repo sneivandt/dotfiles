@@ -12,7 +12,7 @@ pub(crate) mod section_macro;
 pub(crate) mod toml_loader;
 pub(crate) mod validation;
 
-pub(crate) use diagnostics::{Diagnostic, Severity};
+pub(crate) use diagnostics::{Diagnostic, DiagnosticCode, Severity};
 pub use handle::ConfigHandle;
 pub(crate) use section_macro::config_section;
 

@@ -5,6 +5,7 @@ use crate::domains::packages::resources::package::{
     PackageManager, PackageResource, get_installed_packages,
 };
 use crate::engine::{Context, Resource as _, ResourceState, TaskStats};
+use crate::infra::logging::OutputExt as _;
 
 #[derive(Debug, Clone)]
 pub(super) struct PackageInstallPlan {

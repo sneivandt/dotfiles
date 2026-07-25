@@ -2,7 +2,7 @@
 
 mod console;
 mod event;
-mod file;
+mod run_log;
 
 #[cfg(test)]
 #[allow(
@@ -13,19 +13,25 @@ mod file;
 )]
 mod tests;
 
+use std::sync::Arc;
+
 use console::DotfilesFormatter;
 pub(in crate::infra::logging) use console::{
     set_transient_progress, set_verbose, take_transient_progress_rows, transient_progress_rows,
 };
-pub(in crate::infra::logging) use file::FileLayer;
+pub(in crate::infra::logging) use run_log::RunLogLayer;
+
+use super::runlog::RunLog;
 
 /// Initialise the global [`tracing`] subscriber.
 ///
-/// Sets up a console subscriber that formats events to match the dotfiles
-/// output style and a file subscriber that writes all events (including
-/// `debug`) to `$XDG_CACHE_HOME/dotfiles/<command>.log`.
+/// Installs the console layer that renders dotfiles-style output, plus a
+/// bridge that records raw `tracing` events from `infra` and `domains` into
+/// `run_log`.  `Logger` writes its own messages to the run log directly, so
+/// the bridge deliberately ignores `dotfiles::ui::*` events.
+///
 /// Must be called once at program startup, before any logging.
-pub fn init_subscriber(verbose: bool, command: &str) {
+pub(in crate::infra::logging) fn init_subscriber(verbose: bool, run_log: Option<Arc<RunLog>>) {
     use tracing_subscriber::fmt::writer::MakeWriterExt as _;
     use tracing_subscriber::{
         Layer as _, filter::LevelFilter, fmt, layer::SubscriberExt as _,
@@ -43,10 +49,10 @@ pub fn init_subscriber(verbose: bool, command: &str) {
         .with_writer(make_writer)
         .with_filter(LevelFilter::INFO);
 
-    let file_layer = FileLayer::new(command).map(|layer| layer.with_filter(LevelFilter::DEBUG));
+    let run_log_layer = run_log.map(|log| RunLogLayer::new(log).with_filter(LevelFilter::DEBUG));
 
     tracing_subscriber::registry()
         .with(console_layer)
-        .with(file_layer)
+        .with(run_log_layer)
         .init();
 }

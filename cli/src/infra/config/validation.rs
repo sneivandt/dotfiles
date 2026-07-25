@@ -1,12 +1,12 @@
 //! Declarative validation helpers for configuration items.
-use super::diagnostics::{Diagnostic, Severity};
+use super::diagnostics::{Diagnostic, DiagnosticCode, Severity};
 
 /// A single check result: `(code, severity, message)`.
 ///
 /// `Some` means the check fired; `None` means the item passed.  Returned by
 /// [`check`] and [`check_error`], and consumed by
 /// [`Validator::check_each`].
-pub(crate) type CheckItem = Option<(&'static str, Severity, String)>;
+pub(crate) type CheckItem = Option<(DiagnosticCode, Severity, String)>;
 
 /// Builder for collecting [`Diagnostic`]s against a single config source.
 ///
@@ -43,7 +43,7 @@ impl Validator {
     /// Push a standalone [`Severity::Warning`] diagnostic.
     pub(crate) fn warn(
         &mut self,
-        code: &'static str,
+        code: DiagnosticCode,
         item: impl Into<String>,
         message: impl Into<String>,
     ) {
@@ -61,7 +61,7 @@ impl Validator {
     pub(crate) fn warn_if(
         mut self,
         condition: bool,
-        code: &'static str,
+        code: DiagnosticCode,
         item: impl Into<String>,
         message: impl Into<String>,
     ) -> Self {
@@ -114,7 +114,11 @@ impl Validator {
 /// check(name.is_empty(), "package.empty-name", "name is empty")
 /// ```
 #[must_use]
-pub(crate) fn check(condition: bool, code: &'static str, message: impl Into<String>) -> CheckItem {
+pub(crate) fn check(
+    condition: bool,
+    code: DiagnosticCode,
+    message: impl Into<String>,
+) -> CheckItem {
     condition.then(|| (code, Severity::Warning, message.into()))
 }
 
@@ -125,7 +129,7 @@ pub(crate) fn check(condition: bool, code: &'static str, message: impl Into<Stri
 #[must_use]
 pub(crate) fn check_error(
     condition: bool,
-    code: &'static str,
+    code: DiagnosticCode,
     message: impl Into<String>,
 ) -> CheckItem {
     condition.then(|| (code, Severity::Error, message.into()))
@@ -149,44 +153,58 @@ mod tests {
 
     #[test]
     fn check_returns_warning_item_when_condition_is_true() {
-        let result = check(true, "test.rule", "invalid value");
+        let result = check(true, DiagnosticCode::new("test", "rule"), "invalid value");
         assert_eq!(
             result,
-            Some(("test.rule", Severity::Warning, "invalid value".to_string()))
+            Some((
+                DiagnosticCode::new("test", "rule"),
+                Severity::Warning,
+                "invalid value".to_string()
+            ))
         );
     }
 
     #[test]
     fn check_returns_none_when_condition_is_false() {
-        assert_eq!(check(false, "test.rule", "invalid value"), None);
+        assert_eq!(
+            check(false, DiagnosticCode::new("test", "rule"), "invalid value"),
+            None
+        );
     }
 
     #[test]
     fn check_error_returns_error_item_when_condition_is_true() {
-        let result = check_error(true, "test.unsafe", "unsafe path");
+        let result = check_error(true, DiagnosticCode::new("test", "unsafe"), "unsafe path");
         assert_eq!(
             result,
-            Some(("test.unsafe", Severity::Error, "unsafe path".to_string()))
+            Some((
+                DiagnosticCode::new("test", "unsafe"),
+                Severity::Error,
+                "unsafe path".to_string()
+            ))
         );
     }
 
     #[test]
     fn check_error_returns_none_when_condition_is_false() {
-        assert_eq!(check_error(false, "test.unsafe", "unsafe path"), None);
+        assert_eq!(
+            check_error(false, DiagnosticCode::new("test", "unsafe"), "unsafe path"),
+            None
+        );
     }
 
     #[test]
     fn warn_records_source_item_code_and_message() {
         let mut validator = Validator::new("example.toml");
 
-        validator.warn("test.rule", "item-a", "is invalid");
+        validator.warn(DiagnosticCode::new("test", "rule"), "item-a", "is invalid");
 
         assert_eq!(
             validator.finish(),
             vec![Diagnostic::warning(
                 "example.toml",
                 "item-a",
-                "test.rule",
+                DiagnosticCode::new("test", "rule"),
                 "is invalid"
             )],
         );
@@ -195,15 +213,25 @@ mod tests {
     #[test]
     fn warn_if_records_only_true_conditions() {
         let validator = Validator::new("example.toml")
-            .warn_if(false, "test.rule", "item-a", "should not appear")
-            .warn_if(true, "test.rule", "item-b", "should appear");
+            .warn_if(
+                false,
+                DiagnosticCode::new("test", "rule"),
+                "item-a",
+                "should not appear",
+            )
+            .warn_if(
+                true,
+                DiagnosticCode::new("test", "rule"),
+                "item-b",
+                "should appear",
+            );
 
         assert_eq!(
             validator.finish(),
             vec![Diagnostic::warning(
                 "example.toml",
                 "item-b",
-                "test.rule",
+                DiagnosticCode::new("test", "rule"),
                 "should appear"
             )],
         );
@@ -232,9 +260,21 @@ mod tests {
                 |item| item.label,
                 |item| {
                     [
-                        check(item.value < 0, "test.negative", "must be non-negative"),
-                        check(item.value == 0, "test.zero", "must be non-zero"),
-                        check(item.value > 10, "test.too-large", "must be at most 10"),
+                        check(
+                            item.value < 0,
+                            DiagnosticCode::new("test", "negative"),
+                            "must be non-negative",
+                        ),
+                        check(
+                            item.value == 0,
+                            DiagnosticCode::new("test", "zero"),
+                            "must be non-zero",
+                        ),
+                        check(
+                            item.value > 10,
+                            DiagnosticCode::new("test", "too-large"),
+                            "must be at most 10",
+                        ),
                     ]
                 },
             )
@@ -246,14 +286,19 @@ mod tests {
                 Diagnostic::warning(
                     "numbers.toml",
                     "negative",
-                    "test.negative",
+                    DiagnosticCode::new("test", "negative"),
                     "must be non-negative"
                 ),
-                Diagnostic::warning("numbers.toml", "zero", "test.zero", "must be non-zero"),
+                Diagnostic::warning(
+                    "numbers.toml",
+                    "zero",
+                    DiagnosticCode::new("test", "zero"),
+                    "must be non-zero"
+                ),
                 Diagnostic::warning(
                     "numbers.toml",
                     "large",
-                    "test.too-large",
+                    DiagnosticCode::new("test", "too-large"),
                     "must be at most 10"
                 ),
             ],
@@ -271,19 +316,29 @@ mod tests {
             .check_each(
                 &items,
                 |item| item.label,
-                |item| [check_error(item.value == 0, "test.unsafe", "unsafe path")],
+                |item| {
+                    [check_error(
+                        item.value == 0,
+                        DiagnosticCode::new("test", "unsafe"),
+                        "unsafe path",
+                    )]
+                },
             )
             .finish();
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].severity, Severity::Error);
-        assert_eq!(diagnostics[0].code, "test.unsafe");
+        assert_eq!(diagnostics[0].code.to_string(), "test.unsafe");
     }
 
     #[test]
     fn check_each_can_be_chained_after_standalone_warnings() {
         let mut validator = Validator::new("numbers.toml");
-        validator.warn("test.global", "file", "global warning");
+        validator.warn(
+            DiagnosticCode::new("test", "global"),
+            "file",
+            "global warning",
+        );
 
         let diagnostics = validator
             .check_each(
@@ -295,7 +350,7 @@ mod tests {
                 |item| {
                     [check(
                         item.value < 0,
-                        "test.negative",
+                        DiagnosticCode::new("test", "negative"),
                         "must be non-negative",
                     )]
                 },
@@ -305,11 +360,16 @@ mod tests {
         assert_eq!(
             diagnostics,
             vec![
-                Diagnostic::warning("numbers.toml", "file", "test.global", "global warning"),
+                Diagnostic::warning(
+                    "numbers.toml",
+                    "file",
+                    DiagnosticCode::new("test", "global"),
+                    "global warning"
+                ),
                 Diagnostic::warning(
                     "numbers.toml",
                     "negative",
-                    "test.negative",
+                    DiagnosticCode::new("test", "negative"),
                     "must be non-negative"
                 ),
             ],

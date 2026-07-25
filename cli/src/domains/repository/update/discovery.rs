@@ -8,6 +8,7 @@ use super::models::{
     CheckedRepository, DryRunUpdateStatus, RepositoryReadiness, RepositorySetReadiness,
     UpdateTarget, UpdateTargetKind,
 };
+use crate::infra::logging::OutputExt as _;
 
 /// Build the list of repositories to consider for update (main + optional overlay).
 pub(super) fn update_targets(ctx: &Context) -> Vec<UpdateTarget> {
@@ -64,7 +65,7 @@ pub(super) fn check_repository_ready(
         result.stdout.trim().to_string()
     } else {
         let reason = target.reason("detached HEAD");
-        ctx.log().info(&format!("{reason}, skipping pull"));
+        ctx.log().info(format!("{reason}, skipping pull"));
         return Ok(RepositoryReadiness::Skipped(reason));
     };
 
@@ -93,13 +94,13 @@ pub(super) fn dry_run_repositories(
     for repository in repositories {
         match dry_run_update_status(ctx, &repository.target.root, git_env, &repository.head_ref)? {
             DryRunUpdateStatus::AlreadyCurrent => {
-                ctx.log().debug(&format!(
+                ctx.log().debug(format!(
                     "{} already up to date",
                     repository.target.description()
                 ));
             }
             DryRunUpdateStatus::WouldUpdate | DryRunUpdateStatus::Unknown => {
-                ctx.log().dry_run(&repository.target.dry_run_action());
+                ctx.log().dry_run(repository.target.dry_run_action());
                 would_update = true;
             }
         }

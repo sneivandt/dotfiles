@@ -17,6 +17,7 @@ use super::manifest::{
 use super::skip_with_warning;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
+use crate::infra::logging::OutputExt as _;
 
 /// Converge AI plugin manifests via Microsoft APM.
 ///
@@ -104,10 +105,8 @@ impl Task for InstallApmPackages {
             return Ok(install_result);
         }
         if manifest_changed {
-            ctx.log().always(&format!(
-                "    installed: {}",
-                describe_dependencies(&merged)
-            ));
+            ctx.log()
+                .always(format!("    installed: {}", describe_dependencies(&merged)));
         }
         write_manifest_marker(&marker_path, &manifest_hash)?;
         prune_user_scope(ctx)?;
@@ -136,14 +135,14 @@ fn preview_install(
     lock_path: &Path,
 ) {
     if state.manifest_needs_write {
-        ctx.log().dry_run(&format!(
+        ctx.log().dry_run(format!(
             "merge {fragment_count} APM manifest fragment(s) into {}",
             manifest_path.display()
         ));
         ctx.log()
             .dry_run("run apm install -g with auto-detected runtimes to sync changed manifest");
     } else if state.lock_missing {
-        ctx.log().dry_run(&format!(
+        ctx.log().dry_run(format!(
             "run apm install -g with auto-detected runtimes because {} is missing",
             lock_path.display()
         ));
@@ -220,7 +219,7 @@ pub(super) fn apm_task_should_run(ctx: &Context) -> bool {
         Ok(fragments) if !fragments.is_empty() => return true,
         Ok(_) => {}
         Err(err) => {
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "could not inspect symlinks/apm/config; task will run to avoid hiding the \
                  error: {err:#}"
             ));
@@ -231,7 +230,7 @@ pub(super) fn apm_task_should_run(ctx: &Context) -> bool {
     match discover_fragment_files(ctx.home()) {
         Ok(fragments) => !fragments.is_empty(),
         Err(err) => {
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "could not inspect ~/.apm/config; task will run to surface the error: {err:#}"
             ));
             true

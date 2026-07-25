@@ -3,6 +3,8 @@
 //! These methods coordinate the in-progress status line as parallel tasks start
 //! and complete, ensuring active-task updates never overlap other console output.
 
+use std::fmt::Write as _;
+
 use super::{Logger, progress::stdout_supports_progress};
 use crate::infra::logging::style::{TextStyle, stdout_style};
 
@@ -124,9 +126,11 @@ impl Logger {
             .join(", ");
         let remaining = active.len().saturating_sub(3);
         if remaining > 0 {
-            names.push_str(", +");
-            names.push_str(&remaining.to_string());
-            names.push_str(" more");
+            #[allow(
+                clippy::let_underscore_must_use,
+                reason = "writing to a String is infallible"
+            )]
+            let _ = write!(names, ", +{remaining} more");
         }
         names
     }

@@ -83,7 +83,10 @@ an unrelated or partial lockfile.
 An update preview runs non-mutating `apm outdated -g` and emits `DRYRUN` only
 when APM reports outdated dependencies. Apply mode invokes APM's native
 idempotent update directly, then compares the lockfile before and after to
-report whether refs advanced instead of parsing update output.
+report whether refs advanced instead of parsing update output. The comparison
+ignores APM's volatile `generated_at` bookkeeping stamp, which is rewritten on
+every serialization — including the follow-up `copilot-app` redeploy — so only
+real dependency-state changes are reported.
 
 ```bash
 dotfiles update --only apm,apm-update

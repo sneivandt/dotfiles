@@ -1,7 +1,13 @@
 //! VS Code extension configuration loading.
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `vscode.empty-id`.
+const VSCODE_EMPTY_ID: DiagnosticCode = DiagnosticCode::new("vscode", "empty-id");
+/// Diagnostic code: `vscode.invalid-id-format`.
+const VSCODE_INVALID_ID_FORMAT: DiagnosticCode = DiagnosticCode::new("vscode", "invalid-id-format");
 
 config_section! {
     field: "extensions",
@@ -21,12 +27,12 @@ pub fn validate(extensions: &[String]) -> Vec<Diagnostic> {
                 [
                     check(
                         id.trim().is_empty(),
-                        "vscode.empty-id",
+                        VSCODE_EMPTY_ID,
                         "extension ID is empty",
                     ),
                     check(
                         !id.contains('.'),
-                        "vscode.invalid-id-format",
+                        VSCODE_INVALID_ID_FORMAT,
                         "extension ID should be in format 'publisher.name'",
                     ),
                 ]
@@ -87,7 +93,7 @@ extensions = ["github.copilot-chat"]
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].source, VSCODE_EXTENSIONS_TOML);
         assert_eq!(warnings[0].item, "invalid_no_publisher");
-        assert_eq!(warnings[0].code, "vscode.invalid-id-format");
+        assert_eq!(warnings[0].code.to_string(), "vscode.invalid-id-format");
         assert_eq!(
             warnings[0].message,
             "extension ID should be in format 'publisher.name'"
@@ -117,7 +123,7 @@ extensions = ["github.copilot-chat"]
         let warnings = validate(&extensions);
         let warning = warnings
             .iter()
-            .find(|warning| warning.code == "vscode.empty-id")
+            .find(|warning| warning.code.to_string() == "vscode.empty-id")
             .expect("empty ID diagnostic");
         assert_eq!(warning.source, VSCODE_EXTENSIONS_TOML);
         assert_eq!(warning.item, "  ");

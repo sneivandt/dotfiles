@@ -6,6 +6,7 @@ use crate::engine::{
     Context, ProcessOpts, Task, TaskResult, process_resources_with_cache, task_metadata,
 };
 use crate::infra::ConfigHandle;
+use crate::infra::logging::OutputExt as _;
 use anyhow::Result;
 use std::collections::HashSet;
 

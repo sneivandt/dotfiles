@@ -14,6 +14,7 @@ use super::manifest::{manifest_fingerprint, manifest_marker_matches};
 use super::skip_with_warning;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
+use crate::infra::logging::OutputExt as _;
 
 enum ApmUpdateOutcome {
     Changed,
@@ -142,8 +143,10 @@ fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskRe
 ///
 /// Detects whether anything actually advanced by snapshotting the APM lockfile
 /// (`~/.apm/apm.lock.yaml`) before and after the run rather than parsing console
-/// output. The lockfile only changes when a pinned ref actually advances,
-/// making it the authoritative change signal.
+/// output. Dependency state in the lockfile only changes when a pinned ref
+/// actually advances, making it the authoritative change signal — provided the
+/// volatile bookkeeping keys are normalized away first (see
+/// [`normalize_lock_snapshot`]).
 fn run_apm_update(ctx: &Context, targets: ApmTargets) -> Result<ApmUpdateOutcome> {
     let lock_path = ctx.home().join(".apm").join("apm.lock.yaml");
     let lock_before = read_lock_snapshot(&lock_path)?;
@@ -160,13 +163,45 @@ fn run_apm_update(ctx: &Context, targets: ApmTargets) -> Result<ApmUpdateOutcome
     }
 }
 
+/// Top-level lockfile keys APM rewrites on every write regardless of whether
+/// any dependency ref advanced.
+///
+/// `apm` stamps `generated_at` with the current time each time it serializes
+/// the lockfile, and the update task always follows `apm update` with a
+/// `apm install --target copilot-app` redeploy on machines that have Copilot
+/// App. Comparing raw bytes would therefore report a change on every single
+/// run, so these keys are stripped before comparison.
+const VOLATILE_LOCK_KEYS: &[&str] = &["generated_at"];
+
 /// Read the APM lockfile for before/after change detection.
 ///
 /// A missing lockfile is represented as `None`; other errors are surfaced.
-fn read_lock_snapshot(path: &Path) -> Result<Option<Vec<u8>>> {
+fn read_lock_snapshot(path: &Path) -> Result<Option<String>> {
     match std::fs::read(path) {
-        Ok(bytes) => Ok(Some(bytes)),
+        Ok(bytes) => Ok(Some(normalize_lock_snapshot(&String::from_utf8_lossy(
+            &bytes,
+        )))),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(err) => Err(err).with_context(|| format!("reading APM lockfile {}", path.display())),
     }
+}
+
+/// Strip volatile bookkeeping keys so only real dependency state is compared.
+///
+/// Falls back to the raw text whenever the lockfile cannot be parsed or
+/// re-serialized as YAML: an unparseable lockfile still compares
+/// deterministically, it just keeps the old byte-for-byte semantics.
+fn normalize_lock_snapshot(text: &str) -> String {
+    use serde_yaml_ng::Value;
+
+    let Ok(mut value) = serde_yaml_ng::from_str::<Value>(text) else {
+        return text.to_owned();
+    };
+    let Some(mapping) = value.as_mapping_mut() else {
+        return text.to_owned();
+    };
+    for key in VOLATILE_LOCK_KEYS {
+        mapping.remove(Value::String((*key).to_owned()));
+    }
+    serde_yaml_ng::to_string(&value).unwrap_or_else(|_| text.to_owned())
 }

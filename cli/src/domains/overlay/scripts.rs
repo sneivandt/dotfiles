@@ -19,6 +19,7 @@ use crate::engine::{
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::ConfigHandle;
+use crate::infra::logging::OutputExt as _;
 
 // ---------------------------------------------------------------------------
 // Static task: report discovered scripts
@@ -62,7 +63,7 @@ impl Task for ReportOverlayScriptSnapshot {
         let count = scripts.len();
         ctx.log().task_stage(self.name());
         ctx.log()
-            .info(&format!("discovered {count} overlay script(s)"));
+            .info(format!("discovered {count} overlay script(s)"));
         Ok(Some(TaskResult::Ok))
     }
 
@@ -78,7 +79,7 @@ impl Task for ReportOverlayScriptSnapshot {
         }
         let count = scripts.len();
         ctx.log()
-            .info(&format!("discovered {count} overlay script(s)"));
+            .info(format!("discovered {count} overlay script(s)"));
         Ok(TaskResult::Ok)
     }
 }
@@ -128,7 +129,7 @@ impl Operation for OverlayScriptOperation {
                 OperationState::needs_run(format!("run {}", self.entry.name), ())
             }
             ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
-                ctx.log().warn(&format!("skipping: {reason}"));
+                ctx.log().warn(format!("skipping: {reason}"));
                 OperationState::not_applicable(reason)
             }
         })
@@ -145,7 +146,7 @@ impl Operation for OverlayScriptOperation {
         emit_script_lines(ctx, &output, false);
         match change {
             ResourceChange::Skipped { reason } => {
-                ctx.log().warn(&format!("skipping: {reason}"));
+                ctx.log().warn(format!("skipping: {reason}"));
                 Ok(TaskResult::Skipped(reason))
             }
             ResourceChange::Applied | ResourceChange::AlreadyCorrect => Ok(TaskResult::Ok),

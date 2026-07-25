@@ -2,7 +2,13 @@
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `package.aur-not-arch`.
+const PACKAGE_AUR_NOT_ARCH: DiagnosticCode = DiagnosticCode::new("package", "aur-not-arch");
+/// Diagnostic code: `package.empty-name`.
+const PACKAGE_EMPTY_NAME: DiagnosticCode = DiagnosticCode::new("package", "empty-name");
 
 /// A package to install.
 #[derive(Debug, Clone)]
@@ -53,12 +59,12 @@ pub fn validate(
                 [
                     check(
                         pkg.is_aur && !platform.is_arch_linux(),
-                        "package.aur-not-arch",
+                        PACKAGE_AUR_NOT_ARCH,
                         "AUR package specified but platform is not Arch Linux",
                     ),
                     check(
                         pkg.name.trim().is_empty(),
-                        "package.empty-name",
+                        PACKAGE_EMPTY_NAME,
                         "package name is empty",
                     ),
                 ]

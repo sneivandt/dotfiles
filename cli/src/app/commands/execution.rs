@@ -9,6 +9,7 @@ use crate::engine::{Context, Task, TaskId, TaskVisibility};
 use crate::infra::logging::{ActionCounts, Logger};
 
 use super::error::TaskFailures;
+use crate::infra::logging::OutputExt as _;
 
 #[cfg(unix)]
 fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
@@ -25,7 +26,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
     }
 
     log.separate_from_startup();
-    log.always(&format!("sudo is required for: {}", task_names.join(", ")));
+    log.always(format!("sudo is required for: {}", task_names.join(", ")));
     drop(std::io::Write::flush(&mut std::io::stdout()));
 
     match crate::infra::elevation::prime_sudo_credentials() {
@@ -37,7 +38,7 @@ fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
         }
         Err(error) => {
             log.separate_from_startup();
-            log.error(&format!("failed to run sudo: {error:#}"));
+            log.error(format!("failed to run sudo: {error:#}"));
             false
         }
     }

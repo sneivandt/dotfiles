@@ -85,7 +85,7 @@ mod unix_tests {
 mod startup_log_tests {
     use super::runner::startup_context_line;
     use super::*;
-    use crate::infra::logging::Output;
+    use crate::infra::logging::{MsgKind, Output, OutputExt as _};
     use crate::infra::platform::{Os, Platform};
     use std::path::Path;
     use std::sync::{Mutex, PoisonError};
@@ -105,23 +105,13 @@ mod startup_log_tests {
     }
 
     impl Output for CapturingOutput {
-        fn stage(&self, _msg: &str) {}
-
-        fn info(&self, _msg: &str) {}
-
-        fn debug(&self, _msg: &str) {}
-
-        fn warn(&self, _msg: &str) {}
-
-        fn error(&self, _msg: &str) {}
-
-        fn dry_run(&self, _msg: &str) {}
-
-        fn always(&self, msg: &str) {
-            self.always_lines
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(msg.to_string());
+        fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
+            if kind == MsgKind::Always {
+                self.always_lines
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push(msg.into_owned());
+            }
         }
     }
 

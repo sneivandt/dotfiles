@@ -4,6 +4,7 @@ use anyhow::{Context as _, Result};
 
 use super::targets::ApmTargets;
 use crate::engine::{Context, TaskResult};
+use crate::infra::logging::OutputExt as _;
 
 pub(super) const APM_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
     ("GIT_TERMINAL_PROMPT", "0"),
@@ -138,7 +139,7 @@ pub(super) fn check_apm_outdated(ctx: &Context) -> Result<ApmOutdatedResult> {
             if looks_like_auth_failure(&msg) {
                 let reason = ApmCommand::Update.auth_reason();
                 ctx.log()
-                    .warn(&format!("skipping: {reason} (details: {})", msg.trim()));
+                    .warn(format!("skipping: {reason} (details: {})", msg.trim()));
                 return Ok(ApmOutdatedResult::AuthSkipped(reason));
             }
             Err(err).context("checking for outdated APM dependencies")
@@ -196,7 +197,7 @@ fn classify_apm_error(
     if looks_like_auth_failure(&msg) {
         let reason = command.auth_reason();
         ctx.log()
-            .warn(&format!("skipping: {reason} (details: {})", msg.trim()));
+            .warn(format!("skipping: {reason} (details: {})", msg.trim()));
         return Ok(ApmCommandResult::AuthSkipped(reason));
     }
 
@@ -205,7 +206,7 @@ fn classify_apm_error(
         .flatten()
     {
         report_apm_output(ctx, &msg, "");
-        ctx.log().info(&format!(
+        ctx.log().info(format!(
             "apm {} succeeded; ignoring {count} experimental copilot-app \
              workflow-encoding error(s) for non-workflow primitives (e.g. .agent.md agents). \
              Other primitives deployed normally; full apm output is in the log.",
@@ -246,7 +247,7 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
         Ok(result) => report_apm_output(ctx, &result.stdout, &result.stderr),
         Err(err) => {
             let msg = format!("{err:#}");
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "could not enable apm experimental copilot-app target; continuing without it \
                  (details: {})",
                 msg.trim()

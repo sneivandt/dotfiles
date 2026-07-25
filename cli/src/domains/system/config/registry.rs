@@ -5,7 +5,20 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::toml_loader;
+
+/// Diagnostic code: `registry.empty-key-path`.
+const REGISTRY_EMPTY_KEY_PATH: DiagnosticCode = DiagnosticCode::new("registry", "empty-key-path");
+/// Diagnostic code: `registry.empty-value-name`.
+const REGISTRY_EMPTY_VALUE_NAME: DiagnosticCode =
+    DiagnosticCode::new("registry", "empty-value-name");
+/// Diagnostic code: `registry.platform-unsupported`.
+const REGISTRY_PLATFORM_UNSUPPORTED: DiagnosticCode =
+    DiagnosticCode::new("registry", "platform-unsupported");
+/// Diagnostic code: `registry.unsupported-hive`.
+const REGISTRY_UNSUPPORTED_HIVE: DiagnosticCode =
+    DiagnosticCode::new("registry", "unsupported-hive");
 
 /// Declared type for a registry value.
 ///
@@ -129,17 +142,17 @@ pub fn validate(
     Validator::new(REGISTRY_TOML)
         .warn_if(
             !entries.is_empty() && !platform.has_registry(),
-            "registry.platform-unsupported",
+            REGISTRY_PLATFORM_UNSUPPORTED,
             "registry entries",
             "registry entries defined but platform does not support the Windows registry",
         )
         .check_each(entries, |e| &e.value_name, |e| {
             [
-                check(e.key_path.trim().is_empty(), "registry.empty-key-path", "registry key path is empty"),
-                check(e.value_name.trim().is_empty(), "registry.empty-value-name", "registry value name is empty"),
+                check(e.key_path.trim().is_empty(), REGISTRY_EMPTY_KEY_PATH, "registry key path is empty"),
+                check(e.value_name.trim().is_empty(), REGISTRY_EMPTY_VALUE_NAME, "registry value name is empty"),
                 check_error(
                     !has_supported_hive(&e.key_path),
-                    "registry.unsupported-hive",
+                    REGISTRY_UNSUPPORTED_HIVE,
                     r"registry key path must start with HKCU:\; other registry hives are not supported",
                 ),
             ]

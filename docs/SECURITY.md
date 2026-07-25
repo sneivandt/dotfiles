@@ -128,7 +128,7 @@ wrappers and the self-update path.
 
 - Pin or constrain external actions and tooling according to repository policy.
 - Keep workflow permissions least-privilege.
-- Never echo secrets in shell tracing or diagnostic logs.
+- Never echo secrets in shell tracing or the run log.
 - Preserve dry-run semantics for every mutation.
 - Propagate validation failures instead of falling back to unsafe defaults.
 - Avoid following unvalidated paths outside the expected repository, home, or

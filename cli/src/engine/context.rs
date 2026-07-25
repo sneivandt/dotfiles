@@ -8,6 +8,7 @@ use crate::infra::logging::Log;
 use crate::infra::platform::Platform;
 
 use super::CancellationToken;
+use crate::infra::logging::OutputExt as _;
 
 // Note: `Platform` is `Copy` (two small fields), so it is stored by value
 // rather than behind an `Arc`.  This avoids atomic refcount overhead for a
@@ -405,7 +406,7 @@ impl Context {
     #[inline]
     pub fn debug_fmt(&self, f: impl FnOnce() -> String) {
         if self.log().debug_enabled() {
-            self.log().debug(&f());
+            self.log().debug(f());
         }
     }
 }
@@ -429,7 +430,7 @@ impl RepoPaths {
 mod tests {
     use super::*;
     use crate::infra::logging::Logger;
-    use crate::infra::logging::{Output, TaskRecorder, TaskStatus};
+    use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
     use crate::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
@@ -437,13 +438,7 @@ mod tests {
     struct SilentLog;
 
     impl Output for SilentLog {
-        fn stage(&self, _msg: &str) {}
-        fn info(&self, _msg: &str) {}
-        fn debug(&self, _msg: &str) {}
-        fn warn(&self, _msg: &str) {}
-        fn error(&self, _msg: &str) {}
-        fn dry_run(&self, _msg: &str) {}
-        fn always(&self, _msg: &str) {}
+        fn emit(&self, _kind: MsgKind, _msg: std::borrow::Cow<'_, str>) {}
         fn debug_enabled(&self) -> bool {
             false
         }

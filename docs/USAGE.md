@@ -139,7 +139,7 @@ Changed, planned, ignored, and failed rows include useful indented, dimmed
 details. Normal output shows at most eight detail lines and then points to
 `-v`; verbose mode shows complete messages for emitted task rows. Tasks that
 require no change and tasks that are not applicable do not emit rows in either
-mode. Internal orchestration remains available in diagnostic logs but is
+mode. Internal orchestration remains available in the run log but is
 excluded from normal rows and totals.
 
 The final line reports actual action counts and affected task counts, for
@@ -182,11 +182,13 @@ error.
 
 ```bash
 dotfiles log
-dotfiles log --verbose
 ```
 
-The verbose form prefers the diagnostic log. If no diagnostic log is available,
-it falls back to the normal run log.
+Prints the most recent run log. Each run writes a single
+`$XDG_CACHE_HOME/dotfiles/<command>.log` containing every event in the order it
+actually happened, including messages the console suppresses. Lines are
+`seq | elapsed_us | wall_utc | context | event | message`, where `context` is the
+task that produced the event, so parallel execution can be reconstructed.
 
 ## Repository and overlay paths
 

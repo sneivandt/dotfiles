@@ -15,6 +15,7 @@ use super::discovery::{
     discover_apm_plugin_dirs, discover_powershell_scripts, discover_shell_scripts,
 };
 use super::linters::{build_psscriptanalyzer_command, build_shellcheck_args, log_exec_output};
+use crate::infra::logging::OutputExt as _;
 
 /// Fail the test command when config validation emits warnings.
 #[derive(Debug)]
@@ -44,7 +45,7 @@ impl Task for ValidateConfigWarnings {
         }
 
         for d in &diagnostics {
-            ctx.log().error(&format!(
+            ctx.log().error(format!(
                 "[{}] {} [{}] ({}): {}",
                 d.severity.label(),
                 d.source,
@@ -98,7 +99,7 @@ impl Task for ValidateSymlinkSources {
             let source = symlinks_dir.join(&symlink.source);
             if !source.exists() {
                 ctx.log()
-                    .error(&format!("symlink source missing: {}", source.display()));
+                    .error(format!("symlink source missing: {}", source.display()));
                 missing = missing.saturating_add(1);
             }
         }
@@ -108,7 +109,7 @@ impl Task for ValidateSymlinkSources {
         }
 
         ctx.log()
-            .info(&format!("all {} symlink sources exist", symlinks.len()));
+            .info(format!("all {} symlink sources exist", symlinks.len()));
         Ok(TaskResult::CheckPassed)
     }
 }
@@ -140,7 +141,7 @@ impl Task for ValidateConfigFiles {
                 ctx.debug_fmt(|| format!("found conf/{config_file}"));
             } else {
                 ctx.log()
-                    .error(&format!("missing config: conf/{config_file}"));
+                    .error(format!("missing config: conf/{config_file}"));
                 errors = errors.saturating_add(1);
             }
         }
@@ -155,7 +156,7 @@ impl Task for ValidateConfigFiles {
         if errors > 0 {
             anyhow::bail!("{errors} required config file(s) missing");
         }
-        ctx.log().info(&format!(
+        ctx.log().info(format!(
             "all {} required config files present",
             required.len()
         ));
@@ -260,7 +261,7 @@ impl Task for ValidateApmPlugins {
                 continue;
             }
 
-            ctx.log().error(&format!(
+            ctx.log().error(format!(
                 "APM plugin validation failed: {}",
                 plugin.display()
             ));
@@ -273,7 +274,7 @@ impl Task for ValidateApmPlugins {
         }
 
         ctx.log()
-            .info(&format!("validated {} local APM plugins", plugins.len()));
+            .info(format!("validated {} local APM plugins", plugins.len()));
         Ok(TaskResult::CheckPassed)
     }
 }
@@ -316,7 +317,7 @@ impl Task for RunShellcheck {
         }
 
         ctx.log()
-            .debug(&format!("checking {} shell scripts", scripts.len()));
+            .debug(format!("checking {} shell scripts", scripts.len()));
 
         let args = build_shellcheck_args(&scripts);
         let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
@@ -368,7 +369,7 @@ impl Task for RunPSScriptAnalyzer {
         }
 
         ctx.log()
-            .debug(&format!("checking {} PowerShell scripts", ps_files.len()));
+            .debug(format!("checking {} PowerShell scripts", ps_files.len()));
 
         let script = build_psscriptanalyzer_command(&ps_files);
 

@@ -4,6 +4,7 @@ use crate::engine::Context;
 
 use super::DesiredApmWorkflows;
 use super::scripts::parse_autopilot_result;
+use crate::infra::logging::OutputExt as _;
 
 /// Report the outcome of a successful autopilot-fixup script run.
 ///
@@ -24,7 +25,7 @@ pub(super) fn report_fixup_outcome(ctx: &Context, outcome: FixupOutcome, stdout:
             });
         }
         FixupOutcome::Set(n) => {
-            ctx.log().always(&format!(
+            ctx.log().always(format!(
                 "    workflows: set {n} apm workflow(s) to autopilot + enabled"
             ));
         }

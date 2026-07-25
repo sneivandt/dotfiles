@@ -1,5 +1,7 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
-use super::diagnostic::{DiagEvent, DiagnosticLog};
+use std::borrow::Cow;
+
+use super::runlog::{LogEvent, RunLog};
 use super::style::TextStyle;
 
 /// Structured action totals contributed by a task.
@@ -74,70 +76,189 @@ impl TaskStatus {
     }
 }
 
-/// User-facing output methods.
+/// The kind of a user-facing message.
+///
+/// This is the single axis along which display output varies: it selects the
+/// run-log event kind, the console tracing target, and how the message is
+/// replayed after a parallel task completes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MsgKind {
+    /// A stage header (major section).
+    Stage,
+    /// A task name, without major-section emphasis.
+    TaskStage,
+    /// An informational message.
+    Info,
+    /// A debug message; never rendered on the console.
+    Debug,
+    /// A warning message.
+    Warn,
+    /// An error message.
+    Error,
+    /// A dry-run action message.
+    DryRun,
+    /// A message that appears on the console regardless of the verbose setting.
+    ///
+    /// Used for structural output such as the version banner and summary.
+    Always,
+}
+
+impl MsgKind {
+    /// The run-log event kind recorded for this message.
+    #[must_use]
+    pub(in crate::infra::logging) const fn log_event(self) -> LogEvent {
+        match self {
+            Self::Stage | Self::TaskStage => LogEvent::Stage,
+            Self::Info | Self::Always => LogEvent::Info,
+            Self::Debug => LogEvent::Debug,
+            Self::Warn => LogEvent::Warn,
+            Self::Error => LogEvent::Error,
+            Self::DryRun => LogEvent::DryRun,
+        }
+    }
+}
+
+/// Emit `$msg` to the console tracing target that matches `$kind`.
+///
+/// Tracing requires a literal target, so the mapping cannot be expressed as a
+/// function; this macro keeps [`Logger`](super::logger::Logger) and buffered
+/// replay using exactly the same targets.
+macro_rules! emit_console_event {
+    ($kind:expr, $msg:expr) => {{
+        let msg = $msg;
+        match $kind {
+            $crate::infra::logging::MsgKind::Stage => {
+                tracing::info!(target: "dotfiles::ui::stage", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::TaskStage => {
+                tracing::info!(target: "dotfiles::ui::task_stage", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::Info => {
+                tracing::info!(target: "dotfiles::ui::info", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::Debug => {
+                tracing::debug!(target: "dotfiles::ui::debug", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::Warn => {
+                tracing::warn!(target: "dotfiles::ui::warn", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::Error => {
+                tracing::error!(target: "dotfiles::ui::error", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::DryRun => {
+                tracing::info!(target: "dotfiles::ui::dry_run", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::Always => {
+                tracing::info!(target: "dotfiles::ui::always", "{msg}");
+            }
+        }
+    }};
+}
+
+pub(in crate::infra::logging) use emit_console_event;
+
+/// User-facing output sink.
 ///
 /// This trait covers display-oriented logging: stage headers, informational
 /// messages, debug output, warnings, errors, and dry-run annotations. It
 /// intentionally excludes structured task recording, which belongs to
 /// [`TaskRecorder`].
 ///
+/// Implementors provide a single [`emit`](Output::emit) method; the named
+/// helpers (`info`, `warn`, …) live on [`OutputExt`], which is blanket
+/// implemented for every `Output`.
+///
 /// Both [`Logger`](super::logger::Logger) and
 /// [`BufferedLog`](super::buffered::BufferedLog) implement this trait.
 pub trait Output: Send + Sync {
-    /// Log a stage header (major section).
-    fn stage(&self, msg: &str);
-    /// Log a task name without major-section emphasis.
-    fn task_stage(&self, msg: &str) {
-        self.stage(msg);
-    }
-    /// Log an informational message.
-    fn info(&self, msg: &str);
-    /// Log a debug message (may be suppressed on console).
-    fn debug(&self, msg: &str);
-    /// Log a warning message.
-    fn warn(&self, msg: &str);
-    /// Log an error message.
-    fn error(&self, msg: &str);
-    /// Log a dry-run action message.
-    fn dry_run(&self, msg: &str);
-    /// Log a message that always appears on the console regardless of verbose
-    /// setting.  Used for structural output (version, profile, summary).
-    fn always(&self, msg: &str);
+    /// Emit a user-facing message of the given kind.
+    ///
+    /// Taking a [`Cow`] lets callers that already built a `String` (via
+    /// `format!`) hand over ownership instead of forcing a second copy when
+    /// the message has to be buffered for later console replay.
+    fn emit(&self, kind: MsgKind, msg: Cow<'_, str>);
+
     /// Return whether debug logging is currently active on this thread.
     ///
     /// This intentionally avoids `tracing::enabled!`, which can leave stale
     /// per-layer filter state behind on replay paths.  The default
     /// implementation only checks whether a tracing dispatcher has been set,
     /// which is enough for this codebase because command execution installs a
-    /// DEBUG-capable file layer whenever logging is active.
+    /// DEBUG-capable subscriber whenever logging is active.
     fn debug_enabled(&self) -> bool {
         tracing::dispatcher::has_been_set()
     }
-    /// Access the high-precision diagnostic log, if available.
-    fn diagnostic(&self) -> Option<&DiagnosticLog> {
+
+    /// Access the run log, if one is available.
+    fn run_log(&self) -> Option<&RunLog> {
         None
     }
-    /// Emit a diagnostic event when the diagnostic log is enabled.
+
+    /// Emit a run-log event when the run log is enabled.
     ///
-    /// This is a convenience wrapper around
-    /// [`DiagnosticLog::emit`](super::DiagnosticLog::emit) that no-ops when
-    /// no diagnostic log is configured, so call sites do not need to
-    /// `if let Some(diag) = ...` themselves.
-    fn diag(&self, event: DiagEvent, message: &str) {
-        if let Some(diag) = self.diagnostic() {
-            diag.emit(event, message);
+    /// This is a convenience wrapper around [`RunLog::emit`] that no-ops when
+    /// no run log is configured, so call sites do not need to
+    /// `if let Some(run_log) = ...` themselves.
+    fn run_event(&self, event: LogEvent, message: &str) {
+        if let Some(run_log) = self.run_log() {
+            run_log.emit(event, message);
         }
     }
-    /// Emit a task-scoped diagnostic event when the diagnostic log is enabled.
+
+    /// Emit a task-scoped run-log event when the run log is enabled.
     ///
-    /// Convenience wrapper around
-    /// [`DiagnosticLog::emit_task`](super::DiagnosticLog::emit_task).
-    fn diag_task(&self, event: DiagEvent, task: &str, message: &str) {
-        if let Some(diag) = self.diagnostic() {
-            diag.emit_task(event, task, message);
+    /// Convenience wrapper around [`RunLog::emit_task`].
+    fn run_task_event(&self, event: LogEvent, task: &str, message: &str) {
+        if let Some(run_log) = self.run_log() {
+            run_log.emit_task(event, task, message);
         }
     }
 }
+
+/// Named convenience methods for every [`Output`].
+///
+/// Each method accepts anything that converts into a `Cow<str>`, so both
+/// `log.info("literal")` and `log.info(format!("{n} items"))` work, and the
+/// latter moves its `String` rather than copying it.
+///
+/// Import it as `use crate::infra::logging::OutputExt as _;`.
+pub trait OutputExt: Output {
+    /// Log a stage header (major section).
+    fn stage<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Stage, msg.into());
+    }
+    /// Log a task name without major-section emphasis.
+    fn task_stage<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::TaskStage, msg.into());
+    }
+    /// Log an informational message.
+    fn info<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Info, msg.into());
+    }
+    /// Log a debug message; recorded in the run log only.
+    fn debug<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Debug, msg.into());
+    }
+    /// Log a warning message.
+    fn warn<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Warn, msg.into());
+    }
+    /// Log an error message.
+    fn error<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Error, msg.into());
+    }
+    /// Log a dry-run action message.
+    fn dry_run<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::DryRun, msg.into());
+    }
+    /// Log a message that always appears on the console regardless of the
+    /// verbose setting.  Used for structural output (version, profile, summary).
+    fn always<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Always, msg.into());
+    }
+}
+
+impl<T: Output + ?Sized> OutputExt for T {}
 
 /// Structured task result recording for summary reports.
 ///

@@ -2,11 +2,10 @@
 
 use std::collections::HashSet;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
-use super::package::{PackageProvider, PackageResource};
+use super::package::PackageProvider;
 use super::pacman::PacmanProvider;
-use super::report::PackageInstallReport;
 use crate::engine::ResourceChange;
 use crate::infra::exec::Executor;
 
@@ -14,34 +13,34 @@ use crate::infra::exec::Executor;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ParuProvider;
 
+/// Build the argument vector for a `paru -S` invocation over `names`.
+fn paru_args<'a>(names: &[&'a str]) -> Vec<&'a str> {
+    let mut args = vec!["-S", "--needed", "--noconfirm"];
+    args.extend_from_slice(names);
+    args
+}
+
 impl PackageProvider for ParuProvider {
     fn name(&self) -> &'static str {
         "paru"
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        PacmanProvider.query_installed(executor)
+        PacmanProvider
+            .query_installed(executor)
+            .context("querying installed paru packages")
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
-        executor.run("paru", &["-S", "--needed", "--noconfirm", name])?;
+        executor.run("paru", &paru_args(&[name]))?;
         Ok(ResourceChange::Applied)
     }
 
-    fn install_missing(
+    fn batch_invocation<'a>(
         &self,
-        resources: &[&PackageResource],
-        executor: &dyn Executor,
-    ) -> Result<PackageInstallReport> {
-        let mut args = vec!["-S", "--needed", "--noconfirm"];
-        let names: Vec<&str> = resources.iter().map(|r| r.name.as_str()).collect();
-        args.extend(names);
-        executor.run("paru", &args)?;
-        Ok(PackageInstallReport::applied(
-            resources
-                .iter()
-                .map(|resource| resource.name.clone())
-                .collect(),
-        ))
+        names: &[&'a str],
+        _executor: &dyn Executor,
+    ) -> Result<Option<(&'static str, Vec<&'a str>)>> {
+        Ok(Some(("paru", paru_args(names))))
     }
 }

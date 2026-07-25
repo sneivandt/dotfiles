@@ -14,62 +14,21 @@ mod summary;
 
 pub(in crate::infra::logging) use progress::stdout_supports_progress;
 
-#[cfg(test)]
-use std::path::PathBuf;
+use std::borrow::Cow;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use super::diagnostic::{DiagEvent, DiagnosticLog};
-use super::types::{ActionCounts, Output, TaskEntry, TaskRecorder, TaskStatus};
-use super::utils::dotfiles_cache_dir;
+use super::runlog::{LogEvent, RunLog};
+use super::types::{
+    ActionCounts, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
+    emit_console_event,
+};
 #[cfg(test)]
-use super::utils::{dotfiles_cache_subdir, log_file_path_in};
-
-/// Generate an inherent `pub fn $name(&self, msg: &str)` method on `Logger`
-/// that optionally emits to the diagnostic log and then forwards to the given
-/// `tracing` macro.
-///
-/// Two forms are supported:
-/// - Without a target: `log_method!(#[doc...] name, Event, tracing::mac)`
-/// - With a target:    `log_method!(#[doc...] name, Event, tracing::mac, target: "…")`
-macro_rules! log_method {
-    ($(#[$doc:meta])* $name:ident, $event:ident, $mac:path) => {
-        $(#[$doc])*
-        pub fn $name(&self, msg: &str) {
-            if let Some(d) = &self.diagnostic {
-                d.emit(DiagEvent::$event, msg);
-            }
-            $mac!("{msg}");
-        }
-    };
-    ($(#[$doc:meta])* $name:ident, $event:ident, $mac:path, target: $target:literal) => {
-        $(#[$doc])*
-        pub fn $name(&self, msg: &str) {
-            if let Some(d) = &self.diagnostic {
-                d.emit(DiagEvent::$event, msg);
-            }
-            $mac!(target: $target, "{msg}");
-        }
-    };
-}
-
-/// Implement the display methods of [`Output`] by delegating to inherent methods
-/// of the same name on the implementing type.
-///
-/// The `record_task` method is **not** included because its signature differs
-/// from the `fn(&self, &str)` pattern shared by the display methods.
-macro_rules! forward_log_methods {
-    ($($method:ident),+ $(,)?) => {
-        $(
-            fn $method(&self, msg: &str) {
-                self.$method(msg);
-            }
-        )+
-    };
-}
+use super::utils::dotfiles_cache_subdir;
 
 /// Structured logger with dry-run awareness and summary collection.
 ///
@@ -82,8 +41,6 @@ pub struct Logger {
     pub(super) command: String,
     pub(super) tasks: Mutex<Vec<TaskEntry>>,
     pub(super) task_details: Mutex<Vec<TaskDetailEntry>>,
-    #[cfg(test)]
-    pub(super) log_file: Option<PathBuf>,
     /// Serializes console output from parallel task flushes.
     pub(super) flush_lock: Mutex<()>,
     /// Names of tasks currently executing in parallel.
@@ -97,8 +54,11 @@ pub struct Logger {
     pub(super) status_row_visible: AtomicBool,
     /// Whether any completed task has emitted durable console output.
     pub(super) task_console_output_emitted: AtomicBool,
-    /// High-precision diagnostic log; `None` when the cache dir is unavailable.
-    pub(super) diagnostic: Option<DiagnosticLog>,
+    /// The run log; `None` when the cache dir is unavailable.
+    ///
+    /// Shared with the tracing bridge so that logger messages and raw
+    /// `tracing` events land in the same file.
+    pub(super) run_log: Option<Arc<RunLog>>,
     /// Instant when the logger was created, used for elapsed time in summary.
     pub(super) start: Instant,
     /// Whether verbose output is enabled (show applicable task statuses and details).
@@ -121,25 +81,41 @@ pub(in crate::infra::logging) struct TaskDetailEntry {
 impl Logger {
     /// Create a new logger.
     ///
-    /// Stores the log file path for display in the run summary.  The log file
-    /// itself is created and initialised by [`init_subscriber`](super::subscriber::init_subscriber) via
-    /// [`FileLayer`](super::subscriber::FileLayer); this constructor does not write to the file.
+    /// Opens the run log for `command` in the dotfiles cache directory.  If
+    /// the file cannot be created the run continues without a file log.
     #[must_use]
     pub fn new(command: &str) -> Self {
         let start = Instant::now();
+        Self::build(command, RunLog::create(command, start).map(Arc::new), start)
+    }
+
+    /// Create a new logger using an explicit cache base directory.
+    ///
+    /// Like [`new`](Self::new) but resolves the run log under `cache_dir`
+    /// instead of reading `XDG_CACHE_HOME` from the environment.  Intended for
+    /// tests that need an isolated logger without mutating process-global
+    /// state.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn new_in(command: &str, cache_dir: &std::path::Path) -> Self {
+        let start = Instant::now();
+        let run_log = dotfiles_cache_subdir(cache_dir)
+            .and_then(|dir| RunLog::new(command, &dir, start))
+            .map(Arc::new);
+        Self::build(command, run_log, start)
+    }
+
+    fn build(command: &str, run_log: Option<Arc<RunLog>>, start: Instant) -> Self {
         Self {
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
             task_details: Mutex::new(Vec::new()),
-            #[cfg(test)]
-            log_file: super::utils::log_file_path(command),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             progress_rows: AtomicU16::new(0),
             status_row_visible: AtomicBool::new(false),
             task_console_output_emitted: AtomicBool::new(false),
-            diagnostic: dotfiles_cache_dir()
-                .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
+            run_log,
             start,
             verbose: true,
             dry_run: false,
@@ -150,7 +126,7 @@ impl Logger {
     /// Set the verbose mode on this logger.
     ///
     /// Also updates the global [`subscriber`](super::subscriber) flag so the
-    /// console formatter and file layer stay in sync.
+    /// console formatter stays in sync.
     pub fn set_verbose(&mut self, verbose: bool) {
         self.verbose = verbose;
         super::subscriber::set_verbose(verbose);
@@ -161,38 +137,9 @@ impl Logger {
         self.dry_run = dry_run;
     }
 
-    /// Create a new logger using an explicit cache base directory.
-    ///
-    /// Like [`new`](Self::new) but resolves the log file path and diagnostic
-    /// log under `cache_dir` instead of reading `XDG_CACHE_HOME` from the
-    /// environment.  Intended for tests that need an isolated logger without
-    /// mutating process-global state.
-    #[cfg(test)]
-    #[must_use]
-    pub(crate) fn new_in(command: &str, cache_dir: &std::path::Path) -> Self {
-        let start = Instant::now();
-        Self {
-            command: command.to_string(),
-            tasks: Mutex::new(Vec::new()),
-            task_details: Mutex::new(Vec::new()),
-            log_file: log_file_path_in(command, cache_dir),
-            flush_lock: Mutex::new(()),
-            active_tasks: Mutex::new(Vec::new()),
-            progress_rows: AtomicU16::new(0),
-            status_row_visible: AtomicBool::new(false),
-            task_console_output_emitted: AtomicBool::new(false),
-            diagnostic: dotfiles_cache_subdir(cache_dir)
-                .and_then(|dir| DiagnosticLog::new(command, &dir, start)),
-            start,
-            verbose: true,
-            dry_run: false,
-            startup_separator_emitted: AtomicBool::new(false),
-        }
-    }
-
-    /// Return the diagnostic log, if available.
-    pub const fn diagnostic(&self) -> Option<&DiagnosticLog> {
-        self.diagnostic.as_ref()
+    /// Return a handle to the run log, if available.
+    pub(in crate::infra::logging) fn run_log_handle(&self) -> Option<Arc<RunLog>> {
+        self.run_log.clone()
     }
 
     /// Return whether verbose output mode is enabled.
@@ -212,11 +159,11 @@ impl Logger {
         }
     }
 
-    /// Return the log file path, if available.
+    /// Return the run log file path, if available.
     #[cfg(test)]
     #[must_use]
-    pub const fn log_path(&self) -> Option<&PathBuf> {
-        self.log_file.as_ref()
+    pub fn log_path(&self) -> Option<&std::path::Path> {
+        self.run_log.as_deref().map(RunLog::path)
     }
 
     /// Return a clone of all recorded task entries (test-only).
@@ -243,51 +190,13 @@ impl Logger {
         self.task_console_output_emitted.load(Ordering::Relaxed)
     }
 
-    log_method!(
-        /// Log an error message.
-        error, Error, tracing::error
-    );
-
-    log_method!(
-        /// Log a warning message.
-        warn, Warn, tracing::warn
-    );
-
-    log_method!(
-        /// Log a stage header (major section).
-        stage, Stage, tracing::info, target: "dotfiles::stage"
-    );
-
-    log_method!(
-        /// Log a task name without major-section emphasis.
-        task_stage, Stage, tracing::info, target: "dotfiles::task_stage"
-    );
-
-    log_method!(
-        /// Log an informational message.
-        info, Info, tracing::info
-    );
-
-    log_method!(
-        /// Log a debug message to the persistent
-        /// [`FileLayer`](super::subscriber::FileLayer), never the console.
-        debug, Debug, tracing::debug
-    );
-
-    log_method!(
-        /// Log a dry-run action message.
-        dry_run, DryRun, tracing::info, target: "dotfiles::dry_run"
-    );
-
-    log_method!(
-        /// Log a message that always appears on the console regardless of verbose setting.
-        always, Info, tracing::info, target: "dotfiles::always"
-    );
-
-    log_method!(
-        /// Log a compact task-result line (console-only, omitted from the log file).
-        task_result, Info, tracing::info, target: "dotfiles::task_result"
-    );
+    /// Log a compact task-result line.
+    pub fn task_result(&self, msg: &str) {
+        if let Some(run_log) = &self.run_log {
+            run_log.emit(LogEvent::Info, msg);
+        }
+        tracing::info!(target: "dotfiles::ui::task_result", "{msg}");
+    }
 
     /// Record a task result for the summary.
     pub fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
@@ -368,10 +277,15 @@ impl Logger {
 }
 
 impl Output for Logger {
-    forward_log_methods!(stage, task_stage, info, debug, warn, error, dry_run, always);
+    fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
+        if let Some(run_log) = &self.run_log {
+            run_log.emit(kind.log_event(), &msg);
+        }
+        emit_console_event!(kind, &*msg);
+    }
 
-    fn diagnostic(&self) -> Option<&DiagnosticLog> {
-        self.diagnostic.as_ref()
+    fn run_log(&self) -> Option<&RunLog> {
+        self.run_log.as_deref()
     }
 }
 
@@ -520,12 +434,12 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_log_accessible_via_trait() {
+    fn run_log_accessible_via_trait() {
         let (log, _tmp, _guard) = isolated_logger();
         let log_ref: &dyn Log = &log;
         assert!(
-            log_ref.diagnostic().is_some(),
-            "diagnostic() should be accessible via Log trait"
+            log_ref.run_log().is_some(),
+            "run_log() should be accessible via Log trait"
         );
     }
 
@@ -577,19 +491,15 @@ mod tests {
     }
 
     #[test]
-    fn stage_written_to_file_with_arrow() {
+    fn stage_written_to_file_with_event_kind() {
         let (log, _tmp, _guard) = isolated_logger();
         let marker = format!("stage-marker-{}", std::process::id());
         log.stage(&marker);
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
         assert!(
-            contents.contains("==>"),
-            "stage arrow should appear in log file"
-        );
-        assert!(
-            contents.contains(&marker),
-            "stage message should appear in log file"
+            contents.contains(&format!("[stage] {marker}")),
+            "stage should be recorded under the stage event kind: {contents}"
         );
     }
 
@@ -618,8 +528,8 @@ mod tests {
             "summary should not repeat the main log path: {contents}"
         );
         assert!(
-            !contents.contains("diagnostic log: "),
-            "summary should not repeat the diagnostic log path: {contents}"
+            !contents.contains("run log: "),
+            "summary should not repeat the run log path: {contents}"
         );
         assert!(
             !contents.contains("Summary"),

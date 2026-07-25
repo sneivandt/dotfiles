@@ -232,7 +232,11 @@ macro_rules! resource_task {
                     return Ok(None);
                 }
                 if emit_stage {
-                    ctx.log().task_stage($task_name);
+                    $crate::infra::logging::Output::emit(
+                        ctx.log(),
+                        $crate::infra::logging::MsgKind::TaskStage,
+                        ::std::borrow::Cow::Borrowed($task_name),
+                    );
                 }
                 ctx.debug_fmt(|| {
                     format!(
@@ -299,7 +303,11 @@ macro_rules! resource_task {
                     return Ok(None);
                 }
                 if emit_stage {
-                    ctx.log().task_stage($task_name);
+                    $crate::infra::logging::Output::emit(
+                        ctx.log(),
+                        $crate::infra::logging::MsgKind::TaskStage,
+                        ::std::borrow::Cow::Borrowed($task_name),
+                    );
                 }
                 $(
                     let $setup_ctx = ctx;
@@ -388,7 +396,11 @@ macro_rules! config_resource_task {
                     return Ok(None);
                 }
                 if emit_stage {
-                    ctx.log().task_stage($task_name);
+                    $crate::infra::logging::Output::emit(
+                        ctx.log(),
+                        $crate::infra::logging::MsgKind::TaskStage,
+                        ::std::borrow::Cow::Borrowed($task_name),
+                    );
                 }
                 ctx.debug_fmt(|| {
                     format!(
@@ -474,7 +486,11 @@ macro_rules! config_resource_task {
                     return Ok(None);
                 }
                 if emit_stage {
-                    ctx.log().task_stage($task_name);
+                    $crate::infra::logging::Output::emit(
+                        ctx.log(),
+                        $crate::infra::logging::MsgKind::TaskStage,
+                        ::std::borrow::Cow::Borrowed($task_name),
+                    );
                 }
                 $(
                     let $setup_ctx = ctx;

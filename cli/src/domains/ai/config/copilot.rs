@@ -2,7 +2,14 @@
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `copilot.empty-key`.
+const COPILOT_EMPTY_KEY: DiagnosticCode = DiagnosticCode::new("copilot", "empty-key");
+/// Diagnostic code: `copilot.key-empty-segment`.
+const COPILOT_KEY_EMPTY_SEGMENT: DiagnosticCode =
+    DiagnosticCode::new("copilot", "key-empty-segment");
 
 /// A single Copilot settings key to converge inside a JSON settings document.
 ///
@@ -65,12 +72,12 @@ pub fn validate(settings: &[CopilotSetting]) -> Vec<Diagnostic> {
                 [
                     check(
                         setting.key.trim().is_empty(),
-                        "copilot.empty-key",
+                        COPILOT_EMPTY_KEY,
                         "settings key is empty",
                     ),
                     check(
                         setting.key.split('.').any(str::is_empty),
-                        "copilot.key-empty-segment",
+                        COPILOT_KEY_EMPTY_SEGMENT,
                         "settings key has an empty path segment (e.g. 'a..b')",
                     ),
                 ]

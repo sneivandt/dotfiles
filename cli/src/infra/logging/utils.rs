@@ -84,20 +84,6 @@ pub(super) fn dotfiles_cache_subdir(base: &std::path::Path) -> Option<PathBuf> {
     Some(dir)
 }
 
-/// Return the log file path under `$XDG_CACHE_HOME/dotfiles/` (or `~/.cache/dotfiles/`).
-pub(super) fn log_file_path(command: &str) -> Option<PathBuf> {
-    Some(dotfiles_cache_dir()?.join(format!("{command}.log")))
-}
-
-/// Return the log file path under `<base>/dotfiles/`.
-///
-/// Like [`log_file_path`] but uses an explicit base directory instead of
-/// reading `XDG_CACHE_HOME` from the environment.
-#[cfg(test)]
-pub(super) fn log_file_path_in(command: &str, base: &std::path::Path) -> Option<PathBuf> {
-    Some(dotfiles_cache_subdir(base)?.join(format!("{command}.log")))
-}
-
 /// Decompose seconds since the Unix epoch into `(year, month, day, hour, min, sec)`.
 ///
 /// Uses Howard Hinnant's civil-from-days algorithm.
@@ -138,29 +124,6 @@ pub(super) fn format_utc_datetime_us() -> String {
         "{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{:06}Z",
         dur.subsec_micros()
     )
-}
-
-/// Format the current UTC time as `YYYY-MM-DD HH:MM:SS`.
-pub(super) fn format_utc_datetime() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let (y, mo, d, h, mi, s) = civil_from_epoch_secs(secs);
-    format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}")
-}
-
-/// Format the current UTC time as `HH:MM:SS`.
-pub(super) fn format_utc_time() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let day_secs = secs % 86_400;
-    let h = day_secs / 3600;
-    let m = (day_secs % 3600) / 60;
-    let s = day_secs % 60;
-    format!("{h:02}:{m:02}:{s:02}")
 }
 
 #[cfg(test)]
@@ -257,22 +220,5 @@ mod tests {
             6,
             "should have 6 decimal digits for microseconds"
         );
-    }
-
-    #[test]
-    fn format_utc_time_has_correct_format() {
-        let s = format_utc_time();
-        assert_eq!(s.len(), 8, "HH:MM:SS should be 8 chars");
-        assert_eq!(&s[2..3], ":", "colon at position 2");
-        assert_eq!(&s[5..6], ":", "colon at position 5");
-    }
-
-    #[test]
-    fn format_utc_datetime_has_correct_format() {
-        let s = format_utc_datetime();
-        assert_eq!(s.len(), 19, "YYYY-MM-DD HH:MM:SS should be 19 chars");
-        assert_eq!(&s[4..5], "-", "dash at position 4");
-        assert_eq!(&s[7..8], "-", "dash at position 7");
-        assert_eq!(&s[10..11], " ", "space at position 10");
     }
 }

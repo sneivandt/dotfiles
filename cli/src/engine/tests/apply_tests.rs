@@ -1,7 +1,7 @@
 use crate::engine::apply;
 use crate::engine::mode::ProcessOpts;
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::logging::{Output, TaskRecorder, TaskStatus};
+use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
 use crate::test_helpers::empty_config;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -16,15 +16,11 @@ struct OrderedEventLog {
 }
 
 impl Output for OrderedEventLog {
-    fn stage(&self, _msg: &str) {}
-    fn info(&self, _msg: &str) {}
-    fn debug(&self, _msg: &str) {}
-    fn warn(&self, msg: &str) {
-        self.events.lock().unwrap().push(format!("warn: {msg}"));
+    fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
+        if kind == MsgKind::Warn {
+            self.events.lock().unwrap().push(format!("warn: {msg}"));
+        }
     }
-    fn error(&self, _msg: &str) {}
-    fn dry_run(&self, _msg: &str) {}
-    fn always(&self, _msg: &str) {}
 }
 
 impl TaskRecorder for OrderedEventLog {

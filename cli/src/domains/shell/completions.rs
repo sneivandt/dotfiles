@@ -4,6 +4,7 @@ use anyhow::Result;
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
 };
+use crate::infra::logging::OutputExt as _;
 
 /// Filename of the generated zsh completion script.
 const ZSH_COMPLETION_FILENAME: &str = "_dotfiles";
@@ -55,7 +56,7 @@ impl Operation for ZshCompletionOperation<'_> {
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log()
-            .dry_run(&format!("write {}", plan.destination.display()));
+            .dry_run(format!("write {}", plan.destination.display()));
         Ok(TaskStats::changed().finish())
     }
 

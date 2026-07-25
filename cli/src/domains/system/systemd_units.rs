@@ -6,6 +6,7 @@ use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
 use crate::engine::{Context, ProcessOpts, Task, TaskResult, process_resources};
 use crate::infra::ConfigHandle;
+use crate::infra::logging::OutputExt as _;
 
 /// Enable and start systemd units.
 #[derive(Debug)]

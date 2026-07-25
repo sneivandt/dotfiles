@@ -11,6 +11,7 @@ use crate::infra::exec;
 use crate::infra::{elevation, logging};
 
 use super::{cli, commands};
+use crate::infra::logging::OutputExt as _;
 
 /// Run the dotfiles CLI and return the process exit code.
 ///
@@ -33,7 +34,7 @@ pub fn run() -> ExitCode {
     // Log viewing is read-only: do not initialize the tracing subscriber or
     // create a new log file just to display an existing log.
     if let cli::Command::Log(_) = &args.command {
-        return match commands::log::run(args.verbose) {
+        return match commands::log::run() {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 drop(writeln!(std::io::stderr().lock(), "{e:#}"));
@@ -45,12 +46,9 @@ pub fn run() -> ExitCode {
     let Some(command_name) = logged_command_name(&args.command) else {
         return ExitCode::SUCCESS;
     };
-    logging::init_subscriber(args.verbose, command_name);
-    let mut raw_log = logging::Logger::new(command_name);
-    raw_log.set_verbose(args.verbose);
+    let mut raw_log = logging::init(args.verbose, command_name);
     raw_log.set_dry_run(args.global.dry_run);
     let log = std::sync::Arc::new(raw_log);
-
     // Auto-elevate on Windows for install/uninstall when not in dry-run mode
     #[cfg(windows)]
     {
@@ -62,7 +60,7 @@ pub fn run() -> ExitCode {
             && !elevation::is_elevated()
             && let Err(e) = elevation::elevate_and_exit(&exec::SystemExecutor, &*log)
         {
-            log.error(&format!("{e:#}"));
+            log.error(format!("{e:#}"));
             return ExitCode::FAILURE;
         }
     }
@@ -110,7 +108,7 @@ fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
         .downcast_ref::<commands::error::TaskFailures>()
         .is_none()
     {
-        log.error(&format!("{error:#}"));
+        log.error(format!("{error:#}"));
     }
     log.always("Run 'dotfiles log' for details.");
 }
@@ -140,22 +138,20 @@ mod tests {
     }
 
     impl logging::Output for CapturingOutput {
-        fn stage(&self, _msg: &str) {}
-        fn info(&self, _msg: &str) {}
-        fn debug(&self, _msg: &str) {}
-        fn warn(&self, _msg: &str) {}
-        fn error(&self, msg: &str) {
-            self.errors
-                .lock()
+        fn emit(&self, kind: logging::MsgKind, msg: std::borrow::Cow<'_, str>) {
+            let sink = match kind {
+                logging::MsgKind::Error => &self.errors,
+                logging::MsgKind::Always => &self.always,
+                logging::MsgKind::Stage
+                | logging::MsgKind::TaskStage
+                | logging::MsgKind::Info
+                | logging::MsgKind::Debug
+                | logging::MsgKind::Warn
+                | logging::MsgKind::DryRun => return,
+            };
+            sink.lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .push(msg.to_string());
-        }
-        fn dry_run(&self, _msg: &str) {}
-        fn always(&self, msg: &str) {
-            self.always
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(msg.to_string());
+                .push(msg.into_owned());
         }
     }
 

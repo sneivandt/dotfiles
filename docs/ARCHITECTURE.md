@@ -192,12 +192,12 @@ excluded from normal task rows and totals.
 
 Visible rows use fixed-width `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`, and
 `FAILED` statuses. Tasks that require no change and tasks that are not
-applicable remain in diagnostic/file logs without emitting console rows in
+applicable remain in the run log without emitting console rows in
 either normal or verbose mode. Normal output keeps detail compact; verbose
 output shows full messages for emitted task rows. Aggregate summaries count
 actions, affected tasks, up-to-date tasks, ignored or failed tasks, and elapsed
-time rather than equating tasks with changes. `dotfiles log --verbose` prefers
-the diagnostic log for post-run investigation.
+time rather than equating tasks with changes. `dotfiles log` prints the run log
+for post-run investigation.
 
 ## Extension points
 

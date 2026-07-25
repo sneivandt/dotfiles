@@ -12,6 +12,7 @@ use crate::engine::{
     task_metadata,
 };
 use crate::infra::ConfigHandle;
+use crate::infra::logging::OutputExt as _;
 
 mod paru;
 mod planning;
@@ -253,13 +254,13 @@ impl Operation for PackageInstallOperation {
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         for resource in &plan.missing {
             ctx.log()
-                .dry_run(&format!("install {}", resource.description()));
+                .dry_run(format!("install {}", resource.description()));
         }
         Ok(plan.preview_stats().finish())
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        ctx.log().debug(&format!(
+        ctx.log().debug(format!(
             "installing {} missing packages",
             plan.missing.len()
         ));
@@ -277,7 +278,7 @@ impl Operation for PackageInstallOperation {
             };
 
         for failure in report.failures() {
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "failed to install {} with {}: {}",
                 failure.package, self.manager, failure.reason
             ));
@@ -288,7 +289,7 @@ impl Operation for PackageInstallOperation {
         stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
 
         for package in report.applied_packages() {
-            ctx.log().info(&format!("install {package}"));
+            ctx.log().info(format!("install {package}"));
         }
 
         if report.has_failures() {

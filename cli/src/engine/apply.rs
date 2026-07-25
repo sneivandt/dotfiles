@@ -7,7 +7,8 @@ use super::mode::ProcessOpts;
 use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
 use super::stats::{ItemOutcome, TaskStats};
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::logging::DiagEvent;
+use crate::infra::logging::LogEvent;
+use crate::infra::logging::OutputExt as _;
 
 /// Process a single resource given its current state, returning a stats delta.
 pub(super) fn process_single<R: Resource>(
@@ -17,8 +18,8 @@ pub(super) fn process_single<R: Resource>(
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
     let plan = ApplyChange::from_state(resource.description(), resource_state, opts);
-    ctx.log().diag(
-        DiagEvent::ResourceCheck,
+    ctx.log().run_event(
+        LogEvent::ResourceCheck,
         &format!("{} state={resource_state}", plan.description()),
     );
     let mut delta = TaskStats::new();
@@ -72,26 +73,22 @@ fn record_resource_change(
 ) {
     match change {
         ResourceChange::Applied => {
-            ctx.log().diag(
-                DiagEvent::ResourceResult,
-                &format!("{desc} {applied_label}"),
-            );
-            ctx.log().info(&format!("{verb} {desc}"));
+            ctx.log()
+                .run_event(LogEvent::ResourceResult, &format!("{desc} {applied_label}"));
+            ctx.log().info(format!("{verb} {desc}"));
             delta.record(ItemOutcome::Changed);
         }
         ResourceChange::AlreadyCorrect => {
-            ctx.log().diag(
-                DiagEvent::ResourceResult,
-                &format!("{desc} already_correct"),
-            );
+            ctx.log()
+                .run_event(LogEvent::ResourceResult, &format!("{desc} already_correct"));
             delta.record(ItemOutcome::AlreadyOk);
         }
         ResourceChange::Skipped { reason } => {
-            ctx.log().diag(
-                DiagEvent::ResourceResult,
+            ctx.log().run_event(
+                LogEvent::ResourceResult,
                 &format!("{desc} skipped: {reason}"),
             );
-            ctx.log().warn(&format!("skipping {desc}: {reason}"));
+            ctx.log().warn(format!("skipping {desc}: {reason}"));
             delta.record(ItemOutcome::Failed);
         }
     }
@@ -102,7 +99,7 @@ struct ResourceMutation<'a> {
     description: &'a str,
     verb: &'a str,
     dry_run_message: Option<String>,
-    event: DiagEvent,
+    event: LogEvent,
     applied_label: &'a str,
     bail_on_error: bool,
     warn_before_apply: bool,
@@ -119,7 +116,7 @@ impl<'a> ResourceMutation<'a> {
             description,
             verb,
             dry_run_message,
-            event: DiagEvent::ResourceApply,
+            event: LogEvent::ResourceApply,
             applied_label: "applied",
             bail_on_error,
             warn_before_apply: true,
@@ -131,7 +128,7 @@ impl<'a> ResourceMutation<'a> {
             description,
             verb,
             dry_run_message,
-            event: DiagEvent::ResourceRemove,
+            event: LogEvent::ResourceRemove,
             applied_label: "removed",
             bail_on_error: true,
             warn_before_apply: false,
@@ -162,7 +159,7 @@ where
     {
         ctx.log().warn(&warning);
     }
-    ctx.log().diag(
+    ctx.log().run_event(
         mutation.event,
         &format!("{} {}", mutation.verb, mutation.description),
     );
@@ -171,14 +168,14 @@ where
         Ok(change) => change,
         Err(e) => {
             let category = e.category();
-            ctx.log().diag(
-                DiagEvent::ResourceResult,
+            ctx.log().run_event(
+                LogEvent::ResourceResult,
                 &format!("{} error [{category}]: {e}", mutation.description),
             );
             if mutation.bail_on_error {
                 return Err(e.into());
             }
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "failed to {} {}: {e}",
                 mutation.verb, mutation.description
             ));
@@ -219,7 +216,7 @@ pub(super) fn remove_single<R: Resource>(
         RemoveOperation::Skip { reason } => {
             // Cannot determine if this resource is ours — skip removal rather
             // than risking removing something we did not install.
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "skipping removal of {}: {reason}",
                 plan.description()
             ));

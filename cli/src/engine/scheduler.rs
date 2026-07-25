@@ -7,7 +7,8 @@ use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
 use crate::engine::{self, Context, Task};
-use crate::infra::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as _, TaskStatus};
+use crate::infra::logging::OutputExt as _;
+use crate::infra::logging::{self, BufferedLog, Log, LogEvent, Logger, Output as _, TaskStatus};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DependencySignal {
@@ -75,7 +76,7 @@ fn signal_dependents(
 fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
-    log.diag_task(DiagEvent::TaskSkip, task.name(), reason);
+    log.run_task_event(LogEvent::TaskSkip, task.name(), reason);
     log.debug(reason);
     log.record_task(task.name(), TaskStatus::Skipped, Some(reason));
 }
@@ -132,8 +133,8 @@ fn run_task_buffered(
                         .map(|s| format!("task panicked: {s}"))
                 })
                 .unwrap_or_else(|| "task panicked".to_string());
-            log.diag_task(DiagEvent::TaskFail, task.name(), &msg);
-            buf.error(&format!("{}: {msg}", task.name()));
+            log.run_task_event(LogEvent::TaskFail, task.name(), &msg);
+            buf.error(format!("{}: {msg}", task.name()));
             log.record_task(task.name(), TaskStatus::Failed, Some(&msg));
             TaskStatus::Failed
         }
@@ -195,14 +196,14 @@ pub(crate) fn run_tasks_parallel(
             let dep_count = dep_names.len();
 
             s.spawn(move || {
-                logging::set_diag_thread_name(task.name());
+                logging::set_log_thread_name(task.name());
 
-                if let Some(diag) = log.diagnostic() {
+                if let Some(diag) = log.run_log() {
                     if dep_names.is_empty() {
-                        diag.emit_task(DiagEvent::TaskWait, task.name(), "no deps, ready");
+                        diag.emit_task(LogEvent::TaskWait, task.name(), "no deps, ready");
                     } else {
                         diag.emit_task(
-                            DiagEvent::TaskWait,
+                            LogEvent::TaskWait,
                             task.name(),
                             &format!("waiting for: {}", dep_names.join(", ")),
                         );

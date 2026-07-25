@@ -3,7 +3,18 @@ use serde::Deserialize;
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
+
+/// Diagnostic code: `chmod.invalid-mode`.
+const CHMOD_INVALID_MODE: DiagnosticCode = DiagnosticCode::new("chmod", "invalid-mode");
+/// Diagnostic code: `chmod.absolute-path`.
+const CHMOD_ABSOLUTE_PATH: DiagnosticCode = DiagnosticCode::new("chmod", "absolute-path");
+/// Diagnostic code: `chmod.parent-in-path`.
+const CHMOD_PARENT_IN_PATH: DiagnosticCode = DiagnosticCode::new("chmod", "parent-in-path");
+/// Diagnostic code: `chmod.platform-unsupported`.
+const CHMOD_PLATFORM_UNSUPPORTED: DiagnosticCode =
+    DiagnosticCode::new("chmod", "platform-unsupported");
 
 /// A validated octal file permission mode (e.g., `"600"`, `"0755"`).
 ///
@@ -141,7 +152,7 @@ pub fn validate(
     Validator::new(CHMOD_TOML)
         .warn_if(
             !entries.is_empty() && !platform.supports_chmod(),
-            "chmod.platform-unsupported",
+            CHMOD_PLATFORM_UNSUPPORTED,
             "chmod entries",
             "chmod entries defined but platform does not support chmod",
         )
@@ -153,17 +164,17 @@ pub fn validate(
                     e.parsed_mode
                         .as_ref()
                         .err()
-                        .map(|message| ("chmod.invalid-mode", Severity::Warning, message.clone())),
+                        .map(|message| (CHMOD_INVALID_MODE, Severity::Warning, message.clone())),
                     check(
                         Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
-                        "chmod.absolute-path",
+                        CHMOD_ABSOLUTE_PATH,
                         "path should be relative to $HOME directory",
                     ),
                     check_error(
                         Path::new(&e.path)
                             .components()
                             .any(|c| c == std::path::Component::ParentDir),
-                        "chmod.parent-in-path",
+                        CHMOD_PARENT_IN_PATH,
                         "path must not contain '..' components",
                     ),
                 ]

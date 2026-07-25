@@ -6,7 +6,17 @@ use std::path::{Path, PathBuf};
 use serde_yaml_ng::Value as YamlValue;
 
 use crate::infra::config::Diagnostic;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::validation::Validator;
+
+/// Diagnostic code: `apm.git-name`.
+const APM_GIT_NAME: DiagnosticCode = DiagnosticCode::new("apm", "git-name");
+/// Diagnostic code: `apm.git-version`.
+const APM_GIT_VERSION: DiagnosticCode = DiagnosticCode::new("apm", "git-version");
+/// Diagnostic code: `apm.io-error`.
+const APM_IO_ERROR: DiagnosticCode = DiagnosticCode::new("apm", "io-error");
+/// Diagnostic code: `apm.yaml-parse-error`.
+const APM_YAML_PARSE_ERROR: DiagnosticCode = DiagnosticCode::new("apm", "yaml-parse-error");
 
 mod mcp;
 mod plugin;
@@ -30,7 +40,7 @@ fn validate_root(validator: &mut Validator, root: &Path) {
         Ok(fragments) => fragments,
         Err(err) => {
             validator.warn(
-                "apm.io-error",
+                APM_IO_ERROR,
                 path_item(root, &config_dir),
                 format!("could not inspect APM config fragments: {err}"),
             );
@@ -75,7 +85,7 @@ fn validate_fragment(validator: &mut Validator, root: &Path, fragment: &Path) {
         Ok(content) => content,
         Err(err) => {
             validator.warn(
-                "apm.io-error",
+                APM_IO_ERROR,
                 path_item(root, fragment),
                 format!("could not read APM manifest fragment: {err}"),
             );
@@ -90,7 +100,7 @@ fn validate_fragment(validator: &mut Validator, root: &Path, fragment: &Path) {
         Ok(value) => value,
         Err(err) => {
             validator.warn(
-                "apm.yaml-parse-error",
+                APM_YAML_PARSE_ERROR,
                 path_item(root, fragment),
                 format!("could not parse APM manifest fragment: {err}"),
             );
@@ -136,14 +146,14 @@ fn validate_git_dependency_keys(
             let item = format!("{}:{section}.apm[{index}]", path_item(root, fragment));
             if dependency.get("version").is_some() {
                 validator.warn(
-                    "apm.git-version",
+                    APM_GIT_VERSION,
                     item.clone(),
                     "Git dependencies do not support `version`; use `ref` to select a tag, branch, or commit",
                 );
             }
             if dependency.get("name").is_some() {
                 validator.warn(
-                    "apm.git-name",
+                    APM_GIT_NAME,
                     item,
                     "Git dependencies do not support `name`; use `alias` to set a local dependency name",
                 );
@@ -413,8 +423,8 @@ mod tests {
 
         let diagnostics = validate(temp_dir.path(), None);
         assert_eq!(diagnostics.len(), 2);
-        assert_eq!(diagnostics[0].code, "apm.git-version");
-        assert_eq!(diagnostics[1].code, "apm.git-name");
+        assert_eq!(diagnostics[0].code.to_string(), "apm.git-version");
+        assert_eq!(diagnostics[1].code.to_string(), "apm.git-name");
         assert!(
             diagnostics
                 .iter()
@@ -432,7 +442,7 @@ mod tests {
 
         let diagnostics = validate(temp_dir.path(), None);
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "apm.git-version");
+        assert_eq!(diagnostics[0].code.to_string(), "apm.git-version");
         assert!(diagnostics[0].item.contains("devDependencies.apm[0]"));
     }
 
@@ -458,6 +468,6 @@ mod tests {
 
         let diagnostics = validate(root.path(), Some(overlay.path()));
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "apm.git-name");
+        assert_eq!(diagnostics[0].code.to_string(), "apm.git-name");
     }
 }

@@ -2,6 +2,7 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
 use crate::engine::Context;
+use crate::infra::logging::OutputExt as _;
 
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
@@ -50,7 +51,7 @@ pub(super) fn build_paru(ctx: &Context, tmp: &Path) -> Result<()> {
 
     let makeflags = format!("-j{nproc}");
     ctx.log()
-        .debug(&format!("building with MAKEFLAGS={makeflags}"));
+        .debug(format!("building with MAKEFLAGS={makeflags}"));
     ctx.executor()
         .run_in_with_env(
             tmp,

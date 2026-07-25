@@ -6,6 +6,7 @@ use anyhow::Result;
 use crate::engine::{Context, TaskResult, UpdateSignal};
 
 use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
+use crate::infra::logging::OutputExt as _;
 
 const MAX_FETCH_ATTEMPTS: u32 = 3;
 
@@ -37,16 +38,14 @@ pub(super) fn apply_repository_updates(
     repo_updated: &UpdateSignal,
 ) -> Result<TaskResult> {
     for repository in repositories {
-        ctx.log().debug(&format!(
-            "pulling from {}",
-            repository.target.root.display()
-        ));
+        ctx.log()
+            .debug(format!("pulling from {}", repository.target.root.display()));
 
         // Fetch first so divergence can be evaluated without invoking `git pull`,
         // which fails noisily when the local branch has diverged from upstream.
         if let Err(e) = fetch_with_retry(ctx, repository, git_env) {
             let reason = repository.target.reason("git fetch failed");
-            ctx.log().warn(&format!("{reason}: {e:#}"));
+            ctx.log().warn(format!("{reason}: {e:#}"));
             return Ok(TaskResult::Failed(reason));
         }
     }
@@ -70,14 +69,14 @@ pub(super) fn apply_repository_updates(
         match result {
             Ok(r) => {
                 ctx.log()
-                    .debug(&format!("git merge output: {}", r.stdout.trim()));
+                    .debug(format!("git merge output: {}", r.stdout.trim()));
                 ctx.log()
-                    .info(&format!("{} updated", plan.target.description()));
+                    .info(format!("{} updated", plan.target.description()));
                 updated = true;
             }
             Err(e) => {
                 let reason = plan.target.reason("git merge --ff-only failed");
-                ctx.log().warn(&format!("{reason}: {e:#}"));
+                ctx.log().warn(format!("{reason}: {e:#}"));
                 return Ok(TaskResult::Failed(reason));
             }
         }
@@ -104,7 +103,7 @@ fn fetch_with_retry(
         ) {
             Ok(_) => return Ok(()),
             Err(error) if attempt < MAX_FETCH_ATTEMPTS && is_transient_fetch_error(&error) => {
-                ctx.log().warn(&format!(
+                ctx.log().warn(format!(
                     "transient git fetch failure for {} (attempt {attempt}/{MAX_FETCH_ATTEMPTS}), retrying: {error:#}",
                     repository.target.description()
                 ));
@@ -161,13 +160,13 @@ pub(super) fn plan_repository_update(
         Ok(r) => r.stdout.trim().to_string(),
         Err(e) => {
             let reason = repository.target.reason("no upstream tracking branch");
-            ctx.log().warn(&format!("{reason}: {e:#}"));
+            ctx.log().warn(format!("{reason}: {e:#}"));
             return Ok(RepositoryPlanReadiness::Skipped(reason));
         }
     };
 
     if pre_sha == upstream_sha {
-        ctx.log().debug(&format!(
+        ctx.log().debug(format!(
             "{} already up to date",
             repository.target.description()
         ));
@@ -197,7 +196,7 @@ pub(super) fn plan_repository_update(
             let reason = repository
                 .target
                 .reason("could not determine whether the local branch diverged");
-            ctx.log().warn(&format!(
+            ctx.log().warn(format!(
                 "{reason}: invalid rev-list count {ahead_output:?}: {error}"
             ));
             return Ok(RepositoryPlanReadiness::Skipped(reason));
@@ -208,7 +207,7 @@ pub(super) fn plan_repository_update(
         let reason = repository
             .target
             .reason("local branch diverged from upstream");
-        ctx.log().info(&format!("{reason}, skipping pull"));
+        ctx.log().info(format!("{reason}, skipping pull"));
         return Ok(RepositoryPlanReadiness::Skipped(reason));
     }
 

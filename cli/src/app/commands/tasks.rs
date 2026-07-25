@@ -6,6 +6,7 @@ use anyhow::{Result, bail};
 
 use crate::app::cli::GlobalOpts;
 use crate::engine::{Task, TaskVisibility};
+use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{Logger, Output};
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -136,12 +137,12 @@ fn display_tasks(listings: &[TaskListing], log: &dyn Output) {
         .max("TASK".len());
 
     log.always("");
-    log.always(&format!(
+    log.always(format!(
         "{:<selector_width$}  {:<label_width$}  COMMANDS",
         "SELECTOR", "TASK"
     ));
     for listing in listings {
-        log.always(&format!(
+        log.always(format!(
             "{:<selector_width$}  {:<label_width$}  {}",
             listing.selector,
             listing.label,

@@ -6,6 +6,7 @@ use crate::app::cli::GlobalOpts;
 use crate::infra::logging::Output;
 
 use super::runner;
+use crate::infra::logging::OutputExt as _;
 
 /// Environment variable set before re-exec to prevent infinite self-update loops.
 pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
@@ -28,14 +29,14 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
             .args(&args)
             .env(REEXEC_GUARD_VAR, "1")
             .exec();
-        log.error(&format!("failed to re-exec: {err}"));
+        log.error(format!("failed to re-exec: {err}"));
         std::process::exit(1);
     }
 
     #[cfg(windows)]
     {
         if let Err(err) = spawn_windows_restart_helper() {
-            log.error(&format!("failed to schedule Windows restart: {err}"));
+            log.error(format!("failed to schedule Windows restart: {err}"));
             std::process::exit(1);
         }
 
@@ -46,7 +47,7 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     {
         let args: Vec<String> = std::env::args().skip(1).collect();
         let exe = re_exec_path(root).unwrap_or_else(|err| {
-            log.error(&format!("cannot determine executable path: {err}"));
+            log.error(format!("cannot determine executable path: {err}"));
             std::process::exit(1);
         });
         match std::process::Command::new(&exe)
@@ -61,7 +62,7 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
                 std::process::exit(status.code().unwrap_or(1))
             }
             Err(error) => {
-                log.error(&format!("failed to re-exec: {error}"));
+                log.error(format!("failed to re-exec: {error}"));
                 std::process::exit(1);
             }
         }

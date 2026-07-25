@@ -7,7 +7,28 @@ use serde_json::Value as JsonValue;
 use serde_yaml_ng::Value as YamlValue;
 
 use super::path_item;
+use crate::infra::config::DiagnosticCode;
 use crate::infra::config::validation::Validator;
+
+/// Diagnostic code: `apm.io-error`.
+const APM_IO_ERROR: DiagnosticCode = DiagnosticCode::new("apm", "io-error");
+/// Diagnostic code: `apm.json-parse-error`.
+const APM_JSON_PARSE_ERROR: DiagnosticCode = DiagnosticCode::new("apm", "json-parse-error");
+/// Diagnostic code: `apm.plugin-dir-missing`.
+const APM_PLUGIN_DIR_MISSING: DiagnosticCode = DiagnosticCode::new("apm", "plugin-dir-missing");
+/// Diagnostic code: `apm.plugin-empty-name`.
+const APM_PLUGIN_EMPTY_NAME: DiagnosticCode = DiagnosticCode::new("apm", "plugin-empty-name");
+/// Diagnostic code: `apm.plugin-missing-manifest`.
+const APM_PLUGIN_MISSING_MANIFEST: DiagnosticCode =
+    DiagnosticCode::new("apm", "plugin-missing-manifest");
+/// Diagnostic code: `apm.plugin-name-mismatch`.
+const APM_PLUGIN_NAME_MISMATCH: DiagnosticCode = DiagnosticCode::new("apm", "plugin-name-mismatch");
+/// Diagnostic code: `apm.skill-dir-missing`.
+const APM_SKILL_DIR_MISSING: DiagnosticCode = DiagnosticCode::new("apm", "skill-dir-missing");
+/// Diagnostic code: `apm.skill-missing`.
+const APM_SKILL_MISSING: DiagnosticCode = DiagnosticCode::new("apm", "skill-missing");
+/// Diagnostic code: `apm.yaml-parse-error`.
+const APM_YAML_PARSE_ERROR: DiagnosticCode = DiagnosticCode::new("apm", "yaml-parse-error");
 
 const LOCAL_PLUGIN_PREFIX: &str = "~/.apm/plugins/";
 const LOCAL_PLUGIN_NAME_PREFIX: &str = "dot-";
@@ -40,7 +61,7 @@ pub(super) fn validate_local_ref(
         .join(plugin_name);
     if !plugin_dir.is_dir() {
         validator.warn(
-            "apm.plugin-dir-missing",
+            APM_PLUGIN_DIR_MISSING,
             item,
             format!(
                 "local APM plugin reference has no matching directory: {}",
@@ -67,7 +88,7 @@ fn validate_manifest(validator: &mut Validator, item: &str, plugin_dir: &Path, p
     }
 
     validator.warn(
-        "apm.plugin-missing-manifest",
+        APM_PLUGIN_MISSING_MANIFEST,
         item,
         format!(
             "local APM plugin is missing apm.yml or plugin.json: {}",
@@ -80,11 +101,7 @@ fn validate_apm_yml(validator: &mut Validator, item: &str, manifest: &Path, plug
     let content = match std::fs::read_to_string(manifest) {
         Ok(content) => content,
         Err(err) => {
-            validator.warn(
-                "apm.io-error",
-                item,
-                format!("could not read apm.yml: {err}"),
-            );
+            validator.warn(APM_IO_ERROR, item, format!("could not read apm.yml: {err}"));
             return;
         }
     };
@@ -92,7 +109,7 @@ fn validate_apm_yml(validator: &mut Validator, item: &str, manifest: &Path, plug
         Ok(value) => value,
         Err(err) => {
             validator.warn(
-                "apm.yaml-parse-error",
+                APM_YAML_PARSE_ERROR,
                 item,
                 format!("could not parse apm.yml: {err}"),
             );
@@ -114,7 +131,7 @@ fn validate_plugin_json(validator: &mut Validator, item: &str, manifest: &Path, 
         Ok(content) => content,
         Err(err) => {
             validator.warn(
-                "apm.io-error",
+                APM_IO_ERROR,
                 item,
                 format!("could not read plugin.json: {err}"),
             );
@@ -125,7 +142,7 @@ fn validate_plugin_json(validator: &mut Validator, item: &str, manifest: &Path, 
         Ok(value) => value,
         Err(err) => {
             validator.warn(
-                "apm.json-parse-error",
+                APM_JSON_PARSE_ERROR,
                 item,
                 format!("could not parse plugin.json: {err}"),
             );
@@ -153,14 +170,14 @@ fn validate_manifest_name(
         Some(name) if name == plugin_name => {}
         Some(name) if name.trim().is_empty() => {
             validator.warn(
-                "apm.plugin-empty-name",
+                APM_PLUGIN_EMPTY_NAME,
                 item,
                 format!("{manifest_name} name is missing or empty"),
             );
         }
         Some(name) => {
             validator.warn(
-                "apm.plugin-name-mismatch",
+                APM_PLUGIN_NAME_MISMATCH,
                 item,
                 format!(
                     "{manifest_name} name '{name}' does not match local plugin '{plugin_name}'"
@@ -169,7 +186,7 @@ fn validate_manifest_name(
         }
         None => {
             validator.warn(
-                "apm.plugin-empty-name",
+                APM_PLUGIN_EMPTY_NAME,
                 item,
                 format!("{manifest_name} name is missing or empty"),
             );
@@ -187,7 +204,7 @@ fn validate_native_skill_sources(validator: &mut Validator, item: &str, plugin_d
             });
             if !has_skill {
                 validator.warn(
-                    "apm.skill-missing",
+                    APM_SKILL_MISSING,
                     item,
                     format!(
                         "native APM plugin has no .apm/skills/*/SKILL.md entries: {}",
@@ -199,7 +216,7 @@ fn validate_native_skill_sources(validator: &mut Validator, item: &str, plugin_d
         Err(err) if err.kind() == ErrorKind::NotFound => {
             if !has_native_prompt_sources(plugin_dir) {
                 validator.warn(
-                    "apm.skill-dir-missing",
+                    APM_SKILL_DIR_MISSING,
                     item,
                     format!(
                         "native APM plugin is missing .apm/skills directory: {}",
@@ -210,7 +227,7 @@ fn validate_native_skill_sources(validator: &mut Validator, item: &str, plugin_d
         }
         Err(err) => {
             validator.warn(
-                "apm.io-error",
+                APM_IO_ERROR,
                 item,
                 format!("could not inspect .apm/skills: {err}"),
             );
@@ -241,7 +258,7 @@ fn validate_legacy_skill_sources(validator: &mut Validator, item: &str, plugin_d
             });
             if !has_skill {
                 validator.warn(
-                    "apm.skill-missing",
+                    APM_SKILL_MISSING,
                     item,
                     format!(
                         "legacy APM plugin has no skills/*/SKILL.md entries: {}",
@@ -252,7 +269,7 @@ fn validate_legacy_skill_sources(validator: &mut Validator, item: &str, plugin_d
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
             validator.warn(
-                "apm.skill-dir-missing",
+                APM_SKILL_DIR_MISSING,
                 item,
                 format!(
                     "legacy APM plugin is missing skills directory: {}",
@@ -262,7 +279,7 @@ fn validate_legacy_skill_sources(validator: &mut Validator, item: &str, plugin_d
         }
         Err(err) => {
             validator.warn(
-                "apm.io-error",
+                APM_IO_ERROR,
                 item,
                 format!("could not inspect skills directory: {err}"),
             );

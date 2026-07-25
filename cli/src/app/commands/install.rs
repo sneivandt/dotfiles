@@ -6,6 +6,7 @@ use crate::app::cli::{GlobalOpts, InstallOpts};
 use crate::app::filter::{self, has_unmatched_filter, task_passes_filters};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
+use crate::infra::logging::OutputExt as _;
 
 /// Install pipeline behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +89,7 @@ pub(crate) fn run_pipeline(
 
     if !opts.only.is_empty() || !opts.skip.is_empty() {
         let names: Vec<&str> = filtered.iter().map(|t| t.name()).collect();
-        log.debug(&format!(
+        log.debug(format!(
             "active filters — running {} task(s): {}",
             names.len(),
             names.join(", ")

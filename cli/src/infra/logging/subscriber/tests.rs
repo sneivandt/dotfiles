@@ -1,216 +1,117 @@
 use std::fs;
+use std::sync::Arc;
 
 use super::console::console_line_with_style;
-use super::file::FileLayer;
+use super::run_log::RunLogLayer;
+use crate::infra::logging::runlog::RunLog;
 use crate::infra::logging::style::StyleChoice;
 use tracing_subscriber::layer::SubscriberExt as _;
 
-/// Create a [`FileLayer`] in a temp directory and return the log file path,
-/// temp dir (must outlive the layer), and a tracing dispatcher guard.
-fn isolated_file_layer() -> (
+/// Install a [`RunLogLayer`] backed by a temp-directory run log and return the
+/// log path, temp dir (must outlive the layer), and a tracing dispatcher guard.
+fn isolated_run_log_layer() -> (
     std::path::PathBuf,
     tempfile::TempDir,
     super::super::TestDispatchGuard,
 ) {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let layer = FileLayer::new_in("test", tmp.path()).expect("FileLayer::new_in should succeed");
-    let path =
-        super::super::utils::log_file_path_in("test", tmp.path()).expect("log path should resolve");
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let dir = super::super::utils::dotfiles_cache_subdir(tmp.path()).expect("cache subdir");
+    let run_log = Arc::new(
+        RunLog::new("test", &dir, std::time::Instant::now()).expect("run log should be created"),
+    );
+    let path = run_log.path().to_path_buf();
+    let subscriber = tracing_subscriber::registry().with(RunLogLayer::new(run_log));
     let dispatch = tracing::Dispatch::new(subscriber);
     let guard = super::super::test_dispatch_guard(&dispatch);
     (path, tmp, guard)
 }
 
 #[test]
-fn file_layer_new_writes_header() {
-    let (path, _tmp, _guard) = isolated_file_layer();
+fn run_log_layer_writes_header() {
+    let (path, _tmp, _guard) = isolated_run_log_layer();
     let content = fs::read_to_string(&path).unwrap();
     assert!(
-        content.contains("=========================================="),
-        "header should contain separator line"
+        content.starts_with("# Dotfiles "),
+        "header should identify the tool and version: {content}"
     );
     assert!(
-        content.contains("Dotfiles"),
-        "header should contain 'Dotfiles'"
+        content.contains("# Columns:"),
+        "header should document the column layout: {content}"
     );
 }
 
 #[test]
-fn file_layer_formats_stage_with_arrow() {
-    let (path, _tmp, _guard) = isolated_file_layer();
-    tracing::info!(target: "dotfiles::stage", "my stage");
-    let content = fs::read_to_string(&path).unwrap();
-    assert!(
-        content.contains("==> my stage"),
-        "stage should be prefixed with ==>: {content}"
-    );
-}
-
-#[test]
-fn file_layer_formats_dry_run_without_tag() {
-    let (path, _tmp, _guard) = isolated_file_layer();
-    tracing::info!(target: "dotfiles::dry_run", "would link");
-    let content = fs::read_to_string(&path).unwrap();
-    let line = content
-        .lines()
-        .find(|line| line.contains("would link"))
-        .unwrap();
-    assert!(
-        !line.contains("[dry run]"),
-        "dry_run should not have [dry run] tag in file: {line}"
-    );
-}
-
-#[test]
-fn file_layer_formats_error_level_label() {
-    let (path, _tmp, _guard) = isolated_file_layer();
+fn run_log_layer_records_level_as_event_name() {
+    let (path, _tmp, _guard) = isolated_run_log_layer();
     tracing::error!("something broke");
-    let content = fs::read_to_string(&path).unwrap();
-    assert!(
-        content.contains("[error] something broke"),
-        "error should have text level label: {content}"
-    );
-}
-
-#[test]
-fn file_layer_formats_warn_level_label() {
-    let (path, _tmp, _guard) = isolated_file_layer();
     tracing::warn!("careful now");
-    let content = fs::read_to_string(&path).unwrap();
-    assert!(
-        content.contains("[warn] careful now"),
-        "warn should have text level label: {content}"
-    );
-}
-
-#[test]
-fn file_layer_formats_debug_with_level_label() {
-    let (path, _tmp, _guard) = isolated_file_layer();
     tracing::debug!("extra detail");
-    let content = fs::read_to_string(&path).unwrap();
-    let line = content
-        .lines()
-        .find(|line| line.contains("extra detail"))
-        .unwrap();
-    assert!(
-        line.contains("[debug]"),
-        "debug should have text level label: {line}"
-    );
-}
-
-#[test]
-fn file_layer_formats_info_with_level_label() {
-    let (path, _tmp, _guard) = isolated_file_layer();
     tracing::info!("regular info");
+
+    let content = fs::read_to_string(&path).unwrap();
+    assert!(content.contains("[error] something broke"), "{content}");
+    assert!(content.contains("[warn] careful now"), "{content}");
+    assert!(content.contains("[debug] extra detail"), "{content}");
+    assert!(content.contains("[info] regular info"), "{content}");
+}
+
+#[test]
+fn run_log_layer_skips_console_ui_events() {
+    let (path, _tmp, _guard) = isolated_run_log_layer();
+    tracing::info!(target: "dotfiles::ui::info", "already recorded");
+    tracing::warn!(target: "dotfiles::ui::warn", "also recorded");
+
     let content = fs::read_to_string(&path).unwrap();
     assert!(
-        content.contains("regular info"),
-        "info message should appear: {content}"
-    );
-    let info_line = content
-        .lines()
-        .find(|line| line.contains("regular info"))
-        .unwrap();
-    assert!(
-        info_line.contains("[info]") && !info_line.contains("==>"),
-        "plain info should have text level label and no stage marker: {info_line}"
+        !content.contains("already recorded") && !content.contains("also recorded"),
+        "Logger writes UI events itself; the bridge must not duplicate them: {content}"
     );
 }
 
 #[test]
-fn file_layer_formats_task_context_before_level_label() {
-    let (path, _tmp, _guard) = isolated_file_layer();
-    let span = tracing::info_span!("task", name = "example-task");
-    let _enter = span.enter();
+fn run_log_layer_uses_thread_task_context() {
+    let (path, _tmp, _guard) = isolated_run_log_layer();
+    let _task = crate::infra::logging::log_task_context("example-task");
 
     tracing::info!("task detail");
 
     let content = fs::read_to_string(&path).unwrap();
     assert!(
         content.contains("[example-task] [info] task detail"),
-        "task context should precede level label: {content}"
+        "task context should precede the event name: {content}"
     );
 }
 
 #[test]
-fn file_layer_strips_ansi_codes() {
-    let (path, _tmp, _guard) = isolated_file_layer();
+fn run_log_layer_strips_ansi_and_leading_whitespace() {
+    let (path, _tmp, _guard) = isolated_run_log_layer();
     tracing::info!("\x1b[31mcolored\x1b[0m text");
+    tracing::info!("  padded info");
+
     let content = fs::read_to_string(&path).unwrap();
     assert!(
-        content.contains("colored text"),
+        content.contains("colored text") && !content.contains("\x1b["),
         "ANSI codes should be stripped: {content}"
     );
-    assert!(
-        !content.contains("\x1b["),
-        "no ANSI escape should remain: {content}"
-    );
-}
-
-#[test]
-fn file_layer_includes_timestamp() {
-    let (path, _tmp, _guard) = isolated_file_layer();
-    tracing::info!("timestamped");
-    let content = fs::read_to_string(&path).unwrap();
-    let line = content
-        .lines()
-        .find(|line| line.contains("timestamped"))
-        .unwrap();
-    assert!(
-        line.starts_with('['),
-        "event line should start with timestamp bracket: {line}"
-    );
-}
-
-#[test]
-fn file_layer_strips_leading_whitespace() {
-    let (path, _tmp, _guard) = isolated_file_layer();
-    tracing::info!("  padded info");
-    tracing::debug!("    deep indent");
-    tracing::warn!("  padded warn");
-    let content = fs::read_to_string(&path).unwrap();
-
-    let info_line = content
+    let padded = content
         .lines()
         .find(|line| line.contains("padded info"))
         .unwrap();
     assert!(
-        info_line.ends_with("] padded info"),
-        "leading whitespace should be stripped from info: {info_line}"
-    );
-
-    let debug_line = content
-        .lines()
-        .find(|line| line.contains("deep indent"))
-        .unwrap();
-    assert!(
-        debug_line.ends_with("] deep indent"),
-        "leading whitespace should be stripped from debug: {debug_line}"
-    );
-
-    let warn_line = content
-        .lines()
-        .find(|line| line.contains("padded warn"))
-        .unwrap();
-    assert!(
-        warn_line.ends_with("[warn] padded warn"),
-        "leading whitespace should be stripped from warn: {warn_line}"
+        padded.ends_with("[info] padded info"),
+        "leading whitespace should be stripped: {padded}"
     );
 }
 
 #[test]
-fn file_layer_omits_empty_messages() {
-    let (path, _tmp, _guard) = isolated_file_layer();
+fn run_log_layer_omits_empty_messages() {
+    let (path, _tmp, _guard) = isolated_run_log_layer();
     let before = fs::read_to_string(&path).unwrap();
 
     tracing::info!("");
     tracing::warn!("   ");
     tracing::error!("\t");
     tracing::debug!("\x1b[31m\x1b[0m");
-    tracing::info!(target: "dotfiles::stage", "");
-    tracing::info!(target: "dotfiles::dry_run", "  ");
-    tracing::info!(target: "dotfiles::file_only", "");
 
     let after = fs::read_to_string(&path).unwrap();
     assert_eq!(
@@ -237,7 +138,7 @@ fn console_line_uses_ansi_when_style_enabled() {
 fn console_line_strips_ansi_when_style_disabled() {
     let line = console_line_with_style(
         tracing::Level::INFO,
-        "dotfiles::always",
+        "dotfiles::ui::always",
         "\x1b[32m3 Changed\x1b[0m",
         StyleChoice::plain(),
         true,
@@ -280,14 +181,14 @@ fn console_line_never_emits_debug_events() {
 fn console_stage_and_task_stage_are_plain() {
     let task = console_line_with_style(
         tracing::Level::INFO,
-        "dotfiles::task_stage",
+        "dotfiles::ui::task_stage",
         "Install packages",
         StyleChoice::colored(),
         true,
     );
     let stage = console_line_with_style(
         tracing::Level::INFO,
-        "dotfiles::stage",
+        "dotfiles::ui::stage",
         "Loading configuration",
         StyleChoice::colored(),
         true,

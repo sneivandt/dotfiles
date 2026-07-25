@@ -5,9 +5,10 @@
 //! and records the outcome into the logger.
 
 use crate::engine::{Context, TaskResult, TaskVisibility};
-use crate::infra::logging::{ActionCounts, DiagEvent, TaskStatus, diag_task_context};
+use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, log_task_context};
 
 use super::Task;
+use crate::infra::logging::OutputExt as _;
 
 pub(super) fn not_applicable_reason<T: Task + ?Sized>(task: &T, ctx: &Context) -> Option<String> {
     if task.should_run(ctx) {
@@ -19,7 +20,7 @@ pub(super) fn not_applicable_reason<T: Task + ?Sized>(task: &T, ctx: &Context) -
 
 fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: &str) {
     ctx.log()
-        .diag_task(DiagEvent::TaskSkip, task.name(), reason);
+        .run_task_event(LogEvent::TaskSkip, task.name(), reason);
     ctx.debug_fmt(|| format!("not applicable: {reason}"));
     ctx.log().record_task_with_metadata(
         task.name(),
@@ -43,14 +44,14 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: &str) {
 pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
-    let _diag_context = diag_task_context(task.name());
+    let _diag_context = log_task_context(task.name());
     if let Some(reason) = not_applicable_reason(task, ctx) {
         record_not_applicable(ctx, task, &reason);
         return TaskStatus::NotApplicable;
     }
 
     ctx.log()
-        .diag_task(DiagEvent::TaskStart, task.name(), "executing");
+        .run_task_event(LogEvent::TaskStart, task.name(), "executing");
     record_run_outcome(task, ctx)
 }
 
@@ -73,36 +74,37 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
     match task.run_configured(ctx) {
         Ok(None) => {
             ctx.log()
-                .diag_task(DiagEvent::TaskSkip, task.name(), "nothing configured");
+                .run_task_event(LogEvent::TaskSkip, task.name(), "nothing configured");
             ctx.log().debug("nothing configured");
             rec(TaskStatus::NotApplicable, None, ActionCounts::default());
             TaskStatus::NotApplicable
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
-                ctx.log().diag_task(DiagEvent::TaskDone, task.name(), "ok");
+                ctx.log()
+                    .run_task_event(LogEvent::TaskDone, task.name(), "ok");
                 rec(TaskStatus::Ok, None, ActionCounts::default())
             }
             TaskResult::DryRun => {
                 ctx.log()
-                    .diag_task(DiagEvent::TaskDone, task.name(), "planned");
+                    .run_task_event(LogEvent::TaskDone, task.name(), "planned");
                 rec(TaskStatus::DryRun, None, ActionCounts::default())
             }
             TaskResult::CheckPassed => {
                 ctx.log()
-                    .diag_task(DiagEvent::TaskDone, task.name(), "passed");
+                    .run_task_event(LogEvent::TaskDone, task.name(), "passed");
                 rec(TaskStatus::Passed, None, ActionCounts::default())
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log()
-                    .diag_task(DiagEvent::TaskSkip, task.name(), &reason);
+                    .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
                 ctx.debug_fmt(|| format!("not applicable: {reason}"));
                 rec(TaskStatus::NotApplicable, None, ActionCounts::default());
                 TaskStatus::NotApplicable
             }
             TaskResult::Skipped(reason) => {
                 ctx.log()
-                    .diag_task(DiagEvent::TaskSkip, task.name(), &reason);
+                    .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
                 ctx.log().info(&reason);
                 rec(TaskStatus::Skipped, Some(&reason), ActionCounts::default())
             }
@@ -112,8 +114,8 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
         Err(e) => {
             if ctx.is_cancelled() {
                 ctx.log()
-                    .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
-                ctx.log().warn(&format!("interrupted: {}", task.name()));
+                    .run_task_event(LogEvent::TaskSkip, task.name(), "interrupted");
+                ctx.log().warn(format!("interrupted: {}", task.name()));
                 rec(
                     TaskStatus::Skipped,
                     Some("interrupted"),
@@ -121,8 +123,8 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
                 )
             } else {
                 ctx.log()
-                    .diag_task(DiagEvent::TaskFail, task.name(), &format!("{e:#}"));
-                ctx.log().error(&format!("{}: {e:#}", task.name()));
+                    .run_task_event(LogEvent::TaskFail, task.name(), &format!("{e:#}"));
+                ctx.log().error(format!("{}: {e:#}", task.name()));
                 rec(
                     TaskStatus::Failed,
                     Some(&format!("{e:#}")),
@@ -140,8 +142,8 @@ fn record_failed_outcome(task: &dyn Task, ctx: &Context, reason: &str) -> TaskSt
     };
     if ctx.is_cancelled() {
         ctx.log()
-            .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
-        ctx.log().warn(&format!("interrupted: {reason}"));
+            .run_task_event(LogEvent::TaskSkip, task.name(), "interrupted");
+        ctx.log().warn(format!("interrupted: {reason}"));
         ctx.log().record_task_with_actions(
             task.name(),
             TaskStatus::Skipped,
@@ -151,8 +153,8 @@ fn record_failed_outcome(task: &dyn Task, ctx: &Context, reason: &str) -> TaskSt
         TaskStatus::Skipped
     } else {
         ctx.log()
-            .diag_task(DiagEvent::TaskFail, task.name(), reason);
-        ctx.log().warn(&format!("failed: {reason}"));
+            .run_task_event(LogEvent::TaskFail, task.name(), reason);
+        ctx.log().warn(format!("failed: {reason}"));
         ctx.log()
             .record_task_with_actions(task.name(), TaskStatus::Failed, Some(reason), actions);
         TaskStatus::Failed
@@ -188,8 +190,8 @@ fn record_batch_outcome(
 
     if outcome == TaskStatus::Failed && ctx.is_cancelled() {
         ctx.log()
-            .diag_task(DiagEvent::TaskSkip, task.name(), "interrupted");
-        ctx.log().warn(&format!("interrupted: {message}"));
+            .run_task_event(LogEvent::TaskSkip, task.name(), "interrupted");
+        ctx.log().warn(format!("interrupted: {message}"));
         ctx.log().record_task_with_actions(
             task.name(),
             TaskStatus::Skipped,
@@ -200,13 +202,13 @@ fn record_batch_outcome(
     }
 
     let event = if outcome == TaskStatus::Failed {
-        DiagEvent::TaskFail
+        LogEvent::TaskFail
     } else {
-        DiagEvent::TaskDone
+        LogEvent::TaskDone
     };
-    ctx.log().diag_task(event, task.name(), &message);
+    ctx.log().run_task_event(event, task.name(), &message);
     if outcome == TaskStatus::Failed {
-        ctx.log().warn(&format!("failed: {message}"));
+        ctx.log().warn(format!("failed: {message}"));
     } else {
         ctx.log().info(&message);
     }

@@ -7,6 +7,7 @@ mod execute;
 pub(crate) mod macros;
 mod types;
 
+use crate::infra::logging::OutputExt as _;
 pub use execute::execute;
 pub(crate) use macros::{
     config_resource_task, configured_task_result, process_config_resources,

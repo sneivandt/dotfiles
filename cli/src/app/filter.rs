@@ -2,6 +2,7 @@
 
 use crate::engine::Task;
 use crate::infra::logging::Output;
+use crate::infra::logging::OutputExt as _;
 
 /// Warn when a filter does not match any known task.
 pub(crate) fn warn_unmatched_filters(
@@ -13,7 +14,7 @@ pub(crate) fn warn_unmatched_filters(
     for filter in filters {
         let matched = tasks.iter().any(|task| task_matches_filter(*task, filter));
         if !matched {
-            log.warn(&format!("{flag} '{filter}' did not match any task"));
+            log.warn(format!("{flag} '{filter}' did not match any task"));
         }
     }
 }

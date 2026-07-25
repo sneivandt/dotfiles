@@ -84,14 +84,15 @@ pub(super) fn console_line_with_style(
 ) -> Option<String> {
     let msg = style.clean(msg);
     match level {
-        _ if target.starts_with("dotfiles::file_only") => None,
         tracing::Level::ERROR => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
         tracing::Level::WARN => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
-        tracing::Level::INFO if target == "dotfiles::always" => Some(msg),
-        tracing::Level::INFO if target == "dotfiles::task_result" => Some(msg),
-        tracing::Level::INFO if target == "dotfiles::stage" => verbose.then(|| msg.clone()),
-        tracing::Level::INFO if target == "dotfiles::task_stage" => verbose.then(|| msg.clone()),
-        tracing::Level::INFO if target == "dotfiles::dry_run" => Some(format!("  {msg}")),
+        tracing::Level::INFO if target == "dotfiles::ui::always" => Some(msg),
+        tracing::Level::INFO if target == "dotfiles::ui::task_result" => Some(msg),
+        tracing::Level::INFO if target == "dotfiles::ui::stage" => verbose.then(|| msg.clone()),
+        tracing::Level::INFO if target == "dotfiles::ui::task_stage" => {
+            verbose.then(|| msg.clone())
+        }
+        tracing::Level::INFO if target == "dotfiles::ui::dry_run" => Some(format!("  {msg}")),
         tracing::Level::INFO => verbose.then(|| format!("  {msg}")),
         tracing::Level::DEBUG | tracing::Level::TRACE => None,
     }

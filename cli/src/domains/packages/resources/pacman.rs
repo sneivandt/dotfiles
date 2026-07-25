@@ -2,10 +2,9 @@
 
 use std::collections::HashSet;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
-use super::package::{PackageProvider, PackageResource};
-use super::report::PackageInstallReport;
+use super::package::PackageProvider;
 use crate::engine::ResourceChange;
 use crate::infra::exec::Executor;
 
@@ -69,7 +68,7 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        query_names(executor, "pacman", &["-Q"])
+        query_names(executor, "pacman", &["-Q"]).context("querying installed pacman packages")
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
@@ -78,20 +77,12 @@ impl PackageProvider for PacmanProvider {
         Ok(ResourceChange::Applied)
     }
 
-    fn install_missing(
+    fn batch_invocation<'a>(
         &self,
-        resources: &[&PackageResource],
+        names: &[&'a str],
         executor: &dyn Executor,
-    ) -> Result<PackageInstallReport> {
-        let names: Vec<&str> = resources.iter().map(|r| r.name.as_str()).collect();
-        let (program, args) = pacman_invocation(&names, executor)?;
-        executor.run(program, &args)?;
-        Ok(PackageInstallReport::applied(
-            resources
-                .iter()
-                .map(|resource| resource.name.clone())
-                .collect(),
-        ))
+    ) -> Result<Option<(&'static str, Vec<&'a str>)>> {
+        pacman_invocation(names, executor).map(Some)
     }
 }
 

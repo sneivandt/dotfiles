@@ -11,6 +11,7 @@ use super::stats::{TaskResult, TaskStats};
 use crate::engine::{
     IntrinsicState, IntrinsicStateProvider, Resource, ResourceState, ResourceStateProvider,
 };
+use crate::infra::logging::OutputExt as _;
 
 /// Run `process_one` over `items` sequentially, honouring cancellation.
 ///

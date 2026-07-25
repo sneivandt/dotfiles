@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use crate::infra::exec::ExecResult;
 use crate::infra::logging::Log;
+use crate::infra::logging::OutputExt as _;
 
 const SHELLCHECK_SEVERITY_ARG: &str = "--severity=warning";
 const SHELLCHECK_ENABLE_ARG: &str = "--enable=avoid-nullary-conditions";

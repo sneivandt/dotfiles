@@ -1,4 +1,4 @@
-//! Captured command output formatting and diagnostic logging.
+//! Captured command output formatting and run-log recording.
 
 use super::ExecResult;
 
@@ -16,7 +16,7 @@ fn log_stream(label: &str, stream: &str, output: &str, success: bool) {
 
     if success {
         tracing::debug!(
-            target: "dotfiles::file_only_debug",
+            target: "dotfiles::exec",
             "{label} {stream}: {summary} suppressed on success"
         );
         return;

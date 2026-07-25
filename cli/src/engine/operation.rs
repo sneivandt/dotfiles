@@ -9,6 +9,7 @@ use anyhow::Result;
 
 use super::context::Context;
 use super::stats::TaskResult;
+use crate::infra::logging::OutputExt as _;
 
 /// Current lifecycle state and immutable execution plan for an [`Operation`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,7 +118,7 @@ mod tests {
 
     use super::*;
     use crate::engine::TaskStats;
-    use crate::infra::logging::{Output, TaskRecorder, TaskStatus};
+    use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
     use crate::test_helpers::{empty_config, make_linux_context};
 
     #[derive(Default)]
@@ -126,20 +127,14 @@ mod tests {
     }
 
     impl Output for CapturingLog {
-        fn stage(&self, _msg: &str) {}
-
-        fn info(&self, msg: &str) {
-            self.info
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(msg.to_string());
+        fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
+            if kind == MsgKind::Info {
+                self.info
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(msg.into_owned());
+            }
         }
-
-        fn debug(&self, _msg: &str) {}
-        fn warn(&self, _msg: &str) {}
-        fn error(&self, _msg: &str) {}
-        fn dry_run(&self, _msg: &str) {}
-        fn always(&self, _msg: &str) {}
     }
 
     impl TaskRecorder for CapturingLog {

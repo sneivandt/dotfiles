@@ -14,6 +14,7 @@ use crate::infra::logging::{Log, Logger, Output};
 use crate::infra::platform::Platform;
 
 use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
+use crate::infra::logging::OutputExt as _;
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
 pub struct CommandRunner {
@@ -172,7 +173,7 @@ fn resolve_profile(
 ) -> Result<profiles::Profile> {
     log.debug("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
-    log.always(&startup_context_line(
+    log.always(startup_context_line(
         log.command_title(),
         &profile.name,
         platform,
@@ -208,7 +209,7 @@ fn resolve_overlay(
 
 pub(super) fn log_overlay_path(overlay: Option<&std::path::Path>, log: &dyn Output) {
     if let Some(path) = overlay {
-        log.always(&format!("overlay {}", path.display()));
+        log.always(format!("overlay {}", path.display()));
     }
 }
 
@@ -223,7 +224,7 @@ fn load_config(
     let config = Config::load(root, profile, platform, overlay)?;
 
     for section in config.section_counts() {
-        log.debug(&format!("{} {}", section.count, section.label));
+        log.debug(format!("{} {}", section.count, section.label));
     }
 
     let warnings = config.validate(platform);

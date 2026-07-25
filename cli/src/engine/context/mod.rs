@@ -10,6 +10,10 @@ use crate::infra::platform::Platform;
 use super::CancellationToken;
 use crate::infra::logging::OutputExt as _;
 
+mod views;
+
+pub(crate) use views::{PathContext, RepoPaths, SystemContext};
+
 // Note: `Platform` is `Copy` (two small fields), so it is stored by value
 // rather than behind an `Arc`.  This avoids atomic refcount overhead for a
 // type that is cheaper to copy than to reference-count.
@@ -29,94 +33,6 @@ pub struct ContextOpts {
     /// variable.  Tests can set this explicitly to avoid mutating process-global
     /// state.
     pub is_ci: Option<bool>,
-}
-
-/// Repository-relative paths derived from the repository root.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct RepoPaths {
-    root: std::path::PathBuf,
-    symlinks_dir: std::path::PathBuf,
-    hooks_dir: std::path::PathBuf,
-}
-
-/// Filesystem paths exposed to task code as a focused context view.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct PathContext<'a> {
-    home: &'a Path,
-    repo: &'a RepoPaths,
-}
-
-impl PathContext<'_> {
-    /// User home directory.
-    #[must_use]
-    pub(crate) const fn home(&self) -> &Path {
-        self.home
-    }
-
-    /// Dotfiles repository root.
-    #[must_use]
-    pub(crate) fn root(&self) -> &Path {
-        &self.repo.root
-    }
-
-    /// Symlink source directory inside the repository.
-    #[must_use]
-    pub(crate) fn symlinks_dir(&self) -> &Path {
-        &self.repo.symlinks_dir
-    }
-
-    /// Git hook source directory inside the repository.
-    #[must_use]
-    pub(crate) fn hooks_dir(&self) -> &Path {
-        &self.repo.hooks_dir
-    }
-}
-
-/// Platform and process-execution access exposed as a focused context view.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SystemContext<'a> {
-    platform: Platform,
-    home: &'a Path,
-    executor: &'a Arc<dyn Executor>,
-    is_ci: bool,
-}
-
-impl SystemContext<'_> {
-    /// Detected platform.
-    #[must_use]
-    pub(crate) const fn platform(&self) -> Platform {
-        self.platform
-    }
-
-    /// User home directory.
-    #[must_use]
-    pub(crate) const fn home(&self) -> &Path {
-        self.home
-    }
-
-    /// Shared command executor.
-    #[must_use]
-    pub(crate) fn executor(&self) -> &dyn Executor {
-        self.executor.as_ref()
-    }
-
-    /// Clone the shared command executor for resource construction.
-    #[must_use]
-    pub(crate) fn executor_arc(&self) -> Arc<dyn Executor> {
-        Arc::clone(self.executor)
-    }
-
-    /// Return whether the process is running in CI.
-    #[must_use]
-    pub(crate) const fn is_ci(&self) -> bool {
-        self.is_ci
-    }
-
-    /// Return whether `program` is available on PATH.
-    #[must_use]
-    pub(crate) fn which(&self, program: &str) -> bool {
-        self.executor.which(program)
-    }
 }
 
 /// Shared context for task execution.
@@ -432,120 +348,11 @@ impl Context {
     }
 }
 
-impl RepoPaths {
-    fn new(root: std::path::PathBuf) -> Self {
-        Self {
-            symlinks_dir: root.join("symlinks"),
-            hooks_dir: root.join("hooks"),
-            root,
-        }
-    }
-}
-
 #[cfg(test)]
+#[path = "tests.rs"]
 #[allow(
     clippy::expect_used,
     clippy::unwrap_used,
     reason = "test code uses panicking helpers"
 )]
-mod tests {
-    use super::*;
-    use crate::infra::logging::Logger;
-    use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
-    use crate::test_helpers::{empty_config, make_linux_context};
-    use std::path::PathBuf;
-
-    #[derive(Debug)]
-    struct SilentLog;
-
-    impl Output for SilentLog {
-        fn emit(&self, _kind: MsgKind, _msg: std::borrow::Cow<'_, str>) {}
-        fn debug_enabled(&self) -> bool {
-            false
-        }
-    }
-
-    impl TaskRecorder for SilentLog {
-        fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
-    }
-
-    #[test]
-    fn root_returns_config_root() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        assert_eq!(ctx.root(), Path::new("/dotfiles"));
-    }
-
-    #[test]
-    fn path_view_returns_derived_paths() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        let paths = ctx.paths();
-        assert_eq!(paths.root(), Path::new("/dotfiles"));
-        assert_eq!(paths.symlinks_dir(), Path::new("/dotfiles/symlinks"));
-        assert_eq!(paths.hooks_dir(), Path::new("/dotfiles/hooks"));
-    }
-
-    #[test]
-    fn repo_paths_returns_all_derived_paths_from_one_snapshot() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        let paths = ctx.repo_paths();
-        assert_eq!(paths.root, PathBuf::from("/dotfiles"));
-        assert_eq!(paths.symlinks_dir, PathBuf::from("/dotfiles/symlinks"));
-        assert_eq!(paths.hooks_dir, PathBuf::from("/dotfiles/hooks"));
-    }
-
-    #[test]
-    fn with_log_preserves_other_fields() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        let new_log: Arc<dyn Log> = Arc::new(Logger::new("new"));
-        let ctx2 = ctx.with_log(new_log);
-        assert_eq!(ctx2.root(), ctx.root());
-        assert_eq!(ctx2.dry_run(), ctx.dry_run());
-        assert_eq!(ctx2.home(), ctx.home());
-        assert_eq!(ctx2.parallel(), ctx.parallel());
-    }
-
-    #[test]
-    fn root_reflects_construction_value() {
-        let config = empty_config(PathBuf::from("/my/root"));
-        let ctx = make_linux_context(config);
-        assert_eq!(ctx.root(), Path::new("/my/root"));
-    }
-
-    #[test]
-    fn debug_format_includes_key_fields() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        let debug = format!("{ctx:?}");
-        assert!(debug.contains("Context"));
-        assert!(debug.contains("dry_run"));
-        assert!(debug.contains("home"));
-    }
-
-    #[test]
-    fn clone_shares_arc_fields() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config);
-        let ctx2 = ctx.clone();
-        assert_eq!(ctx2.root(), ctx.root());
-        assert_eq!(ctx2.dry_run(), ctx.dry_run());
-        assert_eq!(ctx2.home(), ctx.home());
-        assert_eq!(ctx2.parallel(), ctx.parallel());
-        assert_eq!(ctx.platform(), ctx2.platform());
-    }
-
-    #[test]
-    fn debug_fmt_skips_closure_when_debug_logging_is_disabled() {
-        let config = empty_config(PathBuf::from("/dotfiles"));
-        let ctx = make_linux_context(config).with_log(Arc::new(SilentLog));
-        let called = std::sync::atomic::AtomicBool::new(false);
-        ctx.debug_fmt(|| {
-            called.store(true, std::sync::atomic::Ordering::SeqCst);
-            "debug message".to_string()
-        });
-        assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
-    }
-}
+mod tests;

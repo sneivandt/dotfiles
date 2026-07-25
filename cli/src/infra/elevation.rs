@@ -8,6 +8,8 @@ use crate::infra::exec::windows::PowerShellCommand;
 use crate::infra::exec::windows::powershell_encode_command;
 #[cfg(any(windows, test))]
 use crate::infra::exec::windows::{powershell_arg_list, powershell_single_quote};
+#[cfg(windows)]
+use crate::infra::logging::OutputExt as _;
 
 /// Check if the current process is running with administrator privileges.
 ///

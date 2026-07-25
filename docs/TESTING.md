@@ -174,6 +174,13 @@ Cross-target Clippy catches most compile-time Windows breakage from Linux, but
 it does not validate runtime Windows behavior. When changing Windows-specific
 code paths, rely on the Windows CI jobs rather than local Linux checks alone.
 
+The git application test asserts values contributed by files under
+`~/.config/git`, not git's final effective value. Git reads `~/.gitconfig`
+after `$XDG_CONFIG_HOME/git/config`, so anything set there wins; GitHub's
+Windows runners ship a `~/.gitconfig` that would otherwise mask the
+`core.autocrlf` override. Scoping to the files this repository installs keeps
+the assertion about the dotfiles rather than about the machine.
+
 ## Choosing coverage
 
 | Change | Minimum focused validation |

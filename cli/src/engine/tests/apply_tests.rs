@@ -390,7 +390,50 @@ fn process_single_apply_bail_on_error_propagates() {
 
     let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("critical"));
+    let rendered = format!("{:#}", err.unwrap_err());
+    assert!(rendered.contains("critical"), "got: {rendered}");
+}
+
+#[test]
+fn process_single_apply_error_names_the_failing_resource() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = MockResource::new(ResourceState::Missing)
+        .with_desc("~/.bashrc")
+        .with_apply(Err("critical".to_string()));
+    let opts = bail_opts();
+
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts)
+        .expect_err("bail_on_error must propagate the failure");
+
+    let rendered = format!("{err:#}");
+    assert!(
+        rendered.contains("~/.bashrc"),
+        "propagated error must identify the resource, got: {rendered}"
+    );
+    assert!(rendered.contains("critical"), "got: {rendered}");
+}
+
+#[test]
+fn process_single_apply_error_preserves_typed_category() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "command_failed",
+    };
+    let opts = bail_opts();
+
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts)
+        .expect_err("bail_on_error must propagate the failure");
+
+    let category = err
+        .downcast_ref::<crate::engine::resource::ResourceError>()
+        .map(crate::engine::resource::ResourceError::category);
+    assert_eq!(
+        category,
+        Some("command_failed"),
+        "context must not erase the typed error category"
+    );
 }
 
 // -----------------------------------------------------------------------
@@ -497,7 +540,7 @@ fn remove_single_error_propagates() {
         MockResource::new(ResourceState::Correct).with_remove(Err("remove failed".into()));
     let result = apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink");
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("remove failed"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("remove failed"));
 }
 
 // -----------------------------------------------------------------------
@@ -513,12 +556,7 @@ fn remove_single_typed_error_propagates() {
 
     let result = apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink");
     assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("permission denied")
-    );
+    assert!(format!("{:#}", result.unwrap_err()).contains("permission denied"));
 }
 
 // -----------------------------------------------------------------------
@@ -551,7 +589,7 @@ fn process_single_permission_denied_error_bail_propagates() {
 
     let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("permission denied"));
+    assert!(format!("{:#}", err.unwrap_err()).contains("permission denied"));
 }
 
 #[test]
@@ -579,7 +617,7 @@ fn process_single_not_supported_error_bail_propagates() {
 
     let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("not supported"));
+    assert!(format!("{:#}", err.unwrap_err()).contains("not supported"));
 }
 
 // -----------------------------------------------------------------------
@@ -597,7 +635,7 @@ fn process_single_command_failed_error_bail_propagates() {
 
     let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
     assert!(err.is_err());
-    assert!(err.unwrap_err().to_string().contains("exit code 1"));
+    assert!(format!("{:#}", err.unwrap_err()).contains("exit code 1"));
 }
 
 #[test]

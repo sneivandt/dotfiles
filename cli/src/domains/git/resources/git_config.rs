@@ -89,14 +89,18 @@ impl Resource for GitConfigResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        let mut config = self.open_config()?;
-        self.apply_to_config(&mut config).map_err(Into::into)
+        let mut config = self
+            .open_config()
+            .with_context(|| format!("setting git config {}", self.key))?;
+        Ok(self.apply_to_config(&mut config)?)
     }
 }
 
 impl IntrinsicState for GitConfigResource {
     fn current_state(&self) -> Result<ResourceState> {
-        let config = self.open_config()?;
+        let config = self
+            .open_config()
+            .with_context(|| format!("reading git config {}", self.key))?;
         self.state_from_config(&config)
     }
 }
@@ -110,6 +114,27 @@ impl IntrinsicState for GitConfigResource {
 )]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_failure_names_the_key() {
+        let dir = tempfile::tempdir().unwrap();
+        // A directory can never be opened as a config file.
+        let resource = GitConfigResource::with_config_path(
+            "core.autocrlf".to_string(),
+            "false".to_string(),
+            dir.path().to_path_buf(),
+        );
+
+        let error = resource
+            .apply()
+            .expect_err("opening a directory as a config file must fail");
+
+        let rendered = format!("{:#}", anyhow::Error::new(error));
+        assert!(
+            rendered.contains("core.autocrlf"),
+            "error must name the failing key, got: {rendered}"
+        );
+    }
 
     #[test]
     fn description_format() {

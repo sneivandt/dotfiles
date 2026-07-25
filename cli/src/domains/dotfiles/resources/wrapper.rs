@@ -120,19 +120,19 @@ impl Resource for WrapperResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        if let Some(metadata) = self.target_metadata()? {
-            if metadata.file_type().is_symlink() {
-                crate::infra::fs::remove_file(&self.target)?;
-            } else if metadata.is_dir() {
-                return Err(crate::engine::resource::ResourceError::conflicting_state(
-                    self.description(),
-                    "wrapper file",
-                    "directory",
-                ));
-            }
+        // A symlink at the target is replaced by the atomic rename below; a
+        // real directory is user state this resource must not remove.
+        if let Some(metadata) = self.target_metadata()?
+            && metadata.is_dir()
+        {
+            return Err(crate::engine::resource::ResourceError::conflicting_state(
+                self.description(),
+                "wrapper file",
+                "directory",
+            ));
         }
 
-        crate::infra::fs::write_with_parent(&self.target, &self.content)?;
+        crate::infra::fs::write_atomic(&self.target, &self.content)?;
 
         #[cfg(unix)]
         crate::infra::fs::set_executable(&self.target)?;

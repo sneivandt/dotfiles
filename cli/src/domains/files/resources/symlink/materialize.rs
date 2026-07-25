@@ -1,8 +1,9 @@
 use anyhow::{Context as _, Result};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::platform::{is_link_like, remove_symlink};
 use crate::infra::exec::Executor;
+use crate::infra::fs::{rename_into_place, sibling_temp_path};
 
 /// Copy `source` into `target`, replacing the symlink that currently lives at
 /// `target`. Files are staged to a sibling temp path first so that the window
@@ -18,14 +19,23 @@ pub(super) fn copy_into_place(source: &Path, target: &Path, executor: &dyn Execu
     }
 }
 
-/// Build a sibling temporary path by appending `suffix` to the target name.
-pub(super) fn sibling_temp_path(target: &Path, suffix: &str) -> PathBuf {
-    let parent = target.parent().unwrap_or_else(|| Path::new("."));
-    let name = target.file_name().map_or_else(
-        || "dotfiles_tmp".to_string(),
-        |n| format!("{}{suffix}", n.to_string_lossy()),
-    );
-    parent.join(name)
+/// Clear the link that currently occupies `target` so staged content can be
+/// renamed over it.
+///
+/// Replacement is only ever performed on link-like targets: anything else is a
+/// user file that this resource must not silently discard. `label` names the
+/// link flavour for the error context (`"symlink"` on files, `"symlink/junction"`
+/// for directories on Windows).
+fn clear_link_target(target: &Path, executor: &dyn Executor, label: &str) -> Result<()> {
+    match crate::infra::fs::symlink_metadata_optional(target, "stat target")? {
+        Some(meta) if is_link_like(target, &meta) => remove_symlink(target, executor)
+            .with_context(|| format!("remove {label}: {}", target.display())),
+        Some(_) => Err(anyhow::anyhow!(
+            "refusing to overwrite non-symlink target: {}",
+            target.display()
+        )),
+        None => Ok(()),
+    }
 }
 
 /// Copy a regular file: stage to a temp sibling, remove the symlink, rename
@@ -36,22 +46,9 @@ fn copy_file_into_place(source: &Path, target: &Path, executor: &dyn Executor) -
 
     let mut guard = crate::infra::fs::TempPath::new(tmp.clone());
 
-    match crate::infra::fs::symlink_metadata_optional(target, "stat target")? {
-        Some(meta) if is_link_like(target, &meta) => {
-            remove_symlink(target, executor)
-                .with_context(|| format!("remove symlink: {}", target.display()))?;
-        }
-        Some(_) => {
-            return Err(anyhow::anyhow!(
-                "refusing to overwrite non-symlink target: {}",
-                target.display()
-            ));
-        }
-        None => {}
-    }
+    clear_link_target(target, executor, "symlink")?;
 
-    std::fs::rename(&tmp, target)
-        .with_context(|| format!("rename {} to {}", tmp.display(), target.display()))?;
+    rename_into_place(&tmp, target)?;
 
     guard.persist();
     Ok(())
@@ -72,19 +69,7 @@ pub(super) fn copy_dir_into_place(
     crate::infra::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
 
-    match crate::infra::fs::symlink_metadata_optional(target, "stat target")? {
-        Some(meta) if is_link_like(target, &meta) => {
-            remove_symlink(target, executor)
-                .with_context(|| format!("remove symlink/junction: {}", target.display()))?;
-        }
-        Some(_) => {
-            return Err(anyhow::anyhow!(
-                "refusing to overwrite non-symlink target: {}",
-                target.display()
-            ));
-        }
-        None => {}
-    }
+    clear_link_target(target, executor, "symlink/junction")?;
 
     match std::fs::rename(&tmp, target) {
         Ok(()) => {}

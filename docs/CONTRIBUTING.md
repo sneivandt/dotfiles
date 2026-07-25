@@ -150,3 +150,12 @@ self-updating; replace them by deleting the binary and re-running a wrapper.
 Update the guide closest to the behavior. If a task is added, removed, renamed,
 changes command membership, or is rewired, update [Task reference](TASKS.md).
 Keep the root README as a landing page and place detailed guidance in `docs\`.
+
+CI checks documentation on every change, including docs-only changes: relative
+markdown links must resolve to real files, and every task selector documented in
+[Task reference](TASKS.md) must still exist in the CLI. Reproduce both locally
+with:
+
+```bash
+sh .github/workflows/scripts/linux/check.sh docs
+```

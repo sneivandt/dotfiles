@@ -60,9 +60,10 @@ function Assert-GitConfig
     )
 
     # Resolve with git's normal file discovery. Callers run these assertions
-    # from outside any repository, so local configuration cannot shadow the
-    # user-level chain under test. An explicit --global scope is not usable
-    # here: on Windows it does not pick up ~/.config/git/config.
+    # through Invoke-OutsideRepository, which places git outside any repository
+    # and pins GIT_CONFIG_GLOBAL to the installed dotfiles config, so neither
+    # repository-local values nor the runner's own ~/.gitconfig can shadow the
+    # chain under test.
     $actual = & git config --get $Key 2>$null
     if ($LASTEXITCODE -ne 0)
     {
@@ -95,12 +96,21 @@ function Invoke-OutsideRepository
 {
     <#
     .SYNOPSIS
-        Run a script block from a scratch directory outside any git repository.
+        Run a script block against the installed dotfiles git configuration,
+        from a scratch directory outside any git repository.
     .DESCRIPTION
         Git resolves configuration as local > global > system. Running from the
         CI checkout would let repository-local values shadow the user-level
-        configuration these tests validate. An explicit --global scope is not a
-        usable substitute: on Windows it does not pick up ~/.config/git/config.
+        configuration these tests validate.
+
+        Git also reads two global files, ~/.config/git/config first and
+        ~/.gitconfig second, with the later file winning. The hosted Windows
+        runner image ships a ~/.gitconfig that sets core.autocrlf, so it
+        shadows the dotfiles chain. GIT_CONFIG_GLOBAL replaces both global
+        files with the installed dotfiles config, which still exercises the
+        [include] of ~/.config/git/windows and git's precedence rules within
+        that chain. An explicit --global scope is not a usable substitute: on
+        Windows it does not pick up ~/.config/git/config.
     #>
     param(
         [Parameter(Mandatory = $true)][scriptblock]$Body
@@ -108,13 +118,20 @@ function Invoke-OutsideRepository
 
     $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
     New-Item -ItemType Directory -Path $scratch -Force | Out-Null
+    $configPath = Join-Path $HOME '.config' 'git' 'config'
+    $previousGlobal = $env:GIT_CONFIG_GLOBAL
     Push-Location $scratch
     try
     {
+        if (Test-Path -LiteralPath $configPath)
+        {
+            $env:GIT_CONFIG_GLOBAL = $configPath
+        }
         & $Body
     }
     finally
     {
+        $env:GIT_CONFIG_GLOBAL = $previousGlobal
         Pop-Location
         Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -141,9 +158,10 @@ function Test-GitConfig
     }
     Write-TestPass "custom git config found: $configPath"
 
-    # Evaluate outside any repository. The CI checkout carries a
-    # repository-local core.autocrlf, and local config outranks the user-level
-    # chain this test validates.
+    # Evaluate against the installed dotfiles chain only. The CI checkout
+    # carries a repository-local core.autocrlf and the runner image ships a
+    # ~/.gitconfig that sets it too; both outrank the user-level chain this
+    # test validates.
     Invoke-OutsideRepository {
         Assert-GitConfig -Key 'init.defaultBranch' -Expected 'main'
         Assert-GitConfig -Key 'pull.rebase' -Expected 'true'

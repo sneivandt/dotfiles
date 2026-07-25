@@ -1,12 +1,14 @@
 //! Task: update the dotfiles binary to the latest GitHub release.
 //!
 //! Submodules:
+//! - [`attestation`] — GitHub build provenance verification of downloads.
 //! - [`paths`]   — binary, cache, and staging path helpers.
 //! - [`cache`]   — version-check cache I/O.
 //! - [`http`]    — HTTP client trait, GitHub API, checksum verification.
 //! - [`version`] — semver parsing and ordering for release tags.
 //! - [`install`] — binary replacement, staging, smoke testing, and download.
 
+mod attestation;
 mod cache;
 mod http;
 mod install;

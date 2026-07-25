@@ -24,7 +24,8 @@ Set-Location C:\Code\sneivandt\dotfiles
 ```
 
 The wrapper looks for `bin\dotfiles.exe`. If absent, it downloads the matching
-release asset and checksum and verifies SHA-256 before execution.
+release asset and checksum, verifies SHA-256, and verifies build provenance
+before execution.
 
 To build from the current checkout:
 

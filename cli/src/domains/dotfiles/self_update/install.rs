@@ -7,6 +7,7 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result, bail};
 
+use super::attestation::{SystemGh, policy_from_env, verify_provenance};
 use super::cache::write_cache;
 use super::http::{HttpClient, download_bytes, verify_checksum};
 use super::paths::asset_name;
@@ -171,8 +172,8 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns an error if the download, checksum verification, binary
-/// replacement, or smoke test fails.  On a smoke-test failure the previous
+/// Returns an error if the download, checksum verification, build provenance
+/// verification, binary replacement, or smoke test fails.  On a smoke-test failure the previous
 /// binary is restored from the `.dotfiles.old` backup.
 pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClient) -> Result<()> {
     let asset = asset_name();
@@ -182,6 +183,7 @@ pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClie
     );
     let data = download_bytes(client, &url)?;
     verify_checksum(client, tag, asset, &data)?;
+    verify_provenance(&SystemGh, policy_from_env(), asset, &data)?;
 
     #[cfg(windows)]
     {

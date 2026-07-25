@@ -19,6 +19,7 @@ use output::{failure_output, log_command_output};
 use process::{terminate_child, wait_after_terminate};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_mins(30);
+const TOOL_TIMEOUT: Duration = Duration::from_mins(2);
 #[cfg(not(windows))]
 const SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -493,6 +494,29 @@ pub(crate) fn run_path_smoke_test(path: &Path, args: &[&str]) -> Result<ExecResu
     let label = path.display().to_string();
     let result = execute_unchecked(cmd, &label, &CommandSettings::timeout(SMOKE_TEST_TIMEOUT))?;
     log_command_output(&label, &result);
+    Ok(result)
+}
+
+/// Run an auxiliary tool with the tool timeout, allowing a non-zero exit.
+///
+/// Used by subsystems that run outside task execution (for example
+/// self-update provenance verification) and therefore have no
+/// [`Executor`] available on every platform.
+///
+/// # Errors
+///
+/// Returns an error if the command cannot be spawned or times out. Non-zero
+/// exit statuses are returned in the [`ExecResult`] for the caller to
+/// interpret.
+pub(crate) fn run_tool_unchecked(program: &str, args: &[&str]) -> Result<ExecResult> {
+    let mut cmd = new_command(program);
+    cmd.args(args);
+    let settings = CommandSettings {
+        timeout: TOOL_TIMEOUT,
+        cancellation: None,
+    };
+    let result = execute_unchecked(cmd, program, &settings)?;
+    log_command_output(program, &result);
     Ok(result)
 }
 

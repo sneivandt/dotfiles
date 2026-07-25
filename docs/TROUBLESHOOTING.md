@@ -17,6 +17,7 @@ Symptoms:
 - no compatible release asset
 - checksum download failure
 - checksum mismatch
+- build provenance verification failure
 - unsupported architecture
 
 Actions:
@@ -35,6 +36,10 @@ Actions:
 ```
 
 Do not bypass checksum verification.
+
+Build provenance verification is advisory unless
+`DOTFILES_REQUIRE_ATTESTATION=1` is set; see
+[Security model](SECURITY.md#build-provenance-verification).
 
 ## Cargo build fails
 

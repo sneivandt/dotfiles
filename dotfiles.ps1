@@ -260,6 +260,57 @@ function Get-ChecksumForAsset
     return $null
 }
 
+function Test-Attestation
+{
+    <#
+    .SYNOPSIS
+        Verify GitHub build provenance for a downloaded asset.
+    .DESCRIPTION
+        Verification is advisory by default: the checksum has already been
+        verified, so a missing or unauthenticated gh CLI only produces a
+        warning. Set DOTFILES_REQUIRE_ATTESTATION=1 to treat any unverified
+        download as fatal, or DOTFILES_SKIP_ATTESTATION=1 to skip the check.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if ($env:DOTFILES_SKIP_ATTESTATION -eq '1')
+    {
+        return $true
+    }
+
+    $required = $env:DOTFILES_REQUIRE_ATTESTATION -eq '1'
+
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue))
+    {
+        if ($required)
+        {
+            Write-Warning "gh not found. Cannot verify build provenance."
+            return $false
+        }
+
+        Write-Warning "gh not found. Skipping build provenance verification."
+        return $true
+    }
+
+    & gh attestation verify $Path --repo $Repo 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0)
+    {
+        return $true
+    }
+
+    if ($required)
+    {
+        Write-Warning "Build provenance verification failed for $Path."
+        return $false
+    }
+
+    Write-Warning "Could not verify build provenance for $Path. The SHA-256 checksum matched the published release."
+    return $true
+}
+
 function Get-Binary
 {
     $tag = Resolve-ReleaseTag
@@ -328,6 +379,13 @@ function Get-Binary
     {
         if (Test-Path $Binary) { Remove-Item $Binary -Force }
         Write-Error "Checksum verification failed!"
+        exit 1
+    }
+
+    if (-not (Test-Attestation -Path $Binary))
+    {
+        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        Write-Error "Build provenance verification failed for $assetName."
         exit 1
     }
 

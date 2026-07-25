@@ -21,8 +21,9 @@ reimplementing its behavior.
 ```
 
 By default, a wrapper uses `bin\dotfiles` or `bin\dotfiles.exe`. If the binary
-is absent, it downloads the latest compatible GitHub Release asset and verifies
-its SHA-256 checksum. Use wrapper-only `--build` to compile the CLI with Cargo:
+is absent, it downloads the latest compatible GitHub Release asset, verifies its
+SHA-256 checksum, and verifies its build provenance attestation when the `gh`
+CLI is available. Use wrapper-only `--build` to compile the CLI with Cargo:
 
 ```bash
 ./dotfiles.sh --build install --dry-run

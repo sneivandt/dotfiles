@@ -319,7 +319,7 @@ fn process_resources_current_state_error_propagates() {
 
     let result = process_resources(&ctx, resources, &opts);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("state failed"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("state failed"));
 }
 
 #[test]
@@ -330,7 +330,7 @@ fn process_resources_remove_current_state_error_propagates() {
 
     let result = process_resources_remove(&ctx, resources, "unlink");
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("state failed"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("state failed"));
 }
 
 // -----------------------------------------------------------------------
@@ -345,7 +345,7 @@ fn process_resources_bail_on_apply_error_propagates() {
 
     let result = process_resources(&ctx, resources, &opts);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("fatal"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("fatal"));
 }
 
 // -----------------------------------------------------------------------
@@ -473,7 +473,7 @@ fn process_precomputed_states_bail_on_error_propagates() {
 
     let result = process_precomputed_states(&ctx, resource_states, &opts);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("fatal"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("fatal"));
 }
 
 // -----------------------------------------------------------------------
@@ -553,7 +553,7 @@ fn process_resources_remove_parallel_state_error_propagates() {
 
     let result = process_resources_remove(&ctx, resources, "unlink");
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("state failed"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("state failed"));
 }
 
 // -----------------------------------------------------------------------
@@ -606,7 +606,7 @@ fn process_resources_remove_error_propagates() {
 
     let result = process_resources_remove(&ctx, resources, "unlink");
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("rm failed"));
+    assert!(format!("{:#}", result.unwrap_err()).contains("rm failed"));
 }
 
 // -----------------------------------------------------------------------

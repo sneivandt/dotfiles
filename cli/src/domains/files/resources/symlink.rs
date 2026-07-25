@@ -186,7 +186,7 @@ impl IntrinsicState for SymlinkResource {
 
 #[cfg(test)]
 pub(super) fn sibling_temp_path(target: &std::path::Path, suffix: &str) -> PathBuf {
-    materialize::sibling_temp_path(target, suffix)
+    crate::infra::fs::sibling_temp_path(target, suffix)
 }
 
 #[cfg(test)]

@@ -173,7 +173,13 @@ where
                 &format!("{} error [{category}]: {e}", mutation.description),
             );
             if mutation.bail_on_error {
-                return Err(e.into());
+                // Keep the failing resource identifiable once the error leaves
+                // the engine: the typed error alone says what went wrong, not
+                // which resource it went wrong on.
+                return Err(anyhow::Error::new(e).context(format!(
+                    "failed to {} {}",
+                    mutation.verb, mutation.description
+                )));
             }
             ctx.log().warn(format!(
                 "failed to {} {}: {e}",

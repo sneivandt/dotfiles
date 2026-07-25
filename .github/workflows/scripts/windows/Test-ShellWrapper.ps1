@@ -76,7 +76,7 @@ function Test-CacheFreshness {
         }
 
         # Test 2: Fresh cache
-        @('v0.1.0', [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $cacheFile
+        @('v2026.07.25.1', [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $cacheFile
         $lines = Get-Content $cacheFile
         $cachedTs = [int]$lines[1]
         $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
@@ -90,7 +90,7 @@ function Test-CacheFreshness {
         }
 
         # Test 3: Stale cache
-        @('v0.1.0', 0) | Set-Content $cacheFile
+        @('v2026.07.25.1', 0) | Set-Content $cacheFile
         $lines = Get-Content $cacheFile
         $cachedTs = [int]$lines[1]
         $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
@@ -188,7 +188,7 @@ function Test-OfflineFallback {
 
     # Simulate offline scenario
     $latestVersion = ""  # Empty simulates offline
-    $localVersion = "v0.1.0"
+    $localVersion = "v2026.07.25.1"
 
     if ([string]::IsNullOrEmpty($latestVersion) -and ($localVersion -ne "none")) {
         Write-TestPass "Offline fallback logic works with cached binary"

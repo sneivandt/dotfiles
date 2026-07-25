@@ -171,7 +171,7 @@ download_binary() {
 
   mkdir -p "$BIN_DIR"
 
-  echo "Downloading dotfiles bootstrap binary..."
+  echo "Bootstrap · dotfiles $tag · ${asset#dotfiles-}"
   if ! download_file "$url" "$BINARY"; then
     echo "ERROR: Failed to download dotfiles binary." >&2
     echo "Check your internet connection or use --build to build from source." >&2
@@ -195,6 +195,8 @@ download_binary() {
   fi
 
   chmod +x "$BINARY"
+
+  echo "Downloaded · checksum verified · $BINARY"
 }
 
 # Bootstrap: download the latest binary only if no binary is present.

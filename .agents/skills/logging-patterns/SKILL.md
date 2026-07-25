@@ -39,6 +39,9 @@ description: >
   or failed tasks and elapsed time. Never infer counts from display text.
 - Debug-level detail may be suppressed on terminal in non-verbose mode, but
   persistent logs remain complete.
+- Header and summary lines join segments with ` · `. The shell wrappers
+  deliberately mirror this style for bootstrap output so pre-binary and
+  post-binary output look like one program; see `shell-patterns`.
 
 Canonical implementations:
 - `cli/src/infra/logging/mod.rs`

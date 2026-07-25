@@ -126,7 +126,10 @@ wrappers and the self-update path.
 
 ## Safe contribution practices
 
-- Pin or constrain external actions and tooling according to repository policy.
+- Pin every external GitHub Action to a full commit SHA, with the human-readable
+  tag kept in a trailing comment. Moving tags (including tool tags such as
+  `taiki-e/install-action@cargo-deny`) must be expressed as a pinned SHA plus an
+  explicit input.
 - Keep workflow permissions least-privilege.
 - Never echo secrets in shell tracing or the run log.
 - Preserve dry-run semantics for every mutation.

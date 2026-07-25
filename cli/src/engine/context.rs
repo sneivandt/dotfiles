@@ -120,6 +120,27 @@ impl SystemContext<'_> {
 }
 
 /// Shared context for task execution.
+///
+/// # Choosing an accessor
+///
+/// Two idioms are supported deliberately, and mixing them arbitrarily is the
+/// main source of confusion:
+///
+/// - **One-off access** — use the flat accessors ([`Context::root`],
+///   [`Context::home`], [`Context::executor`], [`Context::platform`]). This is
+///   the dominant idiom and the right default.
+/// - **Several related reads in one scope** — take a view snapshot first
+///   ([`Context::paths`] for filesystem locations, [`Context::system`] for
+///   platform and process execution), then read fields off it:
+///
+///   ```ignore
+///   let system = ctx.system();
+///   if system.platform().is_windows() && system.which("pwsh") { … }
+///   ```
+///
+/// The views exist to avoid repeated `ctx.` chains and to keep related reads
+/// together; they are not a security or encapsulation boundary. Prefer a view
+/// once a scope needs two or more values from the same group.
 #[derive(Clone)]
 pub struct Context {
     paths: Arc<RepoPaths>,

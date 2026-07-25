@@ -9,7 +9,8 @@ checkout from obvious secret exposure and Rust quality regressions before CI.
 |---|---|
 | `pre-commit` | Entry point installed into the repository's Git hook directory |
 | `check-sensitive.sh` | Scans staged content for configured sensitive patterns |
-| `sensitive-patterns.ini` | Versioned pattern and allow-list configuration |
+| `sensitive-patterns.ini` | Versioned pattern configuration |
+| `sensitive-allowlist.ini` | Versioned allow-list for structurally safe matches |
 | `check-rust.sh` | Runs staged-change-aware Rust formatting and checks |
 | `check-ci-guards.sh` | Verifies CI publishing and gate invariants |
 
@@ -79,12 +80,52 @@ Use it only when the hook itself is broken and the change is being used to fix
 it. A bypass does not skip CI and should never be used to commit known sensitive
 data.
 
+For a recurring false positive, add an allow-list entry instead of bypassing.
+A bypass disables the whole scan for that commit; an allow-list entry disables
+exactly one known-safe construct and is reviewable.
+
 ## Changing sensitive patterns
 
-Treat `sensitive-patterns.ini` as security-sensitive behavior:
+Treat `sensitive-patterns.ini` and `sensitive-allowlist.ini` as
+security-sensitive behavior:
 
 1. Keep broad secret families covered.
-2. Make allow-list entries as narrow as possible.
+2. Make allow-list entries as narrow as possible, and anchor them on
+   surrounding syntax rather than on the secret-shaped text alone.
 3. Test both a known match and an expected non-match.
 4. Avoid including a real credential in a test fixture.
 5. Run the hook integration checks.
+
+Allow-list entries redact only the span they match, so the rest of the line is
+still scanned. A pinned action reference is ignored, but a credential appearing
+later on that same line is still reported.
+
+Entries currently cover SHA-pinned GitHub Actions (a 40-character hex SHA
+frequently contains ten consecutive digits, which the phone and SSN patterns
+match by coincidence), the `ci@test.local` CI fixture address, and
+`vYYYY.MM.DD.N` release tags, which the IPv4 pattern reads as four
+dot-separated numeric groups.
+
+Reserved documentation domains such as `example.com` are deliberately *not*
+allow-listed, because the scanner's own PII coverage is asserted with an
+`example.com` address.
+
+## Running the hook test suite
+
+`.github/workflows/scripts/linux/test-git-hooks.sh` creates real commits in the
+current repository to prove the hook blocks them. If a detection case ever
+fails to block, the test's commit captures whatever else is staged. The script
+therefore refuses to run against a checkout with uncommitted changes.
+
+Run it on a clean checkout, or in a scratch repository:
+
+```bash
+mkdir -p /tmp/hooktest/hooks && cp -a hooks/. /tmp/hooktest/hooks/
+cd /tmp/hooktest && git init -q
+ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit
+DIR=/path/to/dotfiles sh /path/to/dotfiles/.github/workflows/scripts/linux/test-git-hooks.sh
+```
+
+Use a fresh scratch repository per run. A failed case leaves its fixture
+committed, which makes the next run's identical fixture a no-op diff and
+reports a spurious second failure.

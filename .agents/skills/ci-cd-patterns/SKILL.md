@@ -17,7 +17,7 @@ versions or complete job inventories into guidance.
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `ci.yml` | Push/PR to main | Build, lint, test, integration checks |
-| `release.yml` | Successful CI `workflow_run` from same-repo push to main | Build release binaries, create GitHub Release |
+| `release.yml` | Successful CI `workflow_run` from same-repo push to main, or `workflow_dispatch` | Resolve the release version, build release binaries, create GitHub Release |
 | `docker.yml` | Successful CI `workflow_run` from same-repo push to main | Build and push Docker image to Docker Hub |
 
 ## CI Pipeline (`ci.yml`)
@@ -31,6 +31,9 @@ not gate `ci-success`.
 Maintain these invariants:
 
 - Keep workflow permissions least-privilege.
+- Pin every external action to a full commit SHA with the tag in a trailing
+  comment. Moving tool tags (for example `taiki-e/install-action@cargo-deny`)
+  become a pinned SHA plus an explicit `with: tool:` input.
 - Use concurrency cancellation for superseded runs.
 - Use `--profile ci` for CI builds and tests; reserve `--release` for publishing.
 - Upload build artifacts for downstream integration jobs rather than rebuilding.
@@ -40,19 +43,41 @@ Maintain these invariants:
 
 Integration logic belongs in `.github/workflows/scripts/linux/` and
 `.github/workflows/scripts/windows/`, with shared shell helpers under
-`scripts/linux/lib/`. Prefer scripts over large inline workflow steps, and run
-dotfiles integration cases against the checkout with `--root .`.
+`.github/workflows/scripts/linux/lib/`. Prefer scripts over large inline
+workflow steps, and run dotfiles integration cases against the checkout with
+`--root .`.
+
+`.github/workflows/scripts/linux/check.sh` and its PowerShell twin
+`.github/workflows/scripts/windows/Check.ps1` run the gating checks locally
+under the same `ci` profile. Keep them in step when adding or removing a gating
+CI concern, and prefer extending a stage over adding a parallel script.
 
 For CI-profile reproduction:
 
 ```bash
-cargo test --profile ci --manifest-path cli/Cargo.toml
-cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+sh .github/workflows/scripts/linux/check.sh
 cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
 ```
 
 Use `cross-platform-verification` for the canonical general Rust and wrapper
 sequence.
+
+## Release versioning
+
+Release tags are `vYYYY.MM.DD.N`, where `N` starts at 1 and increments for each
+additional release on the same day. A dedicated `version` job resolves the tag
+exactly once — probing existing remote tags to pick `N` — and exposes it plus
+the resolved commit SHA as outputs. Every downstream build and publish job
+consumes those outputs rather than recomputing a version, so all assets in a
+release agree.
+
+`cli/Cargo.toml`'s `version` field is crate metadata, not the release version.
+
+The format is load-bearing: `cli/src/domains/dotfiles/self_update/version.rs`
+parses release tags to decide whether an update is newer, and accepts only
+exactly four numeric components. Changing the tag shape requires changing that
+parser in the same commit, and doing so strands already-installed binaries,
+which can no longer parse the new tags.
 
 ## Publishing Workflows
 

@@ -131,8 +131,8 @@ mod tests {
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
 
-        write_cache(dir.path(), "v0.1.99").unwrap();
+        write_cache(dir.path(), "v2026.07.25.99").unwrap();
         let content = fs::read_to_string(bin_dir.join(".dotfiles-version-cache")).unwrap();
-        assert!(content.starts_with("v0.1.99\n"));
+        assert!(content.starts_with("v2026.07.25.99\n"));
     }
 }

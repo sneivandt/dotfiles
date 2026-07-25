@@ -329,7 +329,7 @@ function Get-Binary
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
 
-    Write-Output "Downloading dotfiles bootstrap binary..."
+    Write-Output "Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')"
     try
     {
         Invoke-WebRequest -Uri $url -Method Get -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
@@ -399,6 +399,8 @@ function Get-Binary
             exit 1
         }
     }
+
+    Write-Output "Downloaded · checksum verified · $Binary"
 }
 
 # Bootstrap: download the latest binary only if no binary is present.

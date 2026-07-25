@@ -99,20 +99,26 @@ by guarding imports, types, and calls at the right boundary.
 
 ## Targeted checks
 
-Use the narrowest existing check that covers the change:
+Run every check CI runs, in one command:
 
 ```bash
-cargo fmt --manifest-path cli/Cargo.toml -- --check
-cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path cli/Cargo.toml
-cargo test --manifest-path cli/Cargo.toml --test config_drift
+sh .github/workflows/scripts/linux/check.sh
 ```
 
-CI reproductions use the repository's `ci` Cargo profile:
+On Windows:
+
+```powershell
+pwsh -File .github\workflows\scripts\windows\Check.ps1
+```
+
+The runner uses the repository's `ci` Cargo profile, so a local pass and a CI
+pass mean the same thing. Stages whose tool is not installed report `SKIP`
+rather than failing. See [Testing](TESTING.md) for the stage list.
+
+While iterating, use the narrowest stage that covers the change:
 
 ```bash
-cargo test --profile ci --manifest-path cli/Cargo.toml
-cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+sh .github/workflows/scripts/linux/check.sh fmt clippy
 cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift
 ```
 
@@ -128,6 +134,16 @@ Release and Docker publishing run only after successful same-repository pushes
 to `main`. Publishing builds use release mode; ordinary CI uses the `ci`
 profile. Recurring integration logic belongs in
 `.github\workflows\scripts\`, not large inline workflow blocks.
+
+Releases are tagged `vYYYY.MM.DD.N`, where `N` starts at 1 and increments for
+each additional release published on the same day. A dedicated `version` job
+resolves the tag once and passes it to every downstream build job, so all
+artifacts in a release agree on their version. `release.yml` also accepts
+`workflow_dispatch` for a manual publish.
+
+The CLI's self-update path only recognizes this tag format. Binaries built
+before it was adopted cannot parse current release tags and will stop
+self-updating; replace them by deleting the binary and re-running a wrapper.
 
 ## Documentation changes
 

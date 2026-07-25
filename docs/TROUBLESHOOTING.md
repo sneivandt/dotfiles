@@ -41,6 +41,23 @@ Build provenance verification is advisory unless
 `DOTFILES_REQUIRE_ATTESTATION=1` is set; see
 [Security model](SECURITY.md#build-provenance-verification).
 
+## The binary never self-updates
+
+Symptoms:
+
+- an installed binary keeps reporting the same version
+- `dotfiles --version` reports a version older than the latest release
+
+Releases are tagged `vYYYY.MM.DD.N`. The self-update check only recognizes that
+format, so a binary built before the format changed treats every current
+release tag as unparseable and silently declines to update.
+
+Actions:
+
+1. Delete the bootstrap binary at `bin/dotfiles` (`bin\dotfiles.exe` on Windows)
+   inside the dotfiles checkout.
+2. Rerun a wrapper. It downloads a current release and verifies it normally.
+
 ## Cargo build fails
 
 Confirm the repository's required Rust toolchain and native dependencies are

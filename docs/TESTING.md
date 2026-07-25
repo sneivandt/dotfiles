@@ -6,16 +6,43 @@ families.
 
 ## Fast local sequence
 
-From the repository root:
+From the repository root, run every check CI runs:
 
 ```bash
-cargo fmt --manifest-path cli/Cargo.toml -- --check
-cargo clippy --manifest-path cli/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path cli/Cargo.toml
-cargo run --manifest-path cli/Cargo.toml -- --root . test
+sh .github/workflows/scripts/linux/check.sh
 ```
 
-Use the `ci` profile when reproducing CI-specific compilation or test behavior:
+On Windows:
+
+```powershell
+pwsh -File .github\workflows\scripts\windows\Check.ps1
+```
+
+This is the single source of truth for local verification. It uses the `ci`
+Cargo profile throughout, so a local pass and a CI pass mean the same thing.
+Any stage whose tool is missing reports `SKIP` instead of failing.
+
+| Stage | Covers |
+|---|---|
+| `fmt` | `cargo fmt --check` |
+| `clippy` | `cargo clippy --all-targets -D warnings` |
+| `test` | `cargo test` |
+| `config` | `dotfiles --root . test` (repository validator) |
+| `shell` | ShellCheck over wrappers, hooks, and CI scripts |
+| `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
+| `audit` | `cargo audit` |
+| `deny` | `cargo deny check all` |
+| `msrv` | Compile against the MSRV in `cli/Cargo.toml` (opt-in) |
+
+Run a subset, list the stages, or include the opt-in ones:
+
+```bash
+sh .github/workflows/scripts/linux/check.sh fmt clippy
+sh .github/workflows/scripts/linux/check.sh --list
+sh .github/workflows/scripts/linux/check.sh --all
+```
+
+Individual Cargo commands remain available when you want to bypass the runner:
 
 ```bash
 cargo test --profile ci --manifest-path cli/Cargo.toml
@@ -124,6 +151,28 @@ The main CI workflow includes:
 
 The coverage job is informational and intentionally does not gate
 `ci-success`.
+
+## Platform coverage parity
+
+CI is not symmetric across platforms, and the asymmetry is deliberate. Anything
+listed as Linux-only below is *not* validated on Windows, so regressions in
+those areas surface only after release.
+
+| Area | Linux | Windows | Notes |
+|---|---|---|---|
+| Build, Clippy, tests | yes | yes | |
+| Profile dry-run and `dotfiles test` | yes | yes | `base` and `desktop` |
+| Install/uninstall round-trip | yes | yes | |
+| Wrapper | yes | yes | `dotfiles.sh` / `dotfiles.ps1` |
+| Application: git | yes | yes | Windows also asserts the `core.autocrlf` override |
+| Application: zsh, vim, nvim | yes | n/a | Excluded from the Windows profile |
+| Git hook sensitive-data check | yes | no | Hooks are POSIX `sh`; not run on Windows |
+| ShellCheck, PSScriptAnalyzer | yes | n/a | Both run on the Linux runner |
+| `cargo audit`, `cargo deny`, MSRV | yes | n/a | Platform-independent |
+
+Cross-target Clippy catches most compile-time Windows breakage from Linux, but
+it does not validate runtime Windows behavior. When changing Windows-specific
+code paths, rely on the Windows CI jobs rather than local Linux checks alone.
 
 ## Choosing coverage
 

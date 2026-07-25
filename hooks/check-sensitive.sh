@@ -15,6 +15,7 @@ NC=$(printf '\033[0m')
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PATTERNS_FILE="$SCRIPT_DIR/sensitive-patterns.ini"
+ALLOWLIST_FILE="$SCRIPT_DIR/sensitive-allowlist.ini"
 
 printf "Running sensitive content scan...\n"
 
@@ -25,6 +26,22 @@ if [ ! -f "$PATTERNS_FILE" ]; then
 fi
 
 PATTERNS=$(cat "$PATTERNS_FILE")
+
+# Combine allowlist entries into a single alternation. Matching spans are
+# structurally safe (see sensitive-allowlist.ini) and are redacted before
+# scanning, so contributors are not pushed toward --no-verify. Redacting the
+# span rather than dropping the line keeps the rest of the line scanned.
+ALLOWLIST_RE=""
+if [ -f "$ALLOWLIST_FILE" ]; then
+  ALLOWLIST_RE=$(
+    while IFS= read -r entry; do
+      case "$entry" in
+        ''|'#'*|'['*']') continue ;;
+      esac
+      printf '%s\n' "$entry"
+    done < "$ALLOWLIST_FILE" | paste -sd '|' -
+  )
+fi
 
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
   against=HEAD
@@ -66,6 +83,14 @@ while IFS= read -r file; do
       lineno++
     }
   ')
+
+  if [ -n "$ALLOWLIST_RE" ]; then
+    # Use a control character as the sed delimiter so allow-list patterns may
+    # contain '/' (action references) without escaping.
+    sed_delim=$(printf '\001')
+    numbered_adds=$(echo "$numbered_adds" |
+      sed -E "s${sed_delim}${ALLOWLIST_RE}${sed_delim}<allowlisted>${sed_delim}gI")
+  fi
 
   if [ -z "$numbered_adds" ]; then
     continue

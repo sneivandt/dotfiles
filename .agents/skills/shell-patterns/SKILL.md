@@ -58,6 +58,32 @@ ShellCheck on staged shell files and the Linux wrapper test script for staged
 - No Bash features (arrays, process substitution)
 - Keep wrapper scripts minimal — all logic belongs in Rust
 
+## Console Output Style
+
+Wrapper output is the first thing a user sees, before the Rust binary exists, so
+it must match the CLI's console style rather than inventing its own.
+
+The CLI writes a ` · `-separated header, then status lines, then a
+` · `-separated summary:
+
+```text
+Install · profile desktop · Arch Linux · preview
+IGNORE Dotfiles repository
+No changes · 15 up to date · 1 ignored · 0.7s
+```
+
+Bootstrap download output follows the same shape — a header naming the resolved
+tag and target, and a completion line stating what was verified:
+
+```text
+Bootstrap · dotfiles v2026.07.25.1 · linux-x86_64
+Downloaded · checksum verified · /home/user/src/dotfiles/bin/dotfiles
+```
+
+Do not use trailing-ellipsis progress prose. Errors and warnings keep the
+`ERROR: ` / `WARNING: ` prefixes on stderr (`Write-Error` / `Write-Warning` in
+PowerShell); the ` · ` style is for normal progress only.
+
 ## When to Edit Shell Scripts
 
 Edit `dotfiles.sh` or `dotfiles.ps1` only for:

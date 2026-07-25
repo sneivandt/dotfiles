@@ -5,7 +5,7 @@
 //! - [`paths`]   — binary, cache, and staging path helpers.
 //! - [`cache`]   — version-check cache I/O.
 //! - [`http`]    — HTTP client trait, GitHub API, checksum verification.
-//! - [`version`] — semver parsing and ordering for release tags.
+//! - [`version`] — date-based release-tag parsing and ordering.
 //! - [`install`] — binary replacement, staging, smoke testing, and download.
 
 mod attestation;
@@ -82,9 +82,9 @@ enum UpdateCheck {
     DevBuild,
     /// A newer version is available.
     UpdateAvailable {
-        /// Latest release tag (e.g., "v0.2.0").
+        /// Latest release tag (e.g., "v2026.07.25.2").
         latest: String,
-        /// Current version tag (e.g., "v0.1.0").
+        /// Current version tag (e.g., "v2026.07.25.1").
         current: String,
     },
 }
@@ -107,7 +107,7 @@ fn classify_update(current: &str, latest: String) -> UpdateCheck {
 /// the latest GitHub release.
 ///
 /// Only triggers an update when the latest release is strictly newer than the
-/// running version (semantic version comparison), preventing silent downgrades.
+/// running version (date-based tag comparison), preventing silent downgrades.
 fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<UpdateCheck> {
     let raw_version =
         option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
@@ -199,14 +199,14 @@ mod tests {
     fn fresh_cache_newer_than_current_returns_update_available() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
-        write_cache(dir.path(), "v9999.0.0").unwrap();
+        write_cache(dir.path(), "v9999.12.31.1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v0.1.0").unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.1").unwrap();
 
         match result {
             UpdateCheck::UpdateAvailable { latest, .. } => {
-                assert_eq!(latest, "v9999.0.0");
+                assert_eq!(latest, "v9999.12.31.1");
             }
             UpdateCheck::Offline | UpdateCheck::AlreadyCurrent | UpdateCheck::DevBuild => {
                 panic!("expected cached newer release to trigger update")
@@ -218,9 +218,9 @@ mod tests {
     fn network_update_available_does_not_write_cache_before_install() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.0.0"}"#.to_vec())]);
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31.1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v0.1.0").unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.1").unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
         assert!(
@@ -243,9 +243,9 @@ mod tests {
             format!("bad\n{now}\n"),
         )
         .unwrap();
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.0.0"}"#.to_vec())]);
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31.1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v0.1.0").unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.1").unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
     }

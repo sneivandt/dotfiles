@@ -32,7 +32,7 @@ jobs:
       run_wrapper_linux: ${{ steps.classify.outputs.run_wrapper_linux }}
       run_wrapper_windows: ${{ steps.classify.outputs.run_wrapper_windows }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Determine comparison range
@@ -65,7 +65,7 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
         run: rustup show
       - run: cargo fmt --check --manifest-path cli/Cargo.toml
@@ -87,7 +87,7 @@ jobs:
             setup: pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"
             test_function: test_psscriptanalyzer
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ${{ matrix.name }}
         run: ${{ matrix.setup }}
       - name: Run ${{ matrix.name }}
@@ -103,7 +103,7 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_validate_config == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate all config
         run: |
           export DIR="$(pwd)"
@@ -123,14 +123,16 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
         run: rustup show
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "cli -> target"
       - name: Install cargo-audit
-        uses: taiki-e/install-action@cargo-audit
+        uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2.85.1
+        with:
+          tool: cargo-audit
       - run: cargo audit --file cli/Cargo.lock
 
   deny:
@@ -139,14 +141,16 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
         run: rustup show
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "cli -> target"
       - name: Install cargo-deny
-        uses: taiki-e/install-action@cargo-deny
+        uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2.85.1
+        with:
+          tool: cargo-deny
       - run: cargo deny --manifest-path cli/Cargo.toml check all
 
   # ── Build, Clippy & Test ──────────────────────────────
@@ -156,10 +160,10 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_build_artifacts == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
         run: rustup show
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
@@ -169,7 +173,7 @@ jobs:
         run: cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
       - name: Tests
         run: cargo test --profile ci --manifest-path cli/Cargo.toml
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dotfiles-linux
           path: cli/target/ci/dotfiles
@@ -182,12 +186,12 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install MSRV toolchain
         run: |
           rustup toolchain install 1.91 --profile minimal
           rustup override set 1.91
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
@@ -202,15 +206,17 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
         run: rustup show
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2.85.1
+        with:
+          tool: cargo-llvm-cov
       - name: Generate coverage report
         run: cargo llvm-cov --manifest-path cli/Cargo.toml --lib --summary-only
 
@@ -220,7 +226,7 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_build_artifacts == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Disable Windows Defender real-time monitoring
         continue-on-error: true
         run: |
@@ -231,7 +237,7 @@ jobs:
           }
       - name: Install Rust toolchain
         run: rustup show
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
@@ -241,7 +247,7 @@ jobs:
         run: cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
       - name: Tests
         run: cargo test --profile ci --manifest-path cli/Cargo.toml
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dotfiles-windows
           path: cli/target/ci/dotfiles.exe
@@ -258,8 +264,8 @@ jobs:
       matrix:
         profile: [base, desktop]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dotfiles-linux
           path: bin/
@@ -280,8 +286,8 @@ jobs:
       matrix:
         profile: [base, desktop]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dotfiles-windows
           path: bin/
@@ -298,8 +304,8 @@ jobs:
     needs: [classify-changes, build-linux]
     if: needs.classify-changes.outputs.run_profile_integration == 'true'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dotfiles-linux
           path: bin/
@@ -316,8 +322,8 @@ jobs:
     needs: [classify-changes, build-windows]
     if: needs.classify-changes.outputs.run_profile_integration == 'true'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dotfiles-windows
           path: bin/
@@ -351,10 +357,10 @@ jobs:
             packages: neovim
             tests: opens plugins
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ${{ matrix.packages }}
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dotfiles-linux
           path: bin/
@@ -368,6 +374,34 @@ jobs:
           cd .github/workflows/scripts/linux
           sh test-applications.sh ${{ matrix.application }} ${{ matrix.tests }}
 
+  # Windows counterpart. Only git is covered: zsh, vim, and nvim are excluded
+  # from the Windows profile, so they have no Windows equivalent to test.
+  test-applications-windows:
+    name: "App: ${{ matrix.application }} (Windows)"
+    runs-on: windows-latest
+    needs: [classify-changes, build-windows]
+    if: needs.classify-changes.outputs.run_app_tests == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - application: Git
+            tests: Config Alias Behavior
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dotfiles-windows
+          path: bin/
+      - name: Install dotfiles with base profile
+        shell: pwsh
+        run: .\bin\dotfiles.exe --root . -p base install -v --skip apm
+      - name: Test ${{ matrix.application }}
+        shell: pwsh
+        run: |
+          $env:DIR = $PWD.Path
+          & .github/workflows/scripts/windows/Test-Applications.ps1 ${{ matrix.application }} ${{ matrix.tests }}
+
   # ── Specialized Tests ─────────────────────────────────
   test-git-hooks:
     name: "Security: Pre-commit Sensitive Data Detection"
@@ -375,7 +409,7 @@ jobs:
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_git_hooks == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install and test pre-commit hook
         run: |
           git config user.name "CI Test"
@@ -390,8 +424,8 @@ jobs:
     needs: [classify-changes, build-linux]
     if: needs.classify-changes.outputs.run_wrapper_linux == 'true'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dotfiles-linux
           path: bin/
@@ -408,8 +442,8 @@ jobs:
     needs: [classify-changes, build-windows]
     if: needs.classify-changes.outputs.run_wrapper_windows == 'true'
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dotfiles-windows
           path: bin/
@@ -439,6 +473,7 @@ jobs:
       - test-install-uninstall
       - test-install-uninstall-windows
       - test-applications
+      - test-applications-windows
       - test-git-hooks
       - test-shell-wrapper-linux
       - test-shell-wrapper-windows

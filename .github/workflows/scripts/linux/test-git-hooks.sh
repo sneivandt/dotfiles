@@ -10,6 +10,25 @@
 set -o errexit
 set -o nounset
 
+# This suite creates real commits in the current repository to exercise the
+# pre-commit hook. Refuse to run against a dirty checkout so in-progress work
+# can never be swept into a test commit if a detection case fails to block.
+# CI runs this on a fresh checkout, so the guard is inert there.
+if [ "${DOTFILES_HOOK_TEST_FORCE:-0}" != "1" ]; then
+  if ! git diff --cached --quiet || ! git diff --quiet; then
+    printf 'ERROR: refusing to run against a repository with uncommitted changes.\n' >&2
+    printf 'This suite creates commits in the current repository, so a detection\n' >&2
+    printf 'failure would commit your staged work.\n\n' >&2
+    printf 'Run it on a clean checkout, or in a scratch repository:\n' >&2
+    printf '  mkdir -p /tmp/hooktest/hooks && cp -a hooks/. /tmp/hooktest/hooks/\n' >&2
+    printf '  cd /tmp/hooktest && git init -q\n' >&2
+    printf '  ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit\n' >&2
+    printf '  DIR=<repo> %s\n\n' "$0" >&2
+    printf 'Set DOTFILES_HOOK_TEST_FORCE=1 to override.\n' >&2
+    exit 1
+  fi
+fi
+
 # Test counter
 tests_passed=0
 tests_failed=0

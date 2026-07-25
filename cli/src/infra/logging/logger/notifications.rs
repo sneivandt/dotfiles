@@ -8,10 +8,6 @@ use std::fmt::Write as _;
 use super::{Logger, progress::stdout_supports_progress};
 use crate::infra::logging::style::{TextStyle, stdout_style};
 
-#[allow(
-    clippy::print_stderr,
-    reason = "intentional user-facing diagnostics for poisoned console lock recovery"
-)]
 impl Logger {
     /// Record that a parallel task has started.
     ///
@@ -27,10 +23,7 @@ impl Logger {
         name: &str,
         show_progress: bool,
     ) {
-        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let _guard = self.lock_flush();
         if let Ok(mut active) = self.active_tasks.lock() {
             active.push(name.to_string());
         }
@@ -67,10 +60,7 @@ impl Logger {
     /// Emit a completed task result and then redraw the active-task status row.
     pub(crate) fn emit_task_result_and_redraw(&self, task_name: &str) {
         let show_progress = stdout_supports_progress();
-        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let _guard = self.lock_flush();
         if show_progress {
             self.clear_progress();
         }
@@ -101,10 +91,7 @@ impl Logger {
         name: &str,
         show_progress: bool,
     ) {
-        let _guard = self.flush_lock.lock().unwrap_or_else(|e| {
-            eprintln!("warning: flush lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let _guard = self.lock_flush();
         self.remove_active_task_locked(name);
         self.clear_progress();
         self.redraw_active_status_locked(show_progress);

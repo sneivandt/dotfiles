@@ -37,7 +37,6 @@ pub(crate) fn display_diagnostics(diagnostics: &[Diagnostic], output: &dyn Outpu
 #[cfg(test)]
 use crate::engine::Task;
 #[cfg(test)]
-#[cfg(test)]
 use discovery::*;
 #[cfg(test)]
 use linters::*;

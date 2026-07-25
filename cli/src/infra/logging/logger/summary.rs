@@ -308,16 +308,29 @@ fn format_standard_totals(counts: SummaryCounts, dry_run: bool, style: StyleChoi
     } else {
         parts.push("No changes".to_string());
     }
-    if counts.ok > 0 {
-        parts.push(style.paint(TextStyle::Dim, &format!("{} up to date", counts.ok)));
-    }
-    if counts.skipped > 0 {
-        parts.push(style.paint(TextStyle::Yellow, &format!("{} ignored", counts.skipped)));
-    }
-    if counts.failed > 0 {
-        parts.push(style.paint(TextStyle::Red, &format!("{} failed", counts.failed)));
-    }
+    push_count(&mut parts, counts.ok, TextStyle::Dim, "up to date", style);
+    push_count(
+        &mut parts,
+        counts.skipped,
+        TextStyle::Yellow,
+        "ignored",
+        style,
+    );
+    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     parts
+}
+
+/// Append a styled `"<count> <label>"` fragment, skipping zero counts.
+fn push_count(
+    parts: &mut Vec<String>,
+    count: u32,
+    text_style: TextStyle,
+    label: &str,
+    style: StyleChoice,
+) {
+    if count > 0 {
+        parts.push(style.paint(text_style, &format!("{count} {label}")));
+    }
 }
 
 const fn pluralize(count: u32, singular: &'static str, plural: &'static str) -> &'static str {
@@ -326,15 +339,15 @@ const fn pluralize(count: u32, singular: &'static str, plural: &'static str) -> 
 
 fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> {
     let mut parts = Vec::new();
-    if counts.passed > 0 {
-        parts.push(style.paint(TextStyle::Green, &format!("{} passed", counts.passed)));
-    }
-    if counts.skipped > 0 {
-        parts.push(style.paint(TextStyle::Yellow, &format!("{} ignored", counts.skipped)));
-    }
-    if counts.failed > 0 {
-        parts.push(style.paint(TextStyle::Red, &format!("{} failed", counts.failed)));
-    }
+    push_count(&mut parts, counts.passed, TextStyle::Green, "passed", style);
+    push_count(
+        &mut parts,
+        counts.skipped,
+        TextStyle::Yellow,
+        "ignored",
+        style,
+    );
+    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     if parts.is_empty() {
         parts.push("No checks ran".to_string());
     }

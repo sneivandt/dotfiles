@@ -10,8 +10,8 @@ mod types;
 use crate::infra::logging::OutputExt as _;
 pub use execute::execute;
 pub(crate) use macros::{
-    config_resource_task, configured_task_result, process_config_resources,
-    process_config_resources_with_provider, resource_task, task_deps, task_metadata,
+    config_resource_task, configured_task_result, resource_task, run_batch_resource_task,
+    run_resource_task, task_deps, task_metadata,
 };
 pub use types::TaskId;
 

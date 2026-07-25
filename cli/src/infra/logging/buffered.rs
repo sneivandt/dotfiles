@@ -238,6 +238,19 @@ mod tests {
     use super::*;
     use crate::infra::logging::isolated_logger;
 
+    /// A [`BufferedLog`] wired to a [`Logger`] that writes to a temporary run
+    /// log, plus the temp dir and dispatch guard that must outlive the test.
+    fn buffered_fixture() -> (
+        BufferedLog,
+        Arc<Logger>,
+        tempfile::TempDir,
+        crate::infra::logging::TestDispatchGuard,
+    ) {
+        let (log, tmp, guard) = isolated_logger();
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        (buf, log, tmp, guard)
+    }
     /// Build a buffered entry of the given kind for replay assertions.
     fn entry(kind: MsgKind, msg: &str) -> LogEntry {
         LogEntry {
@@ -250,9 +263,7 @@ mod tests {
 
     #[test]
     fn buffered_log_record_task_forwards_to_logger() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         buf.record_task("task-a", TaskStatus::Ok, None);
         assert_eq!(log.task_entries().len(), 1);
         assert_eq!(log.task_entries()[0].name, "task-a");
@@ -260,9 +271,7 @@ mod tests {
 
     #[test]
     fn buffered_log_record_task_with_actions_forwards_counts() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         let actions = ActionCounts {
             applied: 2,
             ..ActionCounts::default()
@@ -275,9 +284,7 @@ mod tests {
 
     #[test]
     fn buffered_log_preserves_entry_order() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         buf.stage("stage-1");
         buf.info("info-1");
         buf.debug("debug-1");
@@ -310,9 +317,7 @@ mod tests {
 
     #[test]
     fn buffered_log_writes_to_run_log_immediately() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         let marker = format!("buf-runlog-{}", std::process::id());
         buf.info(&marker);
         let path = log.log_path().expect("log path");
@@ -325,9 +330,7 @@ mod tests {
 
     #[test]
     fn log_entry_replay_all_variants() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         let pid = std::process::id();
         buf.stage(format!("replay-stage-{pid}"));
         buf.info(format!("replay-info-{pid}"));
@@ -348,9 +351,7 @@ mod tests {
 
     #[test]
     fn buffered_log_all_variants_buffered() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         let pid = std::process::id();
         buf.info(format!("all-info-{pid}"));
         buf.warn(format!("all-warn-{pid}"));
@@ -475,9 +476,7 @@ mod tests {
 
     #[test]
     fn buffered_log_run_log_returns_inner_run_log() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         assert_eq!(
             buf.run_log().is_some(),
             log.run_log().is_some(),
@@ -510,9 +509,7 @@ mod tests {
     /// output were observed without their stage headers in the persistent log.
     #[test]
     fn flush_and_complete_replays_stage_before_info() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
 
         // Simulate the order execute() and central stats reporting produce entries:
         // execute() calls ctx.log().stage() first, then run() calls ctx.log().info()
@@ -570,9 +567,7 @@ mod tests {
 
     #[test]
     fn verbose_flush_keeps_not_applicable_task_output_off_console() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         buf.task_stage("windows-only-task");
         buf.debug("not applicable: requires Windows");
 
@@ -587,9 +582,7 @@ mod tests {
 
     #[test]
     fn verbose_flush_keeps_unchanged_task_output_off_console() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log = Arc::new(log);
-        let buf = BufferedLog::new(Arc::clone(&log));
+        let (buf, log, _tmp, _guard) = buffered_fixture();
         buf.task_stage("current-task");
         buf.info("0 changed, 1 already ok");
 

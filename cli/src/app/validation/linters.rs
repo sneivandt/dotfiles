@@ -2,6 +2,9 @@
 
 use std::path::PathBuf;
 
+use anyhow::Result;
+
+use crate::engine::{Context, TaskResult};
 use crate::infra::exec::ExecResult;
 use crate::infra::logging::Log;
 use crate::infra::logging::OutputExt as _;
@@ -13,6 +16,39 @@ const SHELLCHECK_EXCLUDE_CODES: &str = "SC1090,SC1091,SC3043,SC2154";
 pub(super) fn log_exec_output(log: &dyn Log, result: &ExecResult) {
     for line in result.stdout.lines().chain(result.stderr.lines()) {
         log.error(line);
+    }
+}
+
+/// Run an external linter over `files` and turn its exit status into a result.
+///
+/// Reports a passing check when there is nothing to lint or the tool exits
+/// successfully; otherwise mirrors the tool output as errors and fails the
+/// task.  `exe` is the executable to spawn, `name` is how the linter is named
+/// in log messages, and `label` is the plural noun for its inputs.
+pub(super) fn run_linter(
+    ctx: &Context,
+    exe: &str,
+    name: &str,
+    label: &str,
+    files: &[PathBuf],
+    build_args: impl FnOnce(&[PathBuf]) -> Vec<String>,
+) -> Result<TaskResult> {
+    if files.is_empty() {
+        ctx.log().info(format!("no {label} found"));
+        return Ok(TaskResult::CheckPassed);
+    }
+
+    ctx.log().debug(format!("checking {} {label}", files.len()));
+
+    let args = build_args(files);
+    let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let result = ctx.executor().run_unchecked(exe, &arg_refs)?;
+    if result.success {
+        ctx.log().info(format!("{name} passed"));
+        Ok(TaskResult::CheckPassed)
+    } else {
+        log_exec_output(ctx.log(), &result);
+        anyhow::bail!("{name} found issues");
     }
 }
 

@@ -49,6 +49,32 @@ pub(crate) fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
     );
 }
 
+/// Collect linter inputs from the repository root.
+///
+/// Adds each existing path in `files`, then recursively walks each existing
+/// directory in `dirs` with `walk`.
+pub(crate) fn discover_linter_inputs(
+    root: &Path,
+    files: &[&str],
+    dirs: &[&str],
+    walk: fn(&Path, &mut Vec<PathBuf>),
+) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for name in files {
+        let path = root.join(name);
+        if path.exists() {
+            found.push(path);
+        }
+    }
+    for dir in dirs {
+        let path = root.join(dir);
+        if path.exists() {
+            walk(&path, &mut found);
+        }
+    }
+    found
+}
+
 /// Discover local APM plugin directories.
 pub(crate) fn discover_apm_plugin_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
     let entries = match std::fs::read_dir(dir) {

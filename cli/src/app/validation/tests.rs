@@ -325,3 +325,90 @@ fn discover_files_with_custom_predicate() {
     );
     assert_eq!(found.len(), 3, "should find .txt files recursively");
 }
+
+#[test]
+fn linter_inputs_include_root_files_then_discovered_scripts() {
+    let dir = tempfile::tempdir().expect("tempdir should create");
+    let root = dir.path();
+    std::fs::write(root.join("dotfiles.sh"), "echo hi").expect("root script should write");
+    std::fs::create_dir_all(root.join("hooks")).expect("hooks dir should create");
+    std::fs::write(root.join("hooks").join("pre-commit.sh"), "echo hook")
+        .expect("hook script should write");
+
+    let found = discover_linter_inputs(
+        root,
+        &["dotfiles.sh", "install.sh"],
+        &["hooks", "missing-dir"],
+        discover_shell_scripts,
+    );
+
+    assert_eq!(
+        found,
+        vec![
+            root.join("dotfiles.sh"),
+            root.join("hooks").join("pre-commit.sh"),
+        ],
+        "root files come first, then scripts from each existing directory"
+    );
+}
+
+#[test]
+fn linter_passes_without_running_the_tool_when_there_is_nothing_to_lint() {
+    let dir = tempfile::tempdir().expect("tempdir should create");
+    let mut executor = MockExecutor::new();
+    executor.expect_run_unchecked().never();
+    let ctx = make_context(
+        empty_config(dir.path().to_path_buf()),
+        crate::infra::platform::Platform::detect(),
+        std::sync::Arc::new(executor),
+    );
+
+    let result = run_linter(
+        &ctx,
+        "shellcheck",
+        "shellcheck",
+        "shell scripts",
+        &[],
+        |_| Vec::new(),
+    )
+    .expect("empty input should pass");
+
+    assert!(
+        matches!(result, crate::engine::TaskResult::CheckPassed),
+        "an empty input set is a passing check, not a failure"
+    );
+}
+
+#[test]
+fn linter_failure_reports_the_display_name_not_the_executable() {
+    let dir = tempfile::tempdir().expect("tempdir should create");
+    let mut executor = MockExecutor::new();
+    executor.expect_run_unchecked().once().returning(|_, _| {
+        Ok(ExecResult {
+            success: false,
+            code: Some(1),
+            stdout: "some finding".to_string(),
+            stderr: String::new(),
+        })
+    });
+    let ctx = make_context(
+        empty_config(dir.path().to_path_buf()),
+        crate::infra::platform::Platform::detect(),
+        std::sync::Arc::new(executor),
+    );
+
+    let error = run_linter(
+        &ctx,
+        "pwsh",
+        "PSScriptAnalyzer",
+        "PowerShell scripts",
+        &[PathBuf::from("a.ps1")],
+        |_| vec!["-NoProfile".to_owned()],
+    )
+    .expect_err("a failing linter should fail the task");
+
+    assert!(
+        error.to_string().contains("PSScriptAnalyzer"),
+        "failure should name the linter, not the host executable: {error}"
+    );
+}

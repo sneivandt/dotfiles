@@ -84,6 +84,49 @@ pub enum Command {
     Completions(CompletionsOpts),
 }
 
+/// Subcommands that drive the task engine.
+///
+/// Split out of [`Command`] so engine dispatch is total: `log` and
+/// `completions` run standalone before logging, elevation, and the task engine
+/// are initialised, and therefore can never reach the engine.
+#[derive(Debug)]
+pub enum EngineCommand {
+    /// Apply dotfiles and system configuration.
+    Install(InstallOpts),
+    /// Apply configuration and advance pinned dependencies.
+    Update(UpdateOpts),
+    /// Remove managed integrations while preserving user files.
+    Uninstall(UninstallOpts),
+    /// Validate configuration and run self-tests.
+    Test(TestOpts),
+    /// List task selectors and command membership.
+    Tasks,
+}
+
+impl EngineCommand {
+    /// Name used for the run-log file and progress output.
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Install(_) => "install",
+            Self::Update(_) => "update",
+            Self::Uninstall(_) => "uninstall",
+            Self::Test(_) => "test",
+            Self::Tasks => "tasks",
+        }
+    }
+
+    /// Whether the command mutates system state and so needs elevation.
+    #[cfg(windows)]
+    #[must_use]
+    pub const fn mutates_system(&self) -> bool {
+        matches!(
+            self,
+            Self::Install(_) | Self::Update(_) | Self::Uninstall(_)
+        )
+    }
+}
+
 /// Options for the `install` subcommand.
 #[derive(Parser, Debug, Clone)]
 pub struct InstallOpts {

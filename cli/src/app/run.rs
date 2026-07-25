@@ -23,40 +23,46 @@ pub fn run() -> ExitCode {
     drop(enable_ansi_support::enable_ansi_support()); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
 
-    // Shell completions — generate and exit immediately, no elevation or
-    // logging needed.
-    if let cli::Command::Completions(opts) = &args.command {
-        let mut cmd = cli::Cli::command();
-        clap_complete::generate(opts.shell, &mut cmd, "dotfiles", &mut std::io::stdout());
-        return ExitCode::SUCCESS;
-    }
-
-    // Log viewing is read-only: do not initialize the tracing subscriber or
-    // create a new log file just to display an existing log.
-    if let cli::Command::Log(_) = &args.command {
-        return match commands::log::run() {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                drop(writeln!(std::io::stderr().lock(), "{e:#}"));
-                ExitCode::FAILURE
-            }
-        };
-    }
-
-    let Some(command_name) = logged_command_name(&args.command) else {
-        return ExitCode::SUCCESS;
+    // Meta commands run standalone and exit before the logging subsystem,
+    // elevation, and task engine are initialised. Narrowing to `EngineCommand`
+    // here keeps the engine dispatch in `run_engine` total.
+    let command = match args.command {
+        cli::Command::Completions(opts) => {
+            let mut cmd = cli::Cli::command();
+            clap_complete::generate(opts.shell, &mut cmd, "dotfiles", &mut std::io::stdout());
+            return ExitCode::SUCCESS;
+        }
+        // Log viewing is read-only: do not initialize the tracing subscriber or
+        // create a new log file just to display an existing log.
+        cli::Command::Log(_) => {
+            return match commands::log::run() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    drop(writeln!(std::io::stderr().lock(), "{e:#}"));
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        cli::Command::Install(opts) => cli::EngineCommand::Install(opts),
+        cli::Command::Update(opts) => cli::EngineCommand::Update(opts),
+        cli::Command::Uninstall(opts) => cli::EngineCommand::Uninstall(opts),
+        cli::Command::Test(opts) => cli::EngineCommand::Test(opts),
+        cli::Command::Tasks => cli::EngineCommand::Tasks,
     };
-    let mut raw_log = logging::init(args.verbose, command_name);
-    raw_log.set_dry_run(args.global.dry_run);
+
+    run_engine(&command, &args.global, args.verbose)
+}
+
+/// Initialise the runtime and dispatch a command through the task engine.
+fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: bool) -> ExitCode {
+    let mut raw_log = logging::init(verbose, command.name());
+    raw_log.set_dry_run(global.dry_run);
     let log = std::sync::Arc::new(raw_log);
     // Auto-elevate on Windows for install/uninstall when not in dry-run mode
     #[cfg(windows)]
     {
-        let needs_elevation = matches!(
-            &args.command,
-            cli::Command::Install(_) | cli::Command::Update(_) | cli::Command::Uninstall(_)
-        ) && !args.global.dry_run;
-        if needs_elevation
+        if command.mutates_system()
+            && !global.dry_run
             && !elevation::is_elevated()
             && let Err(e) = elevation::elevate_and_exit(&exec::SystemExecutor, &*log)
         {
@@ -80,17 +86,12 @@ pub fn run() -> ExitCode {
         log.warn("failed to register signal handler");
     }
 
-    let result = match args.command {
-        cli::Command::Install(opts) => commands::install::run(&args.global, &opts, &log, &token),
-        cli::Command::Update(opts) => commands::update::run(&args.global, &opts, &log, &token),
-        cli::Command::Uninstall(opts) => {
-            commands::uninstall::run(&args.global, &opts, &log, &token)
-        }
-        cli::Command::Test(opts) => commands::test::run(&args.global, &opts, &log, &token),
-        cli::Command::Tasks => commands::tasks::run(&args.global, &log, &token),
-        // Completions and log are handled above; these arms are unreachable but
-        // kept because the lint configuration denies the `unreachable!` macro.
-        cli::Command::Log(_) | cli::Command::Completions(_) => return ExitCode::SUCCESS,
+    let result = match command {
+        cli::EngineCommand::Install(opts) => commands::install::run(global, opts, &log, &token),
+        cli::EngineCommand::Update(opts) => commands::update::run(global, opts, &log, &token),
+        cli::EngineCommand::Uninstall(opts) => commands::uninstall::run(global, opts, &log, &token),
+        cli::EngineCommand::Test(opts) => commands::test::run(global, opts, &log, &token),
+        cli::EngineCommand::Tasks => commands::tasks::run(global, &log, &token),
     };
 
     if let Err(e) = result {
@@ -111,18 +112,6 @@ fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
         log.error(format!("{error:#}"));
     }
     log.always("Run 'dotfiles log' for details.");
-}
-
-const fn logged_command_name(command: &cli::Command) -> Option<&'static str> {
-    let name = match command {
-        cli::Command::Install(_) => "install",
-        cli::Command::Update(_) => "update",
-        cli::Command::Uninstall(_) => "uninstall",
-        cli::Command::Test(_) => "test",
-        cli::Command::Tasks => "tasks",
-        cli::Command::Log(_) | cli::Command::Completions(_) => return None,
-    };
-    Some(name)
 }
 
 #[cfg(test)]

@@ -5,16 +5,18 @@
 //! live in the `tasks` module so they follow the same `Task` trait pattern
 //! as all other tasks and are independently testable.
 use anyhow::{Context as _, Result};
-use std::path::PathBuf;
 
 use crate::app::config::Config;
 use crate::engine::{Context, Task, TaskResult, task_metadata};
 use crate::infra::ConfigHandle;
 
 use super::discovery::{
-    discover_apm_plugin_dirs, discover_powershell_scripts, discover_shell_scripts,
+    discover_apm_plugin_dirs, discover_linter_inputs, discover_powershell_scripts,
+    discover_shell_scripts,
 };
-use super::linters::{build_psscriptanalyzer_command, build_shellcheck_args, log_exec_output};
+use super::linters::{
+    build_psscriptanalyzer_command, build_shellcheck_args, log_exec_output, run_linter,
+};
 use crate::infra::logging::OutputExt as _;
 
 /// Fail the test command when config validation emits warnings.
@@ -294,42 +296,20 @@ impl Task for RunShellcheck {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let root = ctx.root();
-        let mut scripts: Vec<PathBuf> = Vec::new();
-
-        for name in ["dotfiles.sh", "install.sh"] {
-            let path = root.join(name);
-            if path.exists() {
-                scripts.push(path);
-            }
-        }
-
-        for dir in ["symlinks", "hooks", ".github"] {
-            let dir_path = root.join(dir);
-            if dir_path.exists() {
-                discover_shell_scripts(&dir_path, &mut scripts);
-            }
-        }
-
-        if scripts.is_empty() {
-            ctx.log().info("no shell scripts found");
-            return Ok(TaskResult::CheckPassed);
-        }
-
-        ctx.log()
-            .debug(format!("checking {} shell scripts", scripts.len()));
-
-        let args = build_shellcheck_args(&scripts);
-        let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-
-        let result = ctx.executor().run_unchecked("shellcheck", &arg_refs)?;
-        if result.success {
-            ctx.log().info("shellcheck passed");
-            Ok(TaskResult::CheckPassed)
-        } else {
-            log_exec_output(ctx.log(), &result);
-            anyhow::bail!("shellcheck found issues");
-        }
+        let scripts = discover_linter_inputs(
+            ctx.root(),
+            &["dotfiles.sh", "install.sh"],
+            &["symlinks", "hooks", ".github"],
+            discover_shell_scripts,
+        );
+        run_linter(
+            ctx,
+            "shellcheck",
+            "shellcheck",
+            "shell scripts",
+            &scripts,
+            build_shellcheck_args,
+        )
     }
 }
 
@@ -348,40 +328,25 @@ impl Task for RunPSScriptAnalyzer {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let root = ctx.root();
-        let mut ps_files: Vec<PathBuf> = Vec::new();
-
-        for dir in ["symlinks", "hooks"] {
-            let dir_path = root.join(dir);
-            if dir_path.exists() {
-                discover_powershell_scripts(&dir_path, &mut ps_files);
-            }
-        }
-
-        let path = root.join("dotfiles.ps1");
-        if path.exists() {
-            ps_files.push(path);
-        }
-
-        if ps_files.is_empty() {
-            ctx.log().info("no PowerShell scripts found");
-            return Ok(TaskResult::CheckPassed);
-        }
-
-        ctx.log()
-            .debug(format!("checking {} PowerShell scripts", ps_files.len()));
-
-        let script = build_psscriptanalyzer_command(&ps_files);
-
-        let result = ctx
-            .executor()
-            .run_unchecked("pwsh", &["-NoProfile", "-Command", &script])?;
-        if result.success {
-            ctx.log().info("PSScriptAnalyzer passed");
-            Ok(TaskResult::CheckPassed)
-        } else {
-            log_exec_output(ctx.log(), &result);
-            anyhow::bail!("PSScriptAnalyzer found issues");
-        }
+        let ps_files = discover_linter_inputs(
+            ctx.root(),
+            &["dotfiles.ps1"],
+            &["symlinks", "hooks"],
+            discover_powershell_scripts,
+        );
+        run_linter(
+            ctx,
+            "pwsh",
+            "PSScriptAnalyzer",
+            "PowerShell scripts",
+            &ps_files,
+            |paths| {
+                vec![
+                    "-NoProfile".to_owned(),
+                    "-Command".to_owned(),
+                    build_psscriptanalyzer_command(paths),
+                ]
+            },
+        )
     }
 }

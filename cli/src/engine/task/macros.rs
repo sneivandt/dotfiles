@@ -74,40 +74,75 @@ macro_rules! task_metadata {
 
 pub(crate) use task_metadata;
 
-/// Process config-derived resources after a macro has evaluated its item list.
+/// Announce the start of a task stage.
 ///
-/// Keeping this logic in a normal function makes the macro expansion smaller
-/// and keeps resource processing semantics in one place.
-pub(crate) fn process_config_resources<Item, R>(
+/// `announce` is `Some(name)` only when the task runs standalone; as part of a
+/// larger command the surrounding runner has already announced it.
+fn emit_task_stage(ctx: &crate::engine::Context, announce: Option<&'static str>) {
+    if let Some(name) = announce {
+        crate::infra::logging::Output::emit(
+            ctx.log(),
+            crate::infra::logging::MsgKind::TaskStage,
+            ::std::borrow::Cow::Borrowed(name),
+        );
+    }
+}
+
+/// Run the body shared by every resource task: skip empty item lists, announce
+/// the stage, then build and process one resource per configured item.
+///
+/// Keeping this in a normal function rather than in macro expansion means the
+/// shared behaviour is written, type-checked, and debugged once instead of
+/// once per [`resource_task!`] / [`config_resource_task!`] variant.
+pub(crate) fn run_resource_task<Item, R>(
     ctx: &crate::engine::Context,
+    announce: Option<&'static str>,
     items: Vec<Item>,
     mut build: impl FnMut(Item, &crate::engine::Context) -> R,
     opts: &crate::engine::ProcessOpts,
-) -> ::anyhow::Result<crate::engine::TaskResult>
+) -> ::anyhow::Result<Option<crate::engine::TaskResult>>
 where
     R: crate::engine::IntrinsicState + Send,
 {
+    if items.is_empty() {
+        return Ok(None);
+    }
+    emit_task_stage(ctx, announce);
+
     let resources = items.into_iter().map(|item| build(item, ctx));
-    crate::engine::process_resources(ctx, resources, opts)
+    crate::engine::process_resources(ctx, resources, opts).map(Some)
 }
 
-/// Process config-derived resources whose state is supplied by one cache.
-pub(crate) fn process_config_resources_with_provider<Item, Cache, R>(
+/// Run a resource task whose state for every resource comes from one shared
+/// query rather than from each resource individually.
+pub(crate) fn run_batch_resource_task<Item, Cache, R>(
     ctx: &crate::engine::Context,
+    announce: Option<&'static str>,
     items: Vec<Item>,
     mut build: impl FnMut(Item, &crate::engine::Context) -> R,
     load: impl Fn(&[R], &crate::engine::Context) -> ::anyhow::Result<Cache> + Sync,
     state: impl for<'a> Fn(&'a R, &Cache) -> ::anyhow::Result<crate::engine::ResourceState> + Sync,
     opts: &crate::engine::ProcessOpts,
-) -> ::anyhow::Result<crate::engine::TaskResult>
+) -> ::anyhow::Result<Option<crate::engine::TaskResult>>
 where
     R: crate::engine::Resource + Send,
     Cache: Sync,
 {
+    if items.is_empty() {
+        return Ok(None);
+    }
+    emit_task_stage(ctx, announce);
+    ctx.debug_fmt(|| {
+        format!(
+            "batch-checking {} resources with a single query",
+            items.len()
+        )
+    });
+
     let resources: Vec<R> = items.into_iter().map(|item| build(item, ctx)).collect();
     let cache = load(&resources, ctx)?;
     let provider = crate::engine::CachedStateProvider::new(&cache, state);
-    crate::engine::process_resources_with_provider(ctx, resources, &provider, opts)
+    crate::engine::process_resources_with_provider(ctx, resources, &provider, opts).map(Some)
 }
 
 /// Convert an optional configured-task result into the direct [`Task::run`] result.
@@ -117,6 +152,27 @@ pub(crate) fn configured_task_result(
     result.unwrap_or_else(|| {
         crate::engine::TaskResult::NotApplicable("nothing configured".to_string())
     })
+}
+
+/// Declare the struct and constructor shared by [`config_resource_task!`] arms.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __config_task_struct {
+    ($(#[$meta:meta])* $vis:vis $name:ident, $cfg_ty:ty) => {
+        $(#[$meta])*
+        #[derive(Debug)]
+        $vis struct $name {
+            config: $crate::infra::ConfigHandle<$cfg_ty>,
+        }
+
+        impl $name {
+            /// Create the task with a handle to its configuration slice.
+            #[must_use]
+            pub const fn new(config: $crate::infra::ConfigHandle<$cfg_ty>) -> Self {
+                Self { config }
+            }
+        }
+    };
 }
 
 /// Implement the shared task contract for resource-task macros.
@@ -194,8 +250,11 @@ macro_rules! __impl_resource_task {
 ///
 /// Supports the standard intrinsic-state path and a batch path (`cache:` +
 /// `state:`) for resources whose current state comes from one shared query.
-/// Optional `update_only`, `deps`, `guard`, and `setup` clauses cover the common task
+/// Optional `update_only`, `deps`, and `guard` clauses cover the common task
 /// variations without hand-writing [`Task`](crate::engine::Task) metadata.
+///
+/// Each arm only wires closures: the shared task body lives in
+/// [`run_resource_task`] and [`run_batch_resource_task`].
 macro_rules! resource_task {
     // -----------------------------------------------------------------
     // Batch variant — `cache:` and `state:` blocks are present.
@@ -220,42 +279,6 @@ macro_rules! resource_task {
         #[derive(Debug)]
         $vis struct $name;
 
-        impl $name {
-            #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
-            fn run_batch(
-                ctx: &$crate::engine::Context,
-                emit_stage: bool,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                let $items_ctx = ctx;
-                let items: Vec<_> = { $items_expr };
-                if items.is_empty() {
-                    return Ok(None);
-                }
-                if emit_stage {
-                    $crate::infra::logging::Output::emit(
-                        ctx.log(),
-                        $crate::infra::logging::MsgKind::TaskStage,
-                        ::std::borrow::Cow::Borrowed($task_name),
-                    );
-                }
-                ctx.debug_fmt(|| {
-                    format!(
-                        "batch-checking {} resources with a single query",
-                        items.len()
-                    )
-                });
-                $crate::engine::process_config_resources_with_provider(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    |$cache_items, $cache_ctx| $cache_expr,
-                    |$state_res, $state_cache| Ok($state_expr),
-                    &$opts,
-                )
-                .map(Some)
-            }
-        }
-
         $crate::__impl_resource_task! {
             $name {
                 name: $task_name,
@@ -264,7 +287,15 @@ macro_rules! resource_task {
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
                 $(guard: |_task, $guard_ctx| $guard_expr,)?
-                run: |_task, run_ctx, emit_stage| Self::run_batch(run_ctx, emit_stage),
+                run: |_task, ctx, emit_stage| $crate::engine::run_batch_resource_task(
+                    ctx,
+                    emit_stage.then_some($task_name),
+                    { let $items_ctx = ctx; $items_expr },
+                    |$item, $build_ctx| $build_expr,
+                    |$cache_items, $cache_ctx| $cache_expr,
+                    |$state_res, $state_cache| Ok($state_expr),
+                    &$opts,
+                ),
             }
         }
     };
@@ -281,7 +312,6 @@ macro_rules! resource_task {
             $(update_only: $update_only:expr,)?
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_ctx:ident| $guard_expr:expr,)?
-            $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
             items: |$items_ctx:ident| $items_expr:expr,
             build: |$item:ident, $build_ctx:ident| $build_expr:expr,
             opts: $opts:expr $(,)?
@@ -291,38 +321,6 @@ macro_rules! resource_task {
         #[derive(Debug)]
         $vis struct $name;
 
-        impl $name {
-            #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
-            fn run_resources(
-                ctx: &$crate::engine::Context,
-                emit_stage: bool,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                let $items_ctx = ctx;
-                let items: Vec<_> = { $items_expr };
-                if items.is_empty() {
-                    return Ok(None);
-                }
-                if emit_stage {
-                    $crate::infra::logging::Output::emit(
-                        ctx.log(),
-                        $crate::infra::logging::MsgKind::TaskStage,
-                        ::std::borrow::Cow::Borrowed($task_name),
-                    );
-                }
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::engine::process_config_resources(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    &$opts,
-                )
-                .map(Some)
-            }
-        }
-
         $crate::__impl_resource_task! {
             $name {
                 name: $task_name,
@@ -331,7 +329,13 @@ macro_rules! resource_task {
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
                 $(guard: |_task, $guard_ctx| $guard_expr,)?
-                run: |_task, run_ctx, emit_stage| Self::run_resources(run_ctx, emit_stage),
+                run: |_task, ctx, emit_stage| $crate::engine::run_resource_task(
+                    ctx,
+                    emit_stage.then_some($task_name),
+                    { let $items_ctx = ctx; $items_expr },
+                    |$item, $build_ctx| $build_expr,
+                    &$opts,
+                ),
             }
         }
     };
@@ -368,57 +372,7 @@ macro_rules! config_resource_task {
             opts: $opts:expr $(,)?
         }
     ) => {
-        $(#[$meta])*
-        #[derive(Debug)]
-        $vis struct $name {
-            config: $crate::infra::ConfigHandle<$cfg_ty>,
-        }
-
-        impl $name {
-            /// Create the task with a handle to its configuration slice.
-            #[must_use]
-            pub const fn new(config: $crate::infra::ConfigHandle<$cfg_ty>) -> Self {
-                Self { config }
-            }
-
-            #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
-            fn run_batch(
-                &self,
-                ctx: &$crate::engine::Context,
-                emit_stage: bool,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                let items: Vec<_> = {
-                    let snapshot = self.config.read();
-                    let $items_cfg = &*snapshot;
-                    $items_expr
-                };
-                if items.is_empty() {
-                    return Ok(None);
-                }
-                if emit_stage {
-                    $crate::infra::logging::Output::emit(
-                        ctx.log(),
-                        $crate::infra::logging::MsgKind::TaskStage,
-                        ::std::borrow::Cow::Borrowed($task_name),
-                    );
-                }
-                ctx.debug_fmt(|| {
-                    format!(
-                        "batch-checking {} resources with a single query",
-                        items.len()
-                    )
-                });
-                $crate::engine::process_config_resources_with_provider(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    |$cache_items, $cache_ctx| $cache_expr,
-                    |$state_res, $state_cache| Ok($state_expr),
-                    &$opts,
-                )
-                .map(Some)
-            }
-        }
+        $crate::__config_task_struct! { $(#[$meta])* $vis $name, $cfg_ty }
 
         $crate::__impl_resource_task! {
             $name {
@@ -427,14 +381,20 @@ macro_rules! config_resource_task {
                 $(visibility: $visibility,)?
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
-                $(
-                guard: |task, $guard_ctx| {
+                $(guard: |task, $guard_ctx| {
                     let snapshot = task.config.read();
                     let $guard_cfg = &*snapshot;
                     $guard_expr
-                },
-                )?
-                run: |task, run_ctx, emit_stage| task.run_batch(run_ctx, emit_stage),
+                },)?
+                run: |task, ctx, emit_stage| $crate::engine::run_batch_resource_task(
+                    ctx,
+                    emit_stage.then_some($task_name),
+                    { let snapshot = task.config.read(); let $items_cfg = &*snapshot; $items_expr },
+                    |$item, $build_ctx| $build_expr,
+                    |$cache_items, $cache_ctx| $cache_expr,
+                    |$state_res, $state_cache| Ok($state_expr),
+                    &$opts,
+                ),
             }
         }
     };
@@ -452,59 +412,12 @@ macro_rules! config_resource_task {
             config: $cfg_ty:ty,
             $(deps: [$($dep:ty),+ $(,)?],)?
             $(guard: |$guard_cfg:ident, $guard_ctx:ident| $guard_expr:expr,)?
-            $(setup: |$setup_ctx:ident| $setup_expr:expr,)?
             items: |$items_cfg:ident| $items_expr:expr,
             build: |$item:ident, $build_ctx:ident| $build_expr:expr,
             opts: $opts:expr $(,)?
         }
     ) => {
-        $(#[$meta])*
-        #[derive(Debug)]
-        $vis struct $name {
-            config: $crate::infra::ConfigHandle<$cfg_ty>,
-        }
-
-        impl $name {
-            /// Create the task with a handle to its configuration slice.
-            #[must_use]
-            pub const fn new(config: $crate::infra::ConfigHandle<$cfg_ty>) -> Self {
-                Self { config }
-            }
-
-            #[allow(clippy::shadow_unrelated, reason = "macro hygiene")]
-            fn run_resources(
-                &self,
-                ctx: &$crate::engine::Context,
-                emit_stage: bool,
-            ) -> ::anyhow::Result<Option<$crate::engine::TaskResult>> {
-                let items: Vec<_> = {
-                    let snapshot = self.config.read();
-                    let $items_cfg = &*snapshot;
-                    $items_expr
-                };
-                if items.is_empty() {
-                    return Ok(None);
-                }
-                if emit_stage {
-                    $crate::infra::logging::Output::emit(
-                        ctx.log(),
-                        $crate::infra::logging::MsgKind::TaskStage,
-                        ::std::borrow::Cow::Borrowed($task_name),
-                    );
-                }
-                $(
-                    let $setup_ctx = ctx;
-                    { $setup_expr }
-                )?
-                $crate::engine::process_config_resources(
-                    ctx,
-                    items,
-                    |$item, $build_ctx| $build_expr,
-                    &$opts,
-                )
-                .map(Some)
-            }
-        }
+        $crate::__config_task_struct! { $(#[$meta])* $vis $name, $cfg_ty }
 
         $crate::__impl_resource_task! {
             $name {
@@ -513,14 +426,18 @@ macro_rules! config_resource_task {
                 $(visibility: $visibility,)?
                 $(update_only: $update_only,)?
                 $(deps: [$($dep),+],)?
-                $(
-                guard: |task, $guard_ctx| {
+                $(guard: |task, $guard_ctx| {
                     let snapshot = task.config.read();
                     let $guard_cfg = &*snapshot;
                     $guard_expr
-                },
-                )?
-                run: |task, run_ctx, emit_stage| task.run_resources(run_ctx, emit_stage),
+                },)?
+                run: |task, ctx, emit_stage| $crate::engine::run_resource_task(
+                    ctx,
+                    emit_stage.then_some($task_name),
+                    { let snapshot = task.config.read(); let $items_cfg = &*snapshot; $items_expr },
+                    |$item, $build_ctx| $build_expr,
+                    &$opts,
+                ),
             }
         }
     };

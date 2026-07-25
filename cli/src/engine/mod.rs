@@ -53,9 +53,8 @@ pub use resource::{
 pub use stats::{TaskResult, TaskStats};
 pub use task::{Task, TaskId, TaskVisibility, TaskWithExtraDeps, execute};
 pub(crate) use task::{
-    config_resource_task, configured_task_result, process_config_resources,
-    process_config_resources_with_provider, process_resources_with_cache, resource_task, task_deps,
-    task_metadata,
+    config_resource_task, configured_task_result, process_resources_with_cache, resource_task,
+    run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
 pub use update_signal::UpdateSignal;
 

@@ -91,27 +91,102 @@ fn run_returns_skipped_when_detached_head() {
     assert!(!repo_updated.was_updated());
 }
 
-#[test]
-fn run_skips_when_staged_changes_detected() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    // First call (symbolic-ref): succeeds → on a branch
-    // Second call (status --porcelain): returns non-empty stdout → local changes
+/// Run [`UpdateRepository`] against a scripted sequence of successful git
+/// command outputs, returning the task result and whether the repository was
+/// marked as updated.
+///
+/// The task issues git commands in a fixed order — `symbolic-ref`, `status`,
+/// `fetch`, `rev-parse HEAD`, `rev-parse @{u}`, `rev-list --count`, and
+/// `merge --ff-only` — so a case only supplies stdout for as many calls as it
+/// expects the task to reach.
+fn run_with_git_output(outputs: &[&str]) -> (TaskResult, bool) {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_, _, _, _| Ok(ok_result("refs/heads/main")));
-    mock.expect_run_in_with_env()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_, _, _, _| Ok(ok_result("M  dirty_file.txt")));
-    let ctx = make_update_context(config, mock);
-    let repo_updated = UpdateSignal::new();
-    let task = UpdateRepository::new(repo_updated);
+    for stdout in outputs {
+        let output = (*stdout).to_string();
+        mock.expect_run_in_with_env()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+    }
+    let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), mock);
+    let signal = UpdateSignal::new();
+    let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
+    (result, signal.was_updated())
+}
 
-    let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes")));
+/// The task classifies repository state purely from the sequence of git
+/// command outputs, so one table covers every classification branch.
+///
+/// Each case lists the expected outcome as `None` for [`TaskResult::Ok`] or
+/// `Some(fragment)` for a skip whose reason contains `fragment`, plus whether
+/// the update signal should end up set.
+#[test]
+fn run_classifies_repository_state_from_git_output() {
+    let cases: [(&str, &[&str], Option<&str>, bool); 5] = [
+        (
+            "staged changes leave the worktree dirty",
+            &["refs/heads/main", "M  dirty_file.txt"],
+            Some("local changes"),
+            false,
+        ),
+        (
+            "HEAD already matches upstream",
+            &["refs/heads/main", "", "", "abc123", "abc123"],
+            None,
+            false,
+        ),
+        (
+            "fast-forward merge brings in new commits",
+            &[
+                "refs/heads/main",
+                "",
+                "",
+                "abc1234",
+                "def5678",
+                "0",
+                "Updating abc1234..def5678\nFast-forward",
+            ],
+            None,
+            true,
+        ),
+        (
+            "local commits ahead of upstream mean the branch diverged",
+            &["refs/heads/main", "", "", "abc1234", "def5678", "2"],
+            Some("diverged"),
+            false,
+        ),
+        (
+            "rev-list count that is not a number",
+            &[
+                "refs/heads/main",
+                "",
+                "",
+                "abc1234",
+                "def5678",
+                "not-a-count",
+            ],
+            Some("could not determine"),
+            false,
+        ),
+    ];
+
+    for (case, outputs, expected_skip, expect_updated) in cases {
+        let (result, updated) = run_with_git_output(outputs);
+
+        if let Some(fragment) = expected_skip {
+            assert!(
+                matches!(result, TaskResult::Skipped(ref reason) if reason.contains(fragment)),
+                "{case}: expected a skip mentioning {fragment:?}, got {result:?}"
+            );
+        } else {
+            assert!(
+                matches!(result, TaskResult::Ok),
+                "{case}: expected Ok, got {result:?}"
+            );
+        }
+        assert_eq!(updated, expect_updated, "{case}: update signal");
+    }
 }
 
 #[derive(Debug)]
@@ -173,126 +248,6 @@ fn worktree_has_local_changes_ignores_untracked_files() {
     );
 
     assert!(!worktree_has_local_changes(&ctx, Path::new("/repo"), &[]).unwrap());
-}
-
-#[test]
-fn run_returns_ok_and_does_not_mark_updated_when_already_up_to_date() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    // 1. symbolic-ref → on a branch
-    // 2. status → clean worktree
-    // 3. fetch → ok
-    // 4. rev-parse HEAD → SHA
-    // 5. rev-parse @{u} → same SHA → already up to date
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in ["refs/heads/main", "", "", "abc123", "abc123"] {
-        let s = stdout.to_string();
-        mock.expect_run_in_with_env()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&s)));
-    }
-    let ctx = make_update_context(config, mock);
-    let repo_updated = UpdateSignal::new();
-    let task = UpdateRepository::new(repo_updated.clone());
-
-    let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
-    assert!(!repo_updated.was_updated());
-}
-
-#[test]
-fn run_returns_ok_and_marks_updated_when_pull_fetches_new_commits() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    // 1. symbolic-ref → on a branch
-    // 2. status → clean worktree
-    // 3. fetch → ok
-    // 4. rev-parse HEAD → pre-merge SHA
-    // 5. rev-parse @{u} → newer SHA
-    // 6. rev-list --count @{u}..HEAD → 0 (not ahead)
-    // 7. merge --ff-only → succeeds
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in [
-        "refs/heads/main",
-        "",
-        "",
-        "abc1234",
-        "def5678",
-        "0",
-        "Updating abc1234..def5678\nFast-forward",
-    ] {
-        let s = stdout.to_string();
-        mock.expect_run_in_with_env()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&s)));
-    }
-    let ctx = make_update_context(config, mock);
-    let repo_updated = UpdateSignal::new();
-    let task = UpdateRepository::new(repo_updated.clone());
-
-    let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
-    assert!(repo_updated.was_updated());
-}
-
-#[test]
-fn run_returns_skipped_when_local_branch_diverged() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    // 1. symbolic-ref → on a branch
-    // 2. status → clean worktree
-    // 3. fetch → ok
-    // 4. rev-parse HEAD → SHA
-    // 5. rev-parse @{u} → different SHA
-    // 6. rev-list --count @{u}..HEAD → 2 (local commits ahead → diverged)
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in ["refs/heads/main", "", "", "abc1234", "def5678", "2"] {
-        let s = stdout.to_string();
-        mock.expect_run_in_with_env()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&s)));
-    }
-    let ctx = make_update_context(config, mock);
-    let repo_updated = UpdateSignal::new();
-    let task = UpdateRepository::new(repo_updated.clone());
-
-    let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("diverged")));
-    assert!(!repo_updated.was_updated());
-}
-
-#[test]
-fn run_returns_skipped_when_rev_list_count_is_malformed() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in [
-        "refs/heads/main",
-        "",
-        "",
-        "abc1234",
-        "def5678",
-        "not-a-count",
-    ] {
-        let output = stdout.to_string();
-        mock.expect_run_in_with_env()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&output)));
-    }
-    let ctx = make_update_context(config, mock);
-    let repo_updated = UpdateSignal::new();
-    let task = UpdateRepository::new(repo_updated.clone());
-
-    let result = task.run(&ctx).unwrap();
-
-    assert!(
-        matches!(result, TaskResult::Skipped(ref reason) if reason.contains("could not determine"))
-    );
-    assert!(!repo_updated.was_updated());
 }
 
 #[test]

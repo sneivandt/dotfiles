@@ -10,10 +10,9 @@ use crate::infra::logging::types::TaskEntry;
 mod render;
 mod totals;
 
+use crate::infra::logging::utils::format_elapsed;
 use render::{format_task_line, should_emit_task_result, task_result_lines};
-use totals::{
-    SummaryCounts, SummaryMode, format_elapsed, format_summary_lines, should_space_before_totals,
-};
+use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 
 impl Logger {
     /// Print the summary of all recorded tasks.

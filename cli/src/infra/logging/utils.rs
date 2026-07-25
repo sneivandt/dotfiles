@@ -2,6 +2,18 @@
 use std::fs;
 use std::path::PathBuf;
 
+/// Format a duration as a human-readable string (e.g., "1.2s", "2m 5s").
+pub(crate) fn format_elapsed(d: std::time::Duration) -> String {
+    let secs = d.as_secs();
+    if secs < 60 {
+        format!("{:.1}s", d.as_secs_f64())
+    } else {
+        let mins = secs / 60;
+        let remaining = secs % 60;
+        format!("{mins}m {remaining}s")
+    }
+}
+
 /// Strip ANSI escape sequences from a string.
 ///
 /// Handles SGR sequences (ending in `m`) and other CSI sequences (ending

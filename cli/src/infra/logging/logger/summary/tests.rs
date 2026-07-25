@@ -1,12 +1,11 @@
 use std::time::Duration;
 
 use super::render::{format_task_line, task_detail_lines, task_result_lines};
-use super::totals::{
-    SummaryCounts, SummaryMode, format_elapsed, format_summary_lines, should_space_before_totals,
-};
+use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::StyleChoice;
 use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus};
+use crate::infra::logging::utils::format_elapsed;
 
 #[test]
 fn format_elapsed_values() {

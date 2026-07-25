@@ -162,3 +162,26 @@ fn sequential_runner_records_details_for_final_summary() {
         "detail should be written during task flush but not repeated in the final file summary; log:\n{contents}"
     );
 }
+
+#[test]
+fn task_execution_records_elapsed_time_in_the_run_log() {
+    let (mut log, _tmp, _guard) = logging::isolated_logger();
+    log.set_verbose(false);
+    let log = Arc::new(log);
+    let log_output: Arc<dyn Log> = Arc::<Logger>::clone(&log);
+    let ctx = ContextBuilder::new(empty_config(PathBuf::from("/tmp")))
+        .build()
+        .with_log(log_output);
+    let task = SequentialChangedDetailTask;
+    let tasks: Vec<&dyn Task> = vec![&task];
+    let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
+
+    run_tasks_sequential(&tasks, &graph, &ctx, &log);
+
+    let path = log.log_path().expect("log path");
+    let contents = std::fs::read_to_string(path).unwrap();
+    assert!(
+        contents.contains("[task_timing] elapsed "),
+        "each executed task should record its duration; log:\n{contents}"
+    );
+}

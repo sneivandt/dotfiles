@@ -28,6 +28,7 @@ Any stage whose tool is missing reports `SKIP` instead of failing.
 | `clippy` | `cargo clippy --all-targets -D warnings` |
 | `test` | `cargo test` |
 | `config` | `dotfiles --root . test` (repository validator) |
+| `docs` | Relative markdown links resolve; documented task selectors exist |
 | `shell` | ShellCheck over wrappers, hooks, and CI scripts |
 | `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
 | `audit` | `cargo audit` |
@@ -142,6 +143,7 @@ The main CI workflow includes:
 
 - formatting and linting
 - ShellCheck and PowerShell analysis
+- documentation consistency (runs even for docs-only changes)
 - configuration validation
 - `cargo-audit` and `cargo-deny`
 - Linux and Windows builds
@@ -191,6 +193,7 @@ the assertion about the dotfiles rather than about the machine.
 | Wrapper | platform wrapper integration script |
 | Hook | hook script and Git hook integration test |
 | Cross-platform Rust | tests/check on the host plus the repository's cross-platform sequence |
+| Documentation | `check.sh docs` (link and task-selector consistency) |
 | CI workflow | local script or narrow command used by the changed job |
 
 Escalate to the full suite when shared engine behavior, catalog composition, or

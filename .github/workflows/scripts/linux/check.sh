@@ -26,7 +26,7 @@ MANIFEST="$REPO_ROOT/cli/Cargo.toml"
 CARGO_PROFILE=ci
 
 # Stages run when no stage arguments are given.
-DEFAULT_STAGES="fmt clippy test config shell powershell audit deny"
+DEFAULT_STAGES="fmt clippy test config docs shell powershell audit deny"
 
 # Stages only run when explicitly requested or via --all. `msrv` downloads a
 # second toolchain, which is too slow for the default loop.
@@ -121,6 +121,16 @@ stage_config()
   have cargo || { note "cargo not installed; skipping"; return 2; }
   cargo run --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" -- \
     --root "$REPO_ROOT" test
+}
+
+# Mirrors the CI documentation consistency job.
+stage_docs()
+{
+  DIR="$REPO_ROOT"
+  export DIR
+  ( cd "$REPO_ROOT/.github/workflows/scripts/linux" \
+    && sh test-docs.sh docs_links \
+    && sh test-docs.sh docs_task_selectors )
 }
 
 stage_shell()

@@ -24,6 +24,9 @@ emit_output() {
 
 write_outputs() {
   emit_output docs_only "$1"
+  # Documentation checks are cheap and are the only checks that stay relevant
+  # for a docs-only change, so they always run.
+  emit_output run_docs_checks true
   emit_output run_lint "$2"
   emit_output run_validate_config "$3"
   emit_output run_rust_checks "$4"

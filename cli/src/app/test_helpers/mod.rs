@@ -25,7 +25,7 @@ pub use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
 #[must_use]
 #[allow(
     clippy::expect_used,
-    reason = "panicking allowed at this trust boundary"
+    reason = "test helper: setup failures should abort the calling test"
 )]
 pub fn empty_config(root: PathBuf) -> Config {
     Config {

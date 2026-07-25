@@ -190,6 +190,29 @@ mod tests {
         // Should complete without blocking or panicking.
         wait_if_elevated();
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn sudo_available_reflects_the_executor_lookup() {
+        use crate::infra::exec::MockExecutor;
+
+        let mut present = MockExecutor::new();
+        present
+            .expect_which()
+            .withf(|program| program == "sudo")
+            .returning(|_| true);
+        assert!(sudo_available(&present));
+
+        let mut absent = MockExecutor::new();
+        absent
+            .expect_which()
+            .withf(|program| program == "sudo")
+            .returning(|_| false);
+        assert!(
+            !sudo_available(&absent),
+            "sudo must be reported unavailable when it is not on PATH"
+        );
+    }
 }
 
 #[cfg(test)]

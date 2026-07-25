@@ -11,7 +11,7 @@ use std::path::PathBuf;
 #[must_use]
 #[allow(
     clippy::expect_used,
-    reason = "panicking allowed at this trust boundary"
+    reason = "test helper: setup failures should abort the calling test"
 )]
 pub fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
@@ -30,7 +30,7 @@ pub fn write_temp_toml(content: &str) -> (tempfile::TempDir, PathBuf) {
 /// Panics if the temp directory cannot be created or the loader fails.
 #[allow(
     clippy::expect_used,
-    reason = "panicking allowed at this trust boundary"
+    reason = "test helper: setup failures should abort the calling test"
 )]
 pub fn assert_load_missing_returns_empty<T>(
     loader: impl Fn(
@@ -53,7 +53,7 @@ pub fn assert_load_missing_returns_empty<T>(
 /// Panics if the temp directory cannot be created or the loader fails.
 #[allow(
     clippy::expect_used,
-    reason = "panicking allowed at this trust boundary"
+    reason = "test helper: setup failures should abort the calling test"
 )]
 pub fn assert_load_missing_unfiltered_returns_empty<T>(
     loader: impl Fn(&std::path::Path) -> anyhow::Result<Vec<T>>,

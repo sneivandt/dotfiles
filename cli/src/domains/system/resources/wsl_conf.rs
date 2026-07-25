@@ -273,4 +273,95 @@ mod tests {
             ResourceState::Correct
         );
     }
+
+    #[test]
+    fn apply_creates_the_desired_file_when_missing() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("nested").join("wsl.conf");
+
+        resource(&path).apply().unwrap();
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), DESIRED);
+        assert_eq!(
+            resource(&path).current_state().unwrap(),
+            ResourceState::Correct,
+            "a freshly written file must converge"
+        );
+    }
+
+    #[test]
+    fn apply_is_idempotent() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("wsl.conf");
+        fs::write(&path, "[boot]\ncommand=service docker start\n").unwrap();
+
+        resource(&path).apply().unwrap();
+        let first = fs::read_to_string(&path).unwrap();
+        resource(&path).apply().unwrap();
+
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            first,
+            "re-applying a converged file must not rewrite it differently"
+        );
+    }
+
+    #[test]
+    fn state_detection_ignores_case_and_surrounding_whitespace() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("wsl.conf");
+        fs::write(
+            &path,
+            "  [BOOT]  \n  Systemd =  TRUE \n\n[Interop]\nAppendWindowsPath = False\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            resource(&path).current_state().unwrap(),
+            ResourceState::Correct,
+            "keys and section headers are matched case-insensitively"
+        );
+    }
+
+    #[test]
+    fn conflicting_settings_report_incorrect_with_the_current_contents() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("wsl.conf");
+        let current = "[boot]\nsystemd=false\n\n[interop]\nappendWindowsPath=false\n";
+        fs::write(&path, current).unwrap();
+
+        assert_eq!(
+            resource(&path).current_state().unwrap(),
+            ResourceState::Incorrect {
+                current: current.to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_setting_in_the_wrong_section_does_not_count_as_converged() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("wsl.conf");
+        fs::write(&path, "[interop]\nsystemd=true\nappendWindowsPath=false\n").unwrap();
+
+        assert!(
+            matches!(
+                resource(&path).current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ),
+            "systemd must be read from [boot] only"
+        );
+
+        resource(&path).apply().unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("[boot]\nsystemd=true"),
+            "apply should add the key under [boot]: {content}"
+        );
+        assert_eq!(
+            resource(&path).current_state().unwrap(),
+            ResourceState::Correct
+        );
+    }
 }

@@ -104,8 +104,8 @@ mod native {
     /// Convert a raw registry value to a string representation.
     #[allow(
         clippy::indexing_slicing,
-        reason = "panicking allowed at this trust boundary"
-    )] // chunks_exact guarantees exact sizes
+        reason = "each arm indexes only within a length checked above or a chunks_exact window"
+    )]
     fn raw_value_to_string(val: &winreg::RegValue) -> String {
         match val.vtype {
             REG_DWORD if val.bytes.len() >= 4 => {
@@ -237,7 +237,10 @@ pub fn batch_check_values(
 ///
 /// This function never returns an error on non-Windows platforms.
 #[cfg(not(windows))]
-#[allow(clippy::unnecessary_wraps, reason = "matches trait signature")]
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "mirrors the fallible Windows implementation this stub replaces"
+)]
 pub fn batch_check_values(
     _resources: &[RegistryResource],
 ) -> Result<HashMap<String, Option<String>>> {

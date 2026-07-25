@@ -117,6 +117,21 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd:
     expect_apm_prune(mock, seq, cwd);
 }
 
+fn expect_apm_outdated(mock: &mut MockExecutor, cwd: &Path, stdout: &'static str) {
+    let outdated_cwd = cwd.to_path_buf();
+    mock.expect_run_in_with_env()
+        .once()
+        .returning(move |dir, program, args, env| {
+            assert_eq!(dir, outdated_cwd.as_path());
+            assert_eq!(program, "apm");
+            assert_eq!(args, ["outdated", "-g"]);
+            assert!(env.contains(&("GIT_TERMINAL_PROMPT", "0")));
+            assert!(env.contains(&("GCM_INTERACTIVE", "Never")));
+            assert!(env.contains(&("GCM_GUI_PROMPT", "false")));
+            Ok(ok_result(stdout))
+        });
+}
+
 #[test]
 fn should_run_false_when_no_fragments() {
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -154,6 +169,7 @@ fn run_skips_when_apm_not_found() {
             "expected reason to mention 'apm not found', got {reason:?}"
         ),
         other @ (TaskResult::Ok
+        | TaskResult::DryRun
         | TaskResult::CheckPassed
         | TaskResult::NotApplicable(_)
         | TaskResult::Failed(_)
@@ -482,8 +498,8 @@ fn run_dry_run_reports_planned_apm_work_without_writing() {
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
-        "expected planned changes with fragments present, got {result:?}"
+        matches!(result, TaskResult::DryRun),
+        "expected unquantified planned work with fragments present, got {result:?}"
     );
     assert!(
         !dir.path().join(".apm").join("apm.yml").exists(),
@@ -492,7 +508,7 @@ fn run_dry_run_reports_planned_apm_work_without_writing() {
 }
 
 #[test]
-fn run_dry_run_reports_convergence_when_apm_install_state_is_current() {
+fn run_dry_run_is_silent_when_apm_install_state_is_current() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
@@ -500,41 +516,47 @@ fn run_dry_run_reports_convergence_when_apm_install_state_is_current() {
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
-        "expected planned install and prune convergence, got {result:?}"
+        matches!(result, TaskResult::Ok),
+        "expected no planned install work, got {result:?}"
     );
 }
 
 #[test]
-fn update_dry_run_reports_planned_advancement() {
+fn update_dry_run_is_silent_when_dependencies_are_current() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
+    expect_apm_outdated(
+        &mut mock,
+        dir.path(),
+        "[*] All dependencies are up-to-date\n",
+    );
 
     let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
 
     let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
-        "expected planned update with fragments present, got {result:?}"
+        matches!(result, TaskResult::Ok),
+        "expected no planned update work, got {result:?}"
     );
 }
 
 #[test]
-fn update_dry_run_always_reports_native_update() {
+fn update_dry_run_reports_discovered_dependency_advancement() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
+    expect_apm_outdated(&mut mock, dir.path(), "[!] 2 outdated dependencies found\n");
     let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
 
     let result = UpdateApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
-        "expected planned native idempotent update, got {result:?}"
+        matches!(result, TaskResult::DryRun),
+        "expected an update plan for discovered outdated dependencies, got {result:?}"
     );
 }
 
@@ -586,6 +608,7 @@ fn run_skips_auth_failures() {
             "expected auth skip reason, got {reason:?}"
         ),
         other @ (TaskResult::Ok
+        | TaskResult::DryRun
         | TaskResult::CheckPassed
         | TaskResult::NotApplicable(_)
         | TaskResult::Failed(_)

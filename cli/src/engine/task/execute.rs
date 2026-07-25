@@ -83,6 +83,11 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
                 ctx.log().diag_task(DiagEvent::TaskDone, task.name(), "ok");
                 rec(TaskStatus::Ok, None, ActionCounts::default())
             }
+            TaskResult::DryRun => {
+                ctx.log()
+                    .diag_task(DiagEvent::TaskDone, task.name(), "planned");
+                rec(TaskStatus::DryRun, None, ActionCounts::default())
+            }
             TaskResult::CheckPassed => {
                 ctx.log()
                     .diag_task(DiagEvent::TaskDone, task.name(), "passed");

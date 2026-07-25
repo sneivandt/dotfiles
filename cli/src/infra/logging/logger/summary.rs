@@ -65,7 +65,7 @@ impl Logger {
         let Some(task) = self.recorded_task(task_name) else {
             return;
         };
-        if task.status == TaskStatus::NotApplicable {
+        if !should_emit_task_result(task.status) {
             return;
         }
 
@@ -298,7 +298,7 @@ fn format_standard_totals(counts: SummaryCounts, dry_run: bool, style: StyleChoi
         parts.push(style.paint(
             TextStyle::Magenta,
             &format!(
-                "Changes planned across {} {}",
+                "{} {} planned",
                 counts.dry_run,
                 pluralize(counts.dry_run, "task", "tasks")
             ),
@@ -310,7 +310,7 @@ fn format_standard_totals(counts: SummaryCounts, dry_run: bool, style: StyleChoi
         parts.push(style.paint(TextStyle::Dim, &format!("{} up to date", counts.ok)));
     }
     if counts.skipped > 0 {
-        parts.push(style.paint(TextStyle::Yellow, &format!("{} skipped", counts.skipped)));
+        parts.push(style.paint(TextStyle::Yellow, &format!("{} ignored", counts.skipped)));
     }
     if counts.failed > 0 {
         parts.push(style.paint(TextStyle::Red, &format!("{} failed", counts.failed)));
@@ -328,7 +328,7 @@ fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> 
         parts.push(style.paint(TextStyle::Green, &format!("{} passed", counts.passed)));
     }
     if counts.skipped > 0 {
-        parts.push(style.paint(TextStyle::Yellow, &format!("{} skipped", counts.skipped)));
+        parts.push(style.paint(TextStyle::Yellow, &format!("{} ignored", counts.skipped)));
     }
     if counts.failed > 0 {
         parts.push(style.paint(TextStyle::Red, &format!("{} failed", counts.failed)));
@@ -352,18 +352,16 @@ fn format_task_line(task: &TaskEntry, mode: SummaryMode, style: StyleChoice) -> 
             if mode == SummaryMode::Test {
                 "PASSED"
             } else {
-                "CHANGED"
+                "CHANGE"
             }
         }
         TaskStatus::Passed => "PASSED",
-        TaskStatus::DryRun => "PLAN",
-        TaskStatus::Skipped => "SKIP",
+        TaskStatus::DryRun => "DRYRUN",
+        TaskStatus::Skipped => "IGNORE",
         TaskStatus::Failed => "FAILED",
-        TaskStatus::Ok => "OK",
-        TaskStatus::NotApplicable => return task.name.clone(),
+        TaskStatus::Ok | TaskStatus::NotApplicable => return task.name.clone(),
     };
-    let padded_status = format!("{status:<7}");
-    format!("{} {}", style.paint(text_style, &padded_status), task.name)
+    format!("{} {}", style.paint(text_style, status), task.name)
 }
 
 fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<String> {
@@ -473,7 +471,7 @@ mod tests {
 
         assert_eq!(
             lines,
-            ["Failed · Applied 87 changes across 3 tasks · 1 skipped · 1 failed · 2.0s"]
+            ["Failed · Applied 87 changes across 3 tasks · 1 ignored · 1 failed · 2.0s"]
         );
     }
 
@@ -499,6 +497,22 @@ mod tests {
         );
 
         assert_eq!(lines, ["81 changes planned across 1 task · 0.8s"]);
+    }
+
+    #[test]
+    fn preview_summary_counts_unquantified_work_as_tasks() {
+        let lines = format_summary_lines(
+            SummaryCounts {
+                dry_run: 2,
+                ..SummaryCounts::default()
+            },
+            SummaryMode::Standard,
+            true,
+            "0.8s",
+            StyleChoice::plain(),
+        );
+
+        assert_eq!(lines, ["2 tasks planned · 0.8s"]);
     }
 
     #[test]
@@ -540,7 +554,7 @@ mod tests {
             StyleChoice::plain(),
         );
 
-        assert_eq!(lines, ["7 passed · 2 skipped · 1 failed · 3.4s"]);
+        assert_eq!(lines, ["7 passed · 2 ignored · 1 failed · 3.4s"]);
     }
 
     #[test]
@@ -557,7 +571,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_task_line_omits_redundant_status() {
+    fn changed_task_line_uses_fixed_width_status() {
         let task = TaskEntry {
             name: "symlinks".to_string(),
             status: TaskStatus::Changed,
@@ -568,31 +582,11 @@ mod tests {
 
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::colored()),
-            "\x1b[32mCHANGED\x1b[0m symlinks"
+            "\x1b[32mCHANGE\x1b[0m symlinks"
         );
         assert_eq!(
             format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
-            "CHANGED symlinks"
-        );
-    }
-
-    #[test]
-    fn unchanged_task_line_has_status() {
-        let task = TaskEntry {
-            name: "Install packages".to_string(),
-            status: TaskStatus::Ok,
-            message: None,
-            visible: true,
-            actions: ActionCounts::default(),
-        };
-
-        assert_eq!(
-            format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
-            "OK      Install packages"
-        );
-        assert_eq!(
-            format_task_line(&task, SummaryMode::Standard, StyleChoice::colored()),
-            "\x1b[2mOK     \x1b[0m Install packages"
+            "CHANGE symlinks"
         );
     }
 
@@ -677,7 +671,7 @@ mod tests {
                 StyleChoice::colored(),
             ),
             vec![
-                "\x1b[32mCHANGED\x1b[0m changed-task",
+                "\x1b[32mCHANGE\x1b[0m changed-task",
                 "\x1b[2m  link ~/.example\x1b[0m"
             ]
         );
@@ -703,7 +697,7 @@ mod tests {
         assert_eq!(
             task_result_lines(&task, &details, SummaryMode::Standard, StyleChoice::plain(),),
             [
-                "PLAN    Install symlinks",
+                "DRYRUN Install symlinks",
                 "  link ~/.bashrc \u{2190} symlinks/bashrc"
             ]
         );
@@ -733,7 +727,7 @@ mod tests {
         assert_eq!(lines.len(), 10);
         assert_eq!(
             lines.first().expect("task status line should exist"),
-            "PLAN    large-plan"
+            "DRYRUN large-plan"
         );
         assert_eq!(
             lines.get(8).expect("eighth detail line should exist"),
@@ -772,7 +766,7 @@ mod tests {
 
         assert_eq!(
             format_task_line(&task, SummaryMode::Test, StyleChoice::plain()),
-            "PASSED  Validate config"
+            "PASSED Validate config"
         );
     }
 

@@ -190,12 +190,14 @@ The logger records stages, structured results, actions, warnings, summaries, and
 diagnostic detail. Internal orchestration remains in diagnostic/file logs but is
 excluded from normal task rows and totals.
 
-Visible rows use explicit `CHANGED`, `PASSED`, `PLAN`, `SKIP`, `FAILED`, and dim
-`OK` statuses. Normal output keeps detail compact; verbose output shows every
-applicable visible task and full messages. Aggregate summaries count actions,
-affected tasks, skipped or failed tasks, and elapsed time rather than equating
-tasks with changes. `dotfiles log --verbose` prefers the diagnostic log for
-post-run investigation.
+Visible rows use fixed-width `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`, and
+`FAILED` statuses. Tasks that require no change and tasks that are not
+applicable remain in diagnostic/file logs without emitting console rows in
+either normal or verbose mode. Normal output keeps detail compact; verbose
+output shows full messages for emitted task rows. Aggregate summaries count
+actions, affected tasks, up-to-date tasks, ignored or failed tasks, and elapsed
+time rather than equating tasks with changes. `dotfiles log --verbose` prefers
+the diagnostic log for post-run investigation.
 
 ## Extension points
 

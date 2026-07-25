@@ -14,8 +14,6 @@ use crate::infra::logging::{Log, Logger, Output};
 use crate::infra::platform::Platform;
 
 use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
-use super::install;
-
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
 pub struct CommandRunner {
@@ -59,7 +57,6 @@ impl CommandRunner {
             crate::engine::ContextOpts {
                 dry_run: global.dry_run,
                 parallel: global.parallel,
-                advance_versions: false,
                 is_ci: None,
             },
         )?
@@ -71,13 +68,6 @@ impl CommandRunner {
             store,
             overlay,
         })
-    }
-
-    /// Configure command-specific pipeline behavior.
-    #[must_use]
-    pub(crate) fn with_run_mode(mut self, mode: install::RunMode) -> Self {
-        self.ctx = self.ctx.with_advance_versions(mode.advances_versions());
-        self
     }
 
     /// Build the full set of install tasks, wired to the shared config store.
@@ -218,7 +208,7 @@ fn resolve_overlay(
 
 pub(super) fn log_overlay_path(overlay: Option<&std::path::Path>, log: &dyn Output) {
     if let Some(path) = overlay {
-        log.always(&format!("\x1b[2moverlay\x1b[0m {}", path.display()));
+        log.always(&format!("overlay {}", path.display()));
     }
 }
 

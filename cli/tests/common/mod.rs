@@ -274,7 +274,6 @@ impl IntegrationTestContext {
             ContextOpts {
                 dry_run: false,
                 parallel: false,
-                advance_versions: false,
                 is_ci: Some(false),
             },
         );

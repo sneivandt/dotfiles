@@ -25,16 +25,17 @@ description: >
 - Access logging through `ctx.log`; do not construct additional loggers in tasks.
 - Task result recording is owned by `engine::execute()`; tasks should not call
   `record_task()` directly.
-- Verbose console output shows one completion-order status row for every
-  applicable visible task. Internal tasks remain in diagnostic/file logs but do
-  not produce normal rows or contribute to visible totals. Unchanged statuses
-  are dim, non-applicable tasks are hidden, and task messages follow beneath the
-  status row with a two-space indent and dim styling.
-- Statuses are explicit: `CHANGED`, `PASSED`, `PLAN`, `SKIP`, `FAILED`, and dim
-  `OK`.
+- Console output shows completion-order status rows for visible tasks with
+  reportable outcomes. Internal, unchanged, and non-applicable tasks do not
+  produce console rows; internal and non-applicable tasks remain excluded from
+  visible totals, while unchanged tasks contribute to the aggregate `up to
+  date` count. Task messages follow beneath emitted status rows with a two-space
+  indent and dim styling.
+- Statuses are fixed-width and explicit: `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`,
+  and `FAILED`.
 - Normal output caps compact detail at eight lines and reports the omitted
   count. Verbose output prints full messages.
-- Summaries count structured actions and affected tasks separately, plus skipped
+- Summaries count structured actions and affected tasks separately, plus ignored
   or failed tasks and elapsed time. Never infer counts from display text.
 - Debug-level detail may be suppressed on terminal in non-verbose mode, but
   persistent logs remain complete.

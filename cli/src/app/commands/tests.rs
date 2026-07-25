@@ -150,7 +150,7 @@ mod startup_log_tests {
             lines,
             vec![
                 "Install · profile workstation · Linux".to_string(),
-                "\x1b[2moverlay\x1b[0m /private/overlay".to_string(),
+                "overlay /private/overlay".to_string(),
             ],
             "overlay line must immediately follow startup context and must not be indented"
         );

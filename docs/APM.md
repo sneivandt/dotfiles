@@ -60,6 +60,9 @@ available. The task:
 6. Prunes user-scope deployments no longer owned by the generated manifest.
 
 Re-running `dotfiles install` should not advance pinned dependency versions.
+Install previews derive the same merged-manifest, lockfile, and success-marker
+state as apply mode. They emit `DRYRUN` only when convergence is needed; an
+already-current install stays quiet.
 
 ```bash
 dotfiles install --only apm --dry-run --verbose
@@ -77,9 +80,10 @@ the current merged-manifest fingerprint. If install convergence did not succeed,
 or the desired state changed afterward, update is skipped rather than mutating
 an unrelated or partial lockfile.
 
-The task invokes APM's native idempotent update directly. It compares the
-lockfile before and after to report whether refs advanced instead of parsing
-human-readable `apm outdated` output.
+An update preview runs non-mutating `apm outdated -g` and emits `DRYRUN` only
+when APM reports outdated dependencies. Apply mode invokes APM's native
+idempotent update directly, then compares the lockfile before and after to
+report whether refs advanced instead of parsing update output.
 
 ```bash
 dotfiles update --only apm,apm-update

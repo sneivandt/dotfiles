@@ -28,13 +28,6 @@ pub struct ContextOpts {
     /// variable.  Tests can set this explicitly to avoid mutating process-global
     /// state.
     pub is_ci: Option<bool>,
-    /// Whether to advance locked dependency versions beyond the declared state.
-    ///
-    /// Set by the `update` command and left `false` by `install`.  Tasks that
-    /// can move past the declared/locked state (currently the APM dependency
-    /// refresh) gate that behaviour on this flag so that `install` stays a
-    /// pure convergence to the declared state.
-    pub advance_versions: bool,
 }
 
 /// Repository-relative paths derived from the repository root.
@@ -127,11 +120,6 @@ impl SystemContext<'_> {
 
 /// Shared context for task execution.
 #[derive(Clone)]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "independent execution flags (dry_run, parallel, advance_versions, is_ci) \
-              are clearer as separate fields than folded into a state enum"
-)]
 pub struct Context {
     paths: Arc<RepoPaths>,
     /// Optional path to a private overlay repository.
@@ -145,12 +133,6 @@ pub struct Context {
     home: Arc<std::path::PathBuf>,
     executor: Arc<dyn Executor>,
     parallel: bool,
-    /// Whether to advance locked dependency versions beyond the declared state.
-    ///
-    /// Set by the `update` command; `false` for `install`.  Gates the APM
-    /// dependency refresh (`apm outdated` / `apm update`) so that
-    /// `install` converges to the declared state without bumping locked refs.
-    advance_versions: bool,
     /// Whether the process is running inside a CI environment.
     ///
     /// Derived from the `CI` environment variable at construction time (or
@@ -176,7 +158,6 @@ impl std::fmt::Debug for Context {
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
-            .field("advance_versions", &self.advance_versions)
             .field("is_ci", &self.is_ci)
             .field("cancelled", &self.cancelled)
             .finish()
@@ -223,7 +204,6 @@ impl Context {
             home: Arc::new(std::path::PathBuf::from(home)),
             executor,
             parallel: opts.parallel,
-            advance_versions: opts.advance_versions,
             is_ci,
             cancelled: CancellationToken::new(),
         })
@@ -253,7 +233,6 @@ impl Context {
             home: Arc::new(home),
             executor,
             parallel: opts.parallel,
-            advance_versions: opts.advance_versions,
             is_ci: opts.is_ci.unwrap_or(false),
             cancelled: CancellationToken::new(),
         }
@@ -371,15 +350,6 @@ impl Context {
     #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_parallel(&self, parallel: bool) -> Self {
         self.clone_with(|ctx| ctx.parallel = parallel)
-    }
-
-    /// Create a copy of this context with version-advancement mode set.
-    ///
-    /// Used by the `update` command to opt into advancing locked dependency
-    /// refs (e.g. `apm update`) that `install` deliberately leaves alone.
-    #[must_use]
-    pub fn with_advance_versions(&self, advance_versions: bool) -> Self {
-        self.clone_with(|ctx| ctx.advance_versions = advance_versions)
     }
 
     /// Create a copy of this context with a different home directory.

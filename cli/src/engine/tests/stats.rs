@@ -1,7 +1,44 @@
+use crate::engine::stats::ItemOutcome;
 use crate::engine::{TaskResult, TaskStats};
 // -----------------------------------------------------------------------
 // TaskStats
 // -----------------------------------------------------------------------
+
+#[test]
+fn stats_record_increments_each_outcome() {
+    let mut stats = TaskStats::new();
+
+    stats.record(ItemOutcome::Changed);
+    stats.record(ItemOutcome::AlreadyOk);
+    stats.record(ItemOutcome::Skipped);
+    stats.record(ItemOutcome::Failed);
+
+    assert_eq!(stats.changed, 1);
+    assert_eq!(stats.already_ok, 1);
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 1);
+}
+
+#[test]
+fn stats_record_saturates_each_outcome() {
+    let mut stats = TaskStats {
+        changed: u32::MAX,
+        already_ok: u32::MAX,
+        skipped: u32::MAX,
+        failed: u32::MAX,
+        message: None,
+    };
+
+    stats.record(ItemOutcome::Changed);
+    stats.record(ItemOutcome::AlreadyOk);
+    stats.record(ItemOutcome::Skipped);
+    stats.record(ItemOutcome::Failed);
+
+    assert_eq!(stats.changed, u32::MAX);
+    assert_eq!(stats.already_ok, u32::MAX);
+    assert_eq!(stats.skipped, u32::MAX);
+    assert_eq!(stats.failed, u32::MAX);
+}
 
 #[test]
 fn stats_summary_changed_only() {

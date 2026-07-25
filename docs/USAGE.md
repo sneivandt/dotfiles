@@ -128,22 +128,22 @@ may appear in a different order between runs. Statuses distinguish the outcome:
 
 | Status | Meaning |
 |---|---|
-| `CHANGED` | The task applied one or more changes |
-| `PLAN` | Dry-run changes were planned but not applied |
+| `CHANGE` | The task applied one or more changes |
+| `DRYRUN` | Dry-run changes were planned but not applied |
 | `PASSED` | A validation task passed |
-| `SKIP` | The task was intentionally skipped |
+| `IGNORE` | The task was intentionally ignored |
 | `FAILED` | The task failed |
-| `OK` | The applicable task required no change |
 
-Changed, planned, skipped, and failed rows include useful indented, dimmed
+Changed, planned, ignored, and failed rows include useful indented, dimmed
 details. Normal output shows at most eight detail lines and then points to
-`-v`; verbose mode shows complete task messages and one completion row for
-every applicable visible task. Internal orchestration remains available in
-diagnostic logs but is excluded from normal rows and totals.
+`-v`; verbose mode shows complete messages for emitted task rows. Tasks that
+require no change and tasks that are not applicable do not emit rows in either
+mode. Internal orchestration remains available in diagnostic logs but is
+excluded from normal rows and totals.
 
 The final line reports actual action counts and affected task counts, for
-example `Applied 4 changes across 2 tasks · 1 skipped · 2.3s` or
-`6 passed · 1 skipped · 1.4s`.
+example `Applied 4 changes across 2 tasks · 1 ignored · 2.3s` or
+`6 passed · 1 ignored · 1.4s`.
 
 ## Uninstall
 

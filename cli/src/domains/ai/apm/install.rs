@@ -63,9 +63,11 @@ impl Task for InstallApmPackages {
             &merged,
             &manifest_hash,
         )?;
-        let targets = ApmTargets::detect(ctx)?;
-
         if ctx.dry_run() {
+            if !state.manifest_changed() {
+                return Ok(TaskResult::Ok);
+            }
+            let targets = ApmTargets::detect(ctx)?;
             preview_install(
                 ctx,
                 targets,
@@ -74,9 +76,10 @@ impl Task for InstallApmPackages {
                 &manifest_path,
                 &lock_path,
             );
-            return Ok(TaskStats::changed().finish());
+            return Ok(TaskResult::DryRun);
         }
 
+        let targets = ApmTargets::detect(ctx)?;
         let pre_workflows = targets
             .includes_copilot_app()
             .then(|| snapshot_desired_apm_workflow_ids(ctx));
@@ -132,14 +135,6 @@ fn preview_install(
     manifest_path: &Path,
     lock_path: &Path,
 ) {
-    if targets.includes_copilot_app() {
-        ctx.log()
-            .dry_run("run apm experimental enable copilot-app (idempotent) before install");
-        ctx.log().dry_run(
-            "re-assert apm-managed Copilot App workflows to autopilot + enabled in \
-             ~/.copilot/data.db after a successful install",
-        );
-    }
     if state.manifest_needs_write {
         ctx.log().dry_run(&format!(
             "merge {fragment_count} APM manifest fragment(s) into {}",
@@ -157,18 +152,12 @@ fn preview_install(
             "run apm install -g with auto-detected runtimes because the current manifest has not \
              been installed successfully yet",
         );
-    } else {
-        ctx.log().dry_run(
-            "run apm install -g with auto-detected runtimes to redeploy current manifest content",
-        );
     }
     if targets.includes_copilot_app() {
         ctx.log().dry_run(
             "run apm install -g --target copilot-app to sync Copilot App workflows separately",
         );
     }
-    ctx.log()
-        .dry_run("run apm prune from ~/.apm to remove unowned user-scope deployments");
 }
 
 /// Filesystem-derived signals that decide whether `apm install` must run and

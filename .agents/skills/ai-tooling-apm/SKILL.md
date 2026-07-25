@@ -77,10 +77,13 @@ After APM config or local plugin changes, run:
 ./dotfiles.sh install -d
 ```
 
-`install` converges to the lockfile without advancing refs. `update` may run
-`apm outdated` and `apm update`, but only after a successful installed state is
-confirmed. Keep update-only scheduling in the command pipeline rather than
-teaching the task to inspect command flags.
+`install` converges to the lockfile without advancing refs. Its dry-run emits
+planned work only when the merged manifest, lockfile, or success marker requires
+convergence. `update` dry-run probes with non-mutating `apm outdated -g` and
+emits planned work only for confirmed outdated dependencies; apply mode may run
+`apm update`, but only after a successful installed state is confirmed. Keep
+update-only scheduling in the command pipeline rather than teaching the task to
+inspect command flags.
 
 For changes to `cli/src/domains/ai/apm.rs` or `cli/src/domains/ai/apm/`, also
 run the Rust checks from the `cross-platform-verification` skill.

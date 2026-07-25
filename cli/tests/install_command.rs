@@ -256,7 +256,6 @@ fn install_tasks_should_run_does_not_panic_with_minimal_config() {
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,
-            advance_versions: false,
             is_ci: None,
         },
     );
@@ -350,7 +349,6 @@ fn install_tasks_should_run_with_windows_platform() {
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,
-            advance_versions: false,
             is_ci: None,
         },
     );
@@ -471,7 +469,6 @@ fn install_symlinks_is_idempotent() {
         tasks::ContextOpts {
             dry_run: false,
             parallel: false,
-            advance_versions: false,
             is_ci: Some(false),
         },
     );
@@ -558,7 +555,6 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         tasks::ContextOpts {
             dry_run: false,
             parallel: false,
-            advance_versions: false,
             is_ci: Some(false),
         },
     );
@@ -681,7 +677,6 @@ fn install_tasks_should_run_with_parallel_enabled() {
         tasks::ContextOpts {
             dry_run: true,
             parallel: true,
-            advance_versions: false,
             is_ci: Some(false),
         },
     );

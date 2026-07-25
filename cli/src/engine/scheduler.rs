@@ -13,6 +13,7 @@ use crate::infra::logging::{self, BufferedLog, DiagEvent, Log, Logger, Output as
 enum DependencySignal {
     Satisfied,
     Blocked,
+    Cancelled,
 }
 
 impl DependencySignal {
@@ -21,6 +22,38 @@ impl DependencySignal {
             Self::Blocked
         } else {
             Self::Satisfied
+        }
+    }
+
+    const fn combine(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Blocked, _) | (_, Self::Blocked) => Self::Blocked,
+            (Self::Cancelled, _) | (_, Self::Cancelled) => Self::Cancelled,
+            _ => Self::Satisfied,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct TaskRuntime {
+    dependency_receiver: Option<mpsc::Receiver<DependencySignal>>,
+    dependency_sender: Option<mpsc::Sender<DependencySignal>>,
+    dependent_senders: Vec<mpsc::Sender<DependencySignal>>,
+}
+
+impl TaskRuntime {
+    fn new(has_dependencies: bool) -> Self {
+        let (dependency_sender, dependency_receiver) = if has_dependencies {
+            let (tx, rx) = mpsc::channel();
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+
+        Self {
+            dependency_receiver,
+            dependency_sender,
+            dependent_senders: Vec::new(),
         }
     }
 }
@@ -39,13 +72,26 @@ fn signal_dependents(
     }
 }
 
-fn record_dependency_block(task: &dyn Task, log: &dyn Log) {
-    let reason = "dependency failed";
+fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
     log.diag_task(DiagEvent::TaskSkip, task.name(), reason);
     log.debug(reason);
     log.record_task(task.name(), TaskStatus::Skipped, Some(reason));
+}
+
+fn dependency_outcome(
+    receiver: Option<mpsc::Receiver<DependencySignal>>,
+    dependency_count: usize,
+) -> DependencySignal {
+    let Some(receiver) = receiver else {
+        return DependencySignal::Satisfied;
+    };
+
+    (0..dependency_count).fold(DependencySignal::Satisfied, |outcome, _| {
+        let signal = receiver.recv().unwrap_or(DependencySignal::Blocked);
+        outcome.combine(signal)
+    })
 }
 
 /// Execute a single task, catching any panic.
@@ -112,52 +158,35 @@ pub(crate) fn run_tasks_parallel(
     ctx: &Context,
     log: &Arc<Logger>,
 ) {
-    // For each task, create a channel sized to its dep count.
-    // senders[i] accumulates all Senders that task i must signal when it completes.
-    let mut receivers: Vec<Option<mpsc::Receiver<DependencySignal>>> =
-        Vec::with_capacity(tasks.len());
-    let mut dependency_senders: Vec<Option<mpsc::Sender<DependencySignal>>> =
-        Vec::with_capacity(tasks.len());
-    let mut senders: Vec<Vec<mpsc::Sender<DependencySignal>>> = vec![Vec::new(); tasks.len()];
-
-    for task_idx in 0..tasks.len() {
-        let deps = graph.dependencies(task_idx);
-        if deps.is_empty() {
-            receivers.push(None);
-            dependency_senders.push(None);
-        } else {
-            let (tx, rx) = mpsc::channel::<DependencySignal>();
-            receivers.push(Some(rx));
-            dependency_senders.push(Some(tx));
-        }
-    }
+    let mut runtimes: Vec<TaskRuntime> = (0..tasks.len())
+        .map(|task_idx| TaskRuntime::new(!graph.dependencies(task_idx).is_empty()))
+        .collect();
 
     for dep_idx in 0..tasks.len() {
         for &dependent_idx in graph.dependents(dep_idx) {
-            if let Some(tx) = dependency_senders
+            let dependency_sender = runtimes
                 .get(dependent_idx)
-                .and_then(Option::as_ref)
-                && let Some(s) = senders.get_mut(dep_idx)
+                .and_then(|runtime| runtime.dependency_sender.as_ref())
+                .cloned();
+            if let Some(tx) = dependency_sender
+                && let Some(runtime) = runtimes.get_mut(dep_idx)
             {
-                s.push(tx.clone());
+                runtime.dependent_senders.push(tx);
             }
         }
     }
 
     // Drop the original senders so an unexpected panic before signalling closes
     // dependent receivers instead of leaving them blocked forever.
-    drop(dependency_senders);
+    for runtime in &mut runtimes {
+        runtime.dependency_sender = None;
+    }
 
     std::thread::scope(|s| {
-        for (idx, ((task, rx), my_senders)) in tasks
-            .iter()
-            .zip(receivers.iter_mut())
-            .zip(senders.iter_mut())
-            .enumerate()
-        {
+        for (idx, (task, runtime)) in tasks.iter().zip(runtimes.iter_mut()).enumerate() {
             let task = *task;
-            let rx = rx.take();
-            let my_senders = std::mem::take(my_senders);
+            let dependency_receiver = runtime.dependency_receiver.take();
+            let dependent_senders = std::mem::take(&mut runtime.dependent_senders);
             let dep_names: Vec<&str> = graph
                 .dependencies(idx)
                 .iter()
@@ -181,25 +210,31 @@ pub(crate) fn run_tasks_parallel(
                 }
 
                 // Wait for all deps: receive one outcome per dependency.
-                // A normal task failure sends Blocked; RecvError is retained as
-                // a defensive guard for panics before dependency signalling.
-                let deps_ok = rx.is_none_or(|rx| {
-                    (0..dep_count).all(|_| matches!(rx.recv(), Ok(DependencySignal::Satisfied)))
-                });
+                // Receive every signal so failure takes precedence over
+                // cancellation when dependency outcomes are mixed.
+                let dependency_signal = dependency_outcome(dependency_receiver, dep_count);
+                let signal = match dependency_signal {
+                    DependencySignal::Blocked => {
+                        record_scheduler_skip(task, &**log, "dependency failed");
+                        log.emit_task_result_and_redraw(task.name());
+                        DependencySignal::Blocked
+                    }
+                    DependencySignal::Cancelled => {
+                        record_scheduler_skip(task, &**log, "cancelled");
+                        log.emit_task_result_and_redraw(task.name());
+                        DependencySignal::Cancelled
+                    }
+                    DependencySignal::Satisfied if ctx.is_cancelled() => {
+                        record_scheduler_skip(task, &**log, "cancelled");
+                        log.emit_task_result_and_redraw(task.name());
+                        DependencySignal::Cancelled
+                    }
+                    DependencySignal::Satisfied => {
+                        DependencySignal::from_status(run_task_guarded(task, ctx, log))
+                    }
+                };
 
-                if !deps_ok {
-                    record_dependency_block(task, &**log);
-                    log.emit_task_result_and_redraw(task.name());
-                    signal_dependents(task.name(), my_senders, DependencySignal::Blocked);
-                    return;
-                }
-
-                let status = run_task_guarded(task, ctx, log);
-                signal_dependents(
-                    task.name(),
-                    my_senders,
-                    DependencySignal::from_status(status),
-                );
+                signal_dependents(task.name(), dependent_senders, signal);
             });
         }
     });
@@ -218,30 +253,41 @@ pub(crate) fn run_tasks_sequential(
     let mut signals: Vec<Option<DependencySignal>> = vec![None; tasks.len()];
 
     for idx in graph.execution_order() {
-        if ctx.is_cancelled() {
-            ctx.log().warn("cancelled - stopping before next task");
-            break;
-        }
+        let dependency_signal = graph.dependencies(idx).iter().fold(
+            DependencySignal::Satisfied,
+            |outcome, &dep_idx| {
+                outcome.combine(
+                    signals
+                        .get(dep_idx)
+                        .copied()
+                        .flatten()
+                        .unwrap_or(DependencySignal::Blocked),
+                )
+            },
+        );
 
-        let deps_ok = graph.dependencies(idx).iter().all(|&dep_idx| {
-            matches!(
-                signals.get(dep_idx).copied().flatten(),
-                Some(DependencySignal::Satisfied)
-            )
-        });
-
-        let signal = if deps_ok {
-            let Some(task) = tasks.get(idx) else {
-                continue;
-            };
-            let status = run_task_buffered(*task, ctx, log, false);
-            DependencySignal::from_status(status)
-        } else {
-            if let Some(task) = tasks.get(idx) {
-                record_dependency_block(*task, &**log);
+        let Some(task) = tasks.get(idx) else {
+            continue;
+        };
+        let signal = match dependency_signal {
+            DependencySignal::Blocked => {
+                record_scheduler_skip(*task, &**log, "dependency failed");
                 log.emit_task_result_and_redraw(task.name());
+                DependencySignal::Blocked
             }
-            DependencySignal::Blocked
+            DependencySignal::Cancelled => {
+                record_scheduler_skip(*task, &**log, "cancelled");
+                log.emit_task_result_and_redraw(task.name());
+                DependencySignal::Cancelled
+            }
+            DependencySignal::Satisfied if ctx.is_cancelled() => {
+                record_scheduler_skip(*task, &**log, "cancelled");
+                log.emit_task_result_and_redraw(task.name());
+                DependencySignal::Cancelled
+            }
+            DependencySignal::Satisfied => {
+                DependencySignal::from_status(run_task_buffered(*task, ctx, log, false))
+            }
         };
 
         if let Some(slot) = signals.get_mut(idx) {

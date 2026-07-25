@@ -17,12 +17,8 @@ pub(crate) enum RunMode {
 }
 
 impl RunMode {
-    pub(super) const fn advances_versions(self) -> bool {
-        matches!(self, Self::Update)
-    }
-
     fn includes_task(self, task: &dyn Task) -> bool {
-        self.advances_versions() || !task.update_only()
+        matches!(self, Self::Update) || !task.update_only()
     }
 }
 
@@ -60,7 +56,7 @@ pub(crate) fn run_pipeline(
 ) -> Result<()> {
     super::prepare_self_update(global, &**log)?;
 
-    let runner = super::CommandRunner::new(global, log, token)?.with_run_mode(mode);
+    let runner = super::CommandRunner::new(global, log, token)?;
 
     // Build the static task list. Dynamic overlay scripts are rebuilt after
     // configuration reload so they observe changes pulled in this run.

@@ -62,7 +62,6 @@ pub fn make_context(config: Config, platform: Platform, executor: Arc<dyn Execut
         crate::engine::ContextOpts {
             dry_run: false,
             parallel: false,
-            advance_versions: false,
             is_ci: Some(false),
         },
     )

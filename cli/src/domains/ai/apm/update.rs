@@ -5,7 +5,9 @@ use std::path::Path;
 use anyhow::{Context as _, Result};
 
 use super::autopilot::{apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids};
-use super::commands::{ApmCommand, ApmCommandResult, run_apm_command};
+use super::commands::{
+    ApmCommand, ApmCommandResult, ApmOutdatedResult, check_apm_outdated, run_apm_command,
+};
 use super::fragments::{discover_fragment_files, merge_fragments};
 use super::install::apm_task_should_run;
 use super::manifest::{manifest_fingerprint, manifest_marker_matches};
@@ -76,10 +78,23 @@ impl Task for UpdateApmPackages {
             return Ok(TaskResult::Skipped(reason));
         }
 
-        let targets = ApmTargets::detect(ctx)?;
         if ctx.dry_run() {
-            return Ok(preview_apm_update(ctx, targets));
+            return match check_apm_outdated(ctx)? {
+                ApmOutdatedResult::Outdated => {
+                    let targets = ApmTargets::detect(ctx)?;
+                    Ok(preview_apm_update(ctx, targets))
+                }
+                ApmOutdatedResult::Current => Ok(TaskResult::Ok),
+                ApmOutdatedResult::Unknown => {
+                    ctx.log().debug(
+                        "APM could not determine whether remote dependency updates are available",
+                    );
+                    Ok(TaskResult::Ok)
+                }
+                ApmOutdatedResult::AuthSkipped(reason) => Ok(TaskResult::Skipped(reason)),
+            };
         }
+        let targets = ApmTargets::detect(ctx)?;
         advance_apm_dependencies(ctx, targets)
     }
 }
@@ -95,7 +110,7 @@ fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> TaskResult {
              separately, then re-assert them to autopilot + enabled in ~/.copilot/data.db",
         );
     }
-    TaskStats::changed().finish()
+    TaskResult::DryRun
 }
 
 /// Advance locked user-scope dependencies to the latest matching refs.

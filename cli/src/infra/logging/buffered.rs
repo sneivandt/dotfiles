@@ -214,18 +214,14 @@ impl BufferedLog {
             }
             let span = tracing::info_span!("task", name = task_name);
             let _enter = span.enter();
-            if status == TaskStatus::NotApplicable || !visible {
+            if matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) || !visible {
                 for entry in &entries {
                     entry.replay_file_only();
                 }
             } else if self.inner.is_verbose() {
                 self.inner.emit_recorded_task_status(task_name);
                 for entry in &entries {
-                    if status == TaskStatus::Ok {
-                        entry.replay_non_verbose(status);
-                    } else {
-                        entry.replay_verbose_task_detail();
-                    }
+                    entry.replay_verbose_task_detail();
                 }
             } else {
                 let has_visible_entries = entries
@@ -678,6 +674,23 @@ mod tests {
         let contents = fs::read_to_string(path).unwrap();
         assert!(contents.contains("windows-only-task"));
         assert!(contents.contains("not applicable: requires Windows"));
+    }
+
+    #[test]
+    fn verbose_flush_keeps_unchanged_task_output_off_console() {
+        let (log, _tmp, _guard) = isolated_logger();
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        buf.task_stage("current-task");
+        buf.info("0 changed, 1 already ok");
+
+        buf.flush_and_complete("current-task", TaskStatus::Ok);
+
+        assert!(!log.task_console_output_emitted());
+        let path = log.log_path().expect("log path");
+        let contents = fs::read_to_string(path).unwrap();
+        assert!(contents.contains("current-task"));
+        assert!(contents.contains("0 changed, 1 already ok"));
     }
 
     #[test]

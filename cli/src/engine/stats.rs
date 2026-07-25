@@ -1,5 +1,14 @@
 //! Result and statistics types for task execution.
 
+/// Outcome of processing one item in a batch task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ItemOutcome {
+    Changed,
+    AlreadyOk,
+    Skipped,
+    Failed,
+}
+
 /// Result of a single task execution.
 ///
 /// # Examples
@@ -24,6 +33,8 @@
 pub enum TaskResult {
     /// Task completed successfully.
     Ok,
+    /// Task identified work for a dry run, but cannot quantify concrete changes.
+    DryRun,
     /// Validation check completed successfully.
     CheckPassed,
     /// Task is not applicable (e.g., no config matched the active profile).
@@ -126,6 +137,16 @@ impl TaskStats {
         Self {
             message: Some(message.into()),
             ..Self::changed()
+        }
+    }
+
+    /// Record one item outcome, saturating its counter.
+    pub(crate) const fn record(&mut self, outcome: ItemOutcome) {
+        match outcome {
+            ItemOutcome::Changed => self.changed = self.changed.saturating_add(1),
+            ItemOutcome::AlreadyOk => self.already_ok = self.already_ok.saturating_add(1),
+            ItemOutcome::Skipped => self.skipped = self.skipped.saturating_add(1),
+            ItemOutcome::Failed => self.failed = self.failed.saturating_add(1),
         }
     }
 
@@ -451,6 +472,7 @@ mod tests {
         match r {
             TaskResult::NotApplicable(reason) => assert_eq!(reason, "no config"),
             other @ (TaskResult::Ok
+            | TaskResult::DryRun
             | TaskResult::CheckPassed
             | TaskResult::Skipped(_)
             | TaskResult::Failed(_)
@@ -464,6 +486,7 @@ mod tests {
         match r {
             TaskResult::Skipped(reason) => assert_eq!(reason, "wrong platform"),
             other @ (TaskResult::Ok
+            | TaskResult::DryRun
             | TaskResult::CheckPassed
             | TaskResult::NotApplicable(_)
             | TaskResult::Failed(_)
@@ -477,6 +500,7 @@ mod tests {
         match r {
             TaskResult::Failed(reason) => assert_eq!(reason, "git pull failed"),
             other @ (TaskResult::Ok
+            | TaskResult::DryRun
             | TaskResult::CheckPassed
             | TaskResult::NotApplicable(_)
             | TaskResult::Skipped(_)

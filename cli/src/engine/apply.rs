@@ -5,7 +5,7 @@ use anyhow::Result;
 use super::context::Context;
 use super::mode::ProcessOpts;
 use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
-use super::stats::TaskStats;
+use super::stats::{ItemOutcome, TaskStats};
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::logging::DiagEvent;
 
@@ -25,15 +25,15 @@ pub(super) fn process_single<R: Resource>(
     match plan.operation() {
         ApplyOperation::Noop => {
             ctx.debug_fmt(|| format!("ok: {}", plan.description()));
-            delta.already_ok = delta.already_ok.saturating_add(1);
+            delta.record(ItemOutcome::AlreadyOk);
         }
         ApplyOperation::Skip { reason, failed } => {
             ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
-            if *failed {
-                delta.failed = delta.failed.saturating_add(1);
+            delta.record(if *failed {
+                ItemOutcome::Failed
             } else {
-                delta.skipped = delta.skipped.saturating_add(1);
-            }
+                ItemOutcome::Skipped
+            });
         }
         ApplyOperation::Apply {
             verb,
@@ -43,15 +43,12 @@ pub(super) fn process_single<R: Resource>(
             delta.merge(&execute_mutation(
                 ctx,
                 resource,
-                ResourceMutation {
-                    description: plan.description(),
+                ResourceMutation::apply(
+                    plan.description(),
                     verb,
-                    dry_run_message: plan.dry_run_message(),
-                    event: DiagEvent::ResourceApply,
-                    applied_label: "applied",
-                    bail_on_error: *bail_on_error,
-                    warn_before_apply: true,
-                },
+                    plan.dry_run_message(),
+                    *bail_on_error,
+                ),
                 Resource::apply,
             )?);
         }
@@ -80,14 +77,14 @@ fn record_resource_change(
                 &format!("{desc} {applied_label}"),
             );
             ctx.log().info(&format!("{verb} {desc}"));
-            delta.changed = delta.changed.saturating_add(1);
+            delta.record(ItemOutcome::Changed);
         }
         ResourceChange::AlreadyCorrect => {
             ctx.log().diag(
                 DiagEvent::ResourceResult,
                 &format!("{desc} already_correct"),
             );
-            delta.already_ok = delta.already_ok.saturating_add(1);
+            delta.record(ItemOutcome::AlreadyOk);
         }
         ResourceChange::Skipped { reason } => {
             ctx.log().diag(
@@ -95,7 +92,7 @@ fn record_resource_change(
                 &format!("{desc} skipped: {reason}"),
             );
             ctx.log().warn(&format!("skipping {desc}: {reason}"));
-            delta.failed = delta.failed.saturating_add(1);
+            delta.record(ItemOutcome::Failed);
         }
     }
 }
@@ -109,6 +106,37 @@ struct ResourceMutation<'a> {
     applied_label: &'a str,
     bail_on_error: bool,
     warn_before_apply: bool,
+}
+
+impl<'a> ResourceMutation<'a> {
+    const fn apply(
+        description: &'a str,
+        verb: &'a str,
+        dry_run_message: Option<String>,
+        bail_on_error: bool,
+    ) -> Self {
+        Self {
+            description,
+            verb,
+            dry_run_message,
+            event: DiagEvent::ResourceApply,
+            applied_label: "applied",
+            bail_on_error,
+            warn_before_apply: true,
+        }
+    }
+
+    const fn remove(description: &'a str, verb: &'a str, dry_run_message: Option<String>) -> Self {
+        Self {
+            description,
+            verb,
+            dry_run_message,
+            event: DiagEvent::ResourceRemove,
+            applied_label: "removed",
+            bail_on_error: true,
+            warn_before_apply: false,
+        }
+    }
 }
 
 fn execute_mutation<R, F>(
@@ -126,7 +154,7 @@ where
             ctx.log().dry_run(&message);
         }
         let mut delta = TaskStats::new();
-        delta.changed = delta.changed.saturating_add(1);
+        delta.record(ItemOutcome::Changed);
         return Ok(delta);
     }
     if mutation.warn_before_apply
@@ -154,7 +182,7 @@ where
                 "failed to {} {}: {e}",
                 mutation.verb, mutation.description
             ));
-            delta.failed = delta.failed.saturating_add(1);
+            delta.record(ItemOutcome::Failed);
             return Ok(delta);
         }
     };
@@ -184,15 +212,7 @@ pub(super) fn remove_single<R: Resource>(
             delta.merge(&execute_mutation(
                 ctx,
                 resource,
-                ResourceMutation {
-                    description: plan.description(),
-                    verb: remove_verb,
-                    dry_run_message: plan.dry_run_message(),
-                    event: DiagEvent::ResourceRemove,
-                    applied_label: "removed",
-                    bail_on_error: true,
-                    warn_before_apply: false,
-                },
+                ResourceMutation::remove(plan.description(), remove_verb, plan.dry_run_message()),
                 Resource::remove,
             )?);
         }
@@ -203,11 +223,11 @@ pub(super) fn remove_single<R: Resource>(
                 "skipping removal of {}: {reason}",
                 plan.description()
             ));
-            delta.skipped = delta.skipped.saturating_add(1);
+            delta.record(ItemOutcome::Skipped);
         }
         RemoveOperation::Noop => {
             // Not ours or doesn't exist — skip silently
-            delta.already_ok = delta.already_ok.saturating_add(1);
+            delta.record(ItemOutcome::AlreadyOk);
         }
     }
     Ok(delta)

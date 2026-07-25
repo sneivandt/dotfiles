@@ -176,7 +176,6 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,
-            advance_versions: false,
             is_ci: None,
         },
     )
@@ -249,7 +248,6 @@ fn uninstall_symlinks_is_idempotent() {
         tasks::ContextOpts {
             dry_run: false,
             parallel: false,
-            advance_versions: false,
             is_ci: Some(false),
         },
     );
@@ -329,7 +327,6 @@ fn uninstall_symlinks_materializes_file_content() {
         tasks::ContextOpts {
             dry_run: false,
             parallel: false,
-            advance_versions: false,
             is_ci: Some(true),
         },
     );
@@ -399,7 +396,6 @@ fn uninstall_tasks_should_run_with_windows_platform() {
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,
-            advance_versions: false,
             is_ci: None,
         },
     )

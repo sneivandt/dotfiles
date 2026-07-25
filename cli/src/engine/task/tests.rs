@@ -3,7 +3,7 @@ use crate::engine::{
     IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState, TaskStats,
 };
 use crate::infra::ConfigHandle;
-use crate::infra::logging::TaskStatus;
+use crate::infra::logging::{ActionCounts, TaskStatus};
 use crate::test_helpers::{empty_config, make_static_context};
 use anyhow::Result;
 use std::any::TypeId;
@@ -378,6 +378,23 @@ fn execute_records_dry_run_batch_as_planned_actions() {
     let entry = &log.task_entries()[0];
     assert_eq!(entry.actions.applied, 0);
     assert_eq!(entry.actions.planned, 4);
+}
+
+#[test]
+fn execute_records_unquantified_dry_run_without_planned_actions() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    let ctx = ctx.with_dry_run(true);
+    let task = MockTask {
+        name: "dry-task",
+        should_run: true,
+        result: Ok(TaskResult::DryRun),
+    };
+
+    assert_eq!(execute(&task, &ctx), TaskStatus::DryRun);
+
+    let entry = &log.task_entries()[0];
+    assert_eq!(entry.actions, ActionCounts::default());
 }
 
 #[test]

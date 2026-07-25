@@ -20,6 +20,15 @@ fn run_test_tasks(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
     run_tasks_parallel(tasks, &graph, ctx, log);
 }
 
+fn run_test_tasks_with_mode(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>, parallel: bool) {
+    let graph = ResolvedTaskGraph::resolve(tasks).unwrap();
+    if parallel {
+        run_tasks_parallel(tasks, &graph, ctx, log);
+    } else {
+        run_tasks_sequential(tasks, &graph, ctx, log);
+    }
+}
+
 fn buffered_log_arc(buf: &Arc<BufferedLog>) -> Arc<dyn Log> {
     Arc::<BufferedLog>::clone(buf)
 }
@@ -84,7 +93,52 @@ impl Task for FailedTask {
     }
 }
 
+struct CancellingTask;
+
+impl Task for CancellingTask {
+    fn name(&self) -> &'static str {
+        "cancelling"
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        ctx.cancellation_token().cancel();
+        Ok(TaskResult::Ok)
+    }
+}
+
+struct CancelAfterFailureTask {
+    log: Arc<Logger>,
+}
+
+impl Task for CancelAfterFailureTask {
+    fn name(&self) -> &'static str {
+        "cancel-after-failure"
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        for _ in 0..10_000 {
+            if self
+                .log
+                .task_entries()
+                .iter()
+                .any(|entry| entry.status == TaskStatus::Failed)
+            {
+                ctx.cancellation_token().cancel();
+                return Ok(TaskResult::Ok);
+            }
+            std::thread::yield_now();
+        }
+        anyhow::bail!("timed out waiting for failed task recording")
+    }
+}
+
 flag_task!(DepOnFailedTask, "dep-on-failed", deps: [FailedTask]);
+flag_task!(DepOnCancellingTask, "dep-on-cancelling", deps: [CancellingTask]);
+flag_task!(
+    DepOnFailureAndCancelTask,
+    "dep-on-failure-and-cancel",
+    deps: [FailedTask, CancelAfterFailureTask]
+);
 
 // -----------------------------------------------------------------------
 // Skipped task: returns TaskResult::Skipped, which is non-blocking.
@@ -145,6 +199,85 @@ fn independent_task_runs_normally() {
     assert!(
         ran.load(Ordering::SeqCst),
         "independent task should have run"
+    );
+}
+
+#[test]
+fn scheduler_records_pre_cancelled_tasks_without_running_them() {
+    for parallel in [false, true] {
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+        let root_ran = Arc::new(AtomicBool::new(false));
+        let dependent_ran = Arc::new(AtomicBool::new(false));
+        let root = FlagTask {
+            ran: Arc::clone(&root_ran),
+        };
+        let dependent = DepOnFlagTask {
+            ran: Arc::clone(&dependent_ran),
+        };
+        let tasks: Vec<&dyn Task> = vec![&root, &dependent];
+        ctx.cancellation_token().cancel();
+
+        run_test_tasks_with_mode(&tasks, &ctx, &log, parallel);
+
+        assert!(!root_ran.load(Ordering::SeqCst));
+        assert!(!dependent_ran.load(Ordering::SeqCst));
+        let entries = log.task_entries();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| {
+            entry.status == TaskStatus::Skipped && entry.message.as_deref() == Some("cancelled")
+        }));
+    }
+}
+
+#[test]
+fn cancellation_after_a_task_starts_skips_its_dependents() {
+    for parallel in [false, true] {
+        let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+        let dependent_ran = Arc::new(AtomicBool::new(false));
+        let root = CancellingTask;
+        let dependent = DepOnCancellingTask {
+            ran: Arc::clone(&dependent_ran),
+        };
+        let tasks: Vec<&dyn Task> = vec![&root, &dependent];
+
+        run_test_tasks_with_mode(&tasks, &ctx, &log, parallel);
+
+        assert!(!dependent_ran.load(Ordering::SeqCst));
+        let entries = log.task_entries();
+        let dependent_entry = entries
+            .iter()
+            .find(|entry| entry.name == "dep-on-cancelling")
+            .expect("dependent should be recorded");
+        assert_eq!(dependent_entry.status, TaskStatus::Skipped);
+        assert_eq!(dependent_entry.message.as_deref(), Some("cancelled"));
+    }
+}
+
+#[test]
+fn dependency_failure_takes_precedence_over_cancellation() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let dependent_ran = Arc::new(AtomicBool::new(false));
+    let failed = FailedTask;
+    let cancel = CancelAfterFailureTask {
+        log: Arc::clone(&log),
+    };
+    let dependent = DepOnFailureAndCancelTask {
+        ran: Arc::clone(&dependent_ran),
+    };
+    let tasks: Vec<&dyn Task> = vec![&failed, &cancel, &dependent];
+
+    run_test_tasks(&tasks, &ctx, &log);
+
+    assert!(!dependent_ran.load(Ordering::SeqCst));
+    let entries = log.task_entries();
+    let dependent_entry = entries
+        .iter()
+        .find(|entry| entry.name == "dep-on-failure-and-cancel")
+        .expect("dependent should be recorded");
+    assert_eq!(dependent_entry.status, TaskStatus::Skipped);
+    assert_eq!(
+        dependent_entry.message.as_deref(),
+        Some("dependency failed")
     );
 }
 
@@ -320,7 +453,7 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
     let ran = Arc::new(AtomicBool::new(false));
     let task = DepOnFailedTask { ran };
 
-    record_dependency_block(&task, &log);
+    record_scheduler_skip(&task, &log, "dependency failed");
 
     let info_lines = log
         .info_lines
@@ -757,7 +890,11 @@ fn task_status_not_lost_after_debug_fmt_call() {
             // subsequent stage INFO event replayed by flush_and_complete.
             ctx.debug_fmt(|| "ok: some/resource".to_string());
             ctx.log().info("1 changed, 0 already ok");
-            Ok(TaskResult::Ok)
+            Ok(TaskStats {
+                changed: 1,
+                ..TaskStats::default()
+            }
+            .finish())
         }
     }
 

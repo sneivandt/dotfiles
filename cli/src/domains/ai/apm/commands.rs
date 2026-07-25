@@ -66,6 +66,14 @@ pub(super) enum ApmCommandResult {
     ToleratedWorkflowEncodeFailures,
 }
 
+#[derive(Debug)]
+pub(super) enum ApmOutdatedResult {
+    Outdated,
+    Current,
+    Unknown,
+    AuthSkipped(String),
+}
+
 /// Run an APM install/update command with shared environment, logging, and
 /// failure classification.
 ///
@@ -94,6 +102,60 @@ pub(super) fn run_apm_command(
         return Ok(ApmCommandResult::Success);
     };
     run_apm_invocation(ctx, ApmCommand::Install, copilot_app_args, true)
+}
+
+/// Check locked user-scope dependencies for remote updates without mutating
+/// the manifest, lockfile, or deployed primitives.
+pub(super) fn check_apm_outdated(ctx: &Context) -> Result<ApmOutdatedResult> {
+    let system = ctx.system();
+    let cwd = system.home();
+    let args = ["outdated", "-g"];
+    ctx.debug_fmt(|| {
+        format!(
+            "running `apm {}` in {} (interactive credential prompts disabled)",
+            args.join(" "),
+            cwd.display()
+        )
+    });
+
+    match system
+        .executor()
+        .run_in_with_env(cwd, "apm", &args, APM_NONINTERACTIVE_ENV)
+    {
+        Ok(result) => {
+            report_apm_output(ctx, &result.stdout, &result.stderr);
+            let output = format!("{}\n{}", result.stdout, result.stderr);
+            if output.lines().any(line_reports_outdated_dependencies) {
+                Ok(ApmOutdatedResult::Outdated)
+            } else if output.lines().any(line_reports_current_dependencies) {
+                Ok(ApmOutdatedResult::Current)
+            } else {
+                Ok(ApmOutdatedResult::Unknown)
+            }
+        }
+        Err(err) => {
+            let msg = format!("{err:#}");
+            if looks_like_auth_failure(&msg) {
+                let reason = ApmCommand::Update.auth_reason();
+                ctx.log()
+                    .warn(&format!("skipping: {reason} (details: {})", msg.trim()));
+                return Ok(ApmOutdatedResult::AuthSkipped(reason));
+            }
+            Err(err).context("checking for outdated APM dependencies")
+        }
+    }
+}
+
+fn line_reports_outdated_dependencies(line: &str) -> bool {
+    let line = line.to_ascii_lowercase();
+    line.contains(" outdated dependency found") || line.contains(" outdated dependencies found")
+}
+
+fn line_reports_current_dependencies(line: &str) -> bool {
+    let line = line.to_ascii_lowercase();
+    line.contains("all dependencies are up-to-date")
+        || line.contains("no locked dependencies to check")
+        || line.contains("no remote dependencies to check")
 }
 
 fn run_apm_invocation(

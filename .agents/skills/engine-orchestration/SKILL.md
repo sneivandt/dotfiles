@@ -43,6 +43,10 @@ description: >
 - Task-level parallelism uses scoped OS threads; resource-level parallelism uses
   Rayon.
 - `ctx.parallel` gates both levels.
+- Cancellation records every task that has not started as skipped with reason
+  `cancelled` and propagates that signal through dependents. When dependency
+  failure and cancellation are both observed, dependency failure takes
+  precedence.
 - Resource tasks should use orchestration helpers from `engine/orchestrate.rs`
   (re-exported by `engine/mod.rs`) instead of custom dry-run/apply loops.
 

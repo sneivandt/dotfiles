@@ -59,7 +59,12 @@ function Assert-GitConfig
         [Parameter(Mandatory = $true)][string]$Expected
     )
 
-    $actual = & git config --get $Key 2>$null
+    # Read from the global scope explicitly. `git config --get` alone resolves
+    # local > global > system, and the CI checkout carries a repository-local
+    # core.autocrlf that would mask the value under test. The global scope
+    # covers both ~/.gitconfig and $XDG_CONFIG_HOME/git/config, and follows
+    # [include] directives, which is exactly the chain being validated.
+    $actual = & git config --global --get $Key 2>$null
     if ($LASTEXITCODE -ne 0)
     {
         $actual = ''
@@ -116,7 +121,7 @@ function Test-GitAlias
 
     foreach ($alias in @('st', 'br', 'lo', 'ci'))
     {
-        $value = & git config --get "alias.$alias" 2>$null
+        $value = & git config --global --get "alias.$alias" 2>$null
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($value))
         {
             Write-TestFail "alias.$alias not defined"

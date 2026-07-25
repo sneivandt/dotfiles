@@ -105,8 +105,7 @@ pub(super) fn stage_binary(root: &Path, tag: &str, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Run the binary at `path` with the `version` subcommand as a basic sanity
-/// check.
+/// Run the binary at `path` with the `--version` flag as a basic sanity check.
 ///
 /// Called immediately after a self-update to verify that the new binary
 /// starts correctly.  On failure the caller is expected to restore the
@@ -138,7 +137,7 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
     }
     let mut attempts = 0;
     let result = loop {
-        match crate::infra::exec::run_path_smoke_test(path, &["version"]) {
+        match crate::infra::exec::run_path_smoke_test(path, &["--version"]) {
             Ok(result) => break result,
             Err(e)
                 if e.downcast_ref::<std::io::Error>()
@@ -348,14 +347,19 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn smoke_test_binary_passes_for_valid_binary() {
-        let true_path = which::which("true").expect("'true' binary not found on PATH");
+    fn smoke_test_binary_uses_supported_version_flag() {
+        use std::os::unix::fs::PermissionsExt;
 
-        let result = smoke_test_binary(&true_path);
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("version-check");
+        fs::write(&bin, b"#!/bin/sh\n[ \"$1\" = \"--version\" ]\n").unwrap();
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let result = smoke_test_binary(&bin);
         assert!(
             result.is_ok(),
             "binary: {}, error: {:?}",
-            true_path.display(),
+            bin.display(),
             result.unwrap_err()
         );
     }

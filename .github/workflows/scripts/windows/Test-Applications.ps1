@@ -71,6 +71,21 @@ function Assert-GitConfig
     if ($actual -ne $Expected)
     {
         Write-TestFail "$Key expected '$Expected', got '$actual'"
+        # Show every file that contributes this key, in resolution order, so a
+        # failure identifies the responsible config file instead of requiring a
+        # CI round-trip to diagnose.
+        $origins = & git config --show-origin --get-all $Key 2>$null
+        if ($origins)
+        {
+            foreach ($line in $origins)
+            {
+                Write-Information "    origin: $line" -InformationAction Continue
+            }
+        }
+        else
+        {
+            Write-Information "    origin: no file defines $Key" -InformationAction Continue
+        }
         throw "Assertion failed: $Key"
     }
     Write-TestPass "$Key = $actual"
@@ -140,6 +155,13 @@ function Test-GitConfig
         # which the base config pulls in via [include]. On Linux the same key
         # resolves to 'input', so this asserts the Windows symlink chain end to
         # end.
+        $windowsInclude = Join-Path $HOME '.config' 'git' 'windows'
+        if (-not (Test-Path -LiteralPath $windowsInclude))
+        {
+            Write-TestFail "windows git include not installed at $windowsInclude"
+            throw 'Assertion failed: git windows include missing'
+        }
+        Write-TestPass "windows git include found: $windowsInclude"
         Assert-GitConfig -Key 'core.autocrlf' -Expected 'true'
     }
 }

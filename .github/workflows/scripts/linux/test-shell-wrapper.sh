@@ -321,7 +321,8 @@ esac
 EOF
   chmod +x "$tmpdir/fake-bin/curl"
 
-  PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" install -p desktop -d
+  PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=1 \
+    "$tmpdir/dotfiles.sh" install -p desktop -d
 
   expected=$(cat <<'EOF'
 install
@@ -532,6 +533,100 @@ test_wrapper_chmod_after_checksum()
   fi
 )}
 
+test_wrapper_attestation_verification()
+{(
+  log_stage "Testing build provenance verification during bootstrap download"
+
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+
+  cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
+  mkdir -p "$tmpdir/fake-bin"
+
+  cat > "$tmpdir/fake-bin/curl" <<'EOF'
+#!/bin/sh
+set -o errexit
+set -o nounset
+
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o)
+      shift
+      out="$1"
+      ;;
+    http*)
+      url="$1"
+      ;;
+  esac
+  shift
+done
+
+case "$url" in
+  */releases/latest)
+    printf '{"tag_name":"v9.9.9"}\n'
+    ;;
+  */releases/download/v9.9.9/checksums.sha256)
+    sum=$(sha256sum "$DOTFILES_ROOT/bin/dotfiles" | awk '{print $1}')
+    printf '%s  dotfiles-linux-x86_64\n' "$sum" > "$out"
+    ;;
+  */releases/download/v9.9.9/dotfiles-linux-x86_64)
+    mkdir -p "$(dirname "$out")"
+    printf '#!/bin/sh\nexit 0\n' > "$out"
+    ;;
+  *)
+    echo "unexpected URL: $url" >&2
+    exit 1
+    ;;
+esac
+EOF
+  chmod +x "$tmpdir/fake-bin/curl"
+
+  # A gh stub that never reports a verified attestation.
+  cat > "$tmpdir/fake-bin/gh" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+  chmod +x "$tmpdir/fake-bin/gh"
+
+  # Advisory (default): unverified provenance warns but keeps the binary.
+  rm -rf "${tmpdir:?}/bin"
+  output=$(PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --version 2>&1)
+  if [ ! -x "$tmpdir/bin/dotfiles" ]; then
+    printf "%sERROR: Advisory provenance failure removed the binary%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  if ! echo "$output" | grep -q "provenance"; then
+    printf "%sERROR: Advisory provenance failure did not warn: %s%s\n" "${RED}" "$output" "${NC}" >&2
+    return 1
+  fi
+  log_verbose "✓ Unverified provenance warns and continues by default"
+
+  # Required: unverified provenance is fatal and removes the binary.
+  rm -rf "${tmpdir:?}/bin"
+  if PATH="$tmpdir/fake-bin:$PATH" DOTFILES_REQUIRE_ATTESTATION=1 \
+     "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1; then
+    printf "%sERROR: DOTFILES_REQUIRE_ATTESTATION=1 accepted an unverified binary%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  if [ -e "$tmpdir/bin/dotfiles" ]; then
+    printf "%sERROR: Unverified binary was not removed in required mode%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  log_verbose "✓ DOTFILES_REQUIRE_ATTESTATION=1 rejects unverified downloads"
+
+  # Skip: verification is bypassed entirely.
+  rm -rf "${tmpdir:?}/bin"
+  PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=1 \
+    DOTFILES_REQUIRE_ATTESTATION=1 "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1
+  if [ ! -x "$tmpdir/bin/dotfiles" ]; then
+    printf "%sERROR: DOTFILES_SKIP_ATTESTATION=1 did not bypass verification%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  log_verbose "✓ DOTFILES_SKIP_ATTESTATION=1 bypasses provenance verification"
+)}
+
 test_wrapper_release_pinned_urls()
 {(
   log_stage "Testing wrapper resolves release tag and uses pinned URLs for binary and checksum"
@@ -669,6 +764,7 @@ case "$0" in
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args
     test_wrapper_forwards_advanced_flags
     test_wrapper_chmod_after_checksum
+    test_wrapper_attestation_verification
     test_wrapper_release_pinned_urls
     echo "All shell wrapper tests passed"
     ;;

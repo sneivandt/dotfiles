@@ -19,7 +19,7 @@ Rust engine.
 
 ### Two Modes
 
-1. **Production mode** (default): Downloads latest binary from GitHub Releases if missing, verifies checksum, then lets the binary self-update
+1. **Production mode** (default): Downloads latest binary from GitHub Releases if missing, verifies checksum and build provenance, then lets the binary self-update
 2. **Build mode** (`--build`): Builds from source with `cargo build --profile dev-opt`, runs directly
 
 The wrapper resolves `DOTFILES_ROOT`, handles bootstrap/build concerns, and
@@ -29,14 +29,14 @@ argument validation.
 ### Binary Auto-Update
 
 After bootstrap, the Rust binary handles version caching, update checks,
-checksum verification, and re-exec.
+checksum and build provenance verification, and re-exec.
 
 ## Entry Point: `dotfiles.ps1`
 
 Windows PowerShell wrapper with identical logic:
 - `--build` flag for build-from-source mode
 - Downloads `dotfiles-windows-x86_64.exe` from releases
-- Same bootstrap download and checksum verification
+- Same bootstrap download, checksum, and build provenance verification
 
 ## Git Hooks
 

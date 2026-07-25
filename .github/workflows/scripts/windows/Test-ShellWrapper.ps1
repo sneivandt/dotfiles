@@ -315,6 +315,40 @@ function Test-VersionPinnedBootstrapUrl {
     return $false
 }
 
+function Test-AttestationVerification {
+    Write-TestStage "Testing build provenance verification in bootstrap download"
+
+    $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
+    $content = Get-Content $wrapper -Raw
+
+    if (
+        -not $content.Contains('function Test-Attestation') -or
+        -not $content.Contains('gh attestation verify') -or
+        -not $content.Contains('DOTFILES_SKIP_ATTESTATION') -or
+        -not $content.Contains('DOTFILES_REQUIRE_ATTESTATION')
+    ) {
+        Write-TestFail "Wrapper does not verify build provenance for downloaded binaries"
+        return $false
+    }
+
+    $lines = $content -split '\r?\n'
+    $checksumLine = ($lines | Select-String -SimpleMatch 'Write-Error "Checksum verification failed!"' | Select-Object -First 1).LineNumber
+    $attestLine = ($lines | Select-String -SimpleMatch 'Test-Attestation -Path $Binary' | Select-Object -First 1).LineNumber
+
+    if (-not $checksumLine -or -not $attestLine) {
+        Write-TestFail "Could not locate checksum and attestation verification in wrapper"
+        return $false
+    }
+
+    if ($attestLine -lt $checksumLine) {
+        Write-TestFail "Attestation verification (line $attestLine) must follow checksum verification (line $checksumLine)"
+        return $false
+    }
+
+    Write-TestPass "Wrapper verifies build provenance after checksum verification"
+    return $true
+}
+
 function Test-PendingBinaryPromotionRollback {
     Write-TestStage "Testing pending binary promotion has rollback handling"
 
@@ -399,6 +433,7 @@ function Invoke-TestSuite {
     $results += Test-InstallArgumentForwarding
     $results += Test-AdvancedFlagForwarding
     $results += Test-VersionPinnedBootstrapUrl
+    $results += Test-AttestationVerification
     $results += Test-PendingBinaryPromotionRollback
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling

@@ -64,8 +64,17 @@ verify that the completed CI run:
 - came from the same repository
 
 Apply the guard before jobs that receive write permissions or secrets. Release
-artifacts must retain the wrapper-expected names and publish SHA-256 checksums.
-Docker publishing must check out the exact successful CI head SHA.
+artifacts must retain the wrapper-expected names, publish SHA-256 checksums, and
+carry build provenance attestations (`id-token: write` plus `attestations:
+write` on the publishing job). Docker publishing must check out the exact
+successful CI head SHA.
+
+Download paths (`dotfiles.sh`, `dotfiles.ps1`, and the Rust self-update task)
+verify the checksum first and then the provenance attestation through the `gh`
+CLI. Provenance verification is advisory by default and is controlled by
+`DOTFILES_SKIP_ATTESTATION` and `DOTFILES_REQUIRE_ATTESTATION`; keep wrapper
+integration tests hermetic by stubbing `gh` or setting
+`DOTFILES_SKIP_ATTESTATION=1`.
 
 ## Change Checklist
 

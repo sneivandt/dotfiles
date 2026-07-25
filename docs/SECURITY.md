@@ -27,10 +27,36 @@ asset and its checksum. They:
 2. Use HTTPS for GitHub release access.
 3. Download the corresponding SHA-256 checksum.
 4. Verify the binary before executing it.
+5. Verify the binary's GitHub build provenance attestation.
+
+The same sequence applies to the binary's own self-update download.
 
 A checksum proves that the binary matches the published release metadata; it
-does not independently establish who produced that release. Repository and
-GitHub account security remain part of the trust chain.
+does not independently establish who produced that release. The release workflow
+therefore also publishes a build provenance attestation for every asset, which
+ties the binary to the workflow, repository, and commit that produced it.
+Repository and GitHub account security remain part of the trust chain.
+
+## Build provenance verification
+
+Provenance verification uses the `gh` CLI (`gh attestation verify`), which is
+not required to bootstrap. Because the checksum has already been verified, the
+default behavior is advisory:
+
+| Environment variable | Effect |
+|---|---|
+| unset | Verify when `gh` is available; warn and continue otherwise |
+| `DOTFILES_REQUIRE_ATTESTATION=1` | Fail the download when provenance cannot be verified |
+| `DOTFILES_SKIP_ATTESTATION=1` | Skip provenance verification entirely |
+
+`DOTFILES_SKIP_ATTESTATION` takes precedence over
+`DOTFILES_REQUIRE_ATTESTATION`. Set `DOTFILES_REQUIRE_ATTESTATION=1` on machines
+where an unverifiable release asset must never be executed. Verification can be
+performed manually at any time:
+
+```sh
+gh attestation verify bin/dotfiles --repo sneivandt/dotfiles
+```
 
 Use wrapper `--build` when you need the binary compiled from the local checkout.
 
@@ -95,7 +121,8 @@ CI includes:
 
 Publishing workflows run only after successful CI from a same-repository push to
 `main`, before jobs receive write permissions or publishing secrets. Release
-assets include checksums consumed by the wrappers.
+assets include checksums and build provenance attestations consumed by the
+wrappers and the self-update path.
 
 ## Safe contribution practices
 

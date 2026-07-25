@@ -351,7 +351,10 @@ items = [\"c\"]
     fn load_config_type_mismatch_returns_error() {
         #[derive(Deserialize)]
         struct Root {
-            #[allow(dead_code, reason = "used conditionally via cfg")]
+            #[allow(
+                dead_code,
+                reason = "field exists only to give the deserializer a type to reject"
+            )]
             key: Vec<String>,
         }
         let (_dir, path) = write_temp_toml("key = \"not-an-array\"\n");

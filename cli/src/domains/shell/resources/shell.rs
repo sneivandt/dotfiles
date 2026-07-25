@@ -111,6 +111,17 @@ impl IntrinsicState for DefaultShellResource {
 )]
 mod tests {
     use super::*;
+    use crate::infra::exec::{ExecResult, MockExecutor};
+    use std::path::PathBuf;
+
+    fn ok_result() -> ExecResult {
+        ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
 
     #[test]
     fn description_includes_shell_name() {
@@ -159,5 +170,55 @@ mod tests {
             .with_shell(Some(""));
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Missing);
+    }
+
+    #[test]
+    fn apply_runs_chsh_with_the_resolved_shell_path() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which_path()
+            .once()
+            .returning(|program| Ok(PathBuf::from(format!("/usr/bin/{program}"))));
+        mock.expect_run()
+            .once()
+            .withf(|program, args| program == "chsh" && args == ["-s", "/usr/bin/zsh"])
+            .returning(|_, _| Ok(ok_result()));
+
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let resource = DefaultShellResource::new("zsh".to_string(), executor);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
+    #[test]
+    fn apply_fails_without_running_chsh_when_shell_is_not_on_path() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which_path()
+            .once()
+            .returning(|program| Err(anyhow::anyhow!("{program} not found on PATH")));
+        mock.expect_run().never();
+
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let resource = DefaultShellResource::new("zsh".to_string(), executor);
+        assert!(
+            resource.apply().is_err(),
+            "apply should fail when the target shell cannot be resolved"
+        );
+    }
+
+    #[test]
+    fn apply_propagates_chsh_failure() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which_path()
+            .once()
+            .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
+        mock.expect_run()
+            .once()
+            .returning(|_, _| Err(anyhow::anyhow!("chsh: PAM authentication failed")));
+
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let resource = DefaultShellResource::new("zsh".to_string(), executor);
+        assert!(
+            resource.apply().is_err(),
+            "apply should surface a failing chsh invocation"
+        );
     }
 }

@@ -69,6 +69,10 @@ cli/src/
   ambiguous `Arc`/`Rc` `.clone()` calls, wildcard enum arms, unrelated
   shadowing, ignored `#[must_use]` values, and assertion messages without
   context.
+- `allow_attributes_without_reason` is denied, so every `#[allow(...)]` carries
+  a `reason`. Make it say why *this* site is safe (the invariant, the platform
+  gate, the trait shape), not merely that the lint was disabled; do not park the
+  justification in an adjacent comment.
 
 ## Task and Resource Rules
 

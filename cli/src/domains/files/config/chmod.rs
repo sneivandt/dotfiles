@@ -95,7 +95,10 @@ impl std::fmt::Display for OctalMode {
 
 /// A file permission directive.
 #[derive(Debug, Clone)]
-#[allow(dead_code, reason = "used conditionally via cfg")] // fields used on unix only (chmod.rs)
+#[allow(
+    dead_code,
+    reason = "fields are read only by the Unix-gated chmod resource"
+)]
 pub struct ChmodEntry {
     /// Configured permission mode (e.g., `"600"`, `"755"`).
     pub mode: String,

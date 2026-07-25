@@ -66,7 +66,10 @@ fn normalized_task_tokens(value: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::engine::{Context, TaskResult};
+    use crate::infra::logging::MsgKind;
     use anyhow::Result;
+    use std::borrow::Cow;
+    use std::sync::Mutex;
 
     struct SampleTask;
 
@@ -81,6 +84,48 @@ mod tests {
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
             Ok(TaskResult::Ok)
+        }
+    }
+
+    struct OtherTask;
+
+    impl Task for OtherTask {
+        fn name(&self) -> &'static str {
+            "System packages"
+        }
+
+        fn selector(&self) -> &'static str {
+            "packages"
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    /// Collects warnings so filter diagnostics can be asserted directly.
+    #[derive(Debug, Default)]
+    struct RecordingOutput {
+        warnings: Mutex<Vec<String>>,
+    }
+
+    impl RecordingOutput {
+        fn warnings(&self) -> Vec<String> {
+            self.warnings
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    impl Output for RecordingOutput {
+        fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
+            if kind == MsgKind::Warn {
+                self.warnings
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(msg.into_owned());
+            }
         }
     }
 
@@ -100,6 +145,17 @@ mod tests {
     }
 
     #[test]
+    fn blank_filters_never_match() {
+        let task = SampleTask;
+        for filter in ["", "   ", "--", "//"] {
+            assert!(
+                !task_matches_filter(&task, filter),
+                "filter {filter:?} normalizes to nothing and must not match"
+            );
+        }
+    }
+
+    #[test]
     fn task_passes_filters_combines_only_and_skip() {
         let only = vec!["symlinks".to_string()];
         let task = SampleTask;
@@ -107,5 +163,64 @@ mod tests {
 
         let skip = vec!["symlinks".to_string()];
         assert!(!task_passes_filters(&task, &only, &skip));
+    }
+
+    #[test]
+    fn empty_only_includes_every_task_not_skipped() {
+        assert!(
+            task_passes_filters(&SampleTask, &[], &[]),
+            "no filters should keep every task"
+        );
+        assert!(
+            task_passes_filters(&SampleTask, &[], &["packages".to_string()]),
+            "skipping another task must not exclude this one"
+        );
+        assert!(
+            !task_passes_filters(&SampleTask, &["packages".to_string()], &[]),
+            "an --only filter naming another task must exclude this one"
+        );
+    }
+
+    #[test]
+    fn has_unmatched_filter_detects_only_unknown_selectors() {
+        let tasks: [&dyn Task; 2] = [&SampleTask, &OtherTask];
+        assert!(!has_unmatched_filter(
+            &tasks,
+            &["symlinks".to_string(), "packages".to_string()]
+        ));
+        assert!(has_unmatched_filter(
+            &tasks,
+            &["symlinks".to_string(), "typo".to_string()]
+        ));
+        assert!(
+            !has_unmatched_filter(&tasks, &[]),
+            "an empty filter list has nothing to mismatch"
+        );
+    }
+
+    #[test]
+    fn warn_unmatched_filters_reports_each_unknown_filter_once() {
+        let tasks: [&dyn Task; 2] = [&SampleTask, &OtherTask];
+        let log = RecordingOutput::default();
+
+        warn_unmatched_filters(
+            &tasks,
+            &[
+                "symlinks".to_string(),
+                "typo".to_string(),
+                "nope".to_string(),
+            ],
+            "--only",
+            &log,
+        );
+
+        assert_eq!(
+            log.warnings(),
+            vec![
+                "--only 'typo' did not match any task".to_string(),
+                "--only 'nope' did not match any task".to_string(),
+            ],
+            "only unmatched filters should warn, preserving user order"
+        );
     }
 }

@@ -85,7 +85,10 @@ impl Task for PanicTask {
         true
     }
 
-    #[allow(clippy::panic, reason = "panicking allowed at this trust boundary")]
+    #[allow(
+        clippy::panic,
+        reason = "test task panics on purpose to exercise unwind handling in the scheduler"
+    )]
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
         panic!("simulated failure");
     }

@@ -114,4 +114,29 @@ mod tests {
         assert!(desc.contains("AllowDevelopmentWithoutDevLicense"));
         assert!(desc.contains("AppModelUnlock"));
     }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn apply_is_not_supported_off_windows() {
+        let error = DeveloperModeResource::new()
+            .apply()
+            .expect_err("developer mode should not be appliable off Windows");
+        assert!(
+            matches!(
+                error,
+                crate::engine::resource::ResourceError::NotSupported { .. }
+            ),
+            "expected NotSupported, got {error:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn current_state_is_missing_off_windows() {
+        assert_eq!(
+            DeveloperModeResource::new().current_state().unwrap(),
+            ResourceState::Missing,
+            "off Windows the flag can never be observed as set"
+        );
+    }
 }

@@ -47,10 +47,10 @@ pub trait FileSystemOps: Send + Sync + std::fmt::Debug {
     /// Returns an error if `path` is not a symlink or cannot be read.
     fn read_link(&self, path: &Path) -> std::io::Result<PathBuf>;
 
-    /// Remove the file or empty directory at `path`.
+    /// Remove the file, link, or empty directory at `path`.
     ///
-    /// Calls `std::fs::remove_file` for files/symlinks and
-    /// `std::fs::remove_dir` for directories.
+    /// Directory-like links (Windows directory symlinks and junctions) are
+    /// removed as directories; everything else is removed as a file.
     ///
     /// # Errors
     ///
@@ -83,11 +83,7 @@ impl FileSystemOps for SystemFileSystemOps {
 
     fn remove(&self, path: &Path) -> std::io::Result<()> {
         let meta = std::fs::symlink_metadata(path)?;
-        if meta.is_dir() {
-            std::fs::remove_dir(path)
-        } else {
-            std::fs::remove_file(path)
-        }
+        remove_entry(path, &meta)
     }
 }
 
@@ -266,14 +262,45 @@ pub fn remove_existing(path: &Path) -> Result<()> {
         }
     };
 
-    if metadata.is_dir() {
+    remove_entry(path, &metadata).with_context(|| format!("remove existing: {}", path.display()))
+}
+
+/// Returns `true` when `meta` describes an entry that must be removed with
+/// [`std::fs::remove_dir`] rather than [`std::fs::remove_file`].
+///
+/// On Windows a directory symlink or junction reports `is_dir() == false`
+/// through [`std::fs::symlink_metadata`], yet the OS only accepts `remove_dir`
+/// for it, so the raw `FILE_ATTRIBUTE_DIRECTORY` (`0x10`) flag is what decides.
+/// On Unix a symlink is always removed as a file, which is exactly what
+/// `is_dir()` reports for symlink metadata.
+#[must_use]
+pub fn is_dir_like(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt as _;
+        meta.file_attributes() & 0x10 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        meta.is_dir()
+    }
+}
+
+/// Remove the entry at `path` described by `meta`, picking the removal call
+/// that the platform requires for that entry kind.
+///
+/// `meta` must come from [`std::fs::symlink_metadata`] so links are removed
+/// rather than followed. Non-empty directories are not removed recursively.
+///
+/// # Errors
+///
+/// Returns an error if the entry cannot be removed.
+pub fn remove_entry(path: &Path, meta: &std::fs::Metadata) -> std::io::Result<()> {
+    if is_dir_like(meta) {
         std::fs::remove_dir(path)
-            .with_context(|| format!("remove existing: {}", path.display()))?;
     } else {
         std::fs::remove_file(path)
-            .with_context(|| format!("remove existing: {}", path.display()))?;
     }
-    Ok(())
 }
 
 #[cfg(test)]

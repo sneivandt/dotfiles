@@ -59,7 +59,7 @@ pub(super) fn remove_symlink(path: &Path, _executor: &dyn Executor) -> Result<()
             );
         }
     };
-    if is_dir_like(&meta) {
+    if crate::infra::fs::is_dir_like(&meta) {
         match std::fs::remove_dir(path) {
             Ok(()) => {}
             #[cfg(windows)]
@@ -92,19 +92,6 @@ pub(super) fn is_link_like(path: &Path, meta: &std::fs::Metadata) -> bool {
     #[cfg(not(windows))]
     {
         meta.is_symlink()
-    }
-}
-
-/// Check if metadata represents a directory-like entry.
-fn is_dir_like(meta: &std::fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        meta.file_attributes() & 0x10 != 0
-    }
-    #[cfg(not(windows))]
-    {
-        meta.is_dir()
     }
 }
 

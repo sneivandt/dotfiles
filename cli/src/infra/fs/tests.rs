@@ -217,6 +217,88 @@ fn remove_existing_removes_broken_symlink() {
     assert!(link.symlink_metadata().is_err());
 }
 
+#[cfg(unix)]
+#[test]
+fn remove_existing_removes_symlink_to_directory_without_touching_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let real_dir = dir.path().join("real");
+    std::fs::create_dir(&real_dir).unwrap();
+    std::fs::write(real_dir.join("keep.txt"), "keep").unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real_dir, &link).unwrap();
+
+    remove_existing(&link).unwrap();
+
+    assert!(link.symlink_metadata().is_err(), "the link must be gone");
+    assert!(
+        real_dir.join("keep.txt").exists(),
+        "the link target must survive"
+    );
+}
+
+// -----------------------------------------------------------------------
+// remove_entry / is_dir_like
+// -----------------------------------------------------------------------
+
+#[test]
+fn is_dir_like_reports_directories_and_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("file.txt");
+    std::fs::write(&file, "content").unwrap();
+
+    assert!(is_dir_like(&dir.path().symlink_metadata().unwrap()));
+    assert!(!is_dir_like(&file.symlink_metadata().unwrap()));
+}
+
+#[cfg(unix)]
+#[test]
+fn is_dir_like_reports_false_for_symlinks() {
+    let dir = tempfile::tempdir().unwrap();
+    let real_dir = dir.path().join("real");
+    std::fs::create_dir(&real_dir).unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&real_dir, &link).unwrap();
+
+    assert!(
+        !is_dir_like(&link.symlink_metadata().unwrap()),
+        "a Unix symlink is removed as a file even when it points at a directory"
+    );
+}
+
+#[test]
+fn remove_entry_removes_empty_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    std::fs::create_dir(&target).unwrap();
+
+    remove_entry(&target, &target.symlink_metadata().unwrap()).unwrap();
+
+    assert!(!target.exists());
+}
+
+#[test]
+fn system_fs_ops_removes_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    std::fs::create_dir(&target).unwrap();
+
+    SystemFileSystemOps.remove(&target).unwrap();
+
+    assert!(!target.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn system_fs_ops_removes_broken_symlink() {
+    let dir = tempfile::tempdir().unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink("/nonexistent/target", &link).unwrap();
+
+    SystemFileSystemOps.remove(&link).unwrap();
+
+    assert!(link.symlink_metadata().is_err());
+}
+
 // -----------------------------------------------------------------------
 // TempPath
 // -----------------------------------------------------------------------

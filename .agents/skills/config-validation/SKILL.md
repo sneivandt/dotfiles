@@ -19,6 +19,26 @@ duplicating its inventory elsewhere. New tasks must report whether a required
 tool is missing according to the existing command policy instead of silently
 passing.
 
+## Two Layers: Serde Strictness and Semantic Validation
+
+Deserialization rejects structurally wrong configuration (unknown keys, type
+mismatches) and fails the load outright. `Config::validate` reports semantic
+diagnostics and is advisory. Keep the boundary: a misspelled key belongs to the
+Serde layer via `deny_unknown_fields`, not to a validator.
+
+## Load and Reload Must Behave Identically
+
+`Config::load` and `Config::validate` are separate calls, so any code path that
+loads configuration must also validate it. Both the startup path
+(`commands/runner.rs::load_config`) and the mid-run path
+(`app/reload.rs::ReloadConfig`) validate and then call
+`app::validation::display_diagnostics`.
+
+Reload diagnostics stay advisory, matching startup. Escalating only on reload
+would make the outcome depend on run timing rather than on config content. When
+adding a new path that swaps configuration into the store, validate before
+publishing.
+
 ## Per-Module `validate()` Functions
 
 Each domain config module exposes a `validate()` function returning

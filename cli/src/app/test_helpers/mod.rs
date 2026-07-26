@@ -18,8 +18,10 @@ use crate::infra::platform::Platform;
 use crate::engine::Context;
 
 mod failure;
+mod recording;
 
 pub use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
+pub use recording::recording_log;
 
 /// Build a [`Config`] with all lists empty and `root` set to `root`.
 #[must_use]

@@ -285,7 +285,32 @@ At command start, the loader:
 
 If **Dotfiles repository** changes tracked content, the internal **Reload configuration**
 repeats the load and updates those handles. Later tasks therefore observe the
-new configuration in the same command invocation.
+new configuration in the same command invocation. The reload runs the same
+section and aggregate validation as startup and reports any diagnostics, so a
+configuration pulled mid-run is held to the same standard as one present when
+the command began.
+
+## Unknown keys are errors
+
+Every configuration file is parsed strictly. An unrecognised key — or a
+misspelled one — aborts the load with the file, line, column, and the list of
+accepted keys:
+
+```text
+ERROR Invalid TOML syntax in conf/profiles.toml: TOML parse error at line 13, column 1
+13 | excludee = ["desktop"]
+unknown field `excludee`, expected one of `description`, `include`, `exclude`
+```
+
+This applies to section fields (`symlink` instead of `symlinks`), to keys inside
+table entries (`targett` instead of `target`), and to profile definitions. A typo
+can no longer silently reduce to a default — for example `excludee` in
+`profiles.toml` previously produced an empty exclude list, so the `base` profile
+quietly stopped excluding desktop categories.
+
+Entries that accept either a bare string or a table (symlinks, packages,
+systemd units) are also strict in both forms: a value that is neither a string
+nor a table is rejected by kind.
 
 ## Validation
 
@@ -295,6 +320,7 @@ Run:
 dotfiles test
 ```
 
-The command catches syntax errors, missing required files, nonexistent symlink
-sources, manifest drift, and available APM/script analyzer failures. Tests also
+The command catches syntax errors, unknown keys, missing required files,
+nonexistent symlink sources, manifest drift, and available APM/script analyzer
+failures. Tests also
 include a Rust integration test dedicated to configuration drift.

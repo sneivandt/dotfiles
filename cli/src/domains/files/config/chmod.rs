@@ -108,6 +108,7 @@ pub struct ChmodEntry {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawChmodEntry {
     mode: String,
     path: String,
@@ -199,8 +200,19 @@ pub(crate) const CHMOD_TOML: &str = "chmod.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
+
+    #[test]
+    fn unknown_key_in_chmod_entry_is_rejected() {
+        assert_load_rejects(
+            load,
+            r#"[base]
+permissions = [{ mode = "600", path = "ssh/config", pathh = "typo" }]
+"#,
+            "pathh",
+        );
+    }
 
     #[test]
     fn parse_chmod_entry() {

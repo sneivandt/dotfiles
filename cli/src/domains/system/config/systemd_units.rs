@@ -3,6 +3,7 @@ use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
 use crate::infra::config::DiagnosticCode;
+use crate::infra::config::StringOrTable;
 use crate::infra::config::config_section;
 
 /// Diagnostic code: `systemd.empty-name`.
@@ -51,27 +52,30 @@ impl<'de> Deserialize<'de> for UnitScope {
     }
 }
 
+/// The explicit table form of a unit entry: `{ name, scope }`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UnitWithScope {
+    /// Unit name including extension.
+    name: String,
+    /// Systemd scope for the unit.
+    scope: UnitScope,
+}
+
 /// A single entry in a units section — either a plain name string or a
 /// structured `{ name, scope }` pair for an explicit scope override.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum UnitEntry {
-    /// Plain string: `"dunst.service"` — defaults to user scope.
-    Simple(String),
-    /// Structured: `{ name = "foo.service", scope = "system" }`.
-    WithScope { name: String, scope: UnitScope },
-}
+type UnitEntry = StringOrTable<UnitWithScope>;
 
 config_section! {
     field: "units",
     entry: UnitEntry,
     item: SystemdUnit,
     map: |entry| match entry {
-        UnitEntry::Simple(name) => SystemdUnit {
+        StringOrTable::Bare(name) => SystemdUnit {
             name,
             scope: UnitScope::User,
         },
-        UnitEntry::WithScope { name, scope } => SystemdUnit { name, scope },
+        StringOrTable::Table(UnitWithScope { name, scope }) => SystemdUnit { name, scope },
     },
 }
 
@@ -134,8 +138,19 @@ pub(crate) const SYSTEMD_UNITS_TOML: &str = "systemd-units.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
+
+    #[test]
+    fn unknown_key_in_unit_table_is_rejected() {
+        assert_load_rejects(
+            load,
+            r#"[base]
+units = [{ name = "dunst.service", scop = "system" }]
+"#,
+            "scop",
+        );
+    }
 
     #[test]
     fn load_base_units() {

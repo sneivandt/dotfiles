@@ -31,6 +31,7 @@ impl Manifest {
 
 /// TOML section containing excluded paths.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ManifestSection {
     paths: Vec<String>,
 }
@@ -62,7 +63,18 @@ pub fn load(path: &Path, excluded_categories: &[Category]) -> Result<Manifest> {
 )]
 mod tests {
     use super::*;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
+
+    #[test]
+    fn unknown_key_in_manifest_section_is_rejected() {
+        assert_load_rejects(
+            load,
+            r#"[base]
+path = ["file1"]
+"#,
+            "path",
+        );
+    }
 
     #[test]
     fn and_exclusion_logic() {

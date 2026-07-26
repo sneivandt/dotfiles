@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::infra::config::Diagnostic;
 use crate::infra::config::DiagnosticCode;
+use crate::infra::config::StringOrTable;
 use crate::infra::config::config_section;
 
 /// Diagnostic code: `symlink.absolute-source`.
@@ -41,28 +42,31 @@ pub struct Symlink {
     pub origin: Option<PathBuf>,
 }
 
+/// The explicit table form of a symlink entry: `{ source, target }`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SymlinkWithTarget {
+    /// Relative path under the `symlinks/` directory.
+    source: String,
+    /// Explicit target path relative to `$HOME`.
+    target: String,
+}
+
 /// A single entry in a symlinks section — either a plain source path or a
 /// structured `{ source, target }` pair for an explicit target override.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum SymlinkEntry {
-    /// Plain string: `"bashrc"` — target is derived by convention.
-    Simple(String),
-    /// Structured: `{ source = "foo", target = ".bar" }` — explicit target.
-    WithTarget { source: String, target: String },
-}
+type SymlinkEntry = StringOrTable<SymlinkWithTarget>;
 
 config_section! {
     field: "symlinks",
     entry: SymlinkEntry,
     item: Symlink,
     map: |entry| match entry {
-        SymlinkEntry::Simple(source) => Symlink {
+        StringOrTable::Bare(source) => Symlink {
             source,
             target: None,
             origin: None,
         },
-        SymlinkEntry::WithTarget { source, target } => Symlink {
+        StringOrTable::Table(SymlinkWithTarget { source, target }) => Symlink {
             source,
             target: Some(target),
             origin: None,
@@ -250,8 +254,30 @@ pub(crate) const SYMLINKS_TOML: &str = "symlinks.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
+
+    #[test]
+    fn unknown_key_in_symlink_table_is_rejected() {
+        assert_load_rejects(
+            load,
+            r#"[base]
+symlinks = [{ source = "bashrc", targett = ".bashrc" }]
+"#,
+            "targett",
+        );
+    }
+
+    #[test]
+    fn unknown_section_field_is_rejected() {
+        assert_load_rejects(
+            load,
+            r#"[base]
+symlink = ["bashrc"]
+"#,
+            "symlink",
+        );
+    }
 
     #[test]
     fn load_base_symlinks() {

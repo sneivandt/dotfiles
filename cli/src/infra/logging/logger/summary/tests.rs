@@ -388,3 +388,27 @@ fn print_summary_clears_visible_progress() {
     assert!(!log.has_transient_rows());
     assert!(!log.has_status_row());
 }
+
+#[test]
+fn no_op_update_summary_needs_no_totals_separator() {
+    let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("update");
+    log.set_verbose(false);
+    for index in 0..3 {
+        log.record_task(&format!("task-{index}"), TaskStatus::Ok, None);
+    }
+
+    assert!(
+        !log.needs_totals_separator(),
+        "runs that printed nothing should not emit a blank line before the totals"
+    );
+}
+
+#[test]
+fn update_summary_needs_totals_separator_after_task_output() {
+    let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("update");
+    log.set_verbose(false);
+    log.record_task("task-changed", TaskStatus::Changed, None);
+    log.mark_task_console_output();
+
+    assert!(log.needs_totals_separator());
+}

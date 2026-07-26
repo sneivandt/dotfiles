@@ -90,9 +90,17 @@ fn test_dispatch_guard(dispatch: &tracing::Dispatch) -> TestDispatchGuard {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 pub(crate) fn isolated_logger() -> (Logger, tempfile::TempDir, TestDispatchGuard) {
+    isolated_logger_for("test")
+}
+
+/// Like [`isolated_logger`] but for an explicit command name, so tests can
+/// exercise command-dependent summary formatting.
+#[cfg(test)]
+#[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
+pub(crate) fn isolated_logger_for(command: &str) -> (Logger, tempfile::TempDir, TestDispatchGuard) {
     use tracing_subscriber::layer::SubscriberExt as _;
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let log = Logger::new_in("test", tmp.path());
+    let log = Logger::new_in(command, tmp.path());
     let run_log_layer =
         subscriber::RunLogLayer::new(log.run_log_handle().expect("run log should be created"));
     let subscriber = tracing_subscriber::registry().with(run_log_layer);

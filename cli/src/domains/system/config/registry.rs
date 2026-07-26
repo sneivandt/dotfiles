@@ -49,6 +49,7 @@ pub struct RegistryEntry {
 
 /// TOML registry section with path and values.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RegistrySection {
     path: String,
     values: BTreeMap<String, toml::Value>,
@@ -172,7 +173,17 @@ pub(crate) const REGISTRY_TOML: &str = "registry.toml";
 )]
 mod tests {
     use super::*;
+    use crate::infra::config::test_helpers::assert_load_unfiltered_rejects;
     use crate::infra::config::test_load_missing_unfiltered_returns_empty;
+
+    #[test]
+    fn unknown_key_in_registry_section_is_rejected() {
+        assert_load_unfiltered_rejects(
+            load,
+            "[console]\npath = \"HKCU:\\\\Console\"\npaths = \"typo\"\n[console.values]\nFontSize = 14\n",
+            "paths",
+        );
+    }
 
     #[test]
     fn load_registry_from_file() {

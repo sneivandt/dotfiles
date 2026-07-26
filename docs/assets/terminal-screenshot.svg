@@ -21,15 +21,15 @@
     <text x="34" y="124" fill="#c0caf5">Install · profile desktop · Arch Linux</text>
 
     <text x="34" y="166"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Home symlinks</tspan></text>
-    <text x="52" y="187" fill="#a9b1d6">link ~/.config/git/config</text>
-    <text x="52" y="208" fill="#a9b1d6">link ~/.config/nvim</text>
-    <text x="52" y="229" fill="#a9b1d6">link ~/.zshrc</text>
+    <text x="52" y="187" fill="#a9b1d6">link ~/.config/git/config ← symlinks/config/git/config</text>
+    <text x="52" y="208" fill="#a9b1d6">link ~/.config/nvim ← symlinks/config/nvim</text>
+    <text x="52" y="229" fill="#a9b1d6">link ~/.zshrc ← symlinks/zshrc</text>
     <text x="34" y="250"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> System packages</tspan></text>
     <text x="52" y="271" fill="#a9b1d6">install neovim</text>
     <text x="52" y="292" fill="#a9b1d6">install ripgrep</text>
     <text x="34" y="313"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Default shell</tspan></text>
     <text x="52" y="334" fill="#a9b1d6">configure default shell → zsh</text>
 
-    <text x="34" y="376"><tspan fill="#9ece6a" font-weight="700">Applied 6 changes across 3 tasks</tspan><tspan fill="#565f89"> · 1.3s</tspan></text>
+    <text x="34" y="376"><tspan fill="#9ece6a" font-weight="700">Applied 6 changes across 3 tasks</tspan><tspan fill="#565f89"> · 12 up to date · 1.3s</tspan></text>
   </g>
 </svg>

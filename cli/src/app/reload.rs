@@ -66,9 +66,30 @@ impl ReloadConfig {
             )
         });
 
+        // Validate before publishing, mirroring startup: `load_config` in the
+        // command runner reports diagnostics for the configuration present when
+        // the process started. Without this, configuration pulled in by
+        // `UpdateRepository` would reach downstream tasks unreported, so
+        // whether a problem is surfaced would depend on whether the offending
+        // commit landed before or during the run.
+        let diagnostics = new_config.validate(ctx.platform());
+
         self.store.reload(new_config);
 
-        ctx.log().info("configuration reloaded");
+        // Diagnostics are advisory here for the same reason they are at
+        // startup: the run continues and the user is told what is wrong.
+        // Escalating to a hard failure only on the reload path would make the
+        // outcome depend on run timing rather than on configuration content.
+        crate::app::validation::display_diagnostics(&diagnostics, ctx.log());
+
+        if diagnostics.is_empty() {
+            ctx.log().info("configuration reloaded");
+        } else {
+            ctx.log().info(format!(
+                "configuration reloaded with {} diagnostic(s)",
+                diagnostics.len()
+            ));
+        }
         Ok(TaskResult::Ok)
     }
 }
@@ -126,8 +147,61 @@ mod tests {
     use super::*;
     use crate::app::config::profiles::Profile;
     use crate::engine::UpdateSignal;
-    use crate::test_helpers::{empty_config, make_linux_context};
-    use std::path::PathBuf;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::logging::MsgKind;
+    use crate::test_helpers::{empty_config, make_linux_context, recording_log};
+    use std::path::{Path, PathBuf};
+
+    /// Config files `Config::load` expects to find under `conf/`.
+    const CONF_FILES: &[&str] = &[
+        "symlinks.toml",
+        "packages.toml",
+        "manifest.toml",
+        "chmod.toml",
+        "systemd-units.toml",
+        "vscode-extensions.toml",
+        "git-config.toml",
+        "registry.toml",
+        "copilot.toml",
+    ];
+
+    /// Create a repository root with an empty but complete `conf/` directory.
+    fn make_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("conf");
+        std::fs::create_dir_all(&conf).unwrap();
+        std::fs::write(
+            conf.join("profiles.toml"),
+            "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
+        )
+        .unwrap();
+        for file in CONF_FILES {
+            std::fs::write(conf.join(file), "").unwrap();
+        }
+        dir
+    }
+
+    fn write_conf(root: &Path, file: &str, content: &str) {
+        std::fs::write(root.join("conf").join(file), content).unwrap();
+    }
+
+    /// A store whose aggregate carries the `base` profile so a reload
+    /// re-loads with matching category selection.
+    fn base_store(root: &Path) -> ConfigStore {
+        let mut config = empty_config(root.to_path_buf());
+        config.profile = Profile {
+            name: "base".to_string(),
+            active_categories: vec![Category::Base],
+            excluded_categories: vec![],
+        };
+        ConfigStore::from_config(config)
+    }
+
+    fn updated_task(store: ConfigStore) -> ReloadConfig {
+        let repo_updated = UpdateSignal::new();
+        repo_updated.mark_updated();
+        ReloadConfig::new(repo_updated, store)
+    }
 
     fn make_task(root: PathBuf, signal: UpdateSignal) -> ReloadConfig {
         let store = ConfigStore::from_config(empty_config(root));
@@ -152,41 +226,139 @@ mod tests {
 
     #[test]
     fn run_reloads_config_when_repo_updated() {
-        let dir = tempfile::tempdir().unwrap();
-        let conf = dir.path().join("conf");
-        std::fs::create_dir_all(&conf).unwrap();
-        std::fs::write(
-            conf.join("profiles.toml"),
-            "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
-        )
-        .unwrap();
-        for file in &[
-            "symlinks.toml",
-            "packages.toml",
-            "manifest.toml",
-            "chmod.toml",
-            "systemd-units.toml",
-            "vscode-extensions.toml",
-            "git-config.toml",
-            "registry.toml",
-        ] {
-            std::fs::write(conf.join(file), "").unwrap();
-        }
-
+        let dir = make_repo();
         let ctx = make_linux_context(empty_config(dir.path().to_path_buf()));
-        let repo_updated = UpdateSignal::new();
-        repo_updated.mark_updated();
-        // Build a store whose aggregate carries a base profile so the reload
-        // re-loads with matching category selection.
-        let mut config = empty_config(dir.path().to_path_buf());
-        config.profile = Profile {
-            name: "base".to_string(),
-            active_categories: vec![crate::infra::config::category_matcher::Category::Base],
-            excluded_categories: vec![],
-        };
-        let store = ConfigStore::from_config(config);
-        let task = ReloadConfig::new(repo_updated, store);
+        let task = updated_task(base_store(dir.path()));
         let result = task.run(&ctx).unwrap();
         assert!(matches!(result, TaskResult::Ok));
+    }
+
+    #[test]
+    fn run_publishes_new_values_into_the_store() {
+        let dir = make_repo();
+        write_conf(
+            dir.path(),
+            "packages.toml",
+            "[base]\npackages = [\"git\"]\n",
+        );
+
+        let ctx = make_linux_context(empty_config(dir.path().to_path_buf()));
+        let store = base_store(dir.path());
+        assert!(
+            store.packages.read().is_empty(),
+            "store should start with no packages"
+        );
+
+        let result = updated_task(store.clone()).run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+
+        let packages = store.packages.read();
+        assert_eq!(
+            packages.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            vec!["git"],
+            "reload should publish the newly-loaded packages to the shared store"
+        );
+    }
+
+    #[test]
+    fn run_reports_diagnostics_for_reloaded_config() {
+        // Regression: reload called `Config::load` but never `Config::validate`,
+        // so configuration pulled in by `UpdateRepository` reached downstream
+        // tasks with no diagnostics reported. Whether a problem was surfaced
+        // depended on whether the offending commit landed before the run
+        // started rather than on the configuration content.
+        let dir = make_repo();
+        write_conf(
+            dir.path(),
+            "symlinks.toml",
+            "[base]\nsymlinks = [\"definitely-not-present\"]\n",
+        );
+
+        let (log, handle) = recording_log();
+        let ctx = make_linux_context(empty_config(dir.path().to_path_buf())).with_log(handle);
+
+        let result = updated_task(base_store(dir.path())).run(&ctx).unwrap();
+
+        assert!(
+            matches!(result, TaskResult::Ok),
+            "diagnostics are advisory at startup, so reload must not fail either"
+        );
+        assert!(
+            log.has_message(MsgKind::Warn, "symlink.source-missing"),
+            "reload should surface the diagnostic; emitted: {}",
+            log.all_text()
+        );
+        assert!(
+            log.has_message(MsgKind::Info, "1 diagnostic(s)"),
+            "reload should report the diagnostic count; emitted: {}",
+            log.all_text()
+        );
+    }
+
+    #[test]
+    fn run_reports_no_diagnostics_for_clean_config() {
+        let dir = make_repo();
+        let (log, handle) = recording_log();
+        let ctx = make_linux_context(empty_config(dir.path().to_path_buf())).with_log(handle);
+
+        let result = updated_task(base_store(dir.path())).run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+
+        assert!(
+            log.messages_of(MsgKind::Warn).is_empty(),
+            "clean config should not warn; emitted: {}",
+            log.all_text()
+        );
+        assert!(
+            log.has_message(MsgKind::Info, "configuration reloaded"),
+            "reload should confirm success; emitted: {}",
+            log.all_text()
+        );
+    }
+
+    #[test]
+    fn run_fails_when_reloaded_config_cannot_be_parsed() {
+        let dir = make_repo();
+        write_conf(
+            dir.path(),
+            "packages.toml",
+            "[base]\npackages = [{ name = \"git\", our = true }]\n",
+        );
+
+        let ctx = make_linux_context(empty_config(dir.path().to_path_buf()));
+        let error = updated_task(base_store(dir.path()))
+            .run(&ctx)
+            .expect_err("an unparseable reload must fail rather than keep stale config");
+
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("reloading configuration"),
+            "error should be attributed to the reload, got: {message}"
+        );
+        assert!(
+            message.contains("our"),
+            "error should name the unknown key, got: {message}"
+        );
+    }
+
+    #[test]
+    fn dry_run_does_not_publish_new_values() {
+        let dir = make_repo();
+        write_conf(
+            dir.path(),
+            "packages.toml",
+            "[base]\npackages = [\"git\"]\n",
+        );
+
+        let ctx = make_linux_context(empty_config(dir.path().to_path_buf())).with_dry_run(true);
+        let store = base_store(dir.path());
+
+        let result = updated_task(store.clone()).run(&ctx).unwrap();
+
+        assert!(!matches!(result, TaskResult::NotApplicable(_)));
+        assert!(
+            store.packages.read().is_empty(),
+            "preview must not mutate the shared store"
+        );
     }
 }

@@ -411,3 +411,104 @@ fn config_load_returns_error_on_invalid_profiles_toml() {
         "invalid profiles.toml should cause resolve to fail"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Config loading: unknown keys are rejected, not silently discarded
+// ---------------------------------------------------------------------------
+
+/// Load `conf/<file>` from a minimal repo and return the error it produced.
+///
+/// Panics if the configuration loads successfully — a misspelled key must
+/// never be accepted.
+fn expect_load_error(file: &str, content: &str) -> String {
+    let ctx = common::TestContextBuilder::new()
+        .with_config_file(file, content)
+        .build();
+
+    let platform = Platform::detect();
+    let conf_dir = ctx.root_path().join("conf");
+    let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
+    let error = Config::load(ctx.root_path(), &profile, platform, None)
+        .expect_err("a config with an unknown key must not load");
+    format!("{error:#}")
+}
+
+/// A misspelled key inside a structured entry must fail the load.
+///
+/// Regression: these entries were `#[serde(untagged)]` enums, and untagged
+/// enums ignore `deny_unknown_fields` — serde buffers the input and falls
+/// through to the next variant, so `targett` parsed as if the key were absent
+/// and the symlink silently used its conventional target instead.
+#[test]
+fn config_load_rejects_unknown_key_in_symlink_entry() {
+    let message = expect_load_error(
+        "symlinks.toml",
+        "[base]\nsymlinks = [{ source = \"bashrc\", targett = \".bashrc\" }]\n",
+    );
+    assert!(
+        message.contains("targett"),
+        "error should name the unknown key, got: {message}"
+    );
+}
+
+/// A misspelled key in a package entry must fail the load.
+#[test]
+fn config_load_rejects_unknown_key_in_package_entry() {
+    let message = expect_load_error(
+        "packages.toml",
+        "[base]\npackages = [{ name = \"paru-bin\", our = true }]\n",
+    );
+    assert!(
+        message.contains("our"),
+        "error should name the unknown key, got: {message}"
+    );
+}
+
+/// A misspelled key in a chmod entry must fail the load.
+#[test]
+fn config_load_rejects_unknown_key_in_chmod_entry() {
+    let message = expect_load_error(
+        "chmod.toml",
+        "[base]\npermissions = [{ mode = \"600\", path = \"ssh/config\", pathh = \"x\" }]\n",
+    );
+    assert!(
+        message.contains("pathh"),
+        "error should name the unknown key, got: {message}"
+    );
+}
+
+/// A misspelled section field must fail the load.
+#[test]
+fn config_load_rejects_unknown_section_field() {
+    let message = expect_load_error("symlinks.toml", "[base]\nsymlink = [\"bashrc\"]\n");
+    assert!(
+        message.contains("symlink"),
+        "error should name the unknown field, got: {message}"
+    );
+}
+
+/// A misspelled key in `profiles.toml` must fail profile resolution.
+///
+/// Regression: `ProfileDef` marked every field `#[serde(default)]` without
+/// `deny_unknown_fields`, so `excludee` produced an empty `exclude` list and
+/// the `base` profile silently stopped excluding the `desktop` category.
+#[test]
+fn profile_resolution_rejects_unknown_key() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let conf = dir.path().join("conf");
+    std::fs::create_dir_all(&conf).expect("create conf dir");
+    std::fs::write(
+        conf.join("profiles.toml"),
+        "[base]\ninclude = []\nexcludee = [\"desktop\"]\n",
+    )
+    .expect("write profiles.toml");
+
+    let error = profiles::resolve("base", &conf, Platform::detect())
+        .expect_err("a misspelled profile key must not resolve");
+
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("excludee"),
+        "error should name the unknown key, got: {message}"
+    );
+}

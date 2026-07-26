@@ -53,15 +53,6 @@ impl SummaryCounts {
         }
         counts
     }
-
-    pub(super) const fn has_visible_tasks(self) -> bool {
-        self.changed > 0
-            || self.passed > 0
-            || self.ok > 0
-            || self.skipped > 0
-            || self.dry_run > 0
-            || self.failed > 0
-    }
 }
 
 pub(super) fn format_summary_lines(
@@ -201,10 +192,14 @@ pub(super) fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> V
     parts
 }
 
+/// Decide whether a blank line should separate the totals from what precedes
+/// it.  The separator is only useful when console output was actually emitted
+/// above the totals, so it is driven by emitted output rather than by recorded
+/// task counts (tasks that were already up to date print nothing).
 pub(super) fn should_space_before_totals(
     command: &str,
     verbose: bool,
-    has_visible_tasks: bool,
+    task_output_emitted: bool,
 ) -> bool {
-    verbose || has_visible_tasks || !matches!(command, "install" | "update" | "uninstall")
+    verbose || task_output_emitted || !matches!(command, "install" | "update" | "uninstall")
 }

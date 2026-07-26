@@ -3,6 +3,7 @@ use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
 use crate::infra::config::DiagnosticCode;
+use crate::infra::config::StringOrTable;
 use crate::infra::config::config_section;
 
 /// Diagnostic code: `package.aur-not-arch`.
@@ -19,24 +20,29 @@ pub struct Package {
     pub is_aur: bool,
 }
 
-/// TOML package entry - can be either a string or a table with metadata.
+/// The explicit table form of a package entry: `{ name, aur }`.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-enum PackageEntry {
-    Simple(String),
-    WithMetadata { name: String, aur: Option<bool> },
+#[serde(deny_unknown_fields)]
+struct PackageWithMetadata {
+    /// Package name or identifier.
+    name: String,
+    /// Whether the package comes from the AUR.
+    aur: Option<bool>,
 }
+
+/// TOML package entry - can be either a string or a table with metadata.
+type PackageEntry = StringOrTable<PackageWithMetadata>;
 
 config_section! {
     field: "packages",
     entry: PackageEntry,
     item: Package,
     map: |entry| match entry {
-        PackageEntry::Simple(name) => Package {
+        StringOrTable::Bare(name) => Package {
             name,
             is_aur: false,
         },
-        PackageEntry::WithMetadata { name, aur } => Package {
+        StringOrTable::Table(PackageWithMetadata { name, aur }) => Package {
             name,
             is_aur: aur.unwrap_or(false),
         },
@@ -86,8 +92,30 @@ pub(crate) const PACKAGES_TOML: &str = "packages.toml";
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;
-    use crate::infra::config::test_helpers::write_temp_toml;
+    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
     use crate::infra::config::test_load_missing_returns_empty;
+
+    #[test]
+    fn unknown_key_in_package_table_is_rejected() {
+        assert_load_rejects(
+            load,
+            r#"[base]
+packages = [{ name = "paru-bin", our = true }]
+"#,
+            "our",
+        );
+    }
+
+    #[test]
+    fn integer_package_entry_is_rejected() {
+        assert_load_rejects(
+            load,
+            r"[base]
+packages = [42]
+",
+            "expected a string or a table",
+        );
+    }
 
     #[test]
     fn load_filters_by_category() {

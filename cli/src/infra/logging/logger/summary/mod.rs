@@ -30,12 +30,17 @@ impl Logger {
         let counts = SummaryCounts::from_tasks(&tasks);
         let style = stdout_style();
 
-        if should_space_before_totals(&self.command, self.verbose, counts.has_visible_tasks()) {
+        if self.needs_totals_separator() {
             self.task_result("");
         }
         for line in format_summary_lines(counts, summary_mode, self.dry_run, &elapsed_str, style) {
             self.always(&line);
         }
+    }
+
+    /// Whether a blank line should separate the totals from preceding output.
+    fn needs_totals_separator(&self) -> bool {
+        should_space_before_totals(&self.command, self.verbose, self.has_task_console_output())
     }
 
     pub(in crate::infra::logging) fn emit_recorded_task_result(&self, task_name: &str) {

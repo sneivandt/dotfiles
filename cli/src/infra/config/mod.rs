@@ -9,12 +9,14 @@ pub(crate) mod diagnostics;
 pub(crate) mod git_state;
 mod handle;
 pub(crate) mod section_macro;
+pub(crate) mod string_or_table;
 pub(crate) mod toml_loader;
 pub(crate) mod validation;
 
 pub(crate) use diagnostics::{Diagnostic, DiagnosticCode, Severity};
 pub use handle::ConfigHandle;
 pub(crate) use section_macro::config_section;
+pub(crate) use string_or_table::StringOrTable;
 
 #[cfg(test)]
 pub mod test_helpers;

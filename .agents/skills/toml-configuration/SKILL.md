@@ -19,8 +19,15 @@ in sync.
   invalid-value diagnostic, deserialize into a parsed wrapper or explicit
   `Invalid` variant instead of failing the whole file at the Serde boundary.
   Syntax errors and structural type mismatches should still fail loading.
-- Use `#[serde(untagged)]` when an entry intentionally supports both a concise
-  string and structured metadata.
+- Add `#[serde(deny_unknown_fields)]` to every deserialized struct. Unknown keys
+  must be errors; a misspelling that falls back to `#[serde(default)]` is a
+  silent-misconfiguration bug.
+- Never use `#[serde(untagged)]`. Untagged enums ignore `deny_unknown_fields`:
+  serde buffers the input and falls through variants, so a typo inside a table
+  matches the struct variant with the bad key dropped. For entries that accept
+  either a concise string or structured metadata, use
+  `crate::infra::config::StringOrTable<T>`, which dispatches on the
+  `toml::Value` kind and delegates tables to `T` so strictness is preserved.
 - Keep deterministic section ordering where output or diagnostics depend on it.
 - Include trailing commas in multiline arrays.
 - Prefer `config_section!` for ordinary category-filtered lists.

@@ -33,8 +33,7 @@ description: >
   indent and dim styling.
 - Statuses are fixed-width and explicit: `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`,
   and `FAILED`.
-- Normal output caps compact detail at eight lines and reports the omitted
-  count. Verbose output prints full messages.
+- Normal and verbose output both print all compact detail lines.
 - Summaries count structured actions and affected tasks separately, plus ignored
   or failed tasks and elapsed time. Never infer counts from display text.
 - Debug-level detail may be suppressed on terminal in non-verbose mode, but

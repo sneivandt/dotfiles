@@ -285,7 +285,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
 }
 
 #[test]
-fn task_result_lines_bound_non_verbose_details() {
+fn task_result_lines_include_all_details() {
     let task = TaskEntry {
         name: "large-plan".to_string(),
         status: TaskStatus::DryRun,
@@ -305,18 +305,14 @@ fn task_result_lines_bound_non_verbose_details() {
 
     let lines = task_result_lines(&task, &details, SummaryMode::Standard, StyleChoice::plain());
 
-    assert_eq!(lines.len(), 10);
+    assert_eq!(lines.len(), 12);
     assert_eq!(
         lines.first().expect("task status line should exist"),
         "DRYRUN large-plan"
     );
     assert_eq!(
-        lines.get(8).expect("eighth detail line should exist"),
-        "  item 8"
-    );
-    assert_eq!(
-        lines.get(9).expect("overflow detail line should exist"),
-        "  … 3 more; use -v for the full plan"
+        lines.last().expect("last detail line should exist"),
+        "  item 11"
     );
 }
 

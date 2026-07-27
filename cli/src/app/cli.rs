@@ -27,7 +27,7 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 
-    /// Show complete task and action details
+    /// Show additional diagnostic task output
     #[arg(short, long, global = true)]
     pub verbose: bool,
 
@@ -255,7 +255,7 @@ mod tests {
             "uninstall  Remove managed integrations while preserving user files",
             "test       Validate configuration and run self-tests",
             "log        Show the latest run log",
-            "-v, --verbose            Show complete task and action details",
+            "-v, --verbose            Show additional diagnostic task output",
             "-p, --profile <PROFILE>  Use a specific profile",
             "-d, --dry-run            Preview changes without applying them",
             "--root <PATH>        Use PATH as the dotfiles repository",

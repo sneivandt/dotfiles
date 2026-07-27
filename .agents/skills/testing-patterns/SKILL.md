@@ -52,8 +52,8 @@ description: >
 - **Task metadata**: assert selectors are unique per command catalog, hidden
   tasks are excluded from discovery, conflicting labels cannot share a selector,
   and exact selector/full-label filtering works.
-- **Console output**: assert explicit statuses, visibility, compact-detail
-  truncation, action/task summary counts, and natural completion order without
+- **Console output**: assert explicit statuses, visibility, complete compact
+  details, action/task summary counts, and natural completion order without
   sorting.
 - **Platform logic**: use `Platform::new(...)` test constructors.
 

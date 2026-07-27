@@ -53,7 +53,7 @@ Global options may be placed before or after the subcommand.
 
 | Option | Meaning |
 |---|---|
-| `-v`, `--verbose` | Show complete task and action details |
+| `-v`, `--verbose` | Show additional diagnostic task output |
 | `-p`, `--profile <PROFILE>` | Select a role profile for this run |
 | `-d`, `--dry-run` | Plan and report changes without applying them |
 | `--root <PATH>` | Treat another path as the dotfiles repository |
@@ -135,12 +135,11 @@ may appear in a different order between runs. Statuses distinguish the outcome:
 | `IGNORE` | The task was intentionally ignored |
 | `FAILED` | The task failed |
 
-Changed, planned, ignored, and failed rows include useful indented, dimmed
-details. Normal output shows at most eight detail lines and then points to
-`-v`; verbose mode shows complete messages for emitted task rows. Tasks that
-require no change and tasks that are not applicable do not emit rows in either
-mode. Internal orchestration remains available in the run log but is
-excluded from normal rows and totals.
+Changed, planned, ignored, and failed rows include all useful indented, dimmed
+details without truncation. Verbose mode additionally shows diagnostic task
+output. Tasks that require no change and tasks that are not applicable do not
+emit rows in either mode. Internal orchestration remains available in the run
+log but is excluded from normal rows and totals.
 
 The final line reports actual action counts and affected task counts, for
 example `Applied 4 changes across 2 tasks · 1 ignored · 2.3s` or

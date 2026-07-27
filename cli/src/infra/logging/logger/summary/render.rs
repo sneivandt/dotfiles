@@ -8,8 +8,6 @@ use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{TaskEntry, TaskStatus};
 
-const MAX_NON_VERBOSE_DETAIL_LINES: usize = 8;
-
 pub(super) fn task_result_lines(
     task: &TaskEntry,
     details: &[TaskDetailEntry],
@@ -28,19 +26,9 @@ pub(super) fn task_result_lines(
         .filter(|line| !line.trim().is_empty())
         .filter(|line| !is_stats_summary(line))
         .collect();
-    for detail in candidates.iter().take(MAX_NON_VERBOSE_DETAIL_LINES) {
+    for detail in candidates {
         let compacted = compact_detail_line(detail);
         lines.push(style.paint(TextStyle::Dim, &format!("  {}", compacted.trim_start())));
-    }
-
-    let remaining = candidates
-        .len()
-        .saturating_sub(MAX_NON_VERBOSE_DETAIL_LINES);
-    if remaining > 0 {
-        lines.push(style.paint(
-            TextStyle::Dim,
-            &format!("  \u{2026} {remaining} more; use -v for the full plan"),
-        ));
     }
     lines
 }

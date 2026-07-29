@@ -78,10 +78,13 @@ pub(super) enum ApmOutdatedResult {
 /// Run an APM install/update command with shared environment, logging, and
 /// failure classification.
 ///
-/// The primary command deliberately omits `--target` so APM can
-/// auto-detect all installed MCP runtimes and reconcile their shared ledger
-/// together. Copilot App workflows require an explicit experimental target,
-/// so they are deployed by a separate install after the primary command.
+/// The primary command deliberately omits `--target` so APM resolves the
+/// runtime set itself and reconciles their shared ledger together. APM resolves
+/// runtimes as `--target` > `targets:` in the merged manifest > `apm config
+/// target` > auto-detect, so `symlinks/apm/config/base.yml` pins the runtime set
+/// without this call having to enumerate it. Copilot App workflows require an
+/// explicit experimental target, so they are deployed by a separate install
+/// after the primary command.
 ///
 /// # Errors
 ///
@@ -227,8 +230,9 @@ fn classify_apm_error(
 /// already enabled on repeat runs), so it is safe to call on every apply.
 ///
 /// Failure is intentionally non-fatal: an older apm that predates the
-/// `experimental` subcommand will error, but auto-detected runtimes and standard
-/// primitives must still install. Any error is logged as a warning and swallowed.
+/// `experimental` subcommand will error, but the manifest-resolved runtimes and
+/// standard primitives must still install. Any error is logged as a warning and
+/// swallowed.
 pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
     let system = ctx.system();
     let cwd = system.home();

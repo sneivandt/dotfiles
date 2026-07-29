@@ -29,7 +29,9 @@ the Rust `InstallApmPackages` task.
 - Update `symlinks/apm/plugins/dot-*` for personal reusable skills that should
   be installed into the user's global APM environment.
 - Update `symlinks/apm/config/base.yml` when adding, removing, or re-grouping
-  external APM plugin dependencies.
+  external APM plugin dependencies. Keep its top-level `targets:` list intact:
+  it pins which runtimes APM deploys into, and dropping it lets APM auto-detect
+  and deploy into unused harness directories. See `docs/APM.md`.
 - Update docs when the user-facing install, Windows, or usage workflow changes.
 
 ## MCP Servers and Hooks via APM

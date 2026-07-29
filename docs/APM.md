@@ -41,6 +41,39 @@ symlinks\apm\plugins\
 They are linked as ordinary managed sources, making local plugin development
 available without publishing a package.
 
+## Deployment targets
+
+`symlinks/apm/config/base.yml` declares a top-level `targets:` list that pins
+which runtimes APM is allowed to deploy into:
+
+```yaml
+targets:
+  - agent-skills
+  - copilot
+```
+
+Without it APM auto-detects every agent harness directory present in the home
+directory and deploys there, which writes skills and MCP server declarations
+into runtimes that are not actually used. Declaring the list keeps deployment
+confined to the runtimes this configuration targets, and APM removes content
+from runtimes dropped out of the list on the next convergence.
+
+APM resolves the runtime set in this order:
+
+1. An explicit `--target` flag on the invocation.
+2. The `targets:` list in the merged manifest.
+3. `apm config target`.
+4. Auto-detection.
+
+The APM packages task deliberately omits `--target` on its primary invocation so
+the manifest stays the source of truth. `copilot-app` is the exception: it is
+experimental and is deployed by a dedicated
+`apm install -g --target copilot-app` pass gated on the Copilot App database, so
+it is intentionally absent from `targets:`.
+
+Fragments merge their `targets:` lists by union with deduplication, so a private
+overlay fragment can add a runtime without restating the base list.
+
 ## Install behavior
 
 **APM packages** depends on:

@@ -102,8 +102,8 @@ impl Task for UpdateApmPackages {
 
 fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> TaskResult {
     ctx.log().dry_run(
-        "run apm update -g --yes with auto-detected runtimes; APM skips dependencies already at \
-         their latest matching refs",
+        "run apm update -g --yes with manifest-resolved runtimes; APM skips dependencies already \
+         at their latest matching refs",
     );
     if targets.includes_copilot_app() {
         ctx.log().dry_run(

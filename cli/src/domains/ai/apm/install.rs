@@ -140,16 +140,16 @@ fn preview_install(
             manifest_path.display()
         ));
         ctx.log()
-            .dry_run("run apm install -g with auto-detected runtimes to sync changed manifest");
+            .dry_run("run apm install -g with manifest-resolved runtimes to sync changed manifest");
     } else if state.lock_missing {
         ctx.log().dry_run(format!(
-            "run apm install -g with auto-detected runtimes because {} is missing",
+            "run apm install -g with manifest-resolved runtimes because {} is missing",
             lock_path.display()
         ));
     } else if state.marker_missing_or_stale {
         ctx.log().dry_run(
-            "run apm install -g with auto-detected runtimes because the current manifest has not \
-             been installed successfully yet",
+            "run apm install -g with manifest-resolved runtimes because the current manifest has \
+             not been installed successfully yet",
         );
     }
     if targets.includes_copilot_app() {

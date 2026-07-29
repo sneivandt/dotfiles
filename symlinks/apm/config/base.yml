@@ -1,5 +1,20 @@
 name: dotfiles
 version: 1.0.0
+
+# Runtimes APM is allowed to deploy into. Without this, APM auto-detects every
+# harness directory present in $HOME and deploys there, writing skills and MCP
+# server declarations into runtimes that are not actually used. Resolution order
+# is `--target` > this list > `apm config target` > auto-detect.
+#
+# - agent-skills: ~/.agents/skills, read by Copilot CLI and the Copilot app
+# - copilot:      ~/.copilot/mcp-config.json
+#
+# copilot-app is deployed by a dedicated `apm install -g --target copilot-app`
+# step in the APM packages task, so it is intentionally absent here.
+targets:
+  - agent-skills
+  - copilot
+
 dependencies:
   apm:
     # Local plugins

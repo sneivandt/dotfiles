@@ -5,15 +5,3 @@ dependencies:
     # Local plugins
     - ~/.apm/plugins/dot-agent
     - ~/.apm/plugins/dot-skill
-
-    # External dependencies track upstream main branches. APM records exact
-    # commits in ~/.apm/apm.lock.yaml; `dotfiles update` / `apm update -g`
-    # advances those locks without hard-coding SHAs in this fragment.
-
-    # .NET tooling
-    - dotnet/skills/plugins/dotnet-msbuild#main
-
-    # Agent workflow
-    - github/awesome-copilot/agents/context-architect.agent.md#main
-    - github/awesome-copilot/skills/refactor-plan#main
-    - github/awesome-copilot/skills/agent-supply-chain#main

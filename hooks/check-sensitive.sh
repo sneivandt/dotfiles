@@ -33,14 +33,20 @@ PATTERNS=$(cat "$PATTERNS_FILE")
 # span rather than dropping the line keeps the rest of the line scanned.
 ALLOWLIST_RE=""
 if [ -f "$ALLOWLIST_FILE" ]; then
-  ALLOWLIST_RE=$(
-    while IFS= read -r entry; do
-      case "$entry" in
-        ''|'#'*|'['*']') continue ;;
-      esac
-      printf '%s\n' "$entry"
-    done < "$ALLOWLIST_FILE" | paste -sd '|' -
-  )
+  ALLOWLIST_RE=$(awk '
+    /^$/ || /^#/ || /^\[.*\]$/ { next }
+    {
+      if (entries++) {
+        printf "|"
+      }
+      printf "%s", $0
+    }
+    END {
+      if (entries) {
+        printf "\n"
+      }
+    }
+  ' "$ALLOWLIST_FILE")
 fi
 
 if git rev-parse --verify HEAD >/dev/null 2>&1; then

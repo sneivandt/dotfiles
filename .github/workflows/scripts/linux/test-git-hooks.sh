@@ -154,6 +154,37 @@ EOF
   rm -rf "$repo"
 }
 
+test_sensitive_scan_without_paste() {
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  repo="$(mktemp -d)"
+
+  git init -q "$repo"
+  mkdir -p "$repo/hooks" "$repo/bin"
+  cp "$repo_root/hooks/check-sensitive.sh" "$repo/hooks/check-sensitive.sh"
+  cp "$repo_root/hooks/sensitive-patterns.ini" "$repo/hooks/sensitive-patterns.ini"
+  cp "$repo_root/hooks/sensitive-allowlist.ini" "$repo/hooks/sensitive-allowlist.ini"
+
+  cat > "$repo/bin/paste" <<'EOF'
+#!/bin/sh
+exit 127
+EOF
+  chmod +x "$repo/bin/paste"
+
+  printf '%s\n' 'release = v2026.07.30.1' > "$repo/test-file.txt"
+  git -C "$repo" add test-file.txt
+
+  if (
+    cd "$repo"
+    PATH="$repo/bin:$PATH" sh hooks/check-sensitive.sh >/dev/null 2>&1
+  ); then
+    pass "Sensitive-data scan does not require paste"
+  else
+    fail "Sensitive-data scan requires unavailable paste"
+  fi
+
+  rm -rf "$repo"
+}
+
 test_pre_push_protection() {
   repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
   hook="$repo_root/symlinks/config/git/templates/hooks.local/pre-push"
@@ -206,6 +237,9 @@ test_hook_wiring
 
 printf "Testing hook modes...\n"
 test_hook_modes
+
+printf "Testing hook portability...\n"
+test_sensitive_scan_without_paste
 
 printf "Testing pre-push protection...\n"
 test_pre_push_protection

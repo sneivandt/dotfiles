@@ -151,7 +151,7 @@ fn run_apm_update(ctx: &Context, targets: ApmTargets) -> Result<ApmUpdateOutcome
     let lock_path = ctx.home().join(".apm").join("apm.lock.yaml");
     let lock_before = read_lock_snapshot(&lock_path)?;
     match run_apm_command(ctx, ApmCommand::Update, targets)? {
-        ApmCommandResult::Success | ApmCommandResult::ToleratedWorkflowEncodeFailures => {
+        ApmCommandResult::Success => {
             let lock_after = read_lock_snapshot(&lock_path)?;
             if lock_before == lock_after {
                 Ok(ApmUpdateOutcome::Unchanged)

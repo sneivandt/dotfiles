@@ -12,17 +12,6 @@ pub(super) const APM_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
     ("GCM_GUI_PROMPT", "false"),
 ];
 
-/// Per-package failure record emitted by the experimental `copilot-app` target
-/// when it refuses to lockfile-encode a deployed primitive whose id is outside
-/// apm's `apm--<owner>--<pkg>--<prompt>` workflow namespace.
-///
-/// This happens for `.agent.md` agent files shipped by third-party packages:
-/// the primary unscoped install still deploys those agents correctly, so the
-/// failure is a benign, upstream-only limitation of the experimental target. APM has
-/// changed the prefix for this diagnostic across releases, so match the stable
-/// refusal text and still fail closed unless the count equals APM's error total.
-const APM_WORKFLOW_ENCODE_FAILURE_MARKER: &str = "Refusing to lockfile-encode non-APM workflow id";
-
 #[derive(Debug, Clone, Copy)]
 pub(super) enum ApmCommand {
     Install,
@@ -64,7 +53,6 @@ impl ApmCommand {
 pub(super) enum ApmCommandResult {
     Success,
     AuthSkipped(String),
-    ToleratedWorkflowEncodeFailures,
 }
 
 #[derive(Debug)]
@@ -89,23 +77,21 @@ pub(super) enum ApmOutdatedResult {
 /// # Errors
 ///
 /// Returns an error when APM exits unsuccessfully for anything other than a
-/// recognized authentication skip or the known `copilot-app` workflow-encoding
-/// limitation.
+/// recognized authentication skip.
 pub(super) fn run_apm_command(
     ctx: &Context,
     command: ApmCommand,
     targets: ApmTargets,
 ) -> Result<ApmCommandResult> {
-    match run_apm_invocation(ctx, command, command.args(), false)? {
+    match run_apm_invocation(ctx, command, command.args())? {
         ApmCommandResult::Success => {}
-        result @ (ApmCommandResult::AuthSkipped(_)
-        | ApmCommandResult::ToleratedWorkflowEncodeFailures) => return Ok(result),
+        result @ ApmCommandResult::AuthSkipped(_) => return Ok(result),
     }
 
     let Some(copilot_app_args) = targets.copilot_app_install_args() else {
         return Ok(ApmCommandResult::Success);
     };
-    run_apm_invocation(ctx, ApmCommand::Install, copilot_app_args, true)
+    run_apm_invocation(ctx, ApmCommand::Install, copilot_app_args)
 }
 
 /// Check locked user-scope dependencies for remote updates without mutating
@@ -166,7 +152,6 @@ fn run_apm_invocation(
     ctx: &Context,
     command: ApmCommand,
     args: &[&str],
-    tolerate_workflow_encode_failures: bool,
 ) -> Result<ApmCommandResult> {
     let system = ctx.system();
     let cwd = system.home();
@@ -186,14 +171,13 @@ fn run_apm_invocation(
             report_apm_output(ctx, &result.stdout, &result.stderr);
             Ok(ApmCommandResult::Success)
         }
-        Err(err) => classify_apm_error(ctx, command, tolerate_workflow_encode_failures, err),
+        Err(err) => classify_apm_error(ctx, command, err),
     }
 }
 
 fn classify_apm_error(
     ctx: &Context,
     command: ApmCommand,
-    tolerate_workflow_encode_failures: bool,
     err: anyhow::Error,
 ) -> Result<ApmCommandResult> {
     let msg = format!("{err:#}");
@@ -202,20 +186,6 @@ fn classify_apm_error(
         ctx.log()
             .warn(format!("skipping: {reason} (details: {})", msg.trim()));
         return Ok(ApmCommandResult::AuthSkipped(reason));
-    }
-
-    if let Some(count) = tolerate_workflow_encode_failures
-        .then(|| tolerable_workflow_encode_failures(&msg))
-        .flatten()
-    {
-        report_apm_output(ctx, &msg, "");
-        ctx.log().info(format!(
-            "apm {} succeeded; ignoring {count} experimental copilot-app \
-             workflow-encoding error(s) for non-workflow primitives (e.g. .agent.md agents). \
-             Other primitives deployed normally; full apm output is in the log.",
-            command.verb()
-        ));
-        return Ok(ApmCommandResult::ToleratedWorkflowEncodeFailures);
     }
 
     Err(err).context(command.error_context())
@@ -263,9 +233,7 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
 /// Convert a command result into the task-level result used by install.
 pub(super) fn install_task_result(result: ApmCommandResult) -> TaskResult {
     match result {
-        ApmCommandResult::Success | ApmCommandResult::ToleratedWorkflowEncodeFailures => {
-            TaskResult::Ok
-        }
+        ApmCommandResult::Success => TaskResult::Ok,
         ApmCommandResult::AuthSkipped(reason) => TaskResult::Skipped(reason),
     }
 }
@@ -330,50 +298,4 @@ pub(super) fn looks_like_auth_failure(message: &str) -> bool {
     ]
     .iter()
     .any(|needle| lowered.contains(needle))
-}
-
-/// Decide whether an `apm install/update` failure is solely the experimental
-/// `copilot-app` target refusing to lockfile-encode non-workflow primitives,
-/// returning the count of such failures when so.
-///
-/// To avoid ever masking a genuine failure this fails closed: it returns
-/// `Some(n)` only when apm's own reported error total parses *and* exactly
-/// equals the number of workflow-encoding failure records.  Any unparseable
-/// summary, or any additional error of a different kind, yields `None` so the
-/// failure propagates normally.
-pub(super) fn tolerable_workflow_encode_failures(message: &str) -> Option<usize> {
-    let normalized = normalize_apm_output(message);
-    let encode_failures = normalized
-        .matches(APM_WORKFLOW_ENCODE_FAILURE_MARKER)
-        .count();
-    if encode_failures == 0 {
-        return None;
-    }
-    match parse_apm_error_count(&normalized) {
-        Some(total) if total == encode_failures => Some(encode_failures),
-        _ => None,
-    }
-}
-
-/// Collapse every run of whitespace (including newlines) to a single space so
-/// console line-wrapping in captured apm output cannot split a marker phrase.
-fn normalize_apm_output(message: &str) -> String {
-    message.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// Parse the total error count from apm's summary line, e.g. the `7` in
-/// `... with 7 error(s).`.  Returns `None` when no digit-prefixed ` error`
-/// token is present so callers fail closed on unexpected output.
-fn parse_apm_error_count(normalized: &str) -> Option<usize> {
-    let idx = normalized.find(" error")?;
-    let digits: String = normalized
-        .get(..idx)?
-        .chars()
-        .rev()
-        .take_while(char::is_ascii_digit)
-        .collect::<Vec<char>>()
-        .into_iter()
-        .rev()
-        .collect();
-    digits.parse().ok()
 }

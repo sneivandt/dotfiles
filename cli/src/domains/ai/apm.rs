@@ -41,7 +41,7 @@ fn skip_with_warning(ctx: &Context, reason: impl Into<String>) -> TaskResult {
 #[cfg(test)]
 use crate::engine::Task;
 #[cfg(test)]
-use commands::{looks_like_auth_failure, tolerable_workflow_encode_failures};
+use commands::looks_like_auth_failure;
 #[cfg(test)]
 use std::path::Path;
 #[cfg(test)]

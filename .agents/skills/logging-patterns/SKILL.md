@@ -41,6 +41,10 @@ description: >
 - Header and summary lines join segments with ` · `. The shell wrappers
   deliberately mirror this style for bootstrap output so pre-binary and
   post-binary output look like one program; see `shell-patterns`.
+- The startup header is a single line: command, profile, platform, then the
+  optional `preview` and `overlay <path>` sections. It is emitted with
+  `MsgKind::Startup` and rendered dim so it reads as run context rather than a
+  result. Never add a second startup line.
 
 Canonical implementations:
 - `cli/src/infra/logging/mod.rs`
@@ -56,6 +60,7 @@ Canonical implementations:
    - `warn` / `error`: visible problem signals
    - `dry_run`: explicit non-mutating preview
    - `always`: output that must always be user-visible
+   - `startup`: the dim run-context header; emitted once by the command runner
 2. Keep task code focused on behavior; rely on buffered logging mechanics already
    provided by scheduler/task execution.
 3. If changing summary semantics, verify explicit statuses, visibility, compact

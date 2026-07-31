@@ -87,6 +87,9 @@ pub(super) fn console_line_with_style(
         tracing::Level::ERROR => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
         tracing::Level::WARN => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
         tracing::Level::INFO if target == "dotfiles::ui::always" => Some(msg),
+        tracing::Level::INFO if target == "dotfiles::ui::startup" => {
+            Some(style.paint(TextStyle::Dim, &msg))
+        }
         tracing::Level::INFO if target == "dotfiles::ui::task_result" => Some(msg),
         tracing::Level::INFO if target == "dotfiles::ui::stage" => verbose.then(|| msg.clone()),
         tracing::Level::INFO if target == "dotfiles::ui::task_stage" => {

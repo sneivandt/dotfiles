@@ -84,36 +84,8 @@ mod unix_tests {
 #[cfg(test)]
 mod startup_log_tests {
     use super::runner::startup_context_line;
-    use super::*;
-    use crate::infra::logging::{MsgKind, Output, OutputExt as _};
     use crate::infra::platform::{Os, Platform};
     use std::path::Path;
-    use std::sync::{Mutex, PoisonError};
-
-    #[derive(Default)]
-    struct CapturingOutput {
-        always_lines: Mutex<Vec<String>>,
-    }
-
-    impl CapturingOutput {
-        fn lines(&self) -> Vec<String> {
-            self.always_lines
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone()
-        }
-    }
-
-    impl Output for CapturingOutput {
-        fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
-            if kind == MsgKind::Always {
-                self.always_lines
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push(msg.into_owned());
-            }
-        }
-    }
 
     #[test]
     fn startup_context_uses_command_profile_platform_and_preview() {
@@ -123,39 +95,38 @@ mod startup_log_tests {
                 "workstation",
                 Platform::new(Os::Linux, false),
                 true,
+                None,
             ),
             "Install · profile workstation · Linux · preview"
         );
     }
 
     #[test]
-    fn overlay_path_is_optional_second_startup_line() {
-        let log = CapturingOutput::default();
-
-        log.always("Install · profile workstation · Linux");
-        log_overlay_path(Some(Path::new("/private/overlay")), &log);
-
-        let lines = log.lines();
+    fn overlay_is_the_optional_last_startup_section() {
         assert_eq!(
-            lines,
-            vec![
-                "Install · profile workstation · Linux".to_string(),
-                "overlay /private/overlay".to_string(),
-            ],
-            "overlay line must immediately follow startup context and must not be indented"
+            startup_context_line(
+                "Install",
+                "workstation",
+                Platform::new(Os::Linux, false),
+                false,
+                Some(Path::new("/private/overlay")),
+            ),
+            "Install · profile workstation · Linux · overlay /private/overlay",
+            "overlay must be appended to the startup header, not emitted on its own line"
         );
     }
 
     #[test]
-    fn absent_overlay_does_not_emit_separator() {
-        let log = CapturingOutput::default();
-
-        log.always("Install · profile workstation · Linux");
-        log_overlay_path(None, &log);
-
+    fn overlay_follows_the_preview_section() {
         assert_eq!(
-            log.lines(),
-            vec!["Install · profile workstation · Linux".to_string()]
+            startup_context_line(
+                "Install",
+                "workstation",
+                Platform::new(Os::Linux, false),
+                true,
+                Some(Path::new("/private/overlay")),
+            ),
+            "Install · profile workstation · Linux · preview · overlay /private/overlay"
         );
     }
 }

@@ -23,6 +23,9 @@ Resolution and persistence live in
 `cli/src/domains/overlay/resolution.rs`. Do not repeatedly resolve the path
 inside loaders or tasks.
 
+The resolved overlay path is reported as the optional final ` · ` section of the
+startup header, not on a line of its own.
+
 ## Config Merging
 
 `SectionLoader` loads the main config and the matching overlay file, then

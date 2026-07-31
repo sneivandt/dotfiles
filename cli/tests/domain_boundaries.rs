@@ -1,12 +1,355 @@
 #![allow(
     clippy::expect_used,
-    clippy::indexing_slicing,
-    reason = "panicking allowed at this architecture test boundary"
+    clippy::panic,
+    clippy::wildcard_enum_match_arm,
+    reason = "panicking and wildcard arms over syn's non-exhaustive enums are acceptable at this architecture test boundary"
 )]
 //! Architecture tests for domain import boundaries.
+//!
+//! Rust sources are parsed into a syntax tree with `syn` rather than scanned as
+//! text.  Comments, doc comments, string literals, and `#[cfg(test)]` blocks are
+//! therefore excluded structurally instead of by substring heuristics, so a rule
+//! can neither be tripped by a mention inside a comment nor silently stop
+//! matching because of how a line happens to be written.
+//!
+//! Macro arguments are walked at the token level for the same reason: they hold
+//! real code (task guards, dependency lists) that `syn` cannot turn into typed
+//! nodes, but tokens are already lexed, so comments and literals stay
+//! distinguishable from code.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+
+use proc_macro2::{Delimiter, TokenStream, TokenTree};
+use syn::visit::Visit;
+
+/// `cfg!` predicates that describe the host platform rather than gate an
+/// implementation at compile time.
+const PLATFORM_PREDICATES: [&str; 5] = [
+    "windows",
+    "unix",
+    "target_os",
+    "target_family",
+    "target_arch",
+];
+
+/// Facts extracted from one parsed source file.
+#[derive(Default)]
+struct Facts {
+    /// Every `a::b::c` chain appearing in code, with the line it starts on.
+    paths: Vec<(Vec<String>, usize)>,
+    /// Every macro invocation: name, argument tokens, and line.
+    macros: Vec<(String, TokenStream, usize)>,
+    /// Types carrying an `impl Task for ...` block.
+    task_impls: Vec<String>,
+    /// Types declared by a `resource_task!` / `config_resource_task!` call.
+    declared_tasks: Vec<String>,
+    /// Every path introduced by a `use` declaration, with its line.
+    imports: Vec<(Vec<String>, usize)>,
+}
+
+/// One parsed source file and the facts extracted from it.
+struct Source {
+    path: PathBuf,
+    relative: String,
+    facts: Facts,
+}
+
+/// Walks a syntax tree, recording the references each architecture rule checks.
+struct Collector {
+    facts: Facts,
+    /// When false, items gated behind `#[cfg(test)]` are skipped entirely.
+    include_test_code: bool,
+}
+
+impl Collector {
+    fn skip(&self, attributes: &[syn::Attribute]) -> bool {
+        !self.include_test_code && is_cfg_test(attributes)
+    }
+}
+
+impl<'ast> Visit<'ast> for Collector {
+    /// Attributes are compile-time metadata, never runtime code: `#[cfg(...)]`
+    /// gating is explicitly allowed, and doc comments arrive here as
+    /// `#[doc = "..."]` rather than as text that has to be stripped.
+    fn visit_attribute(&mut self, _attribute: &'ast syn::Attribute) {}
+
+    fn visit_item(&mut self, item: &'ast syn::Item) {
+        if self.skip(item_attributes(item)) {
+            return;
+        }
+        syn::visit::visit_item(self, item);
+    }
+
+    fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+        if self.skip(&item.attrs) {
+            return;
+        }
+        syn::visit::visit_impl_item_fn(self, item);
+    }
+
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        if let Some((None, trait_path, _)) = item.trait_.as_ref()
+            && trait_path
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "Task")
+            && let syn::Type::Path(self_ty) = item.self_ty.as_ref()
+            && let Some(name) = self_ty.path.segments.last()
+        {
+            self.facts.task_impls.push(name.ident.to_string());
+        }
+        syn::visit::visit_item_impl(self, item);
+    }
+
+    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+        if self.skip(&item.attrs) {
+            return;
+        }
+        collect_use_tree(&item.tree, &mut Vec::new(), &mut self.facts.imports);
+    }
+
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        let line = path
+            .segments
+            .first()
+            .map_or(0, |segment| segment.ident.span().start().line);
+        let segments = path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect();
+        self.facts.paths.push((segments, line));
+        syn::visit::visit_path(self, path);
+    }
+
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        let Some(name) = mac.path.segments.last() else {
+            return;
+        };
+        let name = name.ident.to_string();
+        let line = name_line(&mac.path);
+        if matches!(name.as_str(), "resource_task" | "config_resource_task")
+            && let Some(declared) = declared_task_name(mac.tokens.clone())
+        {
+            self.facts.declared_tasks.push(declared);
+        }
+        self.facts.macros.push((name, mac.tokens.clone(), line));
+        collect_tokens(mac.tokens.clone(), &mut self.facts);
+        syn::visit::visit_macro(self, mac);
+    }
+}
+
+fn name_line(path: &syn::Path) -> usize {
+    path.segments
+        .first()
+        .map_or(0, |segment| segment.ident.span().start().line)
+}
+
+/// The attributes attached to any item, whatever its kind.
+fn item_attributes(item: &syn::Item) -> &[syn::Attribute] {
+    match item {
+        syn::Item::Const(node) => &node.attrs,
+        syn::Item::Enum(node) => &node.attrs,
+        syn::Item::ExternCrate(node) => &node.attrs,
+        syn::Item::Fn(node) => &node.attrs,
+        syn::Item::ForeignMod(node) => &node.attrs,
+        syn::Item::Impl(node) => &node.attrs,
+        syn::Item::Macro(node) => &node.attrs,
+        syn::Item::Mod(node) => &node.attrs,
+        syn::Item::Static(node) => &node.attrs,
+        syn::Item::Struct(node) => &node.attrs,
+        syn::Item::Trait(node) => &node.attrs,
+        syn::Item::TraitAlias(node) => &node.attrs,
+        syn::Item::Type(node) => &node.attrs,
+        syn::Item::Union(node) => &node.attrs,
+        syn::Item::Use(node) => &node.attrs,
+        _ => &[],
+    }
+}
+
+/// Whether any attribute gates its item behind `cfg(test)`, including
+/// composites such as `#[cfg(all(test, unix))]`.
+fn is_cfg_test(attributes: &[syn::Attribute]) -> bool {
+    attributes.iter().any(|attribute| {
+        attribute.path().is_ident("cfg")
+            && attribute
+                .meta
+                .require_list()
+                .is_ok_and(|list| mentions_ident(&list.tokens, "test"))
+    })
+}
+
+/// Whether a token stream contains `wanted` as an identifier at any depth.
+fn mentions_ident(tokens: &TokenStream, wanted: &str) -> bool {
+    tokens.clone().into_iter().any(|tree| match tree {
+        TokenTree::Ident(ident) => ident == wanted,
+        TokenTree::Group(group) => mentions_ident(&group.stream(), wanted),
+        _ => false,
+    })
+}
+
+/// Flatten a `use` declaration into one path per imported name.
+fn collect_use_tree(
+    tree: &syn::UseTree,
+    prefix: &mut Vec<String>,
+    out: &mut Vec<(Vec<String>, usize)>,
+) {
+    match tree {
+        syn::UseTree::Path(node) => {
+            prefix.push(node.ident.to_string());
+            collect_use_tree(&node.tree, prefix, out);
+            prefix.pop();
+        }
+        syn::UseTree::Name(node) => {
+            let mut path = prefix.clone();
+            path.push(node.ident.to_string());
+            out.push((path, node.ident.span().start().line));
+        }
+        syn::UseTree::Rename(node) => {
+            let mut path = prefix.clone();
+            path.push(node.ident.to_string());
+            out.push((path, node.ident.span().start().line));
+        }
+        syn::UseTree::Glob(node) => out.push((prefix.clone(), node.star_token.span.start().line)),
+        syn::UseTree::Group(node) => {
+            for item in &node.items {
+                collect_use_tree(item, prefix, out);
+            }
+        }
+    }
+}
+
+/// The type name declared by a `resource_task!`-family invocation, whose body
+/// starts with optional doc attributes, a visibility, and then the type name.
+fn declared_task_name(tokens: TokenStream) -> Option<String> {
+    let mut trees = tokens.into_iter().peekable();
+    let mut after_visibility = false;
+
+    while let Some(tree) = trees.next() {
+        match tree {
+            TokenTree::Punct(punct) if punct.as_char() == '#' => {
+                trees.next();
+            }
+            TokenTree::Ident(ident) if ident == "pub" => {
+                after_visibility = true;
+                if matches!(trees.peek(), Some(TokenTree::Group(group))
+                    if group.delimiter() == Delimiter::Parenthesis)
+                {
+                    trees.next();
+                }
+            }
+            TokenTree::Ident(ident) if after_visibility => return Some(ident.to_string()),
+            _ => {}
+        }
+    }
+
+    None
+}
+
+/// Record a completed path chain and clear the accumulator.
+fn flush(segments: &mut Vec<String>, line: usize, facts: &mut Facts) {
+    if !segments.is_empty() {
+        facts.paths.push((std::mem::take(segments), line));
+    }
+}
+
+/// Extract path chains and nested macro invocations from raw macro arguments.
+fn collect_tokens(tokens: TokenStream, facts: &mut Facts) {
+    let mut segments: Vec<String> = Vec::new();
+    let mut line = 0;
+    let mut colons: u8 = 0;
+    let mut pending_attribute = false;
+    let mut trees = tokens.into_iter().peekable();
+
+    while let Some(tree) = trees.next() {
+        let was_attribute = std::mem::take(&mut pending_attribute);
+        match tree {
+            TokenTree::Ident(ident) => {
+                let ident_line = ident.span().start().line;
+                if colons != 2 {
+                    flush(&mut segments, line, facts);
+                    line = ident_line;
+                }
+                segments.push(ident.to_string());
+                colons = 0;
+                if matches!(trees.peek(), Some(TokenTree::Punct(punct)) if punct.as_char() == '!') {
+                    trees.next();
+                    if let Some(TokenTree::Group(group)) = trees.peek() {
+                        let name = segments.last().cloned().unwrap_or_default();
+                        facts.macros.push((name, group.stream(), ident_line));
+                    }
+                }
+            }
+            TokenTree::Punct(punct) => match punct.as_char() {
+                ':' => colons = colons.saturating_add(1),
+                '#' => {
+                    flush(&mut segments, line, facts);
+                    colons = 0;
+                    pending_attribute = true;
+                }
+                _ => {
+                    flush(&mut segments, line, facts);
+                    colons = 0;
+                }
+            },
+            TokenTree::Group(group) => {
+                flush(&mut segments, line, facts);
+                colons = 0;
+                if !(was_attribute && group.delimiter() == Delimiter::Bracket) {
+                    collect_tokens(group.stream(), facts);
+                }
+            }
+            TokenTree::Literal(_) => {
+                flush(&mut segments, line, facts);
+                colons = 0;
+            }
+        }
+    }
+
+    flush(&mut segments, line, facts);
+}
+
+/// Where `needle` begins inside `segments`, as a consecutive subsequence.
+fn sequence_position(segments: &[String], needle: &[&str]) -> Option<usize> {
+    segments
+        .windows(needle.len())
+        .position(|window| window.iter().zip(needle).all(|(have, want)| have == want))
+}
+
+fn contains_sequence(segments: &[String], needle: &[&str]) -> bool {
+    sequence_position(segments, needle).is_some()
+}
+
+/// Parse one source file and extract the facts the architecture rules need.
+fn parse_source(path: &Path, include_test_code: bool) -> Source {
+    let text = std::fs::read_to_string(path).expect("read Rust source");
+    let ast = match syn::parse_file(&text) {
+        Ok(ast) => ast,
+        Err(error) => panic!("{} is not parseable Rust: {error}", path.display()),
+    };
+
+    let mut collector = Collector {
+        facts: Facts::default(),
+        include_test_code,
+    };
+    collector.visit_file(&ast);
+
+    Source {
+        relative: relative_source_path(path),
+        path: path.to_path_buf(),
+        facts: collector.facts,
+    }
+}
+
+/// Parse every non-test Rust file beneath `root`.
+fn production_sources(root: &Path) -> Vec<Source> {
+    rust_files(root)
+        .iter()
+        .filter(|path| !is_test_source(path))
+        .map(|path| parse_source(path, false))
+        .collect()
+}
 
 fn rust_files(root: &Path) -> Vec<PathBuf> {
     let mut pending = vec![root.to_path_buf()];
@@ -41,32 +384,6 @@ fn is_test_source(path: &Path) -> bool {
     path.components()
         .any(|component| component.as_os_str() == "tests")
         || path.file_stem().is_some_and(|stem| stem == "tests")
-}
-
-fn production_source(source: &str) -> &str {
-    source
-        .split_once("#[cfg(test)]")
-        .map_or(source, |(production, _)| production)
-}
-
-fn uncommented(line: &str) -> &str {
-    line.split("//").next().unwrap_or_default()
-}
-
-fn identifier_occurrences(source: &str, identifier: &str) -> usize {
-    source
-        .match_indices(identifier)
-        .filter(|(offset, _)| {
-            let before = source[..*offset].chars().next_back();
-            let end = offset
-                .checked_add(identifier.len())
-                .expect("matched identifier offset should remain in bounds");
-            let after = source[end..].chars().next();
-            before.is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_')
-                && after
-                    .is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_')
-        })
-        .count()
 }
 
 #[test]
@@ -121,32 +438,18 @@ fn domain_subdirectories_are_shared_layers_or_feature_support() {
 
 #[test]
 fn subprocess_construction_is_owned_by_infrastructure() {
-    let src_root = source_root();
     let mut violations = Vec::new();
 
-    for file in rust_files(&src_root) {
-        let relative = relative_source_path(&file);
-        if relative.starts_with("infra/")
-            || relative == "app/commands/reexec.rs"
-            || is_test_source(&file)
-        {
+    for source in production_sources(&source_root()) {
+        if source.relative.starts_with("infra/") || source.relative == "app/commands/reexec.rs" {
             continue;
         }
 
-        let source = std::fs::read_to_string(&file).expect("read Rust source");
-        for (line_index, line) in production_source(&source).lines().enumerate() {
-            let code = uncommented(line);
-            for (offset, _) in code.match_indices("Command::new(") {
-                let preceding = code[..offset].chars().next_back();
-                if preceding
-                    .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_')
-                {
-                    continue;
-                }
+        for (segments, line) in &source.facts.paths {
+            if contains_sequence(segments, &["Command", "new"]) {
                 violations.push(format!(
-                    "{}:{} constructs a process directly",
-                    file.display(),
-                    line_index + 1
+                    "{}:{line} constructs a process directly",
+                    source.path.display()
                 ));
             }
         }
@@ -162,7 +465,6 @@ fn subprocess_construction_is_owned_by_infrastructure() {
 
 #[test]
 fn runtime_platform_detection_uses_platform_capabilities() {
-    let src_root = source_root();
     let allowed = [
         // Release artifact and installed binary names are compile-target metadata.
         "domains/dotfiles/self_update/paths.rs",
@@ -171,37 +473,31 @@ fn runtime_platform_detection_uses_platform_capabilities() {
     ];
     let mut violations = Vec::new();
 
-    for file in rust_files(&src_root) {
-        let relative = relative_source_path(&file);
-        if relative == "infra/platform.rs"
-            || allowed.contains(&relative.as_str())
-            || is_test_source(&file)
-        {
+    for source in production_sources(&source_root()) {
+        if source.relative == "infra/platform.rs" || allowed.contains(&source.relative.as_str()) {
             continue;
         }
 
-        let source = std::fs::read_to_string(&file).expect("read Rust source");
-        for (line_index, line) in production_source(&source).lines().enumerate() {
-            let compact = uncommented(line)
-                .chars()
-                .filter(|character| !character.is_ascii_whitespace())
-                .collect::<String>();
-            let cfg_probe = compact.contains("cfg!(")
-                && [
-                    "windows",
-                    "unix",
-                    "target_os",
-                    "target_family",
-                    "target_arch",
-                ]
-                .iter()
-                .any(|target| compact.contains(target));
-            if cfg_probe || compact.contains("std::env::consts::OS") {
-                violations.push(format!(
-                    "{}:{} performs runtime platform detection",
-                    file.display(),
-                    line_index + 1
-                ));
+        let mut report = |line: &usize| {
+            violations.push(format!(
+                "{}:{line} performs runtime platform detection",
+                source.path.display()
+            ));
+        };
+
+        for (name, tokens, line) in &source.facts.macros {
+            if name == "cfg"
+                && PLATFORM_PREDICATES
+                    .iter()
+                    .any(|predicate| mentions_ident(tokens, predicate))
+            {
+                report(line);
+            }
+        }
+
+        for (segments, line) in &source.facts.paths {
+            if contains_sequence(segments, &["consts", "OS"]) {
+                report(line);
             }
         }
     }
@@ -217,62 +513,29 @@ fn runtime_platform_detection_uses_platform_capabilities() {
 #[test]
 fn domain_tasks_are_registered_by_the_application() {
     let src_root = source_root();
-    let domains_root = src_root.join("domains");
     let mut task_types = BTreeMap::new();
 
-    for file in rust_files(&domains_root) {
-        if is_test_source(&file) {
-            continue;
-        }
-        let source = std::fs::read_to_string(&file).expect("read Rust source");
-        let mut task_macro = false;
-        for line in production_source(&source).lines() {
-            let code = uncommented(line).trim();
-            if code.contains("resource_task! {") {
-                task_macro = true;
-                continue;
-            }
-            if task_macro && let Some(declaration) = code.strip_prefix("pub ") {
-                let name = declaration
-                    .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
-                    .next()
-                    .unwrap_or_default();
-                if !name.is_empty() {
-                    task_types.insert(name.to_owned(), file.clone());
-                }
-                task_macro = false;
-            }
-            if let Some(offset) = code.find("Task for ") {
-                let preceding = code[..offset].chars().next_back();
-                if preceding
-                    .is_some_and(|character| character.is_ascii_alphanumeric() || character == '_')
-                {
-                    continue;
-                }
-                let implementation_start = offset
-                    .checked_add("Task for ".len())
-                    .expect("matched Task implementation offset should remain in bounds");
-                let implementation = &code[implementation_start..];
-                let name = implementation
-                    .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
-                    .next()
-                    .unwrap_or_default();
-                if !name.is_empty() {
-                    task_types.insert(name.to_owned(), file.clone());
-                }
-            }
+    for source in production_sources(&src_root.join("domains")) {
+        for name in source
+            .facts
+            .task_impls
+            .iter()
+            .chain(&source.facts.declared_tasks)
+        {
+            task_types.insert(name.clone(), source.path.clone());
         }
     }
 
-    let mut registration_source =
-        std::fs::read_to_string(src_root.join("app/catalog.rs")).expect("read task catalog");
-    for file in rust_files(&src_root.join("app/commands")) {
-        if is_test_source(&file) {
-            continue;
+    // Only names reached through real code count as registration: `use`
+    // declarations are collected separately, so importing a task without ever
+    // constructing or referencing it is not enough.
+    let mut referenced = BTreeSet::new();
+    let mut registration = production_sources(&src_root.join("app/commands"));
+    registration.push(parse_source(&src_root.join("app/catalog.rs"), false));
+    for source in &registration {
+        for (segments, _) in &source.facts.paths {
+            referenced.extend(segments.iter().cloned());
         }
-        registration_source.push_str(production_source(
-            &std::fs::read_to_string(file).expect("read command source"),
-        ));
     }
 
     let dynamic_tasks = [
@@ -284,7 +547,7 @@ fn domain_tasks_are_registered_by_the_application() {
         if dynamic_tasks.contains(&task_type.as_str()) {
             continue;
         }
-        if identifier_occurrences(&registration_source, &task_type) < 2 {
+        if !referenced.contains(&task_type) {
             violations.push(format!(
                 "{} ({}) is not imported and constructed by app/catalog.rs or app/commands",
                 task_type,
@@ -328,9 +591,10 @@ fn wrappers_only_bootstrap_and_forward() {
     for (wrapper, forwarding) in wrappers {
         let path = repo_root.join(wrapper);
         let source = std::fs::read_to_string(&path).expect("read wrapper");
-        if !source.lines().any(|line| {
-            !line.trim_start().starts_with('#') && uncommented(line).contains(forwarding)
-        }) {
+        if !source
+            .lines()
+            .any(|line| !line.trim_start().starts_with('#') && line.contains(forwarding))
+        {
             violations.push(format!(
                 "{} does not preserve the expected argument-forwarding boundary",
                 path.display()
@@ -379,32 +643,30 @@ fn domains_do_not_import_the_app_or_sibling_domains() {
             .expect("domain directory should be valid UTF-8");
 
         for file in rust_files(&path) {
-            let source = std::fs::read_to_string(&file).expect("read Rust source");
-            for (line_index, line) in source.lines().enumerate() {
-                let code = line.split("//").next().unwrap_or_default();
-                if code.contains("crate::app") {
-                    violations.push(format!(
-                        "{}:{} imports crate::app",
-                        file.display(),
-                        line_index + 1
-                    ));
+            // Test code is intentionally included: a test that reaches across
+            // domains couples them just as tightly as production code does.
+            let source = parse_source(&file, true);
+            let references = source
+                .facts
+                .paths
+                .iter()
+                .chain(&source.facts.imports)
+                .map(|(segments, line)| (segments.as_slice(), *line));
+
+            for (segments, line) in references {
+                if contains_sequence(segments, &["crate", "app"]) {
+                    violations.push(format!("{}:{line} imports crate::app", file.display()));
                 }
 
-                for (offset, _) in code.match_indices("crate::domains::") {
-                    let reference = &code[offset + "crate::domains::".len()..];
-                    let referenced_domain = reference
-                        .split(|character: char| {
-                            !character.is_ascii_alphanumeric() && character != '_'
-                        })
-                        .next()
-                        .unwrap_or_default();
-                    if !referenced_domain.is_empty() && referenced_domain != domain {
-                        violations.push(format!(
-                            "{}:{} imports sibling domain '{referenced_domain}' from '{domain}'",
-                            file.display(),
-                            line_index + 1
-                        ));
-                    }
+                if let Some(offset) = sequence_position(segments, &["crate", "domains"])
+                    && let Some(referenced_domain) =
+                        offset.checked_add(2).and_then(|start| segments.get(start))
+                    && referenced_domain != domain
+                {
+                    violations.push(format!(
+                        "{}:{line} imports sibling domain '{referenced_domain}' from '{domain}'",
+                        file.display()
+                    ));
                 }
             }
         }

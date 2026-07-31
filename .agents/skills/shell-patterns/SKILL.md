@@ -63,14 +63,18 @@ ShellCheck on staged shell files and the Linux wrapper test script for staged
 Wrapper output is the first thing a user sees, before the Rust binary exists, so
 it must match the CLI's console style rather than inventing its own.
 
-The CLI writes a ` · `-separated header, then status lines, then a
+The CLI writes a single ` · `-separated header, then status lines, then a
 ` · `-separated summary:
 
 ```text
-Install · profile desktop · Arch Linux · preview
+Install · profile desktop · Arch Linux · preview · overlay ~/src/dotfiles-private
 IGNORE Dotfiles repository
 No changes · 15 up to date · 1 ignored · 0.7s
 ```
+
+The `preview` and `overlay <path>` sections are optional and always come last,
+in that order. The CLI renders the header dim; wrappers have no equivalent
+styling and print theirs plain.
 
 Bootstrap download output follows the same shape — a header naming the resolved
 tag and target, and a completion line stating what was verified:

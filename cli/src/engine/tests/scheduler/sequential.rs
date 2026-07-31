@@ -85,6 +85,7 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
                 | MsgKind::Warn
                 | MsgKind::Error
                 | MsgKind::DryRun
+                | MsgKind::Startup
                 | MsgKind::Always => return,
             };
             sink.lock()

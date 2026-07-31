@@ -101,6 +101,11 @@ pub enum MsgKind {
     ///
     /// Used for structural output such as the version banner and summary.
     Always,
+    /// The startup context header, rendered dim on the console.
+    ///
+    /// Always visible, like [`MsgKind::Always`], but de-emphasised because it
+    /// describes the run rather than reporting its results.
+    Startup,
 }
 
 impl MsgKind {
@@ -109,7 +114,7 @@ impl MsgKind {
     pub(in crate::infra::logging) const fn log_event(self) -> LogEvent {
         match self {
             Self::Stage | Self::TaskStage => LogEvent::Stage,
-            Self::Info | Self::Always => LogEvent::Info,
+            Self::Info | Self::Always | Self::Startup => LogEvent::Info,
             Self::Debug => LogEvent::Debug,
             Self::Warn => LogEvent::Warn,
             Self::Error => LogEvent::Error,
@@ -150,6 +155,9 @@ macro_rules! emit_console_event {
             }
             $crate::infra::logging::MsgKind::Always => {
                 tracing::info!(target: "dotfiles::ui::always", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::Startup => {
+                tracing::info!(target: "dotfiles::ui::startup", "{msg}");
             }
         }
     }};
@@ -255,6 +263,10 @@ pub trait OutputExt: Output {
     /// verbose setting.  Used for structural output (version, profile, summary).
     fn always<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Always, msg.into());
+    }
+    /// Log the startup context header. Always visible, rendered dim.
+    fn startup<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Startup, msg.into());
     }
 }
 

@@ -42,6 +42,11 @@ insta = { version = "1", features = ["yaml"] }
 mockall = "0.15"
 tempfile = "3"
 dotfiles-cli = { version = "0.1.0", path = ".", features = ["internal-api"] }
+# tests/domain_boundaries.rs parses src/ as a syntax tree instead of scanning it
+# as text. `span-locations` is what makes line numbers available outside a
+# proc-macro context, so violations can still be reported as `file:line`.
+syn = { version = "2", features = ["full", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 
 [features]
 internal-api = []

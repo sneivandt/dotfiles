@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="422" viewBox="0 0 960 422" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles terminal preview</title>
-  <desc id="desc">Example of symlinks, packages, and a default shell being installed with completion-order status rows and an aggregate summary.</desc>
+  <desc id="desc">Example of symlinks, packages, and a default shell being installed beneath a dimmed run header, with completion-order status rows and an aggregate summary.</desc>
   <defs>
     <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
       <feDropShadow dx="0" dy="0" stdDeviation="16" flood-color="#16161e" flood-opacity="0.45"/>
@@ -18,7 +18,7 @@
   <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve">
     <text x="34" y="82"><tspan fill="#e0af68">~</tspan></text>
     <text x="34" y="103"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
-    <text x="34" y="124" fill="#c0caf5">Install · profile desktop · Arch Linux</text>
+    <text x="34" y="124" fill="#565f89">Install · profile desktop · Arch Linux</text>
 
     <text x="34" y="166"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Home symlinks</tspan></text>
     <text x="52" y="187" fill="#a9b1d6">link ~/.config/git/config ← symlinks/config/git/config</text>

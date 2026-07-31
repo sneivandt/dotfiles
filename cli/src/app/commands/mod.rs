@@ -19,8 +19,6 @@ pub use runner::CommandRunner;
 use reexec::build_windows_restart_helper_script;
 #[cfg(all(test, unix))]
 use reexec::re_exec_path;
-#[cfg(test)]
-use runner::log_overlay_path;
 
 #[cfg(test)]
 #[path = "tests.rs"]

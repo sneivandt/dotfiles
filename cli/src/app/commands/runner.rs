@@ -10,7 +10,7 @@ use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
 use crate::engine::{Context, Task, TaskId};
 use crate::infra::ConfigHandle;
-use crate::infra::logging::{Log, Logger, Output};
+use crate::infra::logging::{Log, Logger};
 use crate::infra::platform::Platform;
 
 use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
@@ -38,8 +38,11 @@ impl CommandRunner {
     ) -> Result<Self> {
         let platform = Platform::detect();
         let root = resolve_root(global)?;
-        let profile = resolve_profile(global, &root, platform, log)?;
-        let overlay = resolve_overlay(global, &root, &**log);
+        let overlay = crate::domains::overlay::resolution::resolve_from_args(
+            global.overlay.as_deref(),
+            &root,
+        );
+        let profile = resolve_profile(global, &root, platform, overlay.as_deref(), log)?;
         if log.is_verbose() {
             log.separate_from_startup();
         }
@@ -169,48 +172,43 @@ fn resolve_profile(
     global: &GlobalOpts,
     root: &std::path::Path,
     platform: Platform,
+    overlay: Option<&std::path::Path>,
     log: &Logger,
 ) -> Result<profiles::Profile> {
     log.debug("Resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
-    log.always(startup_context_line(
+    log.startup(startup_context_line(
         log.command_title(),
         &profile.name,
         platform,
         global.dry_run,
+        overlay,
     ));
     Ok(profile)
 }
 
+/// Build the single startup header line.
+///
+/// Sections are joined with ` · `; the overlay path, when one is active, is
+/// the optional final section.
 pub(super) fn startup_context_line(
     command_title: &str,
     profile_name: &str,
     platform: Platform,
     dry_run: bool,
+    overlay: Option<&std::path::Path>,
 ) -> String {
     let mut platform_label = platform.description().to_string();
     if platform.is_wsl() {
         platform_label.push_str(" \u{00b7} WSL");
     }
     let preview = if dry_run { " \u{00b7} preview" } else { "" };
-    format!("{command_title} \u{00b7} profile {profile_name} \u{00b7} {platform_label}{preview}")
-}
-
-fn resolve_overlay(
-    global: &GlobalOpts,
-    root: &std::path::Path,
-    log: &dyn Output,
-) -> Option<std::path::PathBuf> {
-    let overlay =
-        crate::domains::overlay::resolution::resolve_from_args(global.overlay.as_deref(), root);
-    log_overlay_path(overlay.as_deref(), log);
-    overlay
-}
-
-pub(super) fn log_overlay_path(overlay: Option<&std::path::Path>, log: &dyn Output) {
-    if let Some(path) = overlay {
-        log.always(format!("overlay {}", path.display()));
-    }
+    let overlay = overlay.map_or_else(String::new, |path| {
+        format!(" \u{00b7} overlay {}", path.display())
+    });
+    format!(
+        "{command_title} \u{00b7} profile {profile_name} \u{00b7} {platform_label}{preview}{overlay}"
+    )
 }
 
 fn load_config(

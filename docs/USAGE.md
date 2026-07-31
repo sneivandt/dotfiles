@@ -124,6 +124,14 @@ downstream tasks consume it.
 
 ## Console output
 
+Every run opens with a dimmed header line that names the command, resolved
+profile, and platform. Two optional sections may follow, in this order:
+`preview` for a dry run, and `overlay <path>` when an overlay is active.
+
+```text
+Install · profile desktop · Arch Linux · preview · overlay ~/src/dotfiles-private
+```
+
 Visible task rows are printed as tasks complete, so independent parallel tasks
 may appear in a different order between runs. Statuses distinguish the outcome:
 

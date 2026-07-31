@@ -43,6 +43,7 @@ impl LogEntry {
             MsgKind::Stage
             | MsgKind::TaskStage
             | MsgKind::Debug
+            | MsgKind::Startup
             | MsgKind::Warn
             | MsgKind::Error => None,
         }

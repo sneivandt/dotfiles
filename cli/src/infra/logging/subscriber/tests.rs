@@ -178,6 +178,33 @@ fn console_line_never_emits_debug_events() {
 }
 
 #[test]
+fn console_startup_header_is_dim() {
+    let colored = console_line_with_style(
+        tracing::Level::INFO,
+        "dotfiles::ui::startup",
+        "Install · profile desktop · Arch Linux",
+        StyleChoice::colored(),
+        true,
+    );
+    let plain = console_line_with_style(
+        tracing::Level::INFO,
+        "dotfiles::ui::startup",
+        "Install · profile desktop · Arch Linux",
+        StyleChoice::plain(),
+        true,
+    );
+
+    assert_eq!(
+        colored.as_deref(),
+        Some("\x1b[2mInstall · profile desktop · Arch Linux\x1b[0m")
+    );
+    assert_eq!(
+        plain.as_deref(),
+        Some("Install · profile desktop · Arch Linux")
+    );
+}
+
+#[test]
 fn console_stage_and_task_stage_are_plain() {
     let task = console_line_with_style(
         tracing::Level::INFO,

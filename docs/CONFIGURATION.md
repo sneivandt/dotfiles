@@ -226,6 +226,9 @@ Important boundaries:
 - `manifest.toml` is main-repository-only.
 - `scripts.toml` is overlay-only.
 
+When an overlay is active, its resolved path is reported as the final
+` · overlay <path>` section of the startup header line.
+
 Validate combined state explicitly:
 
 ```bash

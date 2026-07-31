@@ -34,8 +34,8 @@ pub fn run() -> ExitCode {
         }
         // Log viewing is read-only: do not initialize the tracing subscriber or
         // create a new log file just to display an existing log.
-        cli::Command::Log(_) => {
-            return match commands::log::run() {
+        cli::Command::Log(opts) => {
+            return match commands::log::run(&opts, args.verbose) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => {
                     drop(writeln!(std::io::stderr().lock(), "{e:#}"));

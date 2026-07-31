@@ -28,13 +28,14 @@ use super::types::{
     emit_console_event,
 };
 #[cfg(test)]
-use super::utils::dotfiles_cache_subdir;
+use super::utils::dotfiles_log_subdir;
 
 /// Structured logger with dry-run awareness and summary collection.
 ///
-/// All messages are always written to a persistent log file at
-/// `$XDG_CACHE_HOME/dotfiles/<command>.log` (default `~/.cache/dotfiles/<command>.log`)
-/// with timestamps and ANSI codes stripped, regardless of the verbose flag.
+/// All messages are always written to a persistent per-run log file in the
+/// dotfiles log directory (`%LOCALAPPDATA%\dotfiles\logs` on Windows,
+/// `$XDG_STATE_HOME/dotfiles/logs` elsewhere) with timestamps and ANSI codes
+/// stripped, regardless of the verbose flag.
 #[derive(Debug)]
 pub struct Logger {
     /// Command currently being executed (`install`, `update`, etc.).
@@ -54,7 +55,7 @@ pub struct Logger {
     pub(super) status_row_visible: AtomicBool,
     /// Whether any completed task has emitted durable console output.
     pub(super) task_console_output_emitted: AtomicBool,
-    /// The run log; `None` when the cache dir is unavailable.
+    /// The run log; `None` when the log directory is unavailable.
     ///
     /// Shared with the tracing bridge so that logger messages and raw
     /// `tracing` events land in the same file.
@@ -81,7 +82,7 @@ pub(in crate::infra::logging) struct TaskDetailEntry {
 impl Logger {
     /// Create a new logger.
     ///
-    /// Opens the run log for `command` in the dotfiles cache directory.  If
+    /// Opens the run log for `command` in the dotfiles log directory.  If
     /// the file cannot be created the run continues without a file log.
     #[must_use]
     pub fn new(command: &str) -> Self {
@@ -89,17 +90,17 @@ impl Logger {
         Self::build(command, RunLog::create(command, start).map(Arc::new), start)
     }
 
-    /// Create a new logger using an explicit cache base directory.
+    /// Create a new logger using an explicit base directory.
     ///
-    /// Like [`new`](Self::new) but resolves the run log under `cache_dir`
-    /// instead of reading `XDG_CACHE_HOME` from the environment.  Intended for
-    /// tests that need an isolated logger without mutating process-global
+    /// Like [`new`](Self::new) but resolves the run log under `base_dir`
+    /// instead of reading the log directory from the environment.  Intended
+    /// for tests that need an isolated logger without mutating process-global
     /// state.
     #[cfg(test)]
     #[must_use]
-    pub(crate) fn new_in(command: &str, cache_dir: &std::path::Path) -> Self {
+    pub(crate) fn new_in(command: &str, base_dir: &std::path::Path) -> Self {
         let start = Instant::now();
-        let run_log = dotfiles_cache_subdir(cache_dir)
+        let run_log = dotfiles_log_subdir(base_dir)
             .and_then(|dir| RunLog::new(command, &dir, start))
             .map(Arc::new);
         Self::build(command, run_log, start)

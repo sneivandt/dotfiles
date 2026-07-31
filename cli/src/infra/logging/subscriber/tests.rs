@@ -15,7 +15,7 @@ fn isolated_run_log_layer() -> (
     super::super::TestDispatchGuard,
 ) {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let dir = super::super::utils::dotfiles_cache_subdir(tmp.path()).expect("cache subdir");
+    let dir = super::super::utils::dotfiles_log_subdir(tmp.path()).expect("log subdir");
     let run_log = Arc::new(
         RunLog::new("test", &dir, std::time::Instant::now()).expect("run log should be created"),
     );

@@ -7,6 +7,10 @@ dotfiles install --dry-run --verbose
 dotfiles log --verbose
 ```
 
+Logs are retained per run, so a failure stays readable after later runs. Use
+`dotfiles log --list` to enumerate retained runs and `dotfiles log <N>` to read
+an earlier one.
+
 Then narrow the command with `--only` using a display name from
 [Task reference](TASKS.md).
 

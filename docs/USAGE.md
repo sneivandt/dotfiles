@@ -44,7 +44,7 @@ After installation, `~/.local/bin/dotfiles` is the normal entry point.
 | `uninstall` | Removes managed integrations while preserving user files and broader machine state |
 | `test` | Validates configuration and runs available script analyzers |
 | `tasks` | Lists visible task selectors, labels, and command membership |
-| `log` | Prints the latest run log |
+| `log` | Lists retained run logs or prints one of them |
 | `completions <shell>` | Hidden support command that emits shell completion definitions |
 
 ## Global options
@@ -53,7 +53,7 @@ Global options may be placed before or after the subcommand.
 
 | Option | Meaning |
 |---|---|
-| `-v`, `--verbose` | Show additional diagnostic task output |
+| `-v`, `--verbose` | Show additional diagnostic task output, and diagnostic lines in `dotfiles log` |
 | `-p`, `--profile <PROFILE>` | Select a role profile for this run |
 | `-d`, `--dry-run` | Plan and report changes without applying them |
 | `--root <PATH>` | Treat another path as the dotfiles repository |
@@ -179,17 +179,51 @@ error.
 
 ## Logs
 
+Every run writes its own log file. The most recent 50 are retained, so a failed
+run is still readable after later runs have happened.
+
 ```bash
-dotfiles log
+dotfiles log            # newest run
+dotfiles log --list     # retained runs, newest first
+dotfiles log 2          # third-newest run
+dotfiles log -c install # newest install run
+dotfiles log --verbose  # include diagnostic lines
 ```
 
-Prints the most recent run log. Each run writes a single
-`$XDG_CACHE_HOME/dotfiles/<command>.log` containing every event in the order it
-actually happened, including messages the console suppresses. Lines are
+`--list` prints an index, timestamp, command, and size:
+
+```text
+  #  WHEN                  COMMAND    SIZE
+  0  2026-07-31 15:42:10Z  install  112.4 KB
+  1  2026-07-31 15:39:02Z  test       8.1 KB
+```
+
+The index argument selects from that list and is stable for the duration of a
+listing; it shifts as new runs are recorded. `--command` filters the list and
+renumbers it, so `dotfiles log -c install 1` means the second-newest install.
+
+Logs contain every event in the order it actually happened, including messages
+the console suppresses. Lines are
 `seq | elapsed_us | wall_utc | context | event | message`, where `context` is the
 task that produced the event, so parallel execution can be reconstructed. Each
 executed task also emits a `task_timing` event recording how long it ran, which
 is otherwise not derivable from a parallel run's interleaved timestamps.
+
+Without `--verbose`, `dotfiles log` hides `debug` events, matching what the
+console shows during a normal run. `--verbose` prints the file unfiltered.
+
+Logs live in a platform state directory, resolved in this order:
+
+| Order | Location |
+|---|---|
+| 1 | `$DOTFILES_LOG_DIR` when set, used as-is |
+| 2 | `%LOCALAPPDATA%\dotfiles\logs` |
+| 3 | `$XDG_STATE_HOME/dotfiles/logs` |
+| 4 | `~/.local/state/dotfiles/logs` |
+| 5 | `./dotfiles/logs` |
+
+Files are named `<utc-timestamp>-<command>-<pid>.log`. Logs written by earlier
+versions under the cache directory are removed on the next run.
 
 ## Repository and overlay paths
 

@@ -77,7 +77,7 @@ pub enum Command {
     Test(TestOpts),
     /// List task selectors and command membership
     Tasks,
-    /// Show the latest run log
+    /// Show a retained run log
     Log(LogOpts),
     /// Generate shell completions for the given shell
     #[command(hide = true)]
@@ -156,7 +156,19 @@ pub struct TestOpts;
 
 /// Options for the `log` subcommand.
 #[derive(Parser, Debug, Clone)]
-pub struct LogOpts;
+pub struct LogOpts {
+    /// Run to show, newest first (0 is the latest run)
+    #[arg(value_name = "RUN")]
+    pub run: Option<usize>,
+
+    /// List retained runs instead of showing one
+    #[arg(short, long)]
+    pub list: bool,
+
+    /// Only consider runs of this command
+    #[arg(short, long, value_name = "COMMAND")]
+    pub command: Option<String>,
+}
 
 /// Options for the `completions` subcommand.
 #[derive(Parser, Debug, Clone)]
@@ -254,7 +266,7 @@ mod tests {
             "update     Apply configuration and advance pinned dependencies",
             "uninstall  Remove managed integrations while preserving user files",
             "test       Validate configuration and run self-tests",
-            "log        Show the latest run log",
+            "log        Show a retained run log",
             "-v, --verbose            Show additional diagnostic task output",
             "-p, --profile <PROFILE>  Use a specific profile",
             "-d, --dry-run            Preview changes without applying them",

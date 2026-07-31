@@ -25,9 +25,10 @@ pub use runlog::{LogEvent, log_task_context, log_thread_name, set_log_thread_nam
 pub use types::{ActionCounts, Log, MsgKind, Output, OutputExt, TaskStatus};
 // Only the in-crate unit tests reach `TaskRecorder` from outside the `logging`
 // module; production code uses the `super::types` path directly.
+pub(crate) use runlog::parse_run_log_file_name;
 #[cfg(test)]
 pub use types::TaskRecorder;
-pub(crate) use utils::{dotfiles_cache_dir_readonly, format_elapsed};
+pub(crate) use utils::{dotfiles_log_dir_readonly, format_elapsed};
 
 /// Initialise logging for a command run.
 ///

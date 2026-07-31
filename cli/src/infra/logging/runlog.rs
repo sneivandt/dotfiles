@@ -7,14 +7,59 @@
 use std::cell::RefCell;
 use std::fs;
 use std::io::Write;
-use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use super::utils::{format_utc_datetime_us, strip_ansi};
+use super::utils::{format_utc_compact, format_utc_datetime_us, strip_ansi};
+
+/// Number of run logs retained in the log directory.
+///
+/// Old runs are pruned oldest-first at the start of each run, so a failure is
+/// still readable long after the run that produced it.
+const MAX_RETAINED_RUNS: usize = 50;
+
+/// File extension used for run logs.
+const LOG_EXTENSION: &str = "log";
+
+/// Components of a run-log file name.
+///
+/// Names are `<stamp>-<command>-<pid>.log`, e.g.
+/// `20260731T154210Z-install-48213.log`. The stamp is fixed width so lexical
+/// ordering matches chronological ordering, and the pid disambiguates runs
+/// that start within the same second — notably the elevated child process
+/// spawned on Windows, which is a second process for one logical run.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct RunLogName<'a> {
+    /// Compact UTC start stamp, `YYYYMMDDTHHMMSSZ`.
+    pub(crate) stamp: &'a str,
+    /// Command that produced the run.
+    pub(crate) command: &'a str,
+}
+
+/// Build the run-log file name for a command.
+fn run_log_file_name(command: &str, stamp: &str, pid: u32) -> String {
+    format!("{stamp}-{command}-{pid}.{LOG_EXTENSION}")
+}
+
+/// Parse a run-log file name, or return `None` if it is not one.
+///
+/// Command names never contain `-`, so splitting into exactly three parts is
+/// unambiguous. Files that do not match are ignored rather than pruned or
+/// listed, so unrelated files in the log directory are left alone.
+pub(crate) fn parse_run_log_file_name(name: &str) -> Option<RunLogName<'_>> {
+    let stem = name.strip_suffix(".log")?;
+    let mut parts = stem.split('-');
+    let stamp = parts.next()?;
+    let command = parts.next()?;
+    let pid = parts.next()?;
+    if parts.next().is_some() || stamp.is_empty() || command.is_empty() {
+        return None;
+    }
+    pid.parse::<u32>().ok()?;
+    Some(RunLogName { stamp, command })
+}
 
 thread_local! {
     /// Task name for the current thread, set by the parallel scheduler.
@@ -150,11 +195,12 @@ impl LogEvent {
 
 /// The run log: every event, in the order it actually happened.
 ///
-/// Written to `$XDG_CACHE_HOME/dotfiles/<command>.log`.  Each line records a
-/// sequence number, microsecond-precision elapsed time from program start, a
-/// wall-clock timestamp, the originating task/thread context, and the event
-/// kind, which together make it possible to reconstruct the true interleaved
-/// timeline of parallel execution.
+/// Written to one file per run in the dotfiles log directory
+/// (`%LOCALAPPDATA%\dotfiles\logs` on Windows, `$XDG_STATE_HOME/dotfiles/logs`
+/// elsewhere).  Each line records a sequence number, microsecond-precision
+/// elapsed time from program start, a wall-clock timestamp, the originating
+/// task/thread context, and the event kind, which together make it possible to
+/// reconstruct the true interleaved timeline of parallel execution.
 ///
 /// Entries are written immediately as they are produced.  This is deliberately
 /// decoupled from console rendering: the console buffers per-task output to
@@ -170,25 +216,31 @@ pub struct RunLog {
 }
 
 impl RunLog {
-    /// Create the run log for `command` in the resolved dotfiles cache
+    /// Create the run log for `command` in the resolved dotfiles log
     /// directory.
     ///
-    /// Returns `None` if the cache directory or file cannot be created, in
+    /// Returns `None` if the log directory or file cannot be created, in
     /// which case the run simply proceeds without a file log.
     pub(super) fn create(command: &str, start: Instant) -> Option<Self> {
-        Self::new(command, &super::utils::dotfiles_cache_dir()?, start)
+        super::utils::remove_legacy_cache_logs_once();
+        Self::new(command, &super::utils::dotfiles_log_dir()?, start)
     }
 
     /// Create a new run log file for the given command.
     ///
-    /// `cache_dir` is the resolved `dotfiles` cache directory (e.g.
-    /// `$XDG_CACHE_HOME/dotfiles/`).  The caller is responsible for
-    /// resolving the directory; this constructor never reads environment
-    /// variables.
+    /// `log_dir` is the resolved dotfiles log directory.  The caller is
+    /// responsible for resolving the directory; this constructor never reads
+    /// environment variables.
     ///
     /// Returns `None` if the file cannot be created.
-    pub(super) fn new(command: &str, cache_dir: &Path, start: Instant) -> Option<Self> {
-        let path = cache_dir.join(format!("{command}.log"));
+    pub(super) fn new(command: &str, log_dir: &Path, start: Instant) -> Option<Self> {
+        Self::new_retaining(command, log_dir, start, MAX_RETAINED_RUNS)
+    }
+
+    /// Like [`new`](Self::new) but with an explicit retention count, so tests
+    /// can exercise pruning without writing dozens of files.
+    fn new_retaining(command: &str, log_dir: &Path, start: Instant, keep: usize) -> Option<Self> {
+        let (path, mut file) = create_run_log_file(command, log_dir)?;
         let version =
             option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
         let header = format!(
@@ -196,8 +248,12 @@ impl RunLog {
              # Columns: seq | elapsed_us | wall_utc | context | event | message\n",
             format_utc_datetime_us(),
         );
-        fs::write(&path, header).ok()?;
-        let file = fs::OpenOptions::new().append(true).open(&path).ok()?;
+        file.write_all(header.as_bytes()).ok()?;
+        // Prune after the new file exists so a crashed run still leaves a log
+        // behind, and so pruning stays off the end-of-run critical path.
+        prune_run_logs(log_dir, keep);
+        #[cfg(not(test))]
+        drop(path);
         Some(Self {
             file: Mutex::new(file),
             #[cfg(test)]
@@ -260,6 +316,66 @@ impl RunLog {
     }
 }
 
+/// Attempts made to find an unused run-log file name before giving up.
+const MAX_NAME_ATTEMPTS: u32 = 64;
+
+/// Create a fresh run-log file, returning its path and an append handle.
+///
+/// Always uses `create_new`, so an existing log is never truncated. When the
+/// name is already taken — two runs starting in the same second from the same
+/// process — the disambiguating suffix is bumped until a free name is found
+/// rather than silently reusing or destroying the existing file.
+fn create_run_log_file(command: &str, log_dir: &Path) -> Option<(PathBuf, fs::File)> {
+    let stamp = format_utc_compact();
+    let pid = std::process::id();
+    for attempt in 0..MAX_NAME_ATTEMPTS {
+        let path = log_dir.join(run_log_file_name(
+            command,
+            &stamp,
+            pid.wrapping_add(attempt),
+        ));
+        match fs::OpenOptions::new()
+            .create_new(true)
+            .append(true)
+            .open(&path)
+        {
+            Ok(file) => return Some((path, file)),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => (),
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// Delete the oldest run logs until at most `keep` remain.
+///
+/// Only files matching the run-log naming pattern are considered, so
+/// unrelated files in the log directory are never touched. Every failure is
+/// ignored, including `NotFound` races with a concurrent run pruning the same
+/// directory: retention is housekeeping and must never fail a run.
+fn prune_run_logs(dir: &Path, keep: usize) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            parse_run_log_file_name(&name).is_some().then_some(name)
+        })
+        .collect();
+    let excess = names.len().saturating_sub(keep);
+    if excess == 0 {
+        return;
+    }
+    // Names start with a fixed-width UTC stamp, so ascending lexical order is
+    // oldest first.
+    names.sort_unstable();
+    for name in names.into_iter().take(excess) {
+        drop(fs::remove_file(dir.join(name)));
+    }
+}
+
 fn format_log_message(message: &str) -> Option<String> {
     let clean = strip_ansi(message);
     let mut formatted = String::new();
@@ -291,6 +407,128 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let run_log = RunLog::new("test", tmp.path(), Instant::now()).expect("run log");
         (run_log, tmp)
+    }
+
+    fn run_log_names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(dir)
+            .expect("read log dir")
+            .flatten()
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
+    #[test]
+    fn run_log_file_name_round_trips() {
+        let name = run_log_file_name("install", "20260731T154210Z", 4321);
+        assert_eq!(name, "20260731T154210Z-install-4321.log");
+        let parsed = parse_run_log_file_name(&name).expect("name should parse");
+        assert_eq!(parsed.stamp, "20260731T154210Z");
+        assert_eq!(parsed.command, "install");
+    }
+
+    #[test]
+    fn parse_run_log_file_name_rejects_foreign_names() {
+        for name in [
+            "install.log",
+            "notes.txt",
+            "20260731T154210Z-install.log",
+            "20260731T154210Z-install-notapid.log",
+            "20260731T154210Z-install-1-extra.log",
+            "-install-1.log",
+        ] {
+            assert!(
+                parse_run_log_file_name(name).is_none(),
+                "{name} should not parse as a run log"
+            );
+        }
+    }
+
+    #[test]
+    fn each_run_writes_its_own_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let first = RunLog::new("test", tmp.path(), Instant::now()).expect("first run log");
+        let second = RunLog::new("test", tmp.path(), Instant::now()).expect("second run log");
+
+        assert_ne!(
+            first.path(),
+            second.path(),
+            "a second run must not reuse the first run's file"
+        );
+        assert_eq!(
+            run_log_names(tmp.path()).len(),
+            2,
+            "both runs should be retained"
+        );
+    }
+
+    #[test]
+    fn prune_keeps_the_newest_runs() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        for stamp in ["20260731T154210Z", "20260731T154211Z", "20260731T154212Z"] {
+            fs::write(tmp.path().join(run_log_file_name("install", stamp, 1)), "x")
+                .expect("write log");
+        }
+
+        prune_run_logs(tmp.path(), 2);
+
+        assert_eq!(
+            run_log_names(tmp.path()),
+            vec![
+                "20260731T154211Z-install-1.log".to_string(),
+                "20260731T154212Z-install-1.log".to_string(),
+            ],
+            "the oldest run should be pruned first"
+        );
+    }
+
+    #[test]
+    fn prune_ignores_files_that_are_not_run_logs() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::write(tmp.path().join("notes.txt"), "keep me").expect("write note");
+        fs::write(tmp.path().join("install.log"), "legacy").expect("write legacy log");
+        fs::write(
+            tmp.path()
+                .join(run_log_file_name("install", "20260731T154210Z", 1)),
+            "x",
+        )
+        .expect("write log");
+
+        prune_run_logs(tmp.path(), 0);
+
+        assert_eq!(
+            run_log_names(tmp.path()),
+            vec!["install.log".to_string(), "notes.txt".to_string()],
+            "only run logs should be pruned"
+        );
+    }
+
+    #[test]
+    fn new_prunes_older_runs_beyond_retention() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            tmp.path()
+                .join(run_log_file_name("install", "20200101T000000Z", 1)),
+            "old",
+        )
+        .expect("write old log");
+
+        let run_log =
+            RunLog::new_retaining("test", tmp.path(), Instant::now(), 1).expect("run log");
+
+        assert_eq!(
+            run_log_names(tmp.path()),
+            vec![
+                run_log
+                    .path()
+                    .file_name()
+                    .expect("file name")
+                    .to_string_lossy()
+                    .into_owned()
+            ],
+            "only the current run should survive a retention of one"
+        );
     }
 
     #[test]

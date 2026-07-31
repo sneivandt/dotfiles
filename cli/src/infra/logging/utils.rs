@@ -63,37 +63,122 @@ pub(super) fn terminal_columns_with(columns_env: Option<String>) -> usize {
         .unwrap_or(80)
 }
 
-/// Return the `$XDG_CACHE_HOME/dotfiles/` directory, creating it if needed.
-pub(super) fn dotfiles_cache_dir() -> Option<PathBuf> {
-    dotfiles_cache_subdir(&cache_base_dir())
+/// Return the run-log directory, creating it if needed.
+pub(super) fn dotfiles_log_dir() -> Option<PathBuf> {
+    let dir = log_dir_path();
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
-/// Return the `$XDG_CACHE_HOME/dotfiles/` directory without creating it.
-pub(crate) fn dotfiles_cache_dir_readonly() -> PathBuf {
-    cache_base_dir().join("dotfiles")
+/// Return the run-log directory without creating it.
+pub(crate) fn dotfiles_log_dir_readonly() -> PathBuf {
+    log_dir_path()
 }
 
-fn cache_base_dir() -> PathBuf {
-    std::env::var("XDG_CACHE_HOME").map_or_else(
-        |_| {
-            std::env::var("HOME")
-                .or_else(|_| std::env::var("USERPROFILE"))
-                .map_or_else(|_| PathBuf::from("."), PathBuf::from)
-                .join(".cache")
-        },
-        PathBuf::from,
+/// Resolve the run-log directory from the environment.
+///
+/// Run logs are durable state rather than regenerable cache, so they live in
+/// the platform state directory: `%LOCALAPPDATA%\dotfiles\logs` on Windows and
+/// `$XDG_STATE_HOME/dotfiles/logs` (default `~/.local/state/dotfiles/logs`)
+/// elsewhere. `DOTFILES_LOG_DIR` overrides the whole path.
+fn log_dir_path() -> PathBuf {
+    log_dir_from(
+        std::env::var("DOTFILES_LOG_DIR").ok(),
+        std::env::var("LOCALAPPDATA").ok(),
+        std::env::var("XDG_STATE_HOME").ok(),
+        std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .ok(),
     )
 }
 
-/// Return `<base>/dotfiles/`, creating it if needed.
+/// Inner implementation of [`log_dir_path`] that accepts the relevant
+/// environment variables as parameters so tests can exercise every branch
+/// without mutating process-global state.
 ///
-/// Extracted from [`dotfiles_cache_dir`] so that callers (especially tests)
-/// can supply an explicit base path without manipulating environment
-/// variables.
-pub(super) fn dotfiles_cache_subdir(base: &std::path::Path) -> Option<PathBuf> {
-    let dir = base.join("dotfiles");
+/// `LOCALAPPDATA` is only set on Windows and `XDG_STATE_HOME` only on Unix in
+/// practice, so consulting both unconditionally keeps this function free of
+/// platform conditionals while still resolving natively on each platform.
+fn log_dir_from(
+    explicit: Option<String>,
+    local_app_data: Option<String>,
+    state_home: Option<String>,
+    home: Option<String>,
+) -> PathBuf {
+    let non_empty = |value: Option<String>| value.filter(|v| !v.is_empty());
+    if let Some(dir) = non_empty(explicit) {
+        return PathBuf::from(dir);
+    }
+    non_empty(local_app_data)
+        .map(PathBuf::from)
+        .or_else(|| non_empty(state_home).map(PathBuf::from))
+        .or_else(|| non_empty(home).map(|dir| PathBuf::from(dir).join(".local").join("state")))
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("dotfiles")
+        .join("logs")
+}
+
+/// Return `<base>/dotfiles/logs/`, creating it if needed.
+///
+/// Mirrors the layout produced by [`dotfiles_log_dir`] under an explicit base
+/// path so tests can isolate the run log without touching the environment.
+#[cfg(test)]
+pub(super) fn dotfiles_log_subdir(base: &std::path::Path) -> Option<PathBuf> {
+    let dir = base.join("dotfiles").join("logs");
     fs::create_dir_all(&dir).ok()?;
     Some(dir)
+}
+
+/// Remove run logs written by earlier versions under the cache directory.
+///
+/// Logs are state, not cache, so they moved to the state directory. The old
+/// files were truncated on every run and are therefore not worth migrating.
+/// Runs at most once per process and ignores every failure, so a read-only or
+/// missing cache directory never affects the run.
+pub(super) fn remove_legacy_cache_logs_once() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(remove_legacy_cache_logs);
+}
+
+fn remove_legacy_cache_logs() {
+    let Some(dir) = legacy_cache_log_dir() else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("log"))
+        {
+            drop(fs::remove_file(&path));
+        }
+    }
+    // Best-effort tidy-up; fails harmlessly when the directory is not empty.
+    drop(fs::remove_dir(&dir));
+}
+
+/// Resolve the pre-move log directory, or `None` when it cannot be located.
+///
+/// Unlike the current resolver this deliberately has no relative fallback:
+/// without a cache home there is nothing to clean up, and guessing would risk
+/// deleting `./dotfiles/*.log` in the working directory.
+fn legacy_cache_log_dir() -> Option<PathBuf> {
+    let base = std::env::var("XDG_CACHE_HOME")
+        .ok()
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .ok()
+                .filter(|dir| !dir.is_empty())
+                .map(|dir| PathBuf::from(dir).join(".cache"))
+        })?;
+    Some(base.join("dotfiles"))
 }
 
 /// Decompose seconds since the Unix epoch into `(year, month, day, hour, min, sec)`.
@@ -136,6 +221,20 @@ pub(super) fn format_utc_datetime_us() -> String {
         "{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}.{:06}Z",
         dur.subsec_micros()
     )
+}
+
+/// Format the current UTC time as `YYYYMMDDTHHMMSSZ` (second precision).
+///
+/// Used for run-log file names. The fixed-width, zero-padded form means
+/// lexical ordering of file names equals chronological ordering, so run
+/// selection never depends on file modification times.
+pub(super) fn format_utc_compact() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let (y, mo, d, h, mi, s) = civil_from_epoch_secs(secs);
+    format!("{y:04}{mo:02}{d:02}T{h:02}{mi:02}{s:02}Z")
 }
 
 #[cfg(test)]
@@ -231,6 +330,100 @@ mod tests {
             after_dot.len(),
             6,
             "should have 6 decimal digits for microseconds"
+        );
+    }
+
+    #[test]
+    fn format_utc_compact_is_fixed_width_and_sortable() {
+        let s = format_utc_compact();
+        assert_eq!(s.len(), 16, "compact stamp should be YYYYMMDDTHHMMSSZ: {s}");
+        assert!(s.ends_with('Z'), "compact stamp should end with Z: {s}");
+        assert_eq!(
+            s.chars().nth(8),
+            Some('T'),
+            "compact stamp should separate date and time with T: {s}"
+        );
+        assert!(
+            s.chars()
+                .filter(|c| *c != 'T' && *c != 'Z')
+                .all(|c| c.is_ascii_digit()),
+            "compact stamp should otherwise be digits: {s}"
+        );
+    }
+
+    #[test]
+    fn log_dir_prefers_explicit_override() {
+        let dir = log_dir_from(
+            Some("/explicit".to_string()),
+            Some("/local".to_string()),
+            Some("/state".to_string()),
+            Some("/home".to_string()),
+        );
+        assert_eq!(
+            dir,
+            PathBuf::from("/explicit"),
+            "DOTFILES_LOG_DIR should be used verbatim"
+        );
+    }
+
+    #[test]
+    fn log_dir_prefers_local_app_data_then_state_home() {
+        assert_eq!(
+            log_dir_from(
+                None,
+                Some("/local".to_string()),
+                Some("/state".to_string()),
+                Some("/home".to_string())
+            ),
+            PathBuf::from("/local").join("dotfiles").join("logs"),
+            "LOCALAPPDATA should win when present"
+        );
+        assert_eq!(
+            log_dir_from(
+                None,
+                None,
+                Some("/state".to_string()),
+                Some("/home".to_string())
+            ),
+            PathBuf::from("/state").join("dotfiles").join("logs"),
+            "XDG_STATE_HOME should be used when LOCALAPPDATA is absent"
+        );
+    }
+
+    #[test]
+    fn log_dir_falls_back_to_home_state_dir() {
+        assert_eq!(
+            log_dir_from(None, None, None, Some("/home/user".to_string())),
+            PathBuf::from("/home/user")
+                .join(".local")
+                .join("state")
+                .join("dotfiles")
+                .join("logs"),
+            "home should resolve to the XDG default state directory"
+        );
+    }
+
+    #[test]
+    fn log_dir_ignores_empty_values_and_falls_back_to_relative() {
+        assert_eq!(
+            log_dir_from(
+                Some(String::new()),
+                Some(String::new()),
+                Some(String::new()),
+                Some(String::new())
+            ),
+            PathBuf::from(".").join("dotfiles").join("logs"),
+            "empty environment values should be treated as unset"
+        );
+    }
+
+    #[test]
+    fn log_dir_is_never_the_cache_dir() {
+        let dir = log_dir_from(None, None, Some("/state".to_string()), None);
+        assert!(
+            !dir.to_string_lossy().contains(".cache"),
+            "run logs are state, not cache: {}",
+            dir.display()
         );
     }
 }

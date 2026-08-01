@@ -54,7 +54,7 @@ tempfile = "3"
 # either command on its own is unaffected. Narrowing the features does not
 # help: `visit` is the feature the test exists to use. Moving the test into a
 # separate package is the only real fix.
-syn = { version = "2", features = ["full", "visit"] }
+syn = { version = "3", features = ["full", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 
 [target.'cfg(windows)'.dependencies]

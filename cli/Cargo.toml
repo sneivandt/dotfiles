@@ -45,17 +45,23 @@ tempfile = "3"
 # as text. `span-locations` is what makes line numbers available outside a
 # proc-macro context, so violations can still be reported as `file:line`.
 #
-# Known cost: `syn`'s `visit` feature and `proc-macro2`'s `span-locations` also
-# apply to the host copies of those crates that every derive macro in the tree
-# builds against, because Cargo unifies host and target features when not
-# cross-compiling. `cargo build` excludes dev-dependencies and `cargo test`
-# includes them, so the two commands resolve different feature sets and evict
-# each other's cached build of this crate (~15-30s per switch). Repeating
-# either command on its own is unaffected. Narrowing the features does not
-# help: `visit` is the feature the test exists to use. Moving the test into a
-# separate package is the only real fix.
-syn = { version = "3", features = ["full", "visit"] }
-proc-macro2 = { version = "1", features = ["span-locations"] }
+# Both are pinned to a minimal feature set. The test only parses files and walks
+# them with a visitor, so `syn`'s default `derive`, `printing`, `clone-impls`,
+# and `proc-macro` features are dead weight; dropping them cuts the compile cost
+# of this stack by roughly a third (measured at `opt-level = 1`: ~31s CPU / ~8.3s
+# wall down to ~21s CPU / ~5.6s wall).
+#
+# Known cost: these feature sets do not unify with the host copies that every
+# derive macro in the tree builds against, so `cargo test` compiles one extra
+# `syn` and one extra `proc-macro2` unit. That cost lands on cold builds only.
+# The units coexist rather than replace each other, so alternating `cargo build`
+# and `cargo test` does not invalidate either one — verified on the `dev` and
+# `ci` profiles, where the second command recompiles nothing. Moving the test to
+# its own package would keep those units out of lint-only and coverage-only
+# commands, but it cannot help the commands that actually run the test, so it is
+# not worth the workspace plumbing.
+syn = { version = "3", default-features = false, features = ["full", "parsing", "visit"] }
+proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

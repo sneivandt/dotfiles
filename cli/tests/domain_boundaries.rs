@@ -89,7 +89,8 @@ impl<'ast> Visit<'ast> for Collector {
     }
 
     fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
-        if let Some((None, trait_path, _)) = item.trait_.as_ref()
+        if item.modifiers.polarity.is_none()
+            && let Some((trait_path, _)) = item.trait_.as_ref()
             && trait_path
                 .segments
                 .last()

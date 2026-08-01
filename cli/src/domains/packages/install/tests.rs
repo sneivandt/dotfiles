@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 #[test]
 fn package_resource_description() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
     let pacman_resource = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,

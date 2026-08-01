@@ -6,7 +6,8 @@ use std::sync::Arc;
 use crate::domains::files::config::symlinks::Symlink;
 use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, config_resource_task, process_resources_remove,
+    Context, ProcessOpts, Task, TaskResult, configured_task_result, process_resources_remove,
+    run_resource_task, task_metadata,
 };
 use crate::infra::ConfigHandle;
 
@@ -43,19 +44,49 @@ pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<Symlin
         .collect()
 }
 
-config_resource_task! {
-    /// Create symlinks from symlinks/ to $HOME.
-    pub InstallSymlinks {
-        name: "Home symlinks",
+/// Create symlinks from symlinks/ to $HOME.
+#[derive(Debug)]
+pub struct InstallSymlinks {
+    config: ConfigHandle<Vec<Symlink>>,
+}
+
+const INSTALL_NAME: &str = "Home symlinks";
+
+impl InstallSymlinks {
+    /// Create the task with a handle to the symlink configuration.
+    #[must_use]
+    pub const fn new(config: ConfigHandle<Vec<Symlink>>) -> Self {
+        Self { config }
+    }
+
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        let symlinks = self.config.read().to_vec();
+        run_resource_task(
+            ctx,
+            announce,
+            symlinks,
+            |s, ctx| {
+                let paths = ctx.paths();
+                let executor = ctx.system().executor_arc();
+                build_resource(&s, paths.root(), paths.home(), &executor)
+            },
+            &ProcessOpts::strict("link"),
+        )
+    }
+}
+
+impl Task for InstallSymlinks {
+    task_metadata! {
+        name: INSTALL_NAME,
         selector: "symlinks",
-        config: Vec<Symlink>,
-        items: |cfg| cfg.clone(),
-        build: |s, ctx| {
-            let paths = ctx.paths();
-            let executor = ctx.system().executor_arc();
-            build_resource(&s, paths.root(), paths.home(), &executor)
-        },
-        opts: ProcessOpts::strict("link"),
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.process(ctx, Some(INSTALL_NAME))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, None)?))
     }
 }
 

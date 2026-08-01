@@ -50,7 +50,7 @@ impl CommandRunner {
         let store = ConfigStore::from_config(config);
 
         let executor: Arc<dyn crate::infra::exec::Executor> =
-            Arc::new(crate::infra::exec::ManagedExecutor::new(token.clone()));
+            Arc::new(crate::infra::exec::ProcessExecutor::managed(token.clone()));
         let log_output: Arc<dyn Log> = Arc::<Logger>::clone(log);
         let ctx = Context::new(
             root,

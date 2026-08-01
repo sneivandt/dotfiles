@@ -40,6 +40,49 @@ pub fn run(
     run_pipeline(global, opts, log, token, RunMode::Install)
 }
 
+/// Warn about filters that match no task, then return the tasks that survive them.
+///
+/// `all_tasks` are the schedulable tasks; `overlay_tasks` are only used to widen
+/// the set of names considered "known" so that a filter naming an overlay script
+/// is not reported as unmatched.
+fn apply_task_filters<'a>(
+    all_tasks: &'a [Box<dyn Task>],
+    overlay_tasks: &[Box<dyn Task>],
+    opts: &InstallOpts,
+    log: &Arc<Logger>,
+) -> Vec<&'a dyn Task> {
+    let known_task_refs: Vec<&dyn Task> = all_tasks
+        .iter()
+        .chain(overlay_tasks)
+        .map(Box::as_ref)
+        .collect();
+    if !log.is_verbose()
+        && (has_unmatched_filter(&known_task_refs, &opts.only)
+            || has_unmatched_filter(&known_task_refs, &opts.skip))
+    {
+        log.separate_from_startup();
+    }
+    filter::warn_unmatched_filters(&known_task_refs, &opts.only, "--only", &**log);
+    filter::warn_unmatched_filters(&known_task_refs, &opts.skip, "--skip", &**log);
+
+    let filtered: Vec<&dyn Task> = all_tasks
+        .iter()
+        .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
+        .map(Box::as_ref)
+        .collect();
+
+    if !opts.only.is_empty() || !opts.skip.is_empty() {
+        let names: Vec<&str> = filtered.iter().map(|t| t.name()).collect();
+        log.debug(format!(
+            "active filters — running {} task(s): {}",
+            names.len(),
+            names.join(", ")
+        ));
+    }
+
+    filtered
+}
+
 /// Shared implementation behind both `install` and `update`.
 ///
 /// The two commands run the identical task graph; `mode` determines whether
@@ -68,33 +111,7 @@ pub(crate) fn run_pipeline(
     all_tasks.retain(|task| mode.includes_task(task.as_ref()));
 
     let startup_overlay_tasks = runner.overlay_script_tasks();
-    let known_task_refs: Vec<&dyn Task> = all_tasks
-        .iter()
-        .chain(&startup_overlay_tasks)
-        .map(Box::as_ref)
-        .collect();
-    if !log.is_verbose()
-        && (has_unmatched_filter(&known_task_refs, &opts.only)
-            || has_unmatched_filter(&known_task_refs, &opts.skip))
-    {
-        log.separate_from_startup();
-    }
-    filter::warn_unmatched_filters(&known_task_refs, &opts.only, "--only", &**log);
-    filter::warn_unmatched_filters(&known_task_refs, &opts.skip, "--skip", &**log);
-    let filtered: Vec<&dyn Task> = all_tasks
-        .iter()
-        .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
-        .map(Box::as_ref)
-        .collect();
-
-    if !opts.only.is_empty() || !opts.skip.is_empty() {
-        let names: Vec<&str> = filtered.iter().map(|t| t.name()).collect();
-        log.debug(format!(
-            "active filters — running {} task(s): {}",
-            names.len(),
-            names.join(", ")
-        ));
-    }
+    let filtered = apply_task_filters(&all_tasks, &startup_overlay_tasks, opts, log);
 
     runner.run_with_late_tasks(
         filtered,

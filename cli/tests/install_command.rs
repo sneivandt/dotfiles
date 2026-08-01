@@ -488,7 +488,7 @@ fn install_symlinks_is_idempotent() {
     let resource = test_api::resources::symlink::SymlinkResource::new(
         source,
         target,
-        Arc::new(test_api::exec::SystemExecutor),
+        Arc::new(test_api::exec::ProcessExecutor::system()),
     );
 
     // After the first run every resource must be Correct.  This is the

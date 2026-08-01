@@ -163,7 +163,8 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
     let config = ctx.load_config("base");
 
     let platform = Platform::detect();
-    let executor: Arc<dyn test_api::exec::Executor> = Arc::new(test_api::exec::SystemExecutor);
+    let executor: Arc<dyn test_api::exec::Executor> =
+        Arc::new(test_api::exec::ProcessExecutor::system());
     let log: Arc<test_api::logging::Logger> =
         Arc::new(test_api::logging::Logger::new("test-uninstall"));
 
@@ -230,7 +231,8 @@ fn uninstall_symlinks_is_idempotent() {
     let home_dir = tempfile::tempdir().expect("create temp home dir");
 
     let platform = Platform::detect();
-    let executor: Arc<dyn test_api::exec::Executor> = Arc::new(test_api::exec::SystemExecutor);
+    let executor: Arc<dyn test_api::exec::Executor> =
+        Arc::new(test_api::exec::ProcessExecutor::system());
     let log: Arc<test_api::logging::Logger> =
         Arc::new(test_api::logging::Logger::new("test-uninstall-idempotent"));
 
@@ -310,7 +312,8 @@ fn uninstall_symlinks_materializes_file_content() {
         .build();
 
     let home_dir = tempfile::tempdir().expect("create temp home dir");
-    let executor: Arc<dyn test_api::exec::Executor> = Arc::new(test_api::exec::SystemExecutor);
+    let executor: Arc<dyn test_api::exec::Executor> =
+        Arc::new(test_api::exec::ProcessExecutor::system());
     let log: Arc<test_api::logging::Logger> =
         Arc::new(test_api::logging::Logger::new("test-uninstall-materialize"));
     let config = ctx.load_config("base");
@@ -383,7 +386,8 @@ fn uninstall_tasks_should_run_with_windows_platform() {
     };
     let config = ctx.load_config_for_platform("base", platform);
 
-    let executor: Arc<dyn test_api::exec::Executor> = Arc::new(test_api::exec::SystemExecutor);
+    let executor: Arc<dyn test_api::exec::Executor> =
+        Arc::new(test_api::exec::ProcessExecutor::system());
     let log: Arc<test_api::logging::Logger> =
         Arc::new(test_api::logging::Logger::new("test-uninstall-windows"));
 

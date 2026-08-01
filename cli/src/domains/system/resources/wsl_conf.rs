@@ -192,12 +192,12 @@ fn ensure_section_key(lines: &mut Vec<String>, section: &str, key: &str, value: 
 )]
 mod tests {
     use super::*;
-    use crate::infra::exec::{Executor, SystemExecutor};
+    use crate::infra::exec::{Executor, ProcessExecutor};
     use std::sync::Arc;
     use tempfile::TempDir;
 
     fn resource(path: &Path) -> WslConfResource {
-        let executor: Arc<dyn Executor> = Arc::new(SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(ProcessExecutor::system());
         WslConfResource::new(path, executor)
     }
 

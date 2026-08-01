@@ -3,7 +3,7 @@
 use super::*;
 
 fn echo_result(msg: &str) -> Result<ExecResult> {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     #[cfg(windows)]
     {
         executor.run("cmd", &["/C", "echo", msg])
@@ -23,7 +23,7 @@ fn run_echo() {
 
 #[test]
 fn run_failure() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     #[cfg(windows)]
     let result = executor.run("cmd", &["/C", "exit", "1"]);
     #[cfg(not(windows))]
@@ -33,7 +33,7 @@ fn run_failure() {
 
 #[test]
 fn run_unchecked_failure() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     #[cfg(windows)]
     let result = executor.run_unchecked("cmd", &["/C", "exit", "1"]).unwrap();
     #[cfg(not(windows))]
@@ -43,7 +43,7 @@ fn run_unchecked_failure() {
 
 #[test]
 fn which_finds_known_program() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     #[cfg(windows)]
     assert!(executor.which("cmd"), "cmd should be found on Windows");
     #[cfg(not(windows))]
@@ -52,7 +52,7 @@ fn which_finds_known_program() {
 
 #[test]
 fn which_missing_program() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     assert!(
         !executor.which("this-program-does-not-exist-12345"),
         "non-existent program should not be found"
@@ -61,7 +61,7 @@ fn which_missing_program() {
 
 #[test]
 fn which_path_finds_known_program() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     #[cfg(windows)]
     let result = executor.which_path("cmd");
     #[cfg(not(windows))]
@@ -76,7 +76,7 @@ fn which_path_finds_known_program() {
 
 #[test]
 fn which_path_fails_for_missing_program() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     let result = executor.which_path("this-program-does-not-exist-12345");
     assert!(
         result.is_err(),
@@ -91,30 +91,30 @@ fn which_path_fails_for_missing_program() {
 
 #[test]
 fn system_executor_which_path_finds_known_program() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     #[cfg(windows)]
     let result = executor.which_path("cmd");
     #[cfg(not(windows))]
     let result = executor.which_path("echo");
     assert!(
         result.is_ok(),
-        "SystemExecutor::which_path should find a known program"
+        "ProcessExecutor::which_path should find a known program"
     );
 }
 
 #[test]
 fn system_executor_which_path_fails_for_missing() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     let result = executor.which_path("this-program-does-not-exist-12345");
     assert!(
         result.is_err(),
-        "SystemExecutor::which_path should fail for missing program"
+        "ProcessExecutor::which_path should fail for missing program"
     );
 }
 
 #[test]
 fn run_in_tempdir() {
-    let executor = SystemExecutor;
+    let executor = ProcessExecutor::system();
     let dir = std::env::temp_dir();
     #[cfg(windows)]
     let result = executor
@@ -138,10 +138,7 @@ fn stream_summary_counts_non_empty_lines() {
 #[test]
 fn managed_executor_times_out_commands() {
     let token = CancellationToken::new();
-    let executor = ManagedExecutor {
-        cancellation: token,
-        timeout: Duration::from_millis(50),
-    };
+    let executor = ProcessExecutor::managed_with_timeout(token, Duration::from_millis(50));
     #[cfg(windows)]
     let result = executor.run("cmd", &["/C", "ping", "localhost", "-n", "5"]);
     #[cfg(not(windows))]
@@ -160,10 +157,7 @@ fn managed_executor_times_out_commands() {
 fn managed_executor_cancels_commands() {
     let token = CancellationToken::new();
     token.cancel();
-    let executor = ManagedExecutor {
-        cancellation: token,
-        timeout: Duration::from_secs(5),
-    };
+    let executor = ProcessExecutor::managed_with_timeout(token, Duration::from_secs(5));
     #[cfg(windows)]
     let result = executor.run("cmd", &["/C", "ping", "localhost", "-n", "5"]);
     #[cfg(not(windows))]

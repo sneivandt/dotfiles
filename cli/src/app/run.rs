@@ -64,7 +64,7 @@ fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: b
         if command.mutates_system()
             && !global.dry_run
             && !elevation::is_elevated()
-            && let Err(e) = elevation::elevate_and_exit(&exec::SystemExecutor, &*log)
+            && let Err(e) = elevation::elevate_and_exit(&exec::ProcessExecutor::system(), &*log)
         {
             log.error(format!("{e:#}"));
             return ExitCode::FAILURE;

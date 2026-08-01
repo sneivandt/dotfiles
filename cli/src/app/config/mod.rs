@@ -206,65 +206,6 @@ fn load_if<T>(enabled: bool, load: impl FnOnce() -> Result<Vec<T>>) -> Result<Ve
     if enabled { load() } else { Ok(Vec::new()) }
 }
 
-macro_rules! registered_config_validators {
-    ($validator:ident) => {
-        $validator
-            .validate_with(|config, _platform| symlinks::validate(&config.symlinks, &config.root))
-            .validate_with(|config, _platform| {
-                apm::validate(&config.root, config.overlay.as_deref())
-            })
-            .validate_with(|config, platform| packages::validate(&config.packages, platform))
-            .validate_with(|config, platform| registry::validate(&config.registry, platform))
-            .validate_with(|config, platform| chmod::validate(&config.chmod, platform))
-            .validate_with(|config, platform| systemd_units::validate(&config.units, platform))
-            .validate_with(|config, _platform| {
-                vscode_extensions::validate(&config.vscode_extensions)
-            })
-            .validate_with(|config, _platform| git_config::validate(&config.git_settings))
-            .validate_with(|config, _platform| copilot::validate(&config.copilot_settings))
-            .validate_with(|config, _platform| scripts::validate(&config.scripts))
-    };
-}
-
-macro_rules! registered_config_counts {
-    ($config:ident) => {
-        [
-            SectionCount {
-                label: "packages",
-                count: $config.packages.len(),
-            },
-            SectionCount {
-                label: "symlinks",
-                count: $config.symlinks.len(),
-            },
-            SectionCount {
-                label: "registry entries",
-                count: $config.registry.len(),
-            },
-            SectionCount {
-                label: "systemd units",
-                count: $config.units.len(),
-            },
-            SectionCount {
-                label: "chmod entries",
-                count: $config.chmod.len(),
-            },
-            SectionCount {
-                label: "vscode extensions",
-                count: $config.vscode_extensions.len(),
-            },
-            SectionCount {
-                label: "manifest exclusions",
-                count: $config.manifest.excluded_files.len(),
-            },
-            SectionCount {
-                label: "overlay scripts",
-                count: $config.scripts.len(),
-            },
-        ]
-    };
-}
-
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SectionCount {
     pub(crate) label: &'static str,
@@ -288,7 +229,20 @@ impl<'a> ConfigValidator<'a> {
     }
 
     fn validate_all(self) -> Self {
-        registered_config_validators!(self)
+        self.validate_with(|config, _platform| symlinks::validate(&config.symlinks, &config.root))
+            .validate_with(|config, _platform| {
+                apm::validate(&config.root, config.overlay.as_deref())
+            })
+            .validate_with(|config, platform| packages::validate(&config.packages, platform))
+            .validate_with(|config, platform| registry::validate(&config.registry, platform))
+            .validate_with(|config, platform| chmod::validate(&config.chmod, platform))
+            .validate_with(|config, platform| systemd_units::validate(&config.units, platform))
+            .validate_with(|config, _platform| {
+                vscode_extensions::validate(&config.vscode_extensions)
+            })
+            .validate_with(|config, _platform| git_config::validate(&config.git_settings))
+            .validate_with(|config, _platform| copilot::validate(&config.copilot_settings))
+            .validate_with(|config, _platform| scripts::validate(&config.scripts))
     }
 
     fn validate_with(
@@ -414,7 +368,40 @@ impl Config {
     /// Return configured item counts for debug logging.
     #[must_use]
     pub(crate) const fn section_counts(&self) -> [SectionCount; 8] {
-        registered_config_counts!(self)
+        [
+            SectionCount {
+                label: "packages",
+                count: self.packages.len(),
+            },
+            SectionCount {
+                label: "symlinks",
+                count: self.symlinks.len(),
+            },
+            SectionCount {
+                label: "registry entries",
+                count: self.registry.len(),
+            },
+            SectionCount {
+                label: "systemd units",
+                count: self.units.len(),
+            },
+            SectionCount {
+                label: "chmod entries",
+                count: self.chmod.len(),
+            },
+            SectionCount {
+                label: "vscode extensions",
+                count: self.vscode_extensions.len(),
+            },
+            SectionCount {
+                label: "manifest exclusions",
+                count: self.manifest.excluded_files.len(),
+            },
+            SectionCount {
+                label: "overlay scripts",
+                count: self.scripts.len(),
+            },
+        ]
     }
 }
 

@@ -278,12 +278,12 @@ mod chmod {
 mod symlink {
     use super::super::symlink::*;
     use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceState};
-    use crate::infra::exec::{Executor, SystemExecutor};
+    use crate::infra::exec::{Executor, ProcessExecutor};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     fn system_executor() -> Arc<dyn Executor> {
-        Arc::new(SystemExecutor)
+        Arc::new(ProcessExecutor::system())
     }
 
     #[cfg(windows)]

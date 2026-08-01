@@ -53,7 +53,7 @@ fn expect_sudo_lookup_if_needed(mock: &mut MockExecutor) {
 
 #[test]
 fn description_includes_manager() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
     let pacman_resource = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,
@@ -78,7 +78,7 @@ fn description_includes_manager() {
 
 #[test]
 fn state_from_installed_correct() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
     let resource = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,
@@ -95,7 +95,7 @@ fn state_from_installed_correct() {
 
 #[test]
 fn state_from_installed_missing() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
     let resource = PackageResource::new(
         "git".to_string(),
         PackageManager::Pacman,

@@ -211,7 +211,7 @@ impl Operation for ParuInstallOperation {
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         check_prerequisites(ctx)?;
-        let guard = crate::infra::fs::TempDir::new(prepare_build_directory(ctx)?);
+        let guard = crate::infra::fs::TempGuard::dir(prepare_build_directory(ctx)?);
         clone_paru_from_aur(ctx, guard.path())?;
         build_paru(ctx, guard.path())?;
 

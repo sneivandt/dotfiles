@@ -8,7 +8,7 @@
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
-use super::{TempPath, ensure_parent_dir};
+use super::{TempGuard, ensure_parent_dir};
 
 /// Build a sibling temporary path by appending `suffix` to the target name.
 ///
@@ -52,7 +52,7 @@ pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     let staged = sibling_temp_path(path, ".dotfiles_tmp");
     super::write(&staged, content)?;
 
-    let mut guard = TempPath::new(staged.clone());
+    let mut guard = TempGuard::file(staged.clone());
     rename_into_place(&staged, path)?;
     guard.persist();
     Ok(())

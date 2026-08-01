@@ -1,20 +1,48 @@
 //! Task: configure the login shell.
 
-use crate::domains::shell::resources::shell::DefaultShellResource;
-use crate::engine::{ProcessOpts, resource_task};
+use anyhow::Result;
 
-resource_task! {
-    /// Configure the default shell to zsh.
-    pub ConfigureShell {
-        name: "Default shell",
+use crate::domains::shell::resources::shell::DefaultShellResource;
+use crate::engine::{
+    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
+    task_metadata,
+};
+
+/// Configure the default shell to zsh.
+#[derive(Debug)]
+pub struct ConfigureShell;
+
+const NAME: &str = "Default shell";
+
+impl ConfigureShell {
+    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        run_resource_task(
+            ctx,
+            announce,
+            vec![()],
+            |(), ctx| DefaultShellResource::new("zsh".to_string(), ctx.system().executor_arc()),
+            &ProcessOpts::strict("configure"),
+        )
+    }
+}
+
+impl Task for ConfigureShell {
+    task_metadata! {
+        name: NAME,
         selector: "shell",
-        guard: |ctx| {
-            let system = ctx.system();
-            system.platform().is_linux() && system.which("zsh") && !system.is_ci()
-        },
-        items: |_ctx| vec![()],
-        build: |_unit, ctx| DefaultShellResource::new("zsh".to_string(), ctx.system().executor_arc()),
-        opts: ProcessOpts::strict("configure"),
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        let system = ctx.system();
+        system.platform().is_linux() && system.which("zsh") && !system.is_ci()
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        Self::process(ctx, Some(NAME))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(Self::process(ctx, None)?))
     }
 }
 

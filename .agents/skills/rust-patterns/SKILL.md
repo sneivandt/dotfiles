@@ -51,10 +51,15 @@ cli/src/
 - Use `anyhow::Result` with contextual `?` propagation in commands/tasks, and
   typed `ResourceError` values in resource implementations when a resource-level
   failure needs classification.
-- Prefer `config_resource_task!` for tasks with an injected
-  `ConfigHandle<T>` and `resource_task!` for config-free resource tasks. For
-  idempotent multi-step workflows that do not fit one resource, implement
-  `Operation` and call `process_operation()` from the task body.
+- Implement `Task` directly; there is no task-generating macro. Use
+  `task_metadata!` for the metadata block, `task_deps![...]` for dependencies,
+  and call `run_resource_task()` (or `run_batch_resource_task()` when one query
+  feeds every resource) from the task body. Config-backed tasks own a
+  `ConfigHandle<T>` field and snapshot it with `self.config.read().to_vec()`.
+  Implement `run_configured()` and `run()` as the two-line pair that passes
+  `Some(NAME)` / `None` as the stage announcement. For idempotent multi-step
+  workflows that do not fit one resource, implement `Operation` and call
+  `process_operation()` from the task body.
 - Declare dependencies with `task_deps![...]`; register static tasks in
   `cli/src/app/catalog.rs`.
 - Ordering comes only from dependencies; catalog insertion order is arbitrary.

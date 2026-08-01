@@ -1,25 +1,64 @@
 //! Task: apply Windows registry entries.
 
+use anyhow::Result;
+
 use crate::domains::system::config::registry::RegistryEntry;
 use crate::domains::system::resources::registry::{RegistryResource, batch_check_values};
-use crate::engine::{ProcessOpts, config_resource_task};
+use crate::engine::{
+    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_batch_resource_task,
+    task_metadata,
+};
+use crate::infra::ConfigHandle;
 
-config_resource_task! {
-    /// Apply Windows registry settings.
-    pub ApplyRegistry {
-        name: "Windows registry",
+/// Apply Windows registry settings.
+#[derive(Debug)]
+pub struct ApplyRegistry {
+    config: ConfigHandle<Vec<RegistryEntry>>,
+}
+
+const NAME: &str = "Windows registry";
+
+impl ApplyRegistry {
+    /// Create the task with a handle to its configuration slice.
+    #[must_use]
+    pub const fn new(config: ConfigHandle<Vec<RegistryEntry>>) -> Self {
+        Self { config }
+    }
+
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        let entries = self.config.read().to_vec();
+        run_batch_resource_task(
+            ctx,
+            announce,
+            entries,
+            |entry, _ctx| RegistryResource::from_entry(&entry),
+            |resources, _ctx| batch_check_values(resources),
+            |r, cached| {
+                let key = format!("{}\\{}", r.key_path, r.value_name);
+                let val = cached.get(&key).and_then(|v| v.as_deref());
+                Ok(r.state_from_cached(val))
+            },
+            &ProcessOpts::lenient("configure"),
+        )
+    }
+}
+
+impl Task for ApplyRegistry {
+    task_metadata! {
+        name: NAME,
         selector: "registry",
-        config: Vec<RegistryEntry>,
-        guard: |_cfg, ctx| ctx.platform().has_registry(),
-        items: |cfg| cfg.clone(),
-        cache: |resources, _ctx| batch_check_values(resources),
-        build: |entry, _ctx| RegistryResource::from_entry(&entry),
-        state: |r, cached| {
-            let key = format!("{}\\{}", r.key_path, r.value_name);
-            let val = cached.get(&key).and_then(|v| v.as_deref());
-            r.state_from_cached(val)
-        },
-        opts: ProcessOpts::lenient("configure"),
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.platform().has_registry()
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.process(ctx, Some(NAME))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, None)?))
     }
 }
 

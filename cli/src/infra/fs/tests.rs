@@ -300,7 +300,7 @@ fn system_fs_ops_removes_broken_symlink() {
 }
 
 // -----------------------------------------------------------------------
-// TempPath
+// TempGuard::file
 // -----------------------------------------------------------------------
 
 #[test]
@@ -311,7 +311,7 @@ fn temp_path_removes_file_on_drop() {
     assert!(file.exists());
 
     {
-        let _guard = TempPath::new(file.clone());
+        let _guard = TempGuard::file(file.clone());
     }
     assert!(!file.exists(), "file should be removed on drop");
 }
@@ -323,7 +323,7 @@ fn temp_path_persist_prevents_removal() {
     std::fs::write(&file, "data").unwrap();
 
     {
-        let mut guard = TempPath::new(file.clone());
+        let mut guard = TempGuard::file(file.clone());
         guard.persist();
     }
     assert!(file.exists(), "file should remain after persist + drop");
@@ -334,11 +334,11 @@ fn temp_path_noop_when_file_missing() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("nonexistent");
     // Should not panic when the file doesn't exist
-    let _guard = TempPath::new(file);
+    let _guard = TempGuard::file(file);
 }
 
 // -----------------------------------------------------------------------
-// TempDir
+// TempGuard::dir
 // -----------------------------------------------------------------------
 
 #[test]
@@ -350,7 +350,7 @@ fn temp_dir_removes_directory_on_drop() {
     assert!(td.exists());
 
     {
-        let _guard = TempDir::new(td.clone());
+        let _guard = TempGuard::dir(td.clone());
     }
     assert!(!td.exists(), "directory should be removed on drop");
 }
@@ -362,7 +362,7 @@ fn temp_dir_persist_prevents_removal() {
     std::fs::create_dir(&td).unwrap();
 
     {
-        let mut guard = TempDir::new(td.clone());
+        let mut guard = TempGuard::dir(td.clone());
         guard.persist();
     }
     assert!(td.exists(), "directory should remain after persist + drop");

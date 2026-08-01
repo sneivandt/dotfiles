@@ -44,7 +44,7 @@ fn copy_file_into_place(source: &Path, target: &Path, executor: &dyn Executor) -
     let tmp = sibling_temp_path(target, ".dotfiles_tmp");
     crate::infra::fs::copy_file(source, &tmp)?;
 
-    let mut guard = crate::infra::fs::TempPath::new(tmp.clone());
+    let mut guard = crate::infra::fs::TempGuard::file(tmp.clone());
 
     clear_link_target(target, executor, "symlink")?;
 
@@ -64,7 +64,7 @@ pub(super) fn copy_dir_into_place(
 ) -> Result<()> {
     let tmp = sibling_temp_path(target, "_dotfiles_tmp");
     remove_stale_temp_dir(&tmp)?;
-    let mut guard = crate::infra::fs::TempDir::new(tmp.clone());
+    let mut guard = crate::infra::fs::TempGuard::dir(tmp.clone());
 
     crate::infra::fs::copy_dir_recursive(source, &tmp, false)
         .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;

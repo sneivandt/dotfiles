@@ -32,9 +32,9 @@ The explicit target is joined to `$HOME` directly: `home.join(target)`.
 
 ## Task Implementation
 
-The install task uses `config_resource_task!`, `SymlinkResource`, and strict
-resource processing. Keep platform-specific creation inside
-`SymlinkResource::apply()`, not the task.
+The install task is a hand-written `impl Task` over `run_resource_task()` with
+`SymlinkResource` and strict resource processing. Keep platform-specific
+creation inside `SymlinkResource::apply()`, not the task.
 
 ## Adding Symlinks
 

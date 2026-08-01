@@ -1,26 +1,64 @@
 //! Task: configure GitHub Copilot CLI settings.
 
+use anyhow::Result;
+
 use crate::domains::ai::config::copilot::CopilotSetting;
 use crate::domains::ai::resources::copilot_settings::CopilotSettingResource;
-use crate::engine::{ProcessOpts, config_resource_task};
+use crate::engine::{
+    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
+    task_metadata,
+};
+use crate::infra::ConfigHandle;
 
-config_resource_task! {
-    /// Configure Copilot CLI settings from copilot.toml.
-    ///
-    /// Each managed key is converged inside `~/.copilot/settings.json` without
-    /// disturbing keys the Copilot CLI manages itself.  Processing is forced
-    /// sequential because every resource reads and rewrites the same file.
-    pub ConfigureCopilot {
-        name: "Copilot settings",
+/// Configure Copilot CLI settings from copilot.toml.
+///
+/// Each managed key is converged inside `~/.copilot/settings.json` without
+/// disturbing keys the Copilot CLI manages itself.  Processing is forced
+/// sequential because every resource reads and rewrites the same file.
+#[derive(Debug)]
+pub struct ConfigureCopilot {
+    config: ConfigHandle<Vec<CopilotSetting>>,
+}
+
+const NAME: &str = "Copilot settings";
+
+impl ConfigureCopilot {
+    /// Create the task with a handle to its configuration slice.
+    #[must_use]
+    pub const fn new(config: ConfigHandle<Vec<CopilotSetting>>) -> Self {
+        Self { config }
+    }
+
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        let settings = self.config.read().to_vec();
+        run_resource_task(
+            ctx,
+            announce,
+            settings,
+            |s, ctx| {
+                CopilotSettingResource::new(
+                    s.key.clone(),
+                    s.json_value(),
+                    ctx.paths().home().join(".copilot").join("settings.json"),
+                )
+            },
+            &ProcessOpts::strict("configure").sequential(),
+        )
+    }
+}
+
+impl Task for ConfigureCopilot {
+    task_metadata! {
+        name: NAME,
         selector: "copilot",
-        config: Vec<CopilotSetting>,
-        items: |cfg| cfg.clone(),
-        build: |s, ctx| CopilotSettingResource::new(
-            s.key.clone(),
-            s.json_value(),
-            ctx.paths().home().join(".copilot").join("settings.json"),
-        ),
-        opts: ProcessOpts::strict("configure").sequential(),
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.process(ctx, Some(NAME))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, None)?))
     }
 }
 
@@ -53,10 +91,7 @@ mod tests {
         let result = ConfigureCopilot::new(ConfigHandle::new(vec![]))
             .run(&ctx)
             .unwrap();
-        assert!(matches!(
-            result,
-            crate::engine::TaskResult::NotApplicable(_)
-        ));
+        assert!(matches!(result, TaskResult::NotApplicable(_)));
     }
 
     #[test]

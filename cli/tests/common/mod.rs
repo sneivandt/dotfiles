@@ -14,7 +14,7 @@ use std::sync::Arc;
 use test_api::config::Config;
 use test_api::config::ConfigStore;
 use test_api::config::profiles;
-use test_api::exec::{ExecResult, Executor, SystemExecutor};
+use test_api::exec::{ExecResult, Executor, ProcessExecutor};
 use test_api::logging::{Log, Logger};
 use test_api::platform::Platform;
 use test_api::tasks::{Context, ContextOpts};
@@ -285,7 +285,7 @@ impl IntegrationTestContext {
         }
     }
 
-    /// Create a task execution [`Context`] backed by a real [`SystemExecutor`].
+    /// Create a task execution [`Context`] backed by a real [`ProcessExecutor`].
     ///
     /// Unlike [`make_context`](Self::make_context) (which uses a [`StubExecutor`]
     /// and panics on any command), this variant lets a task perform real
@@ -312,7 +312,7 @@ impl IntegrationTestContext {
             overlay,
             platform,
             log_arc(&log),
-            Arc::new(SystemExecutor),
+            Arc::new(ProcessExecutor::system()),
             home.path().to_path_buf(),
             opts,
         );

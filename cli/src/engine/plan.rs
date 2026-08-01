@@ -4,7 +4,7 @@
 //! into typed plans.  The plans are side-effect free: they can be unit-tested,
 //! rendered for dry-run output, and then handed to the apply layer for mutation.
 
-use super::mode::{ProcessOpts, ResourceAction};
+use super::mode::ProcessOpts;
 use crate::engine::ResourceState;
 
 /// Planned operation for installing or updating one resource.
@@ -39,19 +39,40 @@ pub(crate) struct ApplyChange {
 
 impl ApplyChange {
     /// Build an apply plan from a resource description, current state, and processing options.
+    ///
+    /// This is the resource lifecycle state machine: it maps every combination
+    /// of [`ResourceState`] × [`ProcessMode`](super::ProcessMode) to a concrete
+    /// [`ApplyOperation`].
     #[must_use]
     pub(crate) fn from_state(
         description: String,
         state: &ResourceState,
         opts: &ProcessOpts,
     ) -> Self {
-        let operation = match opts.mode.action_for(state) {
-            ResourceAction::Noop => ApplyOperation::Noop,
-            ResourceAction::Skip { reason, failed } => ApplyOperation::Skip { reason, failed },
-            ResourceAction::Apply => ApplyOperation::Apply {
-                verb: opts.verb,
-                current: incorrect_current(state),
-                bail_on_error: opts.mode.bail_on_error(),
+        let apply = || ApplyOperation::Apply {
+            verb: opts.verb,
+            current: incorrect_current(state),
+            bail_on_error: opts.mode.bail_on_error(),
+        };
+        let operation = match state {
+            ResourceState::Correct => ApplyOperation::Noop,
+            ResourceState::Invalid { reason } => ApplyOperation::Skip {
+                reason: reason.clone(),
+                failed: true,
+            },
+            ResourceState::Unknown { reason } => ApplyOperation::Skip {
+                reason: format!("state unknown: {reason}"),
+                failed: true,
+            },
+            ResourceState::Missing if opts.mode.fix_missing() => apply(),
+            ResourceState::Missing => ApplyOperation::Skip {
+                reason: "mode skips missing resources".into(),
+                failed: false,
+            },
+            ResourceState::Incorrect { .. } if opts.mode.fix_incorrect() => apply(),
+            ResourceState::Incorrect { .. } => ApplyOperation::Skip {
+                reason: "mode skips incorrect resources".into(),
+                failed: false,
             },
         };
         Self {
@@ -179,6 +200,89 @@ fn incorrect_current(state: &ResourceState) -> Option<String> {
 mod tests {
     use super::*;
     use crate::engine::{ProcessMode, ProcessOpts};
+
+    #[test]
+    fn state_machine_matrix_covers_every_mode_and_state() {
+        let cases = [
+            (ProcessMode::Strict, true, true),
+            (ProcessMode::Lenient, true, true),
+            (ProcessMode::InstallMissing, false, true),
+            (ProcessMode::FixExisting, true, false),
+        ];
+
+        for (mode, fixes_incorrect, fixes_missing) in cases {
+            let opts = ProcessOpts {
+                verb: "install",
+                mode,
+                sequential: false,
+            };
+            let plan_for = |state: &ResourceState| {
+                ApplyChange::from_state("thing".to_string(), state, &opts)
+                    .operation()
+                    .clone()
+            };
+
+            assert_eq!(
+                plan_for(&ResourceState::Correct),
+                ApplyOperation::Noop,
+                "mode {mode:?}, state Correct",
+            );
+            assert_eq!(
+                plan_for(&ResourceState::Invalid {
+                    reason: "invalid target".to_string(),
+                }),
+                ApplyOperation::Skip {
+                    reason: "invalid target".to_string(),
+                    failed: true,
+                },
+                "mode {mode:?}, state Invalid",
+            );
+            assert_eq!(
+                plan_for(&ResourceState::Unknown {
+                    reason: "tool missing".to_string(),
+                }),
+                ApplyOperation::Skip {
+                    reason: "state unknown: tool missing".to_string(),
+                    failed: true,
+                },
+                "mode {mode:?}, state Unknown",
+            );
+            assert_eq!(
+                plan_for(&ResourceState::Missing),
+                if fixes_missing {
+                    ApplyOperation::Apply {
+                        verb: "install",
+                        current: None,
+                        bail_on_error: mode.bail_on_error(),
+                    }
+                } else {
+                    ApplyOperation::Skip {
+                        reason: "mode skips missing resources".to_string(),
+                        failed: false,
+                    }
+                },
+                "mode {mode:?}, state Missing",
+            );
+            assert_eq!(
+                plan_for(&ResourceState::Incorrect {
+                    current: "old".to_string(),
+                }),
+                if fixes_incorrect {
+                    ApplyOperation::Apply {
+                        verb: "install",
+                        current: Some("old".to_string()),
+                        bail_on_error: mode.bail_on_error(),
+                    }
+                } else {
+                    ApplyOperation::Skip {
+                        reason: "mode skips incorrect resources".to_string(),
+                        failed: false,
+                    }
+                },
+                "mode {mode:?}, state Incorrect",
+            );
+        }
+    }
 
     #[test]
     fn apply_plan_noops_for_correct_state() {

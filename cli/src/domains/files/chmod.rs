@@ -1,20 +1,59 @@
 //! Task: configure file permissions.
 
+use anyhow::Result;
+
 use crate::domains::files::config::chmod::ChmodEntry;
 use crate::domains::files::resources::chmod::ChmodResource;
-use crate::engine::{ProcessOpts, config_resource_task};
+use crate::engine::{
+    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
+    task_metadata,
+};
+use crate::infra::ConfigHandle;
 
-config_resource_task! {
-    /// Configure file permissions from chmod.toml.
-    pub ApplyFilePermissions {
-        name: "File permissions",
+/// Configure file permissions from chmod.toml.
+#[derive(Debug)]
+pub struct ApplyFilePermissions {
+    config: ConfigHandle<Vec<ChmodEntry>>,
+}
+
+const NAME: &str = "File permissions";
+
+impl ApplyFilePermissions {
+    /// Create the task with a handle to its configuration slice.
+    #[must_use]
+    pub const fn new(config: ConfigHandle<Vec<ChmodEntry>>) -> Self {
+        Self { config }
+    }
+
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        let entries = self.config.read().to_vec();
+        run_resource_task(
+            ctx,
+            announce,
+            entries,
+            |entry, ctx| ChmodResource::from_entry(&entry, ctx.paths().home()),
+            &ProcessOpts::fix_existing("configure"),
+        )
+    }
+}
+
+impl Task for ApplyFilePermissions {
+    task_metadata! {
+        name: NAME,
         selector: "file-permissions",
-        config: Vec<ChmodEntry>,
         deps: [crate::domains::files::symlinks::InstallSymlinks],
-        guard: |_cfg, ctx| ctx.system().platform().supports_chmod(),
-        items: |cfg| cfg.clone(),
-        build: |entry, ctx| ChmodResource::from_entry(&entry, ctx.paths().home()),
-        opts: ProcessOpts::fix_existing("configure"),
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        ctx.system().platform().supports_chmod()
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.process(ctx, Some(NAME))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, None)?))
     }
 }
 

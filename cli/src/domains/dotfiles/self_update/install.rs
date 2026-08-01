@@ -35,7 +35,7 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     fs::create_dir_all(dir).context("creating bin directory")?;
 
     let tmp_path = dir.join(".dotfiles-update.tmp");
-    let mut tmp = crate::infra::fs::TempPath::new(tmp_path);
+    let mut tmp = crate::infra::fs::TempGuard::file(tmp_path);
 
     {
         let mut f = fs::File::create(tmp.path()).context("creating temp file")?;
@@ -88,7 +88,7 @@ pub(super) fn stage_binary(root: &Path, tag: &str, data: &[u8]) -> Result<()> {
     fs::create_dir_all(dir).context("creating bin directory")?;
 
     let tmp_path = dir.join(".dotfiles-update.tmp");
-    let mut tmp = crate::infra::fs::TempPath::new(tmp_path);
+    let mut tmp = crate::infra::fs::TempGuard::file(tmp_path);
     {
         let mut f = fs::File::create(tmp.path()).context("creating temp staged file")?;
         f.write_all(data).context("writing staged binary data")?;

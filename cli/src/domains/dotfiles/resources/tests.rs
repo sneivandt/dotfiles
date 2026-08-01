@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tempfile::TempDir;
 
 fn make_path_entry(home: &Path, on_path: bool) -> PathEntryResource {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
     let platform = crate::infra::platform::Platform {
         os: crate::infra::platform::Os::Linux,
         is_arch: false,

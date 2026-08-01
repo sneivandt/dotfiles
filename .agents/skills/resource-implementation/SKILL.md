@@ -43,8 +43,9 @@ description: >
 Canonical references:
 - `cli/src/engine/resource/`
 - `cli/src/engine/orchestrate.rs`
-- `cli/src/engine/mode.rs`
-- `cli/src/engine/task/macros.rs`
+- `cli/src/engine/mode.rs` (`ProcessMode` / `ProcessOpts`)
+- `cli/src/engine/plan.rs` (`ApplyChange::from_state`, the state machine)
+- `cli/src/engine/task/macros.rs` (`task_metadata!`, `run_resource_task()`)
 
 ## Implementation procedure / core patterns
 
@@ -53,9 +54,9 @@ Canonical references:
    - `IntrinsicState` when each item can check itself
    - `ResourceStateProvider` when one cached query should feed many resources
 3. Add/adjust the owning domain's config module and `conf/<name>.toml`.
-4. Wire the task (prefer `config_resource_task!` for injected config or
-   `resource_task!` for config-free resources), select `ProcessOpts`, and
-   register static tasks in `cli/src/app/catalog.rs`.
+4. Wire the task as a hand-written `impl Task` that calls
+   `run_resource_task()` (or `run_batch_resource_task()` for cached state),
+   select `ProcessOpts`, and register static tasks in `cli/src/app/catalog.rs`.
 5. Export modules from the relevant `mod.rs` files.
 6. Add or update focused tests (resource + config/task wiring as needed).
 

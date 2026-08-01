@@ -38,63 +38,145 @@ impl IntrinsicState for DummyResource {
     }
 }
 
-resource_task! {
-    /// Test-only task for resource-task macro behaviour.
-    CountingResourceTask {
+/// Test-only task exercising the shared resource-task body.
+#[derive(Debug)]
+struct CountingResourceTask;
+
+impl CountingResourceTask {
+    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
+        run_resource_task(
+            ctx,
+            announce,
+            Vec::<()>::new(),
+            |(), _ctx| DummyResource,
+            &ProcessOpts::strict("count"),
+        )
+    }
+}
+
+impl Task for CountingResourceTask {
+    task_metadata! {
         name: "Counting resource task",
-        items: |_ctx| {
-            RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-            Vec::<()>::new()
-        },
-        build: |_item, _ctx| DummyResource,
-        opts: ProcessOpts::strict("count"),
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        Self::process(ctx, Some("Counting resource task"))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(Self::process(ctx, None)?))
     }
 }
 
-resource_task! {
-    /// Test-only task for batch-resource-task macro behaviour.
-    CountingBatchTask {
+/// Test-only task exercising the shared batch-resource-task body.
+#[derive(Debug)]
+struct CountingBatchTask;
+
+impl CountingBatchTask {
+    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
+        run_batch_resource_task(
+            ctx,
+            announce,
+            Vec::<()>::new(),
+            |(), _ctx| DummyResource,
+            |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
+            |_resource, _cache| Ok(ResourceState::Correct),
+            &ProcessOpts::strict("count"),
+        )
+    }
+}
+
+impl Task for CountingBatchTask {
+    task_metadata! {
         name: "Counting batch task",
-        items: |_ctx| {
-            BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-            Vec::<()>::new()
-        },
-        cache: |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
-        build: |_item, _ctx| DummyResource,
-        state: |_resource, _cache| ResourceState::Correct,
-        opts: ProcessOpts::strict("count"),
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        Self::process(ctx, Some("Counting batch task"))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(Self::process(ctx, None)?))
     }
 }
 
-config_resource_task! {
-    /// Test-only task for config-resource-task macro behaviour.
-    CountingConfigResourceTask {
+/// Test-only config-backed task exercising the shared resource-task body.
+#[derive(Debug)]
+struct CountingConfigResourceTask {
+    config: ConfigHandle<Vec<()>>,
+}
+
+impl CountingConfigResourceTask {
+    const fn new(config: ConfigHandle<Vec<()>>) -> Self {
+        Self { config }
+    }
+
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        let items = self.config.read().to_vec();
+        CONFIG_RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
+        run_resource_task(
+            ctx,
+            announce,
+            items,
+            |(), _ctx| DummyResource,
+            &ProcessOpts::strict("count"),
+        )
+    }
+}
+
+impl Task for CountingConfigResourceTask {
+    task_metadata! {
         name: "Counting config resource task",
-        config: Vec<()>,
-        items: |_config| {
-            CONFIG_RESOURCE_TASK_ITEM_EVALS
-                .with(|count| count.set(count.get().saturating_add(1)));
-            Vec::<()>::new()
-        },
-        build: |_item, _ctx| DummyResource,
-        opts: ProcessOpts::strict("count"),
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.process(ctx, Some("Counting config resource task"))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, None)?))
     }
 }
 
-config_resource_task! {
-    /// Test-only task for config batch-resource-task macro behaviour.
-    CountingConfigBatchTask {
+/// Test-only config-backed task exercising the shared batch body.
+#[derive(Debug)]
+struct CountingConfigBatchTask {
+    config: ConfigHandle<Vec<()>>,
+}
+
+impl CountingConfigBatchTask {
+    const fn new(config: ConfigHandle<Vec<()>>) -> Self {
+        Self { config }
+    }
+
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+        let items = self.config.read().to_vec();
+        CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
+        run_batch_resource_task(
+            ctx,
+            announce,
+            items,
+            |(), _ctx| DummyResource,
+            |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
+            |_resource, _cache| Ok(ResourceState::Correct),
+            &ProcessOpts::strict("count"),
+        )
+    }
+}
+
+impl Task for CountingConfigBatchTask {
+    task_metadata! {
         name: "Counting config batch task",
-        config: Vec<()>,
-        items: |_config| {
-            CONFIG_BATCH_TASK_ITEM_EVALS
-                .with(|count| count.set(count.get().saturating_add(1)));
-            Vec::<()>::new()
-        },
-        cache: |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
-        build: |_item, _ctx| DummyResource,
-        state: |_resource, _cache| ResourceState::Correct,
-        opts: ProcessOpts::strict("count"),
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.process(ctx, Some("Counting config batch task"))
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, None)?))
     }
 }
 

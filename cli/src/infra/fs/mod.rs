@@ -18,7 +18,7 @@ mod temp;
 
 pub use copy::copy_dir_recursive;
 pub use place::{rename_into_place, sibling_temp_path, write_atomic};
-pub use temp::{TempDir, TempPath};
+pub use temp::TempGuard;
 
 /// Abstraction over filesystem queries used by tasks.
 ///

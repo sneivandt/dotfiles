@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn description_returns_extension_id() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
         let resource = VsCodeExtensionResource::new(
             "github.copilot-chat".to_string(),
             "code".to_string(),
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn state_from_installed_correct() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
         let resource = VsCodeExtensionResource::new(
             "github.copilot-chat".to_string(),
             "code".to_string(),
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn state_from_installed_case_insensitive() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
         let resource = VsCodeExtensionResource::new(
             "GitHub.Copilot-Chat".to_string(),
             "code".to_string(),
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn state_from_installed_missing() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
         let resource = VsCodeExtensionResource::new(
             "github.copilot-chat".to_string(),
             "code".to_string(),

@@ -331,100 +331,61 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     fn which_path(&self, program: &str) -> Result<std::path::PathBuf>;
 }
 
-/// The real system executor that delegates to process spawning.
+/// Executor that spawns real system processes.
 ///
-/// Uses the default command timeout but has no cancellation token. Production
-/// task execution should use [`ManagedExecutor`] so Ctrl-C can stop children.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SystemExecutor;
-
-impl Executor for SystemExecutor {
-    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args);
-        execute_checked(cmd, program, &CommandSettings::default_timeout())
-    }
-
-    fn run_in_with_env(
-        &self,
-        dir: &Path,
-        program: &str,
-        args: &[&str],
-        env: &[(&str, &str)],
-    ) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args).current_dir(dir);
-        for (k, v) in env {
-            cmd.env(k, v);
-        }
-        execute_checked(
-            cmd,
-            &format!("{program} in {}", dir.display()),
-            &CommandSettings::default_timeout(),
-        )
-    }
-
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args);
-        let result = execute_unchecked(cmd, program, &CommandSettings::default_timeout())?;
-        log_command_output(program, &result);
-        Ok(result)
-    }
-
-    #[cfg(windows)]
-    fn run_windows_cmd_unchecked(&self, command_line: &str) -> Result<ExecResult> {
-        execute_windows_cmd_unchecked(command_line, &CommandSettings::default_timeout())
-    }
-
-    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args).current_dir(dir);
-        let result = execute_unchecked(
-            cmd,
-            &format!("{program} in {}", dir.display()),
-            &CommandSettings::default_timeout(),
-        )?;
-        log_command_output(&format!("{program} in {}", dir.display()), &result);
-        Ok(result)
-    }
-
-    fn which(&self, program: &str) -> bool {
-        which::which(program).is_ok()
-    }
-
-    fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
-        which::which(program).with_context(|| format!("{program} not found on PATH"))
-    }
-}
-
-/// Executor used by task execution so spawned commands honour cancellation.
+/// The only thing that varies between uses is the [`CommandSettings`] applied
+/// to each spawn, so both flavours are the same type: [`system`](Self::system)
+/// spawns with the default timeout and no cancellation, while
+/// [`managed`](Self::managed) additionally honours a cancellation token so
+/// Ctrl-C can stop children.
 #[derive(Debug, Clone)]
-pub struct ManagedExecutor {
-    cancellation: CancellationToken,
-    timeout: Duration,
+pub struct ProcessExecutor {
+    settings: CommandSettings,
 }
 
-impl ManagedExecutor {
-    /// Create a managed executor with the default per-command timeout.
+impl ProcessExecutor {
+    /// Create an executor that uses the default command timeout and cannot be
+    /// cancelled.
+    ///
+    /// Production task execution should prefer [`managed`](Self::managed) so
+    /// Ctrl-C can stop spawned children; this flavour exists for the
+    /// bootstrap paths that run before a cancellation token exists.
     #[must_use]
-    pub const fn new(cancellation: CancellationToken) -> Self {
+    pub const fn system() -> Self {
         Self {
-            cancellation,
-            timeout: DEFAULT_COMMAND_TIMEOUT,
+            settings: CommandSettings::default_timeout(),
         }
     }
 
-    fn settings(&self) -> CommandSettings {
-        CommandSettings::managed(self.cancellation.clone(), self.timeout)
+    /// Create an executor whose spawned commands honour `cancellation`.
+    #[must_use]
+    pub const fn managed(cancellation: CancellationToken) -> Self {
+        Self {
+            settings: CommandSettings::managed(cancellation, DEFAULT_COMMAND_TIMEOUT),
+        }
+    }
+
+    /// Managed executor with an explicit timeout, for tests that need to
+    /// observe timeout and cancellation behaviour without waiting minutes.
+    #[cfg(test)]
+    const fn managed_with_timeout(cancellation: CancellationToken, timeout: Duration) -> Self {
+        Self {
+            settings: CommandSettings::managed(cancellation, timeout),
+        }
     }
 }
 
-impl Executor for ManagedExecutor {
+impl Default for ProcessExecutor {
+    fn default() -> Self {
+        Self::system()
+    }
+}
+
+impl Executor for ProcessExecutor {
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
         let mut cmd = new_command(program);
         cmd.args(args);
-        execute_checked(cmd, program, &self.settings())
+        execute_checked(cmd, program, &self.settings)
     }
 
     fn run_in_with_env(
@@ -442,28 +403,28 @@ impl Executor for ManagedExecutor {
         execute_checked(
             cmd,
             &format!("{program} in {}", dir.display()),
-            &self.settings(),
+            &self.settings,
         )
     }
 
     fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
         let mut cmd = new_command(program);
         cmd.args(args);
-        let result = execute_unchecked(cmd, program, &self.settings())?;
+        let result = execute_unchecked(cmd, program, &self.settings)?;
         log_command_output(program, &result);
         Ok(result)
     }
 
     #[cfg(windows)]
     fn run_windows_cmd_unchecked(&self, command_line: &str) -> Result<ExecResult> {
-        execute_windows_cmd_unchecked(command_line, &self.settings())
+        execute_windows_cmd_unchecked(command_line, &self.settings)
     }
 
     fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
         let mut cmd = new_command(program);
         cmd.args(args).current_dir(dir);
         let label = format!("{program} in {}", dir.display());
-        let result = execute_unchecked(cmd, &label, &self.settings())?;
+        let result = execute_unchecked(cmd, &label, &self.settings)?;
         log_command_output(&label, &result);
         Ok(result)
     }

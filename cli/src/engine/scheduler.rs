@@ -100,10 +100,6 @@ fn dependency_outcome(
 /// Returns the recorded task status. On panic the task is recorded as
 /// [`TaskStatus::Failed`], any buffered output is flushed, and dependents are
 /// blocked the same way they are for ordinary task failures.
-fn run_task_guarded(task: &dyn Task, ctx: &Context, log: &Arc<Logger>) -> TaskStatus {
-    run_task_buffered(task, ctx, log, true)
-}
-
 fn run_task_buffered(
     task: &dyn Task,
     ctx: &Context,
@@ -142,6 +138,37 @@ fn run_task_buffered(
 
     buf.flush_and_complete(task.name(), status);
     status
+}
+
+/// Resolve one task against its dependency outcome, running it only when the
+/// dependencies were satisfied and the run has not been cancelled.
+///
+/// Shared by both schedulers so the parallel and sequential paths cannot drift:
+/// they differ only in whether a task start notification is emitted, which the
+/// sequential path does not need because it never interleaves output.
+fn dispatch_task(
+    task: &dyn Task,
+    ctx: &Context,
+    log: &Arc<Logger>,
+    dependencies: DependencySignal,
+    notify_start: bool,
+) -> DependencySignal {
+    let skip_reason = match dependencies {
+        DependencySignal::Blocked => Some(("dependency failed", DependencySignal::Blocked)),
+        DependencySignal::Cancelled => Some(("cancelled", DependencySignal::Cancelled)),
+        DependencySignal::Satisfied if ctx.is_cancelled() => {
+            Some(("cancelled", DependencySignal::Cancelled))
+        }
+        DependencySignal::Satisfied => None,
+    };
+
+    let Some((reason, signal)) = skip_reason else {
+        return DependencySignal::from_status(run_task_buffered(task, ctx, log, notify_start));
+    };
+
+    record_scheduler_skip(task, &**log, reason);
+    log.emit_task_result_and_redraw(task.name());
+    signal
 }
 
 /// Run tasks in parallel using a dependency graph.
@@ -214,26 +241,7 @@ pub(crate) fn run_tasks_parallel(
                 // Receive every signal so failure takes precedence over
                 // cancellation when dependency outcomes are mixed.
                 let dependency_signal = dependency_outcome(dependency_receiver, dep_count);
-                let signal = match dependency_signal {
-                    DependencySignal::Blocked => {
-                        record_scheduler_skip(task, &**log, "dependency failed");
-                        log.emit_task_result_and_redraw(task.name());
-                        DependencySignal::Blocked
-                    }
-                    DependencySignal::Cancelled => {
-                        record_scheduler_skip(task, &**log, "cancelled");
-                        log.emit_task_result_and_redraw(task.name());
-                        DependencySignal::Cancelled
-                    }
-                    DependencySignal::Satisfied if ctx.is_cancelled() => {
-                        record_scheduler_skip(task, &**log, "cancelled");
-                        log.emit_task_result_and_redraw(task.name());
-                        DependencySignal::Cancelled
-                    }
-                    DependencySignal::Satisfied => {
-                        DependencySignal::from_status(run_task_guarded(task, ctx, log))
-                    }
-                };
+                let signal = dispatch_task(task, ctx, log, dependency_signal, true);
 
                 signal_dependents(task.name(), dependent_senders, signal);
             });
@@ -270,26 +278,7 @@ pub(crate) fn run_tasks_sequential(
         let Some(task) = tasks.get(idx) else {
             continue;
         };
-        let signal = match dependency_signal {
-            DependencySignal::Blocked => {
-                record_scheduler_skip(*task, &**log, "dependency failed");
-                log.emit_task_result_and_redraw(task.name());
-                DependencySignal::Blocked
-            }
-            DependencySignal::Cancelled => {
-                record_scheduler_skip(*task, &**log, "cancelled");
-                log.emit_task_result_and_redraw(task.name());
-                DependencySignal::Cancelled
-            }
-            DependencySignal::Satisfied if ctx.is_cancelled() => {
-                record_scheduler_skip(*task, &**log, "cancelled");
-                log.emit_task_result_and_redraw(task.name());
-                DependencySignal::Cancelled
-            }
-            DependencySignal::Satisfied => {
-                DependencySignal::from_status(run_task_buffered(*task, ctx, log, false))
-            }
-        };
+        let signal = dispatch_task(*task, ctx, log, dependency_signal, false);
 
         if let Some(slot) = signals.get_mut(idx) {
             *slot = Some(signal);

@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn description_returns_unit_name() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
         let resource = SystemdUnitResource::new(
             "clean-home-tmp.timer".to_string(),
             UnitScope::User,
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn from_entry_copies_name() {
-        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::SystemExecutor);
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "dunst.service".to_string(),
             scope: UnitScope::User,

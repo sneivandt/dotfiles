@@ -20,7 +20,7 @@ use crate::infra::logging::OutputExt as _;
 pub fn is_elevated() -> bool {
     use crate::infra::exec::Executor as _;
 
-    crate::infra::exec::SystemExecutor
+    crate::infra::exec::ProcessExecutor::system()
         .run_unchecked("net", &["session"])
         .is_ok_and(|result| result.success)
 }
@@ -164,7 +164,7 @@ pub const fn wait_if_elevated() {}
 pub(crate) fn preferred_powershell() -> &'static str {
     use crate::infra::exec::Executor as _;
 
-    if crate::infra::exec::SystemExecutor
+    if crate::infra::exec::ProcessExecutor::system()
         .run_unchecked("pwsh", &["-NoProfile", "-Command", "exit 0"])
         .is_ok_and(|result| result.success)
     {

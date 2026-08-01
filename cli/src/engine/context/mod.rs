@@ -152,7 +152,6 @@ impl Context {
     /// Intended for test helpers and integration-test scaffolding that supply
     /// fully-constructed components rather than deriving them from the
     /// environment.  Prefer [`Context::new`] in production code.
-    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn from_raw(
         root: std::path::PathBuf,
         overlay: Option<std::path::PathBuf>,
@@ -278,21 +277,18 @@ impl Context {
 
     /// Create a copy of this context with dry-run mode set.
     #[must_use]
-    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_dry_run(&self, dry_run: bool) -> Self {
         self.clone_with(|ctx| ctx.dry_run = dry_run)
     }
 
     /// Create a copy of this context with parallel mode set.
     #[must_use]
-    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_parallel(&self, parallel: bool) -> Self {
         self.clone_with(|ctx| ctx.parallel = parallel)
     }
 
     /// Create a copy of this context with a different home directory.
     #[must_use]
-    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_home(&self, home: std::path::PathBuf) -> Self {
         self.clone_with(|ctx| ctx.home = Arc::new(home))
     }
@@ -302,7 +298,6 @@ impl Context {
     /// Used in tests to validate CI-gated task behaviour without mutating
     /// process-global environment variables.
     #[must_use]
-    #[cfg(any(test, feature = "internal-api", doctest))]
     pub fn with_ci(&self, is_ci: bool) -> Self {
         self.clone_with(|ctx| ctx.is_ci = is_ci)
     }

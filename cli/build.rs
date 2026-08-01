@@ -30,14 +30,21 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DOTFILES_VERSION");
 }
 
-/// Register `cargo:rerun-if-changed` directives for the Git HEAD and refs.
+/// Register `cargo:rerun-if-changed` directives for the Git HEAD and tags.
 ///
 /// - **HEAD** lives in the per-worktree git directory (`git rev-parse
 ///   --absolute-git-dir`), which may be a `worktrees/<name>/` subdirectory of
 ///   the main `.git/` directory rather than `.git/` itself.
-/// - **refs/** and **packed-refs** live in the common git directory (`git
+/// - **refs/tags/** and **packed-refs** live in the common git directory (`git
 ///   rev-parse --git-common-dir`), which is the same as the git dir for
 ///   non-worktree clones but points to the shared root for worktrees.
+///
+/// Only `refs/tags/` is tracked, not all of `refs/`. Cargo resolves a directory
+/// trigger to the newest mtime anywhere beneath it, and `git describe --tags`
+/// reads only HEAD and tags. Watching all of `refs/` meant that branch updates,
+/// fetches, and any tool writing its own refs namespace under `refs/` rebuilt
+/// this crate from scratch, because a build-script rerun invalidates every
+/// dependent unit.
 ///
 /// Falls back to the conventional `../.git/` paths if `git` is unavailable or
 /// the working directory is not inside a git repository.
@@ -65,13 +72,14 @@ fn register_git_rerun_triggers() {
         println!("cargo:rerun-if-changed=../.git/HEAD");
     }
 
-    // refs/ and packed-refs are shared across all worktrees.
+    // refs/tags/ and packed-refs are shared across all worktrees.
     let refs_base = git_common_dir.as_deref().or(git_dir.as_deref());
     if let Some(dir) = refs_base {
-        println!("cargo:rerun-if-changed={dir}/refs/");
+        println!("cargo:rerun-if-changed={dir}/refs/tags/");
         println!("cargo:rerun-if-changed={dir}/packed-refs");
     } else {
-        println!("cargo:rerun-if-changed=../.git/refs/");
+        println!("cargo:rerun-if-changed=../.git/refs/tags/");
+        println!("cargo:rerun-if-changed=../.git/packed-refs");
     }
 }
 

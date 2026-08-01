@@ -17,10 +17,8 @@ use resolution::resolve_with_defs;
 
 pub use environment::read_from_env;
 pub use persistence::{persist, read_persisted};
-#[cfg(any(test, feature = "internal-api", doctest))]
 pub use prompt::prompt_interactive;
 pub use resolution::Profile;
-#[cfg(any(test, feature = "internal-api", doctest))]
 pub use resolution::resolve;
 
 #[cfg(test)]

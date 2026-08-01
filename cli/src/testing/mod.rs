@@ -1,7 +1,12 @@
 //! Internal API facade used by integration tests and doctests.
 //!
 //! This module keeps production internals crate-private while exposing a small,
-//! feature-gated surface for tests that need to exercise the real engine.
+//! `#[doc(hidden)]` surface for tests that need to exercise the real engine.
+//! It is compiled unconditionally: gating it behind a feature required the
+//! package to depend on itself as a dev-dependency, which gave `cargo build`
+//! and `cargo test` different feature sets and made them evict each other's
+//! cached build of this crate. Everything here is a re-export, so the linker
+//! drops it from the release binary.
 
 pub mod cli {
     pub use crate::app::cli::{GlobalOpts, InstallOpts, TestOpts, UpdateOpts};

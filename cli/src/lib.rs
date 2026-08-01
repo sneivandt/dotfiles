@@ -1,6 +1,6 @@
 #![allow(
     unreachable_pub,
-    reason = "internal modules are hidden behind the binary entry point and internal-api facade"
+    reason = "internal modules are hidden behind the binary entry point and the testing facade"
 )]
 
 //! Dotfiles management engine library entry point.
@@ -21,7 +21,11 @@ mod domains;
 mod engine;
 mod infra;
 
-#[cfg(any(feature = "internal-api", doctest))]
+/// Internal API facade for integration tests and doctests.
+///
+/// Not a supported API surface. The crate is `publish = false` and this module
+/// is `#[doc(hidden)]`; it exists so `tests/` can drive the real engine without
+/// making every internal item `pub`.
 #[doc(hidden)]
 pub mod testing;
 

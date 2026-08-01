@@ -155,10 +155,20 @@ fn unverified(policy: Policy, asset: &str, reason: &str) -> Result<()> {
 }
 
 /// Write `data` to a uniquely named temporary file for verification.
+///
+/// The counter keeps concurrent calls from colliding. The PID alone is not
+/// enough: unit tests exercise this path from several threads of one process
+/// with the same asset name, so a shared path let one call's [`TempPath`] guard
+/// delete a file another call was still writing.
+///
+/// [`TempPath`]: crate::infra::fs::TempPath
 fn stage_for_verification(asset: &str, data: &[u8]) -> Result<crate::infra::fs::TempPath> {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     let unique = format!(
-        ".dotfiles-attest-{pid}-{asset}",
+        ".dotfiles-attest-{pid}-{seq}-{asset}",
         pid = std::process::id(),
+        seq = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         asset = asset
     );
     let path = std::env::temp_dir().join(unique);
@@ -279,12 +289,20 @@ mod tests {
 
     #[test]
     fn staged_file_is_removed_after_verification() {
+        // A dedicated asset name keeps this scan from seeing files staged by
+        // sibling tests running on other threads.
+        let asset = "cleanup-probe-x86_64";
         let gh = stub(true, true);
-        verify_provenance(&gh, Policy::Advisory, "dotfiles-linux-x86_64", b"data").unwrap();
-        let staged = std::env::temp_dir().join(format!(
-            ".dotfiles-attest-{}-dotfiles-linux-x86_64",
-            std::process::id()
-        ));
-        assert!(!staged.exists(), "temporary file should be cleaned up");
+        verify_provenance(&gh, Policy::Advisory, asset, b"data").unwrap();
+        let leftovers: Vec<_> = std::fs::read_dir(std::env::temp_dir())
+            .expect("temp dir should be readable")
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(asset))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temporary file should be cleaned up: {leftovers:?}"
+        );
     }
 }

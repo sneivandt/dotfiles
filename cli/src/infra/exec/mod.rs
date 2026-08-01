@@ -85,7 +85,6 @@ struct CommandSettings {
 }
 
 impl CommandSettings {
-    #[cfg(any(windows, test, feature = "internal-api"))]
     const fn default_timeout() -> Self {
         Self {
             timeout: DEFAULT_COMMAND_TIMEOUT,
@@ -337,10 +336,8 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
 /// Uses the default command timeout but has no cancellation token. Production
 /// task execution should use [`ManagedExecutor`] so Ctrl-C can stop children.
 #[derive(Debug, Clone, Copy, Default)]
-#[cfg(any(windows, test, feature = "internal-api"))]
 pub struct SystemExecutor;
 
-#[cfg(any(windows, test, feature = "internal-api"))]
 impl Executor for SystemExecutor {
     fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
         let mut cmd = new_command(program);

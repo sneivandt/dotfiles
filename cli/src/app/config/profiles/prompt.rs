@@ -2,13 +2,11 @@
 
 use std::collections::HashMap;
 use std::io::{self, Write};
-#[cfg(any(test, feature = "internal-api", doctest))]
 use std::path::Path;
 
 use anyhow::{Context as _, Result, bail};
 
 use super::definitions::ProfileDef;
-#[cfg(any(test, feature = "internal-api", doctest))]
 use super::definitions::load_definitions;
 
 /// Interactively prompt the user to select a profile.
@@ -16,7 +14,6 @@ use super::definitions::load_definitions;
 /// # Errors
 ///
 /// Returns an error if profiles cannot be loaded or user input cannot be read.
-#[cfg(any(test, feature = "internal-api", doctest))]
 pub fn prompt_interactive(conf_dir: &Path) -> Result<String> {
     let definitions = load_definitions(&conf_dir.join("profiles.toml"))?;
     prompt_interactive_with_defs(&definitions)

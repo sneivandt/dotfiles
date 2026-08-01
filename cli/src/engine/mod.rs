@@ -40,7 +40,6 @@ pub use crate::infra::cancellation::CancellationToken;
 pub use context::Context;
 pub use context::ContextOpts;
 pub use mode::ProcessOpts;
-#[cfg(any(test, feature = "internal-api", doctest))]
 pub use mode::{ProcessMode, ResourceAction};
 pub(crate) use operation::{Operation, OperationState, process_operation};
 pub use orchestrate::{

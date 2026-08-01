@@ -1,7 +1,6 @@
 //! Profile category resolution.
 
 use std::collections::HashMap;
-#[cfg(any(test, feature = "internal-api", doctest))]
 use std::path::Path;
 
 use anyhow::Result;
@@ -11,7 +10,6 @@ use crate::infra::config::category_matcher::Category;
 use crate::infra::platform::Platform;
 
 use super::definitions::ProfileDef;
-#[cfg(any(test, feature = "internal-api", doctest))]
 use super::definitions::load_definitions;
 
 /// A resolved profile with its active and excluded categories.
@@ -30,7 +28,6 @@ pub struct Profile {
 /// # Errors
 ///
 /// Returns an error if the profile is unknown or its definitions cannot be loaded.
-#[cfg(any(test, feature = "internal-api", doctest))]
 pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profile, ConfigError> {
     let definitions = load_definitions(&conf_dir.join("profiles.toml"))?;
     resolve_with_defs(name, &definitions, platform)

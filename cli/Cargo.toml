@@ -41,15 +41,21 @@ unicode-width = "0.2"
 insta = { version = "1", features = ["yaml"] }
 mockall = "0.15"
 tempfile = "3"
-dotfiles-cli = { version = "0.1.0", path = ".", features = ["internal-api"] }
 # tests/domain_boundaries.rs parses src/ as a syntax tree instead of scanning it
 # as text. `span-locations` is what makes line numbers available outside a
 # proc-macro context, so violations can still be reported as `file:line`.
+#
+# Known cost: `syn`'s `visit` feature and `proc-macro2`'s `span-locations` also
+# apply to the host copies of those crates that every derive macro in the tree
+# builds against, because Cargo unifies host and target features when not
+# cross-compiling. `cargo build` excludes dev-dependencies and `cargo test`
+# includes them, so the two commands resolve different feature sets and evict
+# each other's cached build of this crate (~15-30s per switch). Repeating
+# either command on its own is unaffected. Narrowing the features does not
+# help: `visit` is the feature the test exists to use. Moving the test into a
+# separate package is the only real fix.
 syn = { version = "2", features = ["full", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
-
-[features]
-internal-api = []
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

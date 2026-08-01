@@ -1,7 +1,8 @@
 # Dotfiles Agent Instructions
 
-Start with the skill index: [`./.agents/README.md`](./.agents/README.md). Load
-only relevant skills plus listed companions.
+Start with the skill index: [`./.agents/README.md`](./.agents/README.md). It is
+the single source for skill routing and conditional companions. Load only the
+relevant skills plus their listed companions; do not recurse.
 
 ## Repository invariants
 
@@ -16,18 +17,6 @@ only relevant skills plus listed companions.
   `cli/src/app/catalog.rs`; command-specific tasks belong in their command's
   task list.
 - Conditional symlink behavior and manifest coverage must stay synchronized.
-
-## Entry matrix (pick layer, then skill)
-
-| Change type | Read first | Then |
-|---|---|---|
-| Rust routing/conventions | `rust-patterns` | focused subsystem skill |
-| Resources/providers | `resource-implementation` | `engine-orchestration`, `error-handling-patterns`, `testing-patterns` |
-| Task dependencies/scheduling/operations | `engine-orchestration` | `logging-patterns`, `testing-patterns` |
-| Profiles/sparse checkout/symlinks | `profile-system` / `sparse-checkout-patterns` / `symlink-management` | `toml-configuration`, `config-validation` |
-| Windows-specific behavior | `windows-specific-patterns` | `cross-platform-verification`, `shell-patterns` |
-| Agent/APM config | `ai-tooling-apm` | `toml-configuration`, `config-validation` |
-| CI workflows/publishing | `ci-cd-patterns` | `cross-platform-verification`, `testing-patterns` |
 
 ## Standard change workflow
 

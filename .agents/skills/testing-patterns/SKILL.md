@@ -35,7 +35,7 @@ description: >
 
 1. Put unit tests with the module unless they are large enough to externalize.
 2. Reuse existing helpers:
-   - `cli/src/app/test_helpers.rs` context/config helpers for unit tests
+   - `cli/src/app/test_helpers/` context/config helpers for unit tests
    - `cli/tests/common/mod.rs` integration helpers and builders
 3. Keep assertions specific and behavior-focused.
 4. Update snapshots intentionally (`INSTA_UPDATE=unseen cargo test`, then

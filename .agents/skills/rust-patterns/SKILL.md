@@ -37,6 +37,15 @@ cli/src/
 └── testing/        # Feature-gated compatibility facade for integration tests
 ```
 
+## Module Layout Conventions
+
+- Use the standard Rust module layout. `mod.rs` handles wiring and public
+  re-exports; keep implementation logic in focused sibling files.
+- `config/` and `resources/` are the shared domain subdirectory categories, and
+  `tests/` holds externalized domain tests. A large feature may use
+  `<feature>.rs` as its root entry with support modules under `<feature>/`.
+- Split a module by domain responsibility rather than by size alone.
+
 ## Core Conventions
 
 - Use `anyhow::Result` with contextual `?` propagation in commands/tasks, and
@@ -91,9 +100,8 @@ cli/src/
   check -> dry-run -> mutate order manually.
 - Keep applicability centralized: `should_run()` decides eligibility, while
   `run_configured()` only suppresses tasks with no configured work.
-- Keep task metadata distinct: `TaskId` is scheduler identity, `selector()` is
-  the stable exact-match CLI interface, `name()` is the display label, and
-  `visibility()` controls discovery, normal rows, and totals.
+- Keep task metadata roles distinct; `engine-orchestration` owns the full
+  `TaskId`/`selector()`/`name()`/`visibility()` statement.
 - Preserve discovery insertion order and natural parallel completion-order
   output; do not sort completed task rows.
 - Inject typed `ConfigHandle<T>` values into config-backed tasks and keep read

@@ -78,13 +78,11 @@ Both severities fail `dotfiles test`; severity controls rendering and meaning.
 ## Integration Tests: Config Drift
 
 `cli/tests/config_drift.rs` reads the real `conf/` files and checks cross-file
-consistency:
-
-| Test | What it catches |
-|---|---|
-| `non_base_symlink_sections_have_manifest_sections` | Non-base symlink section missing from `manifest.toml` |
-| `non_base_symlink_sources_covered_by_manifest` | Symlink source not covered by any manifest path |
-| `manifest_paths_exist_in_symlinks_dir` | Manifest path pointing to non-existent file in `symlinks/` |
+consistency. Treat that file as the authoritative inventory rather than
+duplicating its test list here. It covers, non-exhaustively: symlink section to
+`manifest.toml` section coverage in both directions, every non-base symlink
+source being covered by some manifest path, and every manifest path existing
+under `symlinks/`.
 
 These tests use private TOML structs (not library types) to stay self-contained.
 The `is_covered_by()` helper handles directory prefix matching (trailing `/`).

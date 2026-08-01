@@ -79,10 +79,14 @@ Canonical references:
 
 ## Common mistakes / anti-patterns
 
-- subprocess calls outside executor abstraction
-- config read guards held during long/parallel work
-- mutation logic in `should_run()`
-- duplicated resource-processing dry-run logic
-- static task added without catalog registration
-- conditional symlink handling without manifest coverage
-- hardcoded OS checks where capability helpers exist
+Resource-specific:
+
+- mutating inside `IntrinsicState`/`ResourceStateProvider` state checks instead
+  of `apply`/`remove`
+- returning untyped errors from `apply`/`remove` instead of `ResourceError`
+- hand-rolling dry-run/apply loops in the task body instead of using
+  `process_resources*`
+
+See `engine-orchestration` for the shared task/orchestration anti-patterns
+(executor abstraction, config read guards, `should_run()` mutation, catalog
+registration, manifest coverage, capability helpers).

@@ -18,12 +18,11 @@ subsystem is also touched, and do not recursively load companions.
 | [`error-handling-patterns`](./skills/error-handling-patterns/SKILL.md) | Idempotency, dry-run, task results, and resource/task error handling | `logging-patterns` |
 | [`git-hooks-patterns`](./skills/git-hooks-patterns/SKILL.md) | Hook installation, hook behavior, and sensitive-data scanning in `hooks/` | `shell-patterns`, `ci-cd-patterns` |
 | [`logging-patterns`](./skills/logging-patterns/SKILL.md) | Logger usage, task statuses/visibility, buffered output, compact details, or summary behavior | `testing-patterns` |
-| [`module-organization`](./skills/module-organization/SKILL.md) | Moving/splitting/adding Rust modules under `cli/src/` | `rust-patterns`, `testing-patterns` |
 | [`overlay-scripts`](./skills/overlay-scripts/SKILL.md) | Overlay config loading, convention-based script resources, or dynamic script tasks | `resource-implementation`, `profile-system`, `toml-configuration` |
 | [`package-management`](./skills/package-management/SKILL.md) | Pacman/paru/winget package resource and task behavior | `resource-implementation`, `windows-specific-patterns` |
 | [`profile-system`](./skills/profile-system/SKILL.md) | Profile resolution, category activation/exclusion, profile selection/persistence | `sparse-checkout-patterns`, `symlink-management`, `toml-configuration` |
 | [`resource-implementation`](./skills/resource-implementation/SKILL.md) | Choosing and implementing `Resource`, `IntrinsicState`, or `ResourceStateProvider` | `error-handling-patterns`, `testing-patterns` |
-| [`rust-patterns`](./skills/rust-patterns/SKILL.md) | Router for `cli/src/` changes and core Rust conventions | load the focused skill for the touched subsystem |
+| [`rust-patterns`](./skills/rust-patterns/SKILL.md) | Router for `cli/src/` changes, core Rust conventions, and module layout | load the focused skill for the touched subsystem |
 | [`shell-patterns`](./skills/shell-patterns/SKILL.md) | `dotfiles.sh`/`dotfiles.ps1` bootstrap behavior and POSIX hook scripts | `windows-specific-patterns` |
 | [`sparse-checkout-patterns`](./skills/sparse-checkout-patterns/SKILL.md) | `manifest.toml` category exclusions and sparse-checkout behavior | `toml-configuration` |
 | [`symlink-management`](./skills/symlink-management/SKILL.md) | `conf/symlinks.toml`, symlink resource behavior, and manifest alignment | `config-validation` |

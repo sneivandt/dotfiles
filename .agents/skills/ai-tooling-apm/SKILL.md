@@ -16,10 +16,10 @@ the Rust `InstallApmPackages` task.
 
 | Path | Purpose |
 |---|---|
-| `symlinks/apm/config/base.yml` | APM manifest fragment linked to `~/.apm/config/base.yml` |
+| `symlinks/apm/config/*.yml` | APM manifest fragments merged by APM; `base.yml` is the baseline, platform-scoped fragments such as `arch.yml` layer on top |
 | `symlinks/apm/plugins/dot-agent` | Local agent interaction workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
-| `conf/symlinks.toml` | Links `apm/config/base.yml` and `apm/plugins/*` from this repo |
+| `conf/symlinks.toml` | Links `apm/plugins/*` and each `apm/config/*.yml` fragment from its matching category section (`base.yml` under `[base]`, `arch.yml` under `[arch]`) |
 | `cli/src/domains/ai/apm.rs` + `cli/src/domains/ai/apm/` | APM install/update tasks and support code |
 
 ## When to Change What
@@ -28,10 +28,14 @@ the Rust `InstallApmPackages` task.
   guide agents working on this dotfiles codebase.
 - Update `symlinks/apm/plugins/dot-*` for personal reusable skills that should
   be installed into the user's global APM environment.
-- Update `symlinks/apm/config/base.yml` when adding, removing, or re-grouping
-  external APM plugin dependencies. Keep its top-level `targets:` list intact:
-  it pins which runtimes APM deploys into, and dropping it lets APM auto-detect
-  and deploy into unused harness directories. See `docs/APM.md`.
+- Update the relevant `symlinks/apm/config/*.yml` fragment when adding,
+  removing, or re-grouping external APM plugin dependencies: `base.yml` for
+  everything cross-platform, a platform-scoped fragment (for example
+  `arch.yml`) when the dependency only applies there. Keep `base.yml`'s
+  top-level `targets:` list intact: it pins which runtimes APM deploys into, and
+  dropping it lets APM auto-detect and deploy into unused harness directories. A
+  new fragment also needs a `conf/symlinks.toml` entry in its category section.
+  See `docs/APM.md`.
 - Update docs when the user-facing install, Windows, or usage workflow changes.
 
 ## MCP Servers and Hooks via APM

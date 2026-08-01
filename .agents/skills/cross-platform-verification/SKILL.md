@@ -53,9 +53,9 @@ appropriate, report that explicitly.
 Use the runner rather than invoking the linters directly, so the file list and
 severity flags stay identical to CI.
 
-Console output from the wrappers should match the CLI's style: a
-` · `-separated header line and a matching completion line, rather than
-free-form progress prose.
+Console output from the wrappers should match the CLI's style rather than
+free-form progress prose; see `logging-patterns` for the rule and
+`shell-patterns` for the concrete wrapper example.
 
 ## CI gap reminder
 

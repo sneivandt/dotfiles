@@ -97,6 +97,12 @@ pub(super) fn console_line_with_style(
         }
         tracing::Level::INFO if target == "dotfiles::ui::dry_run" => Some(format!("  {msg}")),
         tracing::Level::INFO => verbose.then(|| format!("  {msg}")),
+        // Verbose surfaces the per-item reasoning behind an outcome — which
+        // resources were already correct, which were skipped and why. Raw
+        // `tracing::debug!` calls from elsewhere stay in the run log.
+        tracing::Level::DEBUG if target == "dotfiles::ui::debug" => {
+            verbose.then(|| format!("  {msg}"))
+        }
         tracing::Level::DEBUG | tracing::Level::TRACE => None,
     }
 }

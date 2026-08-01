@@ -14,6 +14,37 @@ pub(crate) fn format_elapsed(d: std::time::Duration) -> String {
     }
 }
 
+/// Whether a console line says nothing the task's own message does not.
+///
+/// A task that ends with a reason states that reason on its status row, so a
+/// buffered line carrying the same text — bare, or behind one of the prefixes
+/// tasks conventionally use — would report the same fact twice.
+pub(super) fn duplicates_task_message(line: &str, task_message: Option<&str>) -> bool {
+    let Some(message) = task_message else {
+        return false;
+    };
+    if line == message {
+        return true;
+    }
+    ["skipped: ", "skipping: ", "failed: ", "interrupted: "]
+        .iter()
+        .any(|prefix| line.strip_prefix(prefix) == Some(message))
+}
+
+/// Whether a line is a task's aggregate counter summary (`"3 changed, 10
+/// already ok"`).
+///
+/// These restate what the status row and the per-action lines already show, so
+/// they are dropped from console output in every mode and kept in the run log.
+pub(super) fn is_stats_summary(line: &str) -> bool {
+    let Some((first, rest)) = line.split_once(' ') else {
+        return false;
+    };
+    first.parse::<u32>().is_ok()
+        && (rest.starts_with("changed, ") || rest.starts_with("would change, "))
+        && rest.contains(" already ok")
+}
+
 /// Strip ANSI escape sequences from a string.
 ///
 /// Handles SGR sequences (ending in `m`) and other CSI sequences (ending

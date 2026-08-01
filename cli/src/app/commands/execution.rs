@@ -60,6 +60,7 @@ pub(crate) fn run_tasks_to_completion<'a>(
     log: &Arc<Logger>,
 ) -> Result<()> {
     let mut tasks = tasks.into_iter().collect::<Vec<_>>();
+    log.add_task_total(visible_count(tasks.iter().copied()));
     run_task_graph(&mut tasks, ctx, log)?;
     finish_run(log)
 }
@@ -82,10 +83,14 @@ pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
     provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
 ) -> Result<()> {
     let tasks = tasks.into_iter().collect::<Vec<_>>();
+    // Seed the progress denominator with every statically known task so it does
+    // not visibly jump when the run is split across two dependency graphs.
+    log.add_task_total(visible_count(tasks.iter().copied()));
     let boundary_closure = dependency_closure(&tasks, boundary);
 
     if boundary_closure.is_empty() {
         let late_tasks = provider();
+        log.add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
         let mut all_tasks = tasks;
         all_tasks.extend(late_tasks.iter().map(Box::as_ref));
         run_task_graph(&mut all_tasks, ctx, log)?;
@@ -99,6 +104,7 @@ pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
 
         if log.failure_count() == 0 && !ctx.is_cancelled() {
             let late_tasks = provider();
+            log.add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
             let mut remaining = tasks
                 .iter()
                 .copied()
@@ -110,6 +116,17 @@ pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
     }
 
     finish_run(log)
+}
+
+/// Count the tasks a run will report on, excluding internal ones.
+///
+/// The progress denominator and the run summary must agree, and the summary
+/// only accounts for visible tasks.
+fn visible_count<'a>(tasks: impl IntoIterator<Item = &'a dyn Task>) -> usize {
+    tasks
+        .into_iter()
+        .filter(|task| task.visibility() == TaskVisibility::Visible)
+        .count()
 }
 
 fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> {
@@ -163,6 +180,7 @@ fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) 
                     ActionCounts::default(),
                     task.visibility() == TaskVisibility::Visible,
                 );
+                log.mark_task_completed(task.name());
                 log.emit_task_result_and_redraw(task.name());
                 false
             } else {

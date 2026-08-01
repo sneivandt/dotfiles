@@ -47,7 +47,13 @@ pub(in crate::infra::logging) fn init_subscriber(verbose: bool, run_log: Option<
     let console_layer = fmt::layer()
         .event_format(DotfilesFormatter)
         .with_writer(make_writer)
-        .with_filter(LevelFilter::INFO);
+        .with_filter(if verbose {
+            // Verbose renders `dotfiles::ui::debug` events, so they have to
+            // reach the formatter in the first place.
+            LevelFilter::DEBUG
+        } else {
+            LevelFilter::INFO
+        });
 
     let run_log_layer = run_log.map(|log| RunLogLayer::new(log).with_filter(LevelFilter::DEBUG));
 

@@ -10,14 +10,19 @@ use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, format_elapsed, 
 use super::Task;
 use crate::infra::logging::OutputExt as _;
 
-fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: &str) {
+/// Record a task that does not apply to this run.
+///
+/// `reason` is `None` when applicability was decided by the task's own
+/// `should_run` check and there is nothing more specific to say; the `N/A`
+/// status is the whole explanation in that case, so no reason is invented.
+fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: Option<&str>) {
+    let event_detail = reason.unwrap_or("not applicable");
     ctx.log()
-        .run_task_event(LogEvent::TaskSkip, task.name(), reason);
-    ctx.debug_fmt(|| format!("not applicable: {reason}"));
+        .run_task_event(LogEvent::TaskSkip, task.name(), event_detail);
     ctx.log().record_task_with_metadata(
         task.name(),
         TaskStatus::NotApplicable,
-        None,
+        reason,
         ActionCounts::default(),
         task.visibility() == TaskVisibility::Visible,
     );
@@ -43,7 +48,7 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let _enter = span.enter();
     let _diag_context = log_task_context(task.name());
     if !task.should_run(ctx) {
-        record_not_applicable(ctx, task, "not applicable");
+        record_not_applicable(ctx, task, None);
         return TaskStatus::NotApplicable;
     }
 
@@ -51,10 +56,12 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
         .run_task_event(LogEvent::TaskStart, task.name(), "executing");
     let started = std::time::Instant::now();
     let status = record_run_outcome(task, ctx);
+    let elapsed = started.elapsed();
+    ctx.log().record_task_duration(task.name(), elapsed);
     ctx.log().run_task_event(
         LogEvent::TaskTiming,
         task.name(),
-        &format!("elapsed {}", format_elapsed(started.elapsed())),
+        &format!("elapsed {}", format_elapsed(elapsed)),
     );
     status
 }
@@ -106,8 +113,7 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
         Ok(None) => {
             ctx.log()
                 .run_task_event(LogEvent::TaskSkip, task.name(), "nothing configured");
-            ctx.log().debug("nothing configured");
-            rec(TaskStatus::NotApplicable, None)
+            rec(TaskStatus::NotApplicable, Some("nothing configured"))
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
@@ -128,13 +134,11 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
             TaskResult::NotApplicable(reason) => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
-                ctx.debug_fmt(|| format!("not applicable: {reason}"));
-                rec(TaskStatus::NotApplicable, None)
+                rec(TaskStatus::NotApplicable, Some(&reason))
             }
             TaskResult::Skipped(reason) => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
-                ctx.log().info(&reason);
                 rec(TaskStatus::Skipped, Some(&reason))
             }
             TaskResult::Failed(reason) => record_failed_outcome(task, ctx, &reason),
@@ -209,8 +213,32 @@ fn record_batch_outcome(
     } else {
         ctx.log().info(&message);
     }
-    let recorded_message = (stats.message.is_some()
-        || matches!(outcome, TaskStatus::Changed | TaskStatus::Failed))
-    .then_some(message.as_str());
-    record(task, ctx, outcome, recorded_message, actions)
+    let recorded_message = batch_reason(stats, outcome, &message);
+    record(task, ctx, outcome, recorded_message.as_deref(), actions)
+}
+
+/// The reason shown on a batch task's status row.
+///
+/// A skipped batch always states why it did nothing: the aggregate counters are
+/// the only reason available once per-item detail has been filtered out, and a
+/// bare `IGNORE` row is the outcome users most often have to ask about.
+fn batch_reason(
+    stats: &crate::engine::TaskStats,
+    outcome: TaskStatus,
+    message: &str,
+) -> Option<String> {
+    if let Some(custom) = stats.message.clone() {
+        return Some(custom);
+    }
+    match outcome {
+        TaskStatus::Changed | TaskStatus::Failed => Some(message.to_string()),
+        TaskStatus::Skipped => Some(format!(
+            "{} {} skipped",
+            stats.skipped,
+            if stats.skipped == 1 { "item" } else { "items" }
+        )),
+        TaskStatus::Ok | TaskStatus::Passed | TaskStatus::DryRun | TaskStatus::NotApplicable => {
+            None
+        }
+    }
 }

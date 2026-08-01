@@ -1,11 +1,40 @@
 use std::time::Duration;
 
-use super::render::{format_task_line, task_detail_lines, task_result_lines};
+use super::render::{RowOpts, format_task_line, task_detail_lines, task_result_lines};
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::StyleChoice;
 use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus};
 use crate::infra::logging::utils::format_elapsed;
+
+/// Build a task entry with the fields a row-rendering test cares about.
+fn task_entry(name: &str, status: TaskStatus, message: Option<&str>) -> TaskEntry {
+    TaskEntry {
+        name: name.to_string(),
+        status,
+        message: message.map(str::to_string),
+        visible: true,
+        actions: ActionCounts::default(),
+        duration: None,
+    }
+}
+
+/// Standard-mode, non-verbose row options.
+fn plain_opts() -> RowOpts {
+    RowOpts {
+        mode: SummaryMode::Standard,
+        style: StyleChoice::plain(),
+        verbose: false,
+    }
+}
+
+/// Standard-mode, non-verbose row options with colour enabled.
+fn colored_opts() -> RowOpts {
+    RowOpts {
+        style: StyleChoice::colored(),
+        ..plain_opts()
+    }
+}
 
 #[test]
 fn format_elapsed_values() {
@@ -57,7 +86,7 @@ fn standard_summary_groups_task_and_action_counts() {
 }
 
 #[test]
-fn preview_summary_uses_planned_vocabulary() {
+fn dry_run_summary_leads_with_the_dry_run_label() {
     let lines = format_summary_lines(
         SummaryCounts {
             changed: 0,
@@ -77,11 +106,11 @@ fn preview_summary_uses_planned_vocabulary() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["81 changes planned across 1 task · 0.8s"]);
+    assert_eq!(lines, ["Dry run · 81 changes across 1 task · 0.8s"]);
 }
 
 #[test]
-fn preview_summary_counts_unquantified_work_as_tasks() {
+fn dry_run_summary_counts_unquantified_work_as_tasks() {
     let lines = format_summary_lines(
         SummaryCounts {
             dry_run: 2,
@@ -93,7 +122,35 @@ fn preview_summary_counts_unquantified_work_as_tasks() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["2 tasks planned · 0.8s"]);
+    assert_eq!(lines, ["Dry run · 2 tasks with changes · 0.8s"]);
+}
+
+#[test]
+fn summary_totals_account_for_every_reported_task() {
+    let lines = format_summary_lines(
+        SummaryCounts {
+            changed: 2,
+            passed: 0,
+            ok: 15,
+            skipped: 1,
+            dry_run: 0,
+            failed: 0,
+            actions: ActionCounts {
+                applied: 4,
+                ..ActionCounts::default()
+            },
+        },
+        SummaryMode::Standard,
+        false,
+        "2.3s",
+        StyleChoice::plain(),
+    );
+
+    assert_eq!(
+        lines,
+        ["Applied 4 changes across 2 tasks \u{b7} 15 up to date \u{b7} 1 ignored \u{b7} 2.3s"],
+        "every task the run reported on must be represented in the totals"
+    );
 }
 
 #[test]
@@ -142,44 +199,65 @@ fn test_summary_uses_check_vocabulary_and_omits_not_run() {
 fn no_op_standard_commands_skip_extra_blank() {
     for command in ["install", "update", "uninstall"] {
         assert!(
-            !should_space_before_totals(command, false, false),
+            !should_space_before_totals(command, false),
             "{command} no-op runs should not add an extra separator"
         );
     }
-    assert!(should_space_before_totals("install", false, true));
-    assert!(should_space_before_totals("install", true, false));
-    assert!(should_space_before_totals("test", false, false));
+    assert!(should_space_before_totals("install", true));
+    assert!(should_space_before_totals("test", false));
 }
 
 #[test]
 fn changed_task_line_uses_fixed_width_status() {
-    let task = TaskEntry {
-        name: "symlinks".to_string(),
-        status: TaskStatus::Changed,
-        message: Some("3 changed, 8 already ok".to_string()),
-        visible: true,
-        actions: ActionCounts::default(),
+    let task = task_entry(
+        "symlinks",
+        TaskStatus::Changed,
+        Some("3 changed, 8 already ok"),
+    );
+
+    assert_eq!(
+        format_task_line(&task, colored_opts()),
+        "\x1b[32mCHANGE\x1b[0m symlinks"
+    );
+    assert_eq!(format_task_line(&task, plain_opts()), "CHANGE symlinks");
+}
+
+#[test]
+fn task_line_states_the_reason_beside_the_task_name() {
+    let task = task_entry(
+        "Dotfiles repository",
+        TaskStatus::Skipped,
+        Some("local changes present"),
+    );
+
+    assert_eq!(
+        format_task_line(&task, plain_opts()),
+        "IGNORE Dotfiles repository \u{b7} local changes present"
+    );
+}
+
+#[test]
+fn verbose_task_line_reports_elapsed_time() {
+    let mut task = task_entry("Home symlinks", TaskStatus::Ok, None);
+    task.duration = Some(Duration::from_millis(1500));
+    let opts = RowOpts {
+        verbose: true,
+        ..plain_opts()
     };
 
     assert_eq!(
-        format_task_line(&task, SummaryMode::Standard, StyleChoice::colored()),
-        "\x1b[32mCHANGE\x1b[0m symlinks"
-    );
-    assert_eq!(
-        format_task_line(&task, SummaryMode::Standard, StyleChoice::plain()),
-        "CHANGE symlinks"
+        format_task_line(&task, opts),
+        "OK     Home symlinks \u{b7} 1.5s"
     );
 }
 
 #[test]
 fn task_detail_lines_filters_generic_stats_summary() {
-    let task = TaskEntry {
-        name: "symlinks".to_string(),
-        status: TaskStatus::Changed,
-        message: Some("2 changed, 1 already ok".to_string()),
-        visible: true,
-        actions: ActionCounts::default(),
-    };
+    let task = task_entry(
+        "symlinks",
+        TaskStatus::Changed,
+        Some("2 changed, 1 already ok"),
+    );
     let details = vec![TaskDetailEntry {
         name: "symlinks".to_string(),
         lines: vec![
@@ -195,62 +273,40 @@ fn task_detail_lines_filters_generic_stats_summary() {
 }
 
 #[test]
-fn task_detail_lines_filters_prefixed_skip_message() {
-    let task = TaskEntry {
-        name: "skip-task".to_string(),
-        status: TaskStatus::Skipped,
-        message: Some("dependency failed".to_string()),
-        visible: true,
-        actions: ActionCounts::default(),
-    };
+fn task_detail_lines_drops_lines_restating_the_row_reason() {
+    let task = task_entry("skip-task", TaskStatus::Skipped, Some("dependency failed"));
     let details = vec![TaskDetailEntry {
         name: "skip-task".to_string(),
-        lines: vec!["skipped: dependency failed".to_string()],
+        lines: vec![
+            "skipped: dependency failed".to_string(),
+            "dependency failed".to_string(),
+        ],
     }];
 
-    assert_eq!(
-        task_detail_lines(&details, &task),
-        vec!["dependency failed"]
-    );
+    assert!(task_detail_lines(&details, &task).is_empty());
 }
 
 #[test]
-fn task_detail_lines_keeps_custom_message_when_no_details_exist() {
-    let task = TaskEntry {
-        name: "custom task".to_string(),
-        status: TaskStatus::Changed,
-        message: Some("generated private config".to_string()),
-        visible: true,
-        actions: ActionCounts::default(),
-    };
-
-    assert_eq!(
-        task_detail_lines(&[], &task),
-        vec!["generated private config"]
+fn task_detail_lines_are_empty_when_the_task_only_has_a_message() {
+    let task = task_entry(
+        "custom task",
+        TaskStatus::Changed,
+        Some("generated private config"),
     );
+
+    assert!(task_detail_lines(&[], &task).is_empty());
 }
 
 #[test]
 fn task_result_lines_are_flat_with_reduced_indent() {
-    let task = TaskEntry {
-        name: "changed-task".to_string(),
-        status: TaskStatus::Changed,
-        message: None,
-        visible: true,
-        actions: ActionCounts::default(),
-    };
+    let task = task_entry("changed-task", TaskStatus::Changed, None);
     let details = vec![TaskDetailEntry {
         name: "changed-task".to_string(),
         lines: vec!["linked: ~/.example".to_string()],
     }];
 
     assert_eq!(
-        task_result_lines(
-            &task,
-            &details,
-            SummaryMode::Standard,
-            StyleChoice::colored(),
-        ),
+        task_result_lines(&task, &details, colored_opts()),
         vec![
             "\x1b[32mCHANGE\x1b[0m changed-task",
             "\x1b[2m  link ~/.example\x1b[0m"
@@ -260,15 +316,10 @@ fn task_result_lines_are_flat_with_reduced_indent() {
 
 #[test]
 fn task_result_lines_abbreviate_symlink_actions() {
-    let task = TaskEntry {
-        name: "Install symlinks".to_string(),
-        status: TaskStatus::DryRun,
-        message: None,
-        visible: true,
-        actions: ActionCounts {
-            planned: 1,
-            ..ActionCounts::default()
-        },
+    let mut task = task_entry("Install symlinks", TaskStatus::DryRun, None);
+    task.actions = ActionCounts {
+        planned: 1,
+        ..ActionCounts::default()
     };
     let details = vec![TaskDetailEntry {
         name: task.name.clone(),
@@ -276,7 +327,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
     }];
 
     assert_eq!(
-        task_result_lines(&task, &details, SummaryMode::Standard, StyleChoice::plain(),),
+        task_result_lines(&task, &details, plain_opts()),
         [
             "DRYRUN Install symlinks",
             "  link ~/.bashrc \u{2190} symlinks/bashrc"
@@ -286,13 +337,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
 
 #[test]
 fn task_result_lines_include_all_details() {
-    let task = TaskEntry {
-        name: "large-plan".to_string(),
-        status: TaskStatus::DryRun,
-        message: None,
-        visible: true,
-        actions: ActionCounts::default(),
-    };
+    let task = task_entry("large-plan", TaskStatus::DryRun, None);
     let details = vec![TaskDetailEntry {
         name: "large-plan".to_string(),
         lines: vec![
@@ -303,7 +348,7 @@ fn task_result_lines_include_all_details() {
         ],
     }];
 
-    let lines = task_result_lines(&task, &details, SummaryMode::Standard, StyleChoice::plain());
+    let lines = task_result_lines(&task, &details, plain_opts());
 
     assert_eq!(lines.len(), 12);
     assert_eq!(
@@ -318,33 +363,34 @@ fn task_result_lines_include_all_details() {
 
 #[test]
 fn task_result_lines_skip_unchanged_tasks() {
-    let task = TaskEntry {
-        name: "unchanged-task".to_string(),
-        status: TaskStatus::Ok,
-        message: None,
-        visible: true,
-        actions: ActionCounts::default(),
+    let task = task_entry("unchanged-task", TaskStatus::Ok, None);
+
+    assert!(task_result_lines(&task, &[], colored_opts()).is_empty());
+}
+
+#[test]
+fn verbose_task_result_lines_account_for_unchanged_tasks() {
+    let task = task_entry("unchanged-task", TaskStatus::Ok, None);
+    let opts = RowOpts {
+        verbose: true,
+        ..plain_opts()
     };
 
-    assert!(
-        task_result_lines(&task, &[], SummaryMode::Standard, StyleChoice::colored()).is_empty()
+    assert_eq!(
+        task_result_lines(&task, &[], opts),
+        ["OK     unchanged-task"]
     );
 }
 
 #[test]
 fn validation_task_line_uses_passed_status() {
-    let task = TaskEntry {
-        name: "Validate config".to_string(),
-        status: TaskStatus::Passed,
-        message: None,
-        visible: true,
-        actions: ActionCounts::default(),
+    let task = task_entry("Validate config", TaskStatus::Passed, None);
+    let opts = RowOpts {
+        mode: SummaryMode::Test,
+        ..plain_opts()
     };
 
-    assert_eq!(
-        format_task_line(&task, SummaryMode::Test, StyleChoice::plain()),
-        "PASSED Validate config"
-    );
+    assert_eq!(format_task_line(&task, opts), "PASSED Validate config");
 }
 
 #[test]

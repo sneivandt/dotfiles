@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU16;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
@@ -55,6 +56,19 @@ pub struct Logger {
     pub(super) status_row_visible: AtomicBool,
     /// Whether any completed task has emitted durable console output.
     pub(super) task_console_output_emitted: AtomicBool,
+    /// Whether the most recent task block printed indented detail lines.
+    ///
+    /// Drives the blank line that separates a detail block from whatever row
+    /// follows it, so a long list of actions never runs straight into the next
+    /// task's status row.
+    pub(super) last_block_had_details: AtomicBool,
+    /// Number of tasks scheduled for this run, used as the progress denominator.
+    pub(super) task_total: AtomicUsize,
+    /// Number of tasks that have finished, used as the progress numerator.
+    pub(super) tasks_completed: AtomicUsize,
+    /// Number of scheduled tasks the run does not report on, subtracted from
+    /// the progress denominator once each one finishes.
+    pub(super) tasks_excluded: AtomicUsize,
     /// The run log; `None` when the log directory is unavailable.
     ///
     /// Shared with the tracing bridge so that logger messages and raw
@@ -116,6 +130,10 @@ impl Logger {
             progress_rows: AtomicU16::new(0),
             status_row_visible: AtomicBool::new(false),
             task_console_output_emitted: AtomicBool::new(false),
+            last_block_had_details: AtomicBool::new(false),
+            task_total: AtomicUsize::new(0),
+            tasks_completed: AtomicUsize::new(0),
+            tasks_excluded: AtomicUsize::new(0),
             run_log,
             start,
             verbose: true,
@@ -167,14 +185,11 @@ impl Logger {
 
     /// Return the sentence-case title of the current command.
     #[must_use]
-    pub fn command_title(&self) -> &str {
-        match self.command.as_str() {
-            "install" => "Install",
-            "update" => "Update",
-            "uninstall" => "Uninstall",
-            "test" => "Test",
-            _ => &self.command,
-        }
+    pub fn command_title(&self) -> String {
+        let mut chars = self.command.chars();
+        chars.next().map_or_else(String::new, |first| {
+            first.to_uppercase().collect::<String>() + chars.as_str()
+        })
     }
 
     /// Return the run log file path, if available.
@@ -248,8 +263,72 @@ impl Logger {
                 message: message.map(String::from),
                 actions,
                 visible,
+                duration: None,
             });
         }
+    }
+
+    /// Attach a measured run duration to the most recent entry for `name`.
+    pub fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
+        if let Ok(mut guard) = self.tasks.lock()
+            && let Some(task) = guard.iter_mut().rev().find(|task| task.name == name)
+        {
+            task.duration = Some(duration);
+        }
+    }
+
+    /// Add a scheduled batch of tasks to the progress denominator.
+    ///
+    /// A run may schedule more than one dependency graph — tasks discovered
+    /// after a boundary run in a second graph — so batches accumulate rather
+    /// than replace. Only user-visible tasks count, matching the run summary.
+    /// A total of zero suppresses the counter entirely.
+    pub fn add_task_total(&self, total: usize) {
+        self.task_total.fetch_add(total, Ordering::Relaxed);
+    }
+
+    /// Record that one more task has finished, for the progress counter.
+    ///
+    /// The counter must agree with the run summary, which reports on neither
+    /// internal tasks nor tasks that turned out not to apply. Internal tasks
+    /// were never added to the total, so they are simply ignored. Applicability
+    /// is only known once a task has run, so a non-applicable task leaves the
+    /// denominator instead of advancing the numerator.
+    pub fn mark_task_completed(&self, task_name: &str) {
+        if !self.task_is_visible(task_name) {
+            return;
+        }
+        if self.recorded_task_status(task_name) == Some(TaskStatus::NotApplicable) {
+            self.tasks_excluded.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.tasks_completed.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Return the completed/total task counts for the progress line.
+    ///
+    /// The numerator is clamped to the total so a miscount can never render a
+    /// nonsensical `22/20`.
+    pub(in crate::infra::logging) fn task_progress(&self) -> Option<(usize, usize)> {
+        let total = self
+            .task_total
+            .load(Ordering::Relaxed)
+            .saturating_sub(self.tasks_excluded.load(Ordering::Relaxed));
+        (total > 0).then(|| {
+            let done = self.tasks_completed.load(Ordering::Relaxed).min(total);
+            (done, total)
+        })
+    }
+
+    /// Look up the status recorded for a task, if it has finished.
+    fn recorded_task_status(&self, name: &str) -> Option<TaskStatus> {
+        self.tasks.lock().map_or(None, |guard| {
+            guard
+                .iter()
+                .rev()
+                .find(|task| task.name == name)
+                .map(|task| task.status)
+        })
     }
 
     pub(in crate::infra::logging) fn task_is_visible(&self, name: &str) -> bool {
@@ -259,6 +338,17 @@ impl Logger {
                 .rev()
                 .find(|task| task.name == name)
                 .is_none_or(|task| task.visible)
+        })
+    }
+
+    /// Return the recorded outcome message for the most recent entry named `name`.
+    pub(in crate::infra::logging) fn recorded_task_message(&self, name: &str) -> Option<String> {
+        self.tasks.lock().ok().and_then(|guard| {
+            guard
+                .iter()
+                .rev()
+                .find(|task| task.name == name)
+                .and_then(|task| task.message.clone())
         })
     }
 
@@ -299,6 +389,11 @@ impl Output for Logger {
         if let Some(run_log) = &self.run_log {
             run_log.emit(kind.log_event(), &msg);
         }
+        if self.verbose && matches!(kind, MsgKind::Debug) {
+            // Verbose prints debug lines indented, so the startup diagnostics
+            // form a detail block that the first task row must be spaced from.
+            self.last_block_had_details.store(true, Ordering::Relaxed);
+        }
         emit_console_event!(kind, &*msg);
     }
 
@@ -331,6 +426,10 @@ impl TaskRecorder for Logger {
         visible: bool,
     ) {
         self.record_task_with_metadata(name, status, message, actions, visible);
+    }
+
+    fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
+        self.record_task_duration(name, duration);
     }
 }
 

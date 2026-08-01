@@ -67,12 +67,12 @@ The CLI writes a single ` · `-separated header, then status lines, then a
 ` · `-separated summary:
 
 ```text
-Install · profile desktop · Arch Linux · preview · overlay ~/src/dotfiles-private
-IGNORE Dotfiles repository
+Install · profile desktop · Arch Linux · dry run · overlay ~/src/dotfiles-private
+IGNORE Dotfiles repository · local changes present
 No changes · 15 up to date · 1 ignored · 0.7s
 ```
 
-The `preview` and `overlay <path>` sections are optional and always come last,
+The `dry run` and `overlay <path>` sections are optional and always come last,
 in that order. The CLI renders the header dim; wrappers have no equivalent
 styling and print theirs plain.
 

@@ -43,9 +43,12 @@ impl Logger {
             self.clear_progress();
             return;
         };
+        let progress = self
+            .task_progress()
+            .map_or_else(String::new, |(done, total)| format!(" {done}/{total}"));
         let line = format!(
-            "Running {}",
-            stdout_style().paint(TextStyle::Dim, &format!("\u{00b7} {names}"))
+            "Running{progress}{}",
+            stdout_style().paint(TextStyle::Dim, &format!(" \u{00b7} {names}"))
         );
         if self.has_status_row() {
             self.replace_status_line(&line);
@@ -141,6 +144,73 @@ mod tests {
         assert!(
             active.contains(&"my-task".to_string()),
             "active_tasks should contain 'my-task'"
+        );
+    }
+
+    #[test]
+    fn task_totals_accumulate_across_scheduled_graphs() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.add_task_total(20);
+        for _ in 0..20 {
+            log.mark_task_completed("task");
+        }
+        log.add_task_total(3);
+
+        assert_eq!(
+            log.task_progress(),
+            Some((20, 23)),
+            "a second graph must extend the denominator instead of replacing it"
+        );
+    }
+
+    #[test]
+    fn task_progress_never_exceeds_the_total() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.add_task_total(2);
+        for _ in 0..5 {
+            log.mark_task_completed("task");
+        }
+
+        assert_eq!(log.task_progress(), Some((2, 2)));
+    }
+
+    #[test]
+    fn internal_tasks_are_left_out_of_the_progress_counter() {
+        use crate::infra::logging::types::{ActionCounts, TaskStatus};
+
+        let (log, _tmp, _guard) = isolated_logger();
+        log.add_task_total(2);
+        log.record_task_with_metadata(
+            "internal-task",
+            TaskStatus::Ok,
+            None,
+            ActionCounts::default(),
+            false,
+        );
+        log.mark_task_completed("internal-task");
+
+        assert_eq!(
+            log.task_progress(),
+            Some((0, 2)),
+            "internal tasks never enter the denominator, so finishing one changes nothing"
+        );
+    }
+
+    #[test]
+    fn non_applicable_tasks_leave_the_progress_denominator() {
+        use crate::infra::logging::types::TaskStatus;
+
+        let (log, _tmp, _guard) = isolated_logger();
+        log.add_task_total(3);
+        log.record_task("applied-task", TaskStatus::Changed, None);
+        log.mark_task_completed("applied-task");
+        log.record_task("elsewhere-task", TaskStatus::NotApplicable, None);
+        log.mark_task_completed("elsewhere-task");
+
+        assert_eq!(
+            log.task_progress(),
+            Some((1, 2)),
+            "applicability is only known after a task runs, so the total shrinks instead"
         );
     }
 

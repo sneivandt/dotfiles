@@ -40,6 +40,11 @@ pub struct TaskEntry {
     pub actions: ActionCounts,
     /// Whether the task contributes to user-facing rows and totals.
     pub visible: bool,
+    /// How long the task ran, once measured by the execution engine.
+    ///
+    /// Recorded separately from the outcome because the duration is only known
+    /// after the task body returns. Surfaced on verbose status rows.
+    pub duration: Option<std::time::Duration>,
 }
 
 /// Status of a completed task.
@@ -64,14 +69,13 @@ pub enum TaskStatus {
 impl TaskStatus {
     /// Text style used for compact status rendering.
     #[must_use]
-    pub(in crate::infra::logging) const fn text_style(self) -> Option<TextStyle> {
+    pub(in crate::infra::logging) const fn text_style(self) -> TextStyle {
         match self {
-            Self::Changed | Self::Passed => Some(TextStyle::Green),
-            Self::Ok => Some(TextStyle::Dim),
-            Self::Skipped => Some(TextStyle::Yellow),
-            Self::DryRun => Some(TextStyle::Magenta),
-            Self::Failed => Some(TextStyle::Red),
-            Self::NotApplicable => None,
+            Self::Changed | Self::Passed => TextStyle::Green,
+            Self::Ok | Self::NotApplicable => TextStyle::Dim,
+            Self::Skipped => TextStyle::Yellow,
+            Self::DryRun => TextStyle::Magenta,
+            Self::Failed => TextStyle::Red,
         }
     }
 }
@@ -306,6 +310,13 @@ pub trait TaskRecorder: Send + Sync {
     ) {
         self.record_task_with_actions(name, status, message, actions);
     }
+
+    /// Attach a measured run duration to an already-recorded task.
+    ///
+    /// Called after the task body returns, so it cannot be folded into the
+    /// outcome-recording calls above. Recorders that do not display timing
+    /// ignore it.
+    fn record_task_duration(&self, _name: &str, _duration: std::time::Duration) {}
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -351,6 +362,7 @@ mod tests {
             message: Some("all good".to_string()),
             actions: ActionCounts::default(),
             visible: true,
+            duration: None,
         };
         let cloned = entry.clone();
         assert_eq!(cloned.name, entry.name);

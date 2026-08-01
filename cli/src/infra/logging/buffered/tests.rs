@@ -163,14 +163,14 @@ fn non_verbose_replay_only_shows_warnings_and_errors() {
         entry(MsgKind::Always, "always"),
     ] {
         assert!(
-            !entry.is_visible_in_non_verbose(TaskStatus::Ok),
+            !entry.is_visible_in_non_verbose(TaskStatus::Ok, None),
             "{entry:?} should be deferred to the summary in non-verbose replay"
         );
     }
 
     for entry in [entry(MsgKind::Warn, "warn"), entry(MsgKind::Error, "error")] {
         assert!(
-            entry.is_visible_in_non_verbose(TaskStatus::Ok),
+            entry.is_visible_in_non_verbose(TaskStatus::Ok, None),
             "{entry:?} must reach the console in non-verbose replay"
         );
     }
@@ -180,7 +180,7 @@ fn non_verbose_replay_only_shows_warnings_and_errors() {
 fn non_verbose_failed_replay_keeps_errors_off_the_console() {
     for entry in [entry(MsgKind::Warn, "warn"), entry(MsgKind::Error, "error")] {
         assert!(
-            !entry.is_visible_in_non_verbose(TaskStatus::Failed),
+            !entry.is_visible_in_non_verbose(TaskStatus::Failed, None),
             "failed-task output surfaces through the summary, not a separate console line"
         );
     }
@@ -203,7 +203,7 @@ fn verbose_replay_targets_console_ui() {
         entry(MsgKind::Info, "info"),
         entry(MsgKind::Warn, "warn"),
     ] {
-        entry.replay_verbose();
+        entry.replay_verbose(None);
     }
 
     let targets = targets
@@ -212,12 +212,8 @@ fn verbose_replay_targets_console_ui() {
         .clone();
     assert_eq!(
         targets,
-        vec![
-            "dotfiles::ui::stage",
-            "dotfiles::ui::info",
-            "dotfiles::ui::warn"
-        ],
-        "verbose replay renders console targets and suppresses the task-name header"
+        vec!["dotfiles::ui::info", "dotfiles::ui::warn"],
+        "verbose replay renders console targets and suppresses stage headers"
     );
 }
 

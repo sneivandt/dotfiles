@@ -5,6 +5,7 @@
 //! summary details) separate from the buffering and flush orchestration.
 
 use crate::infra::logging::types::{MsgKind, TaskStatus, emit_console_event};
+use crate::infra::logging::utils::{duplicates_task_message, is_stats_summary};
 
 /// A single buffered console entry, replayed when the task completes.
 ///
@@ -25,14 +26,21 @@ impl LogEntry {
         emit_console_event!(self.kind, &self.msg);
     }
 
-    /// Replay this entry as verbose task detail.
+    /// Replay this entry as verbose task detail, reporting whether it printed.
     ///
     /// Task-name headers are suppressed because the task status line already
-    /// names the task.
-    pub(super) fn replay_verbose(&self) {
-        if self.kind != MsgKind::TaskStage {
-            self.replay();
+    /// names the task, as are lines that only restate the task's own outcome:
+    /// its reason (already on the status row) and its aggregate counters
+    /// (already implied by the per-item lines around them).
+    pub(super) fn replay_verbose(&self, task_message: Option<&str>) -> bool {
+        if matches!(self.kind, MsgKind::TaskStage | MsgKind::Stage)
+            || duplicates_task_message(&self.msg, task_message)
+            || is_stats_summary(&self.msg)
+        {
+            return false;
         }
+        self.replay();
+        true
     }
 
     /// The summary detail line contributed by this entry, if any.
@@ -52,9 +60,18 @@ impl LogEntry {
     /// Whether this entry appears on the console in non-verbose mode.
     ///
     /// A failed task reports through its summary entry instead, so its
-    /// buffered output stays in the run log only.
-    pub(super) fn is_visible_in_non_verbose(&self, status: TaskStatus) -> bool {
-        status != TaskStatus::Failed && matches!(self.kind, MsgKind::Warn | MsgKind::Error)
+    /// buffered output stays in the run log only.  Warnings that merely repeat
+    /// the task's own reason are dropped as well: that reason is already on the
+    /// task's status row, and printing it again on stderr detaches it from the
+    /// task it belongs to.
+    pub(super) fn is_visible_in_non_verbose(
+        &self,
+        status: TaskStatus,
+        task_message: Option<&str>,
+    ) -> bool {
+        status != TaskStatus::Failed
+            && matches!(self.kind, MsgKind::Warn | MsgKind::Error)
+            && !duplicates_task_message(&self.msg, task_message)
     }
 }
 

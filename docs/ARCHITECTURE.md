@@ -191,12 +191,16 @@ diagnostic detail. Internal orchestration remains in diagnostic/file logs but is
 excluded from normal task rows and totals.
 
 Visible rows use fixed-width `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`, and
-`FAILED` statuses. Tasks that require no change and tasks that are not
-applicable remain in the run log without emitting console rows in either normal
-or verbose mode. Normal output prints all compact task detail without
-truncation; verbose output additionally shows diagnostic task messages.
-Aggregate summaries count actions, affected tasks, up-to-date tasks, ignored or
-failed tasks, and elapsed time rather than equating tasks with changes.
+`FAILED` statuses, plus `OK` and `N/A` in verbose mode. A row carries the task's
+reason after a `·` separator, so indented lines beneath it are always actions the
+task took or planned. Normal output prints rows only for tasks that changed
+something or need attention, with all their detail and no truncation; verbose
+output accounts for every task, adds per-task elapsed time, and replays the
+per-resource decisions behind each outcome. Aggregate summaries count actions,
+affected tasks, up-to-date tasks, ignored or failed tasks, and elapsed time
+rather than equating tasks with changes; the transient progress line counts
+against the same set of tasks the summary accounts for, so non-applicable tasks
+leave its denominator once they resolve.
 `dotfiles log` prints a retained run log for post-run investigation. Each run
 writes its own file in a platform state directory and the newest 50 are kept, so
 a failed run stays readable after later runs. `dotfiles log --list` enumerates

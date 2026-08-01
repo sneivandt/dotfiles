@@ -88,7 +88,7 @@ mod startup_log_tests {
     use std::path::Path;
 
     #[test]
-    fn startup_context_uses_command_profile_platform_and_preview() {
+    fn startup_context_uses_command_profile_platform_and_dry_run() {
         assert_eq!(
             startup_context_line(
                 "Install",
@@ -97,7 +97,7 @@ mod startup_log_tests {
                 true,
                 None,
             ),
-            "Install · profile workstation · Linux · preview"
+            "Install · profile workstation · Linux · dry run"
         );
     }
 
@@ -117,7 +117,7 @@ mod startup_log_tests {
     }
 
     #[test]
-    fn overlay_follows_the_preview_section() {
+    fn overlay_follows_the_dry_run_section() {
         assert_eq!(
             startup_context_line(
                 "Install",
@@ -126,7 +126,7 @@ mod startup_log_tests {
                 true,
                 Some(Path::new("/private/overlay")),
             ),
-            "Install · profile workstation · Linux · preview · overlay /private/overlay"
+            "Install · profile workstation · Linux · dry run · overlay /private/overlay"
         );
     }
 }

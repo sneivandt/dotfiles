@@ -2,7 +2,7 @@
 
 My personal dotfiles manager built around a **Rust CLI** and declarative TOML configuration. It keeps my Linux and Windows environments consistent across shell, editor, Git, packages, AI tooling and more.
 
-![Generated terminal preview of a dotfiles install](docs/assets/terminal-screenshot.svg)
+![Generated terminal output of a dotfiles install](docs/assets/terminal-screenshot.svg)
 
 ## Core ideas
 
@@ -42,7 +42,7 @@ Every command accepts `-d, --dry-run`, which plans and reports changes without
 touching the machine. Preview a first run before applying it:
 
 ```bash
-./dotfiles.sh install -p desktop -d   # preview
+./dotfiles.sh install -p desktop -d   # dry run
 ./dotfiles.sh install -p desktop      # apply
 ```
 
@@ -73,7 +73,7 @@ selectors reported by `dotfiles tasks`:
 
 ```bash
 dotfiles tasks                          # list selectors
-dotfiles install --only symlinks,git -d # preview only those tasks
+dotfiles install --only symlinks,git -d # dry run only those tasks
 dotfiles install --skip packages        # converge everything else
 ```
 
@@ -122,7 +122,7 @@ cargo clippy -- -D warnings      # lint
 cargo fmt                        # format
 ```
 
-From the repo root, build from source and preview changes against the active config:
+From the repo root, build from source and dry run changes against the active config:
 
 ```bash
 ./dotfiles.sh --build install -d # run from repo root

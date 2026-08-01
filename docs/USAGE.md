@@ -126,10 +126,10 @@ downstream tasks consume it.
 
 Every run opens with a dimmed header line that names the command, resolved
 profile, and platform. Two optional sections may follow, in this order:
-`preview` for a dry run, and `overlay <path>` when an overlay is active.
+`dry run` for a dry run, and `overlay <path>` when an overlay is active.
 
 ```text
-Install · profile desktop · Arch Linux · preview · overlay ~/src/dotfiles-private
+Install · profile desktop · Arch Linux · dry run · overlay ~/src/dotfiles-private
 ```
 
 Visible task rows are printed as tasks complete, so independent parallel tasks
@@ -142,15 +142,41 @@ may appear in a different order between runs. Statuses distinguish the outcome:
 | `PASSED` | A validation task passed |
 | `IGNORE` | The task was intentionally ignored |
 | `FAILED` | The task failed |
+| `OK` | The task was already up to date (verbose only) |
+| `N/A` | The task does not apply to this platform or configuration (verbose only) |
 
-Changed, planned, ignored, and failed rows include all useful indented, dimmed
-details without truncation. Verbose mode additionally shows diagnostic task
-output. Tasks that require no change and tasks that are not applicable do not
-emit rows in either mode. Internal orchestration remains available in the run
-log but is excluded from normal rows and totals.
+A row states the task name and, when the task has something to explain, the
+reason after a `·` separator:
+
+```text
+IGNORE Dotfiles repository · local changes present
+```
+
+Indented dimmed lines beneath a row are the individual actions the task took or
+planned, listed in full without truncation. A blank line separates a task that
+printed actions from the row that follows it.
+
+Normal output only prints rows for tasks that did something or need attention.
+`--verbose` accounts for every task — including up-to-date and non-applicable
+ones — adds elapsed time to each row, and replays the per-resource decisions
+behind each outcome. Internal orchestration remains available in the run log but
+is excluded from console rows and totals in both modes.
+
+While tasks are running, a transient status line reports progress and the
+currently active tasks:
+
+```text
+Running 12/16 · Home symlinks, System packages
+```
+
+Its denominator counts the same tasks the summary accounts for. Applicability is
+only known once a task has run, so a task that turns out not to apply leaves the
+denominator rather than advancing the numerator.
 
 The final line reports actual action counts and affected task counts, for
-example `Applied 4 changes across 2 tasks · 1 ignored · 2.3s` or
+example
+`Applied 4 changes across 2 tasks · 14 up to date · 1 ignored · 2.3s`,
+`Dry run · 121 changes across 5 tasks · 8 up to date · 3 ignored · 0.7s`, or
 `6 passed · 1 ignored · 1.4s`.
 
 ## Uninstall

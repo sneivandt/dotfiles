@@ -44,7 +44,7 @@ impl BufferedLog {
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         );
         for entry in &entries {
-            if self.inner.is_verbose() || entry.is_visible_in_non_verbose(TaskStatus::Ok) {
+            if self.inner.is_verbose() || entry.is_visible_in_non_verbose(TaskStatus::Ok, None) {
                 entry.replay();
             }
         }
@@ -82,21 +82,29 @@ impl BufferedLog {
             self.inner.clear_progress();
         }
         let visible = self.inner.task_is_visible(task_name);
-        if matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) || !visible {
-            // Nothing to show: the entries live in the run log only.
+        let task_message = self.inner.recorded_task_message(task_name);
+        let message = task_message.as_deref();
+        if !visible {
+            // Internal task: the entries live in the run log only.
         } else if self.inner.is_verbose() {
+            // Verbose accounts for every task, including the ones with nothing
+            // to do, and replays the per-resource decisions behind that outcome.
             self.inner.emit_recorded_task_status(task_name);
+            let mut replayed = false;
             for entry in &entries {
-                entry.replay_verbose();
+                if entry.replay_verbose(message) {
+                    replayed = true;
+                }
             }
-        } else {
+            self.inner.note_replayed_details(replayed);
+        } else if !matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) {
             let has_visible_entries = entries
                 .iter()
-                .any(|entry| entry.is_visible_in_non_verbose(status));
+                .any(|entry| entry.is_visible_in_non_verbose(status, message));
             if has_visible_entries {
                 self.inner.separate_from_startup();
                 for entry in &entries {
-                    if entry.is_visible_in_non_verbose(status) {
+                    if entry.is_visible_in_non_verbose(status, message) {
                         entry.replay();
                     }
                 }
@@ -104,6 +112,7 @@ impl BufferedLog {
             }
         }
         self.inner.remove_active_task_locked(task_name);
+        self.inner.mark_task_completed(task_name);
         if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
             self.inner.emit_recorded_task_result(task_name);
         }
@@ -117,14 +126,12 @@ impl Output for BufferedLog {
     ///
     /// Writing to the run log first (rather than at flush time) is what
     /// preserves the true chronological order of events during parallel
-    /// execution.  Debug messages are never console-visible and are never used
-    /// for task detail lines, so they are not buffered at all.
+    /// execution.  Debug messages are buffered too: they never reach the
+    /// console in non-verbose mode and never become task detail lines, but
+    /// verbose replays them as the per-resource reasoning behind an outcome.
     fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
         if let Some(run_log) = &self.inner.run_log {
             run_log.emit(kind.log_event(), &msg);
-        }
-        if kind == MsgKind::Debug {
-            return;
         }
         if let Ok(mut guard) = self.entries.lock() {
             guard.push(LogEntry {
@@ -165,6 +172,10 @@ impl TaskRecorder for BufferedLog {
     ) {
         self.inner
             .record_task_with_metadata(name, status, message, actions, visible);
+    }
+
+    fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
+        self.inner.record_task_duration(name, duration);
     }
 }
 

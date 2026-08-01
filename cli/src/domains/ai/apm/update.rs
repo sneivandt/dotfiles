@@ -11,7 +11,7 @@ use super::commands::{
 use super::fragments::{discover_fragment_files, merge_fragments};
 use super::install::apm_task_should_run;
 use super::manifest::{manifest_fingerprint, manifest_marker_matches};
-use super::skip_with_warning;
+use super::skip;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 use crate::infra::logging::OutputExt as _;
@@ -49,15 +49,12 @@ impl Task for UpdateApmPackages {
         let system = ctx.system();
         let home = system.home();
         if !system.which("apm") {
-            return Ok(skip_with_warning(ctx, missing_apm_reason(ctx)));
+            return Ok(skip(missing_apm_reason(ctx)));
         }
 
         let fragments = discover_fragment_files(home)?;
         if fragments.is_empty() {
-            return Ok(skip_with_warning(
-                ctx,
-                "no manifest fragments found under ~/.apm/config/",
-            ));
+            return Ok(skip("no manifest fragments found under ~/.apm/config/"));
         }
 
         // Re-assert the convergence precondition: only advance locked refs when

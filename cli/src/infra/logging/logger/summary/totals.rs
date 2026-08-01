@@ -100,10 +100,11 @@ pub(super) fn format_standard_totals(
             ));
         }
     } else if dry_run && counts.actions.planned > 0 {
+        parts.push(style.paint(TextStyle::Magenta, "Dry run"));
         parts.push(style.paint(
             TextStyle::Magenta,
             &format!(
-                "{} {} planned across {} {}",
+                "{} {} across {} {}",
                 counts.actions.planned,
                 pluralize(counts.actions.planned, "change", "changes"),
                 counts.dry_run,
@@ -131,10 +132,11 @@ pub(super) fn format_standard_totals(
             ),
         ));
     } else if counts.dry_run > 0 {
+        parts.push(style.paint(TextStyle::Magenta, "Dry run"));
         parts.push(style.paint(
             TextStyle::Magenta,
             &format!(
-                "{} {} planned",
+                "{} {} with changes",
                 counts.dry_run,
                 pluralize(counts.dry_run, "task", "tasks")
             ),
@@ -195,11 +197,9 @@ pub(super) fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> V
 /// Decide whether a blank line should separate the totals from what precedes
 /// it.  The separator is only useful when console output was actually emitted
 /// above the totals, so it is driven by emitted output rather than by recorded
-/// task counts (tasks that were already up to date print nothing).
-pub(super) fn should_space_before_totals(
-    command: &str,
-    verbose: bool,
-    task_output_emitted: bool,
-) -> bool {
-    verbose || task_output_emitted || !matches!(command, "install" | "update" | "uninstall")
+/// task counts (tasks that were already up to date print nothing).  This holds
+/// in verbose mode too: verbose emits a row per task, which sets
+/// `task_output_emitted`, so it needs no separate carve-out.
+pub(super) fn should_space_before_totals(command: &str, task_output_emitted: bool) -> bool {
+    task_output_emitted || !matches!(command, "install" | "update" | "uninstall")
 }

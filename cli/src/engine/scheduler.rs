@@ -167,6 +167,7 @@ fn dispatch_task(
     };
 
     record_scheduler_skip(task, &**log, reason);
+    log.mark_task_completed(task.name());
     log.emit_task_result_and_redraw(task.name());
     signal
 }

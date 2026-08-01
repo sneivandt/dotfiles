@@ -10,10 +10,11 @@ use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
 use crate::engine::{Context, Task, TaskId};
 use crate::infra::ConfigHandle;
-use crate::infra::logging::{Log, Logger};
+use crate::infra::logging::{Log, LogEvent, Logger};
 use crate::infra::platform::Platform;
 
 use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
+use crate::infra::logging::Output as _;
 use crate::infra::logging::OutputExt as _;
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
@@ -175,10 +176,11 @@ fn resolve_profile(
     overlay: Option<&std::path::Path>,
     log: &Logger,
 ) -> Result<profiles::Profile> {
-    log.debug("Resolving profile");
+    // Run-log only: the startup header must be the first console line.
+    log.run_event(LogEvent::Stage, "resolving profile");
     let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
     log.startup(startup_context_line(
-        log.command_title(),
+        &log.command_title(),
         &profile.name,
         platform,
         global.dry_run,
@@ -202,12 +204,12 @@ pub(super) fn startup_context_line(
     if platform.is_wsl() {
         platform_label.push_str(" \u{00b7} WSL");
     }
-    let preview = if dry_run { " \u{00b7} preview" } else { "" };
+    let dry_run = if dry_run { " \u{00b7} dry run" } else { "" };
     let overlay = overlay.map_or_else(String::new, |path| {
         format!(" \u{00b7} overlay {}", path.display())
     });
     format!(
-        "{command_title} \u{00b7} profile {profile_name} \u{00b7} {platform_label}{preview}{overlay}"
+        "{command_title} \u{00b7} profile {profile_name} \u{00b7} {platform_label}{dry_run}{overlay}"
     )
 }
 

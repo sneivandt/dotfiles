@@ -7,44 +7,74 @@ My personal dotfiles manager built around a **Rust CLI** and declarative TOML co
 ## Core ideas
 
 - **Cross-platform:** one Rust CLI plans and applies the desired machine state across Linux and Windows.
-- **Profile-aware:** choose `base` or `desktop`; the CLI automatically applies config for the current machine's platform.
+- **Adaptive:** one repository serves every machine. Choose `base` or `desktop`; the `linux`, `windows`, and `arch` categories are detected and layered on automatically.
 - **Declarative:** TOML files describe packages, links, tools, and settings without turning setup into a collection of one-off scripts.
 - **Idempotent:** re-running `install` converges on the declared state. Preview changes first with `-d`.
 
+## What it manages
+
+The active profile and detected platform decide which of these apply on a given
+machine, so nothing below is installed everywhere.
+
+| Area | Managed state |
+|------|---------------|
+| Shell | Zsh and Bash configuration, login shell selection, `PATH` entry, generated completions |
+| Editors | Neovim, Vim, and VS Code configuration plus declared VS Code extensions |
+| Terminal | Alacritty, tmux, and readline configuration |
+| Git | Global Git settings and repository-maintained hooks |
+| Packages | pacman and AUR packages via `paru` on Arch, winget packages on Windows |
+| Linux desktop | Hyprland, Waybar, mako, fuzzel, gammastep, and GTK settings |
+| Services | systemd user units for desktop components and maintenance timers |
+| Sensitive files | SSH and GnuPG configuration, with declared Unix file modes enforced |
+| AI tooling | APM packages and plugins, and Copilot CLI settings |
+| Windows | Current-user registry values, Developer Mode, and WSL configuration |
+
+See the [Task Reference](docs/TASKS.md) for the task behind each area.
+
 ## Commands
 
-Bootstrap with the platform wrapper: `./dotfiles.sh install` on Linux or
-`.\dotfiles.ps1 install` on Windows. The wrapper downloads the latest release
-when no binary is present; add `--build` to compile from source instead. After
-bootstrap, use the installed `dotfiles` command.
+Bootstrap with the platform wrapper from the repository root: `./dotfiles.sh` on
+Linux or `.\dotfiles.ps1` on Windows. The wrapper downloads the latest release
+binary when none is present; add `--build` to compile from source instead. After
+the first run, the installed `dotfiles` command is the normal entry point.
 
-For a first run, preview the selected profile before applying it:
+Every command accepts `-d, --dry-run`, which plans and reports changes without
+touching the machine. Preview a first run before applying it:
 
 ```bash
-./dotfiles.sh install -p desktop -d
+./dotfiles.sh install -p desktop -d   # preview
+./dotfiles.sh install -p desktop      # apply
 ```
 
-| Task | Command |
-|------|---------|
-| Apply config | `dotfiles install` |
-| Preview changes | `dotfiles install -d` |
-| Update dependencies | `dotfiles update` |
-| Detach managed files | `dotfiles uninstall` |
-| Validate config | `dotfiles test` |
-| Discover task selectors | `dotfiles tasks` |
-| Inspect logs | `dotfiles log` |
+These commands change machine state:
 
-Use `install` for normal repeatable convergence. Use `update` only when you
-also want to advance pinned dependency versions. `uninstall` detaches managed
-links/hooks/wrappers, materializes symlinks, and leaves broader machine state
-alone.
+| Command | What it does |
+|---------|--------------|
+| `dotfiles install` | Converges the machine on the declared state |
+| `dotfiles update` | Runs `install` and additionally advances pinned dependency versions |
+| `dotfiles uninstall` | Detaches managed links, hooks, and wrappers, replacing symlinks with real files |
 
-Use `dotfiles tasks` to list the stable selectors accepted by `--only` and
-`--skip`, together with the commands that include each task:
+Reach for `update` only when you want to advance pinned versions; `install` is
+the command for normal repeatable convergence. `uninstall` leaves broader
+machine state such as packages, services, and registry values alone.
+
+These commands only read state:
+
+| Command | What it does |
+|---------|--------------|
+| `dotfiles test` | Validates configuration and runs available script analyzers |
+| `dotfiles tasks` | Lists task selectors and the commands that include each one |
+| `dotfiles log` | Lists retained run logs or prints one of them |
+
+### Targeting specific tasks
+
+`--only` and `--skip` narrow a run to a subset of tasks, using the stable
+selectors reported by `dotfiles tasks`:
 
 ```bash
-dotfiles tasks
-dotfiles install --only symlinks,git -d
+dotfiles tasks                          # list selectors
+dotfiles install --only symlinks,git -d # preview only those tasks
+dotfiles install --skip packages        # converge everything else
 ```
 
 See the [Usage Guide](docs/USAGE.md) for the full command reference.
@@ -102,11 +132,9 @@ From the repo root, build from source and preview changes against the active con
 
 | Guide | What's in it |
 |-------|--------------|
-| [Documentation Index](docs/README.md) | All project guides by topic |
 | [Usage Guide](docs/USAGE.md) | All commands and flags |
 | [Task Reference](docs/TASKS.md) | Every install, update, uninstall, validation, and overlay task |
 | [Profile System](docs/PROFILES.md) | How profiles work |
 | [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
 | [Architecture](docs/ARCHITECTURE.md) | Rust CLI design |
 | [APM Tooling](docs/APM.md) | AI tooling packages and APM flow |
-| [Contributing](docs/CONTRIBUTING.md) | Development workflow |

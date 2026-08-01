@@ -1,6 +1,8 @@
 # Symlinks to create in $HOME
 # Each section represents a category/profile layer
-# Target will be ~/.<path>
+# Target will be ~/.<path>, or the explicit `target` of a { source, target } entry
+# A `*` source segment links every entry of that directory; see
+# docs/CONFIGURATION.md for the full glob rules
 # Platform categories (linux, windows) are auto-detected; use them to restrict
 # symlinks to a specific platform.
 #

@@ -66,7 +66,8 @@ profile controls a set of categories.
 ## Symlinks
 
 `symlinks.toml` entries are paths relative to `symlinks/`. Their home target is
-the same path prefixed with a dot where appropriate:
+the same path prefixed with a dot, so `config/git/config` links to
+`~/.config/git/config`:
 
 ```toml
 [base]
@@ -76,9 +77,63 @@ symlinks = [
 ]
 ```
 
-Source globs are supported, for example `apm/plugins/*`. Each resolved source
-becomes an independently managed link. Overlay symlinks resolve from the
-overlay's own `symlinks/` tree, not the main repository.
+An entry may instead be a table with an explicit home-relative `target`, which
+replaces the dot-prefixed default. Windows paths such as `AppData/` use this
+form because they take no leading dot:
+
+```toml
+[windows]
+symlinks = [
+  { source = "AppData/Roaming/NuGet/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
+]
+```
+
+Overlay symlinks resolve from the overlay's own `symlinks/` tree, not the main
+repository.
+
+### Glob patterns
+
+A source path may use `*` to link every entry of a directory, so a new file
+does not have to be added to `symlinks.toml` by hand:
+
+```toml
+[base]
+symlinks = [
+  "apm/plugins/*",
+]
+```
+
+Semantics:
+
+- `*` matches exactly **one complete path segment**. Partial-segment patterns
+  such as `plugins/*.yml` or `plugins/apm-*` are rejected, as is the recursive
+  wildcard `**`. Both produce a configuration error rather than matching
+  nothing.
+- Every directory entry matches, files and directories alike, including
+  dot-prefixed ones. Each resolved source becomes an independently managed
+  link.
+- Matching does not descend through a symlinked directory, so expansion cannot
+  escape the `symlinks/` tree.
+- A glob must match at least one entry. An empty match is a configuration
+  error, which catches renamed or deleted directories instead of silently
+  managing nothing.
+- Matches are sorted by path, so run output and dry-run previews are stable.
+
+A `target` may contain `*` only when its `source` does, and both must use the
+same number of wildcards. The *n*th `*` in the target is replaced with the
+segment captured by the *n*th `*` in the source:
+
+```toml
+[base]
+symlinks = [
+  { source = "skills/*", target = ".copilot/skills/*" },
+]
+```
+
+Globs expand while configuration loads, after category filtering and before
+validation, so every later stage sees only concrete paths. Expanded targets
+take part in the normal duplicate-target check: two entries that resolve to the
+same home path are a configuration error.
 
 Every non-`base` symlink category must have an exact section in
 `manifest.toml`, and every manifest section must exist in `symlinks.toml`.

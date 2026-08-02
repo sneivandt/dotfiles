@@ -1,11 +1,10 @@
 use crate::engine::mode::ProcessOpts;
+use crate::engine::orchestrate::process_resources_with_provider;
 use crate::engine::{
-    Resource, ResourceChange, ResourceResult, ResourceState, ResourceStateProvider,
+    RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+    ResourceStateProvider,
 };
-use crate::engine::{
-    TaskResult, TaskStats, process_resources, process_resources_remove,
-    process_resources_with_provider,
-};
+use crate::engine::{TaskResult, TaskStats, process_resources, process_resources_remove};
 use crate::test_helpers::empty_config;
 use std::{
     path::PathBuf,
@@ -32,7 +31,9 @@ impl Resource for PrecomputedResource {
     fn apply(&self) -> ResourceResult<ResourceChange> {
         self.resource.apply()
     }
+}
 
+impl RemovableResource for PrecomputedResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         self.resource.remove()
     }
@@ -41,38 +42,18 @@ impl Resource for PrecomputedResource {
 struct PrecomputedStateProvider;
 
 impl ResourceStateProvider<PrecomputedResource> for PrecomputedStateProvider {
-    type Cache = ();
-
-    fn load(&self, _resources: &[PrecomputedResource]) -> anyhow::Result<Self::Cache> {
-        Ok(())
-    }
-
-    fn current_state(
-        &self,
-        resource: &PrecomputedResource,
-        _cache: &Self::Cache,
-    ) -> anyhow::Result<ResourceState> {
+    fn current_state(&self, resource: &PrecomputedResource) -> anyhow::Result<ResourceState> {
         Ok(resource.state.clone())
     }
 }
 
 struct CountingStateProvider {
-    loads: Arc<AtomicUsize>,
+    checks: Arc<AtomicUsize>,
 }
 
 impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
-    type Cache = ();
-
-    fn load(&self, _resources: &[PrecomputedResource]) -> anyhow::Result<Self::Cache> {
-        self.loads.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-
-    fn current_state(
-        &self,
-        resource: &PrecomputedResource,
-        _cache: &Self::Cache,
-    ) -> anyhow::Result<ResourceState> {
+    fn current_state(&self, resource: &PrecomputedResource) -> anyhow::Result<ResourceState> {
+        self.checks.fetch_add(1, Ordering::SeqCst);
         Ok(resource.state.clone())
     }
 }
@@ -172,19 +153,19 @@ fn process_precomputed_states_applies_precomputed() {
 }
 
 #[test]
-fn process_resources_with_provider_empty_list_skips_provider_load() {
+fn process_resources_with_provider_empty_list_never_queries_provider() {
     let ctx = test_ctx();
     let resources: Vec<PrecomputedResource> = vec![];
     let opts = default_opts();
-    let loads = Arc::new(AtomicUsize::new(0));
+    let checks = Arc::new(AtomicUsize::new(0));
     let provider = CountingStateProvider {
-        loads: Arc::clone(&loads),
+        checks: Arc::clone(&checks),
     };
 
     let result = process_resources_with_provider(&ctx, resources, &provider, &opts).unwrap();
 
     assert!(is_success(&result));
-    assert_eq!(loads.load(Ordering::SeqCst), 0);
+    assert_eq!(checks.load(Ordering::SeqCst), 0);
 }
 
 // -----------------------------------------------------------------------

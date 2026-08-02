@@ -2,7 +2,9 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 
 /// A git hook file resource that can be checked, installed, and removed.
 #[derive(Debug, Clone)]
@@ -38,7 +40,9 @@ impl Resource for HookFileResource {
 
         Ok(ResourceChange::Applied)
     }
+}
 
+impl RemovableResource for HookFileResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         if crate::infra::fs::remove_file_if_present(&self.target, "stat hook")? {
             Ok(ResourceChange::Applied)

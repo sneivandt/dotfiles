@@ -8,48 +8,18 @@ pub(crate) mod macros;
 mod types;
 
 use crate::infra::logging::OutputExt as _;
+pub use crate::infra::logging::TaskVisibility;
 pub use execute::execute;
 pub(crate) use macros::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
 pub use types::TaskId;
 
-/// Whether a task is part of the user-facing workflow or internal orchestration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskVisibility {
-    /// Show the task in discovery, completed rows, and aggregate totals.
-    Visible,
-    /// Keep the task in scheduling and diagnostics, but hide it from normal output.
-    Internal,
-}
-
 use std::any::TypeId;
 
 use anyhow::Result;
 
-use super::resource::{CachedStateProvider, Resource, ResourceState};
-use super::{Context, ProcessOpts, TaskResult, process_resources_with_provider};
-
-/// Process resources whose current state is derived from a borrowed cache.
-///
-/// # Errors
-///
-/// Returns an error if provider-backed resource processing fails.
-pub(crate) fn process_resources_with_cache<R, Cache, State>(
-    ctx: &Context,
-    resources: impl IntoIterator<Item = R>,
-    cache: &Cache,
-    state: State,
-    opts: &ProcessOpts,
-) -> Result<TaskResult>
-where
-    R: Resource + Send,
-    Cache: Sync + ?Sized,
-    State: for<'a> Fn(&'a R, &Cache) -> Result<ResourceState> + Sync,
-{
-    let provider = CachedStateProvider::new(cache, state);
-    process_resources_with_provider(ctx, resources, &provider, opts)
-}
+use super::{Context, TaskResult};
 
 /// A named, executable task.
 ///
@@ -136,11 +106,6 @@ pub trait Task: Send + Sync + 'static {
         false
     }
 
-    /// Whether the applicable task's current state requires elevation.
-    fn requires_elevation(&self, ctx: &Context) -> bool {
-        !ctx.dry_run() && self.should_run(ctx) && self.needs_elevation(ctx)
-    }
-
     /// Execute the task.
     ///
     /// # Errors
@@ -148,6 +113,19 @@ pub trait Task: Send + Sync + 'static {
     /// Returns an error if the task fails to execute, such as when system commands
     /// fail, file operations are not permitted, or configuration is invalid.
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
+}
+
+/// Whether an applicable task's current state requires elevation.
+///
+/// This is deliberately a free function rather than a defaulted [`Task`]
+/// method. It is a fixed combinator over [`Task::should_run`] and
+/// [`Task::needs_elevation`] that no implementor should override, and every
+/// defaulted method is one more thing a decorator such as
+/// [`TaskWithExtraDeps`] can silently fail to forward. Keeping it outside the
+/// trait means a wrapped task cannot lose it.
+#[must_use]
+pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
+    !ctx.dry_run() && task.should_run(ctx) && task.needs_elevation(ctx)
 }
 
 /// A [`Task`] decorator that appends extra dependency [`TaskId`]s to an inner

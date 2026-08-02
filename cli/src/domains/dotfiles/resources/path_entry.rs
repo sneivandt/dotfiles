@@ -7,7 +7,9 @@ use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 use crate::infra::exec::Executor;
 
 /// Source for checking whether a directory is already on `PATH`.
@@ -166,7 +168,9 @@ impl Resource for PathEntryResource {
             }
         }
     }
+}
 
+impl RemovableResource for PathEntryResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         // Leaving the directory on PATH is harmless; removing it from
         // profile files or registry is fragile and surprising.

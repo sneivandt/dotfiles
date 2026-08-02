@@ -6,7 +6,9 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 
 /// Which wrapper script to install on the user's `PATH`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,7 +141,9 @@ impl Resource for WrapperResource {
 
         Ok(ResourceChange::Applied)
     }
+}
 
+impl RemovableResource for WrapperResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         match self.target_metadata()? {
             Some(metadata) if metadata.is_dir() => {

@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::engine::mode::ProcessOpts;
 use crate::engine::{
-    IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState, TaskResult,
-    process_resources, process_resources_remove,
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+    TaskResult, process_resources, process_resources_remove,
 };
 use crate::infra::cancellation::CancellationToken;
 use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
@@ -99,7 +99,9 @@ impl Resource for ConcurrencyProbe {
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
         Ok(ResourceChange::Applied)
     }
+}
 
+impl RemovableResource for ConcurrencyProbe {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         Ok(ResourceChange::Applied)
     }
@@ -134,7 +136,9 @@ impl Resource for CancellingResource {
         }
         Ok(ResourceChange::Applied)
     }
+}
 
+impl RemovableResource for CancellingResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         self.apply()
     }
@@ -265,6 +269,9 @@ fn cancellation_mid_batch_stops_dispatching_new_apply_work() {
     let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
     let token = CancellationToken::new();
     let ctx = ctx.with_cancellation(token.clone());
+    let recorder = Arc::new(RecordingLog::default());
+    let log: Arc<dyn crate::infra::logging::Log> = Arc::<RecordingLog>::clone(&recorder);
+    let ctx = ctx.with_log(log);
     let applied = Arc::new(AtomicUsize::new(0));
 
     let resources: Vec<CancellingResource> = (0..BATCH)
@@ -290,6 +297,18 @@ fn cancellation_mid_batch_stops_dispatching_new_apply_work() {
         "reported changes must match the work actually performed"
     );
     assert!(ctx.is_cancelled());
+
+    // The parallel path must explain the shortfall exactly like the
+    // sequential path does; without this the skipped items simply vanish.
+    let notices = recorder
+        .messages()
+        .into_iter()
+        .filter(|msg| msg.contains("cancelled — stopping before next resource"))
+        .count();
+    assert_eq!(
+        notices, 1,
+        "cancellation should be announced exactly once, not per skipped item"
+    );
 }
 
 #[test]

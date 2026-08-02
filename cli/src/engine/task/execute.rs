@@ -4,7 +4,7 @@
 //! [`Task`](super::Task) trait object it decides applicability, runs the task,
 //! and records the outcome into the logger.
 
-use crate::engine::{Context, TaskResult, TaskVisibility};
+use crate::engine::{Context, TaskResult};
 use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, format_elapsed, log_task_context};
 
 use super::Task;
@@ -24,7 +24,7 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: Option<&str>) {
         TaskStatus::NotApplicable,
         reason,
         ActionCounts::default(),
-        task.visibility() == TaskVisibility::Visible,
+        task.visibility(),
     );
 }
 
@@ -74,13 +74,8 @@ fn record(
     message: Option<&str>,
     actions: ActionCounts,
 ) -> TaskStatus {
-    ctx.log().record_task_with_metadata(
-        task.name(),
-        status,
-        message,
-        actions,
-        task.visibility() == TaskVisibility::Visible,
-    );
+    ctx.log()
+        .record_task_with_metadata(task.name(), status, message, actions, task.visibility());
     status
 }
 

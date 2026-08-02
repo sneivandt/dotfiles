@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 
-use crate::engine::{Context, Task, TaskId, TaskVisibility};
+use crate::engine::{Context, Task, TaskId};
 use crate::infra::logging::{ActionCounts, Logger};
 
 use super::error::TaskFailures;
@@ -125,7 +125,7 @@ pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
 fn visible_count<'a>(tasks: impl IntoIterator<Item = &'a dyn Task>) -> usize {
     tasks
         .into_iter()
-        .filter(|task| task.visibility() == TaskVisibility::Visible)
+        .filter(|task| task.visibility().is_visible())
         .count()
 }
 
@@ -160,7 +160,7 @@ fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) 
     let sudo_task_names: Vec<&str> = if ctx.parallel() && !ctx.dry_run() && tasks.len() > 1 {
         tasks
             .iter()
-            .filter(|task| task.requires_elevation(ctx))
+            .filter(|task| crate::engine::requires_elevation(**task, ctx))
             .map(|task| task.name())
             .collect()
     } else {
@@ -169,7 +169,7 @@ fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) 
     if !sudo_task_names.is_empty() && !prime_sudo(ctx, log, &sudo_task_names) {
         let reason = "sudo credentials unavailable";
         tasks.retain(|task| {
-            if task.requires_elevation(ctx) {
+            if crate::engine::requires_elevation(*task, ctx) {
                 let span = tracing::info_span!("task", name = task.name());
                 let _enter = span.enter();
                 log.debug(reason);
@@ -178,7 +178,7 @@ fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) 
                     crate::infra::logging::TaskStatus::Skipped,
                     Some(reason),
                     ActionCounts::default(),
-                    task.visibility() == TaskVisibility::Visible,
+                    task.visibility(),
                 );
                 log.mark_task_completed(task.name());
                 log.emit_task_result_and_redraw(task.name());

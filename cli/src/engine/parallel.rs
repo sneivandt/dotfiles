@@ -6,7 +6,8 @@ use super::apply::{process_single, remove_single};
 use super::context::Context;
 use super::mode::ProcessOpts;
 use super::stats::TaskStats;
-use crate::engine::{IntrinsicState, Resource, ResourceState};
+use crate::engine::{IntrinsicState, RemovableResource, Resource, ResourceState};
+use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{log_thread_name, set_log_thread_name};
 
 /// Process resource-like items in parallel using Rayon.
@@ -19,33 +20,23 @@ pub(super) fn process_apply_parallel<T: Send, R: Resource + Send>(
     opts: &ProcessOpts,
     get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync + Send,
 ) -> Result<super::stats::TaskResult> {
-    let cancelled = ctx.cancellation_token();
-    let stats = collect_parallel_stats(
-        items,
-        |item| {
-            let (resource, current) = get_resource_state(item)?;
-            process_single(ctx, &resource, &current, opts)
-        },
-        move || cancelled.is_cancelled(),
-    )?;
+    let stats = collect_parallel_stats(ctx, items, |item| {
+        let (resource, current) = get_resource_state(item)?;
+        process_single(ctx, &resource, &current, opts)
+    })?;
     Ok(stats.finish())
 }
 
 /// Remove resources in parallel using Rayon.
-pub(super) fn process_remove_parallel<R: IntrinsicState + Send>(
+pub(super) fn process_remove_parallel<R: IntrinsicState + RemovableResource + Send>(
     ctx: &Context,
     resources: Vec<R>,
     verb: &'static str,
 ) -> Result<super::stats::TaskResult> {
-    let cancelled = ctx.cancellation_token();
-    let stats = collect_parallel_stats(
-        resources,
-        |resource| {
-            let current = resource.current_state()?;
-            remove_single(ctx, &resource, &current, verb)
-        },
-        move || cancelled.is_cancelled(),
-    )?;
+    let stats = collect_parallel_stats(ctx, resources, |resource| {
+        let current = resource.current_state()?;
+        remove_single(ctx, &resource, &current, verb)
+    })?;
     Ok(stats.finish())
 }
 
@@ -61,20 +52,27 @@ pub(super) fn process_remove_parallel<R: IntrinsicState + Send>(
 /// on each iteration so the log timeline remains accurate even when Rayon
 /// reuses threads across work items (a stale name is harmless but misleading).
 ///
-/// When `cancelled` returns `true`, new items are skipped so that in-flight
-/// operations can finish cleanly.
+/// When the run is cancelled, remaining items are skipped so that in-flight
+/// operations can finish cleanly.  The same notice the sequential path prints
+/// is emitted once, so an interrupted parallel run explains the shortfall
+/// between the items it reports and the items it was given rather than
+/// appearing to have silently processed fewer resources.
 fn collect_parallel_stats<T: Send>(
+    ctx: &Context,
     items: Vec<T>,
     work: impl Fn(T) -> Result<TaskStats> + Sync + Send,
-    cancelled: impl Fn() -> bool + Sync + Send,
 ) -> Result<TaskStats> {
     use rayon::prelude::*;
     let task_name = log_thread_name();
+    let cancel_notice = std::sync::Once::new();
     items
         .into_par_iter()
         .try_fold(TaskStats::default, |mut acc, item| {
             set_log_thread_name(&task_name);
-            if cancelled() {
+            if ctx.is_cancelled() {
+                cancel_notice.call_once(|| {
+                    ctx.log().warn("cancelled — stopping before next resource");
+                });
                 return Ok(acc);
             }
             acc.merge(&work(item)?);

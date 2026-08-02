@@ -22,7 +22,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::engine::resource::ResourceError;
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 use crate::infra::exec::Executor;
 
 /// A resource that runs a custom script from an overlay repository.
@@ -167,7 +169,9 @@ impl Resource for ScriptResource {
             .map(|(change, _output)| change)
             .map_err(ResourceError::from)
     }
+}
 
+impl RemovableResource for ScriptResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         self.execute(ScriptMode::Remove)
             .map(|(change, _output)| change)

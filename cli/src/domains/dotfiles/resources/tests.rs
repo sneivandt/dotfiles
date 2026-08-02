@@ -1,7 +1,7 @@
 //! Tests for dotfiles-domain resources.
 
 use super::path_entry::*;
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceState};
+use crate::engine::{IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceState};
 use crate::infra::exec::Executor;
 use std::path::Path;
 use std::sync::Arc;

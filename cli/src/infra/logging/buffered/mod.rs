@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use super::logger::{Logger, stdout_supports_progress};
 use super::runlog::RunLog;
-use super::types::{ActionCounts, MsgKind, Output, TaskRecorder, TaskStatus};
+use super::types::{ActionCounts, MsgKind, Output, TaskRecorder, TaskStatus, TaskVisibility};
 
 mod entry;
 
@@ -168,10 +168,10 @@ impl TaskRecorder for BufferedLog {
         status: TaskStatus,
         message: Option<&str>,
         actions: ActionCounts,
-        visible: bool,
+        visibility: TaskVisibility,
     ) {
         self.inner
-            .record_task_with_metadata(name, status, message, actions, visible);
+            .record_task_with_metadata(name, status, message, actions, visibility);
     }
 
     fn record_task_duration(&self, name: &str, duration: std::time::Duration) {

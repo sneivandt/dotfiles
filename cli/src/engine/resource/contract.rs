@@ -49,22 +49,23 @@ pub trait Resource {
     /// Returns a [`ResourceError`] if the resource cannot be applied due to I/O
     /// failures, permission issues, invalid paths, or other system errors.
     fn apply(&self) -> ResourceResult<ResourceChange>;
+}
 
+/// A [`Resource`] that can also be removed, undoing a previous `apply()`.
+///
+/// Removability is a property of the resource type, not of a particular run, so
+/// it is expressed as a separate trait rather than a defaulted method that
+/// fails at runtime. The removal entry points in the orchestration layer
+/// require this bound, which makes "this resource cannot be removed" a
+/// compile error at the call site instead of a failed task.
+pub trait RemovableResource: Resource {
     /// Remove the resource, undoing a previous `apply()`.
-    ///
-    /// Default implementation returns an error — override in resources
-    /// that support removal.
     ///
     /// # Errors
     ///
-    /// Returns a [`ResourceError`] if the resource cannot be removed, or if
-    /// removal is not supported for this resource type.
-    fn remove(&self) -> ResourceResult<ResourceChange> {
-        Err(ResourceError::not_supported(format!(
-            "operation 'remove' is not supported for resource '{}'",
-            self.description()
-        )))
-    }
+    /// Returns a [`ResourceError`] if the resource cannot be removed due to I/O
+    /// failures, permission issues, or other system errors.
+    fn remove(&self) -> ResourceResult<ResourceChange>;
 }
 
 /// State of a resource (file, registry entry, etc.).

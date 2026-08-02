@@ -32,6 +32,6 @@
     <text x="34" y="355"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Default shell</tspan></text>
     <text x="52" y="376" fill="#a9b1d6">configure default shell → zsh</text>
 
-    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">Applied 6 changes across 3 tasks</tspan><tspan fill="#565f89"> · 12 up to date · 1.3s</tspan></text>
+    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">6 changes in 3 tasks</tspan><tspan fill="#565f89"> · 12 up to date · 1.3s</tspan></text>
   </g>
 </svg>

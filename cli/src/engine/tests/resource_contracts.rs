@@ -4,7 +4,9 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 use crate::engine::{ProcessOpts, TaskResult, process_resources, process_resources_remove};
 use crate::test_helpers::empty_config;
 
@@ -49,7 +51,9 @@ impl Resource for ContractResource {
         *self.state.lock().unwrap() = ResourceState::Correct;
         Ok(ResourceChange::Applied)
     }
+}
 
+impl RemovableResource for ContractResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         self.remove_calls.fetch_add(1, Ordering::SeqCst);
         *self.state.lock().unwrap() = ResourceState::Missing;

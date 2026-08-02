@@ -34,8 +34,10 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("binary path has no parent directory"))?;
     fs::create_dir_all(dir).context("creating bin directory")?;
 
-    let tmp_path = dir.join(".dotfiles-update.tmp");
-    let mut tmp = crate::infra::fs::TempGuard::file(tmp_path);
+    // A unique staging name keeps two concurrent updates from clobbering each
+    // other: with a fixed path, one run's `TempGuard` deletes the partially
+    // written binary the other run is about to rename into place.
+    let mut tmp = crate::infra::fs::TempGuard::unique_file(dir, ".dotfiles-update", "tmp");
 
     {
         let mut f = fs::File::create(tmp.path()).context("creating temp file")?;
@@ -87,8 +89,7 @@ pub(super) fn stage_binary(root: &Path, tag: &str, data: &[u8]) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("pending binary path has no parent directory"))?;
     fs::create_dir_all(dir).context("creating bin directory")?;
 
-    let tmp_path = dir.join(".dotfiles-update.tmp");
-    let mut tmp = crate::infra::fs::TempGuard::file(tmp_path);
+    let mut tmp = crate::infra::fs::TempGuard::unique_file(dir, ".dotfiles-update", "tmp");
     {
         let mut f = fs::File::create(tmp.path()).context("creating temp staged file")?;
         f.write_all(data).context("writing staged binary data")?;

@@ -42,18 +42,15 @@ pub use context::ContextOpts;
 pub use mode::ProcessMode;
 pub use mode::ProcessOpts;
 pub(crate) use operation::{Operation, OperationState, process_operation};
-pub use orchestrate::{
-    process_resources, process_resources_remove, process_resources_with_provider,
-};
+pub use orchestrate::{process_resources, process_resources_remove, process_resources_with_cache};
 pub use resource::{
-    IntrinsicState, IntrinsicStateProvider, Resource, ResourceChange, ResourceResult,
-    ResourceState, ResourceStateProvider,
+    IntrinsicState, IntrinsicStateProvider, RemovableResource, Resource, ResourceChange,
+    ResourceResult, ResourceState, ResourceStateProvider,
 };
 pub use stats::{TaskResult, TaskStats};
-pub use task::{Task, TaskId, TaskVisibility, TaskWithExtraDeps, execute};
+pub use task::{Task, TaskId, TaskVisibility, TaskWithExtraDeps, execute, requires_elevation};
 pub(crate) use task::{
-    configured_task_result, process_resources_with_cache, run_batch_resource_task,
-    run_resource_task, task_deps, task_metadata,
+    configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
 pub use update_signal::UpdateSignal;
 

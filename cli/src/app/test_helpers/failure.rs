@@ -16,7 +16,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::Result;
 
 use crate::engine::resource::ResourceError;
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 use crate::infra::exec::{ExecResult, Executor};
 
 /// Which invocation of an injected operation should fail.
@@ -312,7 +314,9 @@ impl Resource for FailingResource {
         }
         Ok(ResourceChange::Applied)
     }
+}
 
+impl RemovableResource for FailingResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         let call = self
             .removes

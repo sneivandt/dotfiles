@@ -3,7 +3,9 @@ use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 use crate::infra::exec::Executor;
 
 mod materialize;
@@ -137,7 +139,9 @@ impl Resource for SymlinkResource {
 
         Ok(ResourceChange::Applied)
     }
+}
 
+impl RemovableResource for SymlinkResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         // Classify the target explicitly so that unexpected metadata errors
         // do not fall through to `copy_into_place` (which would materialize

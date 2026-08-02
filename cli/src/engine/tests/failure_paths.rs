@@ -14,8 +14,8 @@ use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
 use crate::engine::mode::ProcessOpts;
 use crate::engine::resource::ResourceError;
 use crate::engine::{
-    IntrinsicState as _, Resource as _, ResourceState, TaskResult, process_resources,
-    process_resources_remove,
+    IntrinsicState as _, RemovableResource as _, Resource as _, ResourceState, TaskResult,
+    process_resources, process_resources_remove,
 };
 use crate::infra::exec::Executor;
 use crate::test_helpers::{

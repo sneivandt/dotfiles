@@ -1,6 +1,6 @@
 use super::*;
 use crate::engine::{
-    IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState, TaskStats,
+    IntrinsicState, ProcessOpts, Resource, ResourceChange, ResourceResult, ResourceState, TaskStats,
 };
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{ActionCounts, TaskStatus};
@@ -305,7 +305,7 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     assert_eq!(task.dependencies(), &[existing, additional]);
     assert!(task.should_run(&ctx));
     assert!(task.needs_elevation(&ctx));
-    assert!(task.requires_elevation(&ctx));
+    assert!(requires_elevation(&task, &ctx));
     assert!(matches!(
         task.run_configured(&ctx).unwrap(),
         Some(TaskResult::Skipped(reason)) if reason == "configured"
@@ -604,8 +604,8 @@ fn requires_elevation_respects_prediction_and_dry_run() {
         needs_elevation: true,
     };
 
-    assert!(task.requires_elevation(&ctx));
-    assert!(!task.requires_elevation(&ctx.with_dry_run(true)));
+    assert!(requires_elevation(&task, &ctx));
+    assert!(!requires_elevation(&task, &ctx.with_dry_run(true)));
 }
 
 #[test]
@@ -619,7 +619,7 @@ fn requires_elevation_respects_prediction() {
         needs_elevation: false,
     };
 
-    assert!(!task.requires_elevation(&ctx));
+    assert!(!requires_elevation(&task, &ctx));
 }
 
 #[test]
@@ -633,7 +633,7 @@ fn requires_elevation_respects_should_run() {
         needs_elevation: true,
     };
 
-    assert!(!task.requires_elevation(&ctx));
+    assert!(!requires_elevation(&task, &ctx));
 }
 
 #[test]

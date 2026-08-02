@@ -53,26 +53,31 @@ pub(super) trait HttpClient: std::fmt::Debug + Send + Sync {
 }
 
 /// Real HTTP client backed by [`ureq`].
+///
+/// The agent is built once and reused for every request so that the three or
+/// more GETs a single update performs (release tag, checksums file, asset)
+/// share one connection pool instead of renegotiating TLS each time.
 #[derive(Debug)]
 pub(super) struct UreqClient {
-    /// Global request timeout in seconds.
-    timeout_secs: u64,
+    agent: ureq::Agent,
 }
 
 impl UreqClient {
-    /// Create a new client with the given timeout.
-    const fn new(timeout_secs: u64) -> Self {
-        Self { timeout_secs }
+    /// Create a new client whose requests share one agent and time out after
+    /// `timeout_secs`.
+    fn new(timeout_secs: u64) -> Self {
+        let config = ureq::config::Config::builder()
+            .timeout_global(Some(std::time::Duration::from_secs(timeout_secs)))
+            .build();
+        Self {
+            agent: config.new_agent(),
+        }
     }
 }
 
 impl HttpClient for UreqClient {
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
-        let config = ureq::config::Config::builder()
-            .timeout_global(Some(std::time::Duration::from_secs(self.timeout_secs)))
-            .build();
-        let agent = config.new_agent();
-        let mut req = agent.get(url);
+        let mut req = self.agent.get(url);
         for &(k, v) in headers {
             req = req.header(k, v);
         }
@@ -88,7 +93,7 @@ impl HttpClient for UreqClient {
 }
 
 /// Build the default HTTP client used by the self-update subsystem.
-pub(super) const fn default_http_client() -> UreqClient {
+pub(super) fn default_http_client() -> UreqClient {
     UreqClient::new(120)
 }
 
@@ -134,18 +139,23 @@ const fn retry_delay(_attempt: u32) -> std::time::Duration {
 }
 
 /// Query the GitHub API for the latest release tag.
+///
+/// # Errors
+///
+/// Returns an error if the request fails after retries, or if the response is
+/// not valid JSON. A successful response that carries no `tag_name` yields
+/// `Ok(None)`.
 pub(super) fn fetch_latest_tag(client: &dyn HttpClient) -> Result<Option<String>> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let Ok(body_bytes) = get_with_retry(
+    let body_bytes = get_with_retry(
         client,
         &url,
         &[
             ("Accept", "application/vnd.github.v3+json"),
             ("User-Agent", "dotfiles-cli"),
         ],
-    ) else {
-        return Ok(None);
-    };
+    )
+    .with_context(|| format!("querying latest release from {url}"))?;
 
     let body = String::from_utf8_lossy(&body_bytes);
     let parsed: serde_json::Value =
@@ -258,10 +268,13 @@ mod tests {
     }
 
     #[test]
-    fn fetch_latest_tag_returns_none_on_network_error() {
+    fn fetch_latest_tag_reports_network_error() {
         let client = MockHttpClient::new(vec![Err(anyhow::anyhow!("network error"))]);
-        let result = fetch_latest_tag(&client).unwrap();
-        assert_eq!(result, None);
+        let error = fetch_latest_tag(&client).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("network error"),
+            "the underlying cause must survive so a broken update is diagnosable, got: {error:#}"
+        );
     }
 
     #[test]

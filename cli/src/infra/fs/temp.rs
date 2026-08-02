@@ -59,6 +59,25 @@ impl TempGuard {
         }
     }
 
+    /// Create a guard over a *file* in `dir` whose name cannot collide with a
+    /// concurrent call.
+    ///
+    /// The name is `{prefix}-{pid}-{seq}-{suffix}`. The PID alone is not
+    /// enough: several threads of one process stage content under the same
+    /// logical name, so a shared path lets one call's guard delete a file
+    /// another call is still writing. The counter closes that window; the PID
+    /// closes the equivalent one across processes.
+    ///
+    /// Note this only reserves a *name* — the caller still creates the file.
+    #[must_use]
+    pub fn unique_file(dir: &Path, prefix: &str, suffix: &str) -> Self {
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+        let seq = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let pid = std::process::id();
+        Self::file(dir.join(format!("{prefix}-{pid}-{seq}-{suffix}")))
+    }
+
     /// Create a guard that recursively removes the given temporary
     /// *directory* on drop.
     #[must_use]

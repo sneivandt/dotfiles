@@ -338,7 +338,10 @@ mod tests {
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
 
-        assert!(ConfigureSystemd::new(units).requires_elevation(&ctx));
+        assert!(crate::engine::requires_elevation(
+            &ConfigureSystemd::new(units),
+            &ctx
+        ));
     }
 
     #[test]

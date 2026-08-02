@@ -37,7 +37,7 @@ impl SummaryCounts {
     pub(super) fn from_tasks(tasks: &[TaskEntry]) -> Self {
         let mut counts = Self::default();
         for task in tasks {
-            if !task.visible {
+            if !task.visibility.is_visible() {
                 continue;
             }
             match task.status {
@@ -82,7 +82,7 @@ pub(super) fn format_standard_totals(
             parts.push(style.paint(
                 TextStyle::Green,
                 &format!(
-                    "Applied {} {} across {} {}",
+                    "{} {} in {} {}",
                     counts.actions.applied,
                     pluralize(counts.actions.applied, "change", "changes"),
                     counts.changed,
@@ -104,7 +104,7 @@ pub(super) fn format_standard_totals(
         parts.push(style.paint(
             TextStyle::Magenta,
             &format!(
-                "{} {} across {} {}",
+                "{} {} in {} {}",
                 counts.actions.planned,
                 pluralize(counts.actions.planned, "change", "changes"),
                 counts.dry_run,
@@ -115,7 +115,7 @@ pub(super) fn format_standard_totals(
         parts.push(style.paint(
             TextStyle::Green,
             &format!(
-                "Applied {} {} across {} {}",
+                "{} {} in {} {}",
                 counts.actions.applied,
                 pluralize(counts.actions.applied, "change", "changes"),
                 counts.changed,

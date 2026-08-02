@@ -8,7 +8,9 @@ mod stats;
 
 use crate::engine::mode::ProcessOpts;
 use crate::engine::resource::ResourceError;
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 use crate::test_helpers::make_static_context;
 
 // -----------------------------------------------------------------------
@@ -64,7 +66,9 @@ impl Resource for MockResource {
             .clone()
             .map_err(|s| anyhow::anyhow!("{s}").into())
     }
+}
 
+impl RemovableResource for MockResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         self.remove_result
             .clone()
@@ -99,7 +103,9 @@ impl Resource for TypedErrorResource {
             other => Err(anyhow::anyhow!("unknown error variant: {other}").into()),
         }
     }
+}
 
+impl RemovableResource for TypedErrorResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         Ok(ResourceChange::Applied)
     }

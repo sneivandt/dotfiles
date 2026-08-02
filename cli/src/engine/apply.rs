@@ -6,7 +6,7 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
 use super::stats::{ItemOutcome, TaskStats};
-use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::logging::LogEvent;
 use crate::infra::logging::OutputExt as _;
 
@@ -202,7 +202,7 @@ where
 }
 
 /// Remove a single resource, returning a stats delta.
-pub(super) fn remove_single<R: Resource>(
+pub(super) fn remove_single<R: RemovableResource>(
     ctx: &Context,
     resource: &R,
     current: &ResourceState,
@@ -216,7 +216,7 @@ pub(super) fn remove_single<R: Resource>(
                 ctx,
                 resource,
                 ResourceMutation::remove(plan.description(), remove_verb, plan.dry_run_message()),
-                Resource::remove,
+                RemovableResource::remove,
             )?);
         }
         RemoveOperation::Skip { reason } => {

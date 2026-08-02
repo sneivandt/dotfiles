@@ -18,10 +18,7 @@ use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_befo
 impl Logger {
     /// Print the summary of all recorded tasks.
     pub fn print_summary(&self) {
-        let tasks = match self.tasks.lock() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return,
-        };
+        let tasks = self.lock_tasks().clone();
         self.clear_status();
 
         let elapsed = self.start.elapsed();
@@ -58,10 +55,7 @@ impl Logger {
         let Some(task) = task else {
             return;
         };
-        let details = self
-            .task_details
-            .lock()
-            .map_or_else(|_| Vec::new(), |guard| guard.clone());
+        let details = self.lock_task_details().clone();
 
         let lines = task_result_lines(&task, &details, self.row_opts());
         let Some((status_row, detail_rows)) = lines.split_first() else {
@@ -115,13 +109,11 @@ impl Logger {
     }
 
     fn recorded_task(&self, task_name: &str) -> Option<TaskEntry> {
-        self.tasks.lock().map_or(None, |guard| {
-            guard
-                .iter()
-                .rev()
-                .find(|task| task.name == task_name)
-                .cloned()
-        })
+        self.lock_tasks()
+            .iter()
+            .rev()
+            .find(|task| task.name == task_name)
+            .cloned()
     }
 }
 

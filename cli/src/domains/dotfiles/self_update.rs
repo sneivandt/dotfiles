@@ -129,9 +129,20 @@ fn check_for_update_with_current(
     {
         return Ok(classify_update(&current, latest));
     }
-    let Some(latest) = fetch_latest_tag(client)? else {
-        tracing::debug!("fetch_latest_tag returned None, treating as offline");
-        return Ok(UpdateCheck::Offline);
+    let latest = match fetch_latest_tag(client) {
+        Ok(Some(latest)) => latest,
+        Ok(None) => {
+            tracing::debug!("latest release carried no tag_name, treating as offline");
+            return Ok(UpdateCheck::Offline);
+        }
+        // Self-update runs unattended at the end of `dotfiles update`, so a
+        // failed lookup must not fail the run. It must not vanish silently
+        // either: without the cause, a persistently broken update (expired
+        // proxy, rate limit, DNS) looks identical to being up to date.
+        Err(error) => {
+            tracing::warn!("skipping self-update, could not reach GitHub: {error:#}");
+            return Ok(UpdateCheck::Offline);
+        }
     };
     let check = classify_update(&current, latest.clone());
     if !matches!(check, UpdateCheck::UpdateAvailable { .. }) {

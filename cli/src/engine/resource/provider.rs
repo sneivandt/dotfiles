@@ -6,25 +6,17 @@ use super::{Resource, ResourceState};
 
 /// Provides current state for a batch of resources.
 ///
-/// Implementations may either use no cache (for intrinsic checks) or load a
-/// shared cache once and reuse it for every resource in the batch.
+/// Implementations either inspect each resource directly (see
+/// [`IntrinsicStateProvider`]) or answer from state the caller gathered up
+/// front (see [`CachedStateProvider`]). Bulk state belongs in the provider's
+/// own fields, so the trait itself stays a single question per resource.
 pub trait ResourceStateProvider<R: Resource> {
-    /// Cached state shared across all resources in this batch.
-    type Cache: Sync;
-
-    /// Load shared state for this batch.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the state cache cannot be loaded.
-    fn load(&self, resources: &[R]) -> Result<Self::Cache>;
-
     /// Determine the current state for one resource.
     ///
     /// # Errors
     ///
     /// Returns an error if the resource state cannot be determined.
-    fn current_state(&self, resource: &R, cache: &Self::Cache) -> Result<ResourceState>;
+    fn current_state(&self, resource: &R) -> Result<ResourceState>;
 }
 
 /// State-checking extension for resources that can inspect themselves.
@@ -59,13 +51,7 @@ pub trait IntrinsicState: Resource {
 pub struct IntrinsicStateProvider;
 
 impl<R: IntrinsicState> ResourceStateProvider<R> for IntrinsicStateProvider {
-    type Cache = ();
-
-    fn load(&self, _resources: &[R]) -> Result<Self::Cache> {
-        Ok(())
-    }
-
-    fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
+    fn current_state(&self, resource: &R) -> Result<ResourceState> {
         resource.current_state()
     }
 }
@@ -91,13 +77,7 @@ where
     Cache: Sync + ?Sized,
     State: Fn(&R, &Cache) -> Result<ResourceState> + Sync,
 {
-    type Cache = ();
-
-    fn load(&self, _resources: &[R]) -> Result<Self::Cache> {
-        Ok(())
-    }
-
-    fn current_state(&self, resource: &R, _cache: &Self::Cache) -> Result<ResourceState> {
+    fn current_state(&self, resource: &R) -> Result<ResourceState> {
         (self.state)(resource, self.cache)
     }
 }

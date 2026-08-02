@@ -75,19 +75,3 @@ fn unknown_state_display() {
     };
     assert_eq!(state.to_string(), "unknown (env var not set)");
 }
-
-#[test]
-fn default_remove_returns_error() {
-    let resource = TestResource {
-        state: ResourceState::Correct,
-    };
-    let err = resource.remove().unwrap_err();
-    assert!(
-        err.to_string().contains("not supported"),
-        "expected 'not supported' in: {err}"
-    );
-    assert!(
-        err.to_string().contains("test resource"),
-        "expected resource description in: {err}"
-    );
-}

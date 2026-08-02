@@ -27,6 +27,28 @@ impl ActionCounts {
     }
 }
 
+/// Whether a task is part of the user-facing workflow or internal orchestration.
+///
+/// Lives here rather than beside the task contract because it is purely a
+/// presentation decision: it selects which rows and totals a run reports. The
+/// engine re-exports it so task implementations need not reach into the
+/// logging module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskVisibility {
+    /// Show the task in discovery, completed rows, and aggregate totals.
+    Visible,
+    /// Keep the task in scheduling and diagnostics, but hide it from normal output.
+    Internal,
+}
+
+impl TaskVisibility {
+    /// Whether this task contributes to user-facing rows and totals.
+    #[must_use]
+    pub const fn is_visible(self) -> bool {
+        matches!(self, Self::Visible)
+    }
+}
+
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
@@ -39,7 +61,7 @@ pub struct TaskEntry {
     /// Structured action totals produced by the task.
     pub actions: ActionCounts,
     /// Whether the task contributes to user-facing rows and totals.
-    pub visible: bool,
+    pub visibility: TaskVisibility,
     /// How long the task ran, once measured by the execution engine.
     ///
     /// Recorded separately from the outcome because the duration is only known
@@ -306,7 +328,7 @@ pub trait TaskRecorder: Send + Sync {
         status: TaskStatus,
         message: Option<&str>,
         actions: ActionCounts,
-        _visible: bool,
+        _visibility: TaskVisibility,
     ) {
         self.record_task_with_actions(name, status, message, actions);
     }
@@ -361,7 +383,7 @@ mod tests {
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),
             actions: ActionCounts::default(),
-            visible: true,
+            visibility: TaskVisibility::Visible,
             duration: None,
         };
         let cloned = entry.clone();

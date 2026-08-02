@@ -4,7 +4,7 @@ use super::render::{RowOpts, format_task_line, task_detail_lines, task_result_li
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::StyleChoice;
-use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus};
+use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
 use crate::infra::logging::utils::format_elapsed;
 
 /// Build a task entry with the fields a row-rendering test cares about.
@@ -13,7 +13,7 @@ fn task_entry(name: &str, status: TaskStatus, message: Option<&str>) -> TaskEntr
         name: name.to_string(),
         status,
         message: message.map(str::to_string),
-        visible: true,
+        visibility: TaskVisibility::Visible,
         actions: ActionCounts::default(),
         duration: None,
     }
@@ -81,7 +81,7 @@ fn standard_summary_groups_task_and_action_counts() {
 
     assert_eq!(
         lines,
-        ["Failed · Applied 87 changes across 3 tasks · 1 ignored · 1 failed · 2.0s"]
+        ["Failed · 87 changes in 3 tasks · 1 ignored · 1 failed · 2.0s"]
     );
 }
 
@@ -106,7 +106,7 @@ fn dry_run_summary_leads_with_the_dry_run_label() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["Dry run · 81 changes across 1 task · 0.8s"]);
+    assert_eq!(lines, ["Dry run · 81 changes in 1 task · 0.8s"]);
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn summary_totals_account_for_every_reported_task() {
 
     assert_eq!(
         lines,
-        ["Applied 4 changes across 2 tasks \u{b7} 15 up to date \u{b7} 1 ignored \u{b7} 2.3s"],
+        ["4 changes in 2 tasks \u{b7} 15 up to date \u{b7} 1 ignored \u{b7} 2.3s"],
         "every task the run reported on must be represented in the totals"
     );
 }

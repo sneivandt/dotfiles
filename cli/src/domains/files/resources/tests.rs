@@ -277,7 +277,9 @@ mod chmod {
 
 mod symlink {
     use super::super::symlink::*;
-    use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceState};
+    use crate::engine::{
+        IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceState,
+    };
     use crate::infra::exec::{Executor, ProcessExecutor};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;

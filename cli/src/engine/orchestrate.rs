@@ -8,8 +8,10 @@ use super::context::Context;
 use super::mode::ProcessOpts;
 use super::parallel;
 use super::stats::{TaskResult, TaskStats};
+use crate::engine::resource::CachedStateProvider;
 use crate::engine::{
-    IntrinsicState, IntrinsicStateProvider, Resource, ResourceState, ResourceStateProvider,
+    IntrinsicState, IntrinsicStateProvider, RemovableResource, Resource, ResourceState,
+    ResourceStateProvider,
 };
 use crate::infra::logging::OutputExt as _;
 
@@ -63,13 +65,13 @@ where
 
 /// Process resources with an explicit state provider.
 ///
-/// The provider may check each resource intrinsically or load cached/bulk state
-/// once for the full resource slice.
+/// The provider may check each resource intrinsically or answer from bulk state
+/// the caller gathered before the batch started.
 ///
 /// # Errors
 ///
-/// Returns an error if provider state loading, per-resource state checking, or
-/// applying changes fails, depending on the `bail_on_error` setting in `opts`.
+/// Returns an error if per-resource state checking or applying changes fails,
+/// depending on the `bail_on_error` setting in `opts`.
 pub fn process_resources_with_provider<R, P>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
@@ -79,18 +81,41 @@ pub fn process_resources_with_provider<R, P>(
 where
     R: Resource + Send,
     P: ResourceStateProvider<R> + Sync,
-    P::Cache: Sync,
 {
     let resources: Vec<R> = resources.into_iter().collect();
     if resources.is_empty() {
         return Ok(TaskResult::Ok);
     }
 
-    let cache = provider.load(&resources)?;
     process_apply_items(ctx, resources, opts, "state_provider", |resource| {
-        let state = provider.current_state(&resource, &cache)?;
+        let state = provider.current_state(&resource)?;
         Ok((resource, state))
     })
+}
+
+/// Process resources whose current state is derived from a borrowed cache.
+///
+/// # Errors
+///
+/// Returns an error if provider-backed resource processing fails.
+pub fn process_resources_with_cache<R, Cache, State>(
+    ctx: &Context,
+    resources: impl IntoIterator<Item = R>,
+    cache: &Cache,
+    state: State,
+    opts: &ProcessOpts,
+) -> Result<TaskResult>
+where
+    R: Resource + Send,
+    Cache: Sync + ?Sized,
+    State: for<'a> Fn(&'a R, &Cache) -> Result<ResourceState> + Sync,
+{
+    process_resources_with_provider(
+        ctx,
+        resources,
+        &CachedStateProvider::new(cache, state),
+        opts,
+    )
 }
 
 /// Process resources by checking each one's intrinsic current state.
@@ -123,7 +148,7 @@ pub fn process_resources<R: IntrinsicState + Send>(
 ///
 /// Returns an error if a resource fails to check its current state or fails
 /// during the removal process.
-pub fn process_resources_remove<R: IntrinsicState + Send>(
+pub fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     verb: &'static str,

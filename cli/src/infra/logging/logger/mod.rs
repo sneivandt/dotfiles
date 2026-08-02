@@ -30,6 +30,7 @@ use super::types::{
 };
 #[cfg(test)]
 use super::utils::dotfiles_log_subdir;
+use crate::infra::logging::TaskVisibility;
 
 /// Structured logger with dry-run awareness and summary collection.
 ///
@@ -173,6 +174,45 @@ impl Logger {
         })
     }
 
+    /// Acquire the recorded-task list, recovering from poisoning.
+    ///
+    /// Task panics are expected and survivable — the scheduler catches them so
+    /// the rest of the run continues — which means this lock can genuinely end
+    /// up poisoned. Treating that as "no tasks" silently empties the run
+    /// summary and the progress counter, turning one task's panic into a run
+    /// that appears to have done nothing. The entries are an append-only log
+    /// with no invariant spanning them, so recovering the guard keeps every
+    /// task recorded before and after the panic.
+    pub(in crate::infra::logging) fn lock_tasks(
+        &self,
+    ) -> std::sync::MutexGuard<'_, Vec<TaskEntry>> {
+        self.tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Acquire the per-task detail lines, recovering from poisoning.
+    ///
+    /// Same reasoning as [`Logger::lock_tasks`].
+    pub(in crate::infra::logging) fn lock_task_details(
+        &self,
+    ) -> std::sync::MutexGuard<'_, Vec<TaskDetailEntry>> {
+        self.task_details
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Acquire the active-task list, recovering from poisoning.
+    ///
+    /// Same reasoning as [`Logger::lock_tasks`].
+    pub(in crate::infra::logging) fn lock_active_tasks(
+        &self,
+    ) -> std::sync::MutexGuard<'_, Vec<String>> {
+        self.active_tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Return a handle to the run log, if available.
     pub(in crate::infra::logging) fn run_log_handle(&self) -> Option<Arc<RunLog>> {
         self.run_log.clone()
@@ -202,7 +242,7 @@ impl Logger {
     /// Return a clone of all recorded task entries (test-only).
     #[cfg(test)]
     pub(crate) fn task_entries(&self) -> Vec<TaskEntry> {
-        self.tasks.lock().map_or_else(|_| vec![], |g| g.clone())
+        self.lock_tasks().clone()
     }
 
     /// Return the current value of `progress_rows` (test-only).
@@ -244,7 +284,7 @@ impl Logger {
         message: Option<&str>,
         actions: ActionCounts,
     ) {
-        self.record_task_with_metadata(name, status, message, actions, true);
+        self.record_task_with_metadata(name, status, message, actions, TaskVisibility::Visible);
     }
 
     /// Record a task result with structured action totals and presentation metadata.
@@ -254,24 +294,25 @@ impl Logger {
         status: TaskStatus,
         message: Option<&str>,
         actions: ActionCounts,
-        visible: bool,
+        visibility: TaskVisibility,
     ) {
-        if let Ok(mut guard) = self.tasks.lock() {
-            guard.push(TaskEntry {
-                name: name.to_string(),
-                status,
-                message: message.map(String::from),
-                actions,
-                visible,
-                duration: None,
-            });
-        }
+        self.lock_tasks().push(TaskEntry {
+            name: name.to_string(),
+            status,
+            message: message.map(String::from),
+            actions,
+            visibility,
+            duration: None,
+        });
     }
 
     /// Attach a measured run duration to the most recent entry for `name`.
     pub fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
-        if let Ok(mut guard) = self.tasks.lock()
-            && let Some(task) = guard.iter_mut().rev().find(|task| task.name == name)
+        if let Some(task) = self
+            .lock_tasks()
+            .iter_mut()
+            .rev()
+            .find(|task| task.name == name)
         {
             task.duration = Some(duration);
         }
@@ -322,34 +363,28 @@ impl Logger {
 
     /// Look up the status recorded for a task, if it has finished.
     fn recorded_task_status(&self, name: &str) -> Option<TaskStatus> {
-        self.tasks.lock().map_or(None, |guard| {
-            guard
-                .iter()
-                .rev()
-                .find(|task| task.name == name)
-                .map(|task| task.status)
-        })
+        self.lock_tasks()
+            .iter()
+            .rev()
+            .find(|task| task.name == name)
+            .map(|task| task.status)
     }
 
     pub(in crate::infra::logging) fn task_is_visible(&self, name: &str) -> bool {
-        self.tasks.lock().map_or(true, |guard| {
-            guard
-                .iter()
-                .rev()
-                .find(|task| task.name == name)
-                .is_none_or(|task| task.visible)
-        })
+        self.lock_tasks()
+            .iter()
+            .rev()
+            .find(|task| task.name == name)
+            .is_none_or(|task| task.visibility.is_visible())
     }
 
     /// Return the recorded outcome message for the most recent entry named `name`.
     pub(in crate::infra::logging) fn recorded_task_message(&self, name: &str) -> Option<String> {
-        self.tasks.lock().ok().and_then(|guard| {
-            guard
-                .iter()
-                .rev()
-                .find(|task| task.name == name)
-                .and_then(|task| task.message.clone())
-        })
+        self.lock_tasks()
+            .iter()
+            .rev()
+            .find(|task| task.name == name)
+            .and_then(|task| task.message.clone())
     }
 
     /// Record buffered user-facing detail lines for a completed task.
@@ -357,23 +392,19 @@ impl Logger {
         if lines.is_empty() {
             return;
         }
-        if let Ok(mut guard) = self.task_details.lock() {
-            guard.push(TaskDetailEntry {
-                name: name.to_string(),
-                lines,
-            });
-        }
+        self.lock_task_details().push(TaskDetailEntry {
+            name: name.to_string(),
+            lines,
+        });
     }
 
     /// Count the number of failed tasks.
     #[must_use]
     pub fn failure_count(&self) -> usize {
-        self.tasks.lock().map_or(0, |guard| {
-            guard
-                .iter()
-                .filter(|t| t.status == TaskStatus::Failed)
-                .count()
-        })
+        self.lock_tasks()
+            .iter()
+            .filter(|t| t.status == TaskStatus::Failed)
+            .count()
     }
 
     /// Emit the single blank line that separates startup metadata from details.
@@ -423,9 +454,9 @@ impl TaskRecorder for Logger {
         status: TaskStatus,
         message: Option<&str>,
         actions: ActionCounts,
-        visible: bool,
+        visibility: TaskVisibility,
     ) {
-        self.record_task_with_metadata(name, status, message, actions, visible);
+        self.record_task_with_metadata(name, status, message, actions, visibility);
     }
 
     fn record_task_duration(&self, name: &str, duration: std::time::Duration) {

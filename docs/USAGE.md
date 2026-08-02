@@ -175,8 +175,8 @@ denominator rather than advancing the numerator.
 
 The final line reports actual action counts and affected task counts, for
 example
-`Applied 4 changes across 2 tasks · 14 up to date · 1 ignored · 2.3s`,
-`Dry run · 121 changes across 5 tasks · 8 up to date · 3 ignored · 0.7s`, or
+`4 changes in 2 tasks · 14 up to date · 1 ignored · 2.3s`,
+`Dry run · 121 changes in 5 tasks · 8 up to date · 3 ignored · 0.7s`, or
 `6 passed · 1 ignored · 1.4s`.
 
 ## Uninstall

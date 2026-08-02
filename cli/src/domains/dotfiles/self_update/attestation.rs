@@ -155,24 +155,9 @@ fn unverified(policy: Policy, asset: &str, reason: &str) -> Result<()> {
 }
 
 /// Write `data` to a uniquely named temporary file for verification.
-///
-/// The counter keeps concurrent calls from colliding. The PID alone is not
-/// enough: unit tests exercise this path from several threads of one process
-/// with the same asset name, so a shared path let one call's [`TempGuard`] guard
-/// delete a file another call was still writing.
-///
-/// [`TempGuard`]: crate::infra::fs::TempGuard
 fn stage_for_verification(asset: &str, data: &[u8]) -> Result<crate::infra::fs::TempGuard> {
-    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-    let unique = format!(
-        ".dotfiles-attest-{pid}-{seq}-{asset}",
-        pid = std::process::id(),
-        seq = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-        asset = asset
-    );
-    let path = std::env::temp_dir().join(unique);
-    let temp = crate::infra::fs::TempGuard::file(path);
+    let temp =
+        crate::infra::fs::TempGuard::unique_file(&std::env::temp_dir(), ".dotfiles-attest", asset);
     std::fs::write(temp.path(), data).with_context(|| {
         format!(
             "writing {asset} to {} for provenance verification",

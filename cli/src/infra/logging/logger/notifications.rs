@@ -24,9 +24,7 @@ impl Logger {
         show_progress: bool,
     ) {
         let _guard = self.lock_flush();
-        if let Ok(mut active) = self.active_tasks.lock() {
-            active.push(name.to_string());
-        }
+        self.lock_active_tasks().push(name.to_string());
         self.redraw_active_status_locked(show_progress);
     }
 
@@ -72,19 +70,16 @@ impl Logger {
     }
 
     pub(in crate::infra::logging) fn remove_active_task_locked(&self, name: &str) {
-        if let Ok(mut active) = self.active_tasks.lock() {
-            active.retain(|n| n != name);
-        }
+        self.lock_active_tasks().retain(|n| n != name);
     }
 
     fn active_task_summary(&self) -> Option<String> {
-        self.active_tasks.lock().ok().and_then(|active| {
-            if active.is_empty() {
-                None
-            } else {
-                Some(self.format_active(&active))
-            }
-        })
+        let active = self.lock_active_tasks();
+        if active.is_empty() {
+            None
+        } else {
+            Some(self.format_active(&active))
+        }
     }
 
     /// Record a task completion, optionally redrawing the interactive progress line.
@@ -134,6 +129,7 @@ impl Logger {
 )]
 mod tests {
     use crate::infra::logging::isolated_logger;
+    use crate::infra::logging::types::TaskVisibility;
 
     #[test]
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
@@ -185,7 +181,7 @@ mod tests {
             TaskStatus::Ok,
             None,
             ActionCounts::default(),
-            false,
+            TaskVisibility::Internal,
         );
         log.mark_task_completed("internal-task");
 

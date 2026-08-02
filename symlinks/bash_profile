@@ -15,3 +15,8 @@ BASH_PROFILE_LOADED=1
 
 # GUI Arch Profile (optional)
 [ -r ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
+
+# Interactive shell configuration
+case $- in
+  *i*) [ -r ~/.bashrc ] && . ~/.bashrc ;;
+esac

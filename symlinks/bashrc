@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
+# Only run for interactive shells
+[[ $- != *i* ]] && return
+
 # Guard against multiple sourcing
 [ -n "$BASHRC_LOADED" ] && return
 BASHRC_LOADED=1

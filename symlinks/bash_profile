@@ -5,18 +5,23 @@
 BASH_PROFILE_LOADED=1
 
 # Global profile (optional)
+# shellcheck disable=SC1091
 [ -r /etc/profile ] && . /etc/profile
 
 # Profile
+# shellcheck disable=SC1090
 [ -r ~/.config/shell/profile.sh ] && . ~/.config/shell/profile.sh
 
 # GUI Profile (optional)
+# shellcheck disable=SC1090
 [ -r ~/.config/shell/profile-desktop.sh ] && . ~/.config/shell/profile-desktop.sh
 
 # GUI Arch Profile (optional)
+# shellcheck disable=SC1090
 [ -r ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
 
 # Interactive shell configuration
-case $- in
-  *i*) [ -r ~/.bashrc ] && . ~/.bashrc ;;
-esac
+if [[ $- == *i* ]]; then
+  # shellcheck disable=SC1090
+  [ -r ~/.bashrc ] && . ~/.bashrc
+fi

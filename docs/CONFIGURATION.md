@@ -34,7 +34,7 @@ symlinks = ["config/git/config"]
 symlinks = ["Documents/PowerShell/Microsoft.PowerShell_profile.ps1"]
 
 [arch-desktop]
-symlinks = ["config/hypr/hyprland.conf"]
+symlinks = ["config/hypr/hyprland.lua"]
 ```
 
 A hyphenated section uses **AND semantics**. `[arch-desktop]` is active only

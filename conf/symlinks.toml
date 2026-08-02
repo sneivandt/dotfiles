@@ -73,7 +73,7 @@ symlinks = [
   "config/gtk-2.0/gtkrc-2.0",
   "config/gtk-3.0/settings.ini",
   "config/gtk-4.0/settings.ini",
-  "config/hypr/hyprland.conf",
+  "config/hypr/hyprland.lua",
   "config/hypr/conf",
   "config/hypr/hypridle.conf",
   "config/hypr/hyprlock.conf",

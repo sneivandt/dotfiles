@@ -12,14 +12,20 @@ ZPROFILE_LOADED=1
 [ -r ~/.config/shell/profile-arch-desktop.sh ] && . ~/.config/shell/profile-arch-desktop.sh
 
 # Start graphical session on tty1 if not already running
-if [ "$(tty)" = "/dev/tty1" ]; then
+if command -v uwsm >/dev/null 2>&1 && [ "$(tty)" = "/dev/tty1" ]; then
   if uwsm check may-start 2>/dev/null; then
     exec uwsm start hyprland-uwsm.desktop
   elif uwsm check is-active 2>/dev/null; then
     # Previous session targets still deactivating — wait and retry
     echo "Waiting for previous graphical session to stop..."
+    _uwsm_wait=0
     while uwsm check is-active 2>/dev/null; do
+      if [ "$_uwsm_wait" -ge 30 ]; then
+        echo "Previous graphical session did not stop after 15 s; continuing to shell." >&2
+        break
+      fi
       sleep 0.5
+      _uwsm_wait=$(( _uwsm_wait + 1 ))
     done
     if uwsm check may-start 2>/dev/null; then
       exec uwsm start hyprland-uwsm.desktop

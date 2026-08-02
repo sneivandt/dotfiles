@@ -1,8 +1,11 @@
 [core]
-  pager = delta
+  # Guarded so a machine without delta degrades to less instead of failing
+  # every paged command with "cannot run delta". Git runs pager values
+  # containing shell metacharacters through sh.
+  pager = "if command -v delta >/dev/null 2>&1; then delta; else less -imRj8X; fi"
 
 [interactive]
-  diffFilter = delta --color-only
+  diffFilter = "if command -v delta >/dev/null 2>&1; then delta --color-only; else cat; fi"
 
 [delta]
   navigate = true

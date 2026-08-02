@@ -2,7 +2,7 @@
 
 # Remove docker images and containers
 
-[ -n "$(command -v docker)" ] || { echo "ERROR: docker not installed" 1>&2 && return 1; }
+command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not installed" 1>&2 && return 1; }
 
 # Remove stopped containers
 docker container prune -f

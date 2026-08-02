@@ -2,10 +2,10 @@
 """Disable resize_on_border when the focused workspace's window fills it.
 
 A window "fills" the workspace when it's fullscreen, or when it's the only
-tiled window on the workspace (with no border/gaps via the f[1]/w[tv1]
-workspace rules). In those cases the border-resize cursor is misleading
-because there's nothing to resize against. Listens to Hyprland IPC and
-toggles general:resize_on_border via hyprctl accordingly.
+tiled window on the workspace (with no border/gaps via the f[1] workspace
+rule). In those cases the border-resize cursor is misleading because there's
+nothing to resize against. Listens to Hyprland IPC and toggles
+general:resize_on_border via hyprctl accordingly.
 """
 
 import json

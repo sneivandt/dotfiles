@@ -32,7 +32,7 @@ alias sudo="sudo "
 alias diff="diff --color=auto"
 alias ip="ip -c"
 
-alias tmux="tmux -2 -f ~/.config/tmux/tmux.conf"
+alias tmux="tmux -f ~/.config/tmux/tmux.conf"
 
 # Modern replacements
 if command -v eza >/dev/null 2>&1; then

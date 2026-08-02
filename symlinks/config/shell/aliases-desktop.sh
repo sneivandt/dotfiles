@@ -1,5 +1,5 @@
 #!/bin/sh
 
-if [ -n "$(command -vp code-insiders)" ]; then
+if command -v code-insiders >/dev/null 2>&1; then
   alias code="code-insiders"
 fi

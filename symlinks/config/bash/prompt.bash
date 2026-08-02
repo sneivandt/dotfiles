@@ -8,7 +8,7 @@ if [ -n "$SSH_CONNECTION" ] || [ -e /.dockerenv ]; then
 fi
 
 _BASH_PROMPT_SHELL=""
-if [ "$(command -v bash)" != "$SHELL" ]; then
+if [ "$(readlink -f "$(command -v bash)")" != "$(readlink -f "$SHELL")" ]; then
   _BASH_PROMPT_SHELL="bash "
 fi
 

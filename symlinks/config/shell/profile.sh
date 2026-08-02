@@ -153,7 +153,12 @@ nb=0:\
 nk=0:nm=0:ng=0:nt=0"
 
 # virtualenvwrapper
-if command -v virtualenvwrapper.sh >/dev/null 2>&1; then
+# Prefer the lazy loader: it installs stub functions and only sources the real
+# script (a ~200-500 ms Python startup) on first use.
+if command -v virtualenvwrapper_lazy.sh >/dev/null 2>&1; then
+  export WORKON_HOME=~/.venv
+  . virtualenvwrapper_lazy.sh
+elif command -v virtualenvwrapper.sh >/dev/null 2>&1; then
   export WORKON_HOME=~/.venv
   . virtualenvwrapper.sh
 fi

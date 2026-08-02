@@ -35,6 +35,7 @@ paths = [
   "config/zsh/",
   "gnupg/",
   "vim/",
+  "zprofile",
   "zshenv",
   "zshrc",
 ]
@@ -109,7 +110,6 @@ paths = [
   "config/wallpaper/",
   "config/waybar/",
   "config/fuzzel/",
-  "zprofile",
 ]
 
 # Windows desktop-specific files

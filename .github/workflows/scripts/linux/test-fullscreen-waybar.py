@@ -4,9 +4,14 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
+
+# exec_module() on a source path writes __pycache__ next to the script, which
+# would land inside the symlinks/ tree that this test loads from.
+sys.dont_write_bytecode = True
 
 ROOT = Path(os.environ["DIR"])
 SCRIPT = ROOT / "symlinks/config/hypr/scripts/fullscreen-waybar.py"

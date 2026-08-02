@@ -28,7 +28,6 @@ fi
 setopt always_to_end
 setopt auto_menu
 setopt complete_in_word
-setopt completealiases
 unsetopt flowcontrol
 unsetopt menu_complete
 
@@ -39,7 +38,6 @@ zstyle ':completion:*' menu select=2
 zstyle ':completion:*' rehash true
 zstyle ':completion:*' use-cache on
 zstyle ':completion:*' cache-path ~/.cache/zsh
-zstyle ':completion:*' users $users
 zstyle ':completion:*' verbose yes
 zstyle ':completion:*:*:kill:*' menu yes select
 zstyle ':completion:*:*:kill:*:processes' list-colors "=(#b) #([0-9]#)*=29=31"

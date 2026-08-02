@@ -25,3 +25,4 @@ MemoryDenyWriteExecute=true
 CapabilityBoundingSet=
 SystemCallArchitectures=native
 ExecStart=/usr/bin/find %h/tmp -xdev -mindepth 1 -type f -mtime +7 -delete
+ExecStart=/usr/bin/find %h/tmp -xdev -mindepth 1 -depth -type d -empty -delete

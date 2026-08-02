@@ -9,8 +9,8 @@
 BASHRC_LOADED=1
 
 # History
-[ -d ~/.cache/bash ] || mkdir -p ~/.cache/bash
-export HISTFILE=~/.cache/bash/history
+[ -d "${XDG_CACHE_HOME:-$HOME/.cache}/bash" ] || mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/bash"
+export HISTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/bash/history"
 export HISTSIZE=100000
 export HISTFILESIZE=100000
 export HISTCONTROL=ignoreboth
@@ -19,19 +19,36 @@ shopt -s checkwinsize
 shopt -s globstar
 
 # Path
+# shellcheck disable=SC1090
 [ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
 
 # Aliases
+# shellcheck disable=SC1090
 [ -r ~/.config/shell/aliases.sh ] && . ~/.config/shell/aliases.sh
 
 # GUI Aliases (optional)
+# shellcheck disable=SC1090
 [ -r ~/.config/shell/aliases-desktop.sh ] && . ~/.config/shell/aliases-desktop.sh
 
 # Prompt
-[ -r ~/.config/bash/prompt ] && . ~/.config/bash/prompt
+# shellcheck disable=SC1090
+[ -r ~/.config/bash/prompt.bash ] && . ~/.config/bash/prompt.bash
 
 # zoxide
 if command -v zoxide >/dev/null 2>&1
 then
   eval "$(zoxide init bash)"
+fi
+
+# FZF (optional)
+if [ -f /usr/share/fzf/key-bindings.bash ]; then
+  # shellcheck disable=SC1091
+  . /usr/share/fzf/key-bindings.bash
+fi
+if [ -f /usr/share/fzf/completion.bash ]; then
+  # shellcheck disable=SC1091
+  . /usr/share/fzf/completion.bash
+fi
+if [ ! -f /usr/share/fzf/key-bindings.bash ] && [ ! -f /usr/share/fzf/completion.bash ] && command -v fzf >/dev/null 2>&1; then
+  eval "$(fzf --bash)"
 fi

@@ -1,5 +1,8 @@
 #!/usr/bin/env zsh
 
+# Only run for interactive shells
+[[ -o interactive ]] || return
+
 # Guard against multiple sourcing
 [ -n "$ZSHRC_LOADED" ] && return
 ZSHRC_LOADED=1
@@ -22,8 +25,8 @@ setopt hist_reduce_blanks
 setopt hist_verify
 setopt sharehistory
 setopt extendedglob
-[ -d ~/.cache/zsh ] || mkdir -p ~/.cache/zsh
-HISTFILE=~/.cache/zsh/history
+[ -d "${XDG_CACHE_HOME:-$HOME/.cache}/zsh" ] || mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
+HISTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/history"
 HISTSIZE=100000
 SAVEHIST=100000
 
@@ -58,50 +61,13 @@ do
   . "$plugin"
 done
 
-# Performance: Cache system plugin paths to avoid repeated filesystem checks
-# Only search for plugins if cache is stale (older than 24 hours)
-typeset -g _ZSH_PLUGIN_CACHE="${HOME}/.cache/zsh/system-plugins.cache"
-typeset -g _ZSH_PLUGIN_LIST=()
-
-# Check cache freshness
-# (#qNmh-24) = glob qualifier: quiet, no error if missing, modified less than 24 hours ago
-if [[ -f "$_ZSH_PLUGIN_CACHE" && -n ${_ZSH_PLUGIN_CACHE}(#qNmh-24) ]]; then
-  # Cache is fresh, load from cache
-  source "$_ZSH_PLUGIN_CACHE"
-else
-  # Build cache
-  typeset -ga _ZSH_PLUGIN_CANDIDATES=(
-    /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-    /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-    /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-    /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-    /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-    /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-  )
-
-  _ZSH_PLUGIN_LIST=()
-  for plugin in "${_ZSH_PLUGIN_CANDIDATES[@]}"; do
-    if [[ -f "$plugin" ]]; then
-      _ZSH_PLUGIN_LIST+=("$plugin")
-    fi
-  done
-
-  # Save cache atomically to avoid partial writes
-  cache_dir="${_ZSH_PLUGIN_CACHE%/*}"
-  mkdir -p "$cache_dir" || return 1
-  tmp_cache="$(mktemp "${_ZSH_PLUGIN_CACHE}.XXXXXX")" || return 1
-  echo "typeset -ga _ZSH_PLUGIN_LIST=(" > "$tmp_cache"
-  for plugin in "${_ZSH_PLUGIN_LIST[@]}"; do
-    echo "  \"$plugin\"" >> "$tmp_cache"
-  done
-  echo ")" >> "$tmp_cache"
-  mv "$tmp_cache" "$_ZSH_PLUGIN_CACHE"
-fi
-
-# Load cached plugins
-for plugin in "${_ZSH_PLUGIN_LIST[@]}"; do
-  source "$plugin"
+for plugin in \
+  /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+  /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+do
+  [[ -r $plugin ]] && . "$plugin"
 done
+unset plugin
 
 # zoxide
 if command -v zoxide >/dev/null 2>&1
@@ -119,6 +85,7 @@ for func in ~/.config/zsh/functions/*(N)
 do
   autoload -Uz "${func:t}"
 done
+unset func
 
 # Custom FZF Ctrl+R behavior: Execute immediately
 if zle -l fzf-history-widget
@@ -133,3 +100,11 @@ then
   zle -N fzf-history-widget-accept
   bindkey '^R' fzf-history-widget-accept
 fi
+
+for plugin in \
+  /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \
+  /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+do
+  [[ -r $plugin ]] && . "$plugin"
+done
+unset plugin

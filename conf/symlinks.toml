@@ -30,7 +30,7 @@ symlinks = [
   # Internal chain: symlinks/config/nvim -> ../vim, reusing the Vim config.
   "config/nvim",
   "bashrc",
-  "config/bash/prompt",
+  "config/bash/prompt.bash",
   "config/readline/inputrc",
   "config/shell/aliases.sh",
   "config/shell/path.sh",

@@ -49,6 +49,13 @@ pub(super) fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor
 /// symlinks. If `remove_dir` still fails with OS error 5 (access denied),
 /// `remove_dir_all` retries through the standard library without invoking a
 /// command shell.
+///
+/// The `remove_dir_all` retry is confined to link-like entries. Callers such as
+/// [`super::SymlinkResource::apply`] invoke this on whatever currently occupies
+/// the target, which may be a real user directory; recursing into one because
+/// it happened to be access-denied would destroy user data. `remove_dir_all` on
+/// a directory symlink removes only the link, so restricting the retry keeps
+/// the original intent intact.
 pub(super) fn remove_symlink(path: &Path, _executor: &dyn Executor) -> Result<()> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(m) => m,
@@ -63,7 +70,7 @@ pub(super) fn remove_symlink(path: &Path, _executor: &dyn Executor) -> Result<()
         match std::fs::remove_dir(path) {
             Ok(()) => {}
             #[cfg(windows)]
-            Err(e) if e.raw_os_error() == Some(5) => {
+            Err(e) if e.raw_os_error() == Some(5) && is_link_like(path, &meta) => {
                 std::fs::remove_dir_all(path)
                     .with_context(|| format!("removing directory symlink: {}", path.display()))?;
             }

@@ -38,7 +38,9 @@ else
   against=$(git hash-object -t tree /dev/null)
 fi
 
-STAGED=$(git diff --cached --name-only --diff-filter=ACM "$against")
+# Renames are included (lowercase 'd' excludes only deletions) so that a file
+# renamed with edits still gets formatted, linted, and tested.
+STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
 
 # ── Rust checks ────────────────────────────────────────
 if printf '%s\n' "$STAGED" | grep -q '\.rs$'; then

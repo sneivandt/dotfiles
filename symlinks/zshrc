@@ -76,8 +76,19 @@ then
 fi
 
 # FZF (optional)
-[ -f /usr/share/fzf/key-bindings.zsh ] && . /usr/share/fzf/key-bindings.zsh
-[ -f /usr/share/fzf/completion.zsh ] && . /usr/share/fzf/completion.zsh
+# Distro packages ship the shell integration under /usr/share/fzf; elsewhere
+# (Codespaces, Debian/Ubuntu, a manual install) fzf generates it itself. Keep
+# this aligned with the equivalent block in bashrc, and note it must run before
+# the fzf-history-widget check below, which depends on the keybindings.
+if [ -f /usr/share/fzf/key-bindings.zsh ]; then
+  . /usr/share/fzf/key-bindings.zsh
+fi
+if [ -f /usr/share/fzf/completion.zsh ]; then
+  . /usr/share/fzf/completion.zsh
+fi
+if [ ! -f /usr/share/fzf/key-bindings.zsh ] && [ ! -f /usr/share/fzf/completion.zsh ] && command -v fzf >/dev/null 2>&1; then
+  eval "$(fzf --zsh)"
+fi
 
 # Functions
 fpath=(~/.config/zsh/functions $fpath)

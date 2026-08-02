@@ -57,49 +57,80 @@ fi
 
 found_secrets=0
 
-tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
-git diff --cached --name-only --diff-filter=ACM -z "$against" | tr '\0' '\n' > "$tmpfile"
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
 
-while IFS= read -r file; do
+changes="$tmpdir/changes"
+content="$tmpdir/content"
+linenos="$tmpdir/linenos"
+
+# Enumerate staged changes as "newpath[<TAB>oldpath]" records. Deletions are
+# excluded (lowercase 'd'); every other status is scanned, including renames.
+# A rename that also introduces a secret must not escape the scan, so R/C
+# records keep the old path too: passing both paths to `git diff` lets rename
+# detection pair them, so only the genuinely added lines are reported.
+git diff --cached --name-status --diff-filter=d -z "$against" | awk '
+  BEGIN { RS = "\0"; state = 0 }
+  state == 0 { state = ($0 ~ /^[RC]/) ? 2 : 1; next }
+  state == 2 { old = $0; state = 3; next }
+  state == 3 { print $0 "\t" old; state = 0; next }
+  state == 1 { print $0; state = 0; next }
+' > "$changes"
+
+while IFS="$(printf '\t')" read -r file old; do
   [ -z "$file" ] && continue
 
   if [ ! -f "$file" ]; then
     continue
   fi
 
-  diff_output=$(git diff --cached --unified=0 "$against" -- "$file" || true)
+  if [ -n "$old" ]; then
+    diff_output=$(git diff --cached --unified=0 "$against" -- "$old" "$file" || true)
+  else
+    diff_output=$(git diff --cached --unified=0 "$against" -- "$file" || true)
+  fi
 
   if [ -z "$diff_output" ]; then
     continue
   fi
 
-  # Build a list of "lineno:content" for added lines by tracking hunk headers
-  numbered_adds=$(echo "$diff_output" | awk '
+  # Split added lines into two line-aligned files: raw content and its line
+  # number. Patterns are matched against content alone so that '^' and '$'
+  # anchors bind to the start and end of the added line itself.
+  echo "$diff_output" | awk -v content="$content" -v linenos="$linenos" '
+    /^diff --git / { in_hunk = 0; next }
     /^@@ / {
       # Parse +start from @@ -a,b +c,d @@
       s = $3
       sub(/^\+/, "", s)
       sub(/,.*/, "", s)
       lineno = s + 0
+      in_hunk = 1
       next
     }
-    /^\+/ && !/^\+\+\+/ {
-      print lineno ":" substr($0, 2)
+    # Only body lines of a hunk are additions. The "+++ b/file" header always
+    # precedes the first "@@", so position excludes it without also discarding
+    # added content that happens to begin with "++".
+    in_hunk && /^\+/ {
+      print substr($0, 2) > content
+      print lineno > linenos
       lineno++
     }
-  ')
+  '
+
+  if [ ! -s "$content" ]; then
+    : > "$content"
+    : > "$linenos"
+    continue
+  fi
 
   if [ -n "$ALLOWLIST_RE" ]; then
     # Use a control character as the sed delimiter so allow-list patterns may
     # contain '/' (action references) without escaping.
     sed_delim=$(printf '\001')
-    numbered_adds=$(echo "$numbered_adds" |
-      sed -E "s${sed_delim}${ALLOWLIST_RE}${sed_delim}<allowlisted>${sed_delim}gI")
-  fi
-
-  if [ -z "$numbered_adds" ]; then
-    continue
+    sed -E "s${sed_delim}${ALLOWLIST_RE}${sed_delim}<allowlisted>${sed_delim}gI" \
+      "$content" > "$content.redacted"
+    mv "$content.redacted" "$content"
   fi
 
   while IFS= read -r pattern; do
@@ -107,7 +138,9 @@ while IFS= read -r file; do
       ''|'#'*|'['*']') continue ;;
     esac
 
-    matches=$(echo "$numbered_adds" | grep -iE -- "$pattern" 2>/dev/null || true)
+    # -n numbers matches by position within the added-line list, which maps
+    # back to the real file line number through the aligned linenos file.
+    matches=$(grep -inE -- "$pattern" "$content" 2>/dev/null || true)
 
     if [ -n "$matches" ]; then
         if [ "$found_secrets" -eq 0 ]; then
@@ -118,15 +151,19 @@ while IFS= read -r file; do
 
         printf '%sIn file: %s%s\n' "$YELLOW" "$file" "$NC"
         printf '%sPattern matched: %s%s\n' "$YELLOW" "$pattern" "$NC"
-        echo "$matches" | while IFS=: read -r lineno content; do
-          printf '%s  Line %s: %s%s\n' "$YELLOW" "$lineno" "$content" "$NC"
+        echo "$matches" | while IFS=: read -r index text; do
+          lineno=$(sed -n "${index}p" "$linenos")
+          printf '%s  Line %s: %s%s\n' "$YELLOW" "$lineno" "$text" "$NC"
         done
         printf '\n'
     fi
   done <<PATTERNS_EOF
 $PATTERNS
 PATTERNS_EOF
-done < "$tmpfile"
+
+  : > "$content"
+  : > "$linenos"
+done < "$changes"
 
 if [ "$found_secrets" -eq 1 ]; then
   printf '%s======================================================%s\n' "$RED" "$NC"

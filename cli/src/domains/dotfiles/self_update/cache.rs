@@ -16,6 +16,10 @@ pub(super) fn cache_path(root: &Path) -> PathBuf {
 
 /// Return the cached latest release tag when it is still fresh (less than
 /// [`CACHE_MAX_AGE`] seconds old).
+///
+/// A timestamp in the future is treated as stale rather than fresh. Clock skew
+/// or a hand-edited cache file would otherwise pin the cache as permanently
+/// fresh, suppressing update checks until the clock caught up.
 pub(super) fn read_fresh_cache(root: &Path) -> Option<String> {
     let path = cache_path(root);
     let Ok(content) = fs::read_to_string(&path) else {
@@ -28,7 +32,7 @@ pub(super) fn read_fresh_cache(root: &Path) -> Option<String> {
         return None;
     };
     let now = unix_timestamp()?;
-    (now.saturating_sub(ts) < CACHE_MAX_AGE).then(|| tag.to_string())
+    (now.checked_sub(ts)? < CACHE_MAX_AGE).then(|| tag.to_string())
 }
 
 /// Write a new cache file with the given tag and current timestamp.
@@ -123,6 +127,30 @@ mod tests {
         .unwrap();
 
         assert_eq!(read_fresh_cache(dir.path()), None);
+    }
+
+    #[test]
+    fn read_fresh_cache_returns_none_when_timestamp_is_in_the_future() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+
+        let future = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + CACHE_MAX_AGE * 10;
+        fs::write(
+            bin_dir.join(".dotfiles-version-cache"),
+            format!("v1.0\n{future}\n"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_fresh_cache(dir.path()),
+            None,
+            "a future timestamp must be treated as stale, not permanently fresh"
+        );
     }
 
     #[test]

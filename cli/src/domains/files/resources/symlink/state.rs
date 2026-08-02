@@ -30,8 +30,10 @@ pub(super) fn current_state(resource: &SymlinkResource) -> Result<ResourceState>
 
     std::fs::read_link(&resource.target).map_or_else(
         |_| match crate::infra::fs::symlink_metadata_optional(&resource.target, "stat target")? {
+            // `read_link` succeeds for a dangling symlink, so reaching here with
+            // metadata present means the target is not a symlink at all.
             Some(_) => Ok(ResourceState::Incorrect {
-                current: "target is a regular file or dangling symlink".to_string(),
+                current: "target is a regular file or directory".to_string(),
             }),
             None => Ok(ResourceState::Missing),
         },

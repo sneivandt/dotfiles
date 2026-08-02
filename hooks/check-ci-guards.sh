@@ -24,7 +24,9 @@ else
 fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-STAGED=$(git diff --cached --name-only --diff-filter=ACM "$against")
+# Renames are included (lowercase 'd' excludes only deletions) so that renaming
+# a conf/ or symlinks/ file still triggers configuration validation.
+STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
 
 full_checks_enabled() {

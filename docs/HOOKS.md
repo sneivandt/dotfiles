@@ -32,6 +32,21 @@ If either script fails, Git aborts the commit.
 The sensitive scan runs first so potential credential exposure is caught before
 more expensive Rust checks.
 
+## Scan scope
+
+The staged-change scripts select files with `--diff-filter=d`, which excludes
+only deletions. Renames are therefore scanned: a rename that also introduces a
+secret would otherwise change a file's contents without ever being inspected.
+Renamed files are diffed against both their old and new paths so rename
+detection still pairs them, and only the genuinely added lines are reported.
+
+`check-sensitive.sh` matches each pattern against the added line's own content.
+`^` and `$` therefore anchor to the start and end of that line, both for
+`sensitive-patterns.ini` and for `sensitive-allowlist.ini`. Reported line
+numbers are tracked alongside the content rather than embedded in the scanned
+text, so an anchored allow-list entry still matches a construct that begins at
+column 0.
+
 ## Full guard mode
 
 Set `DOTFILES_HOOKS_FULL` to `1`, `true`, or `yes` to add CI guard validation:

@@ -44,8 +44,8 @@ pub(super) fn hex_encode_upper(bytes: &[u8]) -> String {
 
 fn nibble_to_lower(n: u8) -> char {
     match n & 0x0f {
-        0..=9 => char::from(b'0'.saturating_add(n)),
-        10..=15 => char::from(b'a'.saturating_add(n).saturating_sub(10)),
+        digit @ 0..=9 => char::from(b'0'.saturating_add(digit)),
+        digit @ 10..=15 => char::from(b'a'.saturating_add(digit).saturating_sub(10)),
         _ => '0',
     }
 }
@@ -53,8 +53,8 @@ fn nibble_to_lower(n: u8) -> char {
 #[cfg(test)]
 fn nibble_to_upper(n: u8) -> char {
     match n & 0x0f {
-        0..=9 => char::from(b'0'.saturating_add(n)),
-        10..=15 => char::from(b'A'.saturating_add(n).saturating_sub(10)),
+        digit @ 0..=9 => char::from(b'0'.saturating_add(digit)),
+        digit @ 10..=15 => char::from(b'A'.saturating_add(digit).saturating_sub(10)),
         _ => '0',
     }
 }
@@ -133,9 +133,9 @@ fn check_for_update_with_current(
         tracing::debug!("fetch_latest_tag returned None, treating as offline");
         return Ok(UpdateCheck::Offline);
     };
-    let check = classify_update(&current, latest);
+    let check = classify_update(&current, latest.clone());
     if !matches!(check, UpdateCheck::UpdateAvailable { .. }) {
-        write_cache(root, &current)?;
+        write_cache(root, &latest)?;
     }
     Ok(check)
 }
@@ -226,6 +226,23 @@ mod tests {
         assert!(
             !cache_path(dir.path()).exists(),
             "cache should only be written after a successful install"
+        );
+    }
+
+    #[test]
+    fn non_newer_network_tag_is_cached_as_latest() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        // GitHub reports an older release than the running binary.
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25.1"}"#.to_vec())]);
+
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.9").unwrap();
+
+        assert!(matches!(result, UpdateCheck::AlreadyCurrent));
+        let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
+        assert!(
+            cached.starts_with("v2026.07.25.1\n"),
+            "the cache holds the latest published tag, not the running version; got {cached:?}"
         );
     }
 

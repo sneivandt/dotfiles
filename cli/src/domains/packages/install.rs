@@ -215,7 +215,8 @@ impl Operation for ParuInstallOperation {
         clone_paru_from_aur(ctx, guard.path())?;
         build_paru(ctx, guard.path())?;
 
-        ctx.log().info("paru installed successfully");
+        // Run log only: the status row already reports `installed paru`.
+        ctx.log().trace("paru installed successfully");
         Ok(TaskStats::changed_with_message("installed paru").finish())
     }
 }

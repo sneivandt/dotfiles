@@ -120,8 +120,11 @@ impl Task for InstallApmPackages {
             // and do not attempt to advance dependencies.
             return Ok(install_result);
         }
+        // Run log only: the task's own status row already reports the same
+        // phrase as its reason, so surfacing it as a detail line would state
+        // the change twice.
         ctx.log()
-            .info(format!("installed: {}", describe_dependencies(&merged)));
+            .trace(format!("installed: {}", describe_dependencies(&merged)));
         write_manifest_marker(&marker_path, &manifest_hash)?;
         prune_user_scope(ctx)?;
 

@@ -119,7 +119,8 @@ fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskRe
         .then(|| snapshot_desired_apm_workflow_ids(ctx));
     let result = match run_apm_update(ctx, targets)? {
         ApmUpdateOutcome::Changed => {
-            ctx.log().always("    updated: advanced to latest versions");
+            // Run log only: the status row already carries this as its reason.
+            ctx.log().trace("updated: advanced to latest versions");
             TaskStats::changed_with_message("advanced APM dependencies to latest versions").finish()
         }
         ApmUpdateOutcome::Unchanged => {

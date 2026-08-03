@@ -108,7 +108,12 @@ Run focused tests for touched logging and scheduler behavior.
 
 - Creating per-task logger instances
 - Logging dry-run actions after mutation checks instead of before side effects
-- Restating a task's reason on an indented line below its status row
+- Restating a task's reason on an indented line below its status row. The
+  automatic filter only removes exact matches (and a few known failure
+  prefixes), so a reworded restatement such as `installed: 19 APM dependencies`
+  under a row reading `installed 19 APM dependencies` slips through. When a
+  task both returns a reason and wants the phrase in the run log, emit it with
+  `trace`, not `info` or `always`.
 - Duplicating task recording in task implementations
 - Re-implementing buffered output behavior in tasks
 - Hardcoding indentation into a message instead of choosing the right intent

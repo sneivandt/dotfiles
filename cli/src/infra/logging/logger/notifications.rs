@@ -41,13 +41,7 @@ impl Logger {
             self.clear_progress();
             return;
         };
-        let progress = self
-            .task_progress()
-            .map_or_else(String::new, |(done, total)| format!(" {done}/{total}"));
-        let line = format!(
-            "Running{progress}{}",
-            stdout_style().paint(TextStyle::Dim, &format!(" \u{00b7} {names}"))
-        );
+        let line = self.format_status_line(&names);
         if self.has_status_row() {
             self.replace_status_line(&line);
         } else {
@@ -71,6 +65,28 @@ impl Logger {
 
     pub(in crate::infra::logging) fn remove_active_task_locked(&self, name: &str) {
         self.lock_active_tasks().retain(|n| n != name);
+    }
+
+    /// Build the status-line text for the currently active tasks.
+    ///
+    /// Renders as `Running · {done}/{total} done · {active tasks}`. The counter
+    /// reports tasks that have *finished*, not the ones named after it, so it
+    /// carries its own `done` label — a bare `Running 12/16` reads as "12 of 16
+    /// are running right now", which is not what it means.
+    fn format_status_line(&self, names: &str) -> String {
+        let style = stdout_style();
+        let progress = self
+            .task_progress()
+            .map_or_else(String::new, |(done, total)| {
+                format!(
+                    "{}{done}/{total} done",
+                    style.paint(TextStyle::Dim, " \u{00b7} ")
+                )
+            });
+        format!(
+            "Running{progress}{}",
+            style.paint(TextStyle::Dim, &format!(" \u{00b7} {names}"))
+        )
     }
 
     fn active_task_summary(&self) -> Option<String> {
@@ -207,6 +223,32 @@ mod tests {
             log.task_progress(),
             Some((1, 2)),
             "applicability is only known after a task runs, so the total shrinks instead"
+        );
+    }
+
+    #[test]
+    fn status_line_labels_the_counter_as_completed_tasks() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.add_task_total(16);
+        for _ in 0..12 {
+            log.mark_task_completed("task");
+        }
+
+        assert_eq!(
+            log.format_status_line("Home symlinks, System packages"),
+            "Running · 12/16 done · Home symlinks, System packages",
+            "the counter must say what it counts so it is not read as the active-task count"
+        );
+    }
+
+    #[test]
+    fn status_line_omits_the_counter_when_no_tasks_were_scheduled() {
+        let (log, _tmp, _guard) = isolated_logger();
+
+        assert_eq!(
+            log.format_status_line("task-a"),
+            "Running · task-a",
+            "an empty denominator suppresses the counter entirely"
         );
     }
 

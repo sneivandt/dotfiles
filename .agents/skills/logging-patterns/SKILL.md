@@ -43,8 +43,10 @@ description: >
 - Summaries count structured actions and affected tasks separately, plus
   up-to-date, ignored, and failed tasks and elapsed time. Non-applicable tasks
   are reported nowhere but the run log. Never infer counts from display text.
-- The transient progress line reads `Running {done}/{total} · {active tasks}`.
-  Its denominator counts exactly the visible tasks the summary accounts for, so
+- The transient progress line reads
+  `Running · {done}/{total} done · {active tasks}`. The counter is completed
+  tasks, not active ones, so it keeps its explicit `done` label. Its denominator
+  counts exactly the visible tasks the summary accounts for, so
   changing what the summary reports means changing the denominator too.
   Applicability is only known after a task runs, so a non-applicable task leaves
   the denominator rather than advancing the numerator, and totals accumulate

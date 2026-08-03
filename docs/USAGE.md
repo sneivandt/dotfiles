@@ -166,12 +166,14 @@ While tasks are running, a transient status line reports progress and the
 currently active tasks:
 
 ```text
-Running 12/16 · Home symlinks, System packages
+Running · 12/16 done · Home symlinks, System packages
 ```
 
-Its denominator counts the same tasks the summary accounts for. Applicability is
-only known once a task has run, so a task that turns out not to apply leaves the
-denominator rather than advancing the numerator.
+The counter reports tasks that have already finished; the names after it are the
+tasks running right now. Its denominator counts the same tasks the summary
+accounts for. Applicability is only known once a task has run, so a task that
+turns out not to apply leaves the denominator rather than advancing the
+numerator.
 
 The final line reports actual action counts and affected task counts, for
 example

@@ -10,6 +10,8 @@
 //! - [`install`] converges the generated manifest and runs `apm install`.
 //! - [`update`] advances locked dependency refs for the `update` command.
 //! - [`commands`] centralizes APM process invocation and common error handling.
+//! - [`sources`] fingerprints the manifest, local plugin content, and target
+//!   set so a converged tree can skip `apm install` entirely.
 //! - [`targets`] detects whether Copilot App needs a separate primitive deploy.
 //! - [`autopilot`] re-arms dotfiles-managed Copilot App workflows.
 
@@ -18,6 +20,7 @@ mod commands;
 mod fragments;
 mod install;
 mod manifest;
+mod sources;
 mod targets;
 mod update;
 mod validation;

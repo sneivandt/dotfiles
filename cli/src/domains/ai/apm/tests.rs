@@ -10,6 +10,7 @@ use super::test_fixture::{
     make_context_with_home, ok_result, write_copilot_app_db, write_current_manifest_and_lock,
     write_current_manifest_lock_and_marker, write_default_home_fragment, write_home_fragment,
 };
+use std::path::PathBuf;
 
 const INSTALL_FIXTURE_FRAGMENT: &str = "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - github/awesome-copilot/plugins/project-planning\n";
 fn write_fragment(dir: &Path, filename: &str, content: &str) {
@@ -91,6 +92,15 @@ fn expect_apm_prune(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &
 
 fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &Path) {
     expect_copilot_app_enable(mock, seq);
+    expect_apm_install_without_enable(mock, seq, cwd);
+}
+
+/// Expect the install/deploy/prune calls without `apm experimental enable`.
+fn expect_apm_install_without_enable(
+    mock: &mut MockExecutor,
+    seq: &mut mockall::Sequence,
+    cwd: &Path,
+) {
     let install_cwd = cwd.to_path_buf();
     let copilot_app_cwd = install_cwd.clone();
     mock.expect_run_in_with_env()
@@ -518,25 +528,120 @@ fn update_propagates_lockfile_read_failures() {
 }
 
 #[test]
-fn install_task_converges_without_advancing_dependencies() {
+fn install_task_skips_apm_when_manifest_sources_and_targets_are_unchanged() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
-    let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
-    expect_apm_install(&mut mock, &mut seq, dir.path());
-    // No `apm outdated` / `apm update` expectations are registered: the
-    // convergence task never advances locked refs — that is the `update`-only
-    // `UpdateApmPackages` task's job.  The mock would panic on any such call.
+    // No `apm` expectations at all: a converged tree must not spawn `apm
+    // install`, `apm install --target copilot-app`, `apm prune`, or `apm
+    // experimental enable`.  The mock panics on any unexpected call.
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
-        "expected Ok when redeploying without dependency advancement, got {result:?}"
+        "expected Ok when nothing APM cares about changed, got {result:?}"
     );
+}
+
+#[test]
+fn install_task_redeploys_when_a_local_plugin_source_changes() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let plugin = seed_local_plugin(dir.path());
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    expect_apm_install(&mut mock, &mut seq, dir.path());
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+
+    // Editing the symlinked plugin must invalidate the marker even though the
+    // manifest text is byte-identical.
+    std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
+
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        "expected a redeploy after a local plugin edit, got {result:?}"
+    );
+}
+
+/// Seed a converged home whose manifest declares one local plugin source, and
+/// return that plugin's directory.  Editing a file inside it is the cheapest
+/// way to force a redeploy without touching the manifest text.
+fn seed_local_plugin(home: &Path) -> PathBuf {
+    let plugin = home.join(".apm").join("plugins").join("local");
+    std::fs::create_dir_all(&plugin).expect("create plugin dir");
+    std::fs::write(plugin.join("skill.md"), "v1\n").expect("write plugin file");
+    write_home_fragment(
+        home,
+        "local.yml",
+        "name: local\nversion: 1.0.0\ndependencies:\n  apm:\n    - ~/.apm/plugins/local\n",
+    );
+    write_current_manifest_lock_and_marker(home);
+    plugin
+}
+
+/// Write apm's own config file, the source the enable fast path reads.
+fn write_apm_config(home: &Path, contents: &str) {
+    let apm_dir = home.join(".apm");
+    std::fs::create_dir_all(&apm_dir).expect("create ~/.apm");
+    std::fs::write(apm_dir.join("config.json"), contents).expect("write apm config");
+}
+
+#[test]
+fn install_skips_experimental_enable_when_apm_config_reports_it_enabled() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let plugin = seed_local_plugin(dir.path());
+    write_apm_config(
+        dir.path(),
+        "{\"default_client\":\"vscode\",\"experimental\":{\"copilot_app\":true}}",
+    );
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    // No `apm experimental enable` expectation: the flag is already recorded in
+    // apm's config, so re-asserting it would only cost a process start.
+    expect_apm_install_without_enable(&mut mock, &mut seq, dir.path());
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+    std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
+
+    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    assert!(
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        "expected a redeploy after a local plugin edit, got {result:?}"
+    );
+}
+
+#[test]
+fn install_runs_experimental_enable_when_apm_config_is_unusable() {
+    for contents in ["not json at all", "{}", "{\"experimental\":{}}"] {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let plugin = seed_local_plugin(dir.path());
+        write_apm_config(dir.path(), contents);
+
+        let mut seq = mockall::Sequence::new();
+        let mut mock = MockExecutor::new();
+        expect_which_apm(&mut mock, true);
+        // Anything the config cannot answer falls through to the authoritative
+        // idempotent CLI call rather than assuming the flag is set.
+        expect_apm_install(&mut mock, &mut seq, dir.path());
+
+        let ctx = make_home_context_with_executor(dir.path(), mock);
+        std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
+
+        let result = InstallApmPackages.run(&ctx).expect("run should not error");
+        assert!(
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+            "expected a redeploy for config {contents:?}, got {result:?}"
+        );
+    }
 }
 
 #[test]

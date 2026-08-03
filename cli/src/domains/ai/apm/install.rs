@@ -11,18 +11,20 @@ use super::commands::{
 };
 use super::fragments::{discover_fragment_files, discover_yaml_files, merge_fragments};
 use super::manifest::{
-    describe_dependencies, manifest_fingerprint, manifest_marker_matches,
-    merged_manifest_needs_write, write_manifest_marker, write_merged_manifest,
+    describe_dependencies, manifest_marker_matches, merged_manifest_needs_write,
+    write_manifest_marker, write_merged_manifest,
 };
 use super::skip;
+use super::sources::install_fingerprint;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 use crate::infra::logging::OutputExt as _;
 
 /// Converge AI plugin manifests via Microsoft APM.
 ///
-/// Merges the manifest fragments and runs `apm install`, redeploying locally
-/// symlinked plugin edits.  It never advances locked dependency refs — that is
+/// Merges the manifest fragments and runs `apm install` when the manifest,
+/// local plugin sources, or resolved targets have changed since the last
+/// successful install.  It never advances locked dependency refs — that is
 /// [`super::update::UpdateApmPackages`]'s job under the `update` command.
 #[derive(Debug)]
 pub struct InstallApmPackages;
@@ -53,7 +55,8 @@ impl Task for InstallApmPackages {
         let lock_path = home.join(".apm").join("apm.lock.yaml");
         let marker_path = home.join(".apm").join(".dotfiles-manifest.sha256");
         let merged = merge_fragments(&fragments)?;
-        let manifest_hash = manifest_fingerprint(&merged);
+        let targets = ApmTargets::detect(ctx)?;
+        let manifest_hash = install_fingerprint(&merged, home, targets.includes_copilot_app())?;
         let state = ApmInstallState::detect(
             &manifest_path,
             &lock_path,
@@ -65,7 +68,6 @@ impl Task for InstallApmPackages {
             if !state.manifest_changed() {
                 return Ok(TaskResult::Ok);
             }
-            let targets = ApmTargets::detect(ctx)?;
             preview_install(
                 ctx,
                 targets,
@@ -77,7 +79,20 @@ impl Task for InstallApmPackages {
             return Ok(TaskResult::DryRun);
         }
 
-        let targets = ApmTargets::detect(ctx)?;
+        // `manifest_hash` covers the merged manifest, the content of every
+        // locally symlinked plugin source, and the resolved target set, so a
+        // matching marker means the last successful install already deployed
+        // exactly this.  Re-running `apm install` would spawn several seconds
+        // of subprocesses to reach the state we are already in.
+        if !state.manifest_changed() {
+            ctx.debug_fmt(|| {
+                "APM manifest, local plugin sources, and targets are unchanged since the last \
+                 successful install; skipping apm install"
+                    .to_string()
+            });
+            return Ok(TaskResult::Ok);
+        }
+
         let pre_workflows = targets
             .includes_copilot_app()
             .then(|| snapshot_desired_apm_workflow_ids(ctx));
@@ -85,15 +100,13 @@ impl Task for InstallApmPackages {
             ensure_copilot_app_enabled(ctx);
         }
 
-        let manifest_changed = state.manifest_changed();
         if state.manifest_needs_write {
             write_merged_manifest(&manifest_path, &merged)?;
         }
 
-        // Always (re)run `apm install` so locally symlinked plugin edits are
-        // redeployed to their runtime locations.  When the manifest changed
-        // this also installs newly declared dependencies; on an unchanged
-        // manifest it is a quiet idempotent redeploy.
+        // Reached only when something APM cares about actually changed: a
+        // manifest edit, a local plugin edit, a new target, a missing lockfile,
+        // or a marker that never recorded a successful install.
         let install_result =
             install_task_result(run_apm_command(ctx, ApmCommand::Install, targets)?);
         if !matches!(install_result, TaskResult::Ok) {
@@ -101,10 +114,8 @@ impl Task for InstallApmPackages {
             // and do not attempt to advance dependencies.
             return Ok(install_result);
         }
-        if manifest_changed {
-            ctx.log()
-                .always(format!("    installed: {}", describe_dependencies(&merged)));
-        }
+        ctx.log()
+            .always(format!("    installed: {}", describe_dependencies(&merged)));
         write_manifest_marker(&marker_path, &manifest_hash)?;
         prune_user_scope(ctx)?;
 
@@ -114,12 +125,13 @@ impl Task for InstallApmPackages {
         if let Some(pre) = pre_workflows {
             apply_workflow_autopilot_fixup(ctx, &pre);
         }
-        Ok(if manifest_changed {
-            TaskStats::changed_with_message(format!("installed {}", describe_dependencies(&merged)))
-                .finish()
-        } else {
-            TaskResult::Ok
-        })
+        Ok(
+            TaskStats::changed_with_message(format!(
+                "installed {}",
+                describe_dependencies(&merged)
+            ))
+            .finish(),
+        )
     }
 }
 
@@ -168,7 +180,8 @@ struct ApmInstallState {
     manifest_needs_write: bool,
     /// The APM lockfile is absent (a fresh machine or wiped state).
     lock_missing: bool,
-    /// The success marker is missing or does not match the current manifest.
+    /// The success marker is missing or does not match the current
+    /// manifest, local plugin content, and target set.
     marker_missing_or_stale: bool,
 }
 
@@ -198,7 +211,11 @@ impl ApmInstallState {
         })
     }
 
-    /// Whether `apm install` will materially change locked or installed state.
+    /// Whether `apm install` has any work to do.
+    ///
+    /// False means the marker already records a successful install of exactly
+    /// this manifest, plugin content, and target set, so the install is a
+    /// no-op worth skipping outright.
     const fn manifest_changed(self) -> bool {
         self.manifest_needs_write || self.lock_missing || self.marker_missing_or_stale
     }

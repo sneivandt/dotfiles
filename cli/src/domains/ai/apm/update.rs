@@ -10,8 +10,9 @@ use super::commands::{
 };
 use super::fragments::{discover_fragment_files, merge_fragments};
 use super::install::apm_task_should_run;
-use super::manifest::{manifest_fingerprint, manifest_marker_matches};
+use super::manifest::manifest_marker_matches;
 use super::skip;
+use super::sources::install_fingerprint;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 use crate::infra::logging::OutputExt as _;
@@ -65,7 +66,8 @@ impl Task for UpdateApmPackages {
             .try_exists()
             .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
         let merged = merge_fragments(&fragments)?;
-        let manifest_hash = manifest_fingerprint(&merged);
+        let targets = ApmTargets::detect(ctx)?;
+        let manifest_hash = install_fingerprint(&merged, home, targets.includes_copilot_app())?;
         let marker_path = home.join(".apm").join(".dotfiles-manifest.sha256");
         let marker_matches = manifest_marker_matches(&marker_path, &manifest_hash)?;
         if !lock_present || !marker_matches {
@@ -78,10 +80,7 @@ impl Task for UpdateApmPackages {
 
         if ctx.dry_run() {
             return match check_apm_outdated(ctx)? {
-                ApmOutdatedResult::Outdated => {
-                    let targets = ApmTargets::detect(ctx)?;
-                    Ok(preview_apm_update(ctx, targets))
-                }
+                ApmOutdatedResult::Outdated => Ok(preview_apm_update(ctx, targets)),
                 ApmOutdatedResult::Current => Ok(TaskResult::Ok),
                 ApmOutdatedResult::Unknown => {
                     ctx.log().debug(
@@ -92,7 +91,6 @@ impl Task for UpdateApmPackages {
                 ApmOutdatedResult::AuthSkipped(reason) => Ok(TaskResult::Skipped(reason)),
             };
         }
-        let targets = ApmTargets::detect(ctx)?;
         advance_apm_dependencies(ctx, targets)
     }
 }

@@ -1,14 +1,17 @@
-//! Manifest fingerprinting, marker files, and merged-manifest writes.
+//! Marker files, merged-manifest writes, and the shared digest encoder.
 
 use anyhow::{Context as _, Result};
 use sha2::{Digest as _, Sha256};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-/// Build a stable fingerprint for the generated manifest content.
-pub(super) fn manifest_fingerprint(content: &str) -> String {
+/// Render a completed SHA-256 hasher as a lowercase hexadecimal string.
+///
+/// Shared so every fingerprint written to the install marker has one encoding.
+/// See [`super::sources::install_fingerprint`] for what goes into that hash.
+pub(super) fn hex_digest(hasher: Sha256) -> String {
     let mut hash = String::with_capacity(64);
-    for byte in Sha256::digest(content.as_bytes()) {
+    for byte in hasher.finalize() {
         hash.push(hex_nibble(byte >> 4));
         hash.push(hex_nibble(byte & 0x0f));
     }

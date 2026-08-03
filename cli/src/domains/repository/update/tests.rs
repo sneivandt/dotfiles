@@ -496,6 +496,85 @@ fn run_updates_overlay_repository_when_behind_upstream() {
 }
 
 // -----------------------------------------------------------------------
+// run() — parallel fetch
+// -----------------------------------------------------------------------
+
+/// Build a main + overlay config whose overlay lives in `overlay`.
+fn overlay_config(main_root: &Path, overlay: &Path) -> crate::Config {
+    std::fs::create_dir_all(overlay.join(".git")).unwrap();
+    let mut config = empty_config(main_root.to_path_buf());
+    config.overlay = Some(overlay.to_path_buf());
+    config
+}
+
+#[test]
+fn parallel_fetch_visits_every_repository() {
+    let main_root = PathBuf::from("/tmp/main");
+    let overlay = tempfile::tempdir().unwrap();
+    let config = overlay_config(&main_root, overlay.path());
+
+    let fetched = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recorded = Arc::clone(&fetched);
+    let mut mock = MockExecutor::new();
+    mock.expect_run_in_with_env()
+        .returning(move |dir, program, args, _| {
+            assert_eq!(program, "git");
+            match args.first().copied() {
+                Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
+                Some("status") => Ok(ok_result("")),
+                Some("fetch") => {
+                    recorded.lock().unwrap().push(dir.to_path_buf());
+                    Ok(ok_result(""))
+                }
+                Some("rev-parse") => Ok(ok_result("abc123")),
+                _ => panic!("unexpected git call {args:?}"),
+            }
+        });
+
+    let ctx = make_update_context(config, mock).with_parallel(true);
+    let repo_updated = UpdateSignal::new();
+    let result = UpdateRepository::new(repo_updated).run(&ctx).unwrap();
+
+    assert!(matches!(result, TaskResult::Ok));
+    let fetched = fetched.lock().unwrap();
+    assert_eq!(fetched.len(), 2, "both repositories should be fetched");
+    assert!(fetched.contains(&main_root));
+    assert!(fetched.contains(&overlay.path().to_path_buf()));
+}
+
+#[test]
+fn parallel_fetch_failure_reports_the_first_declared_repository() {
+    let main_root = PathBuf::from("/tmp/main");
+    let overlay = tempfile::tempdir().unwrap();
+    let config = overlay_config(&main_root, overlay.path());
+
+    let mut mock = MockExecutor::new();
+    mock.expect_run_in_with_env()
+        .returning(|_, program, args, _| {
+            assert_eq!(program, "git");
+            match args.first().copied() {
+                Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
+                Some("status") => Ok(ok_result("")),
+                // Both repositories fail, so the reported reason must come from
+                // declaration order rather than whichever thread finished first.
+                Some("fetch") => Err(anyhow::anyhow!("simulated fetch failure")),
+                _ => panic!("unexpected git call {args:?}"),
+            }
+        });
+
+    let ctx = make_update_context(config, mock).with_parallel(true);
+    let repo_updated = UpdateSignal::new();
+    let result = UpdateRepository::new(repo_updated).run(&ctx).unwrap();
+
+    // `UpdateTargetKind::Main` renders the bare reason; the overlay would
+    // render "git fetch failed in <overlay>".
+    assert!(
+        matches!(result, TaskResult::Failed(ref s) if s == "git fetch failed"),
+        "expected the main repository's failure reason, got {result:?}"
+    );
+}
+
+// -----------------------------------------------------------------------
 // run() — dry-run comparison paths
 // -----------------------------------------------------------------------
 

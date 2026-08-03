@@ -1,5 +1,7 @@
 //! APM process invocation and common output/error handling.
 
+use std::path::{Path, PathBuf};
+
 use anyhow::{Context as _, Result};
 
 use super::targets::ApmTargets;
@@ -206,6 +208,22 @@ fn classify_apm_error(
 pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
     let system = ctx.system();
     let cwd = system.home();
+
+    // The CLI call costs a full apm process start (~1.3s) purely to re-assert a
+    // flag that is almost always already set.  Reading the config apm itself
+    // writes answers the same question for free; anything ambiguous falls
+    // through to the authoritative idempotent command.
+    if copilot_app_experimental_enabled(cwd) == Some(true) {
+        ctx.debug_fmt(|| {
+            format!(
+                "apm experimental copilot-app already enabled in {}; skipping `apm experimental \
+                 enable`",
+                apm_config_path(cwd).display()
+            )
+        });
+        return;
+    }
+
     ctx.debug_fmt(|| {
         format!(
             "running `apm experimental enable copilot-app` in {} (idempotent)",
@@ -228,6 +246,25 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
             ));
         }
     }
+}
+
+/// Path to the machine-local apm configuration file.
+fn apm_config_path(home: &Path) -> PathBuf {
+    home.join(".apm").join("config.json")
+}
+
+/// Read the `copilot_app` experimental flag out of apm's own config.
+///
+/// Returns `None` whenever the answer cannot be established — the file is
+/// missing, unreadable, not JSON, or shaped differently than expected — so
+/// callers treat "unknown" as "ask apm", never as "already enabled".
+///
+/// Note the spelling difference: the config key is the snake-case
+/// `copilot_app` while the CLI argument is the kebab-case `copilot-app`.
+fn copilot_app_experimental_enabled(home: &Path) -> Option<bool> {
+    let raw = std::fs::read_to_string(apm_config_path(home)).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    value.get("experimental")?.get("copilot_app")?.as_bool()
 }
 
 /// Convert a command result into the task-level result used by install.

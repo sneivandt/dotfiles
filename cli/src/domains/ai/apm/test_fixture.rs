@@ -17,7 +17,8 @@ use crate::infra::platform::Platform;
 use crate::test_helpers::{empty_config, make_context};
 
 use super::fragments::{discover_fragment_files, merge_fragments};
-use super::manifest::{manifest_fingerprint, write_manifest_marker};
+use super::manifest::write_manifest_marker;
+use super::sources::install_fingerprint;
 
 /// Default APM fragment shared across APM test suites.
 pub const DEFAULT_FRAGMENT: &str =
@@ -56,13 +57,22 @@ pub fn write_current_manifest_and_lock(home: &Path) {
 
 /// Write the default fragment, merged manifest, lockfile, and success marker
 /// under `home`.
+///
+/// The marker uses the same fingerprint production writes, so a fixture-seeded
+/// tree reads as "already installed" exactly when the real task would.
 pub fn write_current_manifest_lock_and_marker(home: &Path) {
     write_current_manifest_and_lock(home);
+    refresh_manifest_marker(home);
+}
+
+/// Stamp the success marker with the fingerprint the tree currently produces.
+fn refresh_manifest_marker(home: &Path) {
     let manifest =
         std::fs::read_to_string(home.join(".apm").join("apm.yml")).expect("read manifest");
+    let includes_copilot_app = home.join(".copilot").join("data.db").exists();
     write_manifest_marker(
         &home.join(".apm").join(".dotfiles-manifest.sha256"),
-        &manifest_fingerprint(&manifest),
+        &install_fingerprint(&manifest, home, includes_copilot_app).expect("fingerprint manifest"),
     )
     .expect("write marker");
 }
@@ -74,6 +84,12 @@ pub fn write_copilot_app_db(home: &Path) -> PathBuf {
     std::fs::create_dir_all(&copilot_dir).expect("create .copilot dir");
     let db_path = copilot_dir.join("data.db");
     std::fs::write(&db_path, b"db").expect("write data.db");
+    // Enabling the copilot-app target changes the install fingerprint, so a
+    // fixture that already seeded a success marker must re-stamp it to keep
+    // reading as "already installed" regardless of helper call order.
+    if home.join(".apm").join(".dotfiles-manifest.sha256").exists() {
+        refresh_manifest_marker(home);
+    }
     db_path
 }
 

@@ -7,6 +7,7 @@ use crate::engine::{Context, TaskResult, UpdateSignal};
 
 use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
 use crate::infra::logging::OutputExt as _;
+use crate::infra::logging::{log_thread_name, set_log_thread_name};
 
 const MAX_FETCH_ATTEMPTS: u32 = 3;
 
@@ -37,17 +38,10 @@ pub(super) fn apply_repository_updates(
     git_env: &[(&str, &str)],
     repo_updated: &UpdateSignal,
 ) -> Result<TaskResult> {
-    for repository in repositories {
-        ctx.log()
-            .debug(format!("pulling from {}", repository.target.root.display()));
-
-        // Fetch first so divergence can be evaluated without invoking `git pull`,
-        // which fails noisily when the local branch has diverged from upstream.
-        if let Err(e) = fetch_with_retry(ctx, repository, git_env) {
-            let reason = repository.target.reason("git fetch failed");
-            ctx.log().warn(format!("{reason}: {e:#}"));
-            return Ok(TaskResult::Failed(reason));
-        }
+    // Fetch first so divergence can be evaluated without invoking `git pull`,
+    // which fails noisily when the local branch has diverged from upstream.
+    if let Some(reason) = fetch_all(ctx, repositories, git_env) {
+        return Ok(TaskResult::Failed(reason));
     }
 
     let mut plans = Vec::with_capacity(repositories.len());
@@ -86,6 +80,52 @@ pub(super) fn apply_repository_updates(
         repo_updated.mark_updated();
     }
     Ok(TaskResult::Ok)
+}
+
+/// Fetch every repository, returning the failure reason for the first one that
+/// could not be fetched.
+///
+/// Fetches are network-bound and mutually independent, so with more than one
+/// repository they run concurrently: the overlay fetch no longer waits on the
+/// main repository's round trip.  This task gates the post-pull config reload,
+/// so the saving is on the run's critical path.
+fn fetch_all(
+    ctx: &Context,
+    repositories: &[CheckedRepository],
+    git_env: &[(&str, &str)],
+) -> Option<String> {
+    use rayon::prelude::*;
+
+    let fetch_one = |repository: &CheckedRepository| -> Option<String> {
+        ctx.log()
+            .debug(format!("pulling from {}", repository.target.root.display()));
+        fetch_with_retry(ctx, repository, git_env).err().map(|e| {
+            let reason = repository.target.reason("git fetch failed");
+            ctx.log().warn(format!("{reason}: {e:#}"));
+            reason
+        })
+    };
+
+    if !ctx.parallel() || repositories.len() < 2 {
+        return repositories.iter().find_map(fetch_one);
+    }
+
+    // Rayon reuses threads across work items, so re-assert the diagnostic
+    // thread name inside the closure to keep the log timeline attributable.
+    let task_name = log_thread_name();
+    // Collect before searching so the reported failure is the first in
+    // declaration order rather than the first to complete: a fetch failure
+    // then names the same repository whether or not the run is parallel.
+    repositories
+        .par_iter()
+        .map(|repository| {
+            set_log_thread_name(&task_name);
+            fetch_one(repository)
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .flatten()
+        .next()
 }
 
 fn fetch_with_retry(

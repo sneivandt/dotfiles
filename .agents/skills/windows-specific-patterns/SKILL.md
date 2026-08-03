@@ -71,6 +71,31 @@ the existing implementation does.
 - The Rust binary checks for symlink capability and reports a clear error if neither condition is met
 - Dry-run mode never requires elevation
 
+## Elevation
+
+Windows elevation is scoped the same way Unix `sudo` priming is: the main
+process stays unprivileged and only the tasks whose `needs_elevation()` returns
+`true` are delegated to one short-lived elevated child run, launched with
+`--only <selectors> --no-parallel` and a hidden marker flag so the child cannot
+recurse.
+
+Only two tasks can ever need it — `EnableDeveloperMode` (first run only) and
+`InstallSymlinks` (only when Developer Mode is off). Every other Windows task is
+user-scoped.
+
+Rules:
+
+- Never re-launch the whole process elevated, and never gate elevation on the
+  command instead of task state.
+- Never prompt in a non-interactive or CI session; degrade instead.
+- When elevation is declined or unavailable, skip the elevating tasks **and their
+  transitive dependents**. Dropping a task from the slice is not the same as
+  failing it: the resolved graph ignores dependencies absent from the slice, so
+  dependents must be skipped explicitly.
+- Delegation is not degradation. When the elevated child actually ran the tasks,
+  the prerequisite happened, so dependents must still run.
+- Build the child command line in a pure function so it is testable off Windows.
+
 ## Shell Wrapper (`dotfiles.ps1`)
 
 The PowerShell wrapper mirrors `dotfiles.sh`. Keep it limited to bootstrap,
@@ -84,3 +109,5 @@ checksum verification, build mode, and argument forwarding; use
 2. Registry paths remain HKCU-only and unfiltered by profile.
 3. Test symlink capability before mutation and report the Developer Mode hint
    when unavailable.
+4. Elevation stays scoped to the tasks that declare it; the run degrades rather
+   than aborting when it is unavailable.

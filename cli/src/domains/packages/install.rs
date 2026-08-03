@@ -265,17 +265,25 @@ impl Operation for PackageInstallOperation {
             plan.missing.len()
         ));
         let missing_refs: Vec<&PackageResource> = plan.missing.iter().collect();
-        let report =
-            match install_missing_packages(self.manager, &missing_refs, ctx.system().executor()) {
-                Ok(report) => report,
-                Err(e) => {
-                    let reason = format!("{} install failed: {e:#}", self.manager);
-                    ctx.log().warn(&reason);
-                    let mut stats = plan.base_stats();
-                    stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
-                    return Ok(stats.finish());
-                }
-            };
+        // Installs run one at a time and can each be slow — or, on Windows,
+        // raise their own UAC prompt — so name the package before starting it
+        // rather than reporting only once the whole batch is done.
+        let progress = |package: &str| ctx.log().info(format!("install {package}"));
+        let report = match install_missing_packages(
+            self.manager,
+            &missing_refs,
+            ctx.system().executor(),
+            &progress,
+        ) {
+            Ok(report) => report,
+            Err(e) => {
+                let reason = format!("{} install failed: {e:#}", self.manager);
+                ctx.log().warn(&reason);
+                let mut stats = plan.base_stats();
+                stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
+                return Ok(stats.finish());
+            }
+        };
 
         for failure in report.failures() {
             ctx.log().warn(format!(
@@ -287,10 +295,6 @@ impl Operation for PackageInstallOperation {
         let mut stats = plan.base_stats();
         stats.changed = u32::try_from(report.applied_count()).unwrap_or(u32::MAX);
         stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
-
-        for package in report.applied_packages() {
-            ctx.log().info(format!("install {package}"));
-        }
 
         if report.has_failures() {
             let reason = format!("{} package install(s) failed", report.failures().len());

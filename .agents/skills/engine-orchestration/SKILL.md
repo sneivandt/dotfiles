@@ -47,6 +47,12 @@ description: >
   `cancelled` and propagates that signal through dependents. When dependency
   failure and cancellation are both observed, dependency failure takes
   precedence.
+- The resolved graph deliberately ignores dependencies that are absent from the
+  filtered slice. Removing a task from the slice is therefore **not** the same as
+  failing it: the scheduler's dependent cascade never fires. Any pre-graph
+  removal that represents unmet work — such as a task skipped because elevation
+  was unavailable — must also remove that task's transitive dependents and
+  record them as skipped with the originating reason.
 - Resource tasks should use orchestration helpers from `engine/orchestrate.rs`
   (re-exported by `engine/mod.rs`) instead of custom dry-run/apply loops.
 

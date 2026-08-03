@@ -1,6 +1,6 @@
 //! Application task execution policy.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
@@ -11,42 +11,209 @@ use crate::infra::logging::{ActionCounts, Logger};
 use super::error::TaskFailures;
 use crate::infra::logging::OutputExt as _;
 
+/// Outcome of arranging privilege for the tasks that declared they need it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ElevationPlan {
+    /// Privilege is available to this process; run the tasks normally.
+    Ready,
+    /// The tasks already ran elsewhere; drop them from this run's graph.
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "only the Windows broker delegates to a child")
+    )]
+    Delegated,
+    /// Privilege could not be arranged; skip the tasks and continue.
+    Unavailable { reason: &'static str },
+}
+
+/// Arrange privilege for `names`, or report that it is unavailable.
+///
+/// Unix keeps the existing behaviour: prime the `sudo` credential cache once so
+/// parallel tasks do not interleave password prompts, and let sequential runs
+/// prompt inline as they always have.
 #[cfg(unix)]
-fn prime_sudo(ctx: &Context, log: &Arc<Logger>, task_names: &[&str]) -> bool {
+fn prepare_elevation(
+    ctx: &Context,
+    log: &Arc<Logger>,
+    names: &[&str],
+    _selectors: &[&str],
+    task_count: usize,
+) -> ElevationPlan {
+    // A single task, or a sequential run, can prompt inline without garbling
+    // output, so there is nothing to arrange up front.
+    if !ctx.parallel() || task_count <= 1 {
+        return ElevationPlan::Ready;
+    }
+
     if !crate::infra::elevation::sudo_available(ctx.executor()) {
         log.separate_from_startup();
         log.warn("sudo not found on PATH");
-        return false;
+        return ElevationPlan::Unavailable {
+            reason: "sudo credentials unavailable",
+        };
     }
     log.debug("priming sudo credential cache");
 
     if crate::infra::elevation::sudo_credentials_cached() {
         log.debug("sudo credentials already cached");
-        return true;
+        return ElevationPlan::Ready;
     }
 
     log.separate_from_startup();
-    log.always(format!("sudo is required for: {}", task_names.join(", ")));
+    log.always(format!("sudo is required for: {}", names.join(", ")));
     drop(std::io::Write::flush(&mut std::io::stdout()));
 
     match crate::infra::elevation::prime_sudo_credentials() {
-        Ok(true) => true,
+        Ok(true) => ElevationPlan::Ready,
         Ok(false) => {
             log.separate_from_startup();
             log.error("sudo credential priming failed");
-            false
+            ElevationPlan::Unavailable {
+                reason: "sudo credentials unavailable",
+            }
         }
         Err(error) => {
             log.separate_from_startup();
             log.error(format!("failed to run sudo: {error:#}"));
-            false
+            ElevationPlan::Unavailable {
+                reason: "sudo credentials unavailable",
+            }
         }
     }
 }
 
-#[cfg(not(unix))]
-const fn prime_sudo(_ctx: &Context, _log: &Arc<Logger>, _task_names: &[&str]) -> bool {
-    true
+/// Delegate the elevating tasks to a single short-lived elevated child run.
+///
+/// Windows has no per-command `sudo`, so the alternative to one scoped child is
+/// elevating the whole run. The child is restricted to `selectors`, so only the
+/// tasks that declared `needs_elevation` ever hold an administrator token; this
+/// process keeps running unelevated in the user's own terminal.
+#[cfg(windows)]
+fn prepare_elevation(
+    ctx: &Context,
+    log: &Arc<Logger>,
+    names: &[&str],
+    selectors: &[&str],
+    _task_count: usize,
+) -> ElevationPlan {
+    use crate::infra::elevation::{ElevationOutcome, run_elevated_child};
+
+    if selectors.is_empty() {
+        return ElevationPlan::Ready;
+    }
+
+    // A UAC consent dialog is drawn on the interactive secure desktop. In CI or
+    // any other headless session there is nobody to answer it, so requesting it
+    // would at best fail and at worst stall the run until the command timeout.
+    // Degrade to the same outcome as a declined prompt instead.
+    if ctx.system().is_ci() || !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+        log.warn(format!(
+            "administrator access is required for: {}",
+            names.join(", ")
+        ));
+        return ElevationPlan::Unavailable {
+            reason: "elevation unavailable in a non-interactive session",
+        };
+    }
+
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let child_args = build_elevated_child_args(&args, selectors);
+
+    log.separate_from_startup();
+    log.always(format!(
+        "administrator access is required for: {}",
+        names.join(", ")
+    ));
+    log.always("A UAC prompt will open; the rest of this run stays unelevated.");
+    drop(std::io::Write::flush(&mut std::io::stdout()));
+
+    match run_elevated_child(ctx.executor(), &**log, &child_args) {
+        Ok(ElevationOutcome::Completed) => {
+            log.always("Elevated step finished.");
+            ElevationPlan::Delegated
+        }
+        Ok(ElevationOutcome::Declined) => {
+            log.separate_from_startup();
+            log.warn("elevation declined; continuing without it");
+            ElevationPlan::Unavailable {
+                reason: "elevation declined",
+            }
+        }
+        Ok(ElevationOutcome::Failed(code)) => {
+            log.separate_from_startup();
+            log.error(format!("elevated step failed (exit code {code})"));
+            ElevationPlan::Unavailable {
+                reason: "elevated step failed",
+            }
+        }
+        Err(error) => {
+            log.separate_from_startup();
+            log.error(format!("failed to request elevation: {error:#}"));
+            ElevationPlan::Unavailable {
+                reason: "elevation unavailable",
+            }
+        }
+    }
+}
+
+/// Neither `sudo` nor UAC applies; run everything in-process.
+#[cfg(not(any(unix, windows)))]
+const fn prepare_elevation(
+    _ctx: &Context,
+    _log: &Arc<Logger>,
+    _names: &[&str],
+    _selectors: &[&str],
+    _task_count: usize,
+) -> ElevationPlan {
+    ElevationPlan::Ready
+}
+
+/// Rewrite this run's arguments so the elevated child runs only `selectors`.
+///
+/// Existing `--only` / `--skip` filters are dropped because the child's scope is
+/// decided here, and `--no-parallel` is forced so its output stays readable in
+/// the separate console `Start-Process` opens. Every other flag — `--profile`,
+/// `--root`, `--overlay`, verbosity — is preserved verbatim so the child sees
+/// the same configuration as the parent.
+///
+/// Kept pure so the rewriting rules can be asserted on any platform.
+#[cfg_attr(
+    not(any(windows, test)),
+    allow(dead_code, reason = "used by the Windows elevation broker")
+)]
+fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> Vec<String> {
+    /// Filters whose values the child must not inherit.
+    const DROPPED: [&str; 2] = ["--only", "--skip"];
+
+    let mut out: Vec<String> = Vec::with_capacity(args.len().saturating_add(4));
+    let mut skip_next = false;
+
+    for arg in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if DROPPED.contains(&arg.as_str()) {
+            skip_next = true;
+            continue;
+        }
+        if DROPPED
+            .iter()
+            .any(|flag| arg.starts_with(&format!("{flag}=")))
+        {
+            continue;
+        }
+        if arg == "--no-parallel" || arg == "--elevated-child" {
+            continue;
+        }
+        out.push(arg.clone());
+    }
+
+    out.push("--only".to_string());
+    out.push(selectors.join(","));
+    out.push("--no-parallel".to_string());
+    out.push("--elevated-child".to_string());
+    out
 }
 
 /// Execute a dependency-driven task graph.
@@ -133,7 +300,7 @@ fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> 
     let by_id = tasks
         .iter()
         .map(|task| (task.task_id(), *task))
-        .collect::<std::collections::HashMap<_, _>>();
+        .collect::<HashMap<_, _>>();
     if !by_id.contains_key(&boundary) {
         return HashSet::new();
     }
@@ -152,41 +319,115 @@ fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> 
     closure
 }
 
+/// Tasks that cannot run because a prerequisite in `roots` will not run.
+///
+/// Returns each blocked task mapped to the name of the *root* that blocks it,
+/// so the skip reason names something the user can act on rather than an
+/// intermediate hop.
+///
+/// This is required because dropping a task from the slice is not the same as
+/// failing it: [`ResolvedTaskGraph`](crate::engine::graph::ResolvedTaskGraph)
+/// deliberately ignores dependencies that are absent from the slice, so a
+/// dependent would otherwise run against a prerequisite that never happened.
+/// The scheduler's own failure path already cascades; this restores the same
+/// guarantee for tasks removed before the graph is built.
+///
+/// Iterates to a fixed point because the slice is not in topological order.
+fn blocked_dependents<'a>(
+    tasks: &[&'a dyn Task],
+    roots: &HashMap<TaskId, &'a str>,
+) -> HashMap<TaskId, &'a str> {
+    let mut blocked: HashMap<TaskId, &'a str> = HashMap::new();
+    loop {
+        let mut discovered = false;
+        for task in tasks {
+            let id = task.task_id();
+            if roots.contains_key(&id) || blocked.contains_key(&id) {
+                continue;
+            }
+            let cause = task
+                .dependencies()
+                .iter()
+                .find_map(|dep| roots.get(dep).or_else(|| blocked.get(dep)).copied());
+            if let Some(cause) = cause {
+                blocked.insert(id, cause);
+                discovered = true;
+            }
+        }
+        if !discovered {
+            return blocked;
+        }
+    }
+}
+
 fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) -> Result<()> {
     if ctx.is_cancelled() || tasks.is_empty() {
         return Ok(());
     }
 
-    let sudo_task_names: Vec<&str> = if ctx.parallel() && !ctx.dry_run() && tasks.len() > 1 {
+    let elevating: Vec<&dyn Task> = if crate::infra::elevation::is_elevated_child() {
+        // The child was spawned precisely to run these tasks; it must not
+        // recurse into another elevation request.
+        Vec::new()
+    } else {
         tasks
             .iter()
             .filter(|task| crate::engine::requires_elevation(**task, ctx))
-            .map(|task| task.name())
+            .copied()
             .collect()
-    } else {
-        Vec::new()
     };
-    if !sudo_task_names.is_empty() && !prime_sudo(ctx, log, &sudo_task_names) {
-        let reason = "sudo credentials unavailable";
-        tasks.retain(|task| {
-            if crate::engine::requires_elevation(*task, ctx) {
+
+    if !elevating.is_empty() {
+        let names: Vec<&str> = elevating.iter().map(|task| task.name()).collect();
+        let selectors: Vec<&str> = elevating.iter().map(|task| task.selector()).collect();
+        let plan = prepare_elevation(ctx, log, &names, &selectors, tasks.len());
+
+        // Delegation is not degradation: the tasks really ran, just in the
+        // elevated child, so their dependents must still run here. Only an
+        // unavailable plan leaves prerequisites unmet.
+        let (reason, cascade) = match plan {
+            ElevationPlan::Ready => (None, false),
+            ElevationPlan::Delegated => (Some("ran in elevated session"), false),
+            ElevationPlan::Unavailable { reason } => (Some(reason), true),
+        };
+
+        if let Some(reason) = reason {
+            let roots: HashMap<TaskId, &str> = elevating
+                .iter()
+                .map(|task| (task.task_id(), task.name()))
+                .collect();
+            let blocked = if cascade {
+                blocked_dependents(tasks, &roots)
+            } else {
+                HashMap::new()
+            };
+
+            tasks.retain(|task| {
+                let id = task.task_id();
+                let message = if roots.contains_key(&id) {
+                    Some(reason.to_string())
+                } else {
+                    blocked.get(&id).map(|cause| format!("requires {cause}"))
+                };
+                let Some(message) = message else {
+                    return true;
+                };
+
                 let span = tracing::info_span!("task", name = task.name());
                 let _enter = span.enter();
-                log.debug(reason);
+                log.debug(message.as_str());
                 log.record_task_with_metadata(
                     task.name(),
                     crate::infra::logging::TaskStatus::Skipped,
-                    Some(reason),
+                    Some(message.as_str()),
                     ActionCounts::default(),
                     task.visibility(),
                 );
                 log.mark_task_completed(task.name());
                 log.emit_task_result_and_redraw(task.name());
                 false
-            } else {
-                true
-            }
-        });
+            });
+        }
     }
 
     if tasks.is_empty() {
@@ -232,6 +473,139 @@ mod tests {
 
     /// Shared ordered record of which tasks ran.
     type Trace = Arc<Mutex<Vec<String>>>;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    #[test]
+    fn elevated_child_args_scope_the_run_to_the_elevating_selectors() {
+        let built = build_elevated_child_args(&args(&["install"]), &["developer-mode", "symlinks"]);
+
+        assert_eq!(
+            built,
+            args(&[
+                "install",
+                "--only",
+                "developer-mode,symlinks",
+                "--no-parallel",
+                "--elevated-child",
+            ]),
+        );
+    }
+
+    #[test]
+    fn elevated_child_args_preserve_configuration_flags() {
+        let built = build_elevated_child_args(
+            &args(&[
+                "install",
+                "--profile",
+                "desktop",
+                "--root",
+                "C:\\repo",
+                "--overlay",
+                "C:\\overlay",
+            ]),
+            &["developer-mode"],
+        );
+
+        assert_eq!(
+            &built[..7],
+            &args(&[
+                "install",
+                "--profile",
+                "desktop",
+                "--root",
+                "C:\\repo",
+                "--overlay",
+                "C:\\overlay",
+            ])[..]
+        );
+        assert!(built.contains(&"--only".to_string()));
+    }
+
+    #[test]
+    fn elevated_child_args_drop_inherited_task_filters() {
+        for filters in [
+            args(&["install", "--only", "packages", "--skip", "registry"]),
+            args(&["install", "--only=packages", "--skip=registry"]),
+        ] {
+            let built = build_elevated_child_args(&filters, &["developer-mode"]);
+
+            assert_eq!(built.iter().filter(|arg| *arg == "--only").count(), 1);
+            assert!(!built.iter().any(|arg| arg.contains("packages")));
+            assert!(!built.iter().any(|arg| arg.contains("registry")));
+        }
+    }
+
+    #[test]
+    fn elevated_child_args_do_not_duplicate_repeated_flags() {
+        let built = build_elevated_child_args(
+            &args(&["install", "--no-parallel", "--elevated-child"]),
+            &["developer-mode"],
+        );
+
+        assert_eq!(
+            built.iter().filter(|arg| *arg == "--no-parallel").count(),
+            1
+        );
+        assert_eq!(
+            built
+                .iter()
+                .filter(|arg| *arg == "--elevated-child")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn blocked_dependents_cascades_to_transitive_dependents() {
+        // Mirrors the real Windows shape: symlinks cannot run unelevated, and
+        // APM declares a dependency on it in the catalog.
+        let trace = trace();
+        let root = ProbeTask::new("Home symlinks", 1, &trace);
+        let direct = ProbeTask::new("APM packages", 2, &trace).depends_on(&[1]);
+        let indirect = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
+        let unrelated = ProbeTask::new("Registry settings", 4, &trace);
+        let tasks: Vec<&dyn Task> = vec![&root, &direct, &indirect, &unrelated];
+        let roots = HashMap::from([(TaskId::Dynamic(1), "Home symlinks")]);
+
+        let blocked = blocked_dependents(&tasks, &roots);
+
+        // The reason names the root so the message stays actionable, rather
+        // than pointing at the intermediate hop.
+        assert_eq!(blocked.get(&TaskId::Dynamic(2)), Some(&"Home symlinks"));
+        assert_eq!(blocked.get(&TaskId::Dynamic(3)), Some(&"Home symlinks"));
+        assert!(!blocked.contains_key(&TaskId::Dynamic(4)));
+        assert!(!blocked.contains_key(&TaskId::Dynamic(1)));
+    }
+
+    #[test]
+    fn blocked_dependents_is_independent_of_slice_order() {
+        // The task slice is not topologically sorted, so a dependent can be
+        // visited before the dependency that blocks it.
+        let trace = trace();
+        let root = ProbeTask::new("Home symlinks", 1, &trace);
+        let direct = ProbeTask::new("APM packages", 2, &trace).depends_on(&[1]);
+        let indirect = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
+        let tasks: Vec<&dyn Task> = vec![&indirect, &direct, &root];
+        let roots = HashMap::from([(TaskId::Dynamic(1), "Home symlinks")]);
+
+        let blocked = blocked_dependents(&tasks, &roots);
+
+        assert_eq!(blocked.get(&TaskId::Dynamic(3)), Some(&"Home symlinks"));
+        assert_eq!(blocked.len(), 2);
+    }
+
+    #[test]
+    fn blocked_dependents_ignores_dependencies_absent_from_the_slice() {
+        let trace = trace();
+        let orphan = ProbeTask::new("Registry settings", 2, &trace).depends_on(&[99]);
+        let tasks: Vec<&dyn Task> = vec![&orphan];
+        let roots = HashMap::from([(TaskId::Dynamic(1), "Home symlinks")]);
+
+        assert!(blocked_dependents(&tasks, &roots).is_empty());
+    }
 
     fn trace() -> Trace {
         Arc::new(Mutex::new(Vec::new()))

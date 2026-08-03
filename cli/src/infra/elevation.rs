@@ -1,6 +1,9 @@
 //! Cross-platform privilege elevation mechanisms.
 //!
-//! Provides Windows UAC re-launching and Unix sudo credential-cache support.
+//! Provides scoped Windows UAC delegation and Unix sudo credential-cache
+//! support. Neither platform elevates the whole run: elevation is requested
+//! only for the specific tasks that declare `needs_elevation`, and declining it
+//! degrades those tasks instead of aborting the run.
 
 #[cfg(windows)]
 use crate::infra::exec::windows::PowerShellCommand;
@@ -11,18 +14,62 @@ use crate::infra::exec::windows::{powershell_arg_list, powershell_single_quote};
 #[cfg(windows)]
 use crate::infra::logging::OutputExt as _;
 
+/// Environment variable marking a process as an elevated child of another run.
+///
+/// The child must never plan elevation of its own, otherwise a failed task
+/// could spawn an unbounded chain of UAC prompts.
+pub(crate) const ELEVATED_CHILD_VAR: &str = "DOTFILES_ELEVATED_CHILD";
+
+/// Exit code the elevation helper reports when the UAC prompt is declined.
+///
+/// Matches the Win32 `ERROR_CANCELLED` value that `Start-Process -Verb RunAs`
+/// surfaces when the user dismisses the consent dialog.
+#[cfg(any(windows, test))]
+pub(crate) const ELEVATION_DECLINED_EXIT_CODE: i32 = 1223;
+
+/// Return whether this process was spawned as the elevated child of a parent run.
+///
+/// Resolved once: from [`mark_elevated_child`] when the CLI flag is present, or
+/// from the environment as a fallback for wrappers that set it directly.
+#[must_use]
+pub fn is_elevated_child() -> bool {
+    *ELEVATED_CHILD
+        .get_or_init(|| std::env::var_os(ELEVATED_CHILD_VAR).is_some_and(|value| !value.is_empty()))
+}
+
+/// Record that this process is the elevated child of a parent run.
+///
+/// Must be called before any [`is_elevated_child`] query; later calls are
+/// ignored so the answer stays stable for the lifetime of the process.
+pub fn mark_elevated_child() {
+    // `set` reports Err once the flag has already been resolved, which is the
+    // documented no-op rather than a failure.
+    let _already_resolved = ELEVATED_CHILD.set(true).is_err();
+}
+
+/// Cached answer for [`is_elevated_child`].
+static ELEVATED_CHILD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
 /// Check if the current process is running with administrator privileges.
 ///
-/// On Windows, runs `net session` which succeeds only when elevated.
+/// On Windows, runs `net session` which succeeds only when elevated. The answer
+/// is cached because a process cannot change its own elevation level, and
+/// `needs_elevation` predicates consult it once per task.
+///
 /// On non-Windows platforms, always returns `false`.
 #[cfg(windows)]
 #[must_use]
 pub fn is_elevated() -> bool {
     use crate::infra::exec::Executor as _;
+    use std::sync::OnceLock;
 
-    crate::infra::exec::ProcessExecutor::system()
-        .run_unchecked("net", &["session"])
-        .is_ok_and(|result| result.success)
+    static ELEVATED: OnceLock<bool> = OnceLock::new();
+
+    *ELEVATED.get_or_init(|| {
+        crate::infra::exec::ProcessExecutor::system()
+            .run_unchecked("net", &["session"])
+            .is_ok_and(|result| result.success)
+    })
 }
 
 /// Check if the current process is running with administrator privileges.
@@ -83,10 +130,50 @@ pub fn prime_sudo_credentials() -> std::io::Result<bool> {
     command.status().map(|status| status.success())
 }
 
-/// Re-launch the current process with administrator privileges via UAC.
+/// Build the `PowerShell` script that runs `exe` elevated and waits for it.
 ///
-/// Uses `PowerShell` `Start-Process -Verb RunAs` to trigger the UAC prompt.
-/// On success, an elevated window opens and the current process exits.
+/// Kept as a pure string builder so the escaping and exit-code plumbing can be
+/// asserted on any platform, following the pattern used by the re-exec helper.
+///
+/// The script maps a declined UAC prompt onto [`ELEVATION_DECLINED_EXIT_CODE`]
+/// so the caller can distinguish "user said no" from "the child run failed".
+#[cfg(any(windows, test))]
+pub(crate) fn build_elevated_child_script(exe: &str, args: &[String]) -> String {
+    let exe_quoted = powershell_single_quote(exe);
+    let start = if args.is_empty() {
+        format!("Start-Process -FilePath {exe_quoted} -Verb RunAs -Wait -PassThru")
+    } else {
+        let arg_list = powershell_arg_list(args);
+        format!(
+            "Start-Process -FilePath {exe_quoted} -ArgumentList {arg_list} -Verb RunAs -Wait -PassThru"
+        )
+    };
+
+    format!(
+        "$ErrorActionPreference = 'Stop'\n\
+         try {{ $p = {start} }} catch {{ exit {ELEVATION_DECLINED_EXIT_CODE} }}\n\
+         if ($null -eq $p) {{ exit {ELEVATION_DECLINED_EXIT_CODE} }}\n\
+         exit $p.ExitCode\n"
+    )
+}
+
+/// Result of delegating work to an elevated child process.
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ElevationOutcome {
+    /// The elevated child ran to completion successfully.
+    Completed,
+    /// The user dismissed the UAC consent dialog.
+    Declined,
+    /// The elevated child ran but reported a failure.
+    Failed(i32),
+}
+
+/// Run `args` in an elevated child process and wait for it to finish.
+///
+/// Uses `PowerShell` `Start-Process -Verb RunAs -Wait -PassThru` to trigger the
+/// UAC prompt. The current process keeps running unelevated: only the child
+/// holds the administrator token, and only for the tasks it was scoped to.
 ///
 /// The `PowerShell` script is Base64-encoded as UTF-16LE and passed via
 /// `-EncodedCommand` so the outer command string is never parsed by
@@ -95,25 +182,18 @@ pub fn prime_sudo_credentials() -> std::io::Result<bool> {
 ///
 /// # Errors
 ///
-/// Returns an error if the user cancels the UAC prompt or the elevated
-/// process fails to start.
+/// Returns an error if the current executable cannot be located or the
+/// `PowerShell` helper itself cannot be started.
 #[cfg(windows)]
-pub fn elevate_and_exit(
+pub(crate) fn run_elevated_child(
     executor: &dyn crate::infra::exec::Executor,
     log: &dyn crate::infra::logging::Output,
-) -> anyhow::Result<()> {
-    use anyhow::{Context, bail};
+    args: &[String],
+) -> anyhow::Result<ElevationOutcome> {
+    use anyhow::Context as _;
 
     let exe = std::env::current_exe().context("failed to determine current executable path")?;
-    let args: Vec<String> = std::env::args().skip(1).collect();
-
-    let exe_quoted = powershell_single_quote(&exe.display().to_string());
-    let ps_script = if args.is_empty() {
-        format!("Start-Process -FilePath {exe_quoted} -Verb RunAs")
-    } else {
-        let arg_list = powershell_arg_list(&args);
-        format!("Start-Process -FilePath {exe_quoted} -ArgumentList {arg_list} -Verb RunAs")
-    };
+    let script = build_elevated_child_script(&exe.display().to_string(), args);
 
     let ps_exe = if executor.which("pwsh") {
         "pwsh"
@@ -121,31 +201,35 @@ pub fn elevate_and_exit(
         "powershell"
     };
 
-    log.always("Not running as administrator. Requesting elevation...");
+    log.debug(format!("elevating: {} {}", exe.display(), args.join(" ")));
 
-    let result = PowerShellCommand::new(&ps_script)
+    let result = PowerShellCommand::new(&script)
         .run_unchecked(executor, ps_exe)
         .context("failed to start elevated process")?;
 
-    if result.success {
-        log.always("Elevated window opened.");
-        std::process::exit(0);
-    }
-
-    bail!(
-        "UAC elevation was cancelled or failed. \
-         Administrator privileges are required. Use --dry-run to preview changes."
-    );
+    Ok(match result.code {
+        Some(0) => ElevationOutcome::Completed,
+        Some(ELEVATION_DECLINED_EXIT_CODE) => ElevationOutcome::Declined,
+        Some(code) => ElevationOutcome::Failed(code),
+        None => ElevationOutcome::Failed(-1),
+    })
 }
 
 /// Pause before exiting so the user can read output in an elevated window.
 ///
-/// On Windows, if the process is elevated, prints a prompt and waits for
-/// the user to press Enter. No-op on non-Windows or non-elevated processes.
+/// Only applies to a child this process tree spawned for elevation: that window
+/// is created by `Start-Process` and closes as soon as the child exits, so
+/// without the pause its output would be unreadable. A normal run — elevated or
+/// not — owns the user's existing terminal and must never block on exit.
 #[cfg(windows)]
 #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
 pub fn wait_if_elevated() {
-    if is_elevated() {
+    // Never block on input where nothing can supply it: a `--elevated-child`
+    // run driven by automation would otherwise stall until the command timeout.
+    if is_elevated_child()
+        && std::env::var_os("CI").is_none()
+        && std::io::IsTerminal::is_terminal(&std::io::stdin())
+    {
         eprintln!();
         eprint!("Press Enter to close...");
         drop(std::io::stdin().read_line(&mut String::new())); // Best-effort: ignore read errors
@@ -192,6 +276,14 @@ mod tests {
     }
 
     #[test]
+    fn elevated_child_flag_is_absent_by_default() {
+        assert!(
+            !is_elevated_child(),
+            "a normal test process must not look like an elevated child"
+        );
+    }
+
+    #[test]
     #[cfg(unix)]
     fn sudo_available_reflects_the_executor_lookup() {
         use crate::infra::exec::MockExecutor;
@@ -218,6 +310,66 @@ mod tests {
 #[cfg(test)]
 mod escaping_tests {
     use super::*;
+
+    // --- build_elevated_child_script ---
+
+    #[test]
+    fn elevated_child_script_waits_and_forwards_the_exit_code() {
+        let script = build_elevated_child_script(
+            r"C:\dotfiles\dotfiles.exe",
+            &["install".to_string(), "--only".to_string()],
+        );
+
+        assert!(
+            script.contains("-Verb RunAs -Wait -PassThru"),
+            "the parent must block on the elevated child: {script}"
+        );
+        assert!(
+            script.contains("exit $p.ExitCode"),
+            "the child exit code must reach the parent: {script}"
+        );
+        assert!(
+            script.contains(r"-FilePath 'C:\dotfiles\dotfiles.exe'"),
+            "the executable path must be single-quoted: {script}"
+        );
+        assert!(
+            script.contains("-ArgumentList @('install', '--only')"),
+            "arguments must be passed as a quoted PowerShell list: {script}"
+        );
+    }
+
+    #[test]
+    fn elevated_child_script_maps_a_declined_prompt_to_a_distinct_code() {
+        let script = build_elevated_child_script("dotfiles.exe", &[]);
+
+        assert_eq!(
+            script
+                .matches(&ELEVATION_DECLINED_EXIT_CODE.to_string())
+                .count(),
+            2,
+            "both the catch block and the null guard must report a decline: {script}"
+        );
+    }
+
+    #[test]
+    fn elevated_child_script_omits_the_argument_list_when_there_are_no_arguments() {
+        let script = build_elevated_child_script("dotfiles.exe", &[]);
+
+        assert!(
+            !script.contains("-ArgumentList"),
+            "an empty argument list must not be emitted: {script}"
+        );
+    }
+
+    #[test]
+    fn elevated_child_script_escapes_quotes_in_arguments() {
+        let script = build_elevated_child_script("dotfiles.exe", &["O'Brien".to_string()]);
+
+        assert!(
+            script.contains("'O''Brien'"),
+            "single quotes must be doubled inside the argument list: {script}"
+        );
+    }
 
     // --- powershell_single_quote ---
 

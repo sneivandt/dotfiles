@@ -76,6 +76,11 @@ normally requires either Developer Mode or elevation. The task uses lenient
 resource processing: unsupported environments are surfaced without hiding real
 mutation failures.
 
+It is the only task that always needs administrator rights, and only on the
+first run — once Developer Mode is set, no Windows task requires elevation.
+When it cannot elevate, it and every task that depends on it are skipped and
+the rest of the run proceeds.
+
 #### Dotfiles launcher
 
 Copies the appropriate bootstrap wrapper into `~/.local/bin` as `dotfiles`.
@@ -163,6 +168,13 @@ uses the active platform provider:
 
 The task discovers installed state before applying changes and only requests
 elevation when the planned provider action needs it.
+
+On Windows the task never elevates itself. winget installs are attempted with
+`--scope user` first and retried unscoped only when no user-scope installer
+exists. A package whose installer still demands administrator rights is
+reported as skipped rather than failing the task, so the rest of the run
+continues. Re-run `dotfiles install --only packages` from an elevated terminal
+to finish those.
 
 #### Paru package manager
 

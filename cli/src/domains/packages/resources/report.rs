@@ -41,12 +41,6 @@ impl PackageInstallReport {
         self.applied.len()
     }
 
-    /// Package names successfully applied.
-    #[must_use]
-    pub fn applied_packages(&self) -> &[String] {
-        &self.applied
-    }
-
     /// Per-package install failures.
     #[must_use]
     pub fn failures(&self) -> &[PackageInstallFailure] {

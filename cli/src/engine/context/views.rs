@@ -96,6 +96,40 @@ impl SystemContext<'_> {
     pub(crate) fn which(&self, program: &str) -> bool {
         self.executor.which(program)
     }
+
+    /// Return whether the current process holds administrator/root privileges.
+    ///
+    /// Always `false` off Windows: Unix elevation is per-command through `sudo`
+    /// rather than a process-wide token, so tasks express their needs through
+    /// `needs_elevation` instead of asking whether the run is already root.
+    #[must_use]
+    #[allow(
+        clippy::unused_self,
+        reason = "capability accessor kept on the view for symmetry with can_create_symlinks"
+    )]
+    #[cfg_attr(
+        not(windows),
+        allow(
+            clippy::missing_const_for_fn,
+            reason = "the Windows implementation inspects the process token, so this cannot be const on every platform"
+        )
+    )]
+    pub(crate) fn is_elevated(&self) -> bool {
+        crate::infra::elevation::is_elevated()
+    }
+
+    /// Return whether symlinks can be created without elevation.
+    ///
+    /// On Windows this requires either Developer Mode or an administrator
+    /// token; every other platform allows unprivileged symlinks.
+    #[must_use]
+    pub(crate) fn can_create_symlinks(&self) -> bool {
+        if self.platform.is_windows() {
+            crate::infra::platform::developer_mode_enabled() || self.is_elevated()
+        } else {
+            true
+        }
+    }
 }
 
 impl RepoPaths {

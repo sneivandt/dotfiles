@@ -178,7 +178,8 @@ This supports:
 - Linux and Windows implementations behind common contracts
 - test doubles for filesystem and command execution
 - explicit capability failures instead of silent platform assumptions
-- elevation planning before parallel task dispatch
+- elevation planning before parallel task dispatch, scoped to the tasks that
+  declare it rather than the whole process
 
 ## Error handling and observability
 

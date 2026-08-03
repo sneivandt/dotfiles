@@ -163,6 +163,26 @@ Confirm Developer Mode is enabled, open a new terminal, and check whether an
 unrelated file already occupies the target. Avoid running the whole workflow
 elevated when only a specific capability requires it.
 
+## A task was skipped because elevation was unavailable
+
+Tasks that need administrator rights are delegated to one short-lived elevated
+child run. When that cannot happen, the run continues and reports the reason:
+
+| Skip reason | Meaning |
+| --- | --- |
+| `elevation declined` | The UAC prompt was dismissed. |
+| `elevation unavailable in a non-interactive session` | CI or a session with no console, where no one can answer a prompt. |
+| `requires <task>` | A dependency was skipped for one of the reasons above. |
+
+Nothing is left half-applied: dependent tasks are skipped rather than run
+against a prerequisite that never happened. Re-run the specific task from an
+elevated terminal, then re-run the normal workflow:
+
+```powershell
+dotfiles install --only developer-mode
+dotfiles install
+```
+
 ## A profile switch would remove files
 
 Conditional sources may leave the sparse checkout. **Sparse checkout** depends

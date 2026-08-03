@@ -36,6 +36,17 @@ impl Task for EnableDeveloperMode {
         ctx.platform().is_windows()
     }
 
+    /// Writing `HKLM\...\AppModelUnlock` is the one Windows mutation in the
+    /// catalog that genuinely requires an administrator token.
+    ///
+    /// Returns `false` once the flag is set, so only the first install on a
+    /// machine ever plans elevation.
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        ctx.platform().is_windows()
+            && !ctx.system().is_elevated()
+            && !crate::infra::platform::developer_mode_enabled()
+    }
+
     fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
         Self::process(ctx, Some(NAME))
     }
@@ -70,5 +81,28 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_windows_context(config);
         assert!(EnableDeveloperMode.should_run(&ctx));
+    }
+
+    #[test]
+    fn needs_elevation_false_on_linux() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_linux_context(config);
+        assert!(
+            !EnableDeveloperMode.needs_elevation(&ctx),
+            "developer mode is a Windows-only concept"
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn needs_elevation_true_on_windows_when_developer_mode_is_unset() {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = make_windows_context(config);
+        // Off Windows the flag can never be observed as set and the process is
+        // never elevated, so this exercises the first-run branch.
+        assert!(
+            EnableDeveloperMode.needs_elevation(&ctx),
+            "an unset developer mode flag must plan elevation"
+        );
     }
 }

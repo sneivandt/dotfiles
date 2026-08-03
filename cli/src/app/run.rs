@@ -1,13 +1,15 @@
 //! CLI startup wiring: argument parsing, logging setup, cancellation,
-//! elevation handling, and command dispatch.
+//! and command dispatch.
+//!
+//! Elevation is deliberately *not* handled here. Privilege is planned per task
+//! during execution so a run stays unelevated unless a specific task needs
+//! otherwise; see `app::commands::execution::prepare_elevation`.
 
 use std::io::Write as _;
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
 
-#[cfg(windows)]
-use crate::infra::exec;
 use crate::infra::{elevation, logging};
 
 use super::{cli, commands};
@@ -22,6 +24,10 @@ use crate::infra::logging::OutputExt as _;
 pub fn run() -> ExitCode {
     drop(enable_ansi_support::enable_ansi_support()); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
+
+    if args.global.elevated_child {
+        elevation::mark_elevated_child();
+    }
 
     // Meta commands run standalone and exit before the logging subsystem,
     // elevation, and task engine are initialised. Narrowing to `EngineCommand`
@@ -58,18 +64,6 @@ fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: b
     let mut raw_log = logging::init(verbose, command.name());
     raw_log.set_dry_run(global.dry_run);
     let log = std::sync::Arc::new(raw_log);
-    // Auto-elevate on Windows for install/uninstall when not in dry-run mode
-    #[cfg(windows)]
-    {
-        if command.mutates_system()
-            && !global.dry_run
-            && !elevation::is_elevated()
-            && let Err(e) = elevation::elevate_and_exit(&exec::ProcessExecutor::system(), &*log)
-        {
-            log.error(format!("{e:#}"));
-            return ExitCode::FAILURE;
-        }
-    }
 
     // Set up cooperative cancellation so Ctrl-C lets in-flight operations
     // finish cleanly instead of terminating the process immediately.

@@ -74,6 +74,19 @@ should remain least privilege:
 Do not move broad task execution behind an unconditional administrator or root
 requirement.
 
+Elevation is scoped to the tasks that declare it. The main process stays
+unprivileged on both platforms:
+
+- Linux primes `sudo` once and runs only the privileged commands under it.
+- Windows delegates the elevating tasks to one short-lived elevated child run
+  restricted to those selectors, then continues unprivileged. The child cannot
+  recurse into another elevated run.
+
+Elevation is never requested in a non-interactive or CI session. When elevation
+is declined or unavailable, the run degrades instead of aborting: the elevating
+tasks are skipped, and so are the tasks that depend on them, so nothing applies
+against a prerequisite that never happened.
+
 ## Private overlays
 
 Overlays are explicitly supplied local repositories. They may contain private

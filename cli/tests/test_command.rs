@@ -49,6 +49,7 @@ fn test_command_fails_on_config_warnings() {
         dry_run: true,
         overlay: None,
         parallel: false,
+        elevated_child: false,
     };
     let opts = test_api::cli::TestOpts {};
     let log = Arc::new(Logger::new("test-command"));

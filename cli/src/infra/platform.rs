@@ -210,6 +210,65 @@ impl Platform {
     }
 }
 
+/// Registry subkey holding the Windows Developer Mode flag.
+#[cfg(windows)]
+pub const DEVELOPER_MODE_SUBKEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
+
+/// Registry value name for the Windows Developer Mode flag.
+#[cfg(windows)]
+pub const DEVELOPER_MODE_VALUE: &str = "AllowDevelopmentWithoutDevLicense";
+
+/// Read the raw Windows Developer Mode registry flag.
+///
+/// Returns `Ok(None)` when the key or value is absent, which is the normal
+/// state on a machine where Developer Mode has never been enabled.
+///
+/// # Errors
+///
+/// Returns an error when the registry can be reached but the read fails for a
+/// reason other than the value being missing.
+#[cfg(windows)]
+pub fn developer_mode_flag() -> std::io::Result<Option<u32>> {
+    use winreg::RegKey;
+    use winreg::enums::HKEY_LOCAL_MACHINE;
+
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    match hklm.open_subkey(DEVELOPER_MODE_SUBKEY) {
+        Ok(key) => match key.get_value::<u32, _>(DEVELOPER_MODE_VALUE) {
+            Ok(value) => Ok(Some(value)),
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        },
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Return whether Windows Developer Mode is enabled.
+///
+/// Developer Mode is what permits unprivileged symlink creation, so this is the
+/// capability behind an unelevated `install` run. Off Windows the flag cannot
+/// exist, so the answer is always `false` and callers fall back to the
+/// platform's native symlink support.
+#[must_use]
+#[cfg_attr(
+    not(windows),
+    allow(
+        clippy::missing_const_for_fn,
+        reason = "the Windows body reads the registry, so this cannot be const on every platform"
+    )
+)]
+pub fn developer_mode_enabled() -> bool {
+    #[cfg(windows)]
+    {
+        matches!(developer_mode_flag(), Ok(Some(1)))
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 #[cfg(test)]
 #[allow(
     clippy::expect_used,

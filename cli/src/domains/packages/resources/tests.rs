@@ -472,12 +472,20 @@ fn winget_install_report_tracks_successful_package_names() {
         Arc::clone(&executor),
     );
 
+    let announced = std::sync::Mutex::new(Vec::new());
     let report = PackageManager::Winget
         .provider()
-        .install_missing(&[&first, &second], &*executor)
+        .install_missing(&[&first, &second], &*executor, &|package| {
+            announced.lock().unwrap().push(package.to_string());
+        })
         .unwrap();
 
-    assert_eq!(report.applied_packages(), &["Second.App".to_string()]);
+    assert_eq!(
+        *announced.lock().unwrap(),
+        vec!["First.App".to_string(), "Second.App".to_string()],
+        "each package is announced before it is installed",
+    );
+    assert_eq!(report.applied_count(), 1);
     assert_eq!(report.failures().len(), 1);
     assert_eq!(report.failures()[0].package, "First.App");
 }

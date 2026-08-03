@@ -6,8 +6,8 @@ use std::sync::Arc;
 use crate::domains::files::config::symlinks::Symlink;
 use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, configured_task_result, process_resources_remove,
-    run_resource_task, task_metadata,
+    Context, IntrinsicState as _, ProcessOpts, ResourceState, Task, TaskResult,
+    configured_task_result, process_resources_remove, run_resource_task, task_metadata,
 };
 use crate::infra::ConfigHandle;
 
@@ -83,6 +83,26 @@ impl Task for InstallSymlinks {
 
     fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
         self.process(ctx, Some(INSTALL_NAME))
+    }
+
+    /// Windows file symlinks require Developer Mode or an administrator token.
+    ///
+    /// Directory links already degrade to `mklink /J` junctions, which need no
+    /// privilege, so only pending *file* links can justify elevation. Returns
+    /// `false` once they all exist, so a converged machine plans none.
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        if !ctx.platform().is_windows() || ctx.system().can_create_symlinks() {
+            return false;
+        }
+
+        let symlinks = self.config.read().to_vec();
+        build_resources(ctx, &symlinks).iter().any(|resource| {
+            resource.source.is_file()
+                && matches!(
+                    resource.current_state(),
+                    Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
+                )
+        })
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

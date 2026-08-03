@@ -84,6 +84,12 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// continuing after individual failures and reporting them in the returned
     /// [`PackageInstallReport`].
     ///
+    /// `progress` is called with each package name immediately before its
+    /// install starts. One-at-a-time installs can be slow and, on Windows, can
+    /// raise a per-installer UAC prompt, so the caller needs to be able to name
+    /// the package a stalled run is waiting on rather than reporting only after
+    /// every install has finished.
+    ///
     /// # Errors
     ///
     /// Returns an error if a provider-level batch operation fails.
@@ -91,6 +97,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         &self,
         resources: &[&PackageResource],
         executor: &dyn Executor,
+        progress: &dyn Fn(&str),
     ) -> Result<PackageInstallReport> {
         let names: Vec<&str> = resources
             .iter()
@@ -109,6 +116,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
 
         let mut report = PackageInstallReport::new();
         for resource in resources {
+            progress(&resource.name);
             match self.install(&resource.name, executor) {
                 Ok(ResourceChange::Applied | ResourceChange::AlreadyCorrect) => {
                     report.record_applied(resource.name.clone());
@@ -216,6 +224,9 @@ pub fn get_installed_packages(
 
 /// Install missing package resources through the selected manager's batch API.
 ///
+/// `progress` is called with each package name immediately before its install
+/// starts, so callers can show what a long-running install is working on.
+///
 /// # Errors
 ///
 /// Returns an error when the package manager's batch operation fails before it
@@ -224,8 +235,11 @@ pub fn install_missing_packages(
     manager: PackageManager,
     resources: &[&PackageResource],
     executor: &dyn Executor,
+    progress: &dyn Fn(&str),
 ) -> Result<PackageInstallReport> {
-    manager.provider().install_missing(resources, executor)
+    manager
+        .provider()
+        .install_missing(resources, executor, progress)
 }
 
 /// Install a batch of packages, grouped by package manager.
@@ -249,7 +263,7 @@ pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
         if let Some(first) = group.first() {
             let executor = &*first.executor;
 
-            let report = provider.install_missing(group, executor)?;
+            let report = provider.install_missing(group, executor, &|_| {})?;
             if let Some(failure) = report.failures().first() {
                 return Err(crate::engine::resource::ResourceError::command_failed(
                     provider.name(),

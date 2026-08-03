@@ -6,10 +6,6 @@ use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, Re
 /// Registry key path for Windows Developer Mode (display/description only).
 const DEVELOPER_MODE_KEY: &str = r"HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
 
-/// Registry subkey path for native Windows registry access.
-#[cfg(windows)]
-const DEVELOPER_MODE_SUBKEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock";
-
 /// Registry value name for the developer mode flag.
 const DEVELOPER_MODE_VALUE: &str = "AllowDevelopmentWithoutDevLicense";
 
@@ -45,7 +41,7 @@ impl Resource for DeveloperModeResource {
             use winreg::RegKey;
             use winreg::enums::HKEY_LOCAL_MACHINE;
             let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-            match hklm.create_subkey(DEVELOPER_MODE_SUBKEY) {
+            match hklm.create_subkey(crate::infra::platform::DEVELOPER_MODE_SUBKEY) {
                 Ok((key, _)) => match key.set_value(DEVELOPER_MODE_VALUE, &1u32) {
                     Ok(()) => Ok(ResourceChange::Applied),
                     Err(e) => Ok(ResourceChange::Skipped {
@@ -70,24 +66,12 @@ impl IntrinsicState for DeveloperModeResource {
     fn current_state(&self) -> Result<ResourceState> {
         #[cfg(windows)]
         {
-            use winreg::RegKey;
-            use winreg::enums::HKEY_LOCAL_MACHINE;
-            let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-            match hklm.open_subkey(DEVELOPER_MODE_SUBKEY) {
-                Ok(key) => match key.get_value::<u32, _>(DEVELOPER_MODE_VALUE) {
-                    Ok(1) => Ok(ResourceState::Correct),
-                    Ok(v) => Ok(ResourceState::Incorrect {
-                        current: v.to_string(),
-                    }),
-                    Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        Ok(ResourceState::Missing)
-                    }
-                    Err(e) => Err(e.into()),
-                },
-                Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    Ok(ResourceState::Missing)
-                }
-                Err(e) => Err(e.into()),
+            match crate::infra::platform::developer_mode_flag()? {
+                Some(1) => Ok(ResourceState::Correct),
+                Some(v) => Ok(ResourceState::Incorrect {
+                    current: v.to_string(),
+                }),
+                None => Ok(ResourceState::Missing),
             }
         }
         #[cfg(not(windows))]

@@ -67,8 +67,9 @@ cli/src/
   but not `dotfiles install`.
 - Use `should_run()` for platform, tool-availability, and configuration
   eligibility. Implement `needs_elevation()` only when an applicable task's
-  current state predicts a privileged mutation, so sudo is primed only when
-  needed. Dry-run suppression is handled centrally.
+  current state predicts a privileged mutation, so elevation is requested only
+  when needed. Dry-run suppression is handled centrally by the
+  `engine::requires_elevation` free function, which decorators cannot bypass.
 - Use capability methods such as `supports_systemd()`, `supports_chmod()`,
   `has_registry()`, `supports_aur()`, and `uses_pacman()` before direct OS checks.
 - Route all subprocess calls through `ctx.executor`; do not call process helpers

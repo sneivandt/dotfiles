@@ -60,7 +60,10 @@ the executor abstraction and preserve idempotent manager options.
   package installation.
 - AUR commands must not add an extra sudo layer around tools that manage their
   own elevation.
-- Winget uses exact package IDs and may require per-package installation.
+- Winget uses exact package IDs and may require per-package installation. It
+  never elevates the run: prefer `--scope user`, retry unscoped only when no
+  user-scope installer exists, and report privilege failures as skipped rather
+  than failing the task.
 - Prefer platform capability methods over direct OS checks.
 
 When a package manager is unavailable, return an explicit skipped result or

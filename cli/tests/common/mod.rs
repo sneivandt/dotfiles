@@ -356,6 +356,7 @@ pub(crate) fn run_install_dry_run(
         dry_run: true,
         overlay: None,
         parallel,
+        elevated_child: false,
     };
     let opts = test_api::cli::InstallOpts { skip, only };
     let log: Arc<Logger> = Arc::new(Logger::new("test-install-dry-run"));

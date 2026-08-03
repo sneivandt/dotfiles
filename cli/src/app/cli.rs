@@ -62,6 +62,13 @@ pub struct GlobalOpts {
     /// Run tasks sequentially
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
+
+    /// Internal: marks a run spawned by a parent run to perform elevated tasks
+    ///
+    /// Hidden because it is an implementation detail of the elevation broker,
+    /// not a supported way to invoke the CLI.
+    #[arg(long = "elevated-child", global = true, hide = true)]
+    pub elevated_child: bool,
 }
 
 /// Available subcommands.
@@ -114,16 +121,6 @@ impl EngineCommand {
             Self::Test(_) => "test",
             Self::Tasks => "tasks",
         }
-    }
-
-    /// Whether the command mutates system state and so needs elevation.
-    #[cfg(windows)]
-    #[must_use]
-    pub const fn mutates_system(&self) -> bool {
-        matches!(
-            self,
-            Self::Install(_) | Self::Update(_) | Self::Uninstall(_)
-        )
     }
 }
 

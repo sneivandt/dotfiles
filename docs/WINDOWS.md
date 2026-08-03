@@ -58,6 +58,36 @@ dotfiles install --only symlinks --dry-run --verbose
 The CLI plans elevation when a mutation requires it; do not run every command as
 Administrator by default.
 
+## Elevation
+
+A normal `dotfiles install` runs unelevated in your own terminal. Elevation is
+requested per task, not per command, and only when the task's current state
+actually needs it:
+
+| Task | When it needs Administrator |
+|---|---|
+| **Windows Developer Mode** | first run only, while the machine policy value is unset |
+| **Home symlinks** | only when Developer Mode is off and file links are missing |
+
+Every other Windows task writes to user scope and never elevates.
+
+When a task does need it, the CLI names the tasks, opens one UAC prompt, and
+runs a short-lived elevated child restricted to exactly those tasks
+(`--only <selectors> --no-parallel`). The child appears in its own console
+window and writes its own run log; the parent stays unelevated and continues.
+
+Declining the prompt is not fatal. Those tasks are recorded as skipped and the
+rest of the run proceeds, so a converged machine never sees a prompt at all.
+
+In CI or any other non-interactive session, no prompt is raised: elevating tasks
+are skipped with a reason instead of stalling on a dialog nobody can answer.
+
+To perform a skipped step later, run it directly from an elevated shell:
+
+```powershell
+dotfiles install --only developer-mode
+```
+
 ## Packages
 
 Windows package identifiers in `conf/packages.toml` are winget package IDs:
@@ -72,6 +102,18 @@ packages = [
 
 Only missing packages are installed. AUR and paru tasks are not applicable on
 Windows.
+
+Each package is announced before it is installed, so a long download is
+attributable to a specific ID. Installs are attempted with `--scope user` first
+and retried unscoped only when no per-user installer exists — that keeps most
+packages out of machine scope and avoids a UAC prompt. A machine-scope installer
+still raises its own consent dialog, which winget cannot suppress; declining it,
+or hitting a policy restriction, records that package as skipped rather than
+failing the run. To install those, re-run from an elevated shell:
+
+```powershell
+dotfiles install --only packages
+```
 
 ## Registry settings
 

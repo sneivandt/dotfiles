@@ -1,9 +1,5 @@
-Host *
-  TCPKeepAlive yes
-  ServerAliveInterval 60
-  ServerAliveCountMax 2
-  AddKeysToAgent yes
-  Compression yes
+# ssh applies the first value it finds for each keyword, so specific hosts must
+# come before the "Host *" defaults at the bottom of this file.
 
 Host github.com
   User git
@@ -16,6 +12,7 @@ Host github.com
 Host github-internal
   User git
   HostName github.com
+  LogLevel ERROR
   IdentityFile ~/.ssh/github_internal/id_ed25519
   IdentitiesOnly yes
   PreferredAuthentications publickey
@@ -25,3 +22,10 @@ Host *.visualstudio.com *.dev.azure.com
   IdentityFile ~/.ssh/ado/id_ed25519
   IdentitiesOnly yes
   PreferredAuthentications publickey
+
+Host *
+  TCPKeepAlive yes
+  ServerAliveInterval 60
+  ServerAliveCountMax 2
+  AddKeysToAgent yes
+  Compression yes

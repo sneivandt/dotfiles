@@ -34,6 +34,13 @@ then
   bindkey '\e[1;5C' forward-word       # Ctrl + Right
 fi
 
+# Ctrl + Backspace (ESC DEL).
+# The bare ^H bindings above only work outside tmux: tmux claims C-h at the
+# root level for vim-tmux-navigator, and Ctrl+Backspace is indistinguishable
+# from Ctrl+H on the wire. Terminals we control (see alacritty.toml) are
+# configured to emit ESC DEL instead, which reaches the shell either way.
+bindkey '\e^?' backward-kill-word
+
 # Magic space history expansion
 bindkey ' ' magic-space
 

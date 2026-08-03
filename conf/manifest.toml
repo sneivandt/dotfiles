@@ -36,7 +36,6 @@ paths = [
   "gnupg/",
   "vim/",
   "zprofile",
-  "zshenv",
   "zshrc",
 ]
 

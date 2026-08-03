@@ -13,9 +13,11 @@ if [ "$(readlink -f "$(command -v bash)")" != "$(readlink -f "$SHELL")" ]; then
 fi
 
 # Fast git prompt info
+# Kept deliberately in sync with prompt.zsh: branch name only. A per-prompt
+# `git status` is too expensive in large working trees.
 __bash_git_prompt()
 {
-  local branch changes
+  local branch
   # Fast check: only run if in git repo
   if ! git rev-parse --git-dir >/dev/null 2>&1; then
     return
@@ -24,11 +26,6 @@ __bash_git_prompt()
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
   if [ -n "$branch" ]; then
     printf " %s" "$branch"
-    # Performance: Use git status with --porcelain=v1 and untracked-files=no for speed
-    changes=$(git --no-optional-locks status --porcelain=v1 --untracked-files=no 2>/dev/null | wc -l)
-    if [ "$changes" -gt 0 ]; then
-      printf "\001\e[0;31m\002+%s\001\e[0m\002" "$changes"
-    fi
   fi
 }
 

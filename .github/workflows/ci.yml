@@ -131,6 +131,7 @@ jobs:
           sh test-config.sh category_consistency
           sh test-config.sh empty_sections
           python3 test-fullscreen-waybar.py
+          python3 test-workspaces.py
 
   # ── Security ──────────────────────────────────────────
   audit:

@@ -6,7 +6,7 @@ autoload -Uz compinit
 
 # Performance: Only regenerate compdump once per day
 # This significantly speeds up shell startup
-typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${HOME}/.cache/zsh/zcompdump-${ZSH_VERSION}}"
+typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}}"
 
 # Ensure cache directory exists (extract directory from ZSH_COMPDUMP path)
 mkdir -p "${ZSH_COMPDUMP:h}"
@@ -37,7 +37,7 @@ zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:
 zstyle ':completion:*' menu select=2
 zstyle ':completion:*' rehash true
 zstyle ':completion:*' use-cache on
-zstyle ':completion:*' cache-path ~/.cache/zsh
+zstyle ':completion:*' cache-path "${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
 zstyle ':completion:*' verbose yes
 zstyle ':completion:*:*:kill:*' menu yes select
 zstyle ':completion:*:*:kill:*:processes' list-colors "=(#b) #([0-9]#)*=29=31"
@@ -49,7 +49,7 @@ zstyle ':completion:*:manuals' separate-sections true
 zstyle ':completion:*:processes' command 'ps -au$USER'
 
 # use /etc/hosts and known_hosts for hostname completion
-typeset -g _ZSH_HOSTS_CACHE="${HOME}/.cache/zsh/hosts.cache"
+typeset -g _ZSH_HOSTS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/hosts.cache"
 
 if [[ -f "$_ZSH_HOSTS_CACHE" && -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]]; then
   source "$_ZSH_HOSTS_CACHE"

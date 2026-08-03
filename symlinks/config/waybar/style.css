@@ -21,29 +21,29 @@ window#waybar {
     background: rgba(26, 27, 38, 0.94);
 }
 
-#workspaces button {
-    padding: 0 1px;
-    font-size: 20px;
+#workspaces label {
+    padding: 0 3px;
+    font-size: 16px;
     color: #c0caf5;
     background: transparent;
     border-radius: 6px;
     transition: all 0.2s ease;
 }
 
-#workspaces button.active {
+#workspaces label.active {
     color: #7aa2f7;
 }
 
-#workspaces button.urgent {
+#workspaces label.urgent {
     color: #f7768e;
 }
 
-#workspaces button:hover {
+#workspaces label:hover {
     color: #c0caf5;
     background: rgba(255, 255, 255, 0.06);
 }
 
-window#waybar.fullscreen #workspaces button.active {
+window#waybar.fullscreen #workspaces label.active {
     color: #7aa2f7;
 }
 

@@ -22,8 +22,3 @@
 *.rb    diff=ruby
 *.rs    diff=rust
 *.tex   diff=tex
-
-# Custom diff drivers
-*.min.js diff=min
-*.min.css diff=min
-*.json diff=json

@@ -19,7 +19,6 @@
         "bash_profile": "shellscript",
         "bashrc": "shellscript",
         "zprofile": "shellscript",
-        "zshenv": "shellscript",
         "zshrc": "shellscript",
         "nvimrc": "lua",
         "vimrc": "lua",

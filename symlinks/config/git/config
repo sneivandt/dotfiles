@@ -6,13 +6,9 @@
 [url "git@github.com:"]
   pushInsteadOf = https://github.com/
 [core]
-  pager = less -imRj8X
   autocrlf = input
   excludesfile = ~/.config/git/ignore
   attributesfile = ~/.config/git/attributes
-  untrackedCache = true
-  fsmonitor = true
-  commitgraph = true
 
 [color]
   ui = true
@@ -20,8 +16,6 @@
   ui = auto
 [branch]
   sort = -committerdate
-[commit]
-  gpgsign = false
 [fetch]
   prune = true
   pruneTags = true
@@ -47,7 +41,6 @@
   showStash = false
   submoduleSummary = true
 [tag]
-  gpgsign = false
   sort = version:refname
 
 [diff]
@@ -55,14 +48,12 @@
   algorithm = histogram
   colorMoved = zebra
   submodule = log
-[diff "bin"]
-  textconv = hexdump -v -C
+[difftool]
+  prompt = false
 
+# manyFiles implies index.version=4 and core.untrackedCache=true.
 [feature]
   manyFiles = true
-
-[index]
-  version = 4
 
 [include]
   path = ~/.config/git/aliases

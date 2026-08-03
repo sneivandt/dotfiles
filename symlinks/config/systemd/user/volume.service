@@ -1,6 +1,10 @@
 [Unit]
 Description=Set initial volume and unmute
-After=pipewire.service pipewire-pulse.service wireplumber.service pulseaudio.service
+
+# Bound to the graphical session like the other desktop units: default.target
+# would also fire for SSH and other non-graphical logins, where rewriting sink
+# volumes is not wanted.
+After=graphical-session.target pipewire.service pipewire-pulse.service wireplumber.service pulseaudio.service
 Wants=pipewire.service pipewire-pulse.service wireplumber.service
 ConditionFileIsExecutable=%h/.config/volume/init-volume.sh
 
@@ -9,4 +13,4 @@ Type=oneshot
 ExecStart=%h/.config/volume/init-volume.sh
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target

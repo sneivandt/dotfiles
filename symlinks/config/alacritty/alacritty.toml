@@ -73,3 +73,12 @@ action = "ScrollToTop"
 key = "End"
 mods = "Shift"
 action = "ScrollToBottom"
+
+# Ctrl+Backspace normally emits ^H, which tmux swallows for the
+# vim-tmux-navigator "select pane left" binding (bind -n C-h), so word deletion
+# silently stops working inside tmux. Emit ESC DEL instead: that is
+# backward-kill-word in both zsh and readline and passes through tmux untouched.
+[[keyboard.bindings]]
+key = "Backspace"
+mods = "Control"
+chars = "\u001B\u007F"

@@ -7,4 +7,9 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(
         'command -v python3 >/dev/null 2>&1 && [ -x "$HOME/.config/hypr/scripts/fullscreen-waybar.py" ] && exec "$HOME/.config/hypr/scripts/fullscreen-waybar.py"'
     )
+
+    -- Refresh the waybar workspace dots when workspaces change.
+    hl.exec_cmd(
+        'command -v python3 >/dev/null 2>&1 && [ -x "$HOME/.config/hypr/scripts/workspaces.py" ] && exec "$HOME/.config/hypr/scripts/workspaces.py" --watch'
+    )
 end)

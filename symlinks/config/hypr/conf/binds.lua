@@ -5,7 +5,9 @@ local resizeOnBorder = require("conf.resize-on-border")
 hl.bind(mod .. " + Return", hl.dsp.exec_cmd("alacritty"))
 hl.bind(mod .. " + p", hl.dsp.exec_cmd("fuzzel"))
 hl.bind(mod .. " + o", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-browser.sh"))
-hl.bind(mod .. " + i", hl.dsp.exec_cmd('[ -x "$HOME/.local/bin/github-copilot" ] && exec "$HOME/.local/bin/github-copilot"'))
+-- Use `test -x` rather than `[ -x ... ]`: Hyprland parses a leading bracket
+-- group in an exec command as execution rules and strips it.
+hl.bind(mod .. " + i", hl.dsp.exec_cmd('test -x "$HOME/.local/bin/github-copilot" && exec "$HOME/.local/bin/github-copilot"'))
 hl.bind(mod .. " + u", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-editor.sh"))
 
 -- Window management

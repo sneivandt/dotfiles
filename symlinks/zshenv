@@ -1,4 +1,0 @@
-#!/usr/bin/env zsh
-
-# Keep this file quiet and minimal: zsh sources it for every invocation,
-# including non-interactive scripts. Login/session setup belongs in zprofile.

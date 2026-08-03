@@ -3,8 +3,8 @@
 alias ..="cd .."
 alias ...="cd ../.."
 alias ....="cd ../../.."
-alias .....="cd ../../../../"
-alias ......="cd ../../../../../../"
+alias .....="cd ../../../.."
+alias ......="cd ../../../../.."
 
 alias cls="clear"
 
@@ -31,8 +31,6 @@ alias sudo="sudo "
 
 alias diff="diff --color=auto"
 alias ip="ip -c"
-
-alias tmux="tmux -f ~/.config/tmux/tmux.conf"
 
 # Modern replacements
 if command -v eza >/dev/null 2>&1; then
@@ -61,7 +59,8 @@ elif command -v vim >/dev/null 2>&1; then
 fi
 
 if command -v tldr >/dev/null 2>&1; then
-  alias help="tldr"
+  # Deliberately not "help": that would shadow the bash builtin.
+  alias tl="tldr"
 fi
 
 if command -v xclip >/dev/null 2>&1; then

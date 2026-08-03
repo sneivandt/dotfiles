@@ -2,18 +2,88 @@
     "layer": "top",
     "position": "top",
     "height": 26,
-    "modules-left": ["hyprland/workspaces", "custom/window"],
+    "modules-left": ["group/workspaces", "custom/window"],
     "modules-center": [],
     "modules-right": ["custom/playing", "custom/stocks", "pulseaudio", "clock"],
 
-    "hyprland/workspaces": {
-        "format": "{icon}",
-        "format-icons": {
-            "active": "●",
-            "default": "○"
-        },
-        "on-click": "activate",
-        "sort-by-number": true
+    "group/workspaces": {
+        "orientation": "horizontal",
+        "modules": [
+            "custom/ws1", "custom/ws2", "custom/ws3", "custom/ws4", "custom/ws5",
+            "custom/ws6", "custom/ws7", "custom/ws8", "custom/ws9"
+        ]
+    },
+
+    "custom/ws1": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 1",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 1 })'",
+        "tooltip": false
+    },
+
+    "custom/ws2": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 2",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 2 })'",
+        "tooltip": false
+    },
+
+    "custom/ws3": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 3",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 3 })'",
+        "tooltip": false
+    },
+
+    "custom/ws4": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 4",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 4 })'",
+        "tooltip": false
+    },
+
+    "custom/ws5": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 5",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 5 })'",
+        "tooltip": false
+    },
+
+    "custom/ws6": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 6",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 6 })'",
+        "tooltip": false
+    },
+
+    "custom/ws7": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 7",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 7 })'",
+        "tooltip": false
+    },
+
+    "custom/ws8": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 8",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 8 })'",
+        "tooltip": false
+    },
+
+    "custom/ws9": {
+        "exec": "~/.config/hypr/scripts/workspaces.py 9",
+        "return-type": "json",
+        "signal": 1,
+        "on-click": "hyprctl dispatch 'hl.dsp.focus({ workspace = 9 })'",
+        "tooltip": false
     },
 
     "custom/window": {

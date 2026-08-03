@@ -1,3 +1,6 @@
+# Machine- and editor-local cruft only. Build output and dependency
+# directories (node_modules/, __pycache__/, ...) are project-level concerns and
+# belong in each repo's .gitignore.
 /.svn
 /.hg
 /tags
@@ -6,13 +9,9 @@
 *.log
 .DS_Store
 Thumbs.db
-__pycache__/
-.pytest_cache/
-node_modules/
 .idea/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-*.swp

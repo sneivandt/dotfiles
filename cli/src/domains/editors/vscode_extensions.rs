@@ -43,7 +43,7 @@ impl Task for InstallVsCodeExtensions {
 
         ctx.debug_fmt(|| format!("using VS Code CLI: {cmd}"));
         let extensions: Vec<_> = self.config.read().to_vec();
-        ctx.debug_fmt(|| {
+        ctx.trace_fmt(|| {
             format!(
                 "batch-checking {} extensions with a single query",
                 extensions.len()

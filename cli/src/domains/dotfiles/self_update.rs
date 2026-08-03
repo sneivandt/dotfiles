@@ -151,12 +151,27 @@ fn check_for_update_with_current(
     Ok(check)
 }
 
+/// Run `work` while a transient status line is shown, clearing it afterwards.
+///
+/// The status describes work the user is waiting on rather than a result, so it
+/// must leave no trace once the wait is over.
+fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T {
+    log.status_line(status);
+    let result = work();
+    log.clear_status_line();
+    result
+}
+
 /// Run the self-update check before the task graph.
 ///
 /// When the binary lives in `$root/bin/` and a newer release is available,
 /// this function downloads and replaces the binary, returning `Ok(true)`.
 /// The caller should then re-exec the new binary so that all tasks run
 /// with the updated code.
+///
+/// Progress is reported through a transient status line, so a run that was
+/// already current leaves no console output at all; only an update that
+/// actually happened prints a durable line.
 ///
 /// Returns `Ok(false)` when no update is needed or when running from a
 /// cargo build directory.
@@ -170,22 +185,31 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
         return Ok(false);
     }
     let client = default_http_client();
-    match check_for_update(root, &client)? {
+    let check = with_status(log, "Checking for updates \u{2026}", || {
+        check_for_update(root, &client)
+    })?;
+    match check {
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
         UpdateCheck::UpdateAvailable { latest, current } => {
             if dry_run {
-                log.info(format!("update available: {current} → {latest}"));
+                log.info(format!("update available: {current} \u{2192} {latest}"));
                 return Ok(false);
             }
             log.stage("Self update");
-            log.info(format!("updating: {current} → {latest}"));
-            download_and_install(root, &latest, &client)?;
+            log.debug(format!("updating: {current} \u{2192} {latest}"));
+            with_status(log, &format!("Updating to {latest} \u{2026}"), || {
+                download_and_install(root, &latest, &client)
+            })?;
 
             #[cfg(windows)]
-            log.info("binary staged, wrapper restart required");
+            let note = "restart required";
 
             #[cfg(not(windows))]
-            log.info("binary updated, restarting");
+            let note = "restarting";
+
+            log.always(format!(
+                "Self update \u{00b7} {current} \u{2192} {latest} \u{00b7} {note}"
+            ));
 
             Ok(true)
         }

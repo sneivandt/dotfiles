@@ -21,9 +21,9 @@
     <text x="34" y="124" fill="#565f89">Install · profile desktop · Arch Linux</text>
 
     <text x="34" y="166"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> Home symlinks</tspan></text>
-    <text x="52" y="187" fill="#a9b1d6">link ~/.config/git/config ← symlinks/config/git/config</text>
-    <text x="52" y="208" fill="#a9b1d6">link ~/.config/nvim ← symlinks/config/nvim</text>
-    <text x="52" y="229" fill="#a9b1d6">link ~/.zshrc ← symlinks/zshrc</text>
+    <text x="52" y="187" fill="#a9b1d6">link ~/.config/git/config → symlinks/config/git/config</text>
+    <text x="52" y="208" fill="#a9b1d6">link ~/.config/nvim → symlinks/config/nvim</text>
+    <text x="52" y="229" fill="#a9b1d6">link ~/.zshrc → symlinks/zshrc</text>
 
     <text x="34" y="271"><tspan fill="#9ece6a" font-weight="700">CHANGE</tspan><tspan fill="#c0caf5"> System packages</tspan></text>
     <text x="52" y="292" fill="#a9b1d6">install neovim</text>

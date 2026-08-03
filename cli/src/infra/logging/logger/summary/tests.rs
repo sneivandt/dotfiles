@@ -323,14 +323,14 @@ fn task_result_lines_abbreviate_symlink_actions() {
     };
     let details = vec![TaskDetailEntry {
         name: task.name.clone(),
-        lines: vec!["would link: ~/.bashrc \u{2190} symlinks/bashrc".to_string()],
+        lines: vec!["would link: ~/.bashrc \u{2192} symlinks/bashrc".to_string()],
     }];
 
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
         [
             "DRYRUN Install symlinks",
-            "  link ~/.bashrc \u{2190} symlinks/bashrc"
+            "  link ~/.bashrc \u{2192} symlinks/bashrc"
         ]
     );
 }

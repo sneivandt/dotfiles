@@ -54,7 +54,7 @@ where
     );
     let _enter = span.enter();
     if ctx.parallel() && !opts.sequential && items.len() > 1 {
-        ctx.debug_fmt(|| format!("processing {} resources in parallel", items.len()));
+        ctx.trace_fmt(|| format!("processing {} resources in parallel", items.len()));
         return parallel::process_apply_parallel(ctx, items, opts, get_resource_state);
     }
     run_sequential(ctx, items, |ctx, item| {
@@ -157,7 +157,7 @@ pub fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
     let span = tracing::debug_span!("process_resources_remove", verb, count = resources.len());
     let _enter = span.enter();
     if ctx.parallel() && resources.len() > 1 {
-        ctx.debug_fmt(|| format!("processing {} resources in parallel", resources.len()));
+        ctx.trace_fmt(|| format!("processing {} resources in parallel", resources.len()));
         return parallel::process_remove_parallel(ctx, resources, verb);
     }
     run_sequential(ctx, resources, |ctx, resource| {

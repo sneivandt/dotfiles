@@ -5,7 +5,9 @@
 //! summary details) separate from the buffering and flush orchestration.
 
 use crate::infra::logging::types::{MsgKind, TaskStatus, emit_console_event};
-use crate::infra::logging::utils::{duplicates_task_message, is_stats_summary};
+use crate::infra::logging::utils::{
+    compact_detail_line, duplicates_task_message, is_stats_summary,
+};
 
 /// A single buffered console entry, replayed when the task completes.
 ///
@@ -32,14 +34,19 @@ impl LogEntry {
     /// names the task, as are lines that only restate the task's own outcome:
     /// its reason (already on the status row) and its aggregate counters
     /// (already implied by the per-item lines around them).
+    ///
+    /// Action lines are compacted exactly as the summary compacts them, so a
+    /// verbose run and a non-verbose run describe the same action identically.
     pub(super) fn replay_verbose(&self, task_message: Option<&str>) -> bool {
-        if matches!(self.kind, MsgKind::TaskStage | MsgKind::Stage)
-            || duplicates_task_message(&self.msg, task_message)
+        if matches!(
+            self.kind,
+            MsgKind::TaskStage | MsgKind::Stage | MsgKind::Trace
+        ) || duplicates_task_message(&self.msg, task_message)
             || is_stats_summary(&self.msg)
         {
             return false;
         }
-        self.replay();
+        emit_console_event!(self.kind, &compact_detail_line(&self.msg));
         true
     }
 
@@ -51,6 +58,7 @@ impl LogEntry {
             MsgKind::Stage
             | MsgKind::TaskStage
             | MsgKind::Debug
+            | MsgKind::Trace
             | MsgKind::Startup
             | MsgKind::Warn
             | MsgKind::Error => None,

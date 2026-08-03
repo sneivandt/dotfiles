@@ -88,7 +88,7 @@ pub(super) fn build_install_plan(
     packages: &[Package],
     manager: PackageManager,
 ) -> Result<PackageInstallPlan> {
-    ctx.debug_fmt(|| {
+    ctx.trace_fmt(|| {
         format!(
             "batch-checking {} packages with a single query",
             packages.len()

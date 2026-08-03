@@ -68,7 +68,7 @@ impl Task for InstallApmPackages {
             if !state.manifest_changed() {
                 return Ok(TaskResult::Ok);
             }
-            preview_install(
+            let planned = preview_install(
                 ctx,
                 targets,
                 state,
@@ -76,7 +76,13 @@ impl Task for InstallApmPackages {
                 &manifest_path,
                 &lock_path,
             );
-            return Ok(TaskResult::DryRun);
+            // Report the planned actions as stats so the run totals read
+            // `N changes in 1 task` rather than a bare `would change`.
+            return Ok(TaskStats {
+                changed: planned,
+                ..TaskStats::default()
+            }
+            .finish());
         }
 
         // `manifest_hash` covers the merged manifest, the content of every
@@ -115,7 +121,7 @@ impl Task for InstallApmPackages {
             return Ok(install_result);
         }
         ctx.log()
-            .always(format!("    installed: {}", describe_dependencies(&merged)));
+            .info(format!("installed: {}", describe_dependencies(&merged)));
         write_manifest_marker(&marker_path, &manifest_hash)?;
         prune_user_scope(ctx)?;
 
@@ -135,6 +141,8 @@ impl Task for InstallApmPackages {
     }
 }
 
+/// Emit the dry-run preview for an APM install, returning the number of
+/// planned actions so the caller can report accurate change counts.
 fn preview_install(
     ctx: &Context,
     targets: ApmTargets,
@@ -142,7 +150,8 @@ fn preview_install(
     fragment_count: usize,
     manifest_path: &Path,
     lock_path: &Path,
-) {
+) -> u32 {
+    let mut planned = 0_u32;
     if state.manifest_needs_write {
         ctx.log().dry_run(format!(
             "merge {fragment_count} APM manifest fragment(s) into {}",
@@ -150,22 +159,27 @@ fn preview_install(
         ));
         ctx.log()
             .dry_run("run apm install -g with manifest-resolved runtimes to sync changed manifest");
+        planned = planned.saturating_add(2);
     } else if state.lock_missing {
         ctx.log().dry_run(format!(
             "run apm install -g with manifest-resolved runtimes because {} is missing",
             lock_path.display()
         ));
+        planned = planned.saturating_add(1);
     } else if state.marker_missing_or_stale {
         ctx.log().dry_run(
             "run apm install -g with manifest-resolved runtimes because the current manifest has \
              not been installed successfully yet",
         );
+        planned = planned.saturating_add(1);
     }
     if targets.includes_copilot_app() {
         ctx.log().dry_run(
             "run apm install -g --target copilot-app to sync Copilot App workflows separately",
         );
+        planned = planned.saturating_add(1);
     }
+    planned
 }
 
 /// Filesystem-derived signals that decide whether `apm install` must run and

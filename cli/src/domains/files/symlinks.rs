@@ -246,7 +246,7 @@ mod tests {
 
         assert_eq!(
             resource.description(),
-            "~/.config/example \u{2190} symlinks/config/example"
+            "~/.config/example \u{2192} symlinks/config/example"
         );
     }
 

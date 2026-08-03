@@ -374,7 +374,7 @@ mod symlink {
         )
         .with_display_roots("/home/user", "/repo");
 
-        assert_eq!(resource.description(), "~/.bashrc \u{2190} symlinks/bashrc");
+        assert_eq!(resource.description(), "~/.bashrc \u{2192} symlinks/bashrc");
     }
 
     #[test]

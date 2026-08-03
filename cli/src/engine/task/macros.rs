@@ -132,7 +132,7 @@ where
         return Ok(None);
     }
     emit_task_stage(ctx, announce);
-    ctx.debug_fmt(|| {
+    ctx.trace_fmt(|| {
         format!(
             "batch-checking {} resources with a single query",
             items.len()

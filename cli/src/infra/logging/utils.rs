@@ -45,6 +45,90 @@ pub(super) fn is_stats_summary(line: &str) -> bool {
         && rest.contains(" already ok")
 }
 
+/// Verbs used to introduce the per-item action lines a task emits.
+const ACTION_VERBS: &[&str] = &["configure", "install", "link", "ok", "remove", "update"];
+
+/// Rewrite a task's raw action line into its compact console form.
+///
+/// Tasks phrase their own output naturally (`would link: …`, `linked: …`,
+/// `ok: …`), which reads well in the run log but is noisy in a column of
+/// otherwise-identical rows. Collapsing every tense onto one imperative verb
+/// keeps the console rows aligned and lets the summary status row carry the
+/// tense instead.
+pub(super) fn compact_detail_line(line: &str) -> String {
+    const ACTION_PREFIXES: &[(&str, &str)] = &[
+        ("would configure: ", "configure"),
+        ("would install: ", "install"),
+        ("would link: ", "link"),
+        ("would remove: ", "remove"),
+        ("would update: ", "update"),
+        ("configured: ", "configure"),
+        ("installed: ", "install"),
+        ("linked: ", "link"),
+        ("ok: ", "ok"),
+        ("removed: ", "remove"),
+        ("updated: ", "update"),
+    ];
+
+    let line = line.trim_start();
+    for (prefix, verb) in ACTION_PREFIXES {
+        if let Some(detail) = line.strip_prefix(prefix) {
+            return format!("{verb} {detail}");
+        }
+    }
+    for verb in ACTION_VERBS {
+        if let Some(detail) = line
+            .strip_prefix(*verb)
+            .and_then(|rest| rest.strip_prefix(' '))
+        {
+            return format!("{verb} {detail}");
+        }
+    }
+    line.to_string()
+}
+
+/// Whether a line is one of the per-item action lines a task emits.
+///
+/// Tested against the compact form so every tense of the same action
+/// (`would link: …`, `linked: …`, `link …`) is recognised alike.
+fn is_action_line(line: &str) -> bool {
+    let compact = compact_detail_line(line);
+    ACTION_VERBS.iter().any(|verb| {
+        compact
+            .strip_prefix(*verb)
+            .is_some_and(|rest| rest.starts_with(' '))
+    })
+}
+
+/// Sort each maximal run of consecutive per-item action lines in place.
+///
+/// Parallel resource processing completes in a nondeterministic order, so the
+/// same run can print the same items in a different order each time. Sorting
+/// makes consecutive runs diffable against each other.
+///
+/// Ordering uses the compact console form, so rows sort by what the reader
+/// sees rather than by the tense the task happened to phrase them in.
+///
+/// Only runs of action lines are reordered. Any other line (a mode note such
+/// as `using winget package manager`, or a warning) acts as a barrier and keeps
+/// its position, so lines whose order carries meaning are left alone.
+pub(super) fn sort_action_runs<T>(items: &mut [T], text: impl Fn(&T) -> &str) {
+    let mut start = 0;
+    let mut index = 0;
+    while index <= items.len() {
+        if !items
+            .get(index)
+            .is_some_and(|item| is_action_line(text(item)))
+        {
+            if let Some(run) = items.get_mut(start..index) {
+                run.sort_by_cached_key(|item| compact_detail_line(text(item)));
+            }
+            start = index.saturating_add(1);
+        }
+        index = index.saturating_add(1);
+    }
+}
+
 /// Strip ANSI escape sequences from a string.
 ///
 /// Handles SGR sequences (ending in `m`) and other CSI sequences (ending
@@ -277,6 +361,67 @@ pub(super) fn format_utc_compact() -> String {
 )]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_detail_line_normalizes_every_tense() {
+        assert_eq!(
+            compact_detail_line("would link: a \u{2192} b"),
+            "link a \u{2192} b"
+        );
+        assert_eq!(
+            compact_detail_line("linked: a \u{2192} b"),
+            "link a \u{2192} b"
+        );
+        assert_eq!(
+            compact_detail_line("link a \u{2192} b"),
+            "link a \u{2192} b"
+        );
+        assert_eq!(compact_detail_line("ok: a \u{2192} b"), "ok a \u{2192} b");
+        assert_eq!(compact_detail_line("  installed: pkg"), "install pkg");
+        assert_eq!(
+            compact_detail_line("using winget package manager"),
+            "using winget package manager",
+            "non-action lines must pass through untouched"
+        );
+    }
+
+    #[test]
+    fn sort_action_runs_orders_only_consecutive_action_lines() {
+        let mut lines = vec![
+            "would link: z".to_string(),
+            "would link: a".to_string(),
+            "using winget package manager".to_string(),
+            "installed: z".to_string(),
+            "installed: a".to_string(),
+        ];
+        sort_action_runs(&mut lines, String::as_str);
+        assert_eq!(
+            lines,
+            vec![
+                "would link: a".to_string(),
+                "would link: z".to_string(),
+                "using winget package manager".to_string(),
+                "installed: a".to_string(),
+                "installed: z".to_string(),
+            ],
+            "non-action lines must act as barriers and keep their position"
+        );
+    }
+
+    #[test]
+    fn sort_action_runs_handles_empty_and_single_item_slices() {
+        let mut empty: Vec<String> = Vec::new();
+        sort_action_runs(&mut empty, String::as_str);
+        assert!(empty.is_empty(), "empty input must stay empty");
+
+        let mut one = vec!["link a".to_string()];
+        sort_action_runs(&mut one, String::as_str);
+        assert_eq!(
+            one,
+            vec!["link a".to_string()],
+            "single item must be stable"
+        );
+    }
 
     #[test]
     fn strip_ansi_removes_colors() {

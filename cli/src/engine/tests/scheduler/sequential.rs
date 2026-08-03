@@ -82,6 +82,7 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
                 MsgKind::Debug => &self.debug_lines,
                 MsgKind::Stage
                 | MsgKind::TaskStage
+                | MsgKind::Trace
                 | MsgKind::Warn
                 | MsgKind::Error
                 | MsgKind::DryRun

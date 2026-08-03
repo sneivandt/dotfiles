@@ -341,6 +341,21 @@ impl Context {
             self.log().debug(f());
         }
     }
+
+    /// Log a trace message, evaluating the format string lazily.
+    ///
+    /// Trace messages reach the run log only, never the console, even under
+    /// `--verbose`. Use this for internal plumbing detail (batching, parallel
+    /// fan-out) that helps when reading a run log but is noise on screen.
+    ///
+    /// The same `tracing::enabled!` caveat documented on [`Self::debug_fmt`]
+    /// applies here: do not add a level guard.
+    #[inline]
+    pub fn trace_fmt(&self, f: impl FnOnce() -> String) {
+        if self.log().debug_enabled() {
+            self.log().trace(f());
+        }
+    }
 }
 
 #[cfg(test)]

@@ -100,9 +100,11 @@ fn display_path(path: &std::path::Path) -> String {
 }
 
 impl Resource for SymlinkResource {
+    /// Render as `target \u{2192} source`, matching every other resource's
+    /// left-to-right `subject \u{2192} value` reading.
     fn description(&self) -> String {
         format!(
-            "{} \u{2190} {}",
+            "{} \u{2192} {}",
             self.display_target(),
             self.display_source()
         )

@@ -206,10 +206,25 @@ fn load_if<T>(enabled: bool, load: impl FnOnce() -> Result<Vec<T>>) -> Result<Ve
     if enabled { load() } else { Ok(Vec::new()) }
 }
 
+/// A configured section's item count, for the verbose configuration summary.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SectionCount {
-    pub(crate) label: &'static str,
+    /// Label used when exactly one item is configured.
+    pub(crate) singular: &'static str,
+    /// Label used for every other count.
+    pub(crate) plural: &'static str,
     pub(crate) count: usize,
+}
+
+impl SectionCount {
+    /// The label that agrees in number with this section's count.
+    pub(crate) const fn label(&self) -> &'static str {
+        if self.count == 1 {
+            self.singular
+        } else {
+            self.plural
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -370,35 +385,43 @@ impl Config {
     pub(crate) const fn section_counts(&self) -> [SectionCount; 8] {
         [
             SectionCount {
-                label: "packages",
+                singular: "package",
+                plural: "packages",
                 count: self.packages.len(),
             },
             SectionCount {
-                label: "symlinks",
+                singular: "symlink",
+                plural: "symlinks",
                 count: self.symlinks.len(),
             },
             SectionCount {
-                label: "registry entries",
+                singular: "registry entry",
+                plural: "registry entries",
                 count: self.registry.len(),
             },
             SectionCount {
-                label: "systemd units",
+                singular: "systemd unit",
+                plural: "systemd units",
                 count: self.units.len(),
             },
             SectionCount {
-                label: "chmod entries",
+                singular: "chmod entry",
+                plural: "chmod entries",
                 count: self.chmod.len(),
             },
             SectionCount {
-                label: "vscode extensions",
+                singular: "vscode extension",
+                plural: "vscode extensions",
                 count: self.vscode_extensions.len(),
             },
             SectionCount {
-                label: "manifest exclusions",
+                singular: "manifest exclusion",
+                plural: "manifest exclusions",
                 count: self.manifest.excluded_files.len(),
             },
             SectionCount {
-                label: "overlay scripts",
+                singular: "overlay script",
+                plural: "overlay scripts",
                 count: self.scripts.len(),
             },
         ]

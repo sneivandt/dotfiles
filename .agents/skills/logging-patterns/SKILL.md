@@ -31,11 +31,20 @@ description: >
   produce console rows and stay out of every total.
 - Statuses are fixed-width and explicit: `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`,
   and `FAILED`, plus the verbose-only `OK` and `N/A`. Tokens are padded to a
-  six-character column so task names align.
+  six-character column so task names align. `N/A` rows carry no elapsed time
+  because nothing ran.
 - A task's reason belongs on its status row after a ` · ` separator, not on an
   indented line. Indented, dim, two-space lines beneath a row are therefore
   always actions the task took or planned. A blank line separates a task that
   printed actions from the row that follows it.
+- Detail lines are normalized identically in both modes through
+  `compact_detail_line`, so a given action reads the same whether or not
+  `--verbose` is set. Maximal runs of consecutive action lines within a task are
+  sorted so parallel work produces stable output; any non-action line acts as a
+  barrier and preserves surrounding order. This applies to detail lines only —
+  completed task rows keep their natural completion order.
+- Resource descriptions read left to right as `subject \u{2192} value`. Symlinks
+  render as `target \u{2192} source`; never reverse the arrow for one resource.
 - Never emit a line that restates what the status row already says. Aggregate
   counter summaries and lines duplicating the task message are filtered in both
   modes; do not work around the filter by rewording.
@@ -52,8 +61,15 @@ description: >
   the denominator rather than advancing the numerator, and totals accumulate
   across scheduled graphs because late-discovered tasks join a second graph
   mid-run.
+- `status_line` / `clear_status_line` draw a transient line for pre-scheduler
+  work that would otherwise be silent, such as the self-update check. The line
+  must always be cleared, and it must not be the only record of an event:
+  anything worth remembering also needs a durable line. Self-update prints one
+  persistent line only when a new version was actually installed.
 - Debug-level detail may be suppressed on terminal in non-verbose mode, but
-  persistent logs remain complete.
+  persistent logs remain complete. `MsgKind::Trace` goes one step further and
+  never reaches the console, even under `--verbose`; use it for plumbing chatter
+  such as parallelism and batching counts.
 - Header and summary lines join segments with ` · `. The shell wrappers
   deliberately mirror this style for bootstrap output so pre-binary and
   post-binary output look like one program; see `shell-patterns`.
@@ -71,6 +87,7 @@ Canonical implementations:
 ## Implementation procedure / core patterns
 
 1. Pick message intent:
+   - `trace`: plumbing chatter that stays out of the console entirely
    - `debug`: per-item detail
    - `info`: concise progress/count detail
    - `warn` / `error`: visible problem signals
@@ -94,3 +111,5 @@ Run focused tests for touched logging and scheduler behavior.
 - Restating a task's reason on an indented line below its status row
 - Duplicating task recording in task implementations
 - Re-implementing buffered output behavior in tasks
+- Hardcoding indentation into a message instead of choosing the right intent
+- Leaving a status line on screen, or using one as the only record of an event

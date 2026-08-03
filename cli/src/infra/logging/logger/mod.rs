@@ -24,6 +24,7 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::runlog::{LogEvent, RunLog};
+use super::style::{TextStyle, stdout_style};
 use super::types::{
     ActionCounts, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
     emit_console_event,
@@ -430,6 +431,20 @@ impl Output for Logger {
 
     fn run_log(&self) -> Option<&RunLog> {
         self.run_log.as_deref()
+    }
+
+    fn status_line(&self, msg: &str) {
+        if !stdout_supports_progress() {
+            return;
+        }
+        let _guard = self.lock_flush();
+        self.replace_status_line(&stdout_style().paint(TextStyle::Dim, msg));
+    }
+
+    fn clear_status_line(&self) {
+        if stdout_supports_progress() {
+            self.clear_status();
+        }
     }
 }
 

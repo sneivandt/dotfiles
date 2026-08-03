@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use super::logger::{Logger, stdout_supports_progress};
 use super::runlog::RunLog;
 use super::types::{ActionCounts, MsgKind, Output, TaskRecorder, TaskStatus, TaskVisibility};
+use super::utils::sort_action_runs;
 
 mod entry;
 
@@ -60,13 +61,16 @@ impl BufferedLog {
     /// Entries are already present in the run log, so anything not replayed
     /// here is simply not shown on the console.
     pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
-        let entries = {
+        let mut entries = {
             let mut guard = self
                 .entries
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             std::mem::take(&mut *guard)
         };
+        // Parallel resource processing finishes in a nondeterministic order, so
+        // sort the action lines before they reach either console path.
+        sort_action_runs(&mut entries, |entry| entry.msg.as_str());
         if should_record_task_details(status) {
             let detail_lines: Vec<String> = entries
                 .iter()

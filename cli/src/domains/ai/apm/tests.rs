@@ -701,8 +701,8 @@ fn run_dry_run_reports_planned_apm_work_without_writing() {
 
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::DryRun),
-        "expected unquantified planned work with fragments present, got {result:?}"
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        "expected quantified planned work with fragments present, got {result:?}"
     );
     assert!(
         !dir.path().join(".apm").join("apm.yml").exists(),

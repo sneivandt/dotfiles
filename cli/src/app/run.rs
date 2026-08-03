@@ -129,6 +129,7 @@ mod tests {
                 | logging::MsgKind::TaskStage
                 | logging::MsgKind::Info
                 | logging::MsgKind::Debug
+                | logging::MsgKind::Trace
                 | logging::MsgKind::Startup
                 | logging::MsgKind::Warn
                 | logging::MsgKind::DryRun => return,

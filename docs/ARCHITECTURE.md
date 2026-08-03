@@ -196,8 +196,8 @@ Visible rows use fixed-width `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`, and
 reason after a `·` separator, so indented lines beneath it are always actions the
 task took or planned. Normal output prints rows only for tasks that changed
 something or need attention, with all their detail and no truncation; verbose
-output accounts for every task, adds per-task elapsed time, and replays the
-per-resource decisions behind each outcome. Aggregate summaries count actions,
+output accounts for every task, adds per-task elapsed time for tasks that ran,
+and replays the per-resource decisions behind each outcome. Aggregate summaries count actions,
 affected tasks, up-to-date tasks, ignored or failed tasks, and elapsed time
 rather than equating tasks with changes; the transient progress line counts
 against the same set of tasks the summary accounts for, so non-applicable tasks

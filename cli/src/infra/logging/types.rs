@@ -117,6 +117,12 @@ pub enum MsgKind {
     Info,
     /// A debug message; never rendered on the console.
     Debug,
+    /// An internal plumbing message; recorded in the run log only.
+    ///
+    /// Unlike [`MsgKind::Debug`], this is never shown on the console even with
+    /// `--verbose`. Use it for scheduling and batching details that describe
+    /// how work was executed rather than what changed.
+    Trace,
     /// A warning message.
     Warn,
     /// An error message.
@@ -141,7 +147,7 @@ impl MsgKind {
         match self {
             Self::Stage | Self::TaskStage => LogEvent::Stage,
             Self::Info | Self::Always | Self::Startup => LogEvent::Info,
-            Self::Debug => LogEvent::Debug,
+            Self::Debug | Self::Trace => LogEvent::Debug,
             Self::Warn => LogEvent::Warn,
             Self::Error => LogEvent::Error,
             Self::DryRun => LogEvent::DryRun,
@@ -169,6 +175,9 @@ macro_rules! emit_console_event {
             }
             $crate::infra::logging::MsgKind::Debug => {
                 tracing::debug!(target: "dotfiles::ui::debug", "{msg}");
+            }
+            $crate::infra::logging::MsgKind::Trace => {
+                tracing::trace!(target: "dotfiles::ui::trace", "{msg}");
             }
             $crate::infra::logging::MsgKind::Warn => {
                 tracing::warn!(target: "dotfiles::ui::warn", "{msg}");
@@ -247,6 +256,16 @@ pub trait Output: Send + Sync {
             run_log.emit_task(event, task, message);
         }
     }
+
+    /// Show a transient one-line status on an interactive console.
+    ///
+    /// The line is overwritten by the next call and erased by
+    /// [`Output::clear_status_line`], so it leaves no trace in scrollback.
+    /// Implementations without an interactive terminal no-op.
+    fn status_line(&self, _msg: &str) {}
+
+    /// Erase any transient status line previously shown.
+    fn clear_status_line(&self) {}
 }
 
 /// Named convenience methods for every [`Output`].
@@ -272,6 +291,13 @@ pub trait OutputExt: Output {
     /// Log a debug message; recorded in the run log only.
     fn debug<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Debug, msg.into());
+    }
+    /// Log an internal plumbing message; recorded in the run log only.
+    ///
+    /// Unlike [`OutputExt::debug`], this stays out of `--verbose` console
+    /// output. Use it for scheduling and batching detail.
+    fn trace<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Trace, msg.into());
     }
     /// Log a warning message.
     fn warn<'a>(&self, msg: impl Into<Cow<'a, str>>) {

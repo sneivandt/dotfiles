@@ -158,9 +158,18 @@ printed actions from the row that follows it.
 
 Normal output only prints rows for tasks that did something or need attention.
 `--verbose` accounts for every task — including up-to-date and non-applicable
-ones — adds elapsed time to each row, and replays the per-resource decisions
-behind each outcome. Internal orchestration remains available in the run log but
-is excluded from console rows and totals in both modes.
+ones — adds elapsed time to each row that ran, and replays the per-resource
+decisions behind each outcome. `N/A` rows carry no elapsed time because nothing
+ran. Internal orchestration remains available in the run log but is excluded
+from console rows and totals in both modes.
+
+Before the scheduler starts, an installed binary checks for a newer release. The
+check draws a transient status line while it runs and erases it afterwards; a
+line is left behind only when a new version was actually installed:
+
+```text
+Self update · v2025.01.02.1 → v2025.01.09.1 · restarting
+```
 
 While tasks are running, a transient status line reports progress and the
 currently active tasks:

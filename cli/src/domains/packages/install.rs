@@ -112,7 +112,7 @@ impl PackageTaskKind {
 
         let manager = match self {
             Self::Native => {
-                ctx.debug_fmt(|| format!("{} non-AUR packages to process", selected.len()));
+                ctx.trace_fmt(|| format!("{} non-AUR packages to process", selected.len()));
                 match resolve_native_manager(ctx) {
                     Ok(manager) => manager,
                     Err(reason) => return Ok(TaskResult::Skipped(reason)),

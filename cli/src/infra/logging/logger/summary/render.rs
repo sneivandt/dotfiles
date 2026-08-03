@@ -7,7 +7,10 @@ use super::totals::SummaryMode;
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{TaskEntry, TaskStatus};
-use crate::infra::logging::utils::{duplicates_task_message, format_elapsed, is_stats_summary};
+use crate::infra::logging::utils::{
+    compact_detail_line, duplicates_task_message, format_elapsed, is_stats_summary,
+    sort_action_runs,
+};
 
 /// Width of the status column, so shorter verbose-only tokens (`OK`, `N/A`)
 /// line up with the six-character tokens.
@@ -38,48 +41,22 @@ pub(super) fn task_result_lines(
 
 /// Render the indented action lines shown beneath a task's status row.
 fn detail_rows(details: &[TaskDetailEntry], task: &TaskEntry, opts: RowOpts) -> Vec<String> {
-    task_detail_lines(details, task)
+    let mut lines: Vec<String> = task_detail_lines(details, task)
         .iter()
         .flat_map(|detail| detail.lines())
         .filter(|line| !line.trim().is_empty())
         .filter(|line| !is_stats_summary(line))
-        .map(|detail| indented(&compact_detail_line(detail), opts.style))
+        .map(compact_detail_line)
+        .collect();
+    sort_action_runs(&mut lines, String::as_str);
+    lines
+        .iter()
+        .map(|line| indented(line, opts.style))
         .collect()
 }
 
 fn indented(text: &str, style: StyleChoice) -> String {
     style.paint(TextStyle::Dim, &format!("  {}", text.trim_start()))
-}
-
-pub(super) fn compact_detail_line(line: &str) -> String {
-    const ACTION_PREFIXES: &[(&str, &str)] = &[
-        ("would configure: ", "configure"),
-        ("would install: ", "install"),
-        ("would link: ", "link"),
-        ("would remove: ", "remove"),
-        ("would update: ", "update"),
-        ("configured: ", "configure"),
-        ("installed: ", "install"),
-        ("linked: ", "link"),
-        ("removed: ", "remove"),
-        ("updated: ", "update"),
-    ];
-
-    let line = line.trim_start();
-    for (prefix, verb) in ACTION_PREFIXES {
-        if let Some(detail) = line.strip_prefix(prefix) {
-            return format!("{verb} {detail}");
-        }
-    }
-    for verb in ["configure", "install", "link", "remove", "update"] {
-        if let Some(detail) = line
-            .strip_prefix(verb)
-            .and_then(|rest| rest.strip_prefix(' '))
-        {
-            return format!("{verb} {detail}");
-        }
-    }
-    line.to_string()
 }
 
 /// Whether a task produces a console row.
@@ -136,7 +113,11 @@ pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
                 .paint(TextStyle::Dim, &format!(" \u{00b7} {reason}")),
         );
     }
+    // A not-applicable task never ran, so its timing is either absent or a
+    // meaningless `0.0s`. Suppressing it keeps `N/A` rows uniform whether the
+    // task bailed out in `should_run()` or after being configured.
     if opts.verbose
+        && task.status != TaskStatus::NotApplicable
         && let Some(duration) = task.duration
     {
         line.push_str(&opts.style.paint(

@@ -220,12 +220,25 @@ fn load_config(
     overlay: Option<&std::path::Path>,
     log: &Logger,
 ) -> Result<Config> {
-    log.debug("Loading configuration");
+    tracing::debug!("loading configuration");
     let config = Config::load(root, profile, platform, overlay)?;
 
-    for section in config.section_counts() {
-        log.debug(format!("{} {}", section.count, section.label));
-    }
+    // One line rather than nine: the counts are context for the run that
+    // follows, and empty sections say nothing worth a row of their own.
+    let sections: Vec<String> = config
+        .section_counts()
+        .iter()
+        .filter(|section| section.count > 0)
+        .map(|section| format!("{} {}", section.count, section.label()))
+        .collect();
+    log.debug(if sections.is_empty() {
+        "Loaded configuration".to_string()
+    } else {
+        format!(
+            "Loaded configuration \u{00b7} {}",
+            sections.join(" \u{00b7} ")
+        )
+    });
 
     let warnings = config.validate(platform);
     if !warnings.is_empty() && !log.is_verbose() {

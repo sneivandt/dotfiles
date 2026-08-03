@@ -2,11 +2,11 @@
 //!
 //! Submodules:
 //! - [`attestation`] — GitHub build provenance verification of downloads.
-//! - [`paths`]   — binary, cache, and staging path helpers.
+//! - [`paths`]   — binary and cache path helpers.
 //! - [`cache`]   — version-check cache I/O.
 //! - [`http`]    — HTTP client trait, GitHub API, checksum verification.
 //! - [`version`] — date-based release-tag parsing and ordering.
-//! - [`install`] — binary replacement, staging, smoke testing, and download.
+//! - [`install`] — binary replacement, smoke testing, and download.
 
 mod attestation;
 mod cache;
@@ -201,19 +201,21 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
                 download_and_install(root, &latest, &client)
             })?;
 
-            #[cfg(windows)]
-            let note = "restart required";
-
-            #[cfg(not(windows))]
-            let note = "restarting";
-
             log.always(format!(
-                "Self update \u{00b7} {current} \u{2192} {latest} \u{00b7} {note}"
+                "Self update \u{00b7} {current} \u{2192} {latest} \u{00b7} restarting"
             ));
 
             Ok(true)
         }
     }
+}
+
+/// Path of the installed binary inside `root`.
+///
+/// Exposed so the application layer can re-exec the binary that self-update
+/// just replaced without re-deriving the platform-specific file name.
+pub fn installed_binary_path(root: &std::path::Path) -> std::path::PathBuf {
+    paths::binary_path(root)
 }
 
 #[cfg(test)]

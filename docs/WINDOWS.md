@@ -33,9 +33,11 @@ To build from the current checkout:
 .\dotfiles.ps1 --build test
 ```
 
-The wrapper can also replace itself through a pending self-update. Installation
-uses a rollback-safe replacement sequence so a failed update does not leave the
-entry point missing.
+The CLI replaces its own binary in place during a self update. Windows allows a
+running executable to be renamed, so installation renames the current binary to
+a backup, moves the verified download into place, smoke tests it, and restores
+the backup if that check fails. The updated binary is then run to completion in
+the same console, so output stays sequential.
 
 ## Developer Mode and symlinks
 

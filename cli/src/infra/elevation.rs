@@ -240,24 +240,6 @@ pub fn wait_if_elevated() {
 #[cfg(not(windows))]
 pub const fn wait_if_elevated() {}
 
-/// Detect which `PowerShell` executable is available on the current system.
-///
-/// Prefers `pwsh` (`PowerShell` 7+) when it is installed and functional;
-/// falls back to `powershell` (Windows `PowerShell` 5.1) otherwise.
-#[cfg(windows)]
-pub(crate) fn preferred_powershell() -> &'static str {
-    use crate::infra::exec::Executor as _;
-
-    if crate::infra::exec::ProcessExecutor::system()
-        .run_unchecked("pwsh", &["-NoProfile", "-Command", "exit 0"])
-        .is_ok_and(|result| result.success)
-    {
-        "pwsh"
-    } else {
-        "powershell"
-    }
-}
-
 #[cfg(test)]
 #[cfg(not(windows))]
 mod tests {

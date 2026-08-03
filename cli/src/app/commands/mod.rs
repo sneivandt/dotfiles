@@ -15,9 +15,7 @@ mod runner;
 pub(crate) use reexec::prepare_self_update;
 pub use runner::CommandRunner;
 
-#[cfg(all(test, windows))]
-use reexec::build_windows_restart_helper_script;
-#[cfg(all(test, unix))]
+#[cfg(test)]
 use reexec::re_exec_path;
 
 #[cfg(test)]

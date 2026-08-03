@@ -20,7 +20,6 @@ use process::{terminate_child, wait_after_terminate};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_mins(30);
 const TOOL_TIMEOUT: Duration = Duration::from_mins(2);
-#[cfg(not(windows))]
 const SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -42,7 +41,6 @@ fn new_command(program: &str) -> Command {
 }
 
 /// Create a new [`Command`] from a path with platform-appropriate defaults.
-#[cfg(not(windows))]
 fn new_command_path(program: &Path) -> Command {
     #[allow(unused_mut, reason = "platform-specific mutability")]
     let mut cmd = Command::new(program);
@@ -92,7 +90,6 @@ impl CommandSettings {
         }
     }
 
-    #[cfg(not(windows))]
     const fn timeout(timeout: Duration) -> Self {
         Self {
             timeout,
@@ -445,7 +442,6 @@ impl Executor for ProcessExecutor {
 /// Returns an error if the command cannot be spawned, times out, or otherwise
 /// fails at the process-management layer. Non-zero exit statuses are returned
 /// in the [`ExecResult`] for the caller to interpret.
-#[cfg(not(windows))]
 pub(crate) fn run_path_smoke_test(path: &Path, args: &[&str]) -> Result<ExecResult> {
     let mut cmd = new_command_path(path);
     cmd.args(args);

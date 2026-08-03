@@ -1,5 +1,5 @@
-//! Filesystem operations for installing or staging an updated binary, plus
-//! the post-install smoke test and end-to-end download orchestration.
+//! Filesystem operations for installing an updated binary, plus the
+//! post-install smoke test and end-to-end download orchestration.
 
 use std::fs;
 use std::io::Write;
@@ -10,11 +10,7 @@ use anyhow::{Context as _, Result, bail};
 use super::attestation::{SystemGh, policy_from_env, verify_provenance};
 use super::cache::write_cache;
 use super::http::{HttpClient, download_bytes, verify_checksum};
-use super::paths::asset_name;
-#[cfg(not(windows))]
-use super::paths::{binary_path, old_binary_path};
-#[cfg(windows)]
-use super::paths::{pending_binary_path, pending_version_path};
+use super::paths::{asset_name, binary_path, old_binary_name, old_binary_path};
 
 fn remove_stale_backup(path: &Path) -> Result<()> {
     match fs::remove_file(path) {
@@ -27,7 +23,11 @@ fn remove_stale_backup(path: &Path) -> Result<()> {
 }
 
 /// Replace the binary at `path` with `data`, handling platform differences.
-#[cfg_attr(windows, allow(dead_code, reason = "used conditionally via cfg"))]
+///
+/// The current binary is renamed to [`old_binary_name`] first rather than
+/// deleted, so the caller can restore it when the post-install smoke test
+/// fails.  Windows blocks *deleting* a running executable but still allows
+/// *renaming* it, which is what makes the same in-place update work there.
 pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     let dir = path
         .parent()
@@ -56,53 +56,16 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
         bail!("binary path points to a directory: {}", path.display());
     }
 
-    // On Windows, the running binary is locked. Rename the current binary out
-    // of the way first, then move the new one into place.
-    #[cfg(windows)]
+    // Move the current binary aside instead of overwriting it, so the smoke
+    // test in `download_and_install` has something to roll back to.
     if path.exists() {
-        let old = dir.join(".dotfiles-old.exe");
+        let old = dir.join(old_binary_name());
         remove_stale_backup(&old)?;
-        fs::rename(path, &old).context("renaming current binary to .old")?;
-    }
-
-    // On Unix the running binary can be overwritten, but we keep a backup
-    // so that the smoke test in `download_and_install` can restore it on
-    // failure.
-    #[cfg(unix)]
-    if path.exists() {
-        let old = dir.join(".dotfiles.old");
-        remove_stale_backup(&old)?;
-        fs::rename(path, &old).context("backing up current binary to .old")?;
+        fs::rename(path, &old).context("backing up current binary")?;
     }
 
     fs::rename(tmp.path(), path).context("moving new binary into place")?;
     tmp.persist();
-    Ok(())
-}
-
-/// Stage an update for later promotion by the wrapper.
-#[cfg(windows)]
-pub(super) fn stage_binary(root: &Path, tag: &str, data: &[u8]) -> Result<()> {
-    let pending = pending_binary_path(root);
-    let dir = pending
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("pending binary path has no parent directory"))?;
-    fs::create_dir_all(dir).context("creating bin directory")?;
-
-    let mut tmp = crate::infra::fs::TempGuard::unique_file(dir, ".dotfiles-update", "tmp");
-    {
-        let mut f = fs::File::create(tmp.path()).context("creating temp staged file")?;
-        f.write_all(data).context("writing staged binary data")?;
-        f.flush().context("flushing staged binary data")?;
-    }
-
-    if pending.exists() {
-        fs::remove_file(&pending).context("removing previous staged binary")?;
-    }
-    fs::rename(tmp.path(), &pending).context("moving staged binary into place")?;
-    tmp.persist();
-    fs::write(pending_version_path(root), format!("{tag}\n"))
-        .context("writing staged update metadata")?;
     Ok(())
 }
 
@@ -112,29 +75,46 @@ pub(super) fn stage_binary(root: &Path, tag: &str, data: &[u8]) -> Result<()> {
 /// starts correctly.  On failure the caller is expected to restore the
 /// backup created by [`replace_binary`].
 ///
-/// On Linux, `exec` can transiently fail with `ETXTBSY` ("Text file busy")
-/// right after writing a binary when the kernel hasn't fully released the
-/// inode.  This is a known race on certain CI filesystems (e.g. overlayfs).
-/// The function retries a few times with a short sleep to work around it.
+/// Spawning a freshly written executable can fail transiently: on Linux
+/// `exec` reports `ETXTBSY` ("Text file busy") while the kernel still holds
+/// the inode open for writing (a known race on certain CI filesystems such as
+/// overlayfs), and on Windows an anti-malware scanner can hold the new file
+/// open long enough to produce a sharing violation.  The function retries a
+/// few times with a short sleep to work around both.
 ///
 /// # Errors
 ///
 /// Returns an error if the process cannot be spawned or exits with a
 /// non-zero status code.
-#[cfg(not(windows))]
 pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
     const MAX_RETRIES: u32 = 5;
     const BASE_DELAY_MS: u64 = 50;
-    /// `ETXTBSY` ("Text file busy"): kernel still has the binary open for
-    /// writing.  Not always exposed via [`std::io::ErrorKind`] depending on
-    /// libc version, so match the raw OS error code as well.
-    const ETXTBSY: i32 = 26;
 
     fn is_transient_busy(e: &std::io::Error) -> bool {
-        matches!(
+        if matches!(
             e.kind(),
             std::io::ErrorKind::ResourceBusy | std::io::ErrorKind::ExecutableFileBusy
-        ) || e.raw_os_error() == Some(ETXTBSY)
+        ) {
+            return true;
+        }
+        // `ETXTBSY` is not always exposed via [`std::io::ErrorKind`] depending
+        // on libc version, so match the raw OS error code as well.
+        #[cfg(unix)]
+        {
+            /// `ETXTBSY` ("Text file busy").
+            const ETXTBSY: i32 = 26;
+            e.raw_os_error() == Some(ETXTBSY)
+        }
+        // A scanner still holding the new file surfaces as a sharing
+        // violation, which maps to `PermissionDenied`.
+        #[cfg(windows)]
+        {
+            e.kind() == std::io::ErrorKind::PermissionDenied
+        }
+        #[cfg(all(not(unix), not(windows)))]
+        {
+            false
+        }
     }
     let mut attempts = 0;
     let result = loop {
@@ -170,11 +150,15 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
 
 /// Download the release asset for the given tag and install it.
 ///
+/// The binary is replaced in place on every platform, so the caller can
+/// re-exec the new binary synchronously in the same run.
+///
 /// # Errors
 ///
 /// Returns an error if the download, checksum verification, build provenance
-/// verification, binary replacement, or smoke test fails.  On a smoke-test failure the previous
-/// binary is restored from the `.dotfiles.old` backup.
+/// verification, binary replacement, or smoke test fails.  On a smoke-test
+/// failure the previous binary is restored from the backup written by
+/// [`replace_binary`].
 pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClient) -> Result<()> {
     let asset = asset_name();
     let url = format!(
@@ -185,30 +169,21 @@ pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClie
     verify_checksum(client, tag, asset, &data)?;
     verify_provenance(&SystemGh, policy_from_env(), asset, &data)?;
 
-    #[cfg(windows)]
-    {
-        stage_binary(root, tag, &data)?;
-        write_cache(root, tag)?;
-    }
-
-    #[cfg(not(windows))]
-    {
-        let bin = binary_path(root);
-        replace_binary(&bin, &data)?;
-        if let Err(smoke_err) = smoke_test_binary(&bin) {
-            let old = old_binary_path(root);
-            if old.exists()
-                && let Err(restore_err) = fs::rename(&old, &bin)
-            {
-                tracing::warn!(
-                    "CRITICAL: smoke-test failed and automatic rollback also failed ({restore_err:#}). \
-                     Manual intervention required: restore {old:?} to {bin:?}"
-                );
-            }
-            return Err(smoke_err);
+    let bin = binary_path(root);
+    replace_binary(&bin, &data)?;
+    if let Err(smoke_err) = smoke_test_binary(&bin) {
+        let old = old_binary_path(root);
+        if old.exists()
+            && let Err(restore_err) = fs::rename(&old, &bin)
+        {
+            tracing::warn!(
+                "CRITICAL: smoke-test failed and automatic rollback also failed ({restore_err:#}). \
+                 Manual intervention required: restore {old:?} to {bin:?}"
+            );
         }
-        write_cache(root, tag)?;
+        return Err(smoke_err);
     }
+    write_cache(root, tag)?;
 
     Ok(())
 }
@@ -216,6 +191,7 @@ pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClie
 #[cfg(test)]
 #[allow(
     clippy::expect_used,
+    clippy::panic,
     clippy::unwrap_used,
     clippy::indexing_slicing,
     reason = "test code uses panicking helpers"
@@ -264,19 +240,40 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn stage_binary_writes_pending_files() {
+    fn replace_binary_backs_up_existing_as_a_runnable_image() {
         let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("dotfiles.exe");
+        fs::write(&bin, b"old-content").unwrap();
 
-        stage_binary(dir.path(), "v1.2.3", b"new-binary").unwrap();
+        replace_binary(&bin, b"new-content").unwrap();
 
+        assert_eq!(fs::read(&bin).unwrap(), b"new-content");
         assert_eq!(
-            fs::read(pending_binary_path(dir.path())).unwrap(),
-            b"new-binary"
+            fs::read(dir.path().join(".dotfiles-old.exe")).unwrap(),
+            b"old-content"
         );
-        assert_eq!(
-            fs::read_to_string(pending_version_path(dir.path())).unwrap(),
-            "v1.2.3\n"
-        );
+    }
+
+    /// A real, self-contained executable that exits 0 for `--version`.
+    ///
+    /// `download_and_install` smoke-tests the binary it just wrote, so the
+    /// fixture has to be something the OS will actually execute from an
+    /// arbitrary directory.
+    fn version_capable_binary() -> Vec<u8> {
+        #[cfg(unix)]
+        let path = which::which("true").expect("'true' binary not found on PATH");
+        // Prefer the System32 copy explicitly: a `curl.exe` earlier on PATH
+        // (for example the one shipped with Git for Windows) loads DLLs from
+        // its own directory and would not run once copied elsewhere.
+        #[cfg(windows)]
+        let path = {
+            let system_root =
+                std::env::var_os("SystemRoot").expect("SystemRoot is not set on this system");
+            Path::new(&system_root).join("System32").join("curl.exe")
+        };
+        fs::read(&path).unwrap_or_else(|error| {
+            panic!("reading smoke-test fixture {}: {error}", path.display())
+        })
     }
 
     #[test]
@@ -288,17 +285,11 @@ mod tests {
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
 
-        // On Unix, download_and_install calls smoke_test_binary after writing
-        // the binary.  Use the system `true` binary so the smoke test passes
-        // on CI runners where the workspace filesystem restricts shebang
-        // interpreter execution.
-        #[cfg(unix)]
-        let binary_data: Vec<u8> = {
-            let true_path = which::which("true").expect("'true' binary not found on PATH");
-            fs::read(&true_path).expect("reading 'true' binary")
-        };
-        #[cfg(not(unix))]
-        let binary_data: Vec<u8> = b"#!/bin/sh\necho updated".to_vec();
+        // `download_and_install` smoke-tests the binary after writing it, so a
+        // shell script is not enough: CI runners may restrict shebang
+        // interpreter execution on the workspace filesystem, and Windows will
+        // not execute it at all.
+        let binary_data = version_capable_binary();
 
         let mut hasher = Sha256::new();
         hasher.update(&binary_data);
@@ -309,25 +300,10 @@ mod tests {
 
         download_and_install(dir.path(), "v1.0.0", &client).unwrap();
 
-        #[cfg(windows)]
-        {
-            let staged = fs::read(pending_binary_path(dir.path())).unwrap();
-            assert_eq!(staged, binary_data);
-            assert_eq!(
-                fs::read_to_string(pending_version_path(dir.path())).unwrap(),
-                "v1.0.0\n"
-            );
-            let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
-            assert!(cache.starts_with("v1.0.0\n"));
-        }
-
-        #[cfg(not(windows))]
-        {
-            let installed = fs::read(binary_path(dir.path())).unwrap();
-            assert_eq!(installed, binary_data);
-            let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
-            assert!(cache.starts_with("v1.0.0\n"));
-        }
+        let installed = fs::read(binary_path(dir.path())).unwrap();
+        assert_eq!(installed, binary_data);
+        let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
+        assert!(cache.starts_with("v1.0.0\n"));
     }
 
     #[cfg(unix)]
@@ -346,15 +322,15 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn smoke_test_binary_uses_supported_version_flag() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = tempfile::tempdir().unwrap();
-        let bin = dir.path().join("version-check");
-        fs::write(&bin, b"#!/bin/sh\n[ \"$1\" = \"--version\" ]\n").unwrap();
-        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+        let bin = dir.path().join(if cfg!(windows) {
+            "version-check.exe"
+        } else {
+            "version-check"
+        });
+        replace_binary(&bin, &version_capable_binary()).unwrap();
 
         let result = smoke_test_binary(&bin);
         assert!(
@@ -384,11 +360,24 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    #[cfg(windows)]
+    #[test]
+    fn smoke_test_binary_fails_for_bad_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("bad.exe");
+        fs::write(&bin, b"not a portable executable").unwrap();
+
+        let result = smoke_test_binary(&bin);
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("smoke test"),
+            "expected 'smoke test' in: {msg}"
+        );
+    }
+
     #[test]
     fn download_and_install_restores_on_smoke_test_failure() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = tempfile::tempdir_in(
             std::env::current_dir().expect("failed to get current working directory"),
         )
@@ -399,8 +388,14 @@ mod tests {
         let old_binary = b"#!/bin/sh\necho v0.9.0\n";
         let bin = binary_path(dir.path());
         fs::write(&bin, old_binary).unwrap();
-        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+        }
 
+        // Not executable on any platform: Unix runs it and it exits 1, Windows
+        // refuses to spawn it.  Either way the smoke test must fail.
         let bad_binary = b"#!/bin/sh\nexit 1\n";
         let mut hasher = Sha256::new();
         hasher.update(bad_binary);

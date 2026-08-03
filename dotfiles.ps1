@@ -98,98 +98,6 @@ function Get-TargetAssetName
 
 $BinaryName = Get-BinaryName
 $Binary = Join-Path $BinDir $BinaryName
-$PendingBinary = Join-Path $BinDir ".dotfiles-update.pending"
-$PendingVersion = Join-Path $BinDir ".dotfiles-update.version"
-
-function Install-PendingBinary
-{
-    if (-not (Test-Path $PendingBinary))
-    {
-        return
-    }
-
-    if (-not (Test-Path $BinDir))
-    {
-        New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
-    }
-
-    $backupBinary = Join-Path $BinDir ".dotfiles-binary.backup"
-    $hadExistingBinary = Test-Path $Binary
-
-    if (Test-Path $backupBinary)
-    {
-        Remove-Item $backupBinary -Force
-    }
-
-    try
-    {
-        if ($hadExistingBinary)
-        {
-            Move-Item -Path $Binary -Destination $backupBinary -Force
-        }
-
-        Move-Item -Path $PendingBinary -Destination $Binary -Force
-
-        if (Test-Path $backupBinary)
-        {
-            Remove-Item $backupBinary -Force
-        }
-
-        if (Test-Path $PendingVersion)
-        {
-            Remove-Item $PendingVersion -Force
-        }
-    }
-    catch
-    {
-        $rollbackError = $null
-
-        if (Test-Path $Binary)
-        {
-            Remove-Item $Binary -Force -ErrorAction SilentlyContinue
-        }
-
-        if ($hadExistingBinary -and (Test-Path $backupBinary))
-        {
-            try
-            {
-                Move-Item -Path $backupBinary -Destination $Binary -Force
-            }
-            catch
-            {
-                $rollbackError = $_.Exception.Message
-            }
-        }
-
-        $message = "Failed to promote downloaded dotfiles binary: $($_.Exception.Message)"
-        if ($rollbackError)
-        {
-            $message += " Rollback failed: $rollbackError"
-        }
-
-        throw $message
-    }
-    finally
-    {
-        if ((Test-Path $backupBinary) -and (Test-Path $Binary))
-        {
-            Remove-Item $backupBinary -Force -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-function Invoke-PendingBinaryInstallOrExit
-{
-    try
-    {
-        Install-PendingBinary
-    }
-    catch
-    {
-        Write-Error $_.Exception.Message
-        exit 1
-    }
-}
 
 # Build mode: build from source
 if ($Build)
@@ -215,8 +123,7 @@ if ($Build)
 }
 
 # Production mode: bootstrap binary if not present.
-# Subsequent update checks are handled by the binary itself; this wrapper also
-# promotes any staged Windows update before relaunch.
+# Subsequent update checks are handled by the binary itself.
 
 function Resolve-ReleaseTag
 {
@@ -404,8 +311,6 @@ function Get-Binary
 }
 
 # Bootstrap: download the latest binary only if no binary is present.
-Invoke-PendingBinaryInstallOrExit
-
 if (-not (Test-Path $Binary))
 {
     Get-Binary

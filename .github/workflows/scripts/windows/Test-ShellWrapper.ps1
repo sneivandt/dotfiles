@@ -349,25 +349,6 @@ function Test-AttestationVerification {
     return $true
 }
 
-function Test-PendingBinaryPromotionRollback {
-    Write-TestStage "Testing pending binary promotion has rollback handling"
-
-    $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
-    $content = Get-Content $wrapper -Raw
-
-    if (
-        $content.Contains('.dotfiles-binary.backup') -and
-        $content.Contains('Failed to promote downloaded dotfiles binary') -and
-        $content.Contains('function Invoke-PendingBinaryInstallOrExit')
-    ) {
-        Write-TestPass "Wrapper includes guarded pending-binary promotion with rollback messaging"
-        return $true
-    }
-
-    Write-TestFail "Wrapper is missing guarded pending-binary promotion rollback handling"
-    return $false
-}
-
 # ---------------------------------------------------------------------------
 # Test Platform Detection
 # ---------------------------------------------------------------------------
@@ -434,7 +415,6 @@ function Invoke-TestSuite {
     $results += Test-AdvancedFlagForwarding
     $results += Test-VersionPinnedBootstrapUrl
     $results += Test-AttestationVerification
-    $results += Test-PendingBinaryPromotionRollback
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
 

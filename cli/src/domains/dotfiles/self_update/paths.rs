@@ -2,14 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-/// Staging file used on Windows until the wrapper can promote the update.
-#[cfg(windows)]
-const PENDING_BINARY_NAME: &str = ".dotfiles-update.pending";
-
-/// Metadata file that stores the staged version tag.
-#[cfg(windows)]
-const PENDING_VERSION_NAME: &str = ".dotfiles-update.version";
-
 /// Detect the asset name for the current platform.
 pub(super) const fn asset_name() -> &'static str {
     if cfg!(target_os = "windows") {
@@ -31,26 +23,25 @@ pub(super) fn binary_path(root: &Path) -> PathBuf {
     root.join("bin").join(name)
 }
 
-/// Path to a staged binary update.
-#[cfg(windows)]
-pub(super) fn pending_binary_path(root: &Path) -> PathBuf {
-    root.join("bin").join(PENDING_BINARY_NAME)
+/// File name of the backup taken before the binary is replaced in place.
+///
+/// The Windows name keeps the `.exe` extension so the backup stays a runnable
+/// image, which matters because the update renames the *running* binary.
+pub(super) const fn old_binary_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        ".dotfiles-old.exe"
+    } else {
+        ".dotfiles.old"
+    }
 }
 
-/// Path to the staged version metadata file.
-#[cfg(windows)]
-pub(super) fn pending_version_path(root: &Path) -> PathBuf {
-    root.join("bin").join(PENDING_VERSION_NAME)
-}
-
-/// Path where the old Unix binary is backed up before an in-place update.
+/// Path where the previous binary is backed up before an in-place update.
 ///
 /// Written by [`super::install::replace_binary`] and restored by
 /// [`super::install::download_and_install`] if the post-install smoke test
 /// fails.
-#[cfg(unix)]
 pub(super) fn old_binary_path(root: &Path) -> PathBuf {
-    root.join("bin").join(".dotfiles.old")
+    root.join("bin").join(old_binary_name())
 }
 
 /// Check whether the current process is running from `$root/bin/dotfiles`.
@@ -81,5 +72,26 @@ mod tests {
     #[test]
     fn asset_name_is_non_empty() {
         assert!(!asset_name().is_empty());
+    }
+
+    #[test]
+    fn old_binary_path_sits_next_to_the_installed_binary() {
+        let root = Path::new("/repo");
+        let old = old_binary_path(root);
+        assert_eq!(old.parent(), binary_path(root).parent());
+        assert_eq!(
+            old.file_name().and_then(std::ffi::OsStr::to_str),
+            Some(old_binary_name()),
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_backup_stays_executable() {
+        assert_eq!(
+            old_binary_name(),
+            ".dotfiles-old.exe",
+            "the Windows backup is the running image and must stay runnable"
+        );
     }
 }

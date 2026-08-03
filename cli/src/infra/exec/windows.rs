@@ -115,11 +115,6 @@ impl PowerShellCommand {
         executor.run_unchecked(powershell, &self.args())
     }
 
-    /// Configure a standard process command to run this encoded script.
-    pub(crate) fn configure(&self, command: &mut std::process::Command) {
-        command.args(self.args());
-    }
-
     fn args(&self) -> [&str; 3] {
         ["-NoProfile", "-EncodedCommand", &self.encoded]
     }

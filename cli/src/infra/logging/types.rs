@@ -133,10 +133,11 @@ pub enum MsgKind {
     ///
     /// Used for structural output such as the version banner and summary.
     Always,
-    /// The startup context header, rendered dim on the console.
+    /// De-emphasised context about the run itself.
     ///
-    /// Always visible, like [`MsgKind::Always`], but de-emphasised because it
-    /// describes the run rather than reporting its results.
+    /// Always visible, like [`MsgKind::Always`], but rendered dim because it
+    /// describes the run rather than reporting its results. Used for the
+    /// startup context header and the self-update notice.
     Startup,
 }
 
@@ -316,7 +317,7 @@ pub trait OutputExt: Output {
     fn always<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Always, msg.into());
     }
-    /// Log the startup context header. Always visible, rendered dim.
+    /// Log de-emphasised run context. Always visible, rendered dim.
     fn startup<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Startup, msg.into());
     }

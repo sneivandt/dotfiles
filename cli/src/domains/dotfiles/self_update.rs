@@ -171,7 +171,7 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 ///
 /// Progress is reported through a transient status line, so a run that was
 /// already current leaves no console output at all; only an update that
-/// actually happened prints a durable line.
+/// actually happened prints a durable, dimmed line.
 ///
 /// Returns `Ok(false)` when no update is needed or when running from a
 /// cargo build directory.
@@ -185,7 +185,7 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
         return Ok(false);
     }
     let client = default_http_client();
-    let check = with_status(log, "Checking for updates \u{2026}", || {
+    let check = with_status(log, "Checking for updates", || {
         check_for_update(root, &client)
     })?;
     match check {
@@ -197,13 +197,11 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
             }
             log.stage("Self update");
             log.debug(format!("updating: {current} \u{2192} {latest}"));
-            with_status(log, &format!("Updating to {latest} \u{2026}"), || {
+            with_status(log, &format!("Updating to {latest}"), || {
                 download_and_install(root, &latest, &client)
             })?;
 
-            log.always(format!(
-                "Self update \u{00b7} {current} \u{2192} {latest} \u{00b7} restarting"
-            ));
+            log.startup(format!("Self update \u{00b7} {current} \u{2192} {latest}"));
 
             Ok(true)
         }

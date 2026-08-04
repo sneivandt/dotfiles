@@ -290,9 +290,32 @@ dotfiles install --overlay C:\Code\private-dotfiles
 Only overlay repositories can define `conf/scripts.toml`. See
 [Configuration overlays](CONFIGURATION.md#overlays).
 
+## Interrupting a run
+
+Ctrl-C escalates rather than repeats:
+
+1. The first Ctrl-C requests cancellation. The engine stops dispatching new work
+   and lets in-flight operations finish. This is reported once, no matter how
+   long the wait lasts, and the run still writes its summary and log.
+2. A second Ctrl-C asks whether to give up on that wait:
+
+   ```text
+   Force quit? in-flight operations will be abandoned [y/N]:
+   ```
+
+   Answering anything other than `y` or `yes` keeps waiting.
+3. Answering `y`, or pressing Ctrl-C again while the question is open, quits
+   immediately with exit code 130.
+
+Force quitting skips the shutdown that normally terminates spawned commands, so
+child processes may keep running and partially applied state is possible. When
+nothing can answer the question — output is redirected or the command is running
+without a terminal — the second Ctrl-C force quits directly.
+
 ## Exit behavior
 
 A command exits unsuccessfully when required configuration cannot be loaded, a
-task fails, or validation reports an error. Non-applicable tasks and optional
-tool checks are recorded separately from failures. Use `--verbose` and
-`dotfiles log --verbose` when diagnosing a failed run.
+task fails, or validation reports an error. A force quit exits with code 130.
+Non-applicable tasks and optional tool checks are recorded separately from
+failures. Use `--verbose` and `dotfiles log --verbose` when diagnosing a failed
+run.

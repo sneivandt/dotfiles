@@ -10,6 +10,7 @@ pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod filter;
+pub mod interrupt;
 pub mod preserve;
 pub mod reload;
 pub mod run;

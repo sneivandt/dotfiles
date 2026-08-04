@@ -12,7 +12,7 @@ use clap::{CommandFactory, Parser};
 
 use crate::infra::{elevation, logging};
 
-use super::{cli, commands};
+use super::{cli, commands, interrupt};
 use crate::infra::logging::OutputExt as _;
 
 /// Run the dotfiles CLI and return the process exit code.
@@ -66,19 +66,10 @@ fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: b
     let log = std::sync::Arc::new(raw_log);
 
     // Set up cooperative cancellation so Ctrl-C lets in-flight operations
-    // finish cleanly instead of terminating the process immediately.
+    // finish cleanly instead of terminating the process immediately, and
+    // escalates to a confirmed force quit when the user asks twice.
     let token = crate::engine::CancellationToken::new();
-    let handler_token = token.clone();
-    let handler_log = std::sync::Arc::clone(&log);
-    if ctrlc::set_handler(move || {
-        handler_token.cancel();
-        handler_log.warn("interrupt received - finishing in-flight operations");
-    })
-    .is_err()
-    {
-        // Non-fatal: we just lose graceful shutdown support.
-        log.warn("failed to register signal handler");
-    }
+    interrupt::install(&token, &log);
 
     let result = match command {
         cli::EngineCommand::Install(opts) => commands::install::run(global, opts, &log, &token),

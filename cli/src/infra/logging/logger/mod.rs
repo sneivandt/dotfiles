@@ -409,6 +409,10 @@ impl Logger {
     }
 
     /// Emit the single blank line that separates startup metadata from details.
+    ///
+    /// The startup header calls this immediately, so the header always stands
+    /// apart even when the run produces no task output. The remaining callers
+    /// are idempotent guards for paths that emit before — or without — a header.
     pub fn separate_from_startup(&self) {
         if !self.startup_separator_emitted.swap(true, Ordering::Relaxed) {
             self.always("");

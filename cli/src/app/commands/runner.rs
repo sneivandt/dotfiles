@@ -44,9 +44,6 @@ impl CommandRunner {
             &root,
         );
         let profile = resolve_profile(global, &root, platform, overlay.as_deref(), log)?;
-        if log.is_verbose() {
-            log.separate_from_startup();
-        }
         let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
         let store = ConfigStore::from_config(config);
 
@@ -186,6 +183,10 @@ fn resolve_profile(
         global.dry_run,
         overlay,
     ));
+    // The header is metadata about the run, not part of it, so it always stands
+    // apart from whatever follows — including a run where nothing had work to do
+    // and the totals line is the only thing that follows.
+    log.separate_from_startup();
     Ok(profile)
 }
 
@@ -241,9 +242,6 @@ fn load_config(
     });
 
     let warnings = config.validate(platform);
-    if !warnings.is_empty() && !log.is_verbose() {
-        log.separate_from_startup();
-    }
     crate::app::validation::display_diagnostics(&warnings, log);
 
     Ok(config)

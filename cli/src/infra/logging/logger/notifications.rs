@@ -73,19 +73,19 @@ impl Logger {
     /// reports tasks that have *finished*, not the ones named after it, so it
     /// carries its own `done` label — a bare `Running 12/16` reads as "12 of 16
     /// are running right now", which is not what it means.
+    ///
+    /// The whole row is dimmed in one pass: it is transient scaffolding rather
+    /// than a result, and painting it piecewise would emit nested resets that
+    /// cut the dim short partway through the line.
     fn format_status_line(&self, names: &str) -> String {
-        let style = stdout_style();
         let progress = self
             .task_progress()
             .map_or_else(String::new, |(done, total)| {
-                format!(
-                    "{}{done}/{total} done",
-                    style.paint(TextStyle::Dim, " \u{00b7} ")
-                )
+                format!(" \u{00b7} {done}/{total} done")
             });
-        format!(
-            "Running{progress}{}",
-            style.paint(TextStyle::Dim, &format!(" \u{00b7} {names}"))
+        stdout_style().paint(
+            TextStyle::Dim,
+            &format!("Running{progress} \u{00b7} {names}"),
         )
     }
 

@@ -62,22 +62,27 @@ function Test-ToolAvailable
     return $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue)
 }
 
+# Display helpers write to the host rather than the success stream: a stage's
+# success stream carries its status and nothing else (see $StageActions).
 function Write-Heading
 {
     param([Parameter(Mandatory = $true)][string]$Text)
 
-    Write-Output ''
-    Write-Output "== $Text =="
+    '' | Out-Host
+    "== $Text ==" | Out-Host
 }
 
 function Write-Note
 {
     param([Parameter(Mandatory = $true)][string]$Text)
 
-    Write-Output "  $Text"
+    "  $Text" | Out-Host
 }
 
 # Runs an external tool and maps its exit code to a stage status.
+#
+# The tool's own output goes to the host so it stays visible and streaming
+# without being mistaken for the status this returns.
 function Invoke-Tool
 {
     param(
@@ -85,7 +90,7 @@ function Invoke-Tool
         [Parameter(Mandatory = $true)][string[]]$ToolArguments
     )
 
-    & $FilePath @ToolArguments
+    & $FilePath @ToolArguments | Out-Host
     if ($LASTEXITCODE -ne 0)
     {
         return 'FAIL'
@@ -114,6 +119,12 @@ function Test-CargoSubcommand
     return $LASTEXITCODE -eq 0
 }
 
+# Each stage returns exactly one status string: 'pass', 'skip', or 'FAIL'.
+#
+# The summary switches on that return value, so a stage must not write anything
+# else to the success stream - a stray Write-Output or uncaptured tool output
+# would make the stage return an array and be reported as a failure. Use
+# Write-Note or Out-Host for anything the user should see.
 $StageActions = @{
     fmt      = {
         Invoke-CargoStage @('fmt', '--check', '--manifest-path', $Manifest)
@@ -163,10 +174,10 @@ $StageActions = @{
             return 'skip'
         }
         Import-Module PSScriptAnalyzer -Force
-        $results = Invoke-ScriptAnalyzer -Path $RepoRoot -Recurse -Severity Warning, Error
-        if ($results)
+        $findings = Invoke-ScriptAnalyzer -Path $RepoRoot -Recurse -Severity Warning, Error
+        if ($findings)
         {
-            $results | Format-Table -AutoSize | Out-String | Write-Output
+            $findings | Format-Table -AutoSize | Out-String | Out-Host
             return 'FAIL'
         }
         return 'pass'

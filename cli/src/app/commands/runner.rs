@@ -271,6 +271,7 @@ mod root_tests {
             dry_run: false,
             overlay: None,
             parallel: true,
+            no_symbols: false,
             elevated_child: false,
         }
     }

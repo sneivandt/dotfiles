@@ -89,6 +89,33 @@ pub enum TaskStatus {
 }
 
 impl TaskStatus {
+    /// Compact glyph used for console status rendering.
+    #[must_use]
+    pub const fn symbol(self) -> char {
+        match self {
+            Self::Changed | Self::Passed => '✓',
+            Self::DryRun => '~',
+            Self::Skipped => '⊘',
+            Self::Failed => '✗',
+            Self::Ok => '‧',
+            Self::NotApplicable => '⁃',
+        }
+    }
+
+    /// ASCII token used when symbol rendering is disabled.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Changed => "CHANGE",
+            Self::DryRun => "DRYRUN",
+            Self::Passed => "PASSED",
+            Self::Skipped => "IGNORE",
+            Self::Failed => "FAILED",
+            Self::Ok => "OK",
+            Self::NotApplicable => "N/A",
+        }
+    }
+
     /// Text style used for compact status rendering.
     #[must_use]
     pub(in crate::infra::logging) const fn text_style(self) -> TextStyle {
@@ -401,6 +428,26 @@ mod tests {
         assert_ne!(TaskStatus::Changed, TaskStatus::Ok);
         assert_ne!(TaskStatus::Skipped, TaskStatus::DryRun);
         assert_ne!(TaskStatus::NotApplicable, TaskStatus::Ok);
+    }
+
+    #[test]
+    fn task_status_symbols_are_single_characters() {
+        for (status, expected) in [
+            (TaskStatus::Changed, '✓'),
+            (TaskStatus::DryRun, '~'),
+            (TaskStatus::Passed, '✓'),
+            (TaskStatus::Skipped, '⊘'),
+            (TaskStatus::Failed, '✗'),
+            (TaskStatus::Ok, '‧'),
+            (TaskStatus::NotApplicable, '⁃'),
+        ] {
+            assert_eq!(status.symbol(), expected);
+            assert_eq!(
+                status.symbol().to_string().chars().count(),
+                1,
+                "{status:?} symbol should contain exactly one character"
+            );
+        }
     }
 
     #[test]

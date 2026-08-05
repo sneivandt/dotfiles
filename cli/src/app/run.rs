@@ -61,7 +61,7 @@ pub fn run() -> ExitCode {
 
 /// Initialise the runtime and dispatch a command through the task engine.
 fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: bool) -> ExitCode {
-    let mut raw_log = logging::init(verbose, command.name());
+    let mut raw_log = logging::init(verbose, !global.no_symbols, command.name());
     raw_log.set_dry_run(global.dry_run);
     let log = std::sync::Arc::new(raw_log);
 

@@ -36,9 +36,10 @@ pub(crate) use utils::{dotfiles_log_dir_readonly, format_elapsed};
 /// plus the run-log bridge), and returns the [`Logger`] that shares the same
 /// run log. Must be called once at program startup, before any logging.
 #[must_use]
-pub fn init(verbose: bool, command: &str) -> Logger {
+pub fn init(verbose: bool, symbols: bool, command: &str) -> Logger {
     let mut log = Logger::new(command);
     log.set_verbose(verbose);
+    log.set_symbols(symbols);
     subscriber::init_subscriber(verbose, log.run_log_handle());
     log
 }

@@ -59,6 +59,7 @@ Global options may be placed before or after the subcommand.
 | `--root <PATH>` | Treat another path as the dotfiles repository |
 | `--overlay <PATH>` | Append configuration from a private overlay repository |
 | `--no-parallel` | Run independent tasks sequentially |
+| `--no-symbols` | Use ASCII words instead of status symbols |
 | `--version` | Print the CLI version |
 
 `--dry-run` applies to mutating commands. It is the recommended first step
@@ -137,19 +138,21 @@ may appear in a different order between runs. Statuses distinguish the outcome:
 
 | Status | Meaning |
 |---|---|
-| `CHANGE` | The task applied one or more changes |
-| `DRYRUN` | Dry-run changes were planned but not applied |
-| `PASSED` | A validation task passed |
-| `IGNORE` | The task was intentionally ignored |
-| `FAILED` | The task failed |
-| `OK` | The task was already up to date (verbose only) |
-| `N/A` | The task does not apply to this platform or configuration (verbose only) |
+| `✓` | The task applied one or more changes, or a validation task passed |
+| `~` | Dry-run changes were planned but not applied |
+| `⊘` | The task was intentionally ignored |
+| `✗` | The task failed |
+| `‧` | The task was already up to date (verbose only) |
+| `⁃` | The task does not apply to this platform or configuration (verbose only) |
+
+Use `--no-symbols` to restore the ASCII status words for terminals or pipelines
+that cannot render the glyphs.
 
 A row states the task name and, when the task has something to explain, the
 reason after a `·` separator:
 
 ```text
-IGNORE Dotfiles repository · local changes present
+⊘ Dotfiles repository · local changes present
 ```
 
 Indented dimmed lines beneath a row are the individual actions the task took or
@@ -159,7 +162,7 @@ printed actions from the row that follows it.
 Normal output only prints rows for tasks that did something or need attention.
 `--verbose` accounts for every task — including up-to-date and non-applicable
 ones — adds elapsed time to each row that ran, and replays the per-resource
-decisions behind each outcome. `N/A` rows carry no elapsed time because nothing
+decisions behind each outcome. `⁃` rows carry no elapsed time because nothing
 ran. Internal orchestration remains available in the run log but is excluded
 from console rows and totals in both modes.
 

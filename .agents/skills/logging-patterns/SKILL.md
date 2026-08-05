@@ -29,10 +29,12 @@ description: >
   mode emits rows only for tasks with a reportable outcome; verbose mode accounts
   for every visible task and appends per-task elapsed time. Internal tasks never
   produce console rows and stay out of every total.
-- Statuses are fixed-width and explicit: `CHANGE`, `PASSED`, `DRYRUN`, `IGNORE`,
-  and `FAILED`, plus the verbose-only `OK` and `N/A`. Tokens are padded to a
-  six-character column so task names align. `N/A` rows carry no elapsed time
-  because nothing ran.
+- Statuses use a one-cell glyph column: `✓` for changed or passed, `~` for dry
+  run, `⊘` for skipped, `✗` for failed, and verbose-only `‧` for up to date and
+  `⁃` for not applicable. The glyphs are ASCII or Neutral width, contain no
+  variation selectors, and therefore align reliably with `chars().count()`.
+  `--no-symbols` restores the ASCII word tokens for terminals or pipelines that
+  cannot render them. `⁃` rows carry no elapsed time because nothing ran.
 - A task's reason belongs on its status row after a ` · ` separator, not on an
   indented line. Indented, dim, two-space lines beneath a row are therefore
   always actions the task took or planned. A blank line separates a task that

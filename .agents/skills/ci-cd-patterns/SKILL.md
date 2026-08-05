@@ -64,7 +64,7 @@ sequence.
 
 ## Release versioning
 
-Release tags are `vYYYY.MM.DD.N`, where `N` starts at 1 and increments for each
+Release tags are `vYYYY.MM.DD-N`, where `N` starts at 1 and increments for each
 additional release on the same day. A dedicated `version` job resolves the tag
 exactly once — probing existing remote tags to pick `N` — and exposes it plus
 the resolved commit SHA as outputs. Every downstream build and publish job
@@ -74,10 +74,10 @@ release agree.
 `cli/Cargo.toml`'s `version` field is crate metadata, not the release version.
 
 The format is load-bearing: `cli/src/domains/dotfiles/self_update/version.rs`
-parses release tags to decide whether an update is newer, and accepts only
-exactly four numeric components. Changing the tag shape requires changing that
-parser in the same commit, and doing so strands already-installed binaries,
-which can no longer parse the new tags.
+parses release tags to decide whether an update is newer, and accepts three
+dot-separated date components plus the hyphen-separated increment. Changing the
+tag shape requires changing that parser in the same commit, and doing so strands
+already-installed binaries, which can no longer parse the new tags.
 
 ## Publishing Workflows
 

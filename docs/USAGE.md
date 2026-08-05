@@ -171,7 +171,7 @@ check draws a transient status line while it runs and erases it afterwards; a
 line is left behind only when a new version was actually installed:
 
 ```text
-Self update · v2025.01.02.1 → v2025.01.09.1
+Self update · v2025.01.02-1 → v2025.01.09-1
 ```
 
 While tasks are running, a transient status line reports progress and the

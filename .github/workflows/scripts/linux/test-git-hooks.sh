@@ -170,7 +170,7 @@ exit 127
 EOF
   chmod +x "$repo/bin/paste"
 
-  printf '%s\n' 'release = v2026.07.30.1' > "$repo/test-file.txt"
+  printf '%s\n' 'release = v2026.07.30-1' > "$repo/test-file.txt"
   git -C "$repo" add test-file.txt
 
   if (

@@ -88,7 +88,7 @@ fi
 
 # Test 2: Create fresh cache
 mkdir -p "$BIN_DIR"
-echo "v2026.07.25.1" > "$CACHE_FILE"
+echo "v2026.07.25-1" > "$CACHE_FILE"
 date +%s >> "$CACHE_FILE"
 
 if ! is_cache_fresh; then
@@ -97,7 +97,7 @@ if ! is_cache_fresh; then
 fi
 
 # Test 3: Create stale cache
-echo "v2026.07.25.1" > "$CACHE_FILE"
+echo "v2026.07.25-1" > "$CACHE_FILE"
 echo "0" >> "$CACHE_FILE"
 
 if is_cache_fresh; then
@@ -210,7 +210,7 @@ get_latest_version() {
 
 # Simulate existing local binary
 get_local_version() {
-  echo "v2026.07.25.1"
+  echo "v2026.07.25-1"
 }
 
 latest=$(get_latest_version)

@@ -80,7 +80,7 @@ Bootstrap download output follows the same shape — a header naming the resolve
 tag and target, and a completion line stating what was verified:
 
 ```text
-Bootstrap · dotfiles v2026.07.25.1 · linux-x86_64
+Bootstrap · dotfiles v2026.07.25-1 · linux-x86_64
 Downloaded · checksum verified · /home/user/src/dotfiles/bin/dotfiles
 ```
 

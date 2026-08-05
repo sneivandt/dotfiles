@@ -82,9 +82,9 @@ enum UpdateCheck {
     DevBuild,
     /// A newer version is available.
     UpdateAvailable {
-        /// Latest release tag (e.g., "v2026.07.25.2").
+        /// Latest release tag (e.g., "v2026.07.25-2").
         latest: String,
-        /// Current version tag (e.g., "v2026.07.25.1").
+        /// Current version tag (e.g., "v2026.07.25-1").
         current: String,
     },
 }
@@ -234,14 +234,14 @@ mod tests {
     fn fresh_cache_newer_than_current_returns_update_available() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
-        write_cache(dir.path(), "v9999.12.31.1").unwrap();
+        write_cache(dir.path(), "v9999.12.31-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.1").unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1").unwrap();
 
         match result {
             UpdateCheck::UpdateAvailable { latest, .. } => {
-                assert_eq!(latest, "v9999.12.31.1");
+                assert_eq!(latest, "v9999.12.31-1");
             }
             UpdateCheck::Offline | UpdateCheck::AlreadyCurrent | UpdateCheck::DevBuild => {
                 panic!("expected cached newer release to trigger update")
@@ -253,9 +253,9 @@ mod tests {
     fn network_update_available_does_not_write_cache_before_install() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31.1"}"#.to_vec())]);
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.1").unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1").unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
         assert!(
@@ -269,14 +269,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         // GitHub reports an older release than the running binary.
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25.1"}"#.to_vec())]);
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.9").unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-9").unwrap();
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
         assert!(
-            cached.starts_with("v2026.07.25.1\n"),
+            cached.starts_with("v2026.07.25-1\n"),
             "the cache holds the latest published tag, not the running version; got {cached:?}"
         );
     }
@@ -295,9 +295,9 @@ mod tests {
             format!("bad\n{now}\n"),
         )
         .unwrap();
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31.1"}"#.to_vec())]);
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25.1").unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1").unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
     }

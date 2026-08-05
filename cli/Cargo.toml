@@ -1,6 +1,6 @@
 [package]
 name = "dotfiles-cli"
-# Not the release version. Releases are tagged `vYYYY.MM.DD.N` by
+# Not the release version. Releases are tagged `vYYYY.MM.DD-N` by
 # .github/workflows/release.yml and injected via DOTFILES_VERSION; this value
 # only backs the `dev-` fallback reported by local builds.
 version = "0.1.0"

@@ -26,7 +26,7 @@ jobs:
   # Resolves the release identity (version tag + commit) exactly once so every
   # downstream job builds, attests, and tags the same thing.
   #
-  # Versions are date-based: vYYYY.MM.DD.N, where N starts at 1 and increments
+  # Versions are date-based: vYYYY.MM.DD-N, where N starts at 1 and increments
   # for each additional release cut on the same UTC day. The crate version in
   # cli/Cargo.toml is intentionally not the release version; it only backs the
   # `dev-` fallback for local builds.
@@ -52,10 +52,10 @@ jobs:
           set -euo pipefail
           date_part="$(date -u +%Y.%m.%d)"
           n=1
-          while git ls-remote --exit-code --tags origin "refs/tags/v${date_part}.${n}" >/dev/null 2>&1; do
+          while git ls-remote --exit-code --tags origin "refs/tags/v${date_part}-${n}" >/dev/null 2>&1; do
             n=$((n + 1))
           done
-          version="v${date_part}.${n}"
+          version="v${date_part}-${n}"
           echo "Resolved release version: $version (commit $HEAD_SHA)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"

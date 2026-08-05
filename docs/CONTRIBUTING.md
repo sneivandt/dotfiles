@@ -135,7 +135,7 @@ to `main`. Publishing builds use release mode; ordinary CI uses the `ci`
 profile. Recurring integration logic belongs in
 `.github/workflows/scripts/`, not large inline workflow blocks.
 
-Releases are tagged `vYYYY.MM.DD.N`, where `N` starts at 1 and increments for
+Releases are tagged `vYYYY.MM.DD-N`, where `N` starts at 1 and increments for
 each additional release published on the same day. A dedicated `version` job
 resolves the tag once and passes it to every downstream build job, so all
 artifacts in a release agree on their version. `release.yml` also accepts

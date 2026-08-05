@@ -117,9 +117,7 @@ later on that same line is still reported.
 
 Entries currently cover SHA-pinned GitHub Actions (a 40-character hex SHA
 frequently contains ten consecutive digits, which the phone and SSN patterns
-match by coincidence), the `ci@test.local` CI fixture address, and
-`vYYYY.MM.DD.N` release tags, which the IPv4 pattern reads as four
-dot-separated numeric groups.
+match by coincidence) and the `ci@test.local` CI fixture address.
 
 Reserved documentation domains such as `example.com` are deliberately *not*
 allow-listed, because the scanner's own PII coverage is asserted with an

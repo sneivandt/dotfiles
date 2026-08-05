@@ -4,18 +4,19 @@ use crate::engine::Task;
 use crate::infra::logging::Output;
 use crate::infra::logging::OutputExt as _;
 
-/// Warn when a filter does not match any known task.
-pub(crate) fn warn_unmatched_filters(
-    tasks: &[&dyn Task],
-    filters: &[String],
-    flag: &str,
-    log: &dyn Output,
-) {
+/// Return filters that do not match any known task.
+pub(crate) fn unmatched_filters<'a>(tasks: &[&dyn Task], filters: &'a [String]) -> Vec<&'a str> {
+    filters
+        .iter()
+        .filter(|filter| !tasks.iter().any(|task| task_matches_filter(*task, filter)))
+        .map(String::as_str)
+        .collect()
+}
+
+/// Warn for each previously identified unmatched filter.
+pub(crate) fn warn_unmatched_filters(filters: &[&str], flag: &str, log: &dyn Output) {
     for filter in filters {
-        let matched = tasks.iter().any(|task| task_matches_filter(*task, filter));
-        if !matched {
-            log.warn(format!("{flag} '{filter}' did not match any task"));
-        }
+        log.warn(format!("{flag} '{filter}' did not match any task"));
     }
 }
 
@@ -25,14 +26,6 @@ pub(crate) fn task_passes_filters(task: &dyn Task, only: &[String], skip: &[Stri
     let included = only.is_empty() || only.iter().any(|filter| task_matches_filter(task, filter));
     let excluded = skip.iter().any(|filter| task_matches_filter(task, filter));
     included && !excluded
-}
-
-/// Return whether any filter does not match a known task.
-#[must_use]
-pub(crate) fn has_unmatched_filter(tasks: &[&dyn Task], filters: &[String]) -> bool {
-    filters
-        .iter()
-        .any(|filter| !tasks.iter().any(|task| task_matches_filter(*task, filter)))
 }
 
 /// Return whether a task matches a user-supplied selector.
@@ -174,18 +167,21 @@ mod tests {
     }
 
     #[test]
-    fn has_unmatched_filter_detects_only_unknown_selectors() {
+    fn unmatched_filters_returns_only_unknown_selectors() {
         let tasks: [&dyn Task; 2] = [&SampleTask, &OtherTask];
-        assert!(!has_unmatched_filter(
-            &tasks,
-            &["symlinks".to_string(), "packages".to_string()]
-        ));
-        assert!(has_unmatched_filter(
-            &tasks,
-            &["symlinks".to_string(), "typo".to_string()]
-        ));
-        assert!(
-            !has_unmatched_filter(&tasks, &[]),
+        assert_eq!(
+            unmatched_filters(&tasks, &["symlinks".to_string(), "packages".to_string()]),
+            Vec::<&str>::new(),
+            "known selectors should not be returned"
+        );
+        assert_eq!(
+            unmatched_filters(&tasks, &["symlinks".to_string(), "typo".to_string()]),
+            vec!["typo"],
+            "only unknown selectors should be returned"
+        );
+        assert_eq!(
+            unmatched_filters(&tasks, &[]),
+            Vec::<&str>::new(),
             "an empty filter list has nothing to mismatch"
         );
     }
@@ -195,16 +191,13 @@ mod tests {
         let tasks: [&dyn Task; 2] = [&SampleTask, &OtherTask];
         let log = RecordingOutput::default();
 
-        warn_unmatched_filters(
-            &tasks,
-            &[
-                "symlinks".to_string(),
-                "typo".to_string(),
-                "nope".to_string(),
-            ],
-            "--only",
-            &log,
-        );
+        let filters = [
+            "symlinks".to_string(),
+            "typo".to_string(),
+            "nope".to_string(),
+        ];
+        let unmatched = unmatched_filters(&tasks, &filters);
+        warn_unmatched_filters(&unmatched, "--only", &log);
 
         assert_eq!(
             log.warnings(),

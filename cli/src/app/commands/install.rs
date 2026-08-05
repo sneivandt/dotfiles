@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use crate::app::cli::{GlobalOpts, InstallOpts};
-use crate::app::filter::{self, has_unmatched_filter, task_passes_filters};
+use crate::app::filter::{self, task_passes_filters};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
 use crate::infra::logging::OutputExt as _;
@@ -56,14 +56,13 @@ fn apply_task_filters<'a>(
         .chain(overlay_tasks)
         .map(Box::as_ref)
         .collect();
-    if !log.is_verbose()
-        && (has_unmatched_filter(&known_task_refs, &opts.only)
-            || has_unmatched_filter(&known_task_refs, &opts.skip))
-    {
+    let unmatched_only = filter::unmatched_filters(&known_task_refs, &opts.only);
+    let unmatched_skip = filter::unmatched_filters(&known_task_refs, &opts.skip);
+    if !log.is_verbose() && (!unmatched_only.is_empty() || !unmatched_skip.is_empty()) {
         log.separate_from_startup();
     }
-    filter::warn_unmatched_filters(&known_task_refs, &opts.only, "--only", &**log);
-    filter::warn_unmatched_filters(&known_task_refs, &opts.skip, "--skip", &**log);
+    filter::warn_unmatched_filters(&unmatched_only, "--only", &**log);
+    filter::warn_unmatched_filters(&unmatched_skip, "--skip", &**log);
 
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
@@ -174,7 +173,9 @@ mod tests {
         let task_refs: Vec<&dyn Task> = all.iter().map(Box::as_ref).collect();
 
         // "xyznonexistent" should not match any task
-        filter::warn_unmatched_filters(&task_refs, &["xyznonexistent".to_string()], "--only", &log);
+        let filters = ["xyznonexistent".to_string()];
+        let unmatched = filter::unmatched_filters(&task_refs, &filters);
+        filter::warn_unmatched_filters(&unmatched, "--only", &log);
         // Verification: the function runs without panic; the warning is
         // emitted via log.warn() which is captured by the Logger.
     }
@@ -186,6 +187,8 @@ mod tests {
         let all = sample_install_tasks();
         let task_refs: Vec<&dyn Task> = all.iter().map(Box::as_ref).collect();
 
-        filter::warn_unmatched_filters(&task_refs, &["symlinks".to_string()], "--only", &log);
+        let filters = ["symlinks".to_string()];
+        let unmatched = filter::unmatched_filters(&task_refs, &filters);
+        filter::warn_unmatched_filters(&unmatched, "--only", &log);
     }
 }

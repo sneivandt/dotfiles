@@ -85,7 +85,7 @@ description: >
    eligibility checks there.
 6. **Resource flow:** use one of:
    - `process_resources(...)`
-   - `process_resources_with_provider(...)`
+   - `process_resources_with_cache(...)`
    - `process_resources_remove(...)`
 7. **Operation flow:** use `Operation` + `process_operation()` when convergence is
    workflow-shaped, not item-shaped. State discovery returns

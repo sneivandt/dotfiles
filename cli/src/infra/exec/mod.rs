@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{LazyLock, Mutex};
 use std::thread::JoinHandle;
@@ -145,24 +145,12 @@ fn execute_unchecked(
     let mut pipes_closed = false;
     let status = loop {
         if settings.is_cancelled() {
-            #[cfg(unix)]
-            terminate_child(&child);
-            #[cfg(windows)]
-            terminate_child(&mut child);
-            wait_after_terminate(&mut child);
-            let result = collect_result(None, stdout_reader, stderr_reader)?;
-            log_command_output(label, &result);
+            let result = terminate_and_collect(&mut child, stdout_reader, stderr_reader, label)?;
             bail!("{label} cancelled: {}", failure_output(&result));
         }
         let remaining = settings.timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
-            #[cfg(unix)]
-            terminate_child(&child);
-            #[cfg(windows)]
-            terminate_child(&mut child);
-            wait_after_terminate(&mut child);
-            let result = collect_result(None, stdout_reader, stderr_reader)?;
-            log_command_output(label, &result);
+            let result = terminate_and_collect(&mut child, stdout_reader, stderr_reader, label)?;
             bail!(
                 "{label} timed out after {} seconds: {}",
                 settings.timeout.as_secs(),
@@ -188,6 +176,22 @@ fn execute_unchecked(
     };
 
     collect_result(Some(status), stdout_reader, stderr_reader)
+}
+
+fn terminate_and_collect(
+    child: &mut Child,
+    stdout_reader: JoinHandle<Result<Vec<u8>>>,
+    stderr_reader: JoinHandle<Result<Vec<u8>>>,
+    label: &str,
+) -> Result<ExecResult> {
+    #[cfg(unix)]
+    terminate_child(child);
+    #[cfg(windows)]
+    terminate_child(child);
+    wait_after_terminate(child);
+    let result = collect_result(None, stdout_reader, stderr_reader)?;
+    log_command_output(label, &result);
+    Ok(result)
 }
 
 /// Block until the child closes both output pipes, or until it is time to

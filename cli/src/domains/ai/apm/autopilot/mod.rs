@@ -27,7 +27,10 @@
 
 use std::collections::HashSet;
 
+use anyhow::Result;
+
 use crate::engine::Context;
+use crate::infra::exec::ExecResult;
 use crate::infra::logging::OutputExt as _;
 
 mod db;
@@ -43,6 +46,20 @@ pub(super) use scripts::{WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT}
 #[cfg(not(test))]
 use scripts::{WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT};
 use scripts::{build_workflow_script_args, parse_desired_ids};
+
+fn run_workflow_script(
+    ctx: &Context,
+    python: &str,
+    db_str: &str,
+    script: &str,
+    ids: &[String],
+) -> Result<ExecResult> {
+    let args = build_workflow_script_args(script, db_str, ids);
+    let system = ctx.system();
+    system
+        .executor()
+        .run_unchecked_in(system.home(), python, &args)
+}
 
 /// Re-assert that the Copilot App workflows *this dotfiles install deployed*
 /// run on autopilot.
@@ -107,12 +124,7 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
         }
     };
 
-    let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, &db_str, &ids);
-    let system = ctx.system();
-    match system
-        .executor()
-        .run_unchecked_in(system.home(), python, &args)
-    {
+    match run_workflow_script(ctx, python, &db_str, WORKFLOW_AUTOPILOT_SCRIPT, &ids) {
         Ok(r) if r.success => {
             report_fixup_outcome(ctx, decide_fixup_outcome(&r.stdout, pre), &r.stdout);
         }
@@ -222,12 +234,7 @@ pub(super) fn snapshot_desired_apm_workflow_ids(ctx: &Context) -> DesiredApmWork
         }
     };
 
-    let args = build_workflow_script_args(WORKFLOW_DESIRED_IDS_SCRIPT, &db_str, &ids);
-    let system = ctx.system();
-    match system
-        .executor()
-        .run_unchecked_in(system.home(), python, &args)
-    {
+    match run_workflow_script(ctx, python, &db_str, WORKFLOW_DESIRED_IDS_SCRIPT, &ids) {
         Ok(r) if r.success => DesiredApmWorkflows::Known(parse_desired_ids(&r.stdout)),
         Ok(r) => {
             if r.stderr.contains("no such table") {

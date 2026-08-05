@@ -66,6 +66,36 @@ fn buffered_log_preserves_entry_order() {
 }
 
 #[test]
+#[allow(
+    clippy::panic,
+    reason = "the test intentionally poisons the mutex to verify recovery"
+)]
+fn buffered_log_recovers_from_a_poisoned_entry_lock() {
+    let (buf, _log, _tmp, _dispatch_guard) = buffered_fixture();
+    let _poison = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _poison_guard = buf.entries.lock().unwrap();
+        panic!("intentional mutex poison");
+    }));
+
+    buf.info("recorded after poison");
+
+    let entries = buf
+        .entries
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert_eq!(
+        entries.len(),
+        1,
+        "poison recovery should preserve new entries"
+    );
+    assert_eq!(
+        entries[0].msg, "recorded after poison",
+        "the post-poison entry should be buffered"
+    );
+    drop(entries);
+}
+
+#[test]
 fn flush_and_complete_clears_progress_rows() {
     let (log, _tmp, _guard) = isolated_logger();
     let log = Arc::new(log);

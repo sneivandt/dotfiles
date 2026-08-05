@@ -62,6 +62,46 @@ fn snapshot_report_should_run_true_with_overlay() {
 }
 
 #[test]
+fn snapshot_report_returns_not_applicable_when_empty() {
+    let mut config = empty_config(PathBuf::from("/tmp"));
+    config.overlay = Some(PathBuf::from("/overlay"));
+    let ctx = make_linux_context(config);
+    let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![]));
+
+    assert!(
+        task.run_configured(&ctx).unwrap().is_none(),
+        "an empty snapshot should suppress the configured task"
+    );
+    assert!(
+        matches!(
+            task.run(&ctx).unwrap(),
+            TaskResult::NotApplicable(reason) if reason == "nothing configured"
+        ),
+        "the direct execution path should report an empty snapshot"
+    );
+}
+
+#[test]
+fn snapshot_report_uses_the_same_result_for_both_execution_paths() {
+    let mut config = empty_config(PathBuf::from("/tmp"));
+    config.overlay = Some(PathBuf::from("/overlay"));
+    let ctx = make_linux_context(config);
+    let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![script_entry(
+        "Setup test",
+        "scripts/test.sh",
+    )]));
+
+    assert!(
+        matches!(task.run_configured(&ctx).unwrap(), Some(TaskResult::Ok)),
+        "the configured path should report success"
+    );
+    assert!(
+        matches!(task.run(&ctx).unwrap(), TaskResult::Ok),
+        "the direct path should report success"
+    );
+}
+
+#[test]
 fn script_task_name_matches_entry() {
     let entry = ScriptEntry {
         name: "Setup database".to_string(),

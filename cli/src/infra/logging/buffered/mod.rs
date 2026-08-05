@@ -137,12 +137,13 @@ impl Output for BufferedLog {
         if let Some(run_log) = &self.inner.run_log {
             run_log.emit(kind.log_event(), &msg);
         }
-        if let Ok(mut guard) = self.entries.lock() {
-            guard.push(LogEntry {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(LogEntry {
                 kind,
                 msg: msg.into_owned(),
             });
-        }
     }
 
     fn run_log(&self) -> Option<&RunLog> {

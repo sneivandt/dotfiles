@@ -156,10 +156,6 @@ mod tests {
         ConfigStore::from_config(empty_config(PathBuf::from("/tmp")))
     }
 
-    fn test_store() -> ConfigStore {
-        ConfigStore::from_config(empty_config(PathBuf::from("/tmp")))
-    }
-
     #[test]
     fn all_install_tasks_have_the_expected_membership() {
         let tasks = all_install_tasks(test_params());
@@ -206,7 +202,7 @@ mod tests {
 
     #[test]
     fn all_uninstall_tasks_have_the_expected_membership() {
-        let store = test_store();
+        let store = test_params();
         let tasks = all_uninstall_tasks(&store);
         let actual = tasks
             .iter()

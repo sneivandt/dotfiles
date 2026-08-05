@@ -112,7 +112,7 @@ cli/src/
   `cli/src/app/validation/`.
 - Resource state should be discovered through `IntrinsicState` or a
   `ResourceStateProvider`, then applied through `process_resources()`,
-  `process_resources_with_provider()`, or `process_resources_remove()`.
+  `process_resources_with_cache()`, or `process_resources_remove()`.
 - Operation-style task bodies define an immutable `Operation::Plan`,
   return it through `OperationState::NeedsRun`, and consume that exact plan in
   `Operation::preview()` or `Operation::apply()`. Use `process_operation()` to

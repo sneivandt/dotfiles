@@ -72,6 +72,8 @@ description: >
   persistent logs remain complete. `MsgKind::Trace` goes one step further and
   never reaches the console, even under `--verbose`; use it for plumbing chatter
   such as parallelism and batching counts.
+- Buffered logging recovers poisoned entry locks rather than dropping later
+  diagnostics. A task panic must not make the remaining failure context vanish.
 - Header and summary lines join segments with ` · `. The shell wrappers
   deliberately mirror this style for bootstrap output so pre-binary and
   post-binary output look like one program; see `shell-patterns`.

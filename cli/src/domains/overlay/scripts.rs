@@ -15,7 +15,7 @@ use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, TaskVisibility,
-    process_operation,
+    configured_task_result, process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::ConfigHandle;
@@ -34,17 +34,32 @@ pub struct ReportOverlayScriptSnapshot {
     config: ConfigHandle<Vec<ScriptEntry>>,
 }
 
+const REPORT_NAME: &str = "Report overlay scripts";
+
 impl ReportOverlayScriptSnapshot {
     /// Create the task with a handle to the overlay script configuration.
     #[must_use]
     pub const fn new(config: ConfigHandle<Vec<ScriptEntry>>) -> Self {
         Self { config }
     }
+
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Option<TaskResult> {
+        let count = self.config.read().len();
+        if count == 0 {
+            return None;
+        }
+        if let Some(name) = announce {
+            ctx.log().task_stage(name);
+        }
+        ctx.log()
+            .info(format!("discovered {count} overlay script(s)"));
+        Some(TaskResult::Ok)
+    }
 }
 
 impl Task for ReportOverlayScriptSnapshot {
     fn meta(&self) -> TaskMeta<'_> {
-        TaskMeta::new("Report overlay scripts").with_visibility(TaskVisibility::Internal)
+        TaskMeta::new(REPORT_NAME).with_visibility(TaskVisibility::Internal)
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -52,31 +67,11 @@ impl Task for ReportOverlayScriptSnapshot {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        let scripts = self.config.read();
-        if scripts.is_empty() {
-            return Ok(None);
-        }
-        let count = scripts.len();
-        ctx.log().task_stage(self.name());
-        ctx.log()
-            .info(format!("discovered {count} overlay script(s)"));
-        Ok(Some(TaskResult::Ok))
+        Ok(self.process(ctx, Some(REPORT_NAME)))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if ctx.overlay().is_none() {
-            return Ok(TaskResult::NotApplicable(
-                "no overlay configured".to_string(),
-            ));
-        }
-        let scripts = self.config.read();
-        if scripts.is_empty() {
-            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
-        }
-        let count = scripts.len();
-        ctx.log()
-            .info(format!("discovered {count} overlay script(s)"));
-        Ok(TaskResult::Ok)
+        Ok(configured_task_result(self.process(ctx, None)))
     }
 }
 

@@ -32,20 +32,6 @@ pub trait IntrinsicState: Resource {
     /// keeps [`ResourceError::category`](super::ResourceError::category)
     /// available to the orchestration layer without downcasting.
     fn current_state(&self) -> ResourceResult<ResourceState>;
-
-    /// Determine if the resource needs to be changed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the current state cannot be determined (propagates errors from
-    /// `current_state()`).
-    #[allow(dead_code, reason = "part of trait contract; used by test modules")]
-    fn needs_change(&self) -> ResourceResult<bool> {
-        Ok(matches!(
-            self.current_state()?,
-            ResourceState::Missing | ResourceState::Incorrect { .. }
-        ))
-    }
 }
 
 /// State provider for resources that implement [`IntrinsicState`].

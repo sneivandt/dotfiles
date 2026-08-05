@@ -78,26 +78,8 @@ pub(super) fn format_standard_totals(
     let mut parts = Vec::new();
     if counts.failed > 0 {
         parts.push(style.paint(TextStyle::Red, "Failed"));
-        if counts.actions.applied > 0 {
-            parts.push(style.paint(
-                TextStyle::Green,
-                &format!(
-                    "{} {} in {} {}",
-                    counts.actions.applied,
-                    pluralize(counts.actions.applied, "change", "changes"),
-                    counts.changed,
-                    pluralize(counts.changed, "task", "tasks")
-                ),
-            ));
-        } else if counts.changed > 0 {
-            parts.push(style.paint(
-                TextStyle::Green,
-                &format!(
-                    "Changed {} {}",
-                    counts.changed,
-                    pluralize(counts.changed, "task", "tasks")
-                ),
-            ));
+        if let Some(changes) = format_applied_or_changed(counts, style) {
+            parts.push(changes);
         }
     } else if dry_run && counts.actions.planned > 0 {
         parts.push(style.paint(TextStyle::Magenta, "Dry run"));
@@ -111,26 +93,8 @@ pub(super) fn format_standard_totals(
                 pluralize(counts.dry_run, "task", "tasks")
             ),
         ));
-    } else if counts.actions.applied > 0 {
-        parts.push(style.paint(
-            TextStyle::Green,
-            &format!(
-                "{} {} in {} {}",
-                counts.actions.applied,
-                pluralize(counts.actions.applied, "change", "changes"),
-                counts.changed,
-                pluralize(counts.changed, "task", "tasks")
-            ),
-        ));
-    } else if counts.changed > 0 {
-        parts.push(style.paint(
-            TextStyle::Green,
-            &format!(
-                "Changed {} {}",
-                counts.changed,
-                pluralize(counts.changed, "task", "tasks")
-            ),
-        ));
+    } else if let Some(changes) = format_applied_or_changed(counts, style) {
+        parts.push(changes);
     } else if counts.dry_run > 0 {
         parts.push(style.paint(TextStyle::Magenta, "Dry run"));
         parts.push(style.paint(
@@ -154,6 +118,31 @@ pub(super) fn format_standard_totals(
     );
     push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     parts
+}
+
+fn format_applied_or_changed(counts: SummaryCounts, style: StyleChoice) -> Option<String> {
+    if counts.actions.applied > 0 {
+        return Some(style.paint(
+            TextStyle::Green,
+            &format!(
+                "{} {} in {} {}",
+                counts.actions.applied,
+                pluralize(counts.actions.applied, "change", "changes"),
+                counts.changed,
+                pluralize(counts.changed, "task", "tasks")
+            ),
+        ));
+    }
+    (counts.changed > 0).then(|| {
+        style.paint(
+            TextStyle::Green,
+            &format!(
+                "Changed {} {}",
+                counts.changed,
+                pluralize(counts.changed, "task", "tasks")
+            ),
+        )
+    })
 }
 
 /// Append a styled `"<count> <label>"` fragment, skipping zero counts.

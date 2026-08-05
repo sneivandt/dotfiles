@@ -72,7 +72,7 @@ where
 ///
 /// Returns an error if per-resource state checking or applying changes fails,
 /// depending on the `bail_on_error` setting in `opts`.
-pub fn process_resources_with_provider<R, P>(
+pub(super) fn process_resources_with_provider<R, P>(
     ctx: &Context,
     resources: impl IntoIterator<Item = R>,
     provider: &P,

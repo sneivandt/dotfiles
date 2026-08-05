@@ -1,8 +1,7 @@
 # Dotfiles Agent Instructions
 
-Start with the skill index: [`./.agents/README.md`](./.agents/README.md). It is
-the single source for skill routing and conditional companions. Load only the
-relevant skills plus their listed companions; do not recurse.
+Load the narrowest relevant skill from `.agents/skills/` and only the
+conditional companions needed for the subsystem being changed; do not recurse.
 
 ## Repository invariants
 

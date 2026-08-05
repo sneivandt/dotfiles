@@ -21,8 +21,10 @@ mod utils;
 
 pub use buffered::BufferedLog;
 pub use logger::Logger;
-pub use runlog::{LogEvent, log_task_context, log_thread_name, set_log_thread_name};
-pub use types::{ActionCounts, Log, MsgKind, Output, OutputExt, TaskStatus, TaskVisibility};
+pub use runlog::{log_task_context, log_thread_name, set_log_thread_name};
+pub use types::{
+    ActionCounts, Log, LogEvent, MsgKind, Output, OutputExt, TaskStatus, TaskVisibility,
+};
 // Only the in-crate unit tests reach `TaskRecorder` from outside the `logging`
 // module; production code uses the `super::types` path directly.
 pub(crate) use runlog::parse_run_log_file_name;

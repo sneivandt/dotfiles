@@ -8,6 +8,7 @@ use crate::infra::logging::style::stdout_style;
 use crate::infra::logging::types::TaskEntry;
 
 mod render;
+mod status;
 mod totals;
 
 use crate::infra::logging::utils::format_elapsed;

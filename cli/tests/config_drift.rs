@@ -20,7 +20,7 @@
 //!    the desktop manifest is always present when linux-desktop is active.
 //! 3. Every path listed in `manifest.toml` actually exists in `symlinks/`.
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, de::Error as _};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -30,31 +30,55 @@ use std::path::{Path, PathBuf};
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SymlinkSection {
     symlinks: Vec<SymlinkEntry>,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
 enum SymlinkEntry {
     Simple(String),
-    WithTarget {
-        source: String,
-        #[allow(dead_code, reason = "used conditionally via cfg")]
-        target: String,
-    },
+    WithTarget(SymlinkWithTarget),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SymlinkWithTarget {
+    source: String,
+    #[allow(dead_code, reason = "used conditionally via cfg")]
+    target: String,
+}
+
+impl<'de> Deserialize<'de> for SymlinkEntry {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match toml::Value::deserialize(deserializer)? {
+            toml::Value::String(value) => Ok(Self::Simple(value)),
+            value @ toml::Value::Table(_) => value
+                .try_into::<SymlinkWithTarget>()
+                .map(Self::WithTarget)
+                .map_err(D::Error::custom),
+            value @ (toml::Value::Integer(_)
+            | toml::Value::Float(_)
+            | toml::Value::Boolean(_)
+            | toml::Value::Datetime(_)
+            | toml::Value::Array(_)) => Err(D::Error::custom(format!(
+                "expected symlink string or table, found {}",
+                value.type_str()
+            ))),
+        }
+    }
 }
 
 impl SymlinkEntry {
     fn source(&self) -> &str {
         match self {
             Self::Simple(s) => s,
-            Self::WithTarget { source, .. } => source,
+            Self::WithTarget(entry) => &entry.source,
         }
     }
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ManifestSection {
     paths: Vec<String>,
 }
@@ -88,6 +112,36 @@ fn load_manifest_sections(path: &Path) -> HashMap<String, Vec<String>> {
     let raw: HashMap<String, ManifestSection> =
         toml::from_str(&content).expect("parse manifest.toml");
     raw.into_iter().map(|(k, v)| (k, v.paths)).collect()
+}
+
+#[test]
+fn mirrored_symlink_parser_rejects_unknown_table_fields() {
+    let typo = r#"
+        [base]
+        symlinks = [{ soruce = "git/.gitconfig", target = "~/.gitconfig" }]
+    "#;
+
+    let result = toml::from_str::<HashMap<String, SymlinkSection>>(typo);
+
+    assert!(
+        result.is_err(),
+        "misspelled symlink keys must not be ignored"
+    );
+}
+
+#[test]
+fn mirrored_section_parsers_reject_unknown_fields() {
+    let typo = r#"
+        [desktop]
+        path = ["config/example"]
+    "#;
+
+    let result = toml::from_str::<HashMap<String, ManifestSection>>(typo);
+
+    assert!(
+        result.is_err(),
+        "misspelled section keys must not be ignored"
+    );
 }
 
 /// Returns `true` when `source` is covered by at least one manifest path.

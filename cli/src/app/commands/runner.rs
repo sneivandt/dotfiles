@@ -13,7 +13,7 @@ use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, LogEvent, Logger};
 use crate::infra::platform::Platform;
 
-use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
+use super::execution::{ExecutionPlan, RunCoordinator};
 use crate::infra::logging::Output as _;
 use crate::infra::logging::OutputExt as _;
 /// Shared orchestration helper that combines setup and task execution.
@@ -108,7 +108,7 @@ impl CommandRunner {
     ///
     /// Returns an error if one or more tasks fail.
     pub fn run<'a>(&self, tasks: impl IntoIterator<Item = &'a dyn Task>) -> Result<()> {
-        run_tasks_to_completion(tasks, &self.ctx, &self.log)
+        RunCoordinator::new(&self.ctx, &self.log).execute(ExecutionPlan::single(tasks))
     }
 
     /// Execute tasks and inject additional tasks after a dependency boundary.
@@ -122,7 +122,8 @@ impl CommandRunner {
         boundary: TaskId,
         provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
     ) -> Result<()> {
-        run_tasks_to_completion_with_late_tasks(tasks, &self.ctx, &self.log, boundary, provider)
+        RunCoordinator::new(&self.ctx, &self.log)
+            .execute(ExecutionPlan::with_late_tasks(tasks, boundary, provider))
     }
 }
 

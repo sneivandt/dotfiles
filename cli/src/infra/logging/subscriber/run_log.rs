@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use super::event::MessageExtractor;
-use crate::infra::logging::runlog::{LogEvent, RunLog};
+use crate::infra::logging::runlog::RunLog;
+use crate::infra::logging::types::LogEvent;
 
 /// Target prefix used by `Logger` for console-bound events.
 ///

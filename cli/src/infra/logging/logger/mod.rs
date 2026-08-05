@@ -23,10 +23,10 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use super::runlog::{LogEvent, RunLog};
+use super::runlog::RunLog;
 use super::style::{TextStyle, stdout_style};
 use super::types::{
-    ActionCounts, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
+    ActionCounts, LogEvent, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
     emit_console_event,
 };
 #[cfg(test)]
@@ -105,7 +105,11 @@ impl Logger {
     #[must_use]
     pub fn new(command: &str) -> Self {
         let start = Instant::now();
-        Self::build(command, RunLog::create(command, start).map(Arc::new), start)
+        let run_log = RunLog::create(command, start).map(Arc::new);
+        if run_log.is_none() {
+            super::runlog::warn_degraded("the log directory or file could not be created");
+        }
+        Self::build(command, run_log, start)
     }
 
     /// Create a new logger using an explicit base directory.
@@ -121,6 +125,9 @@ impl Logger {
         let run_log = dotfiles_log_subdir(base_dir)
             .and_then(|dir| RunLog::new(command, &dir, start))
             .map(Arc::new);
+        if run_log.is_none() {
+            super::runlog::warn_degraded("the log directory or file could not be created");
+        }
         Self::build(command, run_log, start)
     }
 
@@ -225,6 +232,12 @@ impl Logger {
     /// Return a handle to the run log, if available.
     pub(in crate::infra::logging) fn run_log_handle(&self) -> Option<Arc<RunLog>> {
         self.run_log.clone()
+    }
+
+    /// Whether persistent run logging is available and remains writable.
+    #[must_use]
+    pub fn run_log_is_healthy(&self) -> bool {
+        self.run_log.as_deref().is_some_and(RunLog::is_healthy)
     }
 
     /// Return whether verbose output mode is enabled.

@@ -142,6 +142,18 @@ pub fn matches(section_categories: &[Category], active_categories: &[Category]) 
 )]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    fn category(code: u8) -> Category {
+        match code {
+            0 => Category::Base,
+            1 => Category::Linux,
+            2 => Category::Windows,
+            3 => Category::Arch,
+            4 => Category::Desktop,
+            _ => Category::Other("custom".to_string()),
+        }
+    }
 
     #[test]
     fn requires_all_categories() {
@@ -193,5 +205,29 @@ mod tests {
 
         // all() on empty iterator returns true (vacuous truth)
         assert!(matches(&section, &active));
+    }
+
+    proptest! {
+        #[test]
+        fn matching_is_duplicate_insensitive_and_monotonic(
+            section_codes in proptest::collection::vec(0_u8..6, 0..12),
+            active_codes in proptest::collection::vec(0_u8..6, 0..12),
+            additions in proptest::collection::vec(0_u8..6, 0..12),
+        ) {
+            let section = section_codes.into_iter().map(category).collect::<Vec<_>>();
+            let active = active_codes.into_iter().map(category).collect::<Vec<_>>();
+            let mut duplicated = section.clone();
+            duplicated.extend(section.iter().cloned());
+            prop_assert_eq!(
+                matches(&section, &active),
+                matches(&duplicated, &active),
+            );
+
+            if matches(&section, &active) {
+                let mut expanded = active;
+                expanded.extend(additions.into_iter().map(category));
+                prop_assert!(matches(&section, &expanded));
+            }
+        }
     }
 }

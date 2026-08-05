@@ -4,6 +4,20 @@ use super::*;
 use crate::infra::config::category_matcher::Category;
 use crate::infra::platform::{Os, Platform};
 
+#[test]
+fn section_inventory_reports_every_user_configured_slice() {
+    let config = crate::test_helpers::empty_config(PathBuf::from("/tmp"));
+    let labels: Vec<&str> = config
+        .section_counts()
+        .iter()
+        .map(|section| section.plural)
+        .collect();
+
+    assert!(labels.contains(&"git settings"));
+    assert!(labels.contains(&"copilot settings"));
+    assert_eq!(labels.len(), 10);
+}
+
 /// Create a temporary directory tree with the minimal conf/ files required
 /// by `Config::load` and return the `TempDir` (keep alive) + profile.
 fn setup_load(

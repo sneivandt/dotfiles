@@ -9,9 +9,10 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
+use super::types::{ExecutionEvent, LogEvent};
 use super::utils::{format_utc_compact, format_utc_datetime_us, strip_ansi};
 
 /// Number of run logs retained in the log directory.
@@ -22,6 +23,18 @@ const MAX_RETAINED_RUNS: usize = 50;
 
 /// File extension used for run logs.
 const LOG_EXTENSION: &str = "log";
+
+static DEGRADATION_WARNING_EMITTED: AtomicBool = AtomicBool::new(false);
+
+#[allow(
+    clippy::print_stderr,
+    reason = "the console is the only remaining sink when the run log degrades"
+)]
+pub(super) fn warn_degraded(reason: &str) {
+    if !DEGRADATION_WARNING_EMITTED.swap(true, Ordering::Relaxed) {
+        eprintln!("warning: persistent run logging is unavailable: {reason}");
+    }
+}
 
 /// Components of a run-log file name.
 ///
@@ -116,83 +129,6 @@ pub fn log_thread_name() -> String {
     "?".to_string()
 }
 
-/// Event kinds for the run log.
-///
-/// Each variant maps to a stable `snake_case` event name in the log output.
-#[derive(Debug, Clone, Copy)]
-pub enum LogEvent {
-    /// Informational message from a task.
-    Info,
-    /// Debug-level message.
-    Debug,
-    /// Warning message.
-    Warn,
-    /// Error message.
-    Error,
-    /// Stage header (major section).
-    Stage,
-    /// Dry-run preview.
-    DryRun,
-    /// A task thread has been spawned and is waiting for dependencies.
-    TaskWait,
-    /// A task's dependencies are satisfied; execution begins.
-    TaskStart,
-    /// A task finished executing.
-    TaskDone,
-    /// A task was skipped (not applicable).
-    TaskSkip,
-    /// A task failed (e.g. returned an error or panicked).
-    TaskFail,
-    /// How long a task spent executing.
-    TaskTiming,
-    /// Resource state check.
-    ResourceCheck,
-    /// Resource apply (mutation).
-    ResourceApply,
-    /// Resource apply result.
-    ResourceResult,
-    /// Resource removal.
-    ResourceRemove,
-}
-
-impl LogEvent {
-    /// Stable event name for the log line.
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Info => "info",
-            Self::Debug => "debug",
-            Self::Warn => "warn",
-            Self::Error => "error",
-            Self::Stage => "stage",
-            Self::DryRun => "dry_run",
-            Self::TaskWait => "task_wait",
-            Self::TaskStart => "task_start",
-            Self::TaskDone => "task_done",
-            Self::TaskSkip => "task_skip",
-            Self::TaskFail => "task_fail",
-            Self::TaskTiming => "task_timing",
-            Self::ResourceCheck => "resource_check",
-            Self::ResourceApply => "resource_apply",
-            Self::ResourceResult => "resource_result",
-            Self::ResourceRemove => "resource_remove",
-        }
-    }
-
-    /// Map a raw [`tracing`] level onto a run-log event kind.
-    ///
-    /// Used by the tracing bridge so that `tracing::debug!` / `warn!` calls
-    /// made directly by `infra` and `domains` code land in the run log with a
-    /// sensible event name.
-    pub(super) const fn from_level(level: tracing::Level) -> Self {
-        match level {
-            tracing::Level::ERROR => Self::Error,
-            tracing::Level::WARN => Self::Warn,
-            tracing::Level::INFO => Self::Info,
-            tracing::Level::DEBUG | tracing::Level::TRACE => Self::Debug,
-        }
-    }
-}
-
 /// The run log: every event, in the order it actually happened.
 ///
 /// Written to one file per run in the dotfiles log directory
@@ -213,6 +149,7 @@ pub struct RunLog {
     path: PathBuf,
     start: Instant,
     sequence: AtomicU64,
+    healthy: AtomicBool,
 }
 
 impl RunLog {
@@ -260,6 +197,7 @@ impl RunLog {
             path,
             start,
             sequence: AtomicU64::new(0),
+            healthy: AtomicBool::new(true),
         })
     }
 
@@ -272,21 +210,33 @@ impl RunLog {
     /// from the current task context when one is set, otherwise from the OS
     /// thread name when available (e.g. `"main"`). Blank messages are omitted.
     pub fn emit(&self, event: LogEvent, message: &str) {
-        if let Some(formatted_message) = format_log_message(message) {
-            self.write_event(event, &log_thread_name(), &formatted_message);
-        }
+        self.emit_event(&ExecutionEvent::message(event, message.into()));
     }
 
     /// Emit an event with an explicit context name.
     fn emit_with_context(&self, event: LogEvent, context: &str, message: &str) {
-        let Some(formatted_message) = format_log_message(message) else {
+        self.emit_event(&ExecutionEvent::with_context(
+            event,
+            context.into(),
+            message.into(),
+        ));
+    }
+
+    /// Deliver one typed execution event to the persistent sink.
+    pub(in crate::infra::logging) fn emit_event(&self, event: &ExecutionEvent<'_>) {
+        let Some(formatted_message) = format_log_message(&event.message) else {
             return;
         };
-        self.write_event(event, context, &formatted_message);
+        let context = event
+            .context
+            .as_deref()
+            .map_or_else(log_thread_name, str::to_string);
+        self.write_event(event.kind, &context, &formatted_message);
     }
 
     fn write_event(&self, event: LogEvent, context: &str, formatted_message: &str) {
         let Ok(mut f) = self.file.lock() else {
+            self.mark_degraded("the log file lock was poisoned");
             return;
         };
         let seq = self
@@ -300,12 +250,25 @@ impl RunLog {
         let line = format!(
             "{seq:06} +{elapsed_us:>12} {wall} [{context}] [{event_name}] {formatted_message}\n"
         );
-        drop(f.write_all(line.as_bytes()));
+        if let Err(error) = f.write_all(line.as_bytes()) {
+            self.mark_degraded(&format!("write failed: {error}"));
+        }
     }
 
     /// Emit an event with an explicit task name context.
     pub fn emit_task(&self, event: LogEvent, task: &str, message: &str) {
         self.emit_with_context(event, task, message);
+    }
+
+    /// Whether the persistent sink has remained writable.
+    #[must_use]
+    pub fn is_healthy(&self) -> bool {
+        self.healthy.load(Ordering::Relaxed)
+    }
+
+    fn mark_degraded(&self, reason: &str) {
+        self.healthy.store(false, Ordering::Relaxed);
+        warn_degraded(reason);
     }
 
     /// Return the path of the run log file.
@@ -397,6 +360,7 @@ fn format_log_message(message: &str) -> Option<String> {
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::indexing_slicing,
+    clippy::panic,
     reason = "test code uses panicking helpers"
 )]
 mod tests {
@@ -610,6 +574,36 @@ mod tests {
             contents.contains("deps satisfied"),
             "run-log task event should include the message"
         );
+    }
+
+    #[test]
+    fn typed_event_preserves_explicit_context() {
+        let (run_log, _tmp) = isolated_run_log();
+        run_log.emit_event(&ExecutionEvent::with_context(
+            LogEvent::TaskDone,
+            "typed-task".into(),
+            "complete".into(),
+        ));
+        let contents = fs::read_to_string(run_log.path()).unwrap();
+        assert!(contents.contains("[typed-task] [task_done] complete"));
+    }
+
+    #[test]
+    fn poisoned_file_lock_marks_run_log_unhealthy() {
+        let (run_log, _tmp) = isolated_run_log();
+        let run_log = std::sync::Arc::new(run_log);
+        let poisoner = std::sync::Arc::clone(&run_log);
+        drop(
+            std::thread::spawn(move || {
+                let _guard = poisoner.file.lock().unwrap();
+                panic!("poison run-log lock");
+            })
+            .join(),
+        );
+
+        run_log.emit(LogEvent::Info, "after poison");
+
+        assert!(!run_log.is_healthy());
     }
 
     #[test]

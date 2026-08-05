@@ -1,8 +1,7 @@
 //! Core logging types: task entries, status, and the [`Log`] trait.
 use std::borrow::Cow;
 
-use super::runlog::{LogEvent, RunLog};
-use super::style::TextStyle;
+use super::runlog::RunLog;
 
 /// Structured action totals contributed by a task.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -88,52 +87,7 @@ pub enum TaskStatus {
     Failed,
 }
 
-impl TaskStatus {
-    /// Compact glyph used for console status rendering.
-    #[must_use]
-    pub const fn symbol(self) -> char {
-        match self {
-            Self::Changed | Self::Passed => '✓',
-            Self::DryRun => '~',
-            Self::Skipped => '⊘',
-            Self::Failed => '✗',
-            Self::Ok => '‧',
-            Self::NotApplicable => '⁃',
-        }
-    }
-
-    /// ASCII token used when symbol rendering is disabled.
-    #[must_use]
-    pub const fn word(self) -> &'static str {
-        match self {
-            Self::Changed => "CHANGE",
-            Self::DryRun => "DRYRUN",
-            Self::Passed => "PASSED",
-            Self::Skipped => "IGNORE",
-            Self::Failed => "FAILED",
-            Self::Ok => "OK",
-            Self::NotApplicable => "N/A",
-        }
-    }
-
-    /// Text style used for compact status rendering.
-    #[must_use]
-    pub(in crate::infra::logging) const fn text_style(self) -> TextStyle {
-        match self {
-            Self::Changed | Self::Passed => TextStyle::Green,
-            Self::Ok | Self::NotApplicable => TextStyle::Dim,
-            Self::Skipped => TextStyle::Yellow,
-            Self::DryRun => TextStyle::Magenta,
-            Self::Failed => TextStyle::Red,
-        }
-    }
-}
-
 /// The kind of a user-facing message.
-///
-/// This is the single axis along which display output varies: it selects the
-/// run-log event kind, the console tracing target, and how the message is
-/// replayed after a parallel task completes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MsgKind {
     /// A stage header (major section).
@@ -169,7 +123,7 @@ pub enum MsgKind {
 }
 
 impl MsgKind {
-    /// The run-log event kind recorded for this message.
+    /// Persistent event kind recorded for this message.
     #[must_use]
     pub(in crate::infra::logging) const fn log_event(self) -> LogEvent {
         match self {
@@ -179,6 +133,115 @@ impl MsgKind {
             Self::Warn => LogEvent::Warn,
             Self::Error => LogEvent::Error,
             Self::DryRun => LogEvent::DryRun,
+        }
+    }
+}
+
+/// Semantic kinds recorded in the chronological execution log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogEvent {
+    /// Informational message.
+    Info,
+    /// Debug-level message.
+    Debug,
+    /// Warning message.
+    Warn,
+    /// Error message.
+    Error,
+    /// Stage header.
+    Stage,
+    /// Dry-run preview.
+    DryRun,
+    /// A task thread is waiting for dependencies.
+    TaskWait,
+    /// A task's execution begins.
+    TaskStart,
+    /// A task finished executing.
+    TaskDone,
+    /// A task was skipped.
+    TaskSkip,
+    /// A task failed.
+    TaskFail,
+    /// How long a task spent executing.
+    TaskTiming,
+    /// Resource state check.
+    ResourceCheck,
+    /// Resource apply mutation.
+    ResourceApply,
+    /// Resource apply result.
+    ResourceResult,
+    /// Resource removal.
+    ResourceRemove,
+}
+
+impl LogEvent {
+    /// Stable event name written to the persistent run log.
+    #[must_use]
+    pub(in crate::infra::logging) const fn name(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Warn => "warn",
+            Self::Error => "error",
+            Self::Stage => "stage",
+            Self::DryRun => "dry_run",
+            Self::TaskWait => "task_wait",
+            Self::TaskStart => "task_start",
+            Self::TaskDone => "task_done",
+            Self::TaskSkip => "task_skip",
+            Self::TaskFail => "task_fail",
+            Self::TaskTiming => "task_timing",
+            Self::ResourceCheck => "resource_check",
+            Self::ResourceApply => "resource_apply",
+            Self::ResourceResult => "resource_result",
+            Self::ResourceRemove => "resource_remove",
+        }
+    }
+
+    /// Map a raw [`tracing`] level onto an execution event kind.
+    pub(in crate::infra::logging) const fn from_level(level: tracing::Level) -> Self {
+        match level {
+            tracing::Level::ERROR => Self::Error,
+            tracing::Level::WARN => Self::Warn,
+            tracing::Level::INFO => Self::Info,
+            tracing::Level::DEBUG | tracing::Level::TRACE => Self::Debug,
+        }
+    }
+}
+
+/// A typed event delivered to the persistent execution-log sink.
+#[derive(Debug)]
+pub(in crate::infra::logging) struct ExecutionEvent<'a> {
+    /// Semantic event kind.
+    pub(in crate::infra::logging) kind: LogEvent,
+    /// Optional explicit task or thread context.
+    pub(in crate::infra::logging) context: Option<Cow<'a, str>>,
+    /// Human-readable event message.
+    pub(in crate::infra::logging) message: Cow<'a, str>,
+}
+
+impl<'a> ExecutionEvent<'a> {
+    /// Build an event using the current task or thread context.
+    #[must_use]
+    pub const fn message(kind: LogEvent, message: Cow<'a, str>) -> Self {
+        Self {
+            kind,
+            context: None,
+            message,
+        }
+    }
+
+    /// Build an event attributed to an explicit context.
+    #[must_use]
+    pub const fn with_context(
+        kind: LogEvent,
+        context: Cow<'a, str>,
+        message: Cow<'a, str>,
+    ) -> Self {
+        Self {
+            kind,
+            context: Some(context),
+            message,
         }
     }
 }
@@ -428,26 +491,6 @@ mod tests {
         assert_ne!(TaskStatus::Changed, TaskStatus::Ok);
         assert_ne!(TaskStatus::Skipped, TaskStatus::DryRun);
         assert_ne!(TaskStatus::NotApplicable, TaskStatus::Ok);
-    }
-
-    #[test]
-    fn task_status_symbols_are_single_characters() {
-        for (status, expected) in [
-            (TaskStatus::Changed, '✓'),
-            (TaskStatus::DryRun, '~'),
-            (TaskStatus::Passed, '✓'),
-            (TaskStatus::Skipped, '⊘'),
-            (TaskStatus::Failed, '✗'),
-            (TaskStatus::Ok, '‧'),
-            (TaskStatus::NotApplicable, '⁃'),
-        ] {
-            assert_eq!(status.symbol(), expected);
-            assert_eq!(
-                status.symbol().to_string().chars().count(),
-                1,
-                "{status:?} symbol should contain exactly one character"
-            );
-        }
     }
 
     #[test]

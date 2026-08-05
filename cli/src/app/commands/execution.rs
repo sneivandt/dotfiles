@@ -6,214 +6,128 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 
 use crate::engine::{Context, Task, TaskId};
-use crate::infra::logging::{ActionCounts, Logger};
+use crate::infra::logging::{Logger, OutputExt as _};
 
 use super::error::TaskFailures;
-use crate::infra::logging::OutputExt as _;
+mod elevation;
 
-/// Outcome of arranging privilege for the tasks that declared they need it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ElevationPlan {
-    /// Privilege is available to this process; run the tasks normally.
-    Ready,
-    /// The tasks already ran elsewhere; drop them from this run's graph.
-    #[cfg_attr(
-        not(windows),
-        allow(dead_code, reason = "only the Windows broker delegates to a child")
-    )]
-    Delegated,
-    /// Privilege could not be arranged; skip the tasks and continue.
-    Unavailable { reason: &'static str },
+use elevation::ElevationBroker;
+#[cfg(test)]
+use elevation::{blocked_dependents, build_elevated_child_args};
+
+type LateTaskProvider<'a> = Box<dyn FnOnce() -> Vec<Box<dyn Task>> + 'a>;
+
+/// A complete application execution plan.
+///
+/// The plan separates task-set discovery from execution policy. A simple plan
+/// runs one graph; a phased plan runs the dependency closure ending at a
+/// discovery boundary, obtains late tasks from refreshed state, then schedules
+/// them with the remaining static tasks.
+pub(crate) struct ExecutionPlan<'a> {
+    tasks: Vec<&'a dyn Task>,
+    late: Option<LateTaskPlan<'a>>,
 }
 
-/// Arrange privilege for `names`, or report that it is unavailable.
-///
-/// Unix keeps the existing behaviour: prime the `sudo` credential cache once so
-/// parallel tasks do not interleave password prompts, and let sequential runs
-/// prompt inline as they always have.
-#[cfg(unix)]
-fn prepare_elevation(
-    ctx: &Context,
-    log: &Arc<Logger>,
-    names: &[&str],
-    _selectors: &[&str],
-    task_count: usize,
-) -> ElevationPlan {
-    // A single task, or a sequential run, can prompt inline without garbling
-    // output, so there is nothing to arrange up front.
-    if !ctx.parallel() || task_count <= 1 {
-        return ElevationPlan::Ready;
-    }
+struct LateTaskPlan<'a> {
+    boundary: TaskId,
+    provider: LateTaskProvider<'a>,
+}
 
-    if !crate::infra::elevation::sudo_available(ctx.executor()) {
-        log.separate_from_startup();
-        log.warn("sudo not found on PATH");
-        return ElevationPlan::Unavailable {
-            reason: "sudo credentials unavailable",
-        };
-    }
-    log.debug("priming sudo credential cache");
-
-    if crate::infra::elevation::sudo_credentials_cached() {
-        log.debug("sudo credentials already cached");
-        return ElevationPlan::Ready;
-    }
-
-    log.separate_from_startup();
-    log.always(format!("sudo is required for: {}", names.join(", ")));
-    drop(std::io::Write::flush(&mut std::io::stdout()));
-
-    match crate::infra::elevation::prime_sudo_credentials() {
-        Ok(true) => ElevationPlan::Ready,
-        Ok(false) => {
-            log.separate_from_startup();
-            log.error("sudo credential priming failed");
-            ElevationPlan::Unavailable {
-                reason: "sudo credentials unavailable",
-            }
+impl<'a> ExecutionPlan<'a> {
+    /// Build a single-graph plan.
+    pub(crate) fn single(tasks: impl IntoIterator<Item = &'a dyn Task>) -> Self {
+        Self {
+            tasks: tasks.into_iter().collect(),
+            late: None,
         }
-        Err(error) => {
-            log.separate_from_startup();
-            log.error(format!("failed to run sudo: {error:#}"));
-            ElevationPlan::Unavailable {
-                reason: "sudo credentials unavailable",
-            }
+    }
+
+    /// Build a plan that discovers additional tasks after `boundary`.
+    pub(crate) fn with_late_tasks(
+        tasks: impl IntoIterator<Item = &'a dyn Task>,
+        boundary: TaskId,
+        provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
+    ) -> Self {
+        Self {
+            tasks: tasks.into_iter().collect(),
+            late: Some(LateTaskPlan {
+                boundary,
+                provider: Box::new(provider),
+            }),
         }
     }
 }
 
-/// Delegate the elevating tasks to a single short-lived elevated child run.
+/// Coordinates application execution phases around the generic task engine.
 ///
-/// Windows has no per-command `sudo`, so the alternative to one scoped child is
-/// elevating the whole run. The child is restricted to `selectors`, so only the
-/// tasks that declared `needs_elevation` ever hold an administrator token; this
-/// process keeps running unelevated in the user's own terminal.
-#[cfg(windows)]
-fn prepare_elevation(
-    ctx: &Context,
-    log: &Arc<Logger>,
-    names: &[&str],
-    selectors: &[&str],
-    _task_count: usize,
-) -> ElevationPlan {
-    use crate::infra::elevation::{ElevationOutcome, run_elevated_child};
-
-    if selectors.is_empty() {
-        return ElevationPlan::Ready;
-    }
-
-    // A UAC consent dialog is drawn on the interactive secure desktop. In CI or
-    // any other headless session there is nobody to answer it, so requesting it
-    // would at best fail and at worst stall the run until the command timeout.
-    // Degrade to the same outcome as a declined prompt instead.
-    if ctx.system().is_ci() || !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
-        log.warn(format!(
-            "administrator access is required for: {}",
-            names.join(", ")
-        ));
-        return ElevationPlan::Unavailable {
-            reason: "elevation unavailable in a non-interactive session",
-        };
-    }
-
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let child_args = build_elevated_child_args(&args, selectors);
-
-    log.separate_from_startup();
-    log.always(format!(
-        "administrator access is required for: {}",
-        names.join(", ")
-    ));
-    log.always("A UAC prompt will open; the rest of this run stays unelevated.");
-    drop(std::io::Write::flush(&mut std::io::stdout()));
-
-    match run_elevated_child(ctx.executor(), &**log, &child_args) {
-        Ok(ElevationOutcome::Completed) => {
-            log.always("Elevated step finished.");
-            ElevationPlan::Delegated
-        }
-        Ok(ElevationOutcome::Declined) => {
-            log.separate_from_startup();
-            log.warn("elevation declined; continuing without it");
-            ElevationPlan::Unavailable {
-                reason: "elevation declined",
-            }
-        }
-        Ok(ElevationOutcome::Failed(code)) => {
-            log.separate_from_startup();
-            log.error(format!("elevated step failed (exit code {code})"));
-            ElevationPlan::Unavailable {
-                reason: "elevated step failed",
-            }
-        }
-        Err(error) => {
-            log.separate_from_startup();
-            log.error(format!("failed to request elevation: {error:#}"));
-            ElevationPlan::Unavailable {
-                reason: "elevation unavailable",
-            }
-        }
-    }
+/// The engine owns graph validation and scheduling. This coordinator owns
+/// application policy that spans graphs: visible progress totals, configuration
+/// reload boundaries, late task discovery, elevation preparation, and final
+/// run status.
+#[derive(Debug)]
+pub(crate) struct RunCoordinator<'a> {
+    ctx: &'a Context,
+    log: &'a Arc<Logger>,
 }
 
-/// Neither `sudo` nor UAC applies; run everything in-process.
-#[cfg(not(any(unix, windows)))]
-const fn prepare_elevation(
-    _ctx: &Context,
-    _log: &Arc<Logger>,
-    _names: &[&str],
-    _selectors: &[&str],
-    _task_count: usize,
-) -> ElevationPlan {
-    ElevationPlan::Ready
-}
-
-/// Rewrite this run's arguments so the elevated child runs only `selectors`.
-///
-/// Existing `--only` / `--skip` filters are dropped because the child's scope is
-/// decided here, and `--no-parallel` is forced so its output stays readable in
-/// the separate console `Start-Process` opens. Every other flag — `--profile`,
-/// `--root`, `--overlay`, verbosity — is preserved verbatim so the child sees
-/// the same configuration as the parent.
-///
-/// Kept pure so the rewriting rules can be asserted on any platform.
-#[cfg_attr(
-    not(any(windows, test)),
-    allow(dead_code, reason = "used by the Windows elevation broker")
-)]
-fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> Vec<String> {
-    /// Filters whose values the child must not inherit.
-    const DROPPED: [&str; 2] = ["--only", "--skip"];
-
-    let mut out: Vec<String> = Vec::with_capacity(args.len().saturating_add(4));
-    let mut skip_next = false;
-
-    for arg in args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        if DROPPED.contains(&arg.as_str()) {
-            skip_next = true;
-            continue;
-        }
-        if DROPPED
-            .iter()
-            .any(|flag| arg.starts_with(&format!("{flag}=")))
-        {
-            continue;
-        }
-        if arg == "--no-parallel" || arg == "--elevated-child" {
-            continue;
-        }
-        out.push(arg.clone());
+impl<'a> RunCoordinator<'a> {
+    /// Create a coordinator for one command run.
+    pub(crate) const fn new(ctx: &'a Context, log: &'a Arc<Logger>) -> Self {
+        Self { ctx, log }
     }
 
-    out.push("--only".to_string());
-    out.push(selectors.join(","));
-    out.push("--no-parallel".to_string());
-    out.push("--elevated-child".to_string());
-    out
+    /// Execute an application plan to completion.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if graph validation fails or one or more tasks fail.
+    pub(crate) fn execute(&self, mut plan: ExecutionPlan<'_>) -> Result<()> {
+        self.log
+            .add_task_total(visible_count(plan.tasks.iter().copied()));
+
+        if let Some(late) = plan.late.take() {
+            self.execute_phased(plan.tasks, late)?;
+        } else {
+            run_task_graph(&mut plan.tasks, self.ctx, self.log)?;
+        }
+
+        finish_run(self.log)
+    }
+
+    fn execute_phased(&self, tasks: Vec<&dyn Task>, late: LateTaskPlan<'_>) -> Result<()> {
+        let boundary_closure = dependency_closure(&tasks, late.boundary);
+
+        if boundary_closure.is_empty() {
+            let late_tasks = (late.provider)();
+            self.log
+                .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
+            let mut all_tasks = tasks;
+            all_tasks.extend(late_tasks.iter().map(Box::as_ref));
+            run_task_graph(&mut all_tasks, self.ctx, self.log)?;
+        } else {
+            let mut prefix = tasks
+                .iter()
+                .copied()
+                .filter(|task| boundary_closure.contains(&task.task_id()))
+                .collect::<Vec<_>>();
+            run_task_graph(&mut prefix, self.ctx, self.log)?;
+
+            if self.log.failure_count() == 0 && !self.ctx.is_cancelled() {
+                let late_tasks = (late.provider)();
+                self.log
+                    .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
+                let mut remaining = tasks
+                    .iter()
+                    .copied()
+                    .filter(|task| !boundary_closure.contains(&task.task_id()))
+                    .collect::<Vec<_>>();
+                remaining.extend(late_tasks.iter().map(Box::as_ref));
+                run_task_graph(&mut remaining, self.ctx, self.log)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Execute a dependency-driven task graph.
@@ -221,15 +135,13 @@ fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> Vec<String>
 /// # Errors
 ///
 /// Returns an error if graph validation fails or one or more tasks fail.
+#[cfg(test)]
 pub(crate) fn run_tasks_to_completion<'a>(
     tasks: impl IntoIterator<Item = &'a dyn Task>,
     ctx: &Context,
     log: &Arc<Logger>,
 ) -> Result<()> {
-    let mut tasks = tasks.into_iter().collect::<Vec<_>>();
-    log.add_task_total(visible_count(tasks.iter().copied()));
-    run_task_graph(&mut tasks, ctx, log)?;
-    finish_run(log)
+    RunCoordinator::new(ctx, log).execute(ExecutionPlan::single(tasks))
 }
 
 /// Execute tasks and inject additional tasks after a dependency boundary.
@@ -242,6 +154,7 @@ pub(crate) fn run_tasks_to_completion<'a>(
 /// # Errors
 ///
 /// Returns an error if graph validation fails or one or more tasks fail.
+#[cfg(test)]
 pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
     tasks: impl IntoIterator<Item = &'a dyn Task>,
     ctx: &Context,
@@ -249,40 +162,7 @@ pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
     boundary: TaskId,
     provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
 ) -> Result<()> {
-    let tasks = tasks.into_iter().collect::<Vec<_>>();
-    // Seed the progress denominator with every statically known task so it does
-    // not visibly jump when the run is split across two dependency graphs.
-    log.add_task_total(visible_count(tasks.iter().copied()));
-    let boundary_closure = dependency_closure(&tasks, boundary);
-
-    if boundary_closure.is_empty() {
-        let late_tasks = provider();
-        log.add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
-        let mut all_tasks = tasks;
-        all_tasks.extend(late_tasks.iter().map(Box::as_ref));
-        run_task_graph(&mut all_tasks, ctx, log)?;
-    } else {
-        let mut prefix = tasks
-            .iter()
-            .copied()
-            .filter(|task| boundary_closure.contains(&task.task_id()))
-            .collect::<Vec<_>>();
-        run_task_graph(&mut prefix, ctx, log)?;
-
-        if log.failure_count() == 0 && !ctx.is_cancelled() {
-            let late_tasks = provider();
-            log.add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
-            let mut remaining = tasks
-                .iter()
-                .copied()
-                .filter(|task| !boundary_closure.contains(&task.task_id()))
-                .collect::<Vec<_>>();
-            remaining.extend(late_tasks.iter().map(Box::as_ref));
-            run_task_graph(&mut remaining, ctx, log)?;
-        }
-    }
-
-    finish_run(log)
+    RunCoordinator::new(ctx, log).execute(ExecutionPlan::with_late_tasks(tasks, boundary, provider))
 }
 
 /// Count the tasks a run will report on, excluding internal ones.
@@ -319,116 +199,12 @@ fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> 
     closure
 }
 
-/// Tasks that cannot run because a prerequisite in `roots` will not run.
-///
-/// Returns each blocked task mapped to the name of the *root* that blocks it,
-/// so the skip reason names something the user can act on rather than an
-/// intermediate hop.
-///
-/// This is required because dropping a task from the slice is not the same as
-/// failing it: [`ResolvedTaskGraph`](crate::engine::graph::ResolvedTaskGraph)
-/// deliberately ignores dependencies that are absent from the slice, so a
-/// dependent would otherwise run against a prerequisite that never happened.
-/// The scheduler's own failure path already cascades; this restores the same
-/// guarantee for tasks removed before the graph is built.
-///
-/// Iterates to a fixed point because the slice is not in topological order.
-fn blocked_dependents<'a>(
-    tasks: &[&'a dyn Task],
-    roots: &HashMap<TaskId, &'a str>,
-) -> HashMap<TaskId, &'a str> {
-    let mut blocked: HashMap<TaskId, &'a str> = HashMap::new();
-    loop {
-        let mut discovered = false;
-        for task in tasks {
-            let id = task.task_id();
-            if roots.contains_key(&id) || blocked.contains_key(&id) {
-                continue;
-            }
-            let cause = task
-                .dependencies()
-                .iter()
-                .find_map(|dep| roots.get(dep).or_else(|| blocked.get(dep)).copied());
-            if let Some(cause) = cause {
-                blocked.insert(id, cause);
-                discovered = true;
-            }
-        }
-        if !discovered {
-            return blocked;
-        }
-    }
-}
-
 fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) -> Result<()> {
     if ctx.is_cancelled() || tasks.is_empty() {
         return Ok(());
     }
 
-    let elevating: Vec<&dyn Task> = if crate::infra::elevation::is_elevated_child() {
-        // The child was spawned precisely to run these tasks; it must not
-        // recurse into another elevation request.
-        Vec::new()
-    } else {
-        tasks
-            .iter()
-            .filter(|task| crate::engine::requires_elevation(**task, ctx))
-            .copied()
-            .collect()
-    };
-
-    if !elevating.is_empty() {
-        let names: Vec<&str> = elevating.iter().map(|task| task.name()).collect();
-        let selectors: Vec<&str> = elevating.iter().map(|task| task.selector()).collect();
-        let plan = prepare_elevation(ctx, log, &names, &selectors, tasks.len());
-
-        // Delegation is not degradation: the tasks really ran, just in the
-        // elevated child, so their dependents must still run here. Only an
-        // unavailable plan leaves prerequisites unmet.
-        let (reason, cascade) = match plan {
-            ElevationPlan::Ready => (None, false),
-            ElevationPlan::Delegated => (Some("ran in elevated session"), false),
-            ElevationPlan::Unavailable { reason } => (Some(reason), true),
-        };
-
-        if let Some(reason) = reason {
-            let roots: HashMap<TaskId, &str> = elevating
-                .iter()
-                .map(|task| (task.task_id(), task.name()))
-                .collect();
-            let blocked = if cascade {
-                blocked_dependents(tasks, &roots)
-            } else {
-                HashMap::new()
-            };
-
-            tasks.retain(|task| {
-                let id = task.task_id();
-                let message = if roots.contains_key(&id) {
-                    Some(reason.to_string())
-                } else {
-                    blocked.get(&id).map(|cause| format!("requires {cause}"))
-                };
-                let Some(message) = message else {
-                    return true;
-                };
-
-                let span = tracing::info_span!("task", name = task.name());
-                let _enter = span.enter();
-                log.debug(message.as_str());
-                log.record_task_with_metadata(
-                    task.name(),
-                    crate::infra::logging::TaskStatus::Skipped,
-                    Some(message.as_str()),
-                    ActionCounts::default(),
-                    task.visibility(),
-                );
-                log.mark_task_completed(task.name());
-                log.emit_task_result_and_redraw(task.name());
-                false
-            });
-        }
-    }
+    ElevationBroker::new(ctx, log).prepare(tasks);
 
     if tasks.is_empty() {
         return Ok(());
@@ -465,6 +241,8 @@ fn finish_run(log: &Arc<Logger>) -> Result<()> {
 )]
 mod tests {
     use std::sync::Mutex;
+
+    use proptest::prelude::*;
 
     use crate::engine::{TaskMeta, TaskResult};
     use crate::test_helpers::{empty_config, make_static_context};
@@ -761,6 +539,98 @@ mod tests {
         let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(1));
 
         assert_eq!(closure, HashSet::from([TaskId::Dynamic(1)]));
+    }
+
+    proptest! {
+        #[test]
+        fn graph_closures_and_blocked_cascades_reach_fixed_points(
+            (size, edges) in (1_usize..8).prop_flat_map(|size| {
+                (
+                    Just(size),
+                    proptest::collection::vec(any::<bool>(), size.saturating_mul(size)),
+                )
+            })
+        ) {
+            let trace = trace();
+            let tasks = (0..size)
+                .map(|row| {
+                    let id = u64::try_from(row).expect("small graph index").saturating_add(1);
+                    let dependencies = (0..size)
+                        .filter(|column| edges[row.saturating_mul(size).saturating_add(*column)])
+                        .map(|column| {
+                            u64::try_from(column)
+                                .expect("small graph index")
+                                .saturating_add(1)
+                        })
+                        .collect::<Vec<_>>();
+                    ProbeTask::new(&format!("task-{id}"), id, &trace).depends_on(&dependencies)
+                })
+                .collect::<Vec<_>>();
+            let task_refs = as_dyn(&tasks);
+
+            let mut expected_dependencies = vec![false; size];
+            expected_dependencies[0] = true;
+            loop {
+                let mut changed = false;
+                for row in 0..size {
+                    if !expected_dependencies[row] {
+                        continue;
+                    }
+                    for column in 0..size {
+                        if edges[row.saturating_mul(size).saturating_add(column)]
+                            && !expected_dependencies[column]
+                        {
+                            expected_dependencies[column] = true;
+                            changed = true;
+                        }
+                    }
+                }
+                if !changed {
+                    break;
+                }
+            }
+            let closure = dependency_closure(&task_refs, TaskId::Dynamic(1));
+            for (index, expected) in expected_dependencies.iter().copied().enumerate() {
+                let id = TaskId::Dynamic(
+                    u64::try_from(index)
+                        .expect("small graph index")
+                        .saturating_add(1),
+                );
+                prop_assert_eq!(closure.contains(&id), expected);
+            }
+
+            let mut expected_blocked = vec![false; size];
+            expected_blocked[0] = true;
+            loop {
+                let mut changed = false;
+                for row in 1..size {
+                    if expected_blocked[row] {
+                        continue;
+                    }
+                    let blocked = (0..size).any(|column| {
+                        edges[row.saturating_mul(size).saturating_add(column)]
+                            && expected_blocked[column]
+                    });
+                    if blocked {
+                        expected_blocked[row] = true;
+                        changed = true;
+                    }
+                }
+                if !changed {
+                    break;
+                }
+            }
+            let roots = HashMap::from([(TaskId::Dynamic(1), "task-1")]);
+            let blocked = blocked_dependents(&task_refs, &roots);
+            for (index, expected) in expected_blocked.iter().copied().enumerate().skip(1) {
+                let id = TaskId::Dynamic(
+                    u64::try_from(index)
+                        .expect("small graph index")
+                        .saturating_add(1),
+                );
+                prop_assert_eq!(blocked.contains_key(&id), expected);
+            }
+        }
     }
 
     // ── run_tasks_to_completion ───────────────────────────

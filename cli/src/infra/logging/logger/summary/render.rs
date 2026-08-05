@@ -3,6 +3,7 @@
 //! Converts a recorded task plus its buffered detail lines into the console
 //! rows shown beneath (or in place of) the aggregate totals.
 
+use super::status;
 use super::totals::SummaryMode;
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::{StyleChoice, TextStyle};
@@ -78,11 +79,11 @@ pub(super) const fn should_emit_task_result(status: TaskStatus, verbose: bool) -
 /// The status text shown at the start of a task row.
 fn status_text(status: TaskStatus, mode: SummaryMode, symbols: bool) -> String {
     if symbols {
-        status.symbol().to_string()
+        status::symbol(status).to_string()
     } else if matches!((status, mode), (TaskStatus::Changed, SummaryMode::Test)) {
         "PASSED".to_string()
     } else {
-        status.word().to_string()
+        status::word(status).to_string()
     }
 }
 
@@ -97,7 +98,7 @@ pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
     );
     let mut line = format!(
         "{} {}",
-        opts.style.paint(task.status.text_style(), &padded),
+        opts.style.paint(status::text_style(task.status), &padded),
         task.name
     );
 

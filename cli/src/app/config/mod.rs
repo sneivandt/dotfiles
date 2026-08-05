@@ -1,6 +1,36 @@
 //! Configuration loading and validation for all TOML config files.
 mod error;
 pub mod profiles;
+
+macro_rules! config_section_inventory {
+    ($apply:ident) => {
+        $apply! {
+            packages: Vec<crate::domains::packages::config::packages::Package> =>
+                |config: &Config| Some(SectionCount::new("package", "packages", config.packages.len()));
+            symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
+                |config: &Config| Some(SectionCount::new("symlink", "symlinks", config.symlinks.len()));
+            all_symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
+                |_config: &Config| None;
+            registry: Vec<crate::domains::system::config::registry::RegistryEntry> =>
+                |config: &Config| Some(SectionCount::new("registry entry", "registry entries", config.registry.len()));
+            units: Vec<crate::domains::system::config::systemd_units::SystemdUnit> =>
+                |config: &Config| Some(SectionCount::new("systemd unit", "systemd units", config.units.len()));
+            chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
+                |config: &Config| Some(SectionCount::new("chmod entry", "chmod entries", config.chmod.len()));
+            vscode_extensions: Vec<String> =>
+                |config: &Config| Some(SectionCount::new("vscode extension", "vscode extensions", config.vscode_extensions.len()));
+            git_settings: Vec<crate::domains::git::config::git_config::GitSetting> =>
+                |config: &Config| Some(SectionCount::new("git setting", "git settings", config.git_settings.len()));
+            copilot_settings: Vec<crate::domains::ai::config::copilot::CopilotSetting> =>
+                |config: &Config| Some(SectionCount::new("copilot setting", "copilot settings", config.copilot_settings.len()));
+            manifest: crate::domains::repository::config::manifest::Manifest =>
+                |config: &Config| Some(SectionCount::new("manifest exclusion", "manifest exclusions", config.manifest.excluded_files.len()));
+            scripts: Vec<crate::domains::overlay::config::scripts::ScriptEntry> =>
+                |config: &Config| Some(SectionCount::new("overlay script", "overlay scripts", config.scripts.len()));
+        }
+    };
+}
+
 pub mod store;
 
 use std::path::{Path, PathBuf};
@@ -217,6 +247,14 @@ pub(crate) struct SectionCount {
 }
 
 impl SectionCount {
+    const fn new(singular: &'static str, plural: &'static str, count: usize) -> Self {
+        Self {
+            singular,
+            plural,
+            count,
+        }
+    }
+
     /// The label that agrees in number with this section's count.
     pub(crate) const fn label(&self) -> &'static str {
         if self.count == 1 {
@@ -382,49 +420,14 @@ impl Config {
 
     /// Return configured item counts for debug logging.
     #[must_use]
-    pub(crate) const fn section_counts(&self) -> [SectionCount; 8] {
-        [
-            SectionCount {
-                singular: "package",
-                plural: "packages",
-                count: self.packages.len(),
-            },
-            SectionCount {
-                singular: "symlink",
-                plural: "symlinks",
-                count: self.symlinks.len(),
-            },
-            SectionCount {
-                singular: "registry entry",
-                plural: "registry entries",
-                count: self.registry.len(),
-            },
-            SectionCount {
-                singular: "systemd unit",
-                plural: "systemd units",
-                count: self.units.len(),
-            },
-            SectionCount {
-                singular: "chmod entry",
-                plural: "chmod entries",
-                count: self.chmod.len(),
-            },
-            SectionCount {
-                singular: "vscode extension",
-                plural: "vscode extensions",
-                count: self.vscode_extensions.len(),
-            },
-            SectionCount {
-                singular: "manifest exclusion",
-                plural: "manifest exclusions",
-                count: self.manifest.excluded_files.len(),
-            },
-            SectionCount {
-                singular: "overlay script",
-                plural: "overlay scripts",
-                count: self.scripts.len(),
-            },
-        ]
+    pub(crate) fn section_counts(&self) -> Vec<SectionCount> {
+        macro_rules! collect_section_counts {
+            ($($field:ident: $ty:ty => $count:expr;)+) => {
+                [$(($count)(self)),+].into_iter().flatten().collect()
+            };
+        }
+
+        config_section_inventory!(collect_section_counts)
     }
 }
 

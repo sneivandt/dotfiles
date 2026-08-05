@@ -121,9 +121,15 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
                 Ok(ResourceChange::Applied | ResourceChange::AlreadyCorrect) => {
                     report.record_applied(resource.name.clone());
                 }
-                Ok(ResourceChange::Skipped { reason }) => {
+                Ok(ResourceChange::Skipped {
+                    reason,
+                    failed: true,
+                }) => {
                     report.record_failure(resource.name.clone(), reason);
                 }
+                // A benign skip is neither an install nor a failure, so it
+                // contributes to neither bucket in the report.
+                Ok(ResourceChange::Skipped { failed: false, .. }) => {}
                 Err(err) => {
                     report.record_failure(resource.name.clone(), err.to_string());
                 }

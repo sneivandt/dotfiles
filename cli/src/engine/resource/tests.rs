@@ -1,5 +1,3 @@
-use anyhow::Result;
-
 use super::*;
 
 struct TestResource {
@@ -17,7 +15,7 @@ impl Resource for TestResource {
 }
 
 impl IntrinsicState for TestResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         Ok(self.state.clone())
     }
 }

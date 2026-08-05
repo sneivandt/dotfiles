@@ -102,9 +102,10 @@ impl Resource for VsCodeExtensionResource {
         if result.success {
             Ok(ResourceChange::Applied)
         } else {
-            Ok(ResourceChange::Skipped {
-                reason: format!("failed to install: {}", result.stderr.trim()),
-            })
+            Ok(ResourceChange::unusable(format!(
+                "failed to install: {}",
+                result.stderr.trim()
+            )))
         }
     }
 }

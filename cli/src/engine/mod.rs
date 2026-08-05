@@ -48,7 +48,9 @@ pub use resource::{
     ResourceResult, ResourceState, ResourceStateProvider,
 };
 pub use stats::{TaskResult, TaskStats};
-pub use task::{Task, TaskId, TaskVisibility, TaskWithExtraDeps, execute, requires_elevation};
+pub use task::{
+    Task, TaskId, TaskMeta, TaskVisibility, TaskWithExtraDeps, execute, requires_elevation,
+};
 pub(crate) use task::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };

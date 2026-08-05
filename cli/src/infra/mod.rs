@@ -7,6 +7,7 @@
 
 pub mod config;
 pub mod elevation;
+pub mod env;
 pub mod exec;
 pub mod fs;
 pub mod logging;

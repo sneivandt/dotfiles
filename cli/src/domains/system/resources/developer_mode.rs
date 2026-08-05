@@ -1,5 +1,4 @@
 //! Windows Developer Mode resource.
-use anyhow::Result;
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
@@ -44,13 +43,9 @@ impl Resource for DeveloperModeResource {
             match hklm.create_subkey(crate::infra::platform::DEVELOPER_MODE_SUBKEY) {
                 Ok((key, _)) => match key.set_value(DEVELOPER_MODE_VALUE, &1u32) {
                     Ok(()) => Ok(ResourceChange::Applied),
-                    Err(e) => Ok(ResourceChange::Skipped {
-                        reason: e.to_string(),
-                    }),
+                    Err(e) => Ok(ResourceChange::unusable(e.to_string())),
                 },
-                Err(e) => Ok(ResourceChange::Skipped {
-                    reason: e.to_string(),
-                }),
+                Err(e) => Ok(ResourceChange::unusable(e.to_string())),
             }
         }
         #[cfg(not(windows))]
@@ -63,7 +58,7 @@ impl Resource for DeveloperModeResource {
 }
 
 impl IntrinsicState for DeveloperModeResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         #[cfg(windows)]
         {
             match crate::infra::platform::developer_mode_flag()? {

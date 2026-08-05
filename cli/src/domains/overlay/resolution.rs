@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 /// Try to read the overlay path from the `DOTFILES_OVERLAY` environment variable.
 #[must_use]
-pub fn read_from_env() -> Option<PathBuf> {
-    parse_env_overlay(std::env::var("DOTFILES_OVERLAY").ok())
+pub fn read_from_env(env: &dyn crate::infra::env::Env) -> Option<PathBuf> {
+    parse_env_overlay(env.var("DOTFILES_OVERLAY"))
 }
 
 fn parse_env_overlay(raw: Option<String>) -> Option<PathBuf> {
@@ -51,7 +51,11 @@ pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
 /// Returns `None` if no overlay is configured.
 #[must_use]
 #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-pub fn resolve_from_args(cli_overlay: Option<&Path>, root: &Path) -> Option<PathBuf> {
+pub fn resolve_from_args(
+    cli_overlay: Option<&Path>,
+    root: &Path,
+    env: &dyn crate::infra::env::Env,
+) -> Option<PathBuf> {
     if let Some(path) = cli_overlay {
         let path = path.to_path_buf();
         if let Err(e) = persist(root, &path) {
@@ -60,7 +64,7 @@ pub fn resolve_from_args(cli_overlay: Option<&Path>, root: &Path) -> Option<Path
         return Some(path);
     }
 
-    if let Some(path) = read_from_env() {
+    if let Some(path) = read_from_env(env) {
         return Some(path);
     }
 
@@ -143,7 +147,7 @@ mod tests {
     fn resolve_from_args_prefers_cli_arg() {
         let (dir, root) = init_test_repo();
         let cli_path = PathBuf::from("/cli/overlay");
-        let result = resolve_from_args(Some(&cli_path), &root);
+        let result = resolve_from_args(Some(&cli_path), &root, &crate::infra::env::MapEnv::new());
         assert_eq!(result, Some(cli_path.clone()));
         // Also persisted
         assert_eq!(read_persisted(&root), Some(cli_path));
@@ -153,7 +157,7 @@ mod tests {
     #[test]
     fn resolve_from_args_returns_none_when_nothing_configured() {
         let (dir, root) = init_test_repo();
-        let result = resolve_from_args(None, &root);
+        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new());
         assert_eq!(result, None);
         drop(dir);
     }
@@ -163,7 +167,7 @@ mod tests {
         let (dir, root) = init_test_repo();
         let overlay = PathBuf::from("/persisted/overlay");
         persist(&root, &overlay).expect("persist");
-        let result = resolve_from_args(None, &root);
+        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new());
         assert_eq!(result, Some(overlay));
         drop(dir);
     }

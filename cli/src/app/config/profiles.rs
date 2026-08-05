@@ -41,13 +41,14 @@ pub fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,
     platform: Platform,
+    env: &dyn crate::infra::env::Env,
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
 
     let name = if let Some(name) = cli_profile
         .map(str::to_owned)
-        .or_else(read_from_env)
+        .or_else(|| read_from_env(env))
         .or_else(|| read_persisted(root))
     {
         name

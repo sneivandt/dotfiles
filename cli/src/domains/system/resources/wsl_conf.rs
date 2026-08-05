@@ -78,7 +78,7 @@ impl Resource for WslConfResource {
 }
 
 impl IntrinsicState for WslConfResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         match read_wsl_conf(&self.target)? {
             Some(current) if has_desired_settings(&current) => Ok(ResourceState::Correct),
             Some(current) => Ok(ResourceState::Incorrect { current }),

@@ -174,6 +174,7 @@ fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
         platform,
         log_arc(&log),
         executor,
+        test_api::env::system(),
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,
@@ -397,6 +398,7 @@ fn uninstall_tasks_should_run_with_windows_platform() {
         platform,
         log_arc(&log),
         executor,
+        test_api::env::system(),
         tasks::ContextOpts {
             dry_run: true,
             parallel: false,

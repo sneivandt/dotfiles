@@ -97,3 +97,73 @@ fn debug_fmt_skips_closure_when_debug_logging_is_disabled() {
     });
     assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
 }
+
+#[test]
+fn new_reads_home_and_ci_from_the_injected_environment() {
+    use crate::infra::env::MapEnv;
+    use crate::infra::platform::{Os, Platform};
+
+    let platform = Platform {
+        os: Os::Linux,
+        is_arch: false,
+        is_wsl: false,
+    };
+    let env = MapEnv::new()
+        .with("HOME", "/home/injected")
+        .with("CI", "1")
+        .into_handle();
+
+    let ctx = Context::new(
+        PathBuf::from("/dotfiles"),
+        None,
+        platform,
+        Arc::new(Logger::new("test")),
+        Arc::new(crate::infra::exec::ProcessExecutor::system()),
+        env,
+        ContextOpts::default(),
+    )
+    .expect("context builds from the injected environment");
+
+    assert_eq!(ctx.home(), Path::new("/home/injected"));
+    assert!(
+        ctx.system().is_ci(),
+        "CI is set in the injected environment"
+    );
+}
+
+#[test]
+fn new_fails_when_the_injected_environment_has_no_home() {
+    use crate::infra::env::MapEnv;
+    use crate::infra::platform::{Os, Platform};
+
+    let platform = Platform {
+        os: Os::Linux,
+        is_arch: false,
+        is_wsl: false,
+    };
+
+    let result = Context::new(
+        PathBuf::from("/dotfiles"),
+        None,
+        platform,
+        Arc::new(Logger::new("test")),
+        Arc::new(crate::infra::exec::ProcessExecutor::system()),
+        MapEnv::new().into_handle(),
+        ContextOpts::default(),
+    );
+
+    assert!(result.is_err(), "HOME is unset in the injected environment");
+}
+
+#[test]
+fn with_env_swaps_the_environment_without_touching_other_fields() {
+    use crate::infra::env::MapEnv;
+
+    let config = empty_config(PathBuf::from("/dotfiles"));
+    let ctx = make_linux_context(config);
+    let swapped = ctx.with_env(MapEnv::new().with("SHELL", "/bin/fish").into_handle());
+
+    assert_eq!(swapped.env().var("SHELL"), Some("/bin/fish".to_string()));
+    assert_eq!(swapped.root(), ctx.root());
+    assert_eq!(swapped.home(), ctx.home());
+}

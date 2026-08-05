@@ -14,7 +14,13 @@ fn make_path_entry(home: &Path, on_path: bool) -> PathEntryResource {
         is_arch: false,
         is_wsl: false,
     };
-    PathEntryResource::new(home, platform, executor).with_path_source(on_path)
+    PathEntryResource::new(
+        home,
+        platform,
+        executor,
+        crate::infra::env::MapEnv::new().into_handle(),
+    )
+    .with_path_source(on_path)
 }
 
 #[test]

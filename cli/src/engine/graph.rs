@@ -145,7 +145,7 @@ mod tests {
     use super::*;
     use std::any::TypeId;
 
-    use crate::engine::{Context, TaskId, TaskResult};
+    use crate::engine::{Context, TaskId, TaskMeta, TaskResult};
 
     use anyhow::Result;
 
@@ -157,8 +157,8 @@ mod tests {
         ($name:ident, $display:expr, $deps:expr) => {
             struct $name;
             impl Task for $name {
-                fn name(&self) -> &str {
-                    $display
+                fn meta(&self) -> TaskMeta<'_> {
+                    TaskMeta::new($display)
                 }
                 fn dependencies(&self) -> &[TaskId] {
                     const DEPS: &[TaskId] = $deps;
@@ -204,8 +204,8 @@ mod tests {
     // Missing dep
     struct MissingDepTask;
     impl Task for MissingDepTask {
-        fn name(&self) -> &'static str {
-            "missing-dep"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("missing-dep")
         }
         fn dependencies(&self) -> &[TaskId] {
             // Points to a TaskId that won't be present in the task list
@@ -260,8 +260,8 @@ mod tests {
 
     struct DuplicateIdA;
     impl Task for DuplicateIdA {
-        fn name(&self) -> &'static str {
-            "duplicate-a"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("duplicate-a")
         }
         fn should_run(&self, _ctx: &Context) -> bool {
             true
@@ -273,8 +273,8 @@ mod tests {
 
     struct DuplicateIdB;
     impl Task for DuplicateIdB {
-        fn name(&self) -> &'static str {
-            "duplicate-b"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("duplicate-b")
         }
         fn task_id(&self) -> TaskId {
             // Deliberately returns DuplicateIdA's TypeId to simulate a collision.

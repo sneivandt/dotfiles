@@ -4,7 +4,7 @@ use anyhow::{Context as _, Result};
 
 use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
-use crate::engine::{Context, ProcessOpts, Task, TaskResult, process_resources};
+use crate::engine::{Context, ProcessOpts, Task, TaskMeta, TaskResult, process_resources};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 
@@ -23,12 +23,8 @@ impl ConfigureSystemd {
 }
 
 impl Task for ConfigureSystemd {
-    fn name(&self) -> &'static str {
-        "Systemd units"
-    }
-
-    fn selector(&self) -> &'static str {
-        "systemd"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("Systemd units").with_selector("systemd")
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

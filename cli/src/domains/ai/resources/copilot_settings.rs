@@ -132,7 +132,7 @@ impl Resource for CopilotSettingResource {
 }
 
 impl IntrinsicState for CopilotSettingResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         let document = self.read_document()?;
         Ok(self.state_from_document(&document))
     }

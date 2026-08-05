@@ -1,5 +1,4 @@
 //! Login shell configuration resource.
-use anyhow::Result;
 use std::sync::Arc;
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
@@ -7,26 +6,15 @@ use crate::infra::exec::Executor;
 
 /// Source for reading the current login shell.
 ///
-/// Production code uses [`ShellSource::Environment`] to read the `SHELL`
-/// environment variable at check time.  Tests use `ShellSource::Fixed`
-/// to inject a deterministic value without `unsafe` env-var manipulation.
+/// Reads `SHELL` through the injected environment handle so tests can supply
+/// a deterministic value without `unsafe` env-var manipulation.
 #[derive(Debug, Clone)]
-enum ShellSource {
-    /// Read from the `SHELL` environment variable at check time.
-    Environment,
-    /// Use a fixed value (for testing).
-    #[cfg(test)]
-    Fixed(Option<String>),
-}
+struct ShellSource(Arc<dyn crate::infra::env::Env>);
 
 impl ShellSource {
     /// Return the current shell value.
     fn current_shell(&self) -> Option<String> {
-        match self {
-            Self::Environment => std::env::var("SHELL").ok(),
-            #[cfg(test)]
-            Self::Fixed(value) => value.clone(),
-        }
+        self.0.var("SHELL")
     }
 }
 
@@ -44,11 +32,15 @@ pub struct DefaultShellResource {
 impl DefaultShellResource {
     /// Create a new default shell resource.
     #[must_use]
-    pub fn new(target_shell: String, executor: Arc<dyn Executor>) -> Self {
+    pub fn new(
+        target_shell: String,
+        executor: Arc<dyn Executor>,
+        env: Arc<dyn crate::infra::env::Env>,
+    ) -> Self {
         Self {
             target_shell,
             executor,
-            shell_source: ShellSource::Environment,
+            shell_source: ShellSource(env),
         }
     }
 
@@ -56,7 +48,11 @@ impl DefaultShellResource {
     #[cfg(test)]
     #[must_use]
     fn with_shell(mut self, shell: Option<&str>) -> Self {
-        self.shell_source = ShellSource::Fixed(shell.map(String::from));
+        let mut env = crate::infra::env::MapEnv::new();
+        if let Some(shell) = shell {
+            env = env.with("SHELL", shell);
+        }
+        self.shell_source = ShellSource(env.into_handle());
         self
     }
 }
@@ -77,7 +73,7 @@ impl Resource for DefaultShellResource {
 }
 
 impl IntrinsicState for DefaultShellResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         let Some(current_shell) = self.shell_source.current_shell() else {
             return Ok(ResourceState::Unknown {
                 reason: "SHELL environment variable is not set".into(),
@@ -126,15 +122,23 @@ mod tests {
     #[test]
     fn description_includes_shell_name() {
         let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor));
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            Arc::clone(&executor),
+            crate::infra::env::MapEnv::new().into_handle(),
+        );
         assert_eq!(resource.description(), "default shell → zsh");
     }
 
     #[test]
     fn current_state_correct_when_shell_matches() {
         let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
-            .with_shell(Some("/usr/bin/zsh"));
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            Arc::clone(&executor),
+            crate::infra::env::MapEnv::new().into_handle(),
+        )
+        .with_shell(Some("/usr/bin/zsh"));
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Correct);
     }
@@ -142,8 +146,12 @@ mod tests {
     #[test]
     fn current_state_incorrect_when_different_shell_set() {
         let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
-            .with_shell(Some("/bin/bash"));
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            Arc::clone(&executor),
+            crate::infra::env::MapEnv::new().into_handle(),
+        )
+        .with_shell(Some("/bin/bash"));
         let state = resource.current_state().unwrap();
         assert!(
             matches!(state, ResourceState::Incorrect { ref current } if current == "/bin/bash"),
@@ -154,8 +162,12 @@ mod tests {
     #[test]
     fn current_state_unknown_when_shell_not_set() {
         let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-        let resource =
-            DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor)).with_shell(None);
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            Arc::clone(&executor),
+            crate::infra::env::MapEnv::new().into_handle(),
+        )
+        .with_shell(None);
         let state = resource.current_state().unwrap();
         assert!(
             matches!(state, ResourceState::Unknown { ref reason } if reason.contains("SHELL")),
@@ -166,8 +178,12 @@ mod tests {
     #[test]
     fn current_state_missing_when_shell_is_empty_string() {
         let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-        let resource = DefaultShellResource::new("zsh".to_string(), Arc::clone(&executor))
-            .with_shell(Some(""));
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            Arc::clone(&executor),
+            crate::infra::env::MapEnv::new().into_handle(),
+        )
+        .with_shell(Some(""));
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Missing);
     }
@@ -184,7 +200,11 @@ mod tests {
             .returning(|_, _| Ok(ok_result()));
 
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = DefaultShellResource::new("zsh".to_string(), executor);
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            executor,
+            crate::infra::env::MapEnv::new().into_handle(),
+        );
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 
@@ -197,7 +217,11 @@ mod tests {
         mock.expect_run().never();
 
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = DefaultShellResource::new("zsh".to_string(), executor);
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            executor,
+            crate::infra::env::MapEnv::new().into_handle(),
+        );
         assert!(
             resource.apply().is_err(),
             "apply should fail when the target shell cannot be resolved"
@@ -215,7 +239,11 @@ mod tests {
             .returning(|_, _| Err(anyhow::anyhow!("chsh: PAM authentication failed")));
 
         let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource = DefaultShellResource::new("zsh".to_string(), executor);
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            executor,
+            crate::infra::env::MapEnv::new().into_handle(),
+        );
         assert!(
             resource.apply().is_err(),
             "apply should surface a failing chsh invocation"

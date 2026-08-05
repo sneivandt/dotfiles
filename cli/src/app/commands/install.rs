@@ -135,17 +135,15 @@ pub(crate) fn run_pipeline(
 )]
 mod tests {
     use super::*;
+    use crate::engine::TaskMeta;
 
     #[test]
     fn install_mode_excludes_update_only_tasks() {
         #[derive(Debug)]
         struct UpdateOnly;
         impl Task for UpdateOnly {
-            fn name(&self) -> &'static str {
-                "update only"
-            }
-            fn update_only(&self) -> bool {
-                true
+            fn meta(&self) -> TaskMeta<'_> {
+                TaskMeta::new("update only").with_update_only(true)
             }
             fn run(&self, _ctx: &crate::engine::Context) -> Result<crate::engine::TaskResult> {
                 Ok(crate::engine::TaskResult::Ok)

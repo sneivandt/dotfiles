@@ -85,15 +85,15 @@ impl Resource for ChmodResource {
 
         #[cfg(not(unix))]
         {
-            Ok(ResourceChange::Skipped {
-                reason: "chmod not supported on this platform".to_string(),
-            })
+            Ok(ResourceChange::skipped(
+                "chmod not supported on this platform",
+            ))
         }
     }
 }
 
 impl IntrinsicState for ChmodResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         if let Err(reason) = &self.mode {
             return Ok(ResourceState::Invalid {
                 reason: reason.clone(),
@@ -141,7 +141,7 @@ impl IntrinsicState for ChmodResource {
 /// files are compared with execute bits stripped (via [`strip_file_execute_bits`]),
 /// matching the logic in [`apply_recursive`].
 #[cfg(unix)]
-fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> Result<ResourceState> {
+fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> ResourceResult<ResourceState> {
     use std::os::unix::fs::PermissionsExt;
 
     let dir_mode = ensure_dir_execute_bits(base_mode);

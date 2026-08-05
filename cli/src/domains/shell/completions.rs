@@ -2,7 +2,7 @@
 use anyhow::Result;
 
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
+    Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, process_operation,
 };
 use crate::infra::logging::OutputExt as _;
 
@@ -92,12 +92,8 @@ impl GenerateCompletions {
 }
 
 impl Task for GenerateCompletions {
-    fn name(&self) -> &'static str {
-        "Shell completions"
-    }
-
-    fn selector(&self) -> &'static str {
-        "completions"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("Shell completions").with_selector("completions")
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

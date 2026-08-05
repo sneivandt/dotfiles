@@ -65,7 +65,7 @@ fn normalized_task_tokens(value: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Context, TaskResult};
+    use crate::engine::{Context, TaskMeta, TaskResult};
     use crate::infra::logging::MsgKind;
     use anyhow::Result;
     use std::borrow::Cow;
@@ -74,12 +74,8 @@ mod tests {
     struct SampleTask;
 
     impl Task for SampleTask {
-        fn name(&self) -> &'static str {
-            "Home symlinks"
-        }
-
-        fn selector(&self) -> &'static str {
-            "symlinks"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Home symlinks").with_selector("symlinks")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -90,12 +86,8 @@ mod tests {
     struct OtherTask;
 
     impl Task for OtherTask {
-        fn name(&self) -> &'static str {
-            "System packages"
-        }
-
-        fn selector(&self) -> &'static str {
-            "packages"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("System packages").with_selector("packages")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {

@@ -56,7 +56,7 @@ impl MaterializeExcludedSymlinks {
                     | ResourceState::Invalid { .. }
                     | ResourceState::Unknown { .. },
                 ) => None,
-                Err(error) => Some(Err(error)),
+                Err(error) => Some(Err(error.into())),
             })
             .collect()
     }

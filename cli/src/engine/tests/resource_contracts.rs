@@ -62,7 +62,7 @@ impl RemovableResource for ContractResource {
 }
 
 impl IntrinsicState for ContractResource {
-    fn current_state(&self) -> anyhow::Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         Ok(self.state())
     }
 }

@@ -83,13 +83,17 @@ fn record_resource_change(
                 .run_event(LogEvent::ResourceResult, &format!("{desc} already_correct"));
             delta.record(ItemOutcome::AlreadyOk);
         }
-        ResourceChange::Skipped { reason } => {
+        ResourceChange::Skipped { reason, failed } => {
             ctx.log().run_event(
                 LogEvent::ResourceResult,
                 &format!("{desc} skipped: {reason}"),
             );
             ctx.log().warn(format!("skipping {desc}: {reason}"));
-            delta.record(ItemOutcome::Failed);
+            delta.record(if failed {
+                ItemOutcome::Failed
+            } else {
+                ItemOutcome::Skipped
+            });
         }
     }
 }

@@ -39,9 +39,11 @@ impl CommandRunner {
     ) -> Result<Self> {
         let platform = Platform::detect();
         let root = resolve_root(global)?;
+        let env = crate::infra::env::system();
         let overlay = crate::domains::overlay::resolution::resolve_from_args(
             global.overlay.as_deref(),
             &root,
+            env.as_ref(),
         );
         let profile = resolve_profile(global, &root, platform, overlay.as_deref(), log)?;
         let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
@@ -56,6 +58,7 @@ impl CommandRunner {
             platform,
             log_output,
             executor,
+            env,
             crate::engine::ContextOpts {
                 dry_run: global.dry_run,
                 parallel: global.parallel,
@@ -175,7 +178,12 @@ fn resolve_profile(
 ) -> Result<profiles::Profile> {
     // Run-log only: the startup header must be the first console line.
     log.run_event(LogEvent::Stage, "resolving profile");
-    let profile = profiles::resolve_from_args(global.profile.as_deref(), root, platform)?;
+    let profile = profiles::resolve_from_args(
+        global.profile.as_deref(),
+        root,
+        platform,
+        &crate::infra::env::SystemEnv,
+    )?;
     log.startup(startup_context_line(
         &log.command_title(),
         &profile.name,

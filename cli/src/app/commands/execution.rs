@@ -466,7 +466,7 @@ fn finish_run(log: &Arc<Logger>) -> Result<()> {
 mod tests {
     use std::sync::Mutex;
 
-    use crate::engine::TaskResult;
+    use crate::engine::{TaskMeta, TaskResult};
     use crate::test_helpers::{empty_config, make_static_context};
 
     use super::*;
@@ -653,8 +653,8 @@ mod tests {
     }
 
     impl Task for ProbeTask {
-        fn name(&self) -> &str {
-            &self.name
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new(&self.name)
         }
 
         fn task_id(&self) -> TaskId {

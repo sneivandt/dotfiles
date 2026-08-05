@@ -93,8 +93,13 @@ docs_task_selectors()
   documented_selectors="$(mktemp)"
   trap 'rm -f "$code_selectors" "$documented_selectors"' EXIT HUP INT TERM
 
+  # Selectors are declared three ways: the `task_metadata!` macro field, a
+  # `TaskMeta::new(..).with_selector("..")` builder call, and (legacy) a
+  # hand-written `fn selector` override.
   {
     grep -rhoE 'selector: "[a-z0-9-]+"' "$DIR/cli/src" | sed 's/.*"\(.*\)"/\1/'
+    grep -rhoE 'with_selector\("[a-z0-9-]+"\)' "$DIR/cli/src" --include='*.rs' \
+      | sed 's/.*"\(.*\)".*/\1/'
     grep -rhA2 'fn selector' "$DIR/cli/src" --include='*.rs' \
       | grep -oE '^[[:space:]]+"[a-z0-9-]+"' | tr -d ' "'
   } | sort -u > "$code_selectors"

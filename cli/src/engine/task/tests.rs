@@ -33,7 +33,7 @@ impl Resource for DummyResource {
 }
 
 impl IntrinsicState for DummyResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         Ok(ResourceState::Correct)
     }
 }
@@ -188,8 +188,8 @@ struct MockTask {
 }
 
 impl Task for MockTask {
-    fn name(&self) -> &str {
-        self.name
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new(self.name)
     }
     fn should_run(&self, _ctx: &Context) -> bool {
         self.should_run
@@ -202,8 +202,8 @@ impl Task for MockTask {
 struct CheckPassedTask;
 
 impl Task for CheckPassedTask {
-    fn name(&self) -> &'static str {
-        "check-passed"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("check-passed")
     }
 
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -218,8 +218,8 @@ struct GatedTask {
 }
 
 impl Task for GatedTask {
-    fn name(&self) -> &'static str {
-        "gated-task"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("gated-task")
     }
     fn should_run(&self, _ctx: &Context) -> bool {
         self.should_run
@@ -247,12 +247,11 @@ struct DelegatedTask {
 }
 
 impl Task for DelegatedTask {
-    fn name(&self) -> &'static str {
-        "delegated-task"
-    }
-
-    fn update_only(&self) -> bool {
-        true
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("delegated-task")
+            .with_selector("delegated")
+            .with_visibility(TaskVisibility::Internal)
+            .with_update_only(true)
     }
 
     fn task_id(&self) -> TaskId {
@@ -300,6 +299,8 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     );
 
     assert_eq!(task.name(), "delegated-task");
+    assert_eq!(task.selector(), "delegated");
+    assert_eq!(task.visibility(), TaskVisibility::Internal);
     assert!(task.update_only());
     assert_eq!(task.task_id(), TaskId::Dynamic(17));
     assert_eq!(task.dependencies(), &[existing, additional]);
@@ -634,6 +635,41 @@ fn requires_elevation_respects_should_run() {
     };
 
     assert!(!requires_elevation(&task, &ctx));
+}
+
+#[test]
+fn requires_elevation_does_not_evaluate_applicability_for_unelevated_tasks() {
+    struct CountingGate {
+        should_run_calls: Arc<AtomicUsize>,
+    }
+
+    impl Task for CountingGate {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("counting-gate")
+        }
+        fn should_run(&self, _ctx: &Context) -> bool {
+            self.should_run_calls.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _) = make_static_context(config);
+    let should_run_calls = Arc::new(AtomicUsize::new(0));
+    let task = CountingGate {
+        should_run_calls: Arc::clone(&should_run_calls),
+    };
+
+    assert!(!requires_elevation(&task, &ctx));
+    assert_eq!(
+        should_run_calls.load(Ordering::SeqCst),
+        0,
+        "should_run may perform filesystem or PATH probes, so it must not run \
+         for the majority of tasks that can never need elevation"
+    );
 }
 
 #[test]

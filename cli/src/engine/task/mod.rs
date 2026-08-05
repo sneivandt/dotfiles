@@ -13,7 +13,7 @@ pub use execute::execute;
 pub(crate) use macros::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
-pub use types::TaskId;
+pub use types::{TaskId, TaskMeta};
 
 use std::any::TypeId;
 
@@ -27,24 +27,40 @@ use super::{Context, TaskResult};
 /// [`TaskId`] which the scheduler uses to match dependency declarations
 /// (see [`Task::task_id`] and [`Task::dependencies`]).
 pub trait Task: Send + Sync + 'static {
+    /// Static descriptive metadata: name, selector, visibility, and whether the
+    /// task belongs to `update` only.
+    ///
+    /// Use the [`task_metadata!`] macro to implement this — it turns a
+    /// declarative block into the single method body.
+    fn meta(&self) -> TaskMeta<'_>;
+
     /// Human-readable task name.
-    fn name(&self) -> &str;
+    ///
+    /// Derived from [`Task::meta`]; do not override it, or the name reported to
+    /// the user can disagree with the one a decorator forwards.
+    fn name(&self) -> &str {
+        self.meta().name
+    }
 
     /// Stable selector used by `--only` and `--skip`.
     ///
-    /// Production tasks should override this with an action-independent ID.
+    /// Derived from [`Task::meta`]; do not override it.
     fn selector(&self) -> &str {
-        self.name()
+        self.meta().selector()
     }
 
     /// Whether this task is shown in user-facing discovery and results.
+    ///
+    /// Derived from [`Task::meta`]; do not override it.
     fn visibility(&self) -> TaskVisibility {
-        TaskVisibility::Visible
+        self.meta().visibility
     }
 
     /// Whether this task is included only by the `update` command.
+    ///
+    /// Derived from [`Task::meta`]; do not override it.
     fn update_only(&self) -> bool {
-        false
+        self.meta().update_only
     }
 
     /// The unique identifier of this task, used by the scheduler to build the
@@ -118,14 +134,23 @@ pub trait Task: Send + Sync + 'static {
 /// Whether an applicable task's current state requires elevation.
 ///
 /// This is deliberately a free function rather than a defaulted [`Task`]
-/// method. It is a fixed combinator over [`Task::should_run`] and
-/// [`Task::needs_elevation`] that no implementor should override, and every
+/// method. It is a fixed combinator over [`Task::needs_elevation`] and
+/// [`Task::should_run`] that no implementor should override, and every
 /// defaulted method is one more thing a decorator such as
 /// [`TaskWithExtraDeps`] can silently fail to forward. Keeping it outside the
 /// trait means a wrapped task cannot lose it.
+///
+/// The predicate order is load-bearing. [`Task::should_run`] implementations
+/// routinely touch the filesystem or probe `PATH`, and this runs over every
+/// task in the graph before scheduling, whereas [`Task::needs_elevation`]
+/// defaults to a constant `false` and is overridden by only a handful of
+/// tasks. Gating on `needs_elevation` first means the expensive applicability
+/// check runs only for tasks that could possibly need elevation, and every
+/// task that does override `needs_elevation` already self-guards on platform
+/// or tooling before doing real work.
 #[must_use]
 pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
-    !ctx.dry_run() && task.should_run(ctx) && task.needs_elevation(ctx)
+    !ctx.dry_run() && task.needs_elevation(ctx) && task.should_run(ctx)
 }
 
 /// A [`Task`] decorator that appends extra dependency [`TaskId`]s to an inner
@@ -176,20 +201,8 @@ impl std::fmt::Debug for TaskWithExtraDeps {
 }
 
 impl Task for TaskWithExtraDeps {
-    fn name(&self) -> &str {
-        self.inner.name()
-    }
-
-    fn selector(&self) -> &str {
-        self.inner.selector()
-    }
-
-    fn visibility(&self) -> TaskVisibility {
-        self.inner.visibility()
-    }
-
-    fn update_only(&self) -> bool {
-        self.inner.update_only()
+    fn meta(&self) -> TaskMeta<'_> {
+        self.inner.meta()
     }
 
     fn task_id(&self) -> TaskId {

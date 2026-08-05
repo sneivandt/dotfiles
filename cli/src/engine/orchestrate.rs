@@ -10,8 +10,8 @@ use super::parallel;
 use super::stats::{TaskResult, TaskStats};
 use crate::engine::resource::CachedStateProvider;
 use crate::engine::{
-    IntrinsicState, IntrinsicStateProvider, RemovableResource, Resource, ResourceState,
-    ResourceStateProvider,
+    IntrinsicState, IntrinsicStateProvider, RemovableResource, Resource, ResourceResult,
+    ResourceState, ResourceStateProvider,
 };
 use crate::infra::logging::OutputExt as _;
 
@@ -108,7 +108,7 @@ pub fn process_resources_with_cache<R, Cache, State>(
 where
     R: Resource + Send,
     Cache: Sync + ?Sized,
-    State: for<'a> Fn(&'a R, &Cache) -> Result<ResourceState> + Sync,
+    State: for<'a> Fn(&'a R, &Cache) -> ResourceResult<ResourceState> + Sync,
 {
     process_resources_with_provider(
         ctx,

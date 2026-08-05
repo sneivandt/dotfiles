@@ -14,25 +14,16 @@ use crate::infra::exec::Executor;
 
 /// Source for checking whether a directory is already on `PATH`.
 ///
-/// Production code reads the real `PATH` variable; tests inject a fixed
-/// value to avoid depending on the host environment.
+/// Reads the `PATH` variable through the injected environment handle so tests
+/// can supply a deterministic value instead of depending on the host.
 #[derive(Debug, Clone)]
-enum PathSource {
-    /// Read from the `PATH` environment variable at check time.
-    Environment,
-    /// Use a fixed result (for testing).
-    #[cfg(test)]
-    Fixed(bool),
-}
+struct PathSource(Arc<dyn crate::infra::env::Env>);
 
 impl PathSource {
     fn is_on_path(&self, dir: &Path) -> bool {
-        match self {
-            Self::Environment => std::env::var_os("PATH")
-                .is_some_and(|p| std::env::split_paths(&p).any(|entry| entry == dir)),
-            #[cfg(test)]
-            Self::Fixed(result) => *result,
-        }
+        self.0
+            .var_os("PATH")
+            .is_some_and(|p| std::env::split_paths(&p).any(|entry| entry == dir))
     }
 }
 
@@ -85,6 +76,7 @@ impl PathEntryResource {
         home: &Path,
         platform: crate::infra::platform::Platform,
         executor: Arc<dyn Executor>,
+        env: Arc<dyn crate::infra::env::Env>,
     ) -> Self {
         let dir = home.join(".local").join("bin");
 
@@ -103,15 +95,25 @@ impl PathEntryResource {
         Self {
             dir,
             strategy,
-            path_source: PathSource::Environment,
+            path_source: PathSource(env),
         }
     }
 
-    /// Override the `PATH` source with a fixed value (for testing).
+    /// Override the `PATH` source so the directory reads as already present
+    /// (or absent), for testing.
     #[cfg(test)]
     #[must_use]
-    pub(super) const fn with_path_source(mut self, on_path: bool) -> Self {
-        self.path_source = PathSource::Fixed(on_path);
+    pub(super) fn with_path_source(mut self, on_path: bool) -> Self {
+        let path = if on_path {
+            self.dir.clone().into_os_string()
+        } else {
+            std::ffi::OsString::from("")
+        };
+        self.path_source = PathSource(
+            crate::infra::env::MapEnv::new()
+                .with("PATH", path)
+                .into_handle(),
+        );
         self
     }
 
@@ -179,7 +181,7 @@ impl RemovableResource for PathEntryResource {
 }
 
 impl IntrinsicState for PathEntryResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         match &self.strategy {
             PathStrategy::ShellProfile { path, line } => {
                 if Self::shell_profile_contains_managed_line(path, line)? {

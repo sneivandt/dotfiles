@@ -1,5 +1,4 @@
 //! Git hook resource.
-use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::engine::{
@@ -53,7 +52,7 @@ impl RemovableResource for HookFileResource {
 }
 
 impl IntrinsicState for HookFileResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         if let Some(reason) = crate::infra::fs::missing_source_reason(&self.source) {
             return Ok(ResourceState::Invalid { reason });
         }

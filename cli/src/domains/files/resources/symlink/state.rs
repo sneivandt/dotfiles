@@ -1,4 +1,3 @@
-use anyhow::Result;
 use std::path::Path;
 
 use super::SymlinkResource;
@@ -17,7 +16,7 @@ pub(super) fn pre_apply_warning(target: &Path) -> ResourceResult<Option<String>>
         }))
 }
 
-pub(super) fn current_state(resource: &SymlinkResource) -> Result<ResourceState> {
+pub(super) fn current_state(resource: &SymlinkResource) -> ResourceResult<ResourceState> {
     if let Some(reason) = &resource.validation_error {
         return Ok(ResourceState::Invalid {
             reason: reason.clone(),

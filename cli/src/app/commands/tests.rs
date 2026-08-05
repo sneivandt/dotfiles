@@ -75,7 +75,7 @@ mod startup_log_tests {
 )]
 mod task_graph_tests {
     use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
-    use crate::engine::{Context, Task, TaskId, TaskResult, task_deps};
+    use crate::engine::{Context, Task, TaskId, TaskMeta, TaskResult, task_deps};
     use crate::test_helpers::{empty_config, make_static_context};
     use anyhow::Result;
     use std::path::PathBuf;
@@ -89,8 +89,8 @@ mod task_graph_tests {
     }
 
     impl Task for CycleTaskA {
-        fn name(&self) -> &'static str {
-            "cycle-a"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("cycle-a")
         }
 
         task_deps![CycleTaskB];
@@ -110,8 +110,8 @@ mod task_graph_tests {
     }
 
     impl Task for CycleTaskB {
-        fn name(&self) -> &'static str {
-            "cycle-b"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("cycle-b")
         }
 
         task_deps![CycleTaskA];
@@ -154,8 +154,8 @@ mod task_graph_tests {
     }
 
     impl Task for PrerequisiteTask {
-        fn name(&self) -> &'static str {
-            self.name
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new(self.name)
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {
@@ -175,8 +175,8 @@ mod task_graph_tests {
     }
 
     impl Task for DependentTask {
-        fn name(&self) -> &'static str {
-            "dependent"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("dependent")
         }
 
         task_deps![PrerequisiteTask];
@@ -231,8 +231,8 @@ mod task_graph_tests {
     }
 
     impl Task for BoundaryPrerequisiteTask {
-        fn name(&self) -> &'static str {
-            "boundary-prerequisite"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("boundary-prerequisite")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -247,8 +247,8 @@ mod task_graph_tests {
     }
 
     impl Task for DiscoveryBoundaryTask {
-        fn name(&self) -> &'static str {
-            "discovery-boundary"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("discovery-boundary")
         }
 
         task_deps![BoundaryPrerequisiteTask];
@@ -270,8 +270,8 @@ mod task_graph_tests {
     }
 
     impl Task for RemainingStaticTask {
-        fn name(&self) -> &'static str {
-            "remaining-static"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("remaining-static")
         }
 
         task_deps![DiscoveryBoundaryTask];
@@ -293,8 +293,8 @@ mod task_graph_tests {
     }
 
     impl Task for LateDiscoveredTask {
-        fn name(&self) -> &'static str {
-            "late-discovered"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("late-discovered")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -361,8 +361,8 @@ mod task_graph_tests {
     struct FailingBoundaryTask;
 
     impl Task for FailingBoundaryTask {
-        fn name(&self) -> &'static str {
-            "failing-boundary"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("failing-boundary")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -399,8 +399,8 @@ mod task_graph_tests {
     }
 
     impl Task for StaticAfterProviderTask {
-        fn name(&self) -> &'static str {
-            "static-after-provider"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("static-after-provider")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {

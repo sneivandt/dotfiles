@@ -1,8 +1,12 @@
 //! Command execution, output handling, and process-tree management.
 use anyhow::{Context, Result, anyhow, bail};
+use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::{LazyLock, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -25,23 +29,15 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Create a new [`Command`] with platform-appropriate defaults.
 ///
+/// Accepts anything that names a program — a bare `&str` looked up on `PATH`
+/// or a fully qualified `&Path` — so there is a single place where the
+/// platform defaults below are applied.
+///
 /// On Unix the child is placed in its own process group so that a
 /// `SIGINT` from Ctrl-C reaches only the Rust process (via the
 /// cooperative cancellation token).  The executor can then terminate the
 /// whole child process group on cancellation or timeout.
-fn new_command(program: &str) -> Command {
-    #[allow(unused_mut, reason = "platform-specific mutability")]
-    let mut cmd = Command::new(program);
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt as _;
-        cmd.process_group(0);
-    }
-    cmd
-}
-
-/// Create a new [`Command`] from a path with platform-appropriate defaults.
-fn new_command_path(program: &Path) -> Command {
+fn new_command<S: AsRef<OsStr>>(program: S) -> Command {
     #[allow(unused_mut, reason = "platform-specific mutability")]
     let mut cmd = Command::new(program);
     #[cfg(unix)]
@@ -141,10 +137,12 @@ fn execute_unchecked(
         .stderr
         .take()
         .ok_or_else(|| anyhow!("failed to capture stderr for {label}"))?;
-    let stdout_reader = spawn_reader(stdout, "stdout", label);
-    let stderr_reader = spawn_reader(stderr, "stderr", label);
+    let (pipe_tx, pipe_rx) = channel::<()>();
+    let stdout_reader = spawn_reader(stdout, "stdout", label, pipe_tx.clone());
+    let stderr_reader = spawn_reader(stderr, "stderr", label, pipe_tx);
 
     let start = Instant::now();
+    let mut pipes_closed = false;
     let status = loop {
         if settings.is_cancelled() {
             #[cfg(unix)]
@@ -156,7 +154,8 @@ fn execute_unchecked(
             log_command_output(label, &result);
             bail!("{label} cancelled: {}", failure_output(&result));
         }
-        if start.elapsed() >= settings.timeout {
+        let remaining = settings.timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
             #[cfg(unix)]
             terminate_child(&child);
             #[cfg(windows)]
@@ -171,16 +170,53 @@ fn execute_unchecked(
             );
         }
 
-        match child
+        if let Some(status) = child
             .try_wait()
             .with_context(|| format!("waiting for: {label}"))?
         {
-            Some(status) => break status,
-            None => std::thread::sleep(POLL_INTERVAL),
+            break status;
+        }
+
+        if pipes_closed {
+            // Rare: the child closed both pipes but has not exited yet (for
+            // example it forked a grandchild that inherited them). There is no
+            // remaining event to block on, so fall back to polling.
+            std::thread::sleep(POLL_INTERVAL.min(remaining));
+        } else if wait_for_pipe_close(&pipe_rx, settings, remaining) {
+            pipes_closed = true;
         }
     };
 
     collect_result(Some(status), stdout_reader, stderr_reader)
+}
+
+/// Block until the child closes both output pipes, or until it is time to
+/// re-check cancellation and the timeout.
+///
+/// Returns `true` once every reader has finished, which happens as the child
+/// exits and is therefore the signal that [`Child::try_wait`] is about to
+/// succeed. Waiting on that event instead of sleeping a fixed interval removes
+/// the wake-up latency that a poll loop adds to every single command.
+///
+/// A run with a cancellation token still needs periodic wake-ups because
+/// [`CancellationToken`] is a polled flag with nothing to block on; without one
+/// the whole remaining timeout can be spent in a single blocking wait.
+fn wait_for_pipe_close(
+    pipe_rx: &Receiver<()>,
+    settings: &CommandSettings,
+    remaining: Duration,
+) -> bool {
+    let slice = if settings.cancellation.is_some() {
+        POLL_INTERVAL.min(remaining)
+    } else {
+        remaining
+    };
+    match pipe_rx.recv_timeout(slice) {
+        Err(RecvTimeoutError::Timeout) => false,
+        // Nothing is ever sent on this channel: every reader holds a sender and
+        // drops it on completion, so disconnection *is* the completion signal.
+        Ok(()) | Err(RecvTimeoutError::Disconnected) => true,
+    }
 }
 
 #[cfg(windows)]
@@ -197,13 +233,20 @@ fn execute_windows_cmd_unchecked(
     Ok(result)
 }
 
+/// Drain a child output stream on its own thread.
+///
+/// `done` is moved into the thread and dropped when reading finishes, so the
+/// receiver observes a disconnect once both readers are complete. That is the
+/// event [`execute_unchecked`] blocks on instead of polling the child.
 fn spawn_reader<R: Read + Send + 'static>(
     mut stream: R,
     name: &'static str,
     label: &str,
+    done: Sender<()>,
 ) -> JoinHandle<Result<Vec<u8>>> {
     let label = label.to_string();
     std::thread::spawn(move || {
+        let _done = done;
         let mut output = Vec::new();
         stream
             .read_to_end(&mut output)
@@ -325,7 +368,7 @@ pub trait Executor: std::fmt::Debug + Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the program cannot be found on PATH.
-    fn which_path(&self, program: &str) -> Result<std::path::PathBuf>;
+    fn which_path(&self, program: &str) -> Result<PathBuf>;
 }
 
 /// Executor that spawns real system processes.
@@ -427,12 +470,37 @@ impl Executor for ProcessExecutor {
     }
 
     fn which(&self, program: &str) -> bool {
-        which::which(program).is_ok()
+        resolve_on_path(program).is_some()
     }
 
-    fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
-        which::which(program).with_context(|| format!("{program} not found on PATH"))
+    fn which_path(&self, program: &str) -> Result<PathBuf> {
+        resolve_on_path(program).ok_or_else(|| anyhow!("{program} not found on PATH"))
     }
+}
+
+/// Memoized `PATH` lookups, keyed by program name.
+///
+/// `which::which` walks every `PATH` entry and stats candidate files. Task
+/// applicability gates call it repeatedly for the same handful of programs
+/// within a single run, and `PATH` does not change while the process is alive,
+/// so the answer is cached process-wide.
+static PATH_LOOKUPS: LazyLock<Mutex<HashMap<String, Option<PathBuf>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Resolve `program` on `PATH`, reusing a previously cached answer.
+///
+/// A poisoned lock is recovered rather than propagated: the cache holds only
+/// derived data, so a panic in another thread cannot leave it inconsistent.
+fn resolve_on_path(program: &str) -> Option<PathBuf> {
+    let mut cache = PATH_LOOKUPS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(cached) = cache.get(program) {
+        return cached.clone();
+    }
+    let resolved = which::which(program).ok();
+    cache.insert(program.to_string(), resolved.clone());
+    resolved
 }
 
 /// Run a path-addressed command with the smoke-test timeout.
@@ -443,7 +511,7 @@ impl Executor for ProcessExecutor {
 /// fails at the process-management layer. Non-zero exit statuses are returned
 /// in the [`ExecResult`] for the caller to interpret.
 pub(crate) fn run_path_smoke_test(path: &Path, args: &[&str]) -> Result<ExecResult> {
-    let mut cmd = new_command_path(path);
+    let mut cmd = new_command(path);
     cmd.args(args);
     let label = path.display().to_string();
     let result = execute_unchecked(cmd, &label, &CommandSettings::timeout(SMOKE_TEST_TIMEOUT))?;

@@ -56,6 +56,11 @@ description: >
   details, action/task summary counts, and natural completion order without
   sorting.
 - **Platform logic**: use `Platform::new(...)` test constructors.
+- **Environment reads**: build `infra::env::MapEnv` (re-exported as
+  `testing::env::MapEnv`) and inject it with `Context::with_env(...)` or the
+  resource's `env` parameter. Never mutate process-global `std::env` from a
+  test, and do not add `#[cfg(test)]` enum seams to source a value that the
+  environment already provides.
 
 ## Validation
 
@@ -66,3 +71,6 @@ Run focused tests for the changed behavior before escalating to broader suites.
 - Using `#[path]` for production modules
 - Rewriting snapshots without review
 - Skipping task/helper conventions and rebuilding test scaffolding ad hoc
+- Setting or reading process-global environment variables instead of injecting
+  `MapEnv`
+- Adding a `#[cfg(test)]`-only variant to a production enum as a test seam

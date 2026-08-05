@@ -4,12 +4,14 @@ use std::result::Result;
 
 use super::ResourceError;
 
-/// Result type returned by [`Resource`] operations (`apply`/`remove`).
+/// Result type returned by [`Resource`] operations (`apply`/`remove`) and by
+/// resource state discovery.
 ///
-/// Unlike the `anyhow::Result` used for state discovery, the error half is the
-/// typed [`ResourceError`], so the orchestration layer can classify failures
-/// (see [`ResourceError::category`]) without downcasting. Helper errors that
-/// have no dedicated variant flow through [`ResourceError::Other`].
+/// The error half is the typed [`ResourceError`], so the orchestration layer
+/// can classify failures (see [`ResourceError::category`]) without
+/// downcasting. Helper errors that have no dedicated variant flow through
+/// [`ResourceError::Other`], which preserves their context chain and still
+/// recovers the original category on round-trip.
 pub type ResourceResult<T> = Result<T, ResourceError>;
 
 /// Interface for resources that can be described, applied, and removed.
@@ -136,10 +138,12 @@ impl std::fmt::Display for ResourceState {
 ///
 /// let applied = ResourceChange::Applied;
 /// let noop = ResourceChange::AlreadyCorrect;
-/// let skipped = ResourceChange::Skipped { reason: "source missing".into() };
+/// let skipped = ResourceChange::skipped("source missing");
+/// let unusable = ResourceChange::unusable("failed to install");
 ///
 /// assert_eq!(applied, ResourceChange::Applied);
 /// assert_ne!(applied, noop);
+/// assert_ne!(skipped, unusable);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResourceChange {
@@ -149,8 +153,45 @@ pub enum ResourceChange {
     AlreadyCorrect,
     /// Resource was skipped without applying a change (e.g., missing source
     /// file, unavailable tool, or protected target directory).
+    ///
+    /// `failed` mirrors [`ApplyOperation::Skip`] in the planning layer: a skip
+    /// decided at apply time is not automatically a failure. Deliberate,
+    /// benign skips (an unsupported platform, or refusing to overwrite user
+    /// data) set it to `false`; skips that mean the work could not be done set
+    /// it to `true` so the run summary counts them.
+    ///
+    /// [`ApplyOperation::Skip`]: crate::engine::ApplyOperation::Skip
     Skipped {
         /// Reason why the resource was skipped.
         reason: String,
+        /// Whether the skip should be counted as a failed item.
+        failed: bool,
     },
+}
+
+impl ResourceChange {
+    /// A benign skip that must not be counted as a failure.
+    ///
+    /// Use this when the resource deliberately did nothing — the platform does
+    /// not support it, or applying would destroy user data.
+    #[must_use]
+    pub fn skipped(reason: impl Into<String>) -> Self {
+        Self::Skipped {
+            reason: reason.into(),
+            failed: false,
+        }
+    }
+
+    /// A skip that means the work could not be done and should be counted as a
+    /// failed item.
+    ///
+    /// Use this when the resource tried and the underlying tool refused, so the
+    /// run summary reports the item rather than silently passing.
+    #[must_use]
+    pub fn unusable(reason: impl Into<String>) -> Self {
+        Self::Skipped {
+            reason: reason.into(),
+            failed: true,
+        }
+    }
 }

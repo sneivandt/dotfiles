@@ -35,10 +35,17 @@ description: >
 
 - `Resource::apply/remove` return `ResourceResult<ResourceChange>` for typed,
   classifiable failures.
+- State discovery (`IntrinsicState::current_state` /
+  `ResourceStateProvider::current_state`) also returns
+  `ResourceResult<ResourceState>`, so a discovery failure carries the same
+  `ResourceError::category()` the summary uses for mutation failures.
 - State checking remains separate from mutation (`IntrinsicState` or provider).
 - Tasks own identity, command membership, eligibility, elevation prediction,
   and dependencies; resources own item-level state and convergence.
 - Use executor abstraction for subprocesses.
+- Read environment variables through `ctx.env()` (an `infra::env::Env` handle),
+  never `std::env` inline. Construct resources with the handle so tests can
+  inject `MapEnv`.
 
 Canonical references:
 - `cli/src/engine/resource/`
@@ -72,7 +79,16 @@ Canonical references:
 
 - `Applied`
 - `AlreadyCorrect`
-- `Skipped { reason }`
+- `ResourceChange::skipped(reason)` — a deliberate, benign no-op (unsupported
+  platform, nothing configured, a target the resource refuses to touch by
+  design). Counted as a skip.
+- `ResourceChange::unusable(reason)` — the resource could not converge and the
+  run should treat it as unmet work (missing privileges, an unavailable
+  provider). Counted as a failure in the summary and exit status.
+
+Both construct `ResourceChange::Skipped { reason, failed }`; never build that
+variant literally — pick the constructor that matches the outcome, because the
+`failed` flag is what decides whether the run reports success.
 
 ## Validation
 
@@ -84,7 +100,13 @@ Resource-specific:
 
 - mutating inside `IntrinsicState`/`ResourceStateProvider` state checks instead
   of `apply`/`remove`
-- returning untyped errors from `apply`/`remove` instead of `ResourceError`
+- returning untyped errors from `apply`/`remove` or from `current_state`
+  instead of `ResourceError`
+- constructing `ResourceChange::Skipped { .. }` directly instead of using
+  `ResourceChange::skipped()` / `ResourceChange::unusable()`, which silently
+  mis-reports whether the run had unmet work
+- reading `std::env` inside a resource instead of taking an
+  `Arc<dyn infra::env::Env>` from `ctx.env()`
 - hand-rolling dry-run/apply loops in the task body instead of using
   `process_resources*`
 

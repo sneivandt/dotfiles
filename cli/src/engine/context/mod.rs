@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 
+use crate::infra::env::Env;
 use crate::infra::exec::Executor;
 use crate::infra::logging::Log;
 use crate::infra::platform::Platform;
@@ -30,8 +31,8 @@ pub struct ContextOpts {
     /// Whether the process is running inside a CI environment.
     ///
     /// When `None` (the default), [`Context::new`] reads the `CI` environment
-    /// variable.  Tests can set this explicitly to avoid mutating process-global
-    /// state.
+    /// variable through the injected [`Env`].  Tests can set this explicitly
+    /// to pin the value regardless of the environment handle.
     pub is_ci: Option<bool>,
 }
 
@@ -78,6 +79,12 @@ pub struct Context {
     /// this without reading env-globals themselves and tests can inject the
     /// value without mutating process state.
     is_ci: bool,
+    /// Read-only access to the process environment.
+    ///
+    /// Injected rather than read inline so that resources depending on
+    /// environment variables (`PATH`, `SHELL`, `DOTFILES_WRAPPER`) can be
+    /// tested deterministically without `unsafe` process-global mutation.
+    env: Arc<dyn Env>,
     /// Token for cooperative cancellation (e.g. Ctrl-C).
     ///
     /// Processing loops check this before dispatching each work item so that
@@ -97,6 +104,7 @@ impl std::fmt::Debug for Context {
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
             .field("is_ci", &self.is_ci)
+            .field("env", &"<dyn Env>")
             .field("cancelled", &self.cancelled)
             .finish()
     }
@@ -111,6 +119,10 @@ impl Context {
 
     /// Creates a new context for task execution.
     ///
+    /// `env` supplies the process environment; production callers pass
+    /// [`crate::infra::env::system`] while tests pass a
+    /// [`MapEnv`](crate::infra::env::MapEnv) handle.
+    ///
     /// # Errors
     ///
     /// Returns an error if the HOME (or USERPROFILE on Windows) environment variable
@@ -121,17 +133,19 @@ impl Context {
         platform: Platform,
         log: Arc<dyn Log>,
         executor: Arc<dyn Executor>,
+        env: Arc<dyn Env>,
         opts: ContextOpts,
     ) -> Result<Self> {
         let home = if platform.is_windows() {
-            std::env::var("USERPROFILE")
-                .or_else(|_| std::env::var("HOME"))
+            env.var("USERPROFILE")
+                .or_else(|| env.var("HOME"))
                 .context("neither USERPROFILE nor HOME environment variable is set")?
         } else {
-            std::env::var("HOME").context("HOME environment variable is not set")?
+            env.var("HOME")
+                .context("HOME environment variable is not set")?
         };
 
-        let is_ci = opts.is_ci.unwrap_or_else(|| std::env::var("CI").is_ok());
+        let is_ci = opts.is_ci.unwrap_or_else(|| env.var_os("CI").is_some());
 
         Ok(Self {
             paths: Arc::new(RepoPaths::new(root)),
@@ -143,6 +157,7 @@ impl Context {
             executor,
             parallel: opts.parallel,
             is_ci,
+            env,
             cancelled: CancellationToken::new(),
         })
     }
@@ -152,6 +167,9 @@ impl Context {
     /// Intended for test helpers and integration-test scaffolding that supply
     /// fully-constructed components rather than deriving them from the
     /// environment.  Prefer [`Context::new`] in production code.
+    ///
+    /// The environment defaults to the real process environment; call
+    /// [`Context::with_env`] to inject a test double.
     pub fn from_raw(
         root: std::path::PathBuf,
         overlay: Option<std::path::PathBuf>,
@@ -171,8 +189,25 @@ impl Context {
             executor,
             parallel: opts.parallel,
             is_ci: opts.is_ci.unwrap_or(false),
+            env: crate::infra::env::system(),
             cancelled: CancellationToken::new(),
         }
+    }
+
+    /// Return a copy of this context that reads environment variables from
+    /// `env`.
+    #[must_use]
+    pub fn with_env(&self, env: Arc<dyn Env>) -> Self {
+        self.clone_with(|ctx| ctx.env = env)
+    }
+
+    /// Read-only access to the process environment.
+    ///
+    /// Task and resource code must go through this rather than `std::env` so
+    /// that behaviour is injectable under test.
+    #[must_use]
+    pub fn env(&self) -> &Arc<dyn Env> {
+        &self.env
     }
 
     /// Repository-relative paths derived from the repository root.

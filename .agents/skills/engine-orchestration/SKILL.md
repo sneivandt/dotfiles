@@ -29,6 +29,11 @@ description: >
 - Keep task metadata distinct: `TaskId` is scheduler identity, `selector()` is
   the stable CLI interface, `name()` is the display label, and `visibility()`
   controls discovery, normal rows, and totals.
+- All four are derived from a single required `Task::meta() -> TaskMeta<'_>`.
+  Implement `meta()` (usually via `task_metadata!`) and leave `name()`,
+  `selector()`, `visibility()`, and `update_only()` as the defaults, so a
+  decorator that forwards `meta()` cannot silently drop part of a task's
+  identity.
 - `--only` exact-matches normalized selectors, with exact full-label matching
   retained for compatibility. Do not add action-prefix, first-word, or substring
   matching.
@@ -40,6 +45,11 @@ description: >
   sort or regroup them.
 - `update_only()` controls whether a task belongs only to `dotfiles update`; it
   does not create an ordering barrier.
+- `engine::requires_elevation()` checks `needs_elevation()` before
+  `should_run()`. `needs_elevation()` is a cheap constant for most tasks while
+  `should_run()` touches the filesystem and `PATH`, so keep the cheap predicate
+  first and keep `should_run()` free of side effects — it is evaluated twice for
+  elevating tasks (once in the pre-pass, once at dispatch after dependencies).
 - Task-level parallelism uses scoped OS threads; resource-level parallelism uses
   Rayon.
 - `ctx.parallel` gates both levels.
@@ -108,6 +118,10 @@ affected task modules.
 - Adding static tasks without catalog registration
 - Relying on catalog order instead of declaring a dependency
 - Using `update_only()` as an ordering mechanism
+- Overriding `name()`/`selector()`/`visibility()`/`update_only()` instead of
+  `meta()`, or writing a decorator that forwards individual accessors rather
+  than `meta()`
+- Reading `std::env` from task or resource code instead of `ctx.env()`
 - Rebuilding dynamic tasks before refreshed configuration is available
 - Adding conditional symlink behavior without matching manifest coverage
 - Hardcoded OS checks where capability methods exist

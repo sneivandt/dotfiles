@@ -12,7 +12,8 @@ description: >
 
 - Commands and tasks return `anyhow::Result` with contextual errors.
 - Resources return `ResourceResult<ResourceChange>` so failures remain
-  classifiable.
+  classifiable, and discover state as `ResourceResult<ResourceState>` so a
+  failed check is categorised the same way as a failed mutation.
 - Tasks own eligibility and result reporting; resources and operations own
   convergence.
 - `engine::execute()` records task failures and allows independent work to
@@ -26,7 +27,9 @@ Use `engine-orchestration` for process modes and scheduling, and
 | Layer | Pattern |
 |---|---|
 | command/task | `anyhow::Result` plus `.context(...)` |
+| resource state discovery | `ResourceResult<ResourceState>` |
 | resource mutation | typed `ResourceError` variants |
+| operation (`Operation::current_state`) | `anyhow::Result` — workflow state is not resource-classified |
 | optional cleanup | explicit handling with diagnostic logging |
 | task execution | return the error; let `engine::execute()` record it |
 
@@ -71,8 +74,14 @@ context's executor abstraction.
 - `TaskResult::Ok`: execution completed successfully, including no-op success
   where the orchestration helper reports it that way.
 - `ResourceChange::AlreadyCorrect`: resource was already converged.
-- `ResourceChange::Skipped`: resource was intentionally not changed, with a
-  reason.
+- `ResourceChange::skipped(reason)`: resource was intentionally not changed and
+  the run still counts as clean.
+- `ResourceChange::unusable(reason)`: resource could not converge; the run has
+  unmet work and reports a failure.
+
+`skipped()` and `unusable()` build the same `Skipped { reason, failed }`
+variant. Choosing the wrong one is a silent correctness bug: an `unusable`
+outcome reported as `skipped` makes a failed run exit successfully.
 
 Do not convert an invalid or unknown state into success. Surface the reason so
 the resource processor can apply its configured strict or lenient policy.

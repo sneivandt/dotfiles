@@ -2,8 +2,8 @@
 
 /// Try to read the profile from the `DOTFILES_PROFILE` environment variable.
 #[must_use]
-pub fn read_from_env() -> Option<String> {
-    parse_env_profile(std::env::var("DOTFILES_PROFILE").ok())
+pub fn read_from_env(env: &dyn crate::infra::env::Env) -> Option<String> {
+    parse_env_profile(env.var("DOTFILES_PROFILE"))
 }
 
 pub(super) fn parse_env_profile(raw: Option<String>) -> Option<String> {

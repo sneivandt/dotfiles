@@ -23,10 +23,13 @@ impl WrapperType {
     /// Detect the wrapper type from the `DOTFILES_WRAPPER` environment
     /// variable, falling back to platform heuristics.
     #[must_use]
-    pub fn detect(platform: crate::infra::platform::Platform) -> Self {
-        match std::env::var("DOTFILES_WRAPPER").as_deref() {
-            Ok("sh") => Self::Sh,
-            Ok("pwsh") => Self::Pwsh,
+    pub fn detect(
+        env: &dyn crate::infra::env::Env,
+        platform: crate::infra::platform::Platform,
+    ) -> Self {
+        match env.var("DOTFILES_WRAPPER").as_deref() {
+            Some("sh") => Self::Sh,
+            Some("pwsh") => Self::Pwsh,
             _ => {
                 if platform.is_windows() {
                     Self::Pwsh
@@ -163,7 +166,7 @@ impl RemovableResource for WrapperResource {
 }
 
 impl IntrinsicState for WrapperResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         let Some(metadata) = self.target_metadata()? else {
             return Ok(ResourceState::Missing);
         };
@@ -174,7 +177,8 @@ impl IntrinsicState for WrapperResource {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => "broken symlink",
                 Err(error) => {
                     return Err(anyhow::Error::new(error)
-                        .context(format!("stat wrapper target {}", self.target.display())));
+                        .context(format!("stat wrapper target {}", self.target.display()))
+                        .into());
                 }
             };
             return Ok(ResourceState::Incorrect {

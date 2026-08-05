@@ -46,27 +46,12 @@ macro_rules! task_metadata {
         $(update_only: $update_only:expr,)?
         $(deps: [$($dep:ty),+ $(,)?],)?
     ) => {
-        fn name(&self) -> &'static str {
-            $task_name
+        fn meta(&self) -> $crate::engine::TaskMeta<'_> {
+            $crate::engine::TaskMeta::new($task_name)
+                $(.with_selector($selector))?
+                $(.with_visibility($visibility))?
+                $(.with_update_only($update_only))?
         }
-
-        $(
-            fn selector(&self) -> &'static str {
-                $selector
-            }
-        )?
-
-        $(
-            fn visibility(&self) -> $crate::engine::TaskVisibility {
-                $visibility
-            }
-        )?
-
-        $(
-            fn update_only(&self) -> bool {
-                $update_only
-            }
-        )?
 
         $($crate::engine::task_deps![$($dep),+];)?
     };
@@ -121,7 +106,8 @@ pub(crate) fn run_batch_resource_task<Item, Cache, R>(
     items: Vec<Item>,
     mut build: impl FnMut(Item, &crate::engine::Context) -> R,
     load: impl Fn(&[R], &crate::engine::Context) -> ::anyhow::Result<Cache> + Sync,
-    state: impl for<'a> Fn(&'a R, &Cache) -> ::anyhow::Result<crate::engine::ResourceState> + Sync,
+    state: impl for<'a> Fn(&'a R, &Cache) -> crate::engine::ResourceResult<crate::engine::ResourceState>
+    + Sync,
     opts: &crate::engine::ProcessOpts,
 ) -> ::anyhow::Result<Option<crate::engine::TaskResult>>
 where

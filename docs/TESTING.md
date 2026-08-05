@@ -190,6 +190,7 @@ the assertion about the dotfiles rather than about the machine.
 | TOML data | `config_drift` plus `dotfiles test` |
 | Task metadata or dependencies | relevant command suite plus `task_execution` |
 | Resource behavior | domain unit tests plus affected command/e2e suite |
+| Environment-dependent behavior | unit tests injecting a fixed environment, not process-global variables |
 | Wrapper | platform wrapper integration script |
 | Hook | hook script and Git hook integration test |
 | Cross-platform Rust | tests/check on the host plus the repository's cross-platform sequence |

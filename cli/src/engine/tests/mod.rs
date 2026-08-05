@@ -77,10 +77,10 @@ impl RemovableResource for MockResource {
 }
 
 impl IntrinsicState for MockResource {
-    fn current_state(&self) -> anyhow::Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         self.state_result
             .clone()
-            .map_err(|s| anyhow::anyhow!("{s}"))
+            .map_err(|s| anyhow::anyhow!("{s}").into())
     }
 }
 

@@ -60,14 +60,14 @@ impl GitConfigResource {
     /// Check resource state against a pre-opened config snapshot.
     ///
     /// This enables unit testing without touching the real global git config.
-    fn state_from_config(&self, config: &git2::Config) -> Result<ResourceState> {
+    fn state_from_config(&self, config: &git2::Config) -> ResourceResult<ResourceState> {
         match config.get_string(&self.key) {
             Ok(ref current) if current == &self.desired_value => Ok(ResourceState::Correct),
             Ok(current) => Ok(ResourceState::Incorrect { current }),
             Err(e) if e.code() == git2::ErrorCode::NotFound => Ok(ResourceState::Missing),
-            Err(e) => {
-                Err(anyhow::Error::from(e).context(format!("reading git config {}", self.key)))
-            }
+            Err(e) => Err(anyhow::Error::from(e)
+                .context(format!("reading git config {}", self.key))
+                .into()),
         }
     }
 
@@ -96,7 +96,7 @@ impl Resource for GitConfigResource {
 }
 
 impl IntrinsicState for GitConfigResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         let config = self
             .open_config()
             .with_context(|| format!("reading git config {}", self.key))?;

@@ -74,6 +74,33 @@ fn which_path_finds_known_program() {
     );
 }
 
+/// Repeated lookups are served from the memo table, so they must agree with
+/// the first answer for both hits and misses.
+#[test]
+fn which_lookups_are_cached_consistently() {
+    let executor = ProcessExecutor::system();
+    #[cfg(windows)]
+    let known = "cmd";
+    #[cfg(not(windows))]
+    let known = "echo";
+
+    let first = executor.which_path(known).unwrap();
+    let second = executor.which_path(known).unwrap();
+    assert_eq!(first, second, "cached lookup should return the same path");
+    assert!(executor.which(known), "cached hit should stay resolvable");
+
+    let missing = "dotfiles-definitely-not-a-real-program";
+    assert!(
+        !executor.which(missing),
+        "missing program should not resolve"
+    );
+    assert!(
+        !executor.which(missing),
+        "negative lookup should stay cached as missing"
+    );
+    assert!(executor.which_path(missing).is_err());
+}
+
 #[test]
 fn which_path_fails_for_missing_program() {
     let executor = ProcessExecutor::system();

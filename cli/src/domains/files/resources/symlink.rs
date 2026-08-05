@@ -1,5 +1,5 @@
 //! Symlink resource.
-use anyhow::{Context as _, Result};
+use anyhow::Context as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -157,12 +157,10 @@ impl RemovableResource for SymlinkResource {
             Some(_) => {
                 // Target exists but is not a symlink: refuse to overwrite to
                 // protect user data that replaced the managed symlink.
-                return Ok(ResourceChange::Skipped {
-                    reason: format!(
-                        "target is not a symlink and will not be overwritten: {}",
-                        self.target.display()
-                    ),
-                });
+                return Ok(ResourceChange::skipped(format!(
+                    "target is not a symlink and will not be overwritten: {}",
+                    self.target.display()
+                )));
             }
             None => {
                 // Target already absent: still materialize source content into
@@ -185,7 +183,7 @@ impl RemovableResource for SymlinkResource {
 }
 
 impl IntrinsicState for SymlinkResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         current_state(self)
     }
 }
@@ -200,7 +198,7 @@ pub(super) fn copy_dir_into_place(
     source: &std::path::Path,
     target: &std::path::Path,
     executor: &dyn Executor,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     materialize::copy_dir_into_place(source, target, executor)
 }
 
@@ -215,6 +213,6 @@ pub(super) fn create_junction(
     target: &std::path::Path,
     link: &std::path::Path,
     executor: &dyn Executor,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     platform::create_junction(target, link, executor)
 }

@@ -1,8 +1,6 @@
 //! Resource state discovery providers.
 
-use anyhow::Result;
-
-use super::{Resource, ResourceState};
+use super::{Resource, ResourceResult, ResourceState};
 
 /// Provides current state for a batch of resources.
 ///
@@ -15,8 +13,9 @@ pub trait ResourceStateProvider<R: Resource> {
     ///
     /// # Errors
     ///
-    /// Returns an error if the resource state cannot be determined.
-    fn current_state(&self, resource: &R) -> Result<ResourceState>;
+    /// Returns a [`ResourceError`](super::ResourceError) if the resource state
+    /// cannot be determined.
+    fn current_state(&self, resource: &R) -> ResourceResult<ResourceState>;
 }
 
 /// State-checking extension for resources that can inspect themselves.
@@ -27,9 +26,12 @@ pub trait IntrinsicState: Resource {
     ///
     /// # Errors
     ///
-    /// Returns an error if the resource state cannot be determined due to I/O failures,
-    /// permission issues, or other system errors.
-    fn current_state(&self) -> Result<ResourceState>;
+    /// Returns a [`ResourceError`](super::ResourceError) if the resource state
+    /// cannot be determined due to I/O failures, permission issues, or other
+    /// system errors. Returning the typed error (rather than `anyhow::Error`)
+    /// keeps [`ResourceError::category`](super::ResourceError::category)
+    /// available to the orchestration layer without downcasting.
+    fn current_state(&self) -> ResourceResult<ResourceState>;
 
     /// Determine if the resource needs to be changed.
     ///
@@ -38,7 +40,7 @@ pub trait IntrinsicState: Resource {
     /// Returns an error if the current state cannot be determined (propagates errors from
     /// `current_state()`).
     #[allow(dead_code, reason = "part of trait contract; used by test modules")]
-    fn needs_change(&self) -> Result<bool> {
+    fn needs_change(&self) -> ResourceResult<bool> {
         Ok(matches!(
             self.current_state()?,
             ResourceState::Missing | ResourceState::Incorrect { .. }
@@ -51,7 +53,7 @@ pub trait IntrinsicState: Resource {
 pub struct IntrinsicStateProvider;
 
 impl<R: IntrinsicState> ResourceStateProvider<R> for IntrinsicStateProvider {
-    fn current_state(&self, resource: &R) -> Result<ResourceState> {
+    fn current_state(&self, resource: &R) -> ResourceResult<ResourceState> {
         resource.current_state()
     }
 }
@@ -75,9 +77,9 @@ impl<R, Cache, State> ResourceStateProvider<R> for CachedStateProvider<'_, Cache
 where
     R: Resource,
     Cache: Sync + ?Sized,
-    State: Fn(&R, &Cache) -> Result<ResourceState> + Sync,
+    State: Fn(&R, &Cache) -> ResourceResult<ResourceState> + Sync,
 {
-    fn current_state(&self, resource: &R) -> Result<ResourceState> {
+    fn current_state(&self, resource: &R) -> ResourceResult<ResourceState> {
         (self.state)(resource, self.cache)
     }
 }

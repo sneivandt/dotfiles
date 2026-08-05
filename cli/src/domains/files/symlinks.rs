@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::domains::files::config::symlinks::Symlink;
 use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::engine::{
-    Context, IntrinsicState as _, ProcessOpts, ResourceState, Task, TaskResult,
+    Context, IntrinsicState as _, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
     configured_task_result, process_resources_remove, run_resource_task, task_metadata,
 };
 use crate::infra::ConfigHandle;
@@ -125,12 +125,8 @@ impl UninstallSymlinks {
 }
 
 impl Task for UninstallSymlinks {
-    fn name(&self) -> &'static str {
-        "Home symlinks"
-    }
-
-    fn selector(&self) -> &'static str {
-        "symlinks"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("Home symlinks").with_selector("symlinks")
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

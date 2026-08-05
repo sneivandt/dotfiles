@@ -20,7 +20,13 @@ impl ConfigureShell {
             ctx,
             announce,
             vec![()],
-            |(), ctx| DefaultShellResource::new("zsh".to_string(), ctx.system().executor_arc()),
+            |(), ctx| {
+                DefaultShellResource::new(
+                    "zsh".to_string(),
+                    ctx.system().executor_arc(),
+                    std::sync::Arc::clone(ctx.env()),
+                )
+            },
             &ProcessOpts::strict("configure"),
         )
     }

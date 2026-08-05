@@ -13,7 +13,7 @@ use anyhow::Result;
 
 use super::*;
 
-use crate::engine::{TaskResult, TaskStats, execute, task_deps};
+use crate::engine::{TaskMeta, TaskResult, TaskStats, execute, task_deps};
 
 use crate::infra::logging::{MsgKind, Output, TaskRecorder};
 
@@ -55,8 +55,8 @@ macro_rules! flag_task {
         }
 
         impl Task for $type_name {
-            fn name(&self) -> &'static str {
-                $task_name
+            fn meta(&self) -> TaskMeta<'_> {
+                TaskMeta::new($task_name)
             }
 
             $(task_deps![$($dep),+];)?
@@ -77,8 +77,8 @@ flag_task!(FlagTask, "flag-task");
 struct PanicTask;
 
 impl Task for PanicTask {
-    fn name(&self) -> &'static str {
-        "panic-task"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("panic-task")
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -102,8 +102,8 @@ flag_task!(DepOnPanicTask, "dep-on-panic", deps: [PanicTask]);
 struct FailedTask;
 
 impl Task for FailedTask {
-    fn name(&self) -> &'static str {
-        "failed-task"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("failed-task")
     }
 
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -114,8 +114,8 @@ impl Task for FailedTask {
 struct CancellingTask;
 
 impl Task for CancellingTask {
-    fn name(&self) -> &'static str {
-        "cancelling"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("cancelling")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -129,8 +129,8 @@ struct CancelAfterFailureTask {
 }
 
 impl Task for CancelAfterFailureTask {
-    fn name(&self) -> &'static str {
-        "cancel-after-failure"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("cancel-after-failure")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -166,8 +166,8 @@ flag_task!(
 struct SkippedTask;
 
 impl Task for SkippedTask {
-    fn name(&self) -> &'static str {
-        "skipped-task"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("skipped-task")
     }
 
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -209,8 +209,8 @@ flag_task!(DepOnMissing, "dep-on-missing", deps: [PanicTask]);
 struct SequentialChangedDetailTask;
 
 impl Task for SequentialChangedDetailTask {
-    fn name(&self) -> &'static str {
-        "sequential-detail-task"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("sequential-detail-task")
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -234,8 +234,8 @@ impl Task for SequentialChangedDetailTask {
 struct StatsTask;
 
 impl Task for StatsTask {
-    fn name(&self) -> &'static str {
-        "stats-task"
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("stats-task")
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -258,8 +258,8 @@ struct NamedStatsTask {
 }
 
 impl Task for NamedStatsTask {
-    fn name(&self) -> &'static str {
-        self.name
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new(self.name)
     }
 
     fn should_run(&self, _: &Context) -> bool {

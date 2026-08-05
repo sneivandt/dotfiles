@@ -130,8 +130,8 @@ fn task_status_not_lost_after_debug_fmt_call() {
     // for per-resource "ok: <desc>" messages.
     struct DebugFmtTask;
     impl Task for DebugFmtTask {
-        fn name(&self) -> &'static str {
-            "debug-fmt-task"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("debug-fmt-task")
         }
 
         fn should_run(&self, _ctx: &Context) -> bool {

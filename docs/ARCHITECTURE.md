@@ -119,8 +119,10 @@ similar state. Providers can batch or cache state discovery, reducing repeated
 system calls.
 
 Resource processing is dry-run aware and returns explicit outcomes such as
-applied, already correct, skipped, invalid, or unknown. Tasks translate those
-outcomes into user-facing summaries.
+applied, already correct, skipped, invalid, or unknown. A skipped outcome
+carries whether the skip was benign or represents unmet work, so a resource
+that could not converge still fails the run. Tasks translate those outcomes
+into user-facing summaries.
 
 ## Operations
 
@@ -176,10 +178,16 @@ provider.
 This supports:
 
 - Linux and Windows implementations behind common contracts
-- test doubles for filesystem and command execution
+- test doubles for filesystem, command execution, and process environment
 - explicit capability failures instead of silent platform assumptions
 - elevation planning before parallel task dispatch, scoped to the tasks that
   declare it rather than the whole process
+
+Environment variables reachable from a task or resource are read through the
+context's environment adapter rather than process globals, so tests can supply
+a fixed environment without mutating shared state. Startup code that runs
+before a context exists — argument parsing, re-exec guards, log-directory
+discovery — still reads the process environment directly.
 
 ## Error handling and observability
 

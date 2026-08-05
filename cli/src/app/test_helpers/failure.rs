@@ -330,7 +330,7 @@ impl RemovableResource for FailingResource {
 }
 
 impl IntrinsicState for FailingResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         Ok(self.state.clone())
     }
 }

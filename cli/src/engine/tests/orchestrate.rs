@@ -42,7 +42,7 @@ impl RemovableResource for PrecomputedResource {
 struct PrecomputedStateProvider;
 
 impl ResourceStateProvider<PrecomputedResource> for PrecomputedStateProvider {
-    fn current_state(&self, resource: &PrecomputedResource) -> anyhow::Result<ResourceState> {
+    fn current_state(&self, resource: &PrecomputedResource) -> ResourceResult<ResourceState> {
         Ok(resource.state.clone())
     }
 }
@@ -52,7 +52,7 @@ struct CountingStateProvider {
 }
 
 impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
-    fn current_state(&self, resource: &PrecomputedResource) -> anyhow::Result<ResourceState> {
+    fn current_state(&self, resource: &PrecomputedResource) -> ResourceResult<ResourceState> {
         self.checks.fetch_add(1, Ordering::SeqCst);
         Ok(resource.state.clone())
     }

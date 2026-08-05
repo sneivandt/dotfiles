@@ -312,16 +312,30 @@ fn process_single_apply_already_correct_increments_already_ok() {
 fn process_single_apply_skipped_no_bail_increments_failed() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
-    let resource =
-        MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::Skipped {
-            reason: "not supported".to_string(),
-        }));
+    let resource = MockResource::new(ResourceState::Missing)
+        .with_apply(Ok(ResourceChange::unusable("not supported")));
     let opts = default_opts();
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
 
     assert_eq!(stats.failed, 1);
     assert_eq!(stats.skipped, 0);
+    assert_eq!(stats.changed, 0);
+}
+
+#[test]
+fn process_single_apply_benign_skip_increments_skipped() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let resource = MockResource::new(ResourceState::Missing).with_apply(Ok(
+        ResourceChange::skipped("not supported on this platform"),
+    ));
+    let opts = default_opts();
+
+    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
+
+    assert_eq!(stats.skipped, 1);
+    assert_eq!(stats.failed, 0);
     assert_eq!(stats.changed, 0);
 }
 
@@ -368,10 +382,8 @@ fn process_single_apply_bail_on_already_correct() {
 fn process_single_apply_bail_on_skipped_records_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);
-    let resource =
-        MockResource::new(ResourceState::Missing).with_apply(Ok(ResourceChange::Skipped {
-            reason: "denied".to_string(),
-        }));
+    let resource = MockResource::new(ResourceState::Missing)
+        .with_apply(Ok(ResourceChange::unusable("denied")));
     let opts = bail_opts();
 
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();

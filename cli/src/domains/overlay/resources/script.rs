@@ -115,9 +115,10 @@ impl ScriptResource {
     fn execute(&self, mode: ScriptMode) -> Result<(ResourceChange, String)> {
         if !self.script_path.exists() {
             return Ok((
-                ResourceChange::Skipped {
-                    reason: format!("script not found: {}", self.script_path.display()),
-                },
+                ResourceChange::skipped(format!(
+                    "script not found: {}",
+                    self.script_path.display()
+                )),
                 String::new(),
             ));
         }
@@ -180,7 +181,7 @@ impl RemovableResource for ScriptResource {
 }
 
 impl IntrinsicState for ScriptResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         if !self.script_path.exists() {
             return Ok(ResourceState::Invalid {
                 reason: format!("script not found: {}", self.script_path.display()),

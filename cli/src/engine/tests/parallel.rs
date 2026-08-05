@@ -108,7 +108,7 @@ impl RemovableResource for ConcurrencyProbe {
 }
 
 impl IntrinsicState for ConcurrencyProbe {
-    fn current_state(&self) -> anyhow::Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         Ok(ResourceState::Missing)
     }
 }
@@ -145,7 +145,7 @@ impl RemovableResource for CancellingResource {
 }
 
 impl IntrinsicState for CancellingResource {
-    fn current_state(&self) -> anyhow::Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         Ok(ResourceState::Correct)
     }
 }

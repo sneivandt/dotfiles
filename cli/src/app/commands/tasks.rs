@@ -168,17 +168,13 @@ fn command_membership(listing: &TaskListing) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Context, TaskResult};
+    use crate::engine::{Context, TaskMeta, TaskResult};
 
     struct VisibleTask;
 
     impl Task for VisibleTask {
-        fn name(&self) -> &'static str {
-            "Visible task"
-        }
-
-        fn selector(&self) -> &'static str {
-            "visible"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Visible task").with_selector("visible")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -189,16 +185,10 @@ mod tests {
     struct InternalTask;
 
     impl Task for InternalTask {
-        fn name(&self) -> &'static str {
-            "Internal task"
-        }
-
-        fn selector(&self) -> &'static str {
-            "internal"
-        }
-
-        fn visibility(&self) -> TaskVisibility {
-            TaskVisibility::Internal
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Internal task")
+                .with_selector("internal")
+                .with_visibility(TaskVisibility::Internal)
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -209,12 +199,8 @@ mod tests {
     struct ConflictingTask;
 
     impl Task for ConflictingTask {
-        fn name(&self) -> &'static str {
-            "Conflicting task"
-        }
-
-        fn selector(&self) -> &'static str {
-            "visible"
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Conflicting task").with_selector("visible")
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {

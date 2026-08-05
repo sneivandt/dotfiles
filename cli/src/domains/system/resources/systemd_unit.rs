@@ -1,8 +1,6 @@
 //! Systemd unit resource.
 use std::sync::Arc;
 
-use anyhow::Result;
-
 use crate::domains::system::config::systemd_units::UnitScope;
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
@@ -123,15 +121,16 @@ impl Resource for SystemdUnitResource {
         if result.success {
             Ok(ResourceChange::Applied)
         } else {
-            Ok(ResourceChange::Skipped {
-                reason: format!("failed to enable: {}", result.stderr.trim()),
-            })
+            Ok(ResourceChange::unusable(format!(
+                "failed to enable: {}",
+                result.stderr.trim()
+            )))
         }
     }
 }
 
 impl IntrinsicState for SystemdUnitResource {
-    fn current_state(&self) -> Result<ResourceState> {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
         let args = match self.check_args() {
             Ok(args) => args,
             Err(error) => {

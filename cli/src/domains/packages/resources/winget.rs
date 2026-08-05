@@ -245,18 +245,18 @@ impl PackageProvider for WingetProvider {
 
         match classify_install(result.code) {
             InstallVerdict::Installed => Ok(ResourceChange::Applied),
-            InstallVerdict::Skipped(reason) => Ok(ResourceChange::Skipped {
-                reason: format!("{name}: {reason}"),
-            }),
+            InstallVerdict::Skipped(reason) => {
+                Ok(ResourceChange::unusable(format!("{name}: {reason}")))
+            }
             InstallVerdict::RetryWithoutScope | InstallVerdict::Failed => {
                 let detail = if result.stderr.trim().is_empty() {
                     result.stdout.trim().to_string()
                 } else {
                     format!("{}\n{}", result.stdout.trim(), result.stderr.trim())
                 };
-                Ok(ResourceChange::Skipped {
-                    reason: format!("winget install failed: {detail}"),
-                })
+                Ok(ResourceChange::unusable(format!(
+                    "winget install failed: {detail}"
+                )))
             }
         }
     }
@@ -398,9 +398,7 @@ mod tests {
 
         assert_eq!(
             change,
-            ResourceChange::Skipped {
-                reason: "winget install failed: No package found".to_string(),
-            },
+            ResourceChange::unusable("winget install failed: No package found"),
         );
     }
 
@@ -415,9 +413,7 @@ mod tests {
 
         assert_eq!(
             change,
-            ResourceChange::Skipped {
-                reason: "winget install failed: Installer output\nAccess denied".to_string(),
-            },
+            ResourceChange::unusable("winget install failed: Installer output\nAccess denied"),
         );
     }
 
@@ -470,10 +466,12 @@ mod tests {
             }
         });
 
-        let ResourceChange::Skipped { reason } = WingetProvider.install("Git.Git", &mock).unwrap()
+        let ResourceChange::Skipped { reason, failed } =
+            WingetProvider.install("Git.Git", &mock).unwrap()
         else {
             panic!("expected a skip");
         };
+        assert!(failed, "an admin-required skip must count as a failure");
         assert!(
             reason.starts_with("Git.Git: requires administrator"),
             "{reason}"
@@ -508,7 +506,8 @@ mod tests {
             .once()
             .returning(|_, _| Ok(failed_result("", "", exit_code::INSTALL_CANCELLED_BY_USER)));
 
-        let ResourceChange::Skipped { reason } = WingetProvider.install("Git.Git", &mock).unwrap()
+        let ResourceChange::Skipped { reason, .. } =
+            WingetProvider.install("Git.Git", &mock).unwrap()
         else {
             panic!("expected a skip");
         };

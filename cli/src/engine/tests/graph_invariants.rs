@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use anyhow::Result;
 
 use crate::engine::graph::{GraphError, ResolvedTaskGraph};
-use crate::engine::{Context, Task, TaskId, TaskResult};
+use crate::engine::{Context, Task, TaskId, TaskMeta, TaskResult};
 
 /// A task whose identity and dependencies are supplied at construction time.
 ///
@@ -26,8 +26,8 @@ struct GeneratedTask {
 }
 
 impl Task for GeneratedTask {
-    fn name(&self) -> &str {
-        &self.name
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new(&self.name)
     }
 
     fn task_id(&self) -> TaskId {

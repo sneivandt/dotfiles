@@ -14,7 +14,7 @@ use anyhow::Result;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskResult, TaskStats, TaskVisibility,
+    Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, TaskVisibility,
     process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
@@ -43,12 +43,8 @@ impl ReportOverlayScriptSnapshot {
 }
 
 impl Task for ReportOverlayScriptSnapshot {
-    fn name(&self) -> &'static str {
-        "Report overlay scripts"
-    }
-
-    fn visibility(&self) -> TaskVisibility {
-        TaskVisibility::Internal
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("Report overlay scripts").with_visibility(TaskVisibility::Internal)
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -145,7 +141,7 @@ impl Operation for OverlayScriptOperation {
         let (change, output) = self.resource(ctx)?.apply_with_output()?;
         emit_script_lines(ctx, &output, false);
         match change {
-            ResourceChange::Skipped { reason } => {
+            ResourceChange::Skipped { reason, .. } => {
                 ctx.log().warn(format!("skipping: {reason}"));
                 Ok(TaskResult::Skipped(reason))
             }
@@ -178,12 +174,8 @@ fn overlay_script_selector(name: &str) -> String {
 }
 
 impl Task for OverlayScriptTask {
-    fn name(&self) -> &str {
-        &self.entry.name
-    }
-
-    fn selector(&self) -> &str {
-        &self.selector
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new(&self.entry.name).with_selector(&self.selector)
     }
 
     /// Returns a per-instance [`TaskId::Dynamic`](crate::engine::TaskId::Dynamic) derived from the script's

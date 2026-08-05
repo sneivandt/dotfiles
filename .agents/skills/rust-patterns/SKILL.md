@@ -50,12 +50,19 @@ cli/src/
 
 - Use `anyhow::Result` with contextual `?` propagation in commands/tasks, and
   typed `ResourceError` values in resource implementations when a resource-level
-  failure needs classification.
+  failure needs classification. Resource state discovery
+  (`IntrinsicState`/`ResourceStateProvider::current_state`) returns
+  `ResourceResult<ResourceState>` too; `Operation::current_state` keeps
+  `anyhow::Result` because workflow state is not resource-classified.
 - Implement `Task` directly; there is no task-generating macro. Use
   `task_metadata!` for the metadata block, `task_deps![...]` for dependencies,
   and call `run_resource_task()` (or `run_batch_resource_task()` when one query
-  feeds every resource) from the task body. Config-backed tasks own a
-  `ConfigHandle<T>` field and snapshot it with `self.config.read().to_vec()`.
+  feeds every resource) from the task body. `task_metadata!` emits the single
+  required `fn meta(&self) -> TaskMeta<'_>`; hand-written tasks with dynamic
+  identity build a `TaskMeta` directly rather than overriding the derived
+  `name()`/`selector()`/`visibility()`/`update_only()` accessors. Config-backed
+  tasks own a `ConfigHandle<T>` field and snapshot it with
+  `self.config.read().to_vec()`.
   Implement `run_configured()` and `run()` as the two-line pair that passes
   `Some(NAME)` / `None` as the stage announcement. For idempotent multi-step
   workflows that do not fit one resource, implement `Operation` and call
@@ -70,6 +77,14 @@ cli/src/
   current state predicts a privileged mutation, so elevation is requested only
   when needed. Dry-run suppression is handled centrally by the
   `engine::requires_elevation` free function, which decorators cannot bypass.
+  That function short-circuits on `needs_elevation()` before calling
+  `should_run()`, so `should_run()` must stay side-effect free and cheap enough
+  to run twice.
+- Read the process environment through `ctx.env()` (`infra::env::Env`) rather
+  than `std::env`. Only startup code that runs before a `Context` exists
+  (argument parsing, re-exec guards, log-directory discovery) may touch
+  `std::env` directly. Tests inject `infra::env::MapEnv` instead of mutating
+  process-global state.
 - Use capability methods such as `supports_systemd()`, `supports_chmod()`,
   `has_registry()`, `supports_aur()`, and `uses_pacman()` before direct OS checks.
 - Route all subprocess calls through `ctx.executor`; do not call process helpers
@@ -107,7 +122,8 @@ cli/src/
 - Keep applicability centralized: `should_run()` decides eligibility, while
   `run_configured()` only suppresses tasks with no configured work.
 - Keep task metadata roles distinct; `engine-orchestration` owns the full
-  `TaskId`/`selector()`/`name()`/`visibility()` statement.
+  `TaskId`/`selector()`/`name()`/`visibility()` statement. `TaskMeta` returned
+  from `meta()` is the single source for all four.
 - Preserve discovery insertion order and natural parallel completion-order
   output; do not sort completed task rows.
 - Inject typed `ConfigHandle<T>` values into config-backed tasks and keep read

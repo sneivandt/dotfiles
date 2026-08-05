@@ -72,6 +72,10 @@ pub mod exec {
     pub use crate::infra::exec::{ExecResult, Executor, ProcessExecutor};
 }
 
+pub mod env {
+    pub use crate::infra::env::{Env, MapEnv, SystemEnv, system};
+}
+
 pub mod error {
     pub use crate::engine::resource::ResourceError;
 }
@@ -83,8 +87,8 @@ pub mod logging {
 pub mod tasks {
     pub use crate::app::catalog::{all_install_tasks, all_uninstall_tasks};
     pub use crate::engine::{
-        Context, ContextOpts, ProcessMode, ProcessOpts, Task, TaskId, TaskResult, TaskStats,
-        execute,
+        Context, ContextOpts, ProcessMode, ProcessOpts, Task, TaskId, TaskMeta, TaskResult,
+        TaskStats, execute,
     };
 
     pub mod filter {

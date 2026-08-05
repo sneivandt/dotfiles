@@ -46,6 +46,7 @@ impl Logger {
         RowOpts {
             mode: SummaryMode::for_command(&self.command),
             style: stdout_style(),
+            symbols: self.symbols,
             verbose: self.verbose,
         }
     }

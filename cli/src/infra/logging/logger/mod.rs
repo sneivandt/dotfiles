@@ -80,6 +80,8 @@ pub struct Logger {
     pub(super) start: Instant,
     /// Whether verbose output is enabled (show applicable task statuses and details).
     pub(super) verbose: bool,
+    /// Whether console task rows use compact status glyphs.
+    pub(super) symbols: bool,
     /// Whether the current command is previewing changes without applying them.
     pub(super) dry_run: bool,
     /// Whether the separator after startup metadata has been emitted.
@@ -139,6 +141,7 @@ impl Logger {
             run_log,
             start,
             verbose: true,
+            symbols: true,
             dry_run: false,
             startup_separator_emitted: AtomicBool::new(false),
         }
@@ -151,6 +154,11 @@ impl Logger {
     pub fn set_verbose(&mut self, verbose: bool) {
         self.verbose = verbose;
         super::subscriber::set_verbose(verbose);
+    }
+
+    /// Set whether console task rows use compact status glyphs.
+    pub const fn set_symbols(&mut self, symbols: bool) {
+        self.symbols = symbols;
     }
 
     /// Set dry-run mode on this logger for summary rendering.

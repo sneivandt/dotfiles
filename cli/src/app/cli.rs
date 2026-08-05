@@ -42,6 +42,10 @@ pub struct Cli {
 
 /// Options shared across all subcommands.
 #[derive(Parser, Debug, Clone)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "Clap maps each independent global switch directly to a bool"
+)]
 pub struct GlobalOpts {
     /// Use a specific profile
     #[arg(short, long, global = true, value_name = "PROFILE")]
@@ -62,6 +66,10 @@ pub struct GlobalOpts {
     /// Run tasks sequentially
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
+
+    /// Use ASCII words instead of status symbols
+    #[arg(long, global = true)]
+    pub no_symbols: bool,
 
     /// Internal: marks a run spawned by a parent run to perform elevated tasks
     ///
@@ -270,6 +278,7 @@ mod tests {
             "--root <PATH>        Use PATH as the dotfiles repository",
             "--overlay <PATH>     Merge configuration from an overlay repository",
             "--no-parallel        Run tasks sequentially",
+            "--no-symbols         Use ASCII words instead of status symbols",
             "-h, --help               Print help",
         ] {
             assert!(
@@ -467,6 +476,12 @@ mod tests {
             !cli.global.parallel,
             "--no-parallel should set parallel to false"
         );
+    }
+
+    #[test]
+    fn no_symbols_disables_status_symbols() {
+        let cli = Cli::parse_from(["dotfiles", "--no-symbols", "install"]);
+        assert!(cli.global.no_symbols);
     }
 
     #[test]

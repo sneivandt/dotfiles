@@ -94,7 +94,7 @@ available. The task:
 
 Re-running `dotfiles install` should not advance pinned dependency versions.
 Install previews derive the same merged-manifest, lockfile, and success-marker
-state as apply mode. They emit `DRYRUN` only when convergence is needed; an
+state as apply mode. They emit `~` only when convergence is needed; an
 already-current install stays quiet.
 
 ```bash
@@ -113,7 +113,7 @@ the current merged-manifest fingerprint. If install convergence did not succeed,
 or the desired state changed afterward, update is skipped rather than mutating
 an unrelated or partial lockfile.
 
-An update preview runs non-mutating `apm outdated -g` and emits `DRYRUN` only
+An update preview runs non-mutating `apm outdated -g` and emits `~` only
 when APM reports outdated dependencies. Apply mode invokes APM's native
 idempotent update directly, then compares the lockfile before and after to
 report whether refs advanced instead of parsing update output. The comparison

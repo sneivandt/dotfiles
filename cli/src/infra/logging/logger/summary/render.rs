@@ -12,15 +12,15 @@ use crate::infra::logging::utils::{
     sort_action_runs,
 };
 
-/// Width of the status column, so shorter verbose-only tokens (`OK`, `N/A`)
-/// line up with the six-character tokens.
-const STATUS_WIDTH: usize = 6;
+/// Width of the one-cell status glyph column.
+const STATUS_WIDTH: usize = 1;
 
 /// Rendering options for a single task row.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct RowOpts {
     pub(super) mode: SummaryMode,
     pub(super) style: StyleChoice,
+    pub(super) symbols: bool,
     /// Verbose rows show every task, per-task timing, and uncapped details.
     pub(super) verbose: bool,
 }
@@ -75,22 +75,14 @@ pub(super) const fn should_emit_task_result(status: TaskStatus, verbose: bool) -
     }
 }
 
-/// The fixed-width token shown at the start of a task row.
-const fn status_token(status: TaskStatus, mode: SummaryMode) -> &'static str {
-    match status {
-        TaskStatus::Changed => {
-            if matches!(mode, SummaryMode::Test) {
-                "PASSED"
-            } else {
-                "CHANGE"
-            }
-        }
-        TaskStatus::Passed => "PASSED",
-        TaskStatus::DryRun => "DRYRUN",
-        TaskStatus::Skipped => "IGNORE",
-        TaskStatus::Failed => "FAILED",
-        TaskStatus::Ok => "OK",
-        TaskStatus::NotApplicable => "N/A",
+/// The status text shown at the start of a task row.
+fn status_text(status: TaskStatus, mode: SummaryMode, symbols: bool) -> String {
+    if symbols {
+        status.symbol().to_string()
+    } else if matches!((status, mode), (TaskStatus::Changed, SummaryMode::Test)) {
+        "PASSED".to_string()
+    } else {
+        status.word().to_string()
     }
 }
 
@@ -99,7 +91,10 @@ const fn status_token(status: TaskStatus, mode: SummaryMode) -> &'static str {
 /// The task's message lives on this row rather than in the indented block
 /// below it, so an indented line always means "an action this task took".
 pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
-    let padded = format!("{:<STATUS_WIDTH$}", status_token(task.status, opts.mode));
+    let padded = format!(
+        "{:<STATUS_WIDTH$}",
+        status_text(task.status, opts.mode, opts.symbols)
+    );
     let mut line = format!(
         "{} {}",
         opts.style.paint(task.status.text_style(), &padded),
@@ -114,7 +109,7 @@ pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
         );
     }
     // A not-applicable task never ran, so its timing is either absent or a
-    // meaningless `0.0s`. Suppressing it keeps `N/A` rows uniform whether the
+    // meaningless `0.0s`. Suppressing it keeps `⁃` rows uniform whether the
     // task bailed out in `should_run()` or after being configured.
     if opts.verbose
         && task.status != TaskStatus::NotApplicable

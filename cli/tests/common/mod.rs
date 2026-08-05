@@ -356,6 +356,7 @@ pub(crate) fn run_install_dry_run(
         dry_run: true,
         overlay: None,
         parallel,
+        no_symbols: false,
         elevated_child: false,
     };
     let opts = test_api::cli::InstallOpts { skip, only };

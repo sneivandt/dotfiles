@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use super::render::{RowOpts, format_task_line, task_detail_lines, task_result_lines};
+use super::render::{
+    RowOpts, format_task_line, should_emit_task_result, task_detail_lines, task_result_lines,
+};
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::StyleChoice;
@@ -24,6 +26,7 @@ fn plain_opts() -> RowOpts {
     RowOpts {
         mode: SummaryMode::Standard,
         style: StyleChoice::plain(),
+        symbols: true,
         verbose: false,
     }
 }
@@ -208,7 +211,7 @@ fn no_op_standard_commands_skip_extra_blank() {
 }
 
 #[test]
-fn changed_task_line_uses_fixed_width_status() {
+fn changed_task_line_uses_symbol_status() {
     let task = task_entry(
         "symlinks",
         TaskStatus::Changed,
@@ -217,13 +220,13 @@ fn changed_task_line_uses_fixed_width_status() {
 
     assert_eq!(
         format_task_line(&task, colored_opts()),
-        "\x1b[32mCHANGE\x1b[0m symlinks"
+        "\x1b[32m✓\x1b[0m symlinks"
     );
-    assert_eq!(format_task_line(&task, plain_opts()), "CHANGE symlinks");
+    assert_eq!(format_task_line(&task, plain_opts()), "✓ symlinks");
 }
 
 #[test]
-fn task_line_states_the_reason_beside_the_task_name() {
+fn task_line_states_reason_beside_task_name() {
     let task = task_entry(
         "Dotfiles repository",
         TaskStatus::Skipped,
@@ -232,7 +235,7 @@ fn task_line_states_the_reason_beside_the_task_name() {
 
     assert_eq!(
         format_task_line(&task, plain_opts()),
-        "IGNORE Dotfiles repository \u{b7} local changes present"
+        "⊘ Dotfiles repository \u{b7} local changes present"
     );
 }
 
@@ -245,10 +248,7 @@ fn verbose_task_line_reports_elapsed_time() {
         ..plain_opts()
     };
 
-    assert_eq!(
-        format_task_line(&task, opts),
-        "OK     Home symlinks \u{b7} 1.5s"
-    );
+    assert_eq!(format_task_line(&task, opts), "‧ Home symlinks \u{b7} 1.5s");
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn task_result_lines_are_flat_with_reduced_indent() {
     assert_eq!(
         task_result_lines(&task, &details, colored_opts()),
         vec![
-            "\x1b[32mCHANGE\x1b[0m changed-task",
+            "\x1b[32m✓\x1b[0m changed-task",
             "\x1b[2m  link ~/.example\x1b[0m"
         ]
     );
@@ -329,7 +329,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
         [
-            "DRYRUN Install symlinks",
+            "~ Install symlinks",
             "  link ~/.bashrc \u{2192} symlinks/bashrc"
         ]
     );
@@ -353,7 +353,7 @@ fn task_result_lines_include_all_details() {
     assert_eq!(lines.len(), 12);
     assert_eq!(
         lines.first().expect("task status line should exist"),
-        "DRYRUN large-plan"
+        "~ large-plan"
     );
     assert_eq!(
         lines.last().expect("last detail line should exist"),
@@ -376,10 +376,7 @@ fn verbose_task_result_lines_account_for_unchanged_tasks() {
         ..plain_opts()
     };
 
-    assert_eq!(
-        task_result_lines(&task, &[], opts),
-        ["OK     unchanged-task"]
-    );
+    assert_eq!(task_result_lines(&task, &[], opts), ["‧ unchanged-task"]);
 }
 
 #[test]
@@ -390,7 +387,36 @@ fn validation_task_line_uses_passed_status() {
         ..plain_opts()
     };
 
-    assert_eq!(format_task_line(&task, opts), "PASSED Validate config");
+    assert_eq!(format_task_line(&task, opts), "✓ Validate config");
+}
+
+#[test]
+fn task_line_uses_words_when_symbols_are_disabled() {
+    let task = task_entry("symlinks", TaskStatus::Changed, None);
+    let opts = RowOpts {
+        symbols: false,
+        ..plain_opts()
+    };
+
+    assert_eq!(format_task_line(&task, opts), "CHANGE symlinks");
+}
+
+#[test]
+fn task_result_visibility_is_unchanged_for_every_status() {
+    for status in [
+        TaskStatus::Changed,
+        TaskStatus::DryRun,
+        TaskStatus::Passed,
+        TaskStatus::Skipped,
+        TaskStatus::Failed,
+    ] {
+        assert!(should_emit_task_result(status, false));
+        assert!(should_emit_task_result(status, true));
+    }
+    for status in [TaskStatus::Ok, TaskStatus::NotApplicable] {
+        assert!(!should_emit_task_result(status, false));
+        assert!(should_emit_task_result(status, true));
+    }
 }
 
 #[test]

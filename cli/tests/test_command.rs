@@ -49,6 +49,7 @@ fn test_command_fails_on_config_warnings() {
         dry_run: true,
         overlay: None,
         parallel: false,
+        no_symbols: false,
         elevated_child: false,
     };
     let opts = test_api::cli::TestOpts {};

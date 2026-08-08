@@ -147,7 +147,7 @@ jobs:
         with:
           workspaces: "cli -> target"
       - name: Install cargo-audit
-        uses: taiki-e/install-action@065d6a08a14e61e89fb0a4c10eecdbdef39c7d8e # v2.85.4
+        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
         with:
           tool: cargo-audit
       - run: cargo audit --file cli/Cargo.lock
@@ -165,7 +165,7 @@ jobs:
         with:
           workspaces: "cli -> target"
       - name: Install cargo-deny
-        uses: taiki-e/install-action@065d6a08a14e61e89fb0a4c10eecdbdef39c7d8e # v2.85.4
+        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
         with:
           tool: cargo-deny
       - run: cargo deny --manifest-path cli/Cargo.toml check all
@@ -231,7 +231,7 @@ jobs:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@065d6a08a14e61e89fb0a4c10eecdbdef39c7d8e # v2.85.4
+        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
         with:
           tool: cargo-llvm-cov
       - name: Generate coverage report

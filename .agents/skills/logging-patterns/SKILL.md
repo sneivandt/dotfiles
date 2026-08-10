@@ -57,9 +57,12 @@ description: >
   counter summaries and lines duplicating the task message are filtered in both
   modes; do not work around the filter by rewording.
 - Normal and verbose output both print all detail lines, uncapped.
-- Summaries count structured actions and affected tasks separately, plus
-  up-to-date, ignored, and failed tasks and elapsed time. Non-applicable tasks
-  are reported nowhere but the run log. Never infer counts from display text.
+- Summaries lead with affected-task counts and put structured action counts in
+  parentheses: `3 changed (87 applied)` or `5 would change (121 planned)`.
+  Summary groups use no status glyphs. Current, ignored, and failed task counts
+  and elapsed time remain separate ` · `-delimited groups. Outcome groups are
+  green, magenta, dim, yellow, and red respectively. Non-applicable tasks are
+  reported nowhere but the run log. Never infer counts from display text.
 - The transient progress line reads
   `Running · {done}/{total} done · {active tasks}`. The counter is completed
   tasks, not active ones, so it keeps its explicit `done` label. Its denominator

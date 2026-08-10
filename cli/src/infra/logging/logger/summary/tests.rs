@@ -48,7 +48,7 @@ fn format_elapsed_values() {
 }
 
 #[test]
-fn standard_no_op_has_only_already_up_to_date_line() {
+fn standard_no_op_has_only_no_changes_line() {
     let lines = format_summary_lines(
         SummaryCounts::default(),
         SummaryMode::Standard,
@@ -85,12 +85,12 @@ fn standard_summary_groups_task_and_action_counts() {
 
     assert_eq!(
         lines,
-        ["Failed · 87 changes in 3 tasks · 1 ignored · 1 failed · 2.0s"]
+        ["3 changed (87 applied) · 1 ignored · 1 failed · 2.0s"]
     );
 }
 
 #[test]
-fn dry_run_summary_leads_with_the_dry_run_label() {
+fn dry_run_summary_pairs_affected_and_planned_counts() {
     let lines = format_summary_lines(
         SummaryCounts {
             changed: 0,
@@ -110,11 +110,11 @@ fn dry_run_summary_leads_with_the_dry_run_label() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["Dry run · 81 changes in 1 task · 0.8s"]);
+    assert_eq!(lines, ["1 would change (81 planned) · 0.8s"]);
 }
 
 #[test]
-fn dry_run_summary_counts_unquantified_work_as_tasks() {
+fn dry_run_summary_counts_unquantified_affected_tasks() {
     let lines = format_summary_lines(
         SummaryCounts {
             dry_run: 2,
@@ -126,7 +126,7 @@ fn dry_run_summary_counts_unquantified_work_as_tasks() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["Dry run · 2 tasks with changes · 0.8s"]);
+    assert_eq!(lines, ["2 would change · 0.8s"]);
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn summary_totals_account_for_every_reported_task() {
 
     assert_eq!(
         lines,
-        ["4 changes in 2 tasks \u{b7} 15 up to date \u{b7} 1 ignored \u{b7} 2.3s"],
+        ["2 changed (4 applied) \u{b7} 15 current \u{b7} 1 ignored \u{b7} 2.3s"],
         "every task the run reported on must be represented in the totals"
     );
 }
@@ -175,7 +175,7 @@ fn standard_summary_omits_actions_when_all_action_counts_are_zero() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["Changed 2 tasks · 1.0s"]);
+    assert_eq!(lines, ["2 changed · 1.0s"]);
 }
 
 #[test]
@@ -426,10 +426,13 @@ fn task_result_visibility_is_unchanged_for_every_status() {
 }
 
 #[test]
-fn colored_summary_does_not_bold_completion_or_group_labels() {
+fn colored_summary_styles_each_outcome_group() {
     let lines = format_summary_lines(
         SummaryCounts {
             changed: 1,
+            ok: 2,
+            skipped: 3,
+            failed: 4,
             actions: ActionCounts {
                 applied: 2,
                 ..ActionCounts::default()
@@ -442,9 +445,13 @@ fn colored_summary_does_not_bold_completion_or_group_labels() {
         StyleChoice::colored(),
     );
 
-    assert!(
-        lines.iter().all(|line| !line.contains("\x1b[1m")),
-        "completion and totals labels should not be bold"
+    assert_eq!(
+        lines,
+        ["\x1b[32m1 changed (2 applied)\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[2m2 current\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[33m3 ignored\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[31m4 failed\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"]
     );
 }
 

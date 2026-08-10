@@ -76,39 +76,33 @@ pub(super) fn format_standard_totals(
     style: StyleChoice,
 ) -> Vec<String> {
     let mut parts = Vec::new();
-    if counts.failed > 0 {
-        parts.push(style.paint(TextStyle::Red, "Failed"));
-        if let Some(changes) = format_applied_or_changed(counts, style) {
-            parts.push(changes);
-        }
-    } else if dry_run && counts.actions.planned > 0 {
-        parts.push(style.paint(TextStyle::Magenta, "Dry run"));
-        parts.push(style.paint(
+    if counts.dry_run > 0 || (dry_run && counts.actions.planned > 0) {
+        parts.push(format_outcome_with_detail(
+            counts.dry_run,
+            "would change",
+            counts.actions.planned,
+            "planned",
             TextStyle::Magenta,
-            &format!(
-                "{} {} in {} {}",
-                counts.actions.planned,
-                pluralize(counts.actions.planned, "change", "changes"),
-                counts.dry_run,
-                pluralize(counts.dry_run, "task", "tasks")
-            ),
+            style,
         ));
-    } else if let Some(changes) = format_applied_or_changed(counts, style) {
-        parts.push(changes);
-    } else if counts.dry_run > 0 {
-        parts.push(style.paint(TextStyle::Magenta, "Dry run"));
+    } else if counts.changed > 0 {
+        parts.push(format_outcome_with_detail(
+            counts.changed,
+            "changed",
+            counts.actions.applied,
+            "applied",
+            TextStyle::Green,
+            style,
+        ));
+    } else if counts.actions.applied > 0 {
         parts.push(style.paint(
-            TextStyle::Magenta,
-            &format!(
-                "{} {} with changes",
-                counts.dry_run,
-                pluralize(counts.dry_run, "task", "tasks")
-            ),
+            TextStyle::Green,
+            &format!("{} applied", counts.actions.applied),
         ));
-    } else {
+    } else if counts.failed == 0 {
         parts.push("No changes".to_string());
     }
-    push_count(&mut parts, counts.ok, TextStyle::Dim, "up to date", style);
+    push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);
     push_count(
         &mut parts,
         counts.skipped,
@@ -120,29 +114,22 @@ pub(super) fn format_standard_totals(
     parts
 }
 
-fn format_applied_or_changed(counts: SummaryCounts, style: StyleChoice) -> Option<String> {
-    if counts.actions.applied > 0 {
-        return Some(style.paint(
-            TextStyle::Green,
-            &format!(
-                "{} {} in {} {}",
-                counts.actions.applied,
-                pluralize(counts.actions.applied, "change", "changes"),
-                counts.changed,
-                pluralize(counts.changed, "task", "tasks")
-            ),
-        ));
-    }
-    (counts.changed > 0).then(|| {
-        style.paint(
-            TextStyle::Green,
-            &format!(
-                "Changed {} {}",
-                counts.changed,
-                pluralize(counts.changed, "task", "tasks")
-            ),
-        )
-    })
+fn format_outcome_with_detail(
+    outcome_count: u32,
+    outcome_label: &str,
+    detail_count: u32,
+    detail_label: &str,
+    text_style: TextStyle,
+    style: StyleChoice,
+) -> String {
+    let text = if outcome_count == 0 {
+        format!("{detail_count} {detail_label}")
+    } else if detail_count == 0 {
+        format!("{outcome_count} {outcome_label}")
+    } else {
+        format!("{outcome_count} {outcome_label} ({detail_count} {detail_label})")
+    };
+    style.paint(text_style, &text)
 }
 
 /// Append a styled `"<count> <label>"` fragment, skipping zero counts.
@@ -156,14 +143,6 @@ pub(super) fn push_count(
     if count > 0 {
         parts.push(style.paint(text_style, &format!("{count} {label}")));
     }
-}
-
-pub(super) const fn pluralize(
-    count: u32,
-    singular: &'static str,
-    plural: &'static str,
-) -> &'static str {
-    if count == 1 { singular } else { plural }
 }
 
 pub(super) fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> {

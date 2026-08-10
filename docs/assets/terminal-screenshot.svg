@@ -14,7 +14,6 @@
   <circle cx="44" cy="39" r="6" fill="#f7768e"/>
   <circle cx="64" cy="39" r="6" fill="#e0af68"/>
   <circle cx="84" cy="39" r="6" fill="#9ece6a"/>
-  <text x="480" y="44" text-anchor="middle" fill="#a9b1d6" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">user@workstation: ~</text>
   <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve">
     <text x="34" y="82"><tspan fill="#e0af68">~</tspan></text>
     <text x="34" y="103"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
@@ -32,6 +31,6 @@
     <text x="34" y="355"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">Default shell</tspan></text>
     <text x="52" y="376" fill="#a9b1d6">configure default shell → zsh</text>
 
-    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">6 changes in 3 tasks</tspan><tspan fill="#565f89"> · 12 up to date · 1.3s</tspan></text>
+    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">3 changed (6 applied)</tspan><tspan fill="#565f89"> · 12 current · 1.3s</tspan></text>
   </g>
 </svg>

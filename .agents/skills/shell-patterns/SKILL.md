@@ -69,7 +69,7 @@ The CLI writes a single ` · `-separated header, then status lines, then a
 ```text
 Install · profile desktop · Arch Linux · dry run · overlay ~/src/dotfiles-private
 ⊘ Dotfiles repository · local changes present
-No changes · 15 up to date · 1 ignored · 0.7s
+No changes · 15 current · 1 ignored · 0.7s
 ```
 
 The `dry run` and `overlay <path>` sections are optional and always come last,

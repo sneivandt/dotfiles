@@ -76,8 +76,7 @@ impl Task for InstallApmPackages {
                 &manifest_path,
                 &lock_path,
             );
-            // Report the planned actions as stats so the run totals read
-            // `N changes in 1 task` rather than a bare `would change`.
+            // Report planned actions so the run totals include `(N planned)`.
             return Ok(TaskStats::from_counts(planned, 0, 0, 0).finish());
         }
 

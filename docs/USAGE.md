@@ -187,10 +187,12 @@ accounts for. Applicability is only known once a task has run, so a task that
 turns out not to apply leaves the denominator rather than advancing the
 numerator.
 
-The final line reports actual action counts and affected task counts, for
-example
-`4 changes in 2 tasks · 14 up to date · 1 ignored · 2.3s`,
-`Dry run · 121 changes in 5 tasks · 8 up to date · 3 ignored · 0.7s`, or
+The final line leads with affected-task counts and puts individual change counts
+in parentheses. It uses no status glyphs; color distinguishes each outcome
+group: green for changed, magenta for dry run, dim for current, yellow for
+ignored, and red for failed. For example:
+`2 changed (4 applied) · 14 current · 1 ignored · 2.3s`,
+`5 would change (121 planned) · 8 current · 3 ignored · 0.7s`, or
 `6 passed · 1 ignored · 1.4s`.
 
 ## Uninstall

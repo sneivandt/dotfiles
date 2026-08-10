@@ -262,7 +262,7 @@ fn uninstall_symlinks_is_idempotent() {
     assert!(
         matches!(
             install_result,
-            tasks::TaskResult::Batch(ref stats) if stats.changed > 0
+            tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0
         ),
         "install run should succeed"
     );
@@ -272,7 +272,7 @@ fn uninstall_symlinks_is_idempotent() {
         .run(&task_ctx)
         .expect("first uninstall run");
     assert!(
-        matches!(result1, tasks::TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result1, tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "first uninstall run should succeed"
     );
 
@@ -291,7 +291,7 @@ fn uninstall_symlinks_is_idempotent() {
         matches!(
             result2,
             tasks::TaskResult::Batch(ref stats)
-                if stats.changed == 0 && stats.failed == 0
+                if stats.changed_count() == 0 && stats.failed_count() == 0
         ),
         "second uninstall run should succeed (idempotency guarantee)"
     );
@@ -340,7 +340,7 @@ fn uninstall_symlinks_materializes_file_content() {
         .expect("install run");
     assert!(matches!(
         install_result,
-        tasks::TaskResult::Batch(ref stats) if stats.changed > 0
+        tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0
     ));
 
     let target = home_dir.path().join(".bashrc");
@@ -356,7 +356,7 @@ fn uninstall_symlinks_materializes_file_content() {
         .expect("uninstall run");
     assert!(matches!(
         uninstall_result,
-        tasks::TaskResult::Batch(ref stats) if stats.changed > 0
+        tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0
     ));
 
     let meta = std::fs::symlink_metadata(&target).expect("materialized target");

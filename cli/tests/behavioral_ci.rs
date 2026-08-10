@@ -15,6 +15,8 @@ mod common;
 
 use dotfiles_cli::testing as test_api;
 use std::collections::{HashSet, VecDeque};
+#[cfg(unix)]
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use test_api::config::ConfigStore;

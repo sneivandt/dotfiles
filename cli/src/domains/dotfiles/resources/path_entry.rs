@@ -10,7 +10,9 @@ use std::sync::Arc;
 use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
-use crate::infra::exec::{CommandSpec, Executor};
+#[cfg(windows)]
+use crate::infra::exec::CommandSpec;
+use crate::infra::exec::Executor;
 
 /// Source for checking whether a directory is already on `PATH`.
 ///

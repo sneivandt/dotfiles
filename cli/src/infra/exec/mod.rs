@@ -193,7 +193,7 @@ impl CommandSpec {
 
     /// Return the pre-quoted Windows command line, when this is a `cmd.exe`
     /// request.
-    #[cfg(test)]
+    #[cfg(all(test, windows))]
     #[must_use]
     pub(crate) fn windows_command_line(&self) -> Option<&str> {
         match &self.command {

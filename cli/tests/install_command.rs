@@ -478,7 +478,7 @@ fn install_symlinks_is_idempotent() {
     // First run: must succeed and create the symlink.
     let result1 = task.run(&ec.ctx).expect("first install run");
     assert!(
-        matches!(result1, tasks::TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result1, tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "first install run should succeed"
     );
 
@@ -507,7 +507,7 @@ fn install_symlinks_is_idempotent() {
         matches!(
             result2,
             tasks::TaskResult::Batch(ref stats)
-                if stats.changed == 0 && stats.failed == 0
+                if stats.changed_count() == 0 && stats.failed_count() == 0
         ),
         "second install run should succeed"
     );
@@ -571,7 +571,7 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
         .run(&ec.ctx)
         .expect("apply file permissions run");
     assert!(
-        matches!(result, tasks::TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "apply file permissions should succeed"
     );
 

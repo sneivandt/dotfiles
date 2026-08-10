@@ -14,7 +14,7 @@ use std::sync::Arc;
 use test_api::config::Config;
 use test_api::config::ConfigStore;
 use test_api::config::profiles;
-use test_api::exec::{ExecResult, Executor, ProcessExecutor};
+use test_api::exec::{CommandSpec, ExecError, ExecResult, Executor, ProcessExecutor};
 use test_api::logging::{Log, Logger};
 use test_api::platform::Platform;
 use test_api::tasks::{Context, ContextOpts};
@@ -185,33 +185,12 @@ pub(crate) struct StubExecutor;
 
 #[allow(clippy::panic, reason = "panicking allowed at this trust boundary")]
 impl Executor for StubExecutor {
-    fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
-        panic!("unexpected executor call in integration test: {program} {args:?}")
-    }
-
-    fn run_in_with_env(
-        &self,
-        _: &Path,
-        program: &str,
-        args: &[&str],
-        _: &[(&str, &str)],
-    ) -> anyhow::Result<ExecResult> {
-        panic!("unexpected executor call in integration test: {program} {args:?}")
-    }
-
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
-        panic!("unexpected executor call in integration test: {program} {args:?}")
-    }
-
-    fn run_unchecked_in(
-        &self,
-        dir: &Path,
-        program: &str,
-        args: &[&str],
-    ) -> anyhow::Result<ExecResult> {
+    fn execute(&self, spec: CommandSpec) -> Result<ExecResult, ExecError> {
         panic!(
-            "unexpected executor call in integration test: {program} {args:?} in {}",
-            dir.display()
+            "unexpected executor call in integration test: {} {:?} in {:?}",
+            spec.program().to_string_lossy(),
+            spec.arguments(),
+            spec.working_dir()
         )
     }
 

@@ -5,7 +5,7 @@
 //! rendered for dry-run output, and then handed to the apply layer for mutation.
 
 use super::mode::ProcessOpts;
-use crate::engine::ResourceState;
+use crate::engine::{ResourceState, SkipKind};
 
 /// Planned operation for installing or updating one resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,8 +16,8 @@ pub(crate) enum ApplyOperation {
     Skip {
         /// Human-readable reason for skipping the resource.
         reason: String,
-        /// Whether the skip is a non-fatal resource failure.
-        failed: bool,
+        /// Whether the skip is benign or represents unmet work.
+        kind: SkipKind,
     },
     /// Resource should be applied.
     Apply {
@@ -58,21 +58,21 @@ impl ApplyChange {
             ResourceState::Correct => ApplyOperation::Noop,
             ResourceState::Invalid { reason } => ApplyOperation::Skip {
                 reason: reason.clone(),
-                failed: true,
+                kind: SkipKind::UnmetWork,
             },
             ResourceState::Unknown { reason } => ApplyOperation::Skip {
                 reason: format!("state unknown: {reason}"),
-                failed: true,
+                kind: SkipKind::UnmetWork,
             },
             ResourceState::Missing if opts.mode.fix_missing() => apply(),
             ResourceState::Missing => ApplyOperation::Skip {
                 reason: "mode skips missing resources".into(),
-                failed: false,
+                kind: SkipKind::Benign,
             },
             ResourceState::Incorrect { .. } if opts.mode.fix_incorrect() => apply(),
             ResourceState::Incorrect { .. } => ApplyOperation::Skip {
                 reason: "mode skips incorrect resources".into(),
-                failed: false,
+                kind: SkipKind::Benign,
             },
         };
         Self {
@@ -233,7 +233,7 @@ mod tests {
                 }),
                 ApplyOperation::Skip {
                     reason: "invalid target".to_string(),
-                    failed: true,
+                    kind: SkipKind::UnmetWork,
                 },
                 "mode {mode:?}, state Invalid",
             );
@@ -243,7 +243,7 @@ mod tests {
                 }),
                 ApplyOperation::Skip {
                     reason: "state unknown: tool missing".to_string(),
-                    failed: true,
+                    kind: SkipKind::UnmetWork,
                 },
                 "mode {mode:?}, state Unknown",
             );
@@ -258,7 +258,7 @@ mod tests {
                 } else {
                     ApplyOperation::Skip {
                         reason: "mode skips missing resources".to_string(),
-                        failed: false,
+                        kind: SkipKind::Benign,
                     }
                 },
                 "mode {mode:?}, state Missing",
@@ -276,7 +276,7 @@ mod tests {
                 } else {
                     ApplyOperation::Skip {
                         reason: "mode skips incorrect resources".to_string(),
-                        failed: false,
+                        kind: SkipKind::Benign,
                     }
                 },
                 "mode {mode:?}, state Incorrect",
@@ -310,7 +310,7 @@ mod tests {
             plan.operation(),
             &ApplyOperation::Skip {
                 reason: "bad target".to_string(),
-                failed: true,
+                kind: SkipKind::UnmetWork,
             }
         );
     }
@@ -375,7 +375,10 @@ mod tests {
 
         assert!(matches!(
             plan.operation(),
-            ApplyOperation::Skip { reason, failed: false } if reason.contains("incorrect")
+            ApplyOperation::Skip {
+                reason,
+                kind: SkipKind::Benign
+            } if reason.contains("incorrect")
         ));
     }
 

@@ -17,7 +17,7 @@ use crate::engine::{
     IntrinsicState as _, RemovableResource as _, Resource as _, ResourceState, TaskResult,
     process_resources, process_resources_remove,
 };
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 use crate::test_helpers::{
     FailAt, FailingExecutor, FailingResource, ResourceErrorKind, empty_config,
 };
@@ -27,7 +27,11 @@ use super::{bail_opts, test_context};
 /// Extract the batch counters `(changed, already_ok, failed)` from a result.
 fn stats(result: &TaskResult) -> (u32, u32, u32) {
     match result {
-        TaskResult::Batch(stats) => Some((stats.changed, stats.already_ok, stats.failed)),
+        TaskResult::Batch(stats) => Some((
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.failed_count(),
+        )),
         TaskResult::Ok
         | TaskResult::DryRun
         | TaskResult::CheckPassed
@@ -115,10 +119,10 @@ fn the_program_filter_scopes_both_counting_and_failure() {
     let failing = FailingExecutor::new(FailAt::Call(1)).only_program("pacman");
 
     failing
-        .run("git", &["status"])
+        .execute(CommandSpec::new("git").args(&["status"]))
         .expect("unmatched programs never fail");
     let err = failing
-        .run("pacman", &["-S", "vim"])
+        .execute(CommandSpec::new("pacman").args(&["-S", "vim"]))
         .expect_err("the first pacman call must fail");
     assert!(err.to_string().contains("pacman call 1"), "{err}");
 

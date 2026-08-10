@@ -229,7 +229,7 @@ mod tests {
         use std::collections::HashSet;
         let tasks = all_install_tasks(test_params());
         let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-        let unique: HashSet<TaskId> = ids.iter().copied().collect();
+        let unique: HashSet<TaskId> = ids.iter().cloned().collect();
         assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
         let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         for task in &tasks {

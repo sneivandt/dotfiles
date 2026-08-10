@@ -215,7 +215,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.changed == 1
+            TaskResult::Batch(stats) if stats.changed_count() == 1
         ));
         assert_eq!(operation.preview_calls(), 1);
         assert_eq!(operation.apply_calls(), 0);

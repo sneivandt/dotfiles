@@ -6,11 +6,11 @@ fn echo_result(msg: &str) -> Result<ExecResult> {
     let executor = ProcessExecutor::system();
     #[cfg(windows)]
     {
-        executor.run("cmd", &["/C", "echo", msg])
+        Ok(executor.execute(CommandSpec::new("cmd").args(&["/C", "echo", msg]))?)
     }
     #[cfg(not(windows))]
     {
-        executor.run("echo", &[msg])
+        Ok(executor.execute(CommandSpec::new("echo").arg(msg))?)
     }
 }
 
@@ -25,19 +25,30 @@ fn run_echo() {
 fn run_failure() {
     let executor = ProcessExecutor::system();
     #[cfg(windows)]
-    let result = executor.run("cmd", &["/C", "exit", "1"]);
+    let result = executor.execute(CommandSpec::new("cmd").args(&["/C", "exit", "1"]));
     #[cfg(not(windows))]
-    let result = executor.run("false", &[]);
-    assert!(result.is_err(), "non-zero exit should produce an error");
+    let result = executor.execute(CommandSpec::new("false"));
+    assert!(
+        matches!(result, Err(ExecError::NonZero { .. })),
+        "non-zero exit should produce a typed error"
+    );
 }
 
 #[test]
 fn run_unchecked_failure() {
     let executor = ProcessExecutor::system();
     #[cfg(windows)]
-    let result = executor.run_unchecked("cmd", &["/C", "exit", "1"]).unwrap();
+    let result = executor
+        .execute(
+            CommandSpec::new("cmd")
+                .args(&["/C", "exit", "1"])
+                .unchecked(),
+        )
+        .unwrap();
     #[cfg(not(windows))]
-    let result = executor.run_unchecked("false", &[]).unwrap();
+    let result = executor
+        .execute(CommandSpec::new("false").unchecked())
+        .unwrap();
     assert!(!result.success, "non-zero exit should set success=false");
 }
 
@@ -145,10 +156,16 @@ fn run_in_tempdir() {
     let dir = std::env::temp_dir();
     #[cfg(windows)]
     let result = executor
-        .run_in(&dir, "cmd", &["/C", "echo", "hello"])
+        .execute(
+            CommandSpec::new("cmd")
+                .args(&["/C", "echo", "hello"])
+                .current_dir(&dir),
+        )
         .unwrap();
     #[cfg(not(windows))]
-    let result = executor.run_in(&dir, "echo", &["hello"]).unwrap();
+    let result = executor
+        .execute(CommandSpec::new("echo").arg("hello").current_dir(&dir))
+        .unwrap();
     assert!(result.success, "echo in temp dir should succeed");
 }
 
@@ -167,16 +184,14 @@ fn managed_executor_times_out_commands() {
     let token = CancellationToken::new();
     let executor = ProcessExecutor::managed_with_timeout(token, Duration::from_millis(50));
     #[cfg(windows)]
-    let result = executor.run("cmd", &["/C", "ping", "localhost", "-n", "5"]);
+    let result =
+        executor.execute(CommandSpec::new("cmd").args(&["/C", "ping", "localhost", "-n", "5"]));
     #[cfg(not(windows))]
-    let result = executor.run("sh", &["-c", "sleep 5"]);
+    let result = executor.execute(CommandSpec::new("sh").args(&["-c", "sleep 5"]));
 
-    let message = result
-        .expect_err("long-running command should time out")
-        .to_string();
     assert!(
-        message.contains("timed out"),
-        "timeout error should be explicit: {message}"
+        matches!(result, Err(ExecError::TimedOut { .. })),
+        "long-running command should produce a typed timeout"
     );
 }
 
@@ -186,15 +201,59 @@ fn managed_executor_cancels_commands() {
     token.cancel();
     let executor = ProcessExecutor::managed_with_timeout(token, Duration::from_secs(5));
     #[cfg(windows)]
-    let result = executor.run("cmd", &["/C", "ping", "localhost", "-n", "5"]);
+    let result =
+        executor.execute(CommandSpec::new("cmd").args(&["/C", "ping", "localhost", "-n", "5"]));
     #[cfg(not(windows))]
-    let result = executor.run("sh", &["-c", "sleep 5"]);
+    let result = executor.execute(CommandSpec::new("sh").args(&["-c", "sleep 5"]));
 
-    let message = result
-        .expect_err("cancelled command should fail")
-        .to_string();
     assert!(
-        message.contains("cancelled"),
-        "cancellation error should be explicit: {message}"
+        matches!(result, Err(ExecError::Cancelled { .. })),
+        "cancelled command should produce a typed cancellation"
+    );
+}
+
+#[test]
+fn command_spec_builds_owned_request() {
+    let dir = PathBuf::from("worktree");
+    let spec = CommandSpec::new("git")
+        .args(&["status", "--short"])
+        .current_dir(&dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .unchecked();
+
+    assert_eq!(spec.program(), "git");
+    assert_eq!(spec.arguments(), ["status", "--short"]);
+    assert_eq!(spec.working_dir(), Some(dir.as_path()));
+    assert_eq!(
+        spec.environment(),
+        [(OsString::from("GIT_TERMINAL_PROMPT"), OsString::from("0"))]
+    );
+    assert!(
+        !spec.is_checked(),
+        "unchecked builder should disable checking"
+    );
+}
+
+#[test]
+fn missing_program_returns_typed_spawn_error() {
+    let executor = ProcessExecutor::system();
+    let result = executor.execute(CommandSpec::new(
+        "dotfiles-this-program-does-not-exist-12345",
+    ));
+
+    assert!(
+        matches!(result, Err(ExecError::Spawn { .. })),
+        "missing executable should produce a typed spawn error"
+    );
+}
+
+#[test]
+fn reader_failure_returns_typed_io_error() {
+    let reader = std::thread::spawn(|| Err(io::Error::other("mock read failure")));
+    let result = join_reader(reader, "reading stdout", "mock");
+
+    assert!(
+        matches!(result, Err(ExecError::Io { .. })),
+        "output capture failure should produce a typed I/O error"
     );
 }

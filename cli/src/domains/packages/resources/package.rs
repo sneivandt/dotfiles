@@ -13,7 +13,7 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 use super::pacman::PacmanProvider;
 use super::paru::ParuProvider;
@@ -105,7 +105,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
             .collect();
 
         if let Some((program, args)) = self.batch_invocation(&names, executor)? {
-            executor.run(program, &args)?;
+            executor.execute(CommandSpec::new(program).args(&args))?;
             return Ok(PackageInstallReport::applied(
                 resources
                     .iter()
@@ -118,19 +118,31 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         for resource in resources {
             progress(&resource.name);
             match self.install(&resource.name, executor) {
-                Ok(ResourceChange::Applied | ResourceChange::AlreadyCorrect) => {
+                Ok(ResourceChange::Applied) => {
                     report.record_applied(resource.name.clone());
+                }
+                Ok(ResourceChange::AlreadyCorrect) => {
+                    report.record_already_correct(resource.name.clone());
                 }
                 Ok(ResourceChange::Skipped {
                     reason,
-                    failed: true,
+                    kind: crate::engine::SkipKind::UnmetWork,
                 }) => {
                     report.record_failure(resource.name.clone(), reason);
                 }
                 // A benign skip is neither an install nor a failure, so it
                 // contributes to neither bucket in the report.
-                Ok(ResourceChange::Skipped { failed: false, .. }) => {}
+                Ok(ResourceChange::Skipped {
+                    kind: crate::engine::SkipKind::Benign,
+                    ..
+                }) => {}
                 Err(err) => {
+                    if err
+                        .downcast_ref::<crate::infra::exec::ExecError>()
+                        .is_some_and(crate::infra::exec::ExecError::is_cancelled)
+                    {
+                        return Err(err);
+                    }
                     report.record_failure(resource.name.clone(), err.to_string());
                 }
             }

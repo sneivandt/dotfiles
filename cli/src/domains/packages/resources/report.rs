@@ -13,6 +13,7 @@ pub struct PackageInstallFailure {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PackageInstallReport {
     applied: Vec<String>,
+    already_correct: Vec<String>,
     failures: Vec<PackageInstallFailure>,
 }
 
@@ -22,6 +23,7 @@ impl PackageInstallReport {
     pub const fn new() -> Self {
         Self {
             applied: Vec::new(),
+            already_correct: Vec::new(),
             failures: Vec::new(),
         }
     }
@@ -31,6 +33,7 @@ impl PackageInstallReport {
     pub const fn applied(packages: Vec<String>) -> Self {
         Self {
             applied: packages,
+            already_correct: Vec::new(),
             failures: Vec::new(),
         }
     }
@@ -39,6 +42,12 @@ impl PackageInstallReport {
     #[must_use]
     pub const fn applied_count(&self) -> usize {
         self.applied.len()
+    }
+
+    /// Number of requested packages that were already installed.
+    #[must_use]
+    pub const fn already_correct_count(&self) -> usize {
+        self.already_correct.len()
     }
 
     /// Per-package install failures.
@@ -55,6 +64,10 @@ impl PackageInstallReport {
 
     pub(super) fn record_applied(&mut self, package: String) {
         self.applied.push(package);
+    }
+
+    pub(super) fn record_already_correct(&mut self, package: String) {
+        self.already_correct.push(package);
     }
 
     pub(super) fn record_failure(&mut self, package: String, reason: String) {

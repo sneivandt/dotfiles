@@ -13,7 +13,7 @@ use anyhow::Result;
 
 use super::*;
 
-use crate::engine::{TaskMeta, TaskResult, TaskStats, execute, task_deps};
+use crate::engine::{TaskId, TaskMeta, TaskResult, TaskStats, execute, task_deps};
 
 use crate::infra::logging::{MsgKind, Output, TaskRecorder};
 
@@ -32,16 +32,37 @@ fn make_test_log_and_ctx() -> (Arc<Logger>, Context, logging::TestDispatchLock) 
 
 fn run_test_tasks(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>) {
     let graph = ResolvedTaskGraph::resolve(tasks).unwrap();
-    run_tasks_parallel(tasks, &graph, ctx, log);
+    let assessments = tasks
+        .iter()
+        .map(|task| (task.task_id(), task.assess(ctx)))
+        .collect();
+    run_tasks_parallel(tasks, &graph, &assessments, ctx, log);
 }
 
 fn run_test_tasks_with_mode(tasks: &[&dyn Task], ctx: &Context, log: &Arc<Logger>, parallel: bool) {
     let graph = ResolvedTaskGraph::resolve(tasks).unwrap();
+    let assessments = tasks
+        .iter()
+        .map(|task| (task.task_id(), task.assess(ctx)))
+        .collect();
     if parallel {
-        run_tasks_parallel(tasks, &graph, ctx, log);
+        run_tasks_parallel(tasks, &graph, &assessments, ctx, log);
     } else {
-        run_tasks_sequential(tasks, &graph, ctx, log);
+        run_tasks_sequential(tasks, &graph, &assessments, ctx, log);
     }
+}
+
+fn run_test_tasks_sequential(
+    tasks: &[&dyn Task],
+    graph: &ResolvedTaskGraph,
+    ctx: &Context,
+    log: &Arc<Logger>,
+) {
+    let assessments = tasks
+        .iter()
+        .map(|task| (task.task_id(), task.assess(ctx)))
+        .collect();
+    run_tasks_sequential(tasks, graph, &assessments, ctx, log);
 }
 
 fn buffered_log_arc(buf: &Arc<BufferedLog>) -> Arc<dyn Log> {
@@ -151,6 +172,49 @@ impl Task for CancelAfterFailureTask {
 }
 
 flag_task!(DepOnFailedTask, "dep-on-failed", deps: [FailedTask]);
+
+struct OrderedAfterFailedTask {
+    ran: Arc<AtomicBool>,
+}
+
+impl Task for OrderedAfterFailedTask {
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("ordered-after-failed")
+    }
+
+    fn ordering_dependencies(&self) -> &[TaskId] {
+        const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<FailedTask>())];
+        DEPS
+    }
+
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        self.ran.store(true, Ordering::SeqCst);
+        Ok(TaskResult::Ok)
+    }
+}
+
+struct SameNameDynamicTask {
+    key: &'static str,
+    fails: bool,
+}
+
+impl Task for SameNameDynamicTask {
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("same-display-name")
+    }
+
+    fn task_id(&self) -> TaskId {
+        TaskId::dynamic::<Self>(self.key)
+    }
+
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        if self.fails {
+            Ok(TaskResult::Failed(format!("{} failed", self.key)))
+        } else {
+            Ok(TaskResult::Ok)
+        }
+    }
+}
 
 flag_task!(DepOnCancellingTask, "dep-on-cancelling", deps: [CancellingTask]);
 

@@ -6,6 +6,7 @@ use anyhow::{Context as _, Result};
 
 use super::targets::ApmTargets;
 use crate::engine::{Context, TaskResult};
+use crate::infra::exec::CommandSpec;
 use crate::infra::logging::OutputExt as _;
 
 pub(super) const APM_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
@@ -110,10 +111,12 @@ pub(super) fn check_apm_outdated(ctx: &Context) -> Result<ApmOutdatedResult> {
         )
     });
 
-    match system
-        .executor()
-        .run_in_with_env(cwd, "apm", &args, APM_NONINTERACTIVE_ENV)
-    {
+    match system.executor().execute(
+        CommandSpec::new("apm")
+            .args(&args)
+            .current_dir(cwd)
+            .envs(APM_NONINTERACTIVE_ENV),
+    ) {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
             let output = format!("{}\n{}", result.stdout, result.stderr);
@@ -165,15 +168,17 @@ fn run_apm_invocation(
         )
     });
 
-    match system
-        .executor()
-        .run_in_with_env(cwd, "apm", args, APM_NONINTERACTIVE_ENV)
-    {
+    match system.executor().execute(
+        CommandSpec::new("apm")
+            .args(args)
+            .current_dir(cwd)
+            .envs(APM_NONINTERACTIVE_ENV),
+    ) {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
             Ok(ApmCommandResult::Success)
         }
-        Err(err) => classify_apm_error(ctx, command, err),
+        Err(err) => classify_apm_error(ctx, command, err.into()),
     }
 }
 
@@ -230,11 +235,11 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
             cwd.display()
         )
     });
-    match system.executor().run_in_with_env(
-        cwd,
-        "apm",
-        &["experimental", "enable", "copilot-app"],
-        APM_NONINTERACTIVE_ENV,
+    match system.executor().execute(
+        CommandSpec::new("apm")
+            .args(&["experimental", "enable", "copilot-app"])
+            .current_dir(cwd)
+            .envs(APM_NONINTERACTIVE_ENV),
     ) {
         Ok(result) => report_apm_output(ctx, &result.stdout, &result.stderr),
         Err(err) => {
@@ -285,7 +290,12 @@ pub(super) fn prune_user_scope(ctx: &Context) -> Result<()> {
     let result = ctx
         .system()
         .executor()
-        .run_in_with_env(&cwd, "apm", &["prune"], APM_NONINTERACTIVE_ENV)
+        .execute(
+            CommandSpec::new("apm")
+                .arg("prune")
+                .current_dir(&cwd)
+                .envs(APM_NONINTERACTIVE_ENV),
+        )
         .context("pruning unowned user-scope APM deployments")?;
     report_apm_output(ctx, &result.stdout, &result.stderr);
     Ok(())

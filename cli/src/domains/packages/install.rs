@@ -12,6 +12,7 @@ use crate::engine::{
     task_metadata,
 };
 use crate::infra::ConfigHandle;
+use crate::infra::exec::ExecError;
 use crate::infra::logging::OutputExt as _;
 
 mod paru;
@@ -278,10 +279,19 @@ impl Operation for PackageInstallOperation {
         ) {
             Ok(report) => report,
             Err(e) => {
+                if e.downcast_ref::<ExecError>()
+                    .is_some_and(ExecError::is_cancelled)
+                {
+                    return Err(e);
+                }
                 let reason = format!("{} install failed: {e:#}", self.manager);
                 ctx.log().warn(&reason);
-                let mut stats = plan.base_stats();
-                stats.failed = u32::try_from(plan.missing.len()).unwrap_or(u32::MAX);
+                let stats = TaskStats::from_counts(
+                    0,
+                    plan.base_stats().already_ok_count(),
+                    0,
+                    u32::try_from(plan.missing.len()).unwrap_or(u32::MAX),
+                );
                 return Ok(stats.finish());
             }
         };
@@ -293,9 +303,14 @@ impl Operation for PackageInstallOperation {
             ));
         }
 
-        let mut stats = plan.base_stats();
-        stats.changed = u32::try_from(report.applied_count()).unwrap_or(u32::MAX);
-        stats.failed = u32::try_from(report.failures().len()).unwrap_or(u32::MAX);
+        let stats = TaskStats::from_counts(
+            u32::try_from(report.applied_count()).unwrap_or(u32::MAX),
+            plan.base_stats()
+                .already_ok_count()
+                .saturating_add(u32::try_from(report.already_correct_count()).unwrap_or(u32::MAX)),
+            0,
+            u32::try_from(report.failures().len()).unwrap_or(u32::MAX),
+        );
 
         if report.has_failures() {
             let reason = format!("{} package install(s) failed", report.failures().len());

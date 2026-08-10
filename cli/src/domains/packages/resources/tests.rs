@@ -8,7 +8,7 @@ use anyhow::Result;
 use super::package::*;
 use super::winget::parse_winget_ids;
 use crate::engine::{Resource, ResourceChange, ResourceState};
-use crate::infra::exec::{ExecResult, Executor, MockExecutor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 
 fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
     Arc::<T>::clone(executor)
@@ -115,9 +115,9 @@ fn state_from_installed_missing() {
 #[test]
 fn get_installed_pacman_parses_name_version_lines() {
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
-        .returning(|_, _| Ok(ok_result("git 2.39.0\nvim 9.0.0\nbase-devel 1.0\n")));
+        .returning(|_| Ok(ok_result("git 2.39.0\nvim 9.0.0\nbase-devel 1.0\n")));
     let installed = get_installed_packages(PackageManager::Pacman, &mock).unwrap();
     assert!(installed.contains("git"));
     assert!(installed.contains("vim"));
@@ -131,9 +131,12 @@ fn get_installed_pacman_parses_name_version_lines() {
 #[test]
 fn get_installed_pacman_returns_error_on_failure() {
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked()
-        .once()
-        .returning(|_, _| Err(anyhow::anyhow!("simulated failure")));
+    mock.expect_execute().once().returning(|_| {
+        Err(ExecError::spawn(
+            "pacman",
+            std::io::Error::other("simulated failure"),
+        ))
+    });
     let result = get_installed_packages(PackageManager::Pacman, &mock);
     assert!(
         result.is_err(),
@@ -144,7 +147,7 @@ fn get_installed_pacman_returns_error_on_failure() {
 #[test]
 fn get_installed_winget_parses_id_tokens() {
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked().once().returning(|_, _| {
+    mock.expect_execute().once().returning(|_| {
             Ok(ok_result(
                 "Name          Id                    Version\nGit           Git.Git               2.39.0\nPowerShell    Microsoft.PowerShell  7.3\n",
             ))
@@ -218,7 +221,9 @@ fn get_installed_winget_handles_unicode_in_name_column() {
 fn apply_pacman_returns_applied_on_success() {
     let mut mock = MockExecutor::new();
     expect_sudo_lookup_if_needed(&mut mock);
-    mock.expect_run().once().returning(|_, _| Ok(ok_result("")));
+    mock.expect_execute()
+        .once()
+        .returning(|_| Ok(ok_result("")));
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let resource = PackageResource::new(
         "git".to_string(),
@@ -231,7 +236,9 @@ fn apply_pacman_returns_applied_on_success() {
 #[test]
 fn apply_paru_returns_applied_on_success() {
     let mut mock = MockExecutor::new();
-    mock.expect_run().once().returning(|_, _| Ok(ok_result("")));
+    mock.expect_execute()
+        .once()
+        .returning(|_| Ok(ok_result("")));
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let resource = PackageResource::new(
         "paru-bin".to_string(),
@@ -245,7 +252,7 @@ fn apply_paru_returns_applied_on_success() {
 // batch_install_packages — RecordingExecutor
 // ------------------------------------------------------------------
 
-/// A test executor that records every `run()` invocation as
+/// A test executor that records every [`Executor::execute`] invocation as
 /// `(program, args)` pairs so tests can assert exact command lines.
 #[derive(Debug, Default)]
 struct RecordingExecutor {
@@ -263,10 +270,13 @@ impl RecordingExecutor {
 }
 
 impl Executor for RecordingExecutor {
-    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
         self.calls.lock().unwrap().push((
-            program.to_string(),
-            args.iter().map(|s| (*s).to_string()).collect(),
+            spec.program().to_string_lossy().into_owned(),
+            spec.arguments()
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect(),
         ));
         Ok(ExecResult {
             stdout: String::new(),
@@ -274,32 +284,6 @@ impl Executor for RecordingExecutor {
             success: true,
             code: Some(0),
         })
-    }
-
-    fn run_in_with_env(
-        &self,
-        _: &std::path::Path,
-        program: &str,
-        args: &[&str],
-        _: &[(&str, &str)],
-    ) -> Result<ExecResult> {
-        self.run(program, args)
-    }
-
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        self.run(program, args)
-    }
-
-    fn run_unchecked_in(
-        &self,
-        dir: &std::path::Path,
-        program: &str,
-        args: &[&str],
-    ) -> Result<ExecResult> {
-        anyhow::bail!(
-            "unexpected run_unchecked_in() call in package tests: {program} {args:?} in {}",
-            dir.display()
-        )
     }
 
     fn which(&self, program: &str) -> bool {
@@ -412,9 +396,12 @@ fn batch_install_empty_list_is_noop() {
 fn batch_install_propagates_pacman_error() {
     let mut mock = MockExecutor::new();
     expect_sudo_lookup_if_needed(&mut mock);
-    mock.expect_run()
-        .once()
-        .returning(|_, _| Err(anyhow::anyhow!("simulated failure")));
+    mock.expect_execute().once().returning(|_| {
+        Err(ExecError::spawn(
+            "pacman",
+            std::io::Error::other("simulated failure"),
+        ))
+    });
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let r1 = PackageResource::new(
         "git".to_string(),
@@ -431,9 +418,9 @@ fn batch_install_winget_skipped_returns_error() {
     // ResourceChange::Skipped on failure — batch_install_packages must
     // convert that into an error.
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
-        .returning(|_, _| Ok(fail_result()));
+        .returning(|_| Ok(fail_result()));
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let r1 = PackageResource::new(
         "Git.Git".to_string(),
@@ -451,14 +438,14 @@ fn batch_install_winget_skipped_returns_error() {
 fn winget_install_report_tracks_successful_package_names() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(fail_result()));
-    mock.expect_run_unchecked()
+        .returning(|_| Ok(fail_result()));
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(ok_result("")));
+        .returning(|_| Ok(ok_result("")));
 
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let first = PackageResource::new(
@@ -488,4 +475,92 @@ fn winget_install_report_tracks_successful_package_names() {
     assert_eq!(report.applied_count(), 1);
     assert_eq!(report.failures().len(), 1);
     assert_eq!(report.failures()[0].package, "First.App");
+}
+
+#[test]
+fn install_report_counts_already_correct_packages_separately_from_applied() {
+    #[derive(Debug)]
+    struct AlreadyCorrectProvider;
+
+    impl PackageProvider for AlreadyCorrectProvider {
+        fn name(&self) -> &'static str {
+            "already-correct"
+        }
+
+        fn query_installed(&self, _executor: &dyn Executor) -> Result<HashSet<String>> {
+            Ok(HashSet::new())
+        }
+
+        fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
+            Ok(ResourceChange::AlreadyCorrect)
+        }
+    }
+
+    let executor: Arc<dyn Executor> = Arc::new(MockExecutor::new());
+    let resource = PackageResource::new(
+        "Already.Present".to_string(),
+        PackageManager::Winget,
+        Arc::clone(&executor),
+    );
+
+    let report = AlreadyCorrectProvider
+        .install_missing(&[&resource], &*executor, &|_| {})
+        .unwrap();
+
+    assert_eq!(report.applied_count(), 0);
+    assert_eq!(report.already_correct_count(), 1);
+    assert!(!report.has_failures());
+}
+
+#[test]
+fn install_report_propagates_cancellation_without_starting_later_packages() {
+    #[derive(Debug)]
+    struct CancellingProvider {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl PackageProvider for CancellingProvider {
+        fn name(&self) -> &'static str {
+            "cancelling"
+        }
+
+        fn query_installed(&self, _executor: &dyn Executor) -> Result<HashSet<String>> {
+            Ok(HashSet::new())
+        }
+
+        fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(ExecError::Cancelled {
+                command: "package install".to_string(),
+                result: fail_result(),
+            }
+            .into())
+        }
+    }
+
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let provider = CancellingProvider {
+        calls: Arc::clone(&calls),
+    };
+    let executor: Arc<dyn Executor> = Arc::new(MockExecutor::new());
+    let first = PackageResource::new(
+        "First.App".to_string(),
+        PackageManager::Winget,
+        Arc::clone(&executor),
+    );
+    let second = PackageResource::new(
+        "Second.App".to_string(),
+        PackageManager::Winget,
+        Arc::clone(&executor),
+    );
+
+    let err = provider
+        .install_missing(&[&first, &second], &*executor, &|_| {})
+        .expect_err("cancellation must stop per-package installation");
+
+    assert!(
+        err.downcast_ref::<ExecError>()
+            .is_some_and(ExecError::is_cancelled)
+    );
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

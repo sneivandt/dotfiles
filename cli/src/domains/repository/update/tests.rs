@@ -1,7 +1,7 @@
 //! Unit tests for the repository update task.
 use super::*;
 use crate::engine::UpdateSignal;
-use crate::infra::exec::{ExecResult, Executor, MockExecutor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use std::path::{Path, PathBuf};
@@ -16,6 +16,34 @@ fn ok_result(stdout: &str) -> ExecResult {
     }
 }
 
+fn git_error(message: &str) -> ExecError {
+    ExecError::spawn("git", std::io::Error::other(message.to_string()))
+}
+
+fn git_non_zero(message: &str) -> ExecError {
+    ExecError::non_zero(
+        "git",
+        ExecResult {
+            stdout: String::new(),
+            stderr: message.to_string(),
+            success: false,
+            code: Some(1),
+        },
+    )
+}
+
+fn cancelled_git_error() -> ExecError {
+    ExecError::Cancelled {
+        command: "git".to_string(),
+        result: ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: false,
+            code: None,
+        },
+    }
+}
+
 fn expect_git_success(
     mock: &mut MockExecutor,
     seq: &mut mockall::Sequence,
@@ -23,13 +51,13 @@ fn expect_git_success(
     expected_args: &'static [&'static str],
     stdout: &'static str,
 ) {
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(seq)
-        .returning(move |dir, program, args, _| {
-            assert_eq!(dir, expected_dir.as_path());
-            assert_eq!(program, "git");
-            assert_eq!(args, expected_args);
+        .returning(move |spec| {
+            assert_eq!(spec.working_dir(), Some(expected_dir.as_path()));
+            assert_eq!(spec.program(), "git");
+            assert_eq!(spec.arguments(), expected_args);
             Ok(ok_result(stdout))
         });
 }
@@ -79,9 +107,9 @@ fn run_returns_skipped_when_detached_head() {
     let config = empty_config(PathBuf::from("/tmp"));
     // First call (symbolic-ref): fails → detached HEAD
     let mut mock = MockExecutor::new();
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
-        .returning(|_, _, _, _| Err(anyhow::anyhow!("simulated failure")));
+        .returning(|_| Err(git_non_zero("simulated failure")));
     let ctx = make_update_context(config, mock);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
@@ -89,6 +117,25 @@ fn run_returns_skipped_when_detached_head() {
     let result = task.run(&ctx).unwrap();
     assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("detached HEAD")));
     assert!(!repo_updated.was_updated());
+}
+
+#[test]
+fn run_propagates_symbolic_ref_operational_failure() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .returning(|_| Err(git_error("git could not start")));
+    let ctx = make_update_context(config, mock);
+
+    let err = UpdateRepository::new(UpdateSignal::new())
+        .run(&ctx)
+        .expect_err("spawn failure must not be reported as detached HEAD");
+
+    assert!(
+        err.downcast_ref::<ExecError>()
+            .is_some_and(|error| matches!(error, ExecError::Spawn { .. }))
+    );
 }
 
 /// Run [`UpdateRepository`] against a scripted sequence of successful git
@@ -104,10 +151,10 @@ fn run_with_git_output(outputs: &[&str]) -> (TaskResult, bool) {
     let mut mock = MockExecutor::new();
     for stdout in outputs {
         let output = (*stdout).to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ok_result(&output)));
     }
     let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), mock);
     let signal = UpdateSignal::new();
@@ -193,18 +240,12 @@ fn run_classifies_repository_state_from_git_output() {
 struct UntrackedAwareExecutor;
 
 impl Executor for UntrackedAwareExecutor {
-    fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
-        anyhow::bail!("unexpected run() call")
-    }
-
-    fn run_in_with_env(
-        &self,
-        _: &Path,
-        _: &str,
-        args: &[&str],
-        _: &[(&str, &str)],
-    ) -> Result<ExecResult> {
-        let stdout = if args.contains(&"--untracked-files=no") {
+    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
+        let stdout = if spec
+            .arguments()
+            .iter()
+            .any(|arg| arg == "--untracked-files=no")
+        {
             String::new()
         } else {
             "?? new-file.txt\n".to_string()
@@ -216,17 +257,6 @@ impl Executor for UntrackedAwareExecutor {
             success: true,
             code: Some(0),
         })
-    }
-
-    fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
-        anyhow::bail!("unexpected run_unchecked() call")
-    }
-
-    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        anyhow::bail!(
-            "unexpected run_unchecked_in() call: {program} {args:?} in {}",
-            dir.display()
-        )
     }
 
     fn which(&self, _: &str) -> bool {
@@ -260,15 +290,15 @@ fn run_returns_failed_when_fetch_fails() {
     let mut mock = MockExecutor::new();
     for stdout in ["refs/heads/main", ""] {
         let s = stdout.to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ok_result(&s)));
     }
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _, _| Err(anyhow::anyhow!("simulated fetch failure")));
+        .returning(|_| Err(git_error("simulated fetch failure")));
     let ctx = make_update_context(config, mock);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated);
@@ -278,32 +308,60 @@ fn run_returns_failed_when_fetch_fails() {
 }
 
 #[test]
+fn run_propagates_fetch_cancellation() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    for stdout in ["refs/heads/main", ""] {
+        let output = stdout.to_string();
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(ok_result(&output)));
+    }
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_| Err(cancelled_git_error()));
+    let ctx = make_update_context(config, mock);
+
+    let err = UpdateRepository::new(UpdateSignal::new())
+        .run(&ctx)
+        .expect_err("fetch cancellation must escape task failure accounting");
+
+    assert!(
+        err.downcast_ref::<ExecError>()
+            .is_some_and(ExecError::is_cancelled)
+    );
+}
+
+#[test]
 fn run_retries_transient_fetch_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     for stdout in ["refs/heads/main", ""] {
         let output = stdout.to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ok_result(&output)));
     }
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _, _| {
-            Err(anyhow::anyhow!(
+        .returning(|_| {
+            Err(git_error(
                 "mux_client_request_session: read from master failed: Connection reset by peer\n\
-                 Failed to connect to new control master"
+                 Failed to connect to new control master",
             ))
         });
     for stdout in ["", "abc123", "abc123"] {
         let output = stdout.to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ok_result(&output)));
     }
     let ctx = make_update_context(config, mock);
     let repo_updated = UpdateSignal::new();
@@ -322,15 +380,15 @@ fn run_stops_after_transient_fetch_retries_are_exhausted() {
     let mut mock = MockExecutor::new();
     for stdout in ["refs/heads/main", ""] {
         let output = stdout.to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ok_result(&output)));
     }
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .times(3)
         .in_sequence(&mut seq)
-        .returning(|_, _, _, _| Err(anyhow::anyhow!("connection reset by peer")));
+        .returning(|_| Err(git_error("connection reset by peer")));
     let ctx = make_update_context(config, mock);
     let task = UpdateRepository::new(UpdateSignal::new());
 
@@ -516,20 +574,22 @@ fn parallel_fetch_visits_every_repository() {
     let fetched = Arc::new(std::sync::Mutex::new(Vec::new()));
     let recorded = Arc::clone(&fetched);
     let mut mock = MockExecutor::new();
-    mock.expect_run_in_with_env()
-        .returning(move |dir, program, args, _| {
-            assert_eq!(program, "git");
-            match args.first().copied() {
-                Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
-                Some("status") => Ok(ok_result("")),
-                Some("fetch") => {
-                    recorded.lock().unwrap().push(dir.to_path_buf());
-                    Ok(ok_result(""))
-                }
-                Some("rev-parse") => Ok(ok_result("abc123")),
-                _ => panic!("unexpected git call {args:?}"),
+    mock.expect_execute().returning(move |spec| {
+        assert_eq!(spec.program(), "git");
+        match spec.arguments().first().and_then(|arg| arg.to_str()) {
+            Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
+            Some("status") => Ok(ok_result("")),
+            Some("fetch") => {
+                recorded
+                    .lock()
+                    .unwrap()
+                    .push(spec.working_dir().unwrap().to_path_buf());
+                Ok(ok_result(""))
             }
-        });
+            Some("rev-parse") => Ok(ok_result("abc123")),
+            _ => panic!("unexpected git call {:?}", spec.arguments()),
+        }
+    });
 
     let ctx = make_update_context(config, mock).with_parallel(true);
     let repo_updated = UpdateSignal::new();
@@ -549,18 +609,17 @@ fn parallel_fetch_failure_reports_the_first_declared_repository() {
     let config = overlay_config(&main_root, overlay.path());
 
     let mut mock = MockExecutor::new();
-    mock.expect_run_in_with_env()
-        .returning(|_, program, args, _| {
-            assert_eq!(program, "git");
-            match args.first().copied() {
-                Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
-                Some("status") => Ok(ok_result("")),
-                // Both repositories fail, so the reported reason must come from
-                // declaration order rather than whichever thread finished first.
-                Some("fetch") => Err(anyhow::anyhow!("simulated fetch failure")),
-                _ => panic!("unexpected git call {args:?}"),
-            }
-        });
+    mock.expect_execute().returning(|spec| {
+        assert_eq!(spec.program(), "git");
+        match spec.arguments().first().and_then(|arg| arg.to_str()) {
+            Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
+            Some("status") => Ok(ok_result("")),
+            // Both repositories fail, so the reported reason must come from
+            // declaration order rather than whichever thread finished first.
+            Some("fetch") => Err(git_error("simulated fetch failure")),
+            _ => panic!("unexpected git call {:?}", spec.arguments()),
+        }
+    });
 
     let ctx = make_update_context(config, mock).with_parallel(true);
     let repo_updated = UpdateSignal::new();
@@ -598,10 +657,10 @@ fn run_dry_run_returns_ok_when_already_up_to_date() {
         "abc123\trefs/heads/main",
     ] {
         let s = stdout.to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ok_result(&s)));
     }
     let mut ctx = make_update_context(config, mock);
     ctx = ctx.with_dry_run(true);
@@ -634,10 +693,10 @@ fn run_dry_run_returns_dry_run_when_behind_upstream() {
         "def456\trefs/heads/main",
     ] {
         let s = stdout.to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ok_result(&s)));
     }
     let mut ctx = make_update_context(config, mock);
     ctx = ctx.with_dry_run(true);
@@ -645,7 +704,7 @@ fn run_dry_run_returns_dry_run_when_behind_upstream() {
 
     let result = task.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected planned update when behind upstream, got {result:?}"
     );
 }
@@ -662,21 +721,21 @@ fn run_dry_run_returns_ok_when_cached_upstream_matches_head() {
     let mut mock = MockExecutor::new();
     for stdout in ["refs/heads/main", "", "abc123"] {
         let s = stdout.to_string();
-        mock.expect_run_in_with_env()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_, _, _, _| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ok_result(&s)));
     }
     // branch.main.remote lookup fails
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _, _| Err(anyhow::anyhow!("no remote config")));
+        .returning(|_| Err(git_non_zero("no remote config")));
     // rev-parse @{u}: matches HEAD
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _, _| Ok(ok_result("abc123")));
+        .returning(|_| Ok(ok_result("abc123")));
     let mut ctx = make_update_context(config, mock);
     ctx = ctx.with_dry_run(true);
     let task = UpdateRepository::new(UpdateSignal::new());

@@ -52,14 +52,14 @@ impl Logger {
         }
     }
 
-    /// Emit a completed task result and then redraw the active-task status row.
-    pub(crate) fn emit_task_result_and_redraw(&self, task_name: &str) {
+    /// Emit a completed task result selected by scheduler identity.
+    pub(crate) fn emit_task_result_and_redraw_by_id(&self, task_id: &str) {
         let show_progress = stdout_supports_progress();
         let _guard = self.lock_flush();
         if show_progress {
             self.clear_progress();
         }
-        self.emit_recorded_task_result(task_name);
+        self.emit_recorded_task_result_by_id(task_id);
         self.redraw_active_status_locked(show_progress);
     }
 
@@ -145,7 +145,7 @@ impl Logger {
 )]
 mod tests {
     use crate::infra::logging::isolated_logger;
-    use crate::infra::logging::types::TaskVisibility;
+    use crate::infra::logging::types::{TaskStatus, TaskVisibility};
 
     #[test]
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
@@ -163,6 +163,7 @@ mod tests {
     fn task_totals_accumulate_across_scheduled_graphs() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(20);
+        log.record_task("task", TaskStatus::Ok, None);
         for _ in 0..20 {
             log.mark_task_completed("task");
         }
@@ -179,6 +180,7 @@ mod tests {
     fn task_progress_never_exceeds_the_total() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(2);
+        log.record_task("task", TaskStatus::Ok, None);
         for _ in 0..5 {
             log.mark_task_completed("task");
         }
@@ -230,6 +232,7 @@ mod tests {
     fn status_line_labels_the_counter_as_completed_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(16);
+        log.record_task("task", TaskStatus::Ok, None);
         for _ in 0..12 {
             log.mark_task_completed("task");
         }

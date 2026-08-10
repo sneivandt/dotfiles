@@ -67,9 +67,7 @@ pub enum TaskResult {
 /// ```
 /// use dotfiles_cli::testing::tasks::TaskStats;
 ///
-/// let mut stats = TaskStats::new();
-/// stats.changed = 3;
-/// stats.already_ok = 10;
+/// let stats = TaskStats::from_counts(3, 10, 0, 0);
 ///
 /// assert_eq!(stats.summary(false), "3 changed, 10 already ok");
 /// assert_eq!(stats.summary(true), "3 would change, 10 already ok");
@@ -80,25 +78,36 @@ pub enum TaskResult {
 /// ```
 /// use dotfiles_cli::testing::tasks::TaskStats;
 ///
-/// let mut stats = TaskStats::new();
-/// stats.changed = 1;
-/// stats.already_ok = 2;
-/// stats.skipped = 3;
-/// stats.failed = 1;
+/// let stats = TaskStats::from_counts(1, 2, 3, 1);
 /// assert_eq!(stats.summary(false), "1 changed, 2 already ok, 3 skipped, 1 failed");
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct TaskStats {
     /// Number of items changed or applied.
-    pub changed: u32,
+    #[cfg(not(test))]
+    changed: u32,
+    #[cfg(test)]
+    pub(super) changed: u32,
     /// Number of items already in the correct state.
-    pub already_ok: u32,
+    #[cfg(not(test))]
+    already_ok: u32,
+    #[cfg(test)]
+    pub(super) already_ok: u32,
     /// Number of items deliberately skipped due to inapplicability.
-    pub skipped: u32,
+    #[cfg(not(test))]
+    skipped: u32,
+    #[cfg(test)]
+    pub(super) skipped: u32,
     /// Number of items that failed without aborting the enclosing task.
-    pub failed: u32,
+    #[cfg(not(test))]
+    failed: u32,
+    #[cfg(test)]
+    pub(super) failed: u32,
     /// Optional domain-specific summary for this batch.
-    pub message: Option<String>,
+    #[cfg(not(test))]
+    message: Option<String>,
+    #[cfg(test)]
+    pub(super) message: Option<String>,
 }
 
 impl TaskStats {
@@ -110,14 +119,26 @@ impl TaskStats {
     /// use dotfiles_cli::testing::tasks::TaskStats;
     ///
     /// let stats = TaskStats::new();
-    /// assert_eq!(stats.changed, 0);
-    /// assert_eq!(stats.already_ok, 0);
-    /// assert_eq!(stats.skipped, 0);
-    /// assert_eq!(stats.failed, 0);
+    /// assert_eq!(stats.changed_count(), 0);
+    /// assert_eq!(stats.already_ok_count(), 0);
+    /// assert_eq!(stats.skipped_count(), 0);
+    /// assert_eq!(stats.failed_count(), 0);
     /// ```
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Build a complete counter set while preserving the type's invariants.
+    #[must_use]
+    pub const fn from_counts(changed: u32, already_ok: u32, skipped: u32, failed: u32) -> Self {
+        Self {
+            changed,
+            already_ok,
+            skipped,
+            failed,
+            message: None,
+        }
     }
 
     /// Create stats representing one changed item.
@@ -140,6 +161,43 @@ impl TaskStats {
         }
     }
 
+    /// Attach a domain-specific summary message.
+    #[must_use]
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+
+    /// Number of changed items.
+    #[must_use]
+    pub const fn changed_count(&self) -> u32 {
+        self.changed
+    }
+
+    /// Number of already-correct items.
+    #[must_use]
+    pub const fn already_ok_count(&self) -> u32 {
+        self.already_ok
+    }
+
+    /// Number of deliberately skipped items.
+    #[must_use]
+    pub const fn skipped_count(&self) -> u32 {
+        self.skipped
+    }
+
+    /// Number of failed items.
+    #[must_use]
+    pub const fn failed_count(&self) -> u32 {
+        self.failed
+    }
+
+    /// Optional domain-specific summary message.
+    #[must_use]
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+
     /// Record one item outcome, saturating its counter.
     pub(crate) const fn record(&mut self, outcome: ItemOutcome) {
         match outcome {
@@ -157,13 +215,7 @@ impl TaskStats {
     /// ```
     /// use dotfiles_cli::testing::tasks::TaskStats;
     ///
-    /// let stats = TaskStats {
-    ///     changed: 5,
-    ///     already_ok: 12,
-    ///     skipped: 0,
-    ///     failed: 0,
-    ///     message: None,
-    /// };
+    /// let stats = TaskStats::from_counts(5, 12, 0, 0);
     /// assert_eq!(stats.summary(false), "5 changed, 12 already ok");
     /// assert_eq!(stats.summary(true), "5 would change, 12 already ok");
     /// ```

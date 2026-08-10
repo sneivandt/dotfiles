@@ -45,11 +45,20 @@ description: >
   sort or regroup them.
 - `update_only()` controls whether a task belongs only to `dotfiles update`; it
   does not create an ordering barrier.
-- `engine::requires_elevation()` checks `needs_elevation()` before
-  `should_run()`. `needs_elevation()` is a cheap constant for most tasks while
-  `should_run()` touches the filesystem and `PATH`, so keep the cheap predicate
-  first and keep `should_run()` free of side effects — it is evaluated twice for
-  elevating tasks (once in the pre-pass, once at dispatch after dependencies).
+- The coordinator calls `Task::assess()` once per task and execution phase, then
+  shares the immutable `TaskAssessment` with elevation preparation and dispatch.
+  Keep `should_run()` and `needs_elevation()` free of side effects.
+- Assessment happens before the phase graph runs. Eligibility and elevation
+  probes must therefore depend only on state stable for that phase. If a
+  prerequisite can create a tool or state needed by a successor, defer that
+  check to `run_configured()` after dependencies complete and return `Ok(None)`
+  when it remains unavailable.
+- `dependencies()` edges are failure-blocking prerequisites.
+  `ordering_dependencies()` edges wait for completion but do not propagate
+  predecessor failure.
+- Dynamic task instances use `TaskId::dynamic::<Self>(stable_key)` rather than
+  hashes. Display names need not be unique; scheduler records are keyed by
+  `TaskId`.
 - Task-level parallelism uses scoped OS threads; resource-level parallelism uses
   Rayon.
 - `ctx.parallel` gates both levels.
@@ -70,8 +79,8 @@ description: >
 
 1. **Task graph:** resolve with `ResolvedTaskGraph::resolve()` and fail on
    duplicate IDs/cycles.
-2. **Scheduler wiring:** keep dependency channels strict; failed dependency
-   blocks dependents.
+2. **Scheduler wiring:** preserve whether each edge is failure-blocking or
+   ordering-only; only blocking edges propagate failure.
 3. **Command membership:** filter update-only tasks before applying `--only`
    and `--skip`; filtering must not expand hidden prerequisites. Preserve
    selector uniqueness and visibility rules in discovery.
@@ -79,10 +88,10 @@ description: >
    run the discovery boundary's dependency closure, rebuild dynamic tasks, then
    schedule them with remaining static tasks. If the boundary is absent after
    filtering, discover before running one graph.
-5. **Task execution path:** route all tasks through `engine::execute()` so
-   `should_run()` owns execution eligibility. Override `run_configured()` only
-   when an otherwise-applicable task can have no configured work; do not repeat
-   eligibility checks there.
+5. **Task execution path:** route application graphs through cached
+   `TaskAssessment` and `execute_assessed()`. Override `run_configured()` when an
+   otherwise-applicable task can have no configured work or must check state
+   produced by a prerequisite; do not repeat stable eligibility checks there.
 6. **Resource flow:** use one of:
    - `process_resources(...)`
    - `process_resources_with_cache(...)`

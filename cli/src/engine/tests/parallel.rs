@@ -31,7 +31,11 @@ const BATCH: usize = 64;
 /// Extract the batch counters `(changed, already_ok, failed)` from a result.
 fn stats(result: &TaskResult) -> (u32, u32, u32) {
     match result {
-        TaskResult::Batch(stats) => Some((stats.changed, stats.already_ok, stats.failed)),
+        TaskResult::Batch(stats) => Some((
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.failed_count(),
+        )),
         TaskResult::Ok
         | TaskResult::DryRun
         | TaskResult::CheckPassed

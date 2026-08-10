@@ -25,7 +25,7 @@ use crate::engine::resource::ResourceError;
 use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 /// A resource that runs a custom script from an overlay repository.
 #[derive(Debug)]
@@ -128,7 +128,11 @@ impl ScriptResource {
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
         let result = self
             .executor
-            .run_in(&self.working_dir, interpreter, &args)
+            .execute(
+                CommandSpec::new(interpreter)
+                    .args(&args)
+                    .current_dir(&self.working_dir),
+            )
             .with_context(|| format!("{} script: {}", mode.action(), self.name))?;
 
         Ok((ResourceChange::Applied, result.stdout))
@@ -194,7 +198,12 @@ impl IntrinsicState for ScriptResource {
 
         let result = self
             .executor
-            .run_unchecked_in(&self.working_dir, interpreter, &args)
+            .execute(
+                CommandSpec::new(interpreter)
+                    .args(&args)
+                    .current_dir(&self.working_dir)
+                    .unchecked(),
+            )
             .with_context(|| format!("checking script state: {}", self.name))?;
 
         match (result.success, result.code) {
@@ -446,7 +455,7 @@ mod tests {
         let script_path = dir.path().join("test.sh");
         std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked_in().once().returning(|_, _, _| {
+        mock.expect_execute().once().returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -470,7 +479,7 @@ mod tests {
         let script_path = dir.path().join("test.sh");
         std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked_in().once().returning(|_, _, _| {
+        mock.expect_execute().once().returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: "syntax error".to_string(),

@@ -79,7 +79,7 @@ mod tests {
     fn uninstall_tasks_have_unique_type_ids() {
         let tasks = crate::app::catalog::all_uninstall_tasks(&store());
         let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-        let unique: HashSet<TaskId> = ids.iter().copied().collect();
+        let unique: HashSet<TaskId> = ids.iter().cloned().collect();
         assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
     }
 

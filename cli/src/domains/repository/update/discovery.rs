@@ -3,12 +3,35 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::engine::{Context, TaskResult, TaskStats};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult};
 
 use super::models::{
     CheckedRepository, DryRunUpdateStatus, RepositoryReadiness, RepositorySetReadiness,
     UpdateTarget, UpdateTargetKind,
 };
 use crate::infra::logging::OutputExt as _;
+
+fn git_command(root: &Path, args: &[&str], env: &[(&str, &str)]) -> CommandSpec {
+    CommandSpec::new("git")
+        .args(args)
+        .current_dir(root)
+        .envs(env)
+}
+
+fn optional_git_result(
+    result: std::result::Result<ExecResult, ExecError>,
+) -> Result<Option<ExecResult>> {
+    match result {
+        Ok(result) => Ok(Some(result)),
+        Err(ExecError::NonZero { .. }) => Ok(None),
+        Err(
+            error @ (ExecError::Cancelled { .. }
+            | ExecError::TimedOut { .. }
+            | ExecError::Spawn { .. }
+            | ExecError::Io { .. }),
+        ) => Err(error.into()),
+    }
+}
 
 /// Build the list of repositories to consider for update (main + optional overlay).
 pub(super) fn update_targets(ctx: &Context) -> Vec<UpdateTarget> {
@@ -56,12 +79,11 @@ pub(super) fn check_repository_ready(
     git_env: &[(&str, &str)],
 ) -> Result<RepositoryReadiness> {
     // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
-    let head_ref = if let Ok(result) = ctx.executor().run_in_with_env(
+    let head_ref = if let Some(result) = optional_git_result(ctx.executor().execute(git_command(
         &target.root,
-        "git",
         &["symbolic-ref", "--quiet", "HEAD"],
         git_env,
-    ) {
+    )))? {
         result.stdout.trim().to_string()
     } else {
         let reason = target.reason("detached HEAD");
@@ -123,10 +145,10 @@ pub(super) fn dry_run_update_status(
 ) -> Result<DryRunUpdateStatus> {
     let head = ctx
         .executor()
-        .run_in_with_env(root, "git", &["rev-parse", "HEAD"], git_env)?;
+        .execute(git_command(root, &["rev-parse", "HEAD"], git_env))?;
     let head_sha = head.stdout.trim().to_string();
 
-    if let Some(remote_sha) = upstream_remote_sha(ctx, root, git_env, head_ref) {
+    if let Some(remote_sha) = upstream_remote_sha(ctx, root, git_env, head_ref)? {
         return Ok(if head_sha == remote_sha {
             DryRunUpdateStatus::AlreadyCurrent
         } else {
@@ -134,10 +156,11 @@ pub(super) fn dry_run_update_status(
         });
     }
 
-    if let Ok(upstream) =
-        ctx.executor()
-            .run_in_with_env(root, "git", &["rev-parse", "@{u}"], git_env)
-    {
+    if let Some(upstream) = optional_git_result(ctx.executor().execute(git_command(
+        root,
+        &["rev-parse", "@{u}"],
+        git_env,
+    )))? {
         return Ok(if head_sha == upstream.stdout.trim() {
             DryRunUpdateStatus::AlreadyCurrent
         } else {
@@ -155,41 +178,48 @@ pub(super) fn upstream_remote_sha(
     root: &Path,
     git_env: &[(&str, &str)],
     head_ref: &str,
-) -> Option<String> {
+) -> Result<Option<String>> {
     let branch = head_ref.strip_prefix("refs/heads/").unwrap_or(head_ref);
     let remote_key = format!("branch.{branch}.remote");
     let merge_key = format!("branch.{branch}.merge");
 
-    let remote = ctx
-        .executor()
-        .run_in_with_env(root, "git", &["config", "--get", &remote_key], git_env)
-        .ok()?;
-    let merge_ref = ctx
-        .executor()
-        .run_in_with_env(root, "git", &["config", "--get", &merge_key], git_env)
-        .ok()?;
+    let Some(remote) = optional_git_result(ctx.executor().execute(git_command(
+        root,
+        &["config", "--get", &remote_key],
+        git_env,
+    )))?
+    else {
+        return Ok(None);
+    };
+    let Some(merge_ref) = optional_git_result(ctx.executor().execute(git_command(
+        root,
+        &["config", "--get", &merge_key],
+        git_env,
+    )))?
+    else {
+        return Ok(None);
+    };
 
     let remote_name = remote.stdout.trim();
     let merge_name = merge_ref.stdout.trim();
     if remote_name.is_empty() || merge_name.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    let ls_remote = ctx
-        .executor()
-        .run_in_with_env(
-            root,
-            "git",
-            &["ls-remote", "--exit-code", remote_name, merge_name],
-            git_env,
-        )
-        .ok()?;
+    let Some(ls_remote) = optional_git_result(ctx.executor().execute(git_command(
+        root,
+        &["ls-remote", "--exit-code", remote_name, merge_name],
+        git_env,
+    )))?
+    else {
+        return Ok(None);
+    };
 
-    ls_remote
+    Ok(ls_remote
         .stdout
         .split_whitespace()
         .next()
-        .map(ToString::to_string)
+        .map(ToString::to_string))
 }
 
 /// Return `true` when tracked files in the worktree have uncommitted
@@ -199,12 +229,11 @@ pub(super) fn worktree_has_local_changes(
     root: &Path,
     git_env: &[(&str, &str)],
 ) -> Result<bool> {
-    let status = ctx.executor().run_in_with_env(
+    let status = ctx.executor().execute(git_command(
         root,
-        "git",
         &["status", "--porcelain", "--untracked-files=no"],
         git_env,
-    )?;
+    ))?;
 
     Ok(!status.stdout.trim().is_empty())
 }

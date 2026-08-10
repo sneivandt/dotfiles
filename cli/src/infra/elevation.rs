@@ -60,14 +60,14 @@ static ELEVATED_CHILD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 #[cfg(windows)]
 #[must_use]
 pub fn is_elevated() -> bool {
-    use crate::infra::exec::Executor as _;
+    use crate::infra::exec::{CommandSpec, Executor as _};
     use std::sync::OnceLock;
 
     static ELEVATED: OnceLock<bool> = OnceLock::new();
 
     *ELEVATED.get_or_init(|| {
         crate::infra::exec::ProcessExecutor::system()
-            .run_unchecked("net", &["session"])
+            .execute(CommandSpec::new("net").arg("session").unchecked())
             .is_ok_and(|result| result.success)
     })
 }

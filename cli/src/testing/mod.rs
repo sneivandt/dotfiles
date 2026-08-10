@@ -69,7 +69,7 @@ pub mod engine {
 }
 
 pub mod exec {
-    pub use crate::infra::exec::{ExecResult, Executor, ProcessExecutor};
+    pub use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, ProcessExecutor};
 }
 
 pub mod env {

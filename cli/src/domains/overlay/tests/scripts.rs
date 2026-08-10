@@ -186,16 +186,17 @@ fn overlay_script_tasks_have_unique_task_ids() {
     ];
     let tasks = overlay_script_tasks(&scripts, Path::new("/overlay"));
     let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-    let unique: HashSet<TaskId> = ids.iter().copied().collect();
+    let unique: HashSet<TaskId> = ids.iter().cloned().collect();
     assert_eq!(
         ids.len(),
         unique.len(),
         "all overlay script task IDs must be distinct"
     );
-    // Each id must be the Dynamic variant.
+    // Each id must be the structured dynamic variant.
     assert!(
-        ids.iter().all(|id| matches!(id, TaskId::Dynamic(_))),
-        "overlay script tasks should use TaskId::Dynamic, not TaskId::Type"
+        ids.iter()
+            .all(|id| matches!(id, TaskId::NamedDynamic { .. })),
+        "overlay script tasks should use TaskId::NamedDynamic, not TaskId::Type"
     );
 }
 
@@ -205,16 +206,18 @@ fn script_task_run_is_ok_when_check_reports_correct() {
     let overlay_path = overlay.path().to_path_buf();
     let check_script = script_arg;
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
-        .withf(move |dir, program, args| {
-            dir == overlay_path.as_path()
-                && program == "sh"
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(overlay_path.as_path())
+                && spec.program() == "sh"
                 && args.len() == 2
                 && args[0] == check_script.as_str()
                 && args[1] == "--check"
+                && !spec.is_checked()
         })
-        .returning(|_, _, _| Ok(exec_result("", true, Some(0))));
+        .returning(|_| Ok(exec_result("", true, Some(0))));
 
     let ctx = context_with_executor(overlay.path(), mock);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
@@ -230,25 +233,29 @@ fn script_task_run_applies_when_check_reports_missing() {
     let apply_overlay_path = overlay.path().to_path_buf();
     let apply_script = script_arg;
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
-        .withf(move |dir, program, args| {
-            dir == overlay_path.as_path()
-                && program == "sh"
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(overlay_path.as_path())
+                && spec.program() == "sh"
                 && args.len() == 2
                 && args[0] == check_script.as_str()
                 && args[1] == "--check"
+                && !spec.is_checked()
         })
-        .returning(|_, _, _| Ok(exec_result("", false, Some(1))));
-    mock.expect_run_in()
+        .returning(|_| Ok(exec_result("", false, Some(1))));
+    mock.expect_execute()
         .once()
-        .withf(move |dir, program, args| {
-            dir == apply_overlay_path.as_path()
-                && program == "sh"
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(apply_overlay_path.as_path())
+                && spec.program() == "sh"
                 && args.len() == 1
                 && args[0] == apply_script.as_str()
+                && spec.is_checked()
         })
-        .returning(|_, _, _| Ok(exec_result("applied\n", true, Some(0))));
+        .returning(|_| Ok(exec_result("applied\n", true, Some(0))));
 
     let ctx = context_with_executor(overlay.path(), mock);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
@@ -264,33 +271,37 @@ fn script_task_run_uses_dry_run_script_when_context_is_dry_run() {
     let dry_run_overlay_path = overlay.path().to_path_buf();
     let dry_run_script = script_arg;
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
-        .withf(move |dir, program, args| {
-            dir == overlay_path.as_path()
-                && program == "sh"
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(overlay_path.as_path())
+                && spec.program() == "sh"
                 && args.len() == 2
                 && args[0] == check_script.as_str()
                 && args[1] == "--check"
+                && !spec.is_checked()
         })
-        .returning(|_, _, _| Ok(exec_result("", false, Some(1))));
-    mock.expect_run_in()
+        .returning(|_| Ok(exec_result("", false, Some(1))));
+    mock.expect_execute()
         .once()
-        .withf(move |dir, program, args| {
-            dir == dry_run_overlay_path.as_path()
-                && program == "sh"
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(dry_run_overlay_path.as_path())
+                && spec.program() == "sh"
                 && args.len() == 2
                 && args[0] == dry_run_script.as_str()
                 && args[1] == "--dryrun"
+                && spec.is_checked()
         })
-        .returning(|_, _, _| Ok(exec_result("would apply\n", true, Some(0))));
+        .returning(|_| Ok(exec_result("would apply\n", true, Some(0))));
 
     let ctx = context_with_executor(overlay.path(), mock).with_dry_run(true);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
 
     assert!(matches!(
         task.run(&ctx).unwrap(),
-        TaskResult::Batch(stats) if stats.changed > 0
+        TaskResult::Batch(stats) if stats.changed_count() > 0
     ));
 }
 
@@ -300,16 +311,18 @@ fn script_task_run_treats_check_failures_as_not_applicable() {
     let overlay_path = overlay.path().to_path_buf();
     let check_script = script_arg;
     let mut mock = MockExecutor::new();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
-        .withf(move |dir, program, args| {
-            dir == overlay_path.as_path()
-                && program == "sh"
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(overlay_path.as_path())
+                && spec.program() == "sh"
                 && args.len() == 2
                 && args[0] == check_script.as_str()
                 && args[1] == "--check"
+                && !spec.is_checked()
         })
-        .returning(|_, _, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: "boom".to_string(),

@@ -356,7 +356,7 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.changed == 1
+            TaskResult::Batch(stats) if stats.changed_count() == 1
         ));
         assert!(
             git_hooks_dir.join("pre-commit").exists(),
@@ -394,7 +394,7 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.changed == 1
+            TaskResult::Batch(stats) if stats.changed_count() == 1
         ));
         assert!(
             !git_hooks_dir.join("pre-commit").exists(),

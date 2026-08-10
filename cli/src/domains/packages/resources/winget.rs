@@ -6,7 +6,7 @@ use anyhow::Result;
 
 use super::package::PackageProvider;
 use crate::engine::ResourceChange;
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 /// Parses the column header row of `winget list` output into a list of
 /// `(display-column, name)` pairs, one per column.
@@ -138,6 +138,8 @@ mod exit_code {
 enum InstallVerdict {
     /// The package is installed; nothing more to do.
     Installed,
+    /// Winget reports the package was already present despite list discovery.
+    AlreadyInstalled,
     /// The requested scope has no installer; retry without `--scope`.
     RetryWithoutScope,
     /// Expected on an unelevated run; report it rather than failing the task.
@@ -154,11 +156,10 @@ enum InstallVerdict {
 const fn classify_install(code: Option<i32>) -> InstallVerdict {
     match code {
         Some(exit_code::NO_APPLICABLE_INSTALLER) => InstallVerdict::RetryWithoutScope,
-        Some(
-            exit_code::PACKAGE_ALREADY_INSTALLED
-            | exit_code::INSTALL_ALREADY_INSTALLED
-            | exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH,
-        ) => InstallVerdict::Installed,
+        Some(exit_code::PACKAGE_ALREADY_INSTALLED | exit_code::INSTALL_ALREADY_INSTALLED) => {
+            InstallVerdict::AlreadyInstalled
+        }
+        Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH) => InstallVerdict::Installed,
         Some(exit_code::COMMAND_REQUIRES_ADMIN) => InstallVerdict::Skipped(
             "requires administrator; re-run `dotfiles install --only packages` from an elevated shell",
         ),
@@ -206,13 +207,14 @@ impl PackageProvider for WingetProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        let result = executor.run_unchecked(
-            "winget",
-            &[
-                "list",
-                "--accept-source-agreements",
-                "--disable-interactivity",
-            ],
+        let result = executor.execute(
+            CommandSpec::new("winget")
+                .args(&[
+                    "list",
+                    "--accept-source-agreements",
+                    "--disable-interactivity",
+                ])
+                .unchecked(),
         )?;
 
         if !result.success {
@@ -233,10 +235,18 @@ impl PackageProvider for WingetProvider {
     /// report `NO_APPLICABLE_INSTALLER`, and are retried unscoped so winget can
     /// raise its own elevation prompt for just that package.
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
-        let mut result = executor.run_unchecked("winget", &install_args(name, Some("user")))?;
+        let mut result = executor.execute(
+            CommandSpec::new("winget")
+                .args(&install_args(name, Some("user")))
+                .unchecked(),
+        )?;
 
         if !result.success && classify_install(result.code) == InstallVerdict::RetryWithoutScope {
-            result = executor.run_unchecked("winget", &install_args(name, None))?;
+            result = executor.execute(
+                CommandSpec::new("winget")
+                    .args(&install_args(name, None))
+                    .unchecked(),
+            )?;
         }
 
         if result.success {
@@ -245,6 +255,7 @@ impl PackageProvider for WingetProvider {
 
         match classify_install(result.code) {
             InstallVerdict::Installed => Ok(ResourceChange::Applied),
+            InstallVerdict::AlreadyInstalled => Ok(ResourceChange::AlreadyCorrect),
             InstallVerdict::Skipped(reason) => {
                 Ok(ResourceChange::unusable(format!("{name}: {reason}")))
             }
@@ -351,18 +362,19 @@ mod tests {
     #[test]
     fn winget_query_installed_uses_expected_noninteractive_flags() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| {
-                program == "winget"
-                    && args
+            .withf(|spec| {
+                spec.program() == "winget"
+                    && spec.arguments()
                         == [
                             "list",
                             "--accept-source-agreements",
                             "--disable-interactivity",
                         ]
+                    && !spec.is_checked()
             })
-            .returning(|_, _| Ok(ok_result("Name  Id       Version\nGit   Git.Git  2.51.0\n")));
+            .returning(|_| Ok(ok_result("Name  Id       Version\nGit   Git.Git  2.51.0\n")));
 
         let ids = WingetProvider.query_installed(&mock).unwrap();
 
@@ -373,11 +385,11 @@ mod tests {
     #[test]
     fn winget_install_failure_prefers_stdout_when_stderr_is_empty() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| {
-                program == "winget"
-                    && args
+            .withf(|spec| {
+                spec.program() == "winget"
+                    && spec.arguments()
                         == [
                             "install",
                             "--id",
@@ -391,8 +403,9 @@ mod tests {
                             "--scope",
                             "user",
                         ]
+                    && !spec.is_checked()
             })
-            .returning(|_, _| Ok(failed_result("No package found", "", 1)));
+            .returning(|_| Ok(failed_result("No package found", "", 1)));
 
         let change = WingetProvider.install("Git.Git", &mock).unwrap();
 
@@ -405,9 +418,9 @@ mod tests {
     #[test]
     fn winget_install_failure_includes_stdout_and_stderr_when_both_present() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .returning(|_, _| Ok(failed_result("Installer output", "Access denied", 1)));
+            .returning(|_| Ok(failed_result("Installer output", "Access denied", 1)));
 
         let change = WingetProvider.install("Git.Git", &mock).unwrap();
 
@@ -420,10 +433,13 @@ mod tests {
     #[test]
     fn winget_install_prefers_user_scope() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|_, args| args.contains(&"--scope") && args.contains(&"user"))
-            .returning(|_, _| Ok(ok_result("")));
+            .withf(|spec| {
+                spec.arguments().iter().any(|arg| arg == "--scope")
+                    && spec.arguments().iter().any(|arg| arg == "user")
+            })
+            .returning(|_| Ok(ok_result("")));
 
         assert_eq!(
             WingetProvider.install("Git.Git", &mock).unwrap(),
@@ -434,20 +450,20 @@ mod tests {
     #[test]
     fn winget_install_retries_without_scope_when_no_user_installer_exists() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|_, args| args.contains(&"--scope"))
-            .returning(|_, _| {
+            .withf(|spec| spec.arguments().iter().any(|arg| arg == "--scope"))
+            .returning(|_| {
                 Ok(failed_result(
                     "",
                     "no applicable installer",
                     exit_code::NO_APPLICABLE_INSTALLER,
                 ))
             });
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|_, args| !args.contains(&"--scope"))
-            .returning(|_, _| Ok(ok_result("")));
+            .withf(|spec| !spec.arguments().iter().any(|arg| arg == "--scope"))
+            .returning(|_| Ok(ok_result("")));
 
         assert_eq!(
             WingetProvider.install("Git.Git", &mock).unwrap(),
@@ -458,20 +474,23 @@ mod tests {
     #[test]
     fn winget_install_skips_rather_than_fails_when_elevation_is_required() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked().times(2).returning(|_, args| {
-            if args.contains(&"--scope") {
+        mock.expect_execute().times(2).returning(|spec| {
+            if spec.arguments().iter().any(|arg| arg == "--scope") {
                 Ok(failed_result("", "", exit_code::NO_APPLICABLE_INSTALLER))
             } else {
                 Ok(failed_result("", "", exit_code::COMMAND_REQUIRES_ADMIN))
             }
         });
 
-        let ResourceChange::Skipped { reason, failed } =
+        let ResourceChange::Skipped { reason, kind } =
             WingetProvider.install("Git.Git", &mock).unwrap()
         else {
             panic!("expected a skip");
         };
-        assert!(failed, "an admin-required skip must count as a failure");
+        assert!(
+            kind.is_failure(),
+            "an admin-required skip must count as a failure"
+        );
         assert!(
             reason.starts_with("Git.Git: requires administrator"),
             "{reason}"
@@ -480,31 +499,47 @@ mod tests {
     }
 
     #[test]
-    fn winget_install_treats_already_installed_as_success() {
+    fn winget_install_preserves_already_installed_as_already_correct() {
         for code in [
             exit_code::PACKAGE_ALREADY_INSTALLED,
             exit_code::INSTALL_ALREADY_INSTALLED,
-            exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH,
         ] {
             let mut mock = MockExecutor::new();
-            mock.expect_run_unchecked()
+            mock.expect_execute()
                 .once()
-                .returning(move |_, _| Ok(failed_result("", "", code)));
+                .returning(move |_| Ok(failed_result("", "", code)));
 
             assert_eq!(
                 WingetProvider.install("Git.Git", &mock).unwrap(),
-                ResourceChange::Applied,
-                "exit code {code} should count as installed",
+                ResourceChange::AlreadyCorrect,
+                "exit code {code} should not inflate the applied count",
             );
         }
     }
 
     #[test]
+    fn winget_install_reboot_required_counts_as_applied() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().once().returning(|_| {
+            Ok(failed_result(
+                "",
+                "",
+                exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH,
+            ))
+        });
+
+        assert_eq!(
+            WingetProvider.install("Git.Git", &mock).unwrap(),
+            ResourceChange::Applied,
+        );
+    }
+
+    #[test]
     fn winget_install_skips_when_the_user_declines_the_installer_prompt() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .returning(|_, _| Ok(failed_result("", "", exit_code::INSTALL_CANCELLED_BY_USER)));
+            .returning(|_| Ok(failed_result("", "", exit_code::INSTALL_CANCELLED_BY_USER)));
 
         let ResourceChange::Skipped { reason, .. } =
             WingetProvider.install("Git.Git", &mock).unwrap()

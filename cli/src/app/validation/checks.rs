@@ -9,6 +9,7 @@ use anyhow::{Context as _, Result};
 use crate::app::config::Config;
 use crate::engine::{Context, Task, TaskResult, task_metadata};
 use crate::infra::ConfigHandle;
+use crate::infra::exec::CommandSpec;
 
 use super::discovery::{
     discover_apm_plugin_dirs, discover_linter_inputs, discover_powershell_scripts,
@@ -257,7 +258,12 @@ impl Task for ValidateApmPlugins {
             ctx.debug_fmt(|| format!("validating APM plugin {}", plugin.display()));
             let result = ctx
                 .executor()
-                .run_unchecked_in(plugin, "apm", &["pack", "--dry-run", "--verbose"])
+                .execute(
+                    CommandSpec::new("apm")
+                        .args(&["pack", "--dry-run", "--verbose"])
+                        .current_dir(plugin)
+                        .unchecked(),
+                )
                 .with_context(|| format!("running apm pack validation in {}", plugin.display()))?;
             if result.success {
                 continue;

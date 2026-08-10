@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 
 use crate::engine::{Context, TaskResult, UpdateSignal};
+use crate::infra::exec::{CommandSpec, ExecError};
 
 use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
 use crate::infra::logging::OutputExt as _;
@@ -30,6 +31,13 @@ const TRANSIENT_FETCH_ERROR_MARKERS: &[&str] = &[
     "unexpected disconnect while reading sideband packet",
 ];
 
+fn git_command(root: &std::path::Path, args: &[&str], env: &[(&str, &str)]) -> CommandSpec {
+    CommandSpec::new("git")
+        .args(args)
+        .current_dir(root)
+        .envs(env)
+}
+
 /// Run `git fetch` for every repository, then fast-forward merge those that
 /// have upstream commits.
 pub(super) fn apply_repository_updates(
@@ -40,7 +48,7 @@ pub(super) fn apply_repository_updates(
 ) -> Result<TaskResult> {
     // Fetch first so divergence can be evaluated without invoking `git pull`,
     // which fails noisily when the local branch has diverged from upstream.
-    if let Some(reason) = fetch_all(ctx, repositories, git_env) {
+    if let Some(reason) = fetch_all(ctx, repositories, git_env)? {
         return Ok(TaskResult::Failed(reason));
     }
 
@@ -54,12 +62,11 @@ pub(super) fn apply_repository_updates(
 
     let mut updated = false;
     for plan in plans.iter().filter(|plan| plan.needs_update) {
-        let result = ctx.executor().run_in_with_env(
+        let result = ctx.executor().execute(git_command(
             &plan.target.root,
-            "git",
             &["merge", "--ff-only", "@{u}"],
             git_env,
-        );
+        ));
         match result {
             Ok(r) => {
                 ctx.log()
@@ -69,6 +76,9 @@ pub(super) fn apply_repository_updates(
                 updated = true;
             }
             Err(e) => {
+                if e.is_cancelled() {
+                    return Err(e.into());
+                }
                 let reason = plan.target.reason("git merge --ff-only failed");
                 ctx.log().warn(format!("{reason}: {e:#}"));
                 return Ok(TaskResult::Failed(reason));
@@ -93,21 +103,31 @@ fn fetch_all(
     ctx: &Context,
     repositories: &[CheckedRepository],
     git_env: &[(&str, &str)],
-) -> Option<String> {
+) -> std::result::Result<Option<String>, ExecError> {
     use rayon::prelude::*;
 
-    let fetch_one = |repository: &CheckedRepository| -> Option<String> {
-        ctx.log()
-            .debug(format!("pulling from {}", repository.target.root.display()));
-        fetch_with_retry(ctx, repository, git_env).err().map(|e| {
-            let reason = repository.target.reason("git fetch failed");
-            ctx.log().warn(format!("{reason}: {e:#}"));
-            reason
-        })
-    };
+    let fetch_one =
+        |repository: &CheckedRepository| -> std::result::Result<Option<String>, ExecError> {
+            ctx.log()
+                .debug(format!("pulling from {}", repository.target.root.display()));
+            match fetch_with_retry(ctx, repository, git_env) {
+                Ok(()) => Ok(None),
+                Err(error) if error.is_cancelled() => Err(error),
+                Err(error) => {
+                    let reason = repository.target.reason("git fetch failed");
+                    ctx.log().warn(format!("{reason}: {error:#}"));
+                    Ok(Some(reason))
+                }
+            }
+        };
 
     if !ctx.parallel() || repositories.len() < 2 {
-        return repositories.iter().find_map(fetch_one);
+        for repository in repositories {
+            if let Some(reason) = fetch_one(repository)? {
+                return Ok(Some(reason));
+            }
+        }
+        return Ok(None);
     }
 
     // Rayon reuses threads across work items, so re-assert the diagnostic
@@ -116,31 +136,33 @@ fn fetch_all(
     // Collect before searching so the reported failure is the first in
     // declaration order rather than the first to complete: a fetch failure
     // then names the same repository whether or not the run is parallel.
-    repositories
+    let outcomes = repositories
         .par_iter()
         .map(|repository| {
             set_log_thread_name(&task_name);
             fetch_one(repository)
         })
-        .collect::<Vec<_>>()
-        .into_iter()
-        .flatten()
-        .next()
+        .collect::<Vec<_>>();
+    for outcome in outcomes {
+        if let Some(reason) = outcome? {
+            return Ok(Some(reason));
+        }
+    }
+    Ok(None)
 }
 
 fn fetch_with_retry(
     ctx: &Context,
     repository: &CheckedRepository,
     git_env: &[(&str, &str)],
-) -> Result<()> {
+) -> std::result::Result<(), ExecError> {
     let mut attempt = 1_u32;
     loop {
-        match ctx.executor().run_in_with_env(
+        match ctx.executor().execute(git_command(
             &repository.target.root,
-            "git",
             &["fetch", "--quiet"],
             git_env,
-        ) {
+        )) {
             Ok(_) => return Ok(()),
             Err(error) if attempt < MAX_FETCH_ATTEMPTS && is_transient_fetch_error(&error) => {
                 ctx.log().warn(format!(
@@ -155,7 +177,7 @@ fn fetch_with_retry(
     }
 }
 
-fn is_transient_fetch_error(error: &anyhow::Error) -> bool {
+fn is_transient_fetch_error(error: &ExecError) -> bool {
     let message = format!("{error:#}").to_ascii_lowercase();
     TRANSIENT_FETCH_ERROR_MARKERS
         .iter()
@@ -181,28 +203,32 @@ pub(super) fn plan_repository_update(
 ) -> Result<RepositoryPlanReadiness> {
     let pre_sha = ctx
         .executor()
-        .run_in_with_env(
+        .execute(git_command(
             &repository.target.root,
-            "git",
             &["rev-parse", "HEAD"],
             git_env,
-        )?
+        ))?
         .stdout
         .trim()
         .to_string();
 
-    let upstream_sha = match ctx.executor().run_in_with_env(
+    let upstream_sha = match ctx.executor().execute(git_command(
         &repository.target.root,
-        "git",
         &["rev-parse", "@{u}"],
         git_env,
-    ) {
+    )) {
         Ok(r) => r.stdout.trim().to_string(),
-        Err(e) => {
+        Err(e @ ExecError::NonZero { .. }) => {
             let reason = repository.target.reason("no upstream tracking branch");
             ctx.log().warn(format!("{reason}: {e:#}"));
             return Ok(RepositoryPlanReadiness::Skipped(reason));
         }
+        Err(
+            e @ (ExecError::Cancelled { .. }
+            | ExecError::TimedOut { .. }
+            | ExecError::Spawn { .. }
+            | ExecError::Io { .. }),
+        ) => return Err(e.into()),
     };
 
     if pre_sha == upstream_sha {
@@ -221,12 +247,11 @@ pub(super) fn plan_repository_update(
     // would fail; skip rather than report a hard failure.
     let ahead_output = ctx
         .executor()
-        .run_in_with_env(
+        .execute(git_command(
             &repository.target.root,
-            "git",
             &["rev-list", "--count", "@{u}..HEAD"],
             git_env,
-        )?
+        ))?
         .stdout
         .trim()
         .to_string();

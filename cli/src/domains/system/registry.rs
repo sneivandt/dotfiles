@@ -140,7 +140,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.failed == 1
+            TaskResult::Batch(stats) if stats.failed_count() == 1
         ));
     }
 }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 const DESIRED: &str = "[boot]\nsystemd=true\n\n[interop]\nappendWindowsPath=false\n";
 
@@ -56,7 +56,9 @@ impl WslConfResource {
                 let tmp = format!("/tmp/dotfiles-wsl-conf-{}", std::process::id());
                 fs::write(&tmp, merged).context("writing temporary wsl.conf")?;
                 let target = self.target.to_string_lossy();
-                let copy_result = self.executor.run("sudo", &["cp", &tmp, &target]);
+                let copy_result = self
+                    .executor
+                    .execute(CommandSpec::new("sudo").args(&["cp", &tmp, &target]));
                 drop(fs::remove_file(&tmp));
                 copy_result.context("installing wsl.conf with sudo")?;
                 Ok(())

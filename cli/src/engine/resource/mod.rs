@@ -5,7 +5,9 @@ mod contract;
 mod error;
 mod provider;
 
-pub use contract::{RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState};
+pub use contract::{
+    RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState, SkipKind,
+};
 pub use error::ResourceError;
 pub use provider::{
     CachedStateProvider, IntrinsicState, IntrinsicStateProvider, ResourceStateProvider,

@@ -293,9 +293,9 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     let task = TaskWithExtraDeps::new(
         Box::new(DelegatedTask {
             calls: Arc::clone(&calls),
-            deps: vec![existing, existing],
+            deps: vec![existing.clone(), existing.clone()],
         }),
-        &[existing, additional, additional],
+        &[existing.clone(), additional.clone(), additional.clone()],
     );
 
     assert_eq!(task.name(), "delegated-task");
@@ -525,7 +525,7 @@ fn execute_records_skipped_only_batch_as_skipped() {
 }
 
 #[test]
-fn execute_downgrades_cancelled_batch_failure_to_skipped() {
+fn execute_preserves_batch_failure_when_cancellation_was_requested_separately() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, log) = make_static_context(config);
     ctx.cancellation_token().cancel();
@@ -541,9 +541,42 @@ fn execute_downgrades_cancelled_batch_failure_to_skipped() {
         })),
     };
 
-    assert_eq!(execute(&task, &ctx), TaskStatus::Skipped);
-    assert_eq!(log.failure_count(), 0);
+    assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
+    assert_eq!(log.failure_count(), 1);
     assert_eq!(log.task_entries()[0].actions.failed, 1);
+}
+
+#[test]
+fn execute_detects_cancellation_through_resource_error_wrappers() {
+    struct WrappedCancellationTask;
+
+    impl Task for WrappedCancellationTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("wrapped-cancellation")
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            let exec = crate::infra::exec::ExecError::Cancelled {
+                command: "wrapped command".to_string(),
+                result: crate::infra::exec::ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: false,
+                    code: None,
+                },
+            };
+            let resource = crate::engine::resource::ResourceError::from(anyhow::Error::new(
+                crate::engine::resource::ResourceError::from(exec),
+            ));
+            Err(resource.into())
+        }
+    }
+
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+
+    assert_eq!(execute(&WrappedCancellationTask, &ctx), TaskStatus::Skipped);
+    assert_eq!(log.failure_count(), 0);
 }
 
 #[test]
@@ -638,7 +671,7 @@ fn requires_elevation_respects_should_run() {
 }
 
 #[test]
-fn requires_elevation_does_not_evaluate_applicability_for_unelevated_tasks() {
+fn assessment_evaluates_applicability_once_for_unelevated_tasks() {
     struct CountingGate {
         should_run_calls: Arc<AtomicUsize>,
     }
@@ -666,10 +699,58 @@ fn requires_elevation_does_not_evaluate_applicability_for_unelevated_tasks() {
     assert!(!requires_elevation(&task, &ctx));
     assert_eq!(
         should_run_calls.load(Ordering::SeqCst),
-        0,
-        "should_run may perform filesystem or PATH probes, so it must not run \
-         for the majority of tasks that can never need elevation"
+        1,
+        "the unified assessment must evaluate applicability exactly once"
     );
+}
+
+#[test]
+fn precomputed_assessment_is_reused_during_execution() {
+    struct CountingAssessment {
+        should_run_calls: Arc<AtomicUsize>,
+        elevation_calls: Arc<AtomicUsize>,
+        ran: Arc<AtomicBool>,
+    }
+
+    impl Task for CountingAssessment {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("counting-assessment")
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            self.should_run_calls.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+
+        fn needs_elevation(&self, _ctx: &Context) -> bool {
+            self.elevation_calls.fetch_add(1, Ordering::SeqCst);
+            false
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _) = make_static_context(config);
+    let should_run_calls = Arc::new(AtomicUsize::new(0));
+    let elevation_calls = Arc::new(AtomicUsize::new(0));
+    let ran = Arc::new(AtomicBool::new(false));
+    let task = CountingAssessment {
+        should_run_calls: Arc::clone(&should_run_calls),
+        elevation_calls: Arc::clone(&elevation_calls),
+        ran: Arc::clone(&ran),
+    };
+
+    let assessment = task.assess(&ctx);
+    assert!(!assessment.requires_elevation());
+    assert_eq!(execute_assessed(&task, &assessment, &ctx), TaskStatus::Ok);
+
+    assert!(ran.load(Ordering::SeqCst));
+    assert_eq!(should_run_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(elevation_calls.load(Ordering::SeqCst), 1);
 }
 
 #[test]

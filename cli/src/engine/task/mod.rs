@@ -10,10 +10,11 @@ mod types;
 use crate::infra::logging::OutputExt as _;
 pub use crate::infra::logging::TaskVisibility;
 pub use execute::execute;
+pub(crate) use execute::execute_assessed;
 pub(crate) use macros::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
-pub use types::{TaskId, TaskMeta};
+pub use types::{TaskAssessment, TaskId, TaskMeta};
 
 use std::any::TypeId;
 
@@ -67,10 +68,10 @@ pub trait Task: Send + Sync + 'static {
     /// dependency graph.
     ///
     /// The default implementation returns `TaskId::Type(TypeId::of::<Self>())`
-    /// which is correct for all concrete singleton task structs.  Dynamic tasks
+    /// which is correct for all concrete singleton task structs. Dynamic tasks
     /// (multiple instances of the same struct in a single task list) must
-    /// override this method to return `TaskId::Dynamic(hash)` with an
-    /// instance-specific hash so each instance has a distinct identity.
+    /// override this method and use [`TaskId::dynamic`] with a stable
+    /// instance-specific key.
     fn task_id(&self) -> TaskId {
         TaskId::Type(TypeId::of::<Self>())
     }
@@ -86,6 +87,15 @@ pub trait Task: Send + Sync + 'static {
     /// the manual `const DEPS` boilerplate and automatically wraps each type
     /// in [`TaskId::Type`].
     fn dependencies(&self) -> &[TaskId] {
+        &[]
+    }
+
+    /// Tasks that must finish before this task starts, but whose failure does
+    /// not make this task's own work invalid.
+    ///
+    /// Use [`dependencies`](Self::dependencies) for prerequisites whose
+    /// failure must block this task.
+    fn ordering_dependencies(&self) -> &[TaskId] {
         &[]
     }
 
@@ -122,6 +132,18 @@ pub trait Task: Send + Sync + 'static {
         false
     }
 
+    /// Assess this task once for the current execution phase.
+    ///
+    /// The default preserves the existing task hooks while ensuring their
+    /// filesystem and tool probes are evaluated only once before elevation
+    /// planning and scheduling.
+    fn assess(&self, ctx: &Context) -> TaskAssessment {
+        if !self.should_run(ctx) {
+            return TaskAssessment::not_applicable(None::<String>);
+        }
+        TaskAssessment::applicable().with_elevation(!ctx.dry_run() && self.needs_elevation(ctx))
+    }
+
     /// Execute the task.
     ///
     /// # Errors
@@ -131,26 +153,12 @@ pub trait Task: Send + Sync + 'static {
     fn run(&self, ctx: &Context) -> Result<TaskResult>;
 }
 
-/// Whether an applicable task's current state requires elevation.
-///
-/// This is deliberately a free function rather than a defaulted [`Task`]
-/// method. It is a fixed combinator over [`Task::needs_elevation`] and
-/// [`Task::should_run`] that no implementor should override, and every
-/// defaulted method is one more thing a decorator such as
-/// [`TaskWithExtraDeps`] can silently fail to forward. Keeping it outside the
-/// trait means a wrapped task cannot lose it.
-///
-/// The predicate order is load-bearing. [`Task::should_run`] implementations
-/// routinely touch the filesystem or probe `PATH`, and this runs over every
-/// task in the graph before scheduling, whereas [`Task::needs_elevation`]
-/// defaults to a constant `false` and is overridden by only a handful of
-/// tasks. Gating on `needs_elevation` first means the expensive applicability
-/// check runs only for tasks that could possibly need elevation, and every
-/// task that does override `needs_elevation` already self-guards on platform
-/// or tooling before doing real work.
+/// Whether a task's single assessment requires elevation.
 #[must_use]
+#[cfg(test)]
 pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
-    !ctx.dry_run() && task.needs_elevation(ctx) && task.should_run(ctx)
+    let assessment = task.assess(ctx);
+    assessment.is_applicable() && assessment.requires_elevation()
 }
 
 /// A [`Task`] decorator that appends extra dependency [`TaskId`]s to an inner
@@ -178,7 +186,7 @@ impl TaskWithExtraDeps {
         let mut deps = Vec::new();
         for id in inner.dependencies().iter().chain(extra) {
             if !deps.contains(id) {
-                deps.push(*id);
+                deps.push(id.clone());
             }
         }
         Self { inner, deps }
@@ -213,6 +221,10 @@ impl Task for TaskWithExtraDeps {
         &self.deps
     }
 
+    fn ordering_dependencies(&self) -> &[TaskId] {
+        self.inner.ordering_dependencies()
+    }
+
     fn should_run(&self, ctx: &Context) -> bool {
         self.inner.should_run(ctx)
     }
@@ -223,6 +235,10 @@ impl Task for TaskWithExtraDeps {
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
         self.inner.needs_elevation(ctx)
+    }
+
+    fn assess(&self, ctx: &Context) -> TaskAssessment {
+        self.inner.assess(ctx)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

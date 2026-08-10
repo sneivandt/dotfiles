@@ -141,7 +141,12 @@ pub(super) fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -
     let task_message = task.message.as_deref();
     details
         .iter()
-        .filter(|entry| entry.name == task.name)
+        .filter(|entry| {
+            task.task_id.as_deref().map_or_else(
+                || entry.task_id.is_none() && entry.name == task.name,
+                |task_id| entry.task_id.as_deref() == Some(task_id),
+            )
+        })
         .flat_map(|entry| entry.lines.iter())
         .filter(|line| !duplicates_task_message(line, task_message))
         .filter(|line| Some(line.as_str()) != row_reason(task))

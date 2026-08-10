@@ -127,10 +127,6 @@ impl Task for ReloadConfig {
         deps: [crate::domains::repository::update::UpdateRepository],
     }
 
-    fn should_run(&self, _ctx: &Context) -> bool {
-        self.repo_updated.was_updated()
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_operation(ctx, &ReloadConfigOperation { task: self })
     }
@@ -209,19 +205,25 @@ mod tests {
     }
 
     #[test]
-    fn should_not_run_when_repo_not_updated() {
+    fn run_is_not_applicable_when_repo_not_updated() {
         let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
         let task = make_task(PathBuf::from("/tmp"), UpdateSignal::new());
-        assert!(!task.should_run(&ctx));
+        assert!(task.assess(&ctx).is_applicable());
+        assert!(matches!(
+            task.run(&ctx).unwrap(),
+            TaskResult::NotApplicable(reason) if reason == "repository was already current"
+        ));
     }
 
     #[test]
-    fn should_run_when_repo_updated() {
+    fn assessment_does_not_freeze_repository_update_signal() {
         let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
         let signal = UpdateSignal::new();
+        let task = make_task(PathBuf::from("/tmp"), signal.clone());
+        let assessment = task.assess(&ctx);
         signal.mark_updated();
-        let task = make_task(PathBuf::from("/tmp"), signal);
-        assert!(task.should_run(&ctx));
+        assert!(assessment.is_applicable());
+        assert!(task.repo_updated.was_updated());
     }
 
     #[test]

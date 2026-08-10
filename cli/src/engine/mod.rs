@@ -45,11 +45,13 @@ pub(crate) use operation::{Operation, OperationState, process_operation};
 pub use orchestrate::{process_resources, process_resources_remove, process_resources_with_cache};
 pub use resource::{
     IntrinsicState, IntrinsicStateProvider, RemovableResource, Resource, ResourceChange,
-    ResourceResult, ResourceState, ResourceStateProvider,
+    ResourceResult, ResourceState, ResourceStateProvider, SkipKind,
 };
 pub use stats::{TaskResult, TaskStats};
+#[cfg(test)]
+pub use task::requires_elevation;
 pub use task::{
-    Task, TaskId, TaskMeta, TaskVisibility, TaskWithExtraDeps, execute, requires_elevation,
+    Task, TaskAssessment, TaskId, TaskMeta, TaskVisibility, TaskWithExtraDeps, execute,
 };
 pub(crate) use task::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,

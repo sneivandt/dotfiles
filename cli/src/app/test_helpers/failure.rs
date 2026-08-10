@@ -9,7 +9,6 @@
 //! Both doubles are `Send + Sync` and use interior mutability, so they can be
 //! shared across threads to exercise parallel execution paths.
 
-use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -19,7 +18,7 @@ use crate::engine::resource::ResourceError;
 use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
-use crate::infra::exec::{ExecResult, Executor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor};
 
 /// Which invocation of an injected operation should fail.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -136,7 +135,13 @@ impl FailingExecutor {
         self.matched.load(Ordering::SeqCst)
     }
 
-    fn dispatch(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
+    fn dispatch(&self, spec: &CommandSpec) -> std::result::Result<ExecResult, ExecError> {
+        let program = spec.program().to_string_lossy();
+        let args = spec
+            .arguments()
+            .iter()
+            .map(|arg| arg.to_string_lossy())
+            .collect::<Vec<_>>();
         self.calls
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -149,7 +154,7 @@ impl FailingExecutor {
         let matches = self
             .only_program
             .as_ref()
-            .is_none_or(|filter| filter == program);
+            .is_none_or(|filter| filter == program.as_ref());
         if !matches {
             return Ok(self.success());
         }
@@ -159,9 +164,16 @@ impl FailingExecutor {
             .fetch_add(1, Ordering::SeqCst)
             .saturating_add(1);
         if self.fail_at.triggers(call) {
-            anyhow::bail!("injected failure: {program} call {call}");
+            return Err(ExecError::spawn(
+                program.as_ref(),
+                std::io::Error::other(format!("injected failure: {program} call {call}")),
+            ));
         }
-        Ok(self.success())
+        let result = self.success();
+        if spec.is_checked() && !result.success {
+            return Err(ExecError::non_zero(program, result));
+        }
+        Ok(result)
     }
 
     fn success(&self) -> ExecResult {
@@ -175,26 +187,8 @@ impl FailingExecutor {
 }
 
 impl Executor for FailingExecutor {
-    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        self.dispatch(program, args)
-    }
-
-    fn run_in_with_env(
-        &self,
-        _dir: &Path,
-        program: &str,
-        args: &[&str],
-        _env: &[(&str, &str)],
-    ) -> Result<ExecResult> {
-        self.dispatch(program, args)
-    }
-
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        self.dispatch(program, args)
-    }
-
-    fn run_unchecked_in(&self, _dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        self.dispatch(program, args)
+    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
+        self.dispatch(&spec)
     }
 
     fn which(&self, _program: &str) -> bool {

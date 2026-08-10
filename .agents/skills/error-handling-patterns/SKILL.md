@@ -38,6 +38,10 @@ Prefer typed variants such as `CommandFailed`, `PermissionDenied`,
 diagnostics. Let `?` convert ordinary I/O and context-rich internal errors where
 the conversion preserves useful context.
 
+Executor failures remain typed as `ExecError` through `ResourceError::Exec`.
+Cancellation must propagate even under lenient resource processing so task
+execution can classify it as interrupted rather than failed.
+
 Do not use broad catches, success-shaped fallbacks, `.ok()`, or `let _ =` to
 hide failures. If cleanup is intentionally best-effort, handle `Err` explicitly
 and log at the level appropriate to its impact.
@@ -79,9 +83,10 @@ context's executor abstraction.
 - `ResourceChange::unusable(reason)`: resource could not converge; the run has
   unmet work and reports a failure.
 
-`skipped()` and `unusable()` build the same `Skipped { reason, failed }`
-variant. Choosing the wrong one is a silent correctness bug: an `unusable`
-outcome reported as `skipped` makes a failed run exit successfully.
+`skipped()` and `unusable()` build `Skipped` with `SkipKind::Benign` and
+`SkipKind::UnmetWork`, respectively. Choosing the wrong kind is a silent
+correctness bug: unmet work reported as benign makes a failed run exit
+successfully.
 
 Do not convert an invalid or unknown state into success. Surface the reason so
 the resource processor can apply its configured strict or lenient policy.

@@ -7,7 +7,7 @@ use anyhow::{Context as _, Result};
 use super::package::PackageProvider;
 use super::pacman::PacmanProvider;
 use crate::engine::ResourceChange;
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 /// Paru provider for AUR packages.
 #[derive(Debug, Clone, Copy)]
@@ -32,7 +32,7 @@ impl PackageProvider for ParuProvider {
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
-        executor.run("paru", &paru_args(&[name]))?;
+        executor.execute(CommandSpec::new("paru").args(&paru_args(&[name])))?;
         Ok(ResourceChange::Applied)
     }
 

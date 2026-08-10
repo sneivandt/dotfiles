@@ -28,9 +28,9 @@ pub(super) fn process_single<R: Resource>(
             ctx.debug_fmt(|| format!("ok: {}", plan.description()));
             delta.record(ItemOutcome::AlreadyOk);
         }
-        ApplyOperation::Skip { reason, failed } => {
+        ApplyOperation::Skip { reason, kind } => {
             ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
-            delta.record(if *failed {
+            delta.record(if kind.is_failure() {
                 ItemOutcome::Failed
             } else {
                 ItemOutcome::Skipped
@@ -83,13 +83,13 @@ fn record_resource_change(
                 .run_event(LogEvent::ResourceResult, &format!("{desc} already_correct"));
             delta.record(ItemOutcome::AlreadyOk);
         }
-        ResourceChange::Skipped { reason, failed } => {
+        ResourceChange::Skipped { reason, kind } => {
             ctx.log().run_event(
                 LogEvent::ResourceResult,
                 &format!("{desc} skipped: {reason}"),
             );
             ctx.log().warn(format!("skipping {desc}: {reason}"));
-            delta.record(if failed {
+            delta.record(if kind.is_failure() {
                 ItemOutcome::Failed
             } else {
                 ItemOutcome::Skipped
@@ -171,6 +171,12 @@ where
     let change = match mutate(resource) {
         Ok(change) => change,
         Err(e) => {
+            if e.is_cancelled() {
+                return Err(anyhow::Error::new(e).context(format!(
+                    "failed to {} {}",
+                    mutation.verb, mutation.description
+                )));
+            }
             let category = e.category();
             ctx.log().run_event(
                 LogEvent::ResourceResult,

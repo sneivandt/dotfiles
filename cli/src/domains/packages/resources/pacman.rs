@@ -6,10 +6,10 @@ use anyhow::{Context as _, Result};
 
 use super::package::PackageProvider;
 use crate::engine::ResourceChange;
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 fn query_names(executor: &dyn Executor, cmd: &str, args: &[&str]) -> Result<HashSet<String>> {
-    let result = executor.run_unchecked(cmd, args)?;
+    let result = executor.execute(CommandSpec::new(cmd).args(args).unchecked())?;
     if !result.success {
         anyhow::bail!(
             "{cmd} query failed (exit {:?}): {}",
@@ -73,7 +73,7 @@ impl PackageProvider for PacmanProvider {
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
         let (program, args) = pacman_invocation(&[name], executor)?;
-        executor.run(program, &args)?;
+        executor.execute(CommandSpec::new(program).args(&args))?;
         Ok(ResourceChange::Applied)
     }
 
@@ -113,10 +113,12 @@ mod tests {
     #[test]
     fn query_names_extracts_first_tokens_and_ignores_blank_lines() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| program == "pacman" && args == ["-Q"])
-            .returning(|_, _| Ok(ok_result("git 2.51.0\n\nbase-devel 1-2\nvim\n")));
+            .withf(|spec| {
+                spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+            })
+            .returning(|_| Ok(ok_result("git 2.51.0\n\nbase-devel 1-2\nvim\n")));
 
         let names = query_names(&mock, "pacman", &["-Q"]).unwrap();
 
@@ -130,9 +132,9 @@ mod tests {
     #[test]
     fn query_names_includes_exit_code_and_stderr_on_failure() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .returning(|_, _| Ok(failed_result("", "database lock held", 42)));
+            .returning(|_| Ok(failed_result("", "database lock held", 42)));
 
         let err = query_names(&mock, "pacman", &["-Q"]).unwrap_err();
         let message = err.to_string();

@@ -9,11 +9,16 @@ use crate::engine::{
     task_metadata,
 };
 use crate::infra::ConfigHandle;
+use crate::infra::exec::CommandSpec;
 use crate::infra::fs::{FileSystemOps, SystemFileSystemOps};
 use crate::infra::logging::OutputExt as _;
 
 /// Default sparse checkout pattern that includes all files at root level.
 const DEFAULT_SPARSE_PATTERN: &str = "/*";
+
+fn git_command(root: &Path, args: &[&str]) -> CommandSpec {
+    CommandSpec::new("git").args(args).current_dir(root)
+}
 
 /// Build the sparse checkout pattern string from excluded files.
 pub(super) fn build_patterns(excluded_files: &[String]) -> String {
@@ -42,7 +47,7 @@ pub(super) fn is_up_to_date(sparse_file: &Path, patterns_str: &str) -> bool {
 /// checkout instead of short-circuiting on the still-matching file.
 fn sparse_checkout_config_enabled(ctx: &Context, root: &Path) -> bool {
     ctx.executor()
-        .run_unchecked_in(root, "git", &["config", "--get", "core.sparseCheckout"])
+        .execute(git_command(root, &["config", "--get", "core.sparseCheckout"]).unchecked())
         .is_ok_and(|result| result.success && result.stdout.trim() == "true")
 }
 
@@ -107,7 +112,7 @@ fn set_git_config(
     args.extend_from_slice(scope);
     args.push(key);
     args.push(value);
-    ctx.executor().run_in(root, "git", &args)?;
+    ctx.executor().execute(git_command(root, &args))?;
     Ok(())
 }
 
@@ -115,11 +120,7 @@ fn set_git_config(
 /// which case `core.*` overrides live in the per-worktree config scope.
 fn worktree_config_enabled(ctx: &Context, root: &Path) -> bool {
     ctx.executor()
-        .run_unchecked_in(
-            root,
-            "git",
-            &["config", "--get", "extensions.worktreeConfig"],
-        )
+        .execute(git_command(root, &["config", "--get", "extensions.worktreeConfig"]).unchecked())
         .is_ok_and(|result| result.success && result.stdout.trim() == "true")
 }
 
@@ -159,7 +160,7 @@ pub(super) fn reset_excluded_to_head(ctx: &Context, root: &Path, excluded_files:
             excluded.len()
         )
     });
-    if let Err(e) = ctx.executor().run_in(root, "git", &checkout_args) {
+    if let Err(e) = ctx.executor().execute(git_command(root, &checkout_args)) {
         ctx.debug_fmt(|| format!("git checkout reset failed: {e}"));
     }
 }
@@ -179,15 +180,15 @@ fn apply_read_tree_with_restore(
         .debug("wrote sparse-checkout file, running read-tree");
     if let Err(err) = ctx
         .executor()
-        .run_in(root, "git", &["read-tree", "-mu", "HEAD"])
+        .execute(git_command(root, &["read-tree", "-mu", "HEAD"]))
     {
         ctx.log()
             .warn("git read-tree failed; restoring previous sparse-checkout configuration");
         restore_sparse_checkout_file(sparse_file, previous_patterns)?;
         ctx.executor()
-            .run_in(root, "git", &["read-tree", "-mu", "HEAD"])
+            .execute(git_command(root, &["read-tree", "-mu", "HEAD"]))
             .context("restoring worktree after failed sparse-checkout update")?;
-        return Err(err.context("applying sparse-checkout patterns"));
+        return Err(anyhow::Error::from(err).context("applying sparse-checkout patterns"));
     }
     Ok(())
 }
@@ -383,11 +384,10 @@ impl Operation for SparseCheckoutOperation {
 }
 
 pub(super) fn worktree_has_local_changes(ctx: &Context) -> Result<bool> {
-    let status = ctx.executor().run_in(
+    let status = ctx.executor().execute(git_command(
         ctx.root(),
-        "git",
         &["status", "--porcelain", "--untracked-files=no"],
-    )?;
+    ))?;
 
     Ok(!status.stdout.trim().is_empty())
 }

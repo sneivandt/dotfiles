@@ -15,15 +15,16 @@ pub(super) struct PackageInstallPlan {
 
 impl PackageInstallPlan {
     pub(super) fn base_stats(&self) -> TaskStats {
-        let mut stats = TaskStats::new();
-        stats.already_ok = u32::try_from(self.already_ok).unwrap_or(u32::MAX);
-        stats
+        TaskStats::from_counts(0, u32::try_from(self.already_ok).unwrap_or(u32::MAX), 0, 0)
     }
 
     pub(super) fn preview_stats(&self) -> TaskStats {
-        let mut stats = self.base_stats();
-        stats.changed = u32::try_from(self.missing.len()).unwrap_or(u32::MAX);
-        stats
+        TaskStats::from_counts(
+            u32::try_from(self.missing.len()).unwrap_or(u32::MAX),
+            self.base_stats().already_ok_count(),
+            0,
+            0,
+        )
     }
 }
 

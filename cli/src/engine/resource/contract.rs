@@ -154,18 +154,15 @@ pub enum ResourceChange {
     /// Resource was skipped without applying a change (e.g., missing source
     /// file, unavailable tool, or protected target directory).
     ///
-    /// `failed` mirrors [`ApplyOperation::Skip`] in the planning layer: a skip
-    /// decided at apply time is not automatically a failure. Deliberate,
-    /// benign skips (an unsupported platform, or refusing to overwrite user
-    /// data) set it to `false`; skips that mean the work could not be done set
-    /// it to `true` so the run summary counts them.
+    /// `kind` mirrors [`ApplyOperation::Skip`] in the planning layer: a skip
+    /// decided at apply time is not automatically a failure.
     ///
     /// [`ApplyOperation::Skip`]: crate::engine::ApplyOperation::Skip
     Skipped {
         /// Reason why the resource was skipped.
         reason: String,
-        /// Whether the skip should be counted as a failed item.
-        failed: bool,
+        /// Whether the skip is benign or represents unmet work.
+        kind: SkipKind,
     },
 }
 
@@ -178,7 +175,7 @@ impl ResourceChange {
     pub fn skipped(reason: impl Into<String>) -> Self {
         Self::Skipped {
             reason: reason.into(),
-            failed: false,
+            kind: SkipKind::Benign,
         }
     }
 
@@ -191,7 +188,23 @@ impl ResourceChange {
     pub fn unusable(reason: impl Into<String>) -> Self {
         Self::Skipped {
             reason: reason.into(),
-            failed: true,
+            kind: SkipKind::UnmetWork,
         }
+    }
+}
+/// Semantic reason an applicable item was skipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkipKind {
+    /// Deliberate no-op that leaves the run successful.
+    Benign,
+    /// Work could not converge and must count as a failed item.
+    UnmetWork,
+}
+
+impl SkipKind {
+    /// Whether this skip represents unmet work.
+    #[must_use]
+    pub const fn is_failure(self) -> bool {
+        matches!(self, Self::UnmetWork)
     }
 }

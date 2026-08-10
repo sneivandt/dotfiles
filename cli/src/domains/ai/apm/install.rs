@@ -78,11 +78,7 @@ impl Task for InstallApmPackages {
             );
             // Report the planned actions as stats so the run totals read
             // `N changes in 1 task` rather than a bare `would change`.
-            return Ok(TaskStats {
-                changed: planned,
-                ..TaskStats::default()
-            }
-            .finish());
+            return Ok(TaskStats::from_counts(planned, 0, 0, 0).finish());
         }
 
         // `manifest_hash` covers the merged manifest, the content of every

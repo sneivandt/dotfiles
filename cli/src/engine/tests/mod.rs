@@ -11,6 +11,7 @@ use crate::engine::resource::ResourceError;
 use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
+use crate::infra::exec::{ExecError, ExecResult};
 use crate::test_helpers::make_static_context;
 
 // -----------------------------------------------------------------------
@@ -100,6 +101,16 @@ impl Resource for TypedErrorResource {
             "permission_denied" => Err(ResourceError::permission_denied("/etc/secure")),
             "conflicting_state" => Err(ResourceError::conflicting_state("test", "a", "b")),
             "not_supported" => Err(ResourceError::not_supported("linux only")),
+            "cancelled" => Err(ExecError::Cancelled {
+                command: "test command".to_string(),
+                result: ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: false,
+                    code: None,
+                },
+            }
+            .into()),
             other => Err(anyhow::anyhow!("unknown error variant: {other}").into()),
         }
     }

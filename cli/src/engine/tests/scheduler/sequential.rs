@@ -13,7 +13,7 @@ fn sequential_runner_skips_dependents_when_dependency_fails() {
     let tasks: Vec<&dyn Task> = vec![&failed_task, &dep_task];
     let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
 
-    run_tasks_sequential(&tasks, &graph, &ctx, &log);
+    run_test_tasks_sequential(&tasks, &graph, &ctx, &log);
 
     assert!(
         !ran.load(Ordering::SeqCst),
@@ -45,7 +45,7 @@ fn sequential_runner_records_panics_as_failures() {
     let tasks: Vec<&dyn Task> = vec![&panic_task, &dep_task];
     let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
 
-    run_tasks_sequential(&tasks, &graph, &ctx, &log);
+    run_test_tasks_sequential(&tasks, &graph, &ctx, &log);
 
     assert!(
         !ran.load(Ordering::SeqCst),
@@ -153,7 +153,7 @@ fn sequential_runner_records_details_for_final_summary() {
     let tasks: Vec<&dyn Task> = vec![&task];
     let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
 
-    run_tasks_sequential(&tasks, &graph, &ctx, &log);
+    run_test_tasks_sequential(&tasks, &graph, &ctx, &log);
     log.print_summary();
 
     let path = log.log_path().expect("log path");
@@ -178,7 +178,7 @@ fn task_execution_records_elapsed_time_in_the_run_log() {
     let tasks: Vec<&dyn Task> = vec![&task];
     let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
 
-    run_tasks_sequential(&tasks, &graph, &ctx, &log);
+    run_test_tasks_sequential(&tasks, &graph, &ctx, &log);
 
     let path = log.log_path().expect("log path");
     let contents = std::fs::read_to_string(path).unwrap();

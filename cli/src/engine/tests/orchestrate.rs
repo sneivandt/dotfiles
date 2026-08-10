@@ -4,7 +4,7 @@ use crate::engine::{
     RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
     ResourceStateProvider,
 };
-use crate::engine::{TaskResult, TaskStats, process_resources, process_resources_remove};
+use crate::engine::{TaskResult, process_resources, process_resources_remove};
 use crate::test_helpers::empty_config;
 use std::{
     path::PathBuf,
@@ -59,21 +59,16 @@ impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
 }
 
 const fn is_success(result: &TaskResult) -> bool {
-    matches!(
-        result,
-        TaskResult::Ok | TaskResult::Batch(TaskStats { failed: 0, .. })
-    ) || matches!(
-        result,
-        TaskResult::Batch(stats) if stats.failed == 0
-    )
+    matches!(result, TaskResult::Ok)
+        || matches!(result, TaskResult::Batch(stats) if stats.failed_count() == 0)
 }
 
 const fn is_batch_failure(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.failed > 0)
+    matches!(result, TaskResult::Batch(stats) if stats.failed_count() > 0)
 }
 
 const fn is_batch_change(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
+    matches!(result, TaskResult::Batch(stats) if stats.changed_count() > 0)
 }
 
 fn process_precomputed_states(

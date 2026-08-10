@@ -12,6 +12,7 @@ use crate::infra::logging::utils::format_elapsed;
 /// Build a task entry with the fields a row-rendering test cares about.
 fn task_entry(name: &str, status: TaskStatus, message: Option<&str>) -> TaskEntry {
     TaskEntry {
+        task_id: None,
         name: name.to_string(),
         status,
         message: message.map(str::to_string),
@@ -259,6 +260,7 @@ fn task_detail_lines_filters_generic_stats_summary() {
         Some("2 changed, 1 already ok"),
     );
     let details = vec![TaskDetailEntry {
+        task_id: None,
         name: "symlinks".to_string(),
         lines: vec![
             "linked: ~/.bashrc".to_string(),
@@ -276,6 +278,7 @@ fn task_detail_lines_filters_generic_stats_summary() {
 fn task_detail_lines_drops_lines_restating_the_row_reason() {
     let task = task_entry("skip-task", TaskStatus::Skipped, Some("dependency failed"));
     let details = vec![TaskDetailEntry {
+        task_id: None,
         name: "skip-task".to_string(),
         lines: vec![
             "skipped: dependency failed".to_string(),
@@ -301,6 +304,7 @@ fn task_detail_lines_are_empty_when_the_task_only_has_a_message() {
 fn task_result_lines_are_flat_with_reduced_indent() {
     let task = task_entry("changed-task", TaskStatus::Changed, None);
     let details = vec![TaskDetailEntry {
+        task_id: None,
         name: "changed-task".to_string(),
         lines: vec!["linked: ~/.example".to_string()],
     }];
@@ -322,6 +326,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
         ..ActionCounts::default()
     };
     let details = vec![TaskDetailEntry {
+        task_id: None,
         name: task.name.clone(),
         lines: vec!["would link: ~/.bashrc \u{2192} symlinks/bashrc".to_string()],
     }];
@@ -339,6 +344,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
 fn task_result_lines_include_all_details() {
     let task = task_entry("large-plan", TaskStatus::DryRun, None);
     let details = vec![TaskDetailEntry {
+        task_id: None,
         name: "large-plan".to_string(),
         lines: vec![
             (1..=11)

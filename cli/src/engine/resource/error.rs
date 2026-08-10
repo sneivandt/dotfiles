@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::infra::exec::ExecError;
+
 /// Errors that arise from resource operations (check, apply, remove).
 ///
 /// Resources return a typed `ResourceError` so the engine can classify
@@ -57,6 +59,14 @@ pub enum ResourceError {
         /// The underlying I/O error.
         #[from]
         source: std::io::Error,
+    },
+
+    /// A typed process-execution failure.
+    #[error(transparent)]
+    Exec {
+        /// The underlying executor error.
+        #[from]
+        source: ExecError,
     },
 
     /// A resource failure that does not map to a more specific variant.
@@ -118,9 +128,35 @@ impl ResourceError {
             Self::ConflictingState { .. } => "conflicting_state",
             Self::NotSupported { .. } => "not_supported",
             Self::Io { .. } => "io",
+            Self::Exec { source } => {
+                if source.is_cancelled() {
+                    "cancelled"
+                } else {
+                    "command_failed"
+                }
+            }
             Self::Other { source } => source
                 .downcast_ref::<Self>()
                 .map_or("unknown", Self::category),
+        }
+    }
+
+    /// Whether this resource operation stopped due to executor cancellation.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        match self {
+            Self::Exec { source } => source.is_cancelled(),
+            Self::Other { source } => source.chain().any(|cause| {
+                cause
+                    .downcast_ref::<ExecError>()
+                    .is_some_and(ExecError::is_cancelled)
+                    || cause.downcast_ref::<Self>().is_some_and(Self::is_cancelled)
+            }),
+            Self::CommandFailed { .. }
+            | Self::PermissionDenied { .. }
+            | Self::ConflictingState { .. }
+            | Self::NotSupported { .. }
+            | Self::Io { .. } => false,
         }
     }
 }
@@ -166,6 +202,38 @@ mod tests {
     fn resource_error_converts_to_anyhow() {
         let error = ResourceError::command_failed("git", "not found");
         let _anyhow_error: anyhow::Error = error.into();
+    }
+
+    #[test]
+    fn resource_error_preserves_executor_cancellation() {
+        let error = ResourceError::from(ExecError::Cancelled {
+            command: "git status".to_string(),
+            result: crate::infra::exec::ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: false,
+                code: None,
+            },
+        });
+
+        assert!(error.is_cancelled());
+        assert_eq!(error.category(), "cancelled");
+    }
+
+    #[test]
+    fn resource_error_detects_nested_executor_cancellation() {
+        let exec = ExecError::Cancelled {
+            command: "git status".to_string(),
+            result: crate::infra::exec::ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: false,
+                code: None,
+            },
+        };
+        let nested = ResourceError::from(anyhow::Error::new(ResourceError::from(exec)));
+
+        assert!(nested.is_cancelled());
     }
 
     #[test]

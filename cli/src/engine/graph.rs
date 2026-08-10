@@ -1,24 +1,40 @@
 //! Task dependency graph utilities.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::engine::{Task, TaskId};
 
 /// Reason a task dependency graph failed validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GraphError {
     /// Two or more tasks share the same [`TaskId`], so dependencies cannot be
     /// resolved unambiguously.
-    DuplicateId,
+    DuplicateId {
+        /// Colliding scheduler identity.
+        id: TaskId,
+        /// First task using the identity.
+        first: String,
+        /// Second task using the identity.
+        second: String,
+    },
     /// The dependency graph contains at least one cycle.
-    Cycle,
+    Cycle {
+        /// Closed task-name path, including the first node again at the end.
+        path: Vec<String>,
+    },
 }
 
 impl std::fmt::Display for GraphError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DuplicateId => f.write_str("duplicate task identifiers"),
-            Self::Cycle => f.write_str("dependency cycle"),
+            Self::DuplicateId { id, first, second } => {
+                write!(
+                    f,
+                    "duplicate task identifier {} used by '{first}' and '{second}'",
+                    id.record_key()
+                )
+            }
+            Self::Cycle { path } => write!(f, "dependency cycle: {}", path.join(" -> ")),
         }
     }
 }
@@ -34,6 +50,7 @@ impl std::error::Error for GraphError {}
 pub(crate) struct ResolvedTaskGraph {
     dependencies: Vec<Vec<usize>>,
     dependents: Vec<Vec<usize>>,
+    blocking_edges: HashSet<(usize, usize)>,
     execution_order: Vec<usize>,
 }
 
@@ -45,23 +62,43 @@ impl ResolvedTaskGraph {
     /// Returns [`GraphError::DuplicateId`] if two tasks share a [`TaskId`], or
     /// [`GraphError::Cycle`] if the graph contains at least one dependency cycle.
     pub(crate) fn resolve(tasks: &[&dyn Task]) -> Result<Self, GraphError> {
-        let id_to_idx: HashMap<TaskId, usize> = tasks
-            .iter()
-            .enumerate()
-            .map(|(idx, task)| (task.task_id(), idx))
-            .collect();
-
-        if id_to_idx.len() != tasks.len() {
-            return Err(GraphError::DuplicateId);
+        let mut id_to_idx: HashMap<TaskId, usize> = HashMap::new();
+        for (idx, task) in tasks.iter().enumerate() {
+            let id = task.task_id();
+            if let Some(&first_idx) = id_to_idx.get(&id) {
+                return Err(GraphError::DuplicateId {
+                    id,
+                    first: tasks
+                        .get(first_idx)
+                        .map_or_else(String::new, |first| first.name().to_string()),
+                    second: task.name().to_string(),
+                });
+            }
+            id_to_idx.insert(id, idx);
         }
 
+        let mut blocking_edges = HashSet::new();
         let dependencies: Vec<Vec<usize>> = tasks
             .iter()
-            .map(|task| {
-                task.dependencies()
-                    .iter()
-                    .filter_map(|dep| id_to_idx.get(dep).copied())
-                    .collect()
+            .enumerate()
+            .map(|(task_idx, task)| {
+                let mut resolved = Vec::new();
+                for dependency in task.dependencies() {
+                    if let Some(&dep_idx) = id_to_idx.get(dependency) {
+                        if !resolved.contains(&dep_idx) {
+                            resolved.push(dep_idx);
+                        }
+                        blocking_edges.insert((task_idx, dep_idx));
+                    }
+                }
+                for dependency in task.ordering_dependencies() {
+                    if let Some(&dep_idx) = id_to_idx.get(dependency)
+                        && !resolved.contains(&dep_idx)
+                    {
+                        resolved.push(dep_idx);
+                    }
+                }
+                resolved
             })
             .collect();
 
@@ -74,11 +111,15 @@ impl ResolvedTaskGraph {
             }
         }
 
-        let execution_order = topological_order(&dependencies, &dependents)?;
+        let execution_order =
+            topological_order(&dependencies, &dependents).ok_or_else(|| GraphError::Cycle {
+                path: find_cycle_path(&dependencies, tasks),
+            })?;
 
         Ok(Self {
             dependencies,
             dependents,
+            blocking_edges,
             execution_order,
         })
     }
@@ -95,16 +136,19 @@ impl ResolvedTaskGraph {
         self.dependents.get(task_idx).map_or(&[], Vec::as_slice)
     }
 
+    /// Whether failure of `dependency_idx` blocks `task_idx`.
+    #[must_use]
+    pub(crate) fn blocks_on_failure(&self, task_idx: usize, dependency_idx: usize) -> bool {
+        self.blocking_edges.contains(&(task_idx, dependency_idx))
+    }
+
     /// Return task indices in dependency-safe execution order.
     pub(crate) fn execution_order(&self) -> impl Iterator<Item = usize> + '_ {
         self.execution_order.iter().copied()
     }
 }
 
-fn topological_order(
-    dependencies: &[Vec<usize>],
-    dependents: &[Vec<usize>],
-) -> Result<Vec<usize>, GraphError> {
+fn topological_order(dependencies: &[Vec<usize>], dependents: &[Vec<usize>]) -> Option<Vec<usize>> {
     let mut in_degree: Vec<usize> = dependencies.iter().map(Vec::len).collect();
     let mut queue: VecDeque<usize> = in_degree
         .iter()
@@ -127,11 +171,59 @@ fn topological_order(
         }
     }
 
-    if order.len() == dependencies.len() {
-        Ok(order)
-    } else {
-        Err(GraphError::Cycle)
+    (order.len() == dependencies.len()).then_some(order)
+}
+
+fn find_cycle_path(dependencies: &[Vec<usize>], tasks: &[&dyn Task]) -> Vec<String> {
+    fn visit(
+        node: usize,
+        dependencies: &[Vec<usize>],
+        states: &mut [u8],
+        stack: &mut Vec<usize>,
+    ) -> Option<Vec<usize>> {
+        if let Some(state) = states.get_mut(node) {
+            *state = 1;
+        }
+        stack.push(node);
+        for &dependency in dependencies.get(node).map_or(&[][..], Vec::as_slice) {
+            match states.get(dependency).copied().unwrap_or(2) {
+                0 => {
+                    if let Some(path) = visit(dependency, dependencies, states, stack) {
+                        return Some(path);
+                    }
+                }
+                1 => {
+                    let start = stack
+                        .iter()
+                        .position(|&item| item == dependency)
+                        .unwrap_or(0);
+                    let mut path = stack.get(start..).unwrap_or_default().to_vec();
+                    path.push(dependency);
+                    return Some(path);
+                }
+                _ => {}
+            }
+        }
+        stack.pop();
+        if let Some(state) = states.get_mut(node) {
+            *state = 2;
+        }
+        None
     }
+
+    let mut states = vec![0; dependencies.len()];
+    let mut stack = Vec::new();
+    for node in 0..dependencies.len() {
+        if states.get(node) == Some(&0)
+            && let Some(path) = visit(node, dependencies, &mut states, &mut stack)
+        {
+            return path
+                .into_iter()
+                .filter_map(|idx| tasks.get(idx).map(|task| task.name().to_string()))
+                .collect();
+        }
+    }
+    Vec::new()
 }
 
 #[cfg(test)]
@@ -249,7 +341,12 @@ mod tests {
     #[test]
     fn cycle_detected() {
         let tasks: Vec<&dyn Task> = vec![&CycA, &CycB];
-        assert_eq!(validate(&tasks), Err(GraphError::Cycle));
+        assert!(matches!(
+            validate(&tasks),
+            Err(GraphError::Cycle { ref path })
+                if path == &["cyc-a", "cyc-b", "cyc-a"]
+                    || path == &["cyc-b", "cyc-a", "cyc-b"]
+        ));
     }
 
     #[test]
@@ -295,6 +392,13 @@ mod tests {
     #[test]
     fn duplicate_task_ids_are_treated_as_invalid() {
         let tasks: Vec<&dyn Task> = vec![&DuplicateIdA, &DuplicateIdB];
-        assert_eq!(validate(&tasks), Err(GraphError::DuplicateId));
+        assert!(matches!(
+            validate(&tasks),
+            Err(GraphError::DuplicateId {
+                ref first,
+                ref second,
+                ..
+            }) if first == "duplicate-a" && second == "duplicate-b"
+        ));
     }
 }

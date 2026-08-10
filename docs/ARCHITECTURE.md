@@ -77,26 +77,33 @@ Every task exposes:
 - a human-readable display label
 - user-facing or internal visibility
 - command membership such as update-only behavior
-- dependency identities
-- an applicability guard
-- optional elevation planning
+- failure-blocking and ordering-only dependency identities
+- one immutable applicability/elevation assessment per execution phase
 - execution returning a structured task result
 
 These identities are independent: `TaskId` is the DAG key, `selector()` is the
 CLI interface used by `--only`, `name()` is presentation, and `visibility()`
 controls discovery, normal console rows, and totals.
 
+The coordinator computes each task's `TaskAssessment` once and shares it between
+elevation preparation and dispatch. Assessment probes must use state stable for
+the phase; checks for state produced by a prerequisite run from
+`run_configured()` after dependencies finish.
+
 The scheduler validates a dependency graph and runs ready tasks in parallel.
-Every ordering requirement is an explicit dependency edge; the order of entries
-in `catalog.rs` is not execution order. Failed prerequisites block dependents,
-and duplicate identities or cycles fail before execution. Visible rows retain
-natural completion order; completed work is not sorted or grouped afterward.
+Every ordering requirement is an explicit edge; the order of entries in
+`catalog.rs` is not execution order. Failure-blocking prerequisites stop
+dependents, while ordering-only predecessors merely delay them until completion.
+Duplicate identities and cycles fail before execution with the conflicting
+identities or closed cycle path. Visible rows retain natural completion order;
+completed work is not sorted or grouped afterward.
 
 `Task::update_only()` is command membership metadata, not an ordering class.
 `install` excludes update-only tasks, while `update` includes them in the same
 graph as ordinary install tasks.
 
-Dynamic overlay tasks use per-instance hashed identities because multiple
+Dynamic overlay tasks use structured identities containing their concrete task
+type and complete stable instance key, avoiding hash collisions when multiple
 configured scripts share one Rust task type. They use
 `script-<normalized-script-name>` selectors.
 
@@ -193,11 +200,17 @@ discovery — still reads the process environment directly.
 
 Errors propagate with context; they are not converted into success-shaped
 fallbacks. Non-applicability and optional-tool absence are separate structured
-results.
+results. Process requests use owned `CommandSpec` values, and typed `ExecError`
+variants preserve cancellation, timeout, spawn, I/O, and non-zero-exit
+failures through task and resource boundaries.
 
 The logger records stages, structured results, actions, warnings, summaries, and
 diagnostic detail. Internal orchestration remains in diagnostic/file logs but is
 excluded from normal task rows and totals.
+Engine records are keyed by scheduler identity rather than display name, so
+dynamic tasks with the same label retain separate status, detail, and duration
+records. Command success policy consumes the scheduler's `ExecutionSummary`;
+logger counters are presentation data only.
 
 Visible rows use one-cell `✓`, `~`, `⊘`, and `✗` statuses, plus verbose-only `‧`
 and `⁃`; `--no-symbols` restores ASCII words. A row carries the task's reason

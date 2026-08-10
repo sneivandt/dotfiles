@@ -309,7 +309,7 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.changed == 1
+            TaskResult::Batch(stats) if stats.changed_count() == 1
         ));
 
         // Symlink must exist at $HOME/.bashrc and point to symlinks/bashrc
@@ -337,7 +337,7 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.failed == 1
+            TaskResult::Batch(stats) if stats.failed_count() == 1
         ));
         assert!(!home_dir.path().join("escaped-source").exists());
     }
@@ -359,7 +359,7 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.failed == 1
+            TaskResult::Batch(stats) if stats.failed_count() == 1
         ));
         assert!(!outside_target.exists());
     }
@@ -386,7 +386,7 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.changed == 1
+            TaskResult::Batch(stats) if stats.changed_count() == 1
         ));
 
         // Must be a regular file (materialized), not a symlink
@@ -436,7 +436,7 @@ mod tests {
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
-            TaskResult::Batch(stats) if stats.changed == 2
+            TaskResult::Batch(stats) if stats.changed_count() == 2
         ));
 
         let service_meta = std::fs::symlink_metadata(&service_link).unwrap();

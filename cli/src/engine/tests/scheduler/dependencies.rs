@@ -83,6 +83,69 @@ fn dependent_task_is_skipped_when_dependency_fails() {
 }
 
 #[test]
+fn ordering_dependency_failure_does_not_block_successor() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let ran = Arc::new(AtomicBool::new(false));
+    let failed_task = FailedTask;
+    let ordered_task = OrderedAfterFailedTask {
+        ran: Arc::clone(&ran),
+    };
+    let tasks: Vec<&dyn Task> = vec![&ordered_task, &failed_task];
+    let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
+    let assessments = tasks
+        .iter()
+        .map(|task| (task.task_id(), task.assess(&ctx)))
+        .collect();
+
+    let summary = run_tasks_parallel(&tasks, &graph, &assessments, &ctx, &log);
+
+    assert!(
+        ran.load(Ordering::SeqCst),
+        "ordering-only successors must run after a failed predecessor completes"
+    );
+    assert_eq!(
+        summary.failure_count(),
+        1,
+        "the execution summary must retain the predecessor failure"
+    );
+    let entries = log.task_entries();
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.name == "ordered-after-failed" && entry.status == TaskStatus::Ok)
+    );
+}
+
+#[test]
+fn dynamic_tasks_with_the_same_display_name_keep_distinct_records() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let successful = SameNameDynamicTask {
+        key: "successful",
+        fails: false,
+    };
+    let failed = SameNameDynamicTask {
+        key: "failed",
+        fails: true,
+    };
+
+    run_test_tasks(&[&successful, &failed], &ctx, &log);
+
+    let entries: Vec<_> = log
+        .task_entries()
+        .into_iter()
+        .filter(|entry| entry.name == "same-display-name")
+        .collect();
+    assert_eq!(entries.len(), 2);
+    assert_ne!(entries[0].task_id, entries[1].task_id);
+    assert!(entries.iter().any(|entry| entry.status == TaskStatus::Ok));
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.status == TaskStatus::Failed)
+    );
+}
+
+#[test]
 fn skipped_dependency_satisfies_dependent_task() {
     let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
     let ran = Arc::new(AtomicBool::new(false));

@@ -7,7 +7,7 @@ use crate::domains::packages::config::packages::Package;
 use crate::domains::packages::resources::package::{PackageManager, PackageResource};
 use crate::engine::Resource;
 use crate::infra::ConfigHandle;
-use crate::infra::exec::{ExecResult, Executor, MockExecutor};
+use crate::infra::exec::{ExecError, ExecResult, Executor, MockExecutor};
 use crate::infra::platform::Os;
 use crate::test_helpers::{
     empty_config, make_arch_context, make_linux_context, make_platform_context_with_which,
@@ -212,7 +212,7 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
     ctx = ctx.with_dry_run(true);
     let result = InstallParu.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected planned change when paru is missing in dry-run mode, got {result:?}"
     );
 }
@@ -232,22 +232,22 @@ fn install_paru_run_returns_changed_result_after_install() {
             .with(mockall::predicate::eq(dep))
             .returning(|_| true);
     }
-    mock.expect_run()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|program, args| {
-            assert_eq!(program, "git");
-            assert_eq!(args[0], "clone");
+        .returning(|spec| {
+            assert_eq!(spec.program(), "git");
+            assert_eq!(spec.arguments()[0], "clone");
             Ok(ok_result(""))
         });
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, program, args, env| {
-            assert_eq!(program, "makepkg");
-            assert_eq!(args, ["-si", "--noconfirm"]);
-            assert_eq!(env.len(), 1);
-            assert_eq!(env[0].0, "MAKEFLAGS");
+        .returning(|spec| {
+            assert_eq!(spec.program(), "makepkg");
+            assert_eq!(spec.arguments(), ["-si", "--noconfirm"]);
+            assert_eq!(spec.environment().len(), 1);
+            assert_eq!(spec.environment()[0].0, "MAKEFLAGS");
             Ok(ok_result(""))
         });
 
@@ -257,7 +257,7 @@ fn install_paru_run_returns_changed_result_after_install() {
         matches!(
             result,
             TaskResult::Batch(ref stats)
-                if stats.changed > 0 && stats.message.as_deref() == Some("installed paru")
+                if stats.changed_count() > 0 && stats.message() == Some("installed paru")
         ),
         "expected changed result after paru install, got {result:?}"
     );
@@ -324,14 +324,14 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(ok_result("vim 9.0\n")));
-    mock.expect_run()
+        .returning(|_| Ok(ok_result("vim 9.0\n")));
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(ok_result("")));
+        .returning(|_| Ok(ok_result("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
@@ -339,7 +339,9 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
         matches!(
             result,
             TaskResult::Batch(ref stats)
-                if stats.changed == 1 && stats.already_ok == 1 && stats.failed == 0
+                if stats.changed_count() == 1
+                    && stats.already_ok_count() == 1
+                    && stats.failed_count() == 0
         ),
         "expected changed package task result after batch install, got {result:?}"
     );
@@ -356,9 +358,9 @@ fn install_packages_all_already_installed_returns_ok() {
     // run_unchecked("pacman", ["-Q"]) → git installed → no install needed
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
-        .returning(|_, _| Ok(ok_result("git 2.40\n")));
+        .returning(|_| Ok(ok_result("git 2.40\n")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, false, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
@@ -379,15 +381,15 @@ fn install_packages_dry_run_reports_missing_packages() {
     // run_unchecked("pacman", ["-Q"]) → nothing installed
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
-        .returning(|_, _| Ok(ok_result("")));
+        .returning(|_| Ok(ok_result("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let mut ctx = make_package_context(config, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
         "expected one planned package action, got {result:?}"
     );
 }
@@ -405,20 +407,66 @@ fn install_packages_returns_failed_when_batch_install_fails() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(ok_result("")));
-    mock.expect_run()
+        .returning(|_| Ok(ok_result("")));
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Err(anyhow::anyhow!("sudo failed (exit 1)")));
+        .returning(|_| {
+            Err(ExecError::spawn(
+                "sudo",
+                std::io::Error::other("failed (exit 1)"),
+            ))
+        });
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.failed == 1),
+        matches!(result, TaskResult::Batch(ref stats) if stats.failed_count() == 1),
         "expected one failed package action, got {result:?}"
+    );
+}
+
+#[test]
+fn install_packages_propagates_batch_cancellation() {
+    let mut config = empty_config(PathBuf::from("/tmp"));
+    config.packages.push(Package {
+        name: "git".to_string(),
+        is_aur: false,
+    });
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    mock.expect_which().returning(|_| true);
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_| Ok(ok_result("")));
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|_| {
+            Err(ExecError::Cancelled {
+                command: "sudo pacman".to_string(),
+                result: ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: false,
+                    code: None,
+                },
+            })
+        });
+    let packages = ConfigHandle::new(config.packages.clone());
+    let ctx = make_package_context(config, Os::Linux, true, mock);
+
+    let err = InstallPackages::new(packages)
+        .run(&ctx)
+        .expect_err("package cancellation must escape task accounting");
+
+    assert!(
+        err.downcast_ref::<ExecError>()
+            .is_some_and(ExecError::is_cancelled)
     );
 }
 
@@ -435,14 +483,14 @@ fn install_packages_winget_installs_per_package() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
-    mock.expect_run_unchecked()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(ok_result("")));
-    mock.expect_run_unchecked()
+        .returning(|_| Ok(ok_result("")));
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _| Ok(ok_result("")));
+        .returning(|_| Ok(ok_result("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Windows, false, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
@@ -450,7 +498,9 @@ fn install_packages_winget_installs_per_package() {
         matches!(
             result,
             TaskResult::Batch(ref stats)
-                if stats.changed == 1 && stats.already_ok == 0 && stats.failed == 0
+                if stats.changed_count() == 1
+                    && stats.already_ok_count() == 0
+                    && stats.failed_count() == 0
         ),
         "expected changed package task result after winget per-package install, got {result:?}"
     );

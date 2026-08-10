@@ -173,19 +173,17 @@ impl Task for OverlayScriptTask {
         TaskMeta::new(&self.entry.name).with_selector(&self.selector)
     }
 
-    /// Returns a per-instance [`TaskId::Dynamic`](crate::engine::TaskId::Dynamic) derived from the script's
-    /// name and path.
+    /// Returns a collision-free per-instance dynamic task identity.
     ///
     /// Multiple `OverlayScriptTask` instances share the same Rust type, so
     /// the default `TypeId`-based identity would collide in the dependency
-    /// graph.  Using a hash of the instance data gives each script a distinct
-    /// identity while keeping it deterministic across runs.
+    /// graph. The concrete task type plus the unabridged configured name and
+    /// path form a structured identity without relying on a probabilistic hash.
     fn task_id(&self) -> crate::engine::TaskId {
-        use std::hash::{DefaultHasher, Hash, Hasher};
-        let mut h = DefaultHasher::new();
-        self.entry.name.hash(&mut h);
-        self.entry.path.hash(&mut h);
-        crate::engine::TaskId::Dynamic(h.finish())
+        crate::engine::TaskId::dynamic::<Self>(format!(
+            "{}\u{0}{}",
+            self.entry.name, self.entry.path
+        ))
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

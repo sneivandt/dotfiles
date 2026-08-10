@@ -51,6 +51,9 @@ impl TaskVisibility {
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
+    /// Scheduler identity key. Legacy callers that have no task identity leave
+    /// this unset and retain name-based lookup behavior.
+    pub task_id: Option<String>,
     /// Human-readable task name.
     pub name: String,
     /// Final status of the task.
@@ -450,12 +453,35 @@ pub trait TaskRecorder: Send + Sync {
         self.record_task_with_actions(name, status, message, actions);
     }
 
+    /// Record an engine task using its scheduler identity.
+    fn record_task_with_identity(
+        &self,
+        _task_id: &str,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        visibility: TaskVisibility,
+    ) {
+        self.record_task_with_metadata(name, status, message, actions, visibility);
+    }
+
     /// Attach a measured run duration to an already-recorded task.
     ///
     /// Called after the task body returns, so it cannot be folded into the
     /// outcome-recording calls above. Recorders that do not display timing
     /// ignore it.
     fn record_task_duration(&self, _name: &str, _duration: std::time::Duration) {}
+
+    /// Attach timing using scheduler identity, falling back to the display name.
+    fn record_task_duration_by_id(
+        &self,
+        _task_id: &str,
+        name: &str,
+        duration: std::time::Duration,
+    ) {
+        self.record_task_duration(name, duration);
+    }
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -496,6 +522,7 @@ mod tests {
     #[test]
     fn task_entry_clone() {
         let entry = TaskEntry {
+            task_id: None,
             name: "test-task".to_string(),
             status: TaskStatus::Ok,
             message: Some("all good".to_string()),

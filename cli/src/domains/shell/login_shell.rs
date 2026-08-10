@@ -40,10 +40,13 @@ impl Task for ConfigureShell {
 
     fn should_run(&self, ctx: &Context) -> bool {
         let system = ctx.system();
-        system.platform().is_linux() && system.which("zsh") && !system.is_ci()
+        system.platform().is_linux() && !system.is_ci()
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        if !ctx.system().which("zsh") {
+            return Ok(None);
+        }
         Self::process(ctx, Some(NAME))
     }
 
@@ -76,10 +79,11 @@ mod tests {
     }
 
     #[test]
-    fn should_run_false_when_zsh_not_found() {
+    fn run_configured_is_not_applicable_when_zsh_is_still_unavailable() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config); // which() returns false
-        assert!(!ConfigureShell.should_run(&ctx));
+        assert!(ConfigureShell.should_run(&ctx));
+        assert!(ConfigureShell.run_configured(&ctx).unwrap().is_none());
     }
 
     #[test]

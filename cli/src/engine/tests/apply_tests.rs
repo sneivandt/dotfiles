@@ -591,6 +591,28 @@ fn process_single_command_failed_error_lenient_fails_nonfatally() {
 }
 
 #[test]
+fn process_single_cancelled_error_propagates_in_lenient_mode() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _) = test_context(config);
+    let resource = TypedErrorResource {
+        error_variant: "cancelled",
+    };
+    let opts = default_opts();
+
+    let err = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts)
+        .expect_err("cancellation must propagate through lenient resource processing");
+
+    assert!(err.chain().any(|cause| {
+        cause
+            .downcast_ref::<crate::infra::exec::ExecError>()
+            .is_some_and(crate::infra::exec::ExecError::is_cancelled)
+            || cause
+                .downcast_ref::<crate::engine::resource::ResourceError>()
+                .is_some_and(crate::engine::resource::ResourceError::is_cancelled)
+    }));
+}
+
+#[test]
 fn process_single_permission_denied_error_bail_propagates() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _log) = test_context(config);

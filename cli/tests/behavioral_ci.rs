@@ -15,11 +15,11 @@ mod common;
 
 use dotfiles_cli::testing as test_api;
 use std::collections::{HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use test_api::config::ConfigStore;
 
-use test_api::exec::{ExecResult, Executor};
+use test_api::exec::{CommandSpec, ExecError, ExecResult, Executor};
 use test_api::logging::{Log, Logger};
 use test_api::platform::{Os, Platform};
 use test_api::tasks::{Context, ContextOpts, Task, TaskResult};
@@ -33,14 +33,15 @@ fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
 }
 
 const fn batch_changed(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
+    matches!(result, TaskResult::Batch(stats) if stats.changed_count() > 0)
 }
 
 #[cfg(unix)]
 const fn batch_unchanged(result: &TaskResult) -> bool {
     matches!(
         result,
-        TaskResult::Batch(stats) if stats.changed == 0 && stats.failed == 0
+        TaskResult::Batch(stats)
+            if stats.changed_count() == 0 && stats.failed_count() == 0
     )
 }
 
@@ -98,11 +99,20 @@ impl RecordingExecutor {
         panic!("executor had unconsumed expectations: {remaining}");
     }
 
-    fn next(&self, kind: CallKind, program: &str, args: &[&str]) -> ExecResult {
+    fn next(&self, spec: &CommandSpec) -> ExecResult {
+        let kind = if spec.is_checked() {
+            CallKind::Run
+        } else {
+            CallKind::RunUnchecked
+        };
         let recorded = RecordedCall {
             kind,
-            program: program.to_string(),
-            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+            program: spec.program().to_string_lossy().into_owned(),
+            args: spec
+                .arguments()
+                .iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect(),
         };
         self.calls.lock().unwrap().push(recorded.clone());
 
@@ -124,34 +134,8 @@ impl RecordingExecutor {
 }
 
 impl Executor for RecordingExecutor {
-    fn run(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
-        Ok(self.next(CallKind::Run, program, args))
-    }
-
-    fn run_in_with_env(
-        &self,
-        _: &Path,
-        program: &str,
-        args: &[&str],
-        _: &[(&str, &str)],
-    ) -> anyhow::Result<ExecResult> {
-        Ok(self.next(CallKind::Run, program, args))
-    }
-
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> anyhow::Result<ExecResult> {
-        Ok(self.next(CallKind::RunUnchecked, program, args))
-    }
-
-    fn run_unchecked_in(
-        &self,
-        dir: &Path,
-        program: &str,
-        args: &[&str],
-    ) -> anyhow::Result<ExecResult> {
-        panic!(
-            "unexpected working-directory executor call: {program} {args:?} in {}",
-            dir.display()
-        )
+    fn execute(&self, spec: CommandSpec) -> Result<ExecResult, ExecError> {
+        Ok(self.next(&spec))
     }
 
     fn which(&self, program: &str) -> bool {
@@ -204,18 +188,13 @@ fn expect(kind: CallKind, program: &str, args: &[&str], result: ExecResult) -> E
 fn expect_code_cmd(cmd: &str, args: &[&str], result: ExecResult) -> ExpectedCall {
     #[cfg(target_os = "windows")]
     {
-        let quoted = std::iter::once(cmd)
-            .chain(args.iter().copied())
-            .map(|arg| format!(r#""{arg}""#))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let command_line = format!(r#""{quoted}""#);
+        let _ = (cmd, args);
         ExpectedCall {
             kind: CallKind::RunUnchecked,
             program: "cmd".to_string(),
-            args: ["/D", "/V:OFF", "/S", "/C", &command_line]
-                .map(String::from)
-                .to_vec(),
+            // Raw cmd.exe arguments are held by CommandSpec and materialized
+            // only when the real executor builds std::process::Command.
+            args: Vec::new(),
             result,
         }
     }

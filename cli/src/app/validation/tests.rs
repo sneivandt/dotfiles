@@ -123,24 +123,23 @@ fn apm_plugin_validation_runs_pack_dry_run_in_each_plugin() {
         .expect("apm manifest should write");
 
     let mut executor = MockExecutor::new();
-    executor
-        .expect_run_unchecked_in()
-        .once()
-        .returning(|plugin_dir, program, args| {
-            assert!(
-                plugin_dir.ends_with("dot-code"),
-                "APM pack should run in the plugin directory, got {}",
-                plugin_dir.display()
-            );
-            assert_eq!(program, "apm");
-            assert_eq!(args, ["pack", "--dry-run", "--verbose"]);
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+    executor.expect_execute().once().returning(|spec| {
+        let plugin_dir = spec.working_dir().expect("working directory should be set");
+        assert!(
+            plugin_dir.ends_with("dot-code"),
+            "APM pack should run in the plugin directory, got {}",
+            plugin_dir.display()
+        );
+        assert_eq!(spec.program(), "apm");
+        assert_eq!(spec.arguments(), ["pack", "--dry-run", "--verbose"]);
+        assert!(!spec.is_checked(), "APM validation should allow non-zero");
+        Ok(ExecResult {
+            stdout: String::new(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        })
+    });
 
     let ctx = make_context(
         empty_config(dir.path().to_path_buf()),
@@ -356,7 +355,7 @@ fn linter_inputs_include_root_files_then_discovered_scripts() {
 fn linter_passes_without_running_the_tool_when_there_is_nothing_to_lint() {
     let dir = tempfile::tempdir().expect("tempdir should create");
     let mut executor = MockExecutor::new();
-    executor.expect_run_unchecked().never();
+    executor.expect_execute().never();
     let ctx = make_context(
         empty_config(dir.path().to_path_buf()),
         crate::infra::platform::Platform::detect(),
@@ -383,7 +382,7 @@ fn linter_passes_without_running_the_tool_when_there_is_nothing_to_lint() {
 fn linter_failure_reports_the_display_name_not_the_executable() {
     let dir = tempfile::tempdir().expect("tempdir should create");
     let mut executor = MockExecutor::new();
-    executor.expect_run_unchecked().once().returning(|_, _| {
+    executor.expect_execute().once().returning(|_| {
         Ok(ExecResult {
             success: false,
             code: Some(1),

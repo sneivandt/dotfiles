@@ -25,6 +25,12 @@ description: >
 - Access logging through `ctx.log`; do not construct additional loggers in tasks.
 - Task result recording is owned by `engine::execute()`; tasks should not call
   `record_task()` directly.
+- Engine task records, durations, details, and progress completion are keyed by
+  `TaskId::record_key()`, not display name. Names are presentation only and may
+  repeat for dynamic task instances.
+- Application success/failure policy consumes the scheduler's
+  `ExecutionSummary`; logger counters are presentation data and must never
+  control whether a later phase runs or the command exits successfully.
 - Console output shows completion-order status rows for visible tasks. Non-verbose
   mode emits rows only for tasks with a reportable outcome; verbose mode accounts
   for every visible task and appends per-task elapsed time. Internal tasks never

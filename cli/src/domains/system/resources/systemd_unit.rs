@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::domains::system::config::systemd_units::UnitScope;
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 /// A systemd unit resource that can be checked and enabled.
 #[derive(Debug)]
@@ -117,7 +117,9 @@ impl Resource for SystemdUnitResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         let (program, args) = self.apply_invocation()?;
-        let result = self.executor.run_unchecked(program, &args)?;
+        let result = self
+            .executor
+            .execute(CommandSpec::new(program).args(&args).unchecked())?;
         if result.success {
             Ok(ResourceChange::Applied)
         } else {
@@ -139,7 +141,9 @@ impl IntrinsicState for SystemdUnitResource {
                 });
             }
         };
-        let result = self.executor.run_unchecked("systemctl", &args)?;
+        let result = self
+            .executor
+            .execute(CommandSpec::new("systemctl").args(&args).unchecked())?;
         Ok(self.state_from_is_enabled(&result))
     }
 }
@@ -205,7 +209,7 @@ mod tests {
     #[test]
     fn current_state_correct_when_systemctl_reports_enabled() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked().once().returning(|_, _| {
+        mock.expect_execute().once().returning(|_| {
             Ok(ExecResult {
                 stdout: "enabled\n".to_string(),
                 ..ok_result()
@@ -219,7 +223,7 @@ mod tests {
     #[test]
     fn current_state_missing_when_systemctl_reports_disabled() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked().once().returning(|_, _| {
+        mock.expect_execute().once().returning(|_| {
             Ok(ExecResult {
                 stdout: "disabled\n".to_string(),
                 ..fail_result()
@@ -233,7 +237,7 @@ mod tests {
     #[test]
     fn current_state_unknown_when_systemctl_failure_is_ambiguous() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked().once().returning(|_, _| {
+        mock.expect_execute().once().returning(|_| {
             Ok(ExecResult {
                 stderr: "Failed to connect to bus".to_string(),
                 ..fail_result()
@@ -250,10 +254,14 @@ mod tests {
     #[test]
     fn current_state_uses_system_scope_without_user_flag() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| program == "systemctl" && args == ["is-enabled", "sshd.service"])
-            .returning(|_, _| Ok(ok_result()));
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "sshd.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ok_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
@@ -281,9 +289,7 @@ mod tests {
     #[test]
     fn apply_returns_applied_when_systemctl_succeeds() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
-            .once()
-            .returning(|_, _| Ok(ok_result()));
+        mock.expect_execute().once().returning(|_| Ok(ok_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
@@ -292,9 +298,9 @@ mod tests {
     #[test]
     fn apply_returns_skipped_when_systemctl_fails() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .returning(|_, _| Ok(fail_result()));
+            .returning(|_| Ok(fail_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert!(
@@ -306,12 +312,14 @@ mod tests {
     #[test]
     fn apply_uses_sudo_for_system_scope() {
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| {
-                program == "sudo" && args == ["systemctl", "enable", "--now", "sshd.service"]
+            .withf(|spec| {
+                spec.program() == "sudo"
+                    && spec.arguments() == ["systemctl", "enable", "--now", "sshd.service"]
+                    && !spec.is_checked()
             })
-            .returning(|_, _| Ok(ok_result()));
+            .returning(|_| Ok(ok_result()));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);

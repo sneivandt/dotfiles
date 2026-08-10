@@ -294,11 +294,11 @@ mod symlink {
         use crate::infra::exec::{ExecResult, MockExecutor};
 
         let mut mock = MockExecutor::new();
-        mock.expect_run_windows_cmd_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|command_line| {
-                command_line
-                    == r#"""mklink" "/J" "C:\Users\test\.config\templates" "C:\repo\symlinks\config\git\templates"""#
+            .withf(|spec| {
+                spec.windows_command_line()
+                    == Some(r#"""mklink" "/J" "C:\Users\test\.config\templates" "C:\repo\symlinks\config\git\templates"""#)
             })
             .returning(|_| {
                 Ok(ExecResult {

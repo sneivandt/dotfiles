@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 /// Source for reading the current login shell.
 ///
@@ -67,7 +67,8 @@ impl Resource for DefaultShellResource {
         let shell_str = shell_path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("non-UTF-8 shell path: {}", shell_path.display()))?;
-        self.executor.run("chsh", &["-s", shell_str])?;
+        self.executor
+            .execute(CommandSpec::new("chsh").args(&["-s", shell_str]))?;
         Ok(ResourceChange::Applied)
     }
 }
@@ -107,7 +108,7 @@ impl IntrinsicState for DefaultShellResource {
 )]
 mod tests {
     use super::*;
-    use crate::infra::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
     use std::path::PathBuf;
 
     fn ok_result() -> ExecResult {
@@ -194,10 +195,14 @@ mod tests {
         mock.expect_which_path()
             .once()
             .returning(|program| Ok(PathBuf::from(format!("/usr/bin/{program}"))));
-        mock.expect_run()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| program == "chsh" && args == ["-s", "/usr/bin/zsh"])
-            .returning(|_, _| Ok(ok_result()));
+            .withf(|spec| {
+                spec.program() == "chsh"
+                    && spec.arguments() == ["-s", "/usr/bin/zsh"]
+                    && spec.is_checked()
+            })
+            .returning(|_| Ok(ok_result()));
 
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = DefaultShellResource::new(
@@ -214,7 +219,7 @@ mod tests {
         mock.expect_which_path()
             .once()
             .returning(|program| Err(anyhow::anyhow!("{program} not found on PATH")));
-        mock.expect_run().never();
+        mock.expect_execute().never();
 
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = DefaultShellResource::new(
@@ -234,9 +239,12 @@ mod tests {
         mock.expect_which_path()
             .once()
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
-        mock.expect_run()
-            .once()
-            .returning(|_, _| Err(anyhow::anyhow!("chsh: PAM authentication failed")));
+        mock.expect_execute().once().returning(|_| {
+            Err(ExecError::spawn(
+                "chsh",
+                std::io::Error::other("PAM authentication failed"),
+            ))
+        });
 
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = DefaultShellResource::new(

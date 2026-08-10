@@ -1,8 +1,10 @@
 //! Command execution, output handling, and process-tree management.
-use anyhow::{Context, Result, anyhow, bail};
+
+use anyhow::{Result, anyhow};
 use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::io::Read;
+use std::ffi::{OsStr, OsString};
+use std::fmt;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
@@ -28,15 +30,6 @@ const SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Create a new [`Command`] with platform-appropriate defaults.
-///
-/// Accepts anything that names a program — a bare `&str` looked up on `PATH`
-/// or a fully qualified `&Path` — so there is a single place where the
-/// platform defaults below are applied.
-///
-/// On Unix the child is placed in its own process group so that a
-/// `SIGINT` from Ctrl-C reaches only the Rust process (via the
-/// cooperative cancellation token).  The executor can then terminate the
-/// whole child process group on cancellation or timeout.
 fn new_command<S: AsRef<OsStr>>(program: S) -> Command {
     #[allow(unused_mut, reason = "platform-specific mutability")]
     let mut cmd = Command::new(program);
@@ -49,7 +42,7 @@ fn new_command<S: AsRef<OsStr>>(program: S) -> Command {
 }
 
 /// Result of a command execution.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecResult {
     /// Standard output as UTF-8 string.
     pub stdout: String,
@@ -57,7 +50,7 @@ pub struct ExecResult {
     pub stderr: String,
     /// Whether the command exited successfully (status code 0).
     pub success: bool,
-    /// Exit code if available, or None if terminated by signal.
+    /// Exit code if available, or `None` if terminated by signal.
     pub code: Option<i32>,
 }
 
@@ -68,6 +61,318 @@ impl From<Output> for ExecResult {
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             success: output.status.success(),
             code: output.status.code(),
+        }
+    }
+}
+
+/// A typed request describing one child-process invocation.
+///
+/// Requests are owned so they are straightforward to move into mock
+/// expectations and across task-worker threads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandSpec {
+    command: CommandKind,
+    args: Vec<OsString>,
+    current_dir: Option<PathBuf>,
+    env: Vec<(OsString, OsString)>,
+    checked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CommandKind {
+    Program(OsString),
+    #[cfg(any(windows, test))]
+    WindowsCmd(String),
+}
+
+impl CommandSpec {
+    /// Create a checked command request for `program`.
+    #[must_use]
+    pub fn new(program: impl Into<OsString>) -> Self {
+        Self {
+            command: CommandKind::Program(program.into()),
+            args: Vec::new(),
+            current_dir: None,
+            env: Vec::new(),
+            checked: true,
+        }
+    }
+
+    /// Create an unchecked, pre-quoted `cmd.exe /D /V:OFF /S /C` request.
+    #[cfg(any(windows, test))]
+    #[must_use]
+    pub(crate) fn windows_cmd(command_line: impl Into<String>) -> Self {
+        Self {
+            command: CommandKind::WindowsCmd(command_line.into()),
+            args: Vec::new(),
+            current_dir: None,
+            env: Vec::new(),
+            checked: false,
+        }
+    }
+
+    /// Append one command argument.
+    #[must_use]
+    pub fn arg(mut self, arg: impl Into<OsString>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    /// Append command arguments.
+    #[must_use]
+    pub fn args<S: AsRef<OsStr>>(mut self, args: &[S]) -> Self {
+        self.args
+            .extend(args.iter().map(|arg| arg.as_ref().to_os_string()));
+        self
+    }
+
+    /// Set the command's working directory.
+    #[must_use]
+    pub fn current_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.current_dir = Some(dir.into());
+        self
+    }
+
+    /// Add one environment variable override.
+    #[must_use]
+    pub fn env(mut self, key: impl Into<OsString>, value: impl Into<OsString>) -> Self {
+        self.env.push((key.into(), value.into()));
+        self
+    }
+
+    /// Add environment variable overrides.
+    #[must_use]
+    pub fn envs<K: AsRef<OsStr>, V: AsRef<OsStr>>(mut self, env: &[(K, V)]) -> Self {
+        self.env.extend(
+            env.iter()
+                .map(|(key, value)| (key.as_ref().to_os_string(), value.as_ref().to_os_string())),
+        );
+        self
+    }
+
+    /// Allow a non-zero exit status to be returned as an [`ExecResult`].
+    #[must_use]
+    pub const fn unchecked(mut self) -> Self {
+        self.checked = false;
+        self
+    }
+
+    /// Return the executable name.
+    #[must_use]
+    pub fn program(&self) -> &OsStr {
+        match &self.command {
+            CommandKind::Program(program) => program,
+            #[cfg(any(windows, test))]
+            CommandKind::WindowsCmd(_) => OsStr::new("cmd"),
+        }
+    }
+
+    /// Return the command arguments.
+    #[must_use]
+    pub fn arguments(&self) -> &[OsString] {
+        &self.args
+    }
+
+    /// Return the configured working directory, if any.
+    #[must_use]
+    pub fn working_dir(&self) -> Option<&Path> {
+        self.current_dir.as_deref()
+    }
+
+    /// Return the configured environment overrides.
+    #[must_use]
+    pub fn environment(&self) -> &[(OsString, OsString)] {
+        &self.env
+    }
+
+    /// Return whether a non-zero exit is an error.
+    #[must_use]
+    pub const fn is_checked(&self) -> bool {
+        self.checked
+    }
+
+    /// Return the pre-quoted Windows command line, when this is a `cmd.exe`
+    /// request.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn windows_command_line(&self) -> Option<&str> {
+        match &self.command {
+            CommandKind::WindowsCmd(command_line) => Some(command_line),
+            CommandKind::Program(_) => None,
+        }
+    }
+
+    fn label(&self) -> String {
+        let program = self.program().to_string_lossy().into_owned();
+        self.current_dir.as_ref().map_or_else(
+            || program.clone(),
+            |dir| format!("{program} in {}", dir.display()),
+        )
+    }
+
+    fn into_command(self) -> Command {
+        match self.command {
+            CommandKind::Program(program) => {
+                let mut command = new_command(program);
+                command.args(self.args);
+                if let Some(dir) = self.current_dir {
+                    command.current_dir(dir);
+                }
+                command.envs(self.env);
+                command
+            }
+            #[cfg(windows)]
+            CommandKind::WindowsCmd(command_line) => {
+                use std::os::windows::process::CommandExt as _;
+
+                let mut command = new_command("cmd");
+                command
+                    .args(["/D", "/V:OFF", "/S", "/C"])
+                    .raw_arg(command_line);
+                command
+            }
+            #[cfg(all(test, not(windows)))]
+            CommandKind::WindowsCmd(command_line) => {
+                let mut command = new_command("cmd");
+                command.args(["/D", "/V:OFF", "/S", "/C"]).arg(command_line);
+                command
+            }
+        }
+    }
+}
+
+/// Typed child-process failures.
+#[derive(Debug)]
+pub enum ExecError {
+    /// The cooperative cancellation token was set.
+    Cancelled {
+        /// Rendered command label.
+        command: String,
+        /// Output captured before termination.
+        result: ExecResult,
+    },
+    /// The command exceeded its configured timeout.
+    TimedOut {
+        /// Rendered command label.
+        command: String,
+        /// Configured timeout.
+        timeout: Duration,
+        /// Output captured before termination.
+        result: ExecResult,
+    },
+    /// The operating system could not spawn the command.
+    Spawn {
+        /// Rendered command label.
+        command: String,
+        /// Underlying spawn error.
+        source: io::Error,
+    },
+    /// Process management or output capture failed.
+    Io {
+        /// Rendered command label.
+        command: String,
+        /// Operation that failed.
+        operation: &'static str,
+        /// Underlying I/O error.
+        source: io::Error,
+    },
+    /// A checked command exited unsuccessfully.
+    NonZero {
+        /// Rendered command label.
+        command: String,
+        /// Captured unsuccessful result.
+        result: ExecResult,
+    },
+}
+
+impl fmt::Display for ExecError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Cancelled { command, result } => {
+                write!(formatter, "{command} cancelled: {}", failure_output(result))
+            }
+            Self::TimedOut {
+                command,
+                timeout,
+                result,
+            } => write!(
+                formatter,
+                "{command} timed out after {} seconds: {}",
+                timeout.as_secs(),
+                failure_output(result)
+            ),
+            Self::Spawn { command, source } => {
+                write!(formatter, "failed to execute {command}: {source}")
+            }
+            Self::Io {
+                command,
+                operation,
+                source,
+            } => write!(formatter, "{operation} for {command}: {source}"),
+            Self::NonZero { command, result } => write!(
+                formatter,
+                "{command} failed (exit {}): {}",
+                result.code.unwrap_or(-1),
+                failure_output(result)
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExecError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Spawn { source, .. } | Self::Io { source, .. } => Some(source),
+            Self::Cancelled { .. } | Self::TimedOut { .. } | Self::NonZero { .. } => None,
+        }
+    }
+}
+
+impl ExecError {
+    /// Create an unsuccessful checked-command error, primarily for executor
+    /// implementations and mocks.
+    #[must_use]
+    pub fn non_zero(command: impl Into<String>, result: ExecResult) -> Self {
+        Self::NonZero {
+            command: command.into(),
+            result,
+        }
+    }
+
+    /// Create a spawn error, primarily for executor implementations and mocks.
+    #[must_use]
+    pub fn spawn(command: impl Into<String>, source: io::Error) -> Self {
+        Self::Spawn {
+            command: command.into(),
+            source,
+        }
+    }
+
+    /// Return the rendered command label.
+    #[must_use]
+    pub fn command(&self) -> &str {
+        match self {
+            Self::Cancelled { command, .. }
+            | Self::TimedOut { command, .. }
+            | Self::Spawn { command, .. }
+            | Self::Io { command, .. }
+            | Self::NonZero { command, .. } => command,
+        }
+    }
+
+    /// Whether execution stopped because cooperative cancellation was requested.
+    #[must_use]
+    pub const fn is_cancelled(&self) -> bool {
+        matches!(self, Self::Cancelled { .. })
+    }
+
+    /// Return the underlying operating-system error for spawn and process I/O
+    /// failures.
+    #[must_use]
+    pub const fn io_error(&self) -> Option<&io::Error> {
+        match self {
+            Self::Spawn { source, .. } | Self::Io { source, .. } => Some(source),
+            Self::Cancelled { .. } | Self::TimedOut { .. } | Self::NonZero { .. } => None,
         }
     }
 }
@@ -107,104 +412,101 @@ impl CommandSettings {
     }
 }
 
-/// Execute a command and return the result, bailing on non-zero exit.
-fn execute_checked(cmd: Command, label: &str, settings: &CommandSettings) -> Result<ExecResult> {
-    let result = execute_unchecked(cmd, label, settings)?;
-    log_command_output(label, &result);
-    if !result.success {
-        let code = result.code.unwrap_or(-1);
-        bail!("{label} failed (exit {code}): {}", failure_output(&result));
+fn execute_spec(
+    spec: CommandSpec,
+    settings: &CommandSettings,
+) -> std::result::Result<ExecResult, ExecError> {
+    let checked = spec.checked;
+    let label = spec.label();
+    let result = execute_unchecked(spec.into_command(), &label, settings)?;
+    log_command_output(&label, &result);
+    if checked && !result.success {
+        return Err(ExecError::NonZero {
+            command: label,
+            result,
+        });
     }
     Ok(result)
 }
 
 fn execute_unchecked(
-    mut cmd: Command,
+    mut command: Command,
     label: &str,
     settings: &CommandSettings,
-) -> Result<ExecResult> {
-    cmd.stdin(Stdio::null())
+) -> std::result::Result<ExecResult, ExecError> {
+    command
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = cmd
-        .spawn()
-        .with_context(|| format!("failed to execute: {label}"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("failed to capture stdout for {label}"))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| anyhow!("failed to capture stderr for {label}"))?;
+    let mut child = command.spawn().map_err(|source| ExecError::Spawn {
+        command: label.to_string(),
+        source,
+    })?;
+    let stdout = child.stdout.take().ok_or_else(|| ExecError::Io {
+        command: label.to_string(),
+        operation: "capturing stdout",
+        source: io::Error::other("child stdout pipe was unavailable"),
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| ExecError::Io {
+        command: label.to_string(),
+        operation: "capturing stderr",
+        source: io::Error::other("child stderr pipe was unavailable"),
+    })?;
     let (pipe_tx, pipe_rx) = channel::<()>();
-    let stdout_reader = spawn_reader(stdout, "stdout", label, pipe_tx.clone());
-    let stderr_reader = spawn_reader(stderr, "stderr", label, pipe_tx);
+    let stdout_reader = spawn_reader(stdout, pipe_tx.clone());
+    let stderr_reader = spawn_reader(stderr, pipe_tx);
 
     let start = Instant::now();
     let mut pipes_closed = false;
     let status = loop {
         if settings.is_cancelled() {
             let result = terminate_and_collect(&mut child, stdout_reader, stderr_reader, label)?;
-            bail!("{label} cancelled: {}", failure_output(&result));
+            return Err(ExecError::Cancelled {
+                command: label.to_string(),
+                result,
+            });
         }
         let remaining = settings.timeout.saturating_sub(start.elapsed());
         if remaining.is_zero() {
             let result = terminate_and_collect(&mut child, stdout_reader, stderr_reader, label)?;
-            bail!(
-                "{label} timed out after {} seconds: {}",
-                settings.timeout.as_secs(),
-                failure_output(&result)
-            );
+            return Err(ExecError::TimedOut {
+                command: label.to_string(),
+                timeout: settings.timeout,
+                result,
+            });
         }
 
-        if let Some(status) = child
-            .try_wait()
-            .with_context(|| format!("waiting for: {label}"))?
-        {
+        if let Some(status) = child.try_wait().map_err(|source| ExecError::Io {
+            command: label.to_string(),
+            operation: "waiting for child",
+            source,
+        })? {
             break status;
         }
 
         if pipes_closed {
-            // Rare: the child closed both pipes but has not exited yet (for
-            // example it forked a grandchild that inherited them). There is no
-            // remaining event to block on, so fall back to polling.
             std::thread::sleep(POLL_INTERVAL.min(remaining));
         } else if wait_for_pipe_close(&pipe_rx, settings, remaining) {
             pipes_closed = true;
         }
     };
 
-    collect_result(Some(status), stdout_reader, stderr_reader)
+    collect_result(Some(status), stdout_reader, stderr_reader, label)
 }
 
 fn terminate_and_collect(
     child: &mut Child,
-    stdout_reader: JoinHandle<Result<Vec<u8>>>,
-    stderr_reader: JoinHandle<Result<Vec<u8>>>,
+    stdout_reader: JoinHandle<io::Result<Vec<u8>>>,
+    stderr_reader: JoinHandle<io::Result<Vec<u8>>>,
     label: &str,
-) -> Result<ExecResult> {
-    #[cfg(unix)]
-    terminate_child(child);
-    #[cfg(windows)]
+) -> std::result::Result<ExecResult, ExecError> {
     terminate_child(child);
     wait_after_terminate(child);
-    let result = collect_result(None, stdout_reader, stderr_reader)?;
+    let result = collect_result(None, stdout_reader, stderr_reader, label)?;
     log_command_output(label, &result);
     Ok(result)
 }
 
-/// Block until the child closes both output pipes, or until it is time to
-/// re-check cancellation and the timeout.
-///
-/// Returns `true` once every reader has finished, which happens as the child
-/// exits and is therefore the signal that [`Child::try_wait`] is about to
-/// succeed. Waiting on that event instead of sleeping a fixed interval removes
-/// the wake-up latency that a poll loop adds to every single command.
-///
-/// A run with a cancellation token still needs periodic wake-ups because
-/// [`CancellationToken`] is a polled flag with nothing to block on; without one
-/// the whole remaining timeout can be spent in a single blocking wait.
 fn wait_for_pipe_close(
     pipe_rx: &Receiver<()>,
     settings: &CommandSettings,
@@ -217,57 +519,32 @@ fn wait_for_pipe_close(
     };
     match pipe_rx.recv_timeout(slice) {
         Err(RecvTimeoutError::Timeout) => false,
-        // Nothing is ever sent on this channel: every reader holds a sender and
-        // drops it on completion, so disconnection *is* the completion signal.
         Ok(()) | Err(RecvTimeoutError::Disconnected) => true,
     }
 }
 
-#[cfg(windows)]
-fn execute_windows_cmd_unchecked(
-    command_line: &str,
-    settings: &CommandSettings,
-) -> Result<ExecResult> {
-    use std::os::windows::process::CommandExt as _;
-
-    let mut cmd = new_command("cmd");
-    cmd.args(["/D", "/V:OFF", "/S", "/C"]).raw_arg(command_line);
-    let result = execute_unchecked(cmd, "cmd", settings)?;
-    log_command_output("cmd", &result);
-    Ok(result)
-}
-
-/// Drain a child output stream on its own thread.
-///
-/// `done` is moved into the thread and dropped when reading finishes, so the
-/// receiver observes a disconnect once both readers are complete. That is the
-/// event [`execute_unchecked`] blocks on instead of polling the child.
 fn spawn_reader<R: Read + Send + 'static>(
     mut stream: R,
-    name: &'static str,
-    label: &str,
     done: Sender<()>,
-) -> JoinHandle<Result<Vec<u8>>> {
-    let label = label.to_string();
+) -> JoinHandle<io::Result<Vec<u8>>> {
     std::thread::spawn(move || {
         let _done = done;
         let mut output = Vec::new();
-        stream
-            .read_to_end(&mut output)
-            .with_context(|| format!("reading {name} from {label}"))?;
+        stream.read_to_end(&mut output)?;
         Ok(output)
     })
 }
 
 fn collect_result(
     status: Option<std::process::ExitStatus>,
-    stdout_reader: JoinHandle<Result<Vec<u8>>>,
-    stderr_reader: JoinHandle<Result<Vec<u8>>>,
-) -> Result<ExecResult> {
-    let stdout = join_reader(stdout_reader, "stdout")?;
-    let stderr = join_reader(stderr_reader, "stderr")?;
-    let success = status.is_some_and(|s| s.success());
-    let code = status.and_then(|s| s.code());
+    stdout_reader: JoinHandle<io::Result<Vec<u8>>>,
+    stderr_reader: JoinHandle<io::Result<Vec<u8>>>,
+    label: &str,
+) -> std::result::Result<ExecResult, ExecError> {
+    let stdout = join_reader(stdout_reader, "reading stdout", label)?;
+    let stderr = join_reader(stderr_reader, "reading stderr", label)?;
+    let success = status.is_some_and(|exit_status| exit_status.success());
+    let code = status.and_then(|exit_status| exit_status.code());
     Ok(ExecResult {
         stdout: String::from_utf8_lossy(&stdout).into_owned(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
@@ -276,112 +553,53 @@ fn collect_result(
     })
 }
 
-fn join_reader(handle: JoinHandle<Result<Vec<u8>>>, name: &'static str) -> Result<Vec<u8>> {
-    match handle.join() {
-        Ok(result) => result,
-        Err(_) => bail!("{name} reader thread panicked"),
-    }
+fn join_reader(
+    handle: JoinHandle<io::Result<Vec<u8>>>,
+    operation: &'static str,
+    label: &str,
+) -> std::result::Result<Vec<u8>, ExecError> {
+    handle.join().map_or_else(
+        |_| {
+            Err(ExecError::Io {
+                command: label.to_string(),
+                operation,
+                source: io::Error::other("output reader thread panicked"),
+            })
+        },
+        |result| {
+            result.map_err(|source| ExecError::Io {
+                command: label.to_string(),
+                operation,
+                source,
+            })
+        },
+    )
 }
 
 /// Trait for executing system commands, enabling test injection.
-///
-/// Implement this trait to provide mock executors for unit tests.
-/// Implementations delegate to real process spawning or provide mock executors
-/// for unit tests.
 #[cfg_attr(test, mockall::automock)]
-pub trait Executor: std::fmt::Debug + Send + Sync {
-    /// Execute a command, bailing on non-zero exit.
+pub trait Executor: fmt::Debug + Send + Sync {
+    /// Execute one typed command request.
     ///
     /// # Errors
     ///
-    /// Returns an error if the command fails to execute, cannot be found,
-    /// or exits with a non-zero status code.
-    #[cfg_attr(test, mockall::concretize)]
-    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
+    /// Returns a typed error when the command is cancelled, times out, cannot
+    /// be spawned or managed, or exits non-zero when checked.
+    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError>;
 
-    /// Execute a command in a specific directory.
-    ///
-    /// The default implementation delegates to
-    /// [`run_in_with_env`](Executor::run_in_with_env) with an empty
-    /// environment slice.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command fails to execute, the directory does not exist,
-    /// or the command exits with a non-zero status code.
-    #[cfg_attr(test, mockall::concretize)]
-    fn run_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        self.run_in_with_env(dir, program, args, &[])
-    }
-
-    /// Execute a command in a specific directory with extra environment variables.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command fails to execute, the directory does not exist,
-    /// or the command exits with a non-zero status code.
-    #[cfg_attr(test, mockall::concretize)]
-    fn run_in_with_env(
-        &self,
-        dir: &Path,
-        program: &str,
-        args: &[&str],
-        env: &[(&str, &str)],
-    ) -> Result<ExecResult>;
-
-    /// Execute a command, allowing non-zero exit.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command fails to execute or cannot be found,
-    /// but does NOT fail on non-zero exit codes (which are captured in the result).
-    #[cfg_attr(test, mockall::concretize)]
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult>;
-
-    /// Execute a pre-quoted `cmd.exe /D /V:OFF /S /C` command line, allowing a
-    /// non-zero exit status.
-    ///
-    /// Real Windows executors append `command_line` with
-    /// [`CommandExt::raw_arg`](std::os::windows::process::CommandExt::raw_arg)
-    /// so Rust's CRT argument quoting cannot alter `cmd.exe` syntax.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `cmd.exe` cannot be executed.
-    #[cfg(any(windows, test))]
-    #[cfg_attr(test, mockall::concretize)]
-    fn run_windows_cmd_unchecked(&self, command_line: &str) -> Result<ExecResult> {
-        self.run_unchecked("cmd", &["/D", "/V:OFF", "/S", "/C", command_line])
-    }
-
-    /// Execute a command in a specific directory, allowing non-zero exit.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command fails to execute or cannot be found,
-    /// but does NOT fail on non-zero exit codes (which are captured in the result).
-    #[cfg_attr(test, mockall::concretize)]
-    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult>;
-
-    /// Check if a program is available on PATH.
+    /// Check if a program is available on `PATH`.
     #[cfg_attr(not(test), must_use)]
     fn which(&self, program: &str) -> bool;
 
-    /// Resolve the full path of a program on PATH.
+    /// Resolve the full path of a program on `PATH`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the program cannot be found on PATH.
+    /// Returns an error if the program cannot be found on `PATH`.
     fn which_path(&self, program: &str) -> Result<PathBuf>;
 }
 
 /// Executor that spawns real system processes.
-///
-/// The only thing that varies between uses is the [`CommandSettings`] applied
-/// to each spawn, so both flavours are the same type: [`system`](Self::system)
-/// spawns with the default timeout and no cancellation, while
-/// [`managed`](Self::managed) additionally honours a cancellation token so
-/// Ctrl-C can stop children.
 #[derive(Debug, Clone)]
 pub struct ProcessExecutor {
     settings: CommandSettings,
@@ -390,10 +608,6 @@ pub struct ProcessExecutor {
 impl ProcessExecutor {
     /// Create an executor that uses the default command timeout and cannot be
     /// cancelled.
-    ///
-    /// Production task execution should prefer [`managed`](Self::managed) so
-    /// Ctrl-C can stop spawned children; this flavour exists for the
-    /// bootstrap paths that run before a cancellation token exists.
     #[must_use]
     pub const fn system() -> Self {
         Self {
@@ -409,8 +623,7 @@ impl ProcessExecutor {
         }
     }
 
-    /// Managed executor with an explicit timeout, for tests that need to
-    /// observe timeout and cancellation behaviour without waiting minutes.
+    /// Managed executor with an explicit timeout.
     #[cfg(test)]
     const fn managed_with_timeout(cancellation: CancellationToken, timeout: Duration) -> Self {
         Self {
@@ -426,51 +639,8 @@ impl Default for ProcessExecutor {
 }
 
 impl Executor for ProcessExecutor {
-    fn run(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args);
-        execute_checked(cmd, program, &self.settings)
-    }
-
-    fn run_in_with_env(
-        &self,
-        dir: &Path,
-        program: &str,
-        args: &[&str],
-        env: &[(&str, &str)],
-    ) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args).current_dir(dir);
-        for (k, v) in env {
-            cmd.env(k, v);
-        }
-        execute_checked(
-            cmd,
-            &format!("{program} in {}", dir.display()),
-            &self.settings,
-        )
-    }
-
-    fn run_unchecked(&self, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args);
-        let result = execute_unchecked(cmd, program, &self.settings)?;
-        log_command_output(program, &result);
-        Ok(result)
-    }
-
-    #[cfg(windows)]
-    fn run_windows_cmd_unchecked(&self, command_line: &str) -> Result<ExecResult> {
-        execute_windows_cmd_unchecked(command_line, &self.settings)
-    }
-
-    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        let mut cmd = new_command(program);
-        cmd.args(args).current_dir(dir);
-        let label = format!("{program} in {}", dir.display());
-        let result = execute_unchecked(cmd, &label, &self.settings)?;
-        log_command_output(&label, &result);
-        Ok(result)
+    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
+        execute_spec(spec, &self.settings)
     }
 
     fn which(&self, program: &str) -> bool {
@@ -482,19 +652,9 @@ impl Executor for ProcessExecutor {
     }
 }
 
-/// Memoized `PATH` lookups, keyed by program name.
-///
-/// `which::which` walks every `PATH` entry and stats candidate files. Task
-/// applicability gates call it repeatedly for the same handful of programs
-/// within a single run, and `PATH` does not change while the process is alive,
-/// so the answer is cached process-wide.
 static PATH_LOOKUPS: LazyLock<Mutex<HashMap<String, Option<PathBuf>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Resolve `program` on `PATH`, reusing a previously cached answer.
-///
-/// A poisoned lock is recovered rather than propagated: the cache holds only
-/// derived data, so a panic in another thread cannot leave it inconsistent.
 fn resolve_on_path(program: &str) -> Option<PathBuf> {
     let mut cache = PATH_LOOKUPS
         .lock()
@@ -511,39 +671,32 @@ fn resolve_on_path(program: &str) -> Option<PathBuf> {
 ///
 /// # Errors
 ///
-/// Returns an error if the command cannot be spawned, times out, or otherwise
-/// fails at the process-management layer. Non-zero exit statuses are returned
-/// in the [`ExecResult`] for the caller to interpret.
-pub(crate) fn run_path_smoke_test(path: &Path, args: &[&str]) -> Result<ExecResult> {
-    let mut cmd = new_command(path);
-    cmd.args(args);
-    let label = path.display().to_string();
-    let result = execute_unchecked(cmd, &label, &CommandSettings::timeout(SMOKE_TEST_TIMEOUT))?;
-    log_command_output(&label, &result);
-    Ok(result)
+/// Returns a typed process error. Non-zero exit statuses are returned to the
+/// caller for interpretation.
+pub(crate) fn run_path_smoke_test(
+    path: &Path,
+    args: &[&str],
+) -> std::result::Result<ExecResult, ExecError> {
+    execute_spec(
+        CommandSpec::new(path.as_os_str()).args(args).unchecked(),
+        &CommandSettings::timeout(SMOKE_TEST_TIMEOUT),
+    )
 }
 
 /// Run an auxiliary tool with the tool timeout, allowing a non-zero exit.
 ///
-/// Used by subsystems that run outside task execution (for example
-/// self-update provenance verification) and therefore have no
-/// [`Executor`] available on every platform.
-///
 /// # Errors
 ///
-/// Returns an error if the command cannot be spawned or times out. Non-zero
-/// exit statuses are returned in the [`ExecResult`] for the caller to
-/// interpret.
-pub(crate) fn run_tool_unchecked(program: &str, args: &[&str]) -> Result<ExecResult> {
-    let mut cmd = new_command(program);
-    cmd.args(args);
-    let settings = CommandSettings {
-        timeout: TOOL_TIMEOUT,
-        cancellation: None,
-    };
-    let result = execute_unchecked(cmd, program, &settings)?;
-    log_command_output(program, &result);
-    Ok(result)
+/// Returns a typed process error. Non-zero exit statuses are returned to the
+/// caller for interpretation.
+pub(crate) fn run_tool_unchecked(
+    program: &str,
+    args: &[&str],
+) -> std::result::Result<ExecResult, ExecError> {
+    execute_spec(
+        CommandSpec::new(program).args(args).unchecked(),
+        &CommandSettings::timeout(TOOL_TIMEOUT),
+    )
 }
 
 #[cfg(test)]

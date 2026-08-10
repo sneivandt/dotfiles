@@ -31,7 +31,7 @@ impl Task for GeneratedTask {
     }
 
     fn task_id(&self) -> TaskId {
-        self.id
+        self.id.clone()
     }
 
     fn dependencies(&self) -> &[TaskId] {
@@ -206,9 +206,11 @@ fn adding_a_back_edge_always_produces_a_cycle() {
             u64::try_from(size - 1).expect("index fits in u64"),
         ));
 
-        assert_eq!(
-            ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
-            Some(GraphError::Cycle),
+        assert!(
+            matches!(
+                ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
+                Some(GraphError::Cycle { path }) if path.len() >= 3
+            ),
             "back edge did not produce a cycle (seed {seed}, size {size})"
         );
     }
@@ -221,10 +223,10 @@ fn a_self_dependency_is_a_cycle() {
         id: TaskId::Dynamic(0),
         dependencies: vec![TaskId::Dynamic(0)],
     }];
-    assert_eq!(
+    assert!(matches!(
         ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
-        Some(GraphError::Cycle)
-    );
+        Some(GraphError::Cycle { path }) if path == ["self", "self"]
+    ));
 }
 
 #[test]
@@ -236,9 +238,11 @@ fn duplicate_ids_are_rejected_regardless_of_shape() {
         let mut tasks = generate_dag(seed, size, edge_chance);
         tasks[size - 1].id = TaskId::Dynamic(0);
 
-        assert_eq!(
-            ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
-            Some(GraphError::DuplicateId),
+        assert!(
+            matches!(
+                ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
+                Some(GraphError::DuplicateId { .. })
+            ),
             "duplicate id not rejected (seed {seed}, size {size})"
         );
     }

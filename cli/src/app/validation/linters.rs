@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::engine::{Context, TaskResult};
+use crate::infra::exec::CommandSpec;
 use crate::infra::exec::ExecResult;
 use crate::infra::logging::Log;
 use crate::infra::logging::OutputExt as _;
@@ -42,7 +43,9 @@ pub(super) fn run_linter(
 
     let args = build_args(files);
     let arg_refs = args.iter().map(String::as_str).collect::<Vec<_>>();
-    let result = ctx.executor().run_unchecked(exe, &arg_refs)?;
+    let result = ctx
+        .executor()
+        .execute(CommandSpec::new(exe).args(&arg_refs).unchecked())?;
     if result.success {
         ctx.log().info(format!("{name} passed"));
         Ok(TaskResult::CheckPassed)

@@ -7,7 +7,7 @@
 use anyhow::{Result, bail};
 use base64::Engine as _;
 
-use super::{ExecResult, Executor};
+use super::{CommandSpec, ExecError, ExecResult, Executor};
 
 /// A `cmd.exe` command whose arguments are treated as quoted literals.
 #[derive(Debug, Clone)]
@@ -55,7 +55,7 @@ impl CmdCommand {
     )]
     pub(crate) fn run_unchecked(&self, executor: &dyn Executor) -> Result<ExecResult> {
         let command_line = self.command_line()?;
-        executor.run_windows_cmd_unchecked(&command_line)
+        Ok(executor.execute(CommandSpec::windows_cmd(command_line))?)
     }
 
     fn command_line(&self) -> Result<String> {
@@ -111,8 +111,8 @@ impl PowerShellCommand {
         &self,
         executor: &dyn Executor,
         powershell: &str,
-    ) -> Result<ExecResult> {
-        executor.run_unchecked(powershell, &self.args())
+    ) -> std::result::Result<ExecResult, ExecError> {
+        executor.execute(CommandSpec::new(powershell).args(&self.args()).unchecked())
     }
 
     fn args(&self) -> [&str; 3] {

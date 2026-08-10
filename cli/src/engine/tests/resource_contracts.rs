@@ -170,17 +170,18 @@ fn state_reports_nonfatal_failure(state: &ResourceState) -> bool {
 }
 
 const fn batch_changed(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.changed > 0)
+    matches!(result, TaskResult::Batch(stats) if stats.changed_count() > 0)
 }
 
 const fn batch_failed(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.failed > 0)
+    matches!(result, TaskResult::Batch(stats) if stats.failed_count() > 0)
 }
 
 const fn batch_unchanged(result: &TaskResult) -> bool {
     matches!(
         result,
-        TaskResult::Batch(stats) if stats.changed == 0 && stats.failed == 0
+        TaskResult::Batch(stats)
+            if stats.changed_count() == 0 && stats.failed_count() == 0
     )
 }
 

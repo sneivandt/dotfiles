@@ -143,7 +143,7 @@ mod task_graph_tests {
         let err = run_tasks_to_completion(tasks, &ctx, &log)
             .expect_err("cyclic task graphs should fail fast");
 
-        assert!(format!("{err:#}").contains("dependency cycle detected"));
+        assert!(format!("{err:#}").contains("dependency cycle: cycle-a -> cycle-b -> cycle-a"));
         assert!(!ran_a.load(Ordering::SeqCst));
         assert!(!ran_b.load(Ordering::SeqCst));
     }

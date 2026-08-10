@@ -30,7 +30,7 @@ use std::collections::HashSet;
 use anyhow::Result;
 
 use crate::engine::Context;
-use crate::infra::exec::ExecResult;
+use crate::infra::exec::{CommandSpec, ExecResult};
 use crate::infra::logging::OutputExt as _;
 
 mod db;
@@ -56,9 +56,12 @@ fn run_workflow_script(
 ) -> Result<ExecResult> {
     let args = build_workflow_script_args(script, db_str, ids);
     let system = ctx.system();
-    system
-        .executor()
-        .run_unchecked_in(system.home(), python, &args)
+    Ok(system.executor().execute(
+        CommandSpec::new(python)
+            .args(&args)
+            .current_dir(system.home())
+            .unchecked(),
+    )?)
 }
 
 /// Re-assert that the Copilot App workflows *this dotfiles install deployed*

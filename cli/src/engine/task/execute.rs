@@ -5,9 +5,10 @@
 //! and records the outcome into the logger.
 
 use crate::engine::{Context, TaskResult};
+use crate::infra::exec::ExecError;
 use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, format_elapsed, log_task_context};
 
-use super::Task;
+use super::{Task, TaskAssessment};
 use crate::infra::logging::OutputExt as _;
 
 /// Record a task that does not apply to this run.
@@ -15,11 +16,12 @@ use crate::infra::logging::OutputExt as _;
 /// `reason` is `None` when applicability was decided by the task's own
 /// `should_run` check and there is nothing more specific to say; the `N/A`
 /// status is the whole explanation in that case, so no reason is invented.
-fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: Option<&str>) {
+fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: Option<&str>) {
     let event_detail = reason.unwrap_or("not applicable");
     ctx.log()
         .run_task_event(LogEvent::TaskSkip, task.name(), event_detail);
-    ctx.log().record_task_with_metadata(
+    ctx.log().record_task_with_identity(
+        task_id,
         task.name(),
         TaskStatus::NotApplicable,
         reason,
@@ -34,30 +36,41 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, reason: Option<&str>) {
 /// the log file and diagnostic output include structured context about
 /// which task produced each message.
 ///
-/// If cancellation has been requested (Ctrl-C) and a task returns
-/// [`TaskResult::Failed`] or an error, the failure is downgraded to
-/// [`TaskStatus::Skipped`] with an "interrupted" message so the
-/// summary does not count signal-induced failures.
+/// A typed executor cancellation error is recorded as [`TaskStatus::Skipped`]
+/// with an "interrupted" message. Other failures remain failures even if the
+/// global cancellation token was requested independently.
 ///
 /// Every executed task also emits a [`LogEvent::TaskTiming`] entry recording
 /// how long it ran. Under parallel scheduling the interleaved run log cannot
 /// be used to infer per-task duration by subtracting timestamps, so the
 /// measurement is taken here.
 pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
+    let assessment = task.assess(ctx);
+    execute_assessed(task, &assessment, ctx)
+}
+
+/// Execute using the assessment precomputed by the application coordinator.
+pub(crate) fn execute_assessed(
+    task: &dyn Task,
+    assessment: &TaskAssessment,
+    ctx: &Context,
+) -> TaskStatus {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
     let _diag_context = log_task_context(task.name());
-    if !task.should_run(ctx) {
-        record_not_applicable(ctx, task, None);
+    let task_id = task.task_id().record_key();
+    if !assessment.is_applicable() {
+        record_not_applicable(ctx, task, &task_id, assessment.not_applicable_reason());
         return TaskStatus::NotApplicable;
     }
 
     ctx.log()
         .run_task_event(LogEvent::TaskStart, task.name(), "executing");
     let started = std::time::Instant::now();
-    let status = record_run_outcome(task, ctx);
+    let status = record_run_outcome(task, &task_id, ctx);
     let elapsed = started.elapsed();
-    ctx.log().record_task_duration(task.name(), elapsed);
+    ctx.log()
+        .record_task_duration_by_id(&task_id, task.name(), elapsed);
     ctx.log().run_task_event(
         LogEvent::TaskTiming,
         task.name(),
@@ -69,13 +82,20 @@ pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
 /// Record a task outcome with the task's own visibility, returning the status.
 fn record(
     task: &dyn Task,
+    task_id: &str,
     ctx: &Context,
     status: TaskStatus,
     message: Option<&str>,
     actions: ActionCounts,
 ) -> TaskStatus {
-    ctx.log()
-        .record_task_with_metadata(task.name(), status, message, actions, task.visibility());
+    ctx.log().record_task_with_identity(
+        task_id,
+        task.name(),
+        status,
+        message,
+        actions,
+        task.visibility(),
+    );
     status
 }
 
@@ -85,6 +105,7 @@ fn record(
 /// rather than real failures and must not be counted as such in the summary.
 fn record_interrupted(
     task: &dyn Task,
+    task_id: &str,
     ctx: &Context,
     detail: &str,
     actions: ActionCounts,
@@ -92,17 +113,23 @@ fn record_interrupted(
     ctx.log()
         .run_task_event(LogEvent::TaskSkip, task.name(), "interrupted");
     ctx.log().warn(format!("interrupted: {detail}"));
-    record(task, ctx, TaskStatus::Skipped, Some("interrupted"), actions)
+    record(
+        task,
+        task_id,
+        ctx,
+        TaskStatus::Skipped,
+        Some("interrupted"),
+        actions,
+    )
 }
 
 /// Run a task and record its outcome.
 ///
-/// Cancellation-induced failures (Ctrl-C) are downgraded to
-/// [`TaskStatus::Skipped`] so the summary does not count signal
-/// interruptions as real failures.
-fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
+/// Typed executor cancellation errors are downgraded to [`TaskStatus::Skipped`]
+/// so the summary does not count signal interruptions as real failures.
+fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskStatus {
     let rec = |status: TaskStatus, msg: Option<&str>| {
-        record(task, ctx, status, msg, ActionCounts::default())
+        record(task, task_id, ctx, status, msg, ActionCounts::default())
     };
     match task.run_configured(ctx) {
         Ok(None) => {
@@ -136,11 +163,20 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
                     .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
                 rec(TaskStatus::Skipped, Some(&reason))
             }
-            TaskResult::Failed(reason) => record_failed_outcome(task, ctx, &reason),
-            TaskResult::Batch(stats) => record_batch_outcome(task, ctx, &stats),
+            TaskResult::Failed(reason) => record_failed_outcome(task, task_id, ctx, &reason),
+            TaskResult::Batch(stats) => record_batch_outcome(task, task_id, ctx, &stats),
         },
-        Err(_) if ctx.is_cancelled() => {
-            record_interrupted(task, ctx, task.name(), ActionCounts::default())
+        Err(error)
+            if error.chain().any(|cause| {
+                cause
+                    .downcast_ref::<ExecError>()
+                    .is_some_and(ExecError::is_cancelled)
+                    || cause
+                        .downcast_ref::<crate::engine::resource::ResourceError>()
+                        .is_some_and(crate::engine::resource::ResourceError::is_cancelled)
+            }) =>
+        {
+            record_interrupted(task, task_id, ctx, task.name(), ActionCounts::default())
         }
         Err(e) => {
             let message = format!("{e:#}");
@@ -152,50 +188,63 @@ fn record_run_outcome(task: &dyn Task, ctx: &Context) -> TaskStatus {
     }
 }
 
-fn record_failed_outcome(task: &dyn Task, ctx: &Context, reason: &str) -> TaskStatus {
+fn record_failed_outcome(
+    task: &dyn Task,
+    task_id: &str,
+    ctx: &Context,
+    reason: &str,
+) -> TaskStatus {
     let actions = ActionCounts {
         failed: 1,
         ..ActionCounts::default()
     };
-    if ctx.is_cancelled() {
-        return record_interrupted(task, ctx, reason, actions);
-    }
     ctx.log()
         .run_task_event(LogEvent::TaskFail, task.name(), reason);
     ctx.log().warn(format!("failed: {reason}"));
-    record(task, ctx, TaskStatus::Failed, Some(reason), actions)
+    record(
+        task,
+        task_id,
+        ctx,
+        TaskStatus::Failed,
+        Some(reason),
+        actions,
+    )
 }
 
 fn record_batch_outcome(
     task: &dyn Task,
+    task_id: &str,
     ctx: &Context,
     stats: &crate::engine::TaskStats,
 ) -> TaskStatus {
     let message = stats
-        .message
-        .clone()
-        .unwrap_or_else(|| stats.summary(ctx.dry_run()));
+        .message()
+        .map_or_else(|| stats.summary(ctx.dry_run()), str::to_string);
     let actions = ActionCounts {
-        applied: if ctx.dry_run() { 0 } else { stats.changed },
-        planned: if ctx.dry_run() { stats.changed } else { 0 },
-        skipped: stats.skipped,
-        failed: stats.failed,
+        applied: if ctx.dry_run() {
+            0
+        } else {
+            stats.changed_count()
+        },
+        planned: if ctx.dry_run() {
+            stats.changed_count()
+        } else {
+            0
+        },
+        skipped: stats.skipped_count(),
+        failed: stats.failed_count(),
     };
-    let outcome = if stats.failed > 0 {
+    let outcome = if stats.failed_count() > 0 {
         TaskStatus::Failed
-    } else if ctx.dry_run() && stats.changed > 0 {
+    } else if ctx.dry_run() && stats.changed_count() > 0 {
         TaskStatus::DryRun
-    } else if stats.changed > 0 {
+    } else if stats.changed_count() > 0 {
         TaskStatus::Changed
-    } else if stats.skipped > 0 {
+    } else if stats.skipped_count() > 0 {
         TaskStatus::Skipped
     } else {
         TaskStatus::Ok
     };
-
-    if outcome == TaskStatus::Failed && ctx.is_cancelled() {
-        return record_interrupted(task, ctx, &message, actions);
-    }
 
     let event = if outcome == TaskStatus::Failed {
         LogEvent::TaskFail
@@ -209,7 +258,14 @@ fn record_batch_outcome(
         ctx.log().info(&message);
     }
     let recorded_message = batch_reason(stats, outcome, &message);
-    record(task, ctx, outcome, recorded_message.as_deref(), actions)
+    record(
+        task,
+        task_id,
+        ctx,
+        outcome,
+        recorded_message.as_deref(),
+        actions,
+    )
 }
 
 /// The reason shown on a batch task's status row.
@@ -222,15 +278,19 @@ fn batch_reason(
     outcome: TaskStatus,
     message: &str,
 ) -> Option<String> {
-    if let Some(custom) = stats.message.clone() {
-        return Some(custom);
+    if let Some(custom) = stats.message() {
+        return Some(custom.to_string());
     }
     match outcome {
         TaskStatus::Changed | TaskStatus::Failed => Some(message.to_string()),
         TaskStatus::Skipped => Some(format!(
             "{} {} skipped",
-            stats.skipped,
-            if stats.skipped == 1 { "item" } else { "items" }
+            stats.skipped_count(),
+            if stats.skipped_count() == 1 {
+                "item"
+            } else {
+                "items"
+            }
         )),
         TaskStatus::Ok | TaskStatus::Passed | TaskStatus::DryRun | TaskStatus::NotApplicable => {
             None

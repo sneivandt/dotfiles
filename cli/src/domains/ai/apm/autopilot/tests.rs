@@ -90,36 +90,44 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
         .with(mockall::predicate::eq("apm"))
         .once()
         .returning(|_| true);
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(seq)
-        .returning(|_, _, args, _| {
-            assert_eq!(args, ["experimental", "enable", "copilot-app"]);
+        .returning(|spec| {
+            assert_eq!(spec.arguments(), ["experimental", "enable", "copilot-app"]);
             Ok(ok_result("[!] copilot-app is already enabled.\n"))
         });
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(seq)
-        .returning(|_, program, args, _| {
-            assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g"]);
+        .returning(|spec| {
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(spec.arguments(), ["install", "-g"]);
             Ok(ok_result("installed\n"))
         });
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(seq)
-        .returning(|_, program, args, _| {
-            assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+        .returning(|spec| {
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(
+                spec.arguments(),
+                ["install", "-g", "--target", "copilot-app"]
+            );
             Ok(ok_result("installed workflows\n"))
         });
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(seq)
-        .returning(|cwd, program, args, _| {
-            assert_eq!(cwd.file_name().and_then(|name| name.to_str()), Some(".apm"));
-            assert_eq!(program, "apm");
-            assert_eq!(args, ["prune"]);
+        .returning(|spec| {
+            assert_eq!(
+                spec.working_dir()
+                    .and_then(Path::file_name)
+                    .and_then(|name| name.to_str()),
+                Some(".apm")
+            );
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(spec.arguments(), ["prune"]);
             Ok(ok_result("pruned\n"))
         });
 }
@@ -356,14 +364,15 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
     // so the diff in the post-install fixup is a genuine "set 3" change.
     let pre_home = dir.path().to_path_buf();
     let pre_db = db_str.clone();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |run_dir, program, args| {
-            assert_eq!(run_dir, pre_home.as_path());
-            assert_eq!(program, "python3");
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(spec.working_dir(), Some(pre_home.as_path()));
+            assert_eq!(spec.program(), "python3");
             assert_eq!(
-                args,
+                spec.arguments(),
                 [
                     "-c",
                     WORKFLOW_DESIRED_IDS_SCRIPT,
@@ -377,14 +386,15 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
         });
     expect_apm_install(&mut mock, &mut seq);
     let post_home = dir.path().to_path_buf();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |run_dir, program, args| {
-            assert_eq!(run_dir, post_home.as_path());
-            assert_eq!(program, "python3");
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(spec.working_dir(), Some(post_home.as_path()));
+            assert_eq!(spec.program(), "python3");
             assert_eq!(
-                args,
+                spec.arguments(),
                 [
                     "-c",
                     WORKFLOW_AUTOPILOT_SCRIPT,
@@ -400,7 +410,7 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result after autopilot fixup, got {result:?}"
     );
 }
@@ -424,7 +434,7 @@ fn run_warns_when_python_missing_for_autopilot_fixup() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result when python is missing (non-fatal), got {result:?}"
     );
 }
@@ -440,20 +450,26 @@ fn run_warns_when_workflow_db_is_locked() {
     // Pre-install snapshot also hits the locked database and degrades to
     // Unavailable, so the post-install fixup stays quiet rather than reporting
     // a spurious change.
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| Ok(exec_error("database is locked")));
+        .returning(|spec| {
+            assert!(!spec.is_checked());
+            Ok(exec_error("database is locked"))
+        });
     expect_apm_install(&mut mock, &mut seq);
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| Ok(exec_error("database is locked")));
+        .returning(|spec| {
+            assert!(!spec.is_checked());
+            Ok(exec_error("database is locked"))
+        });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result despite locked db (non-fatal), got {result:?}"
     );
 }
@@ -472,20 +488,26 @@ fn run_warns_when_workflow_db_schema_drifts() {
     expect_python3(&mut mock, 2, true);
     // Pre-install snapshot hits the drifted schema first. Since the error is
     // not `no such table`, it degrades quietly to Unavailable.
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| Ok(exec_error("no such column: mode")));
+        .returning(|spec| {
+            assert!(!spec.is_checked());
+            Ok(exec_error("no such column: mode"))
+        });
     expect_apm_install(&mut mock, &mut seq);
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| Ok(exec_error("no such column: mode")));
+        .returning(|spec| {
+            assert!(!spec.is_checked());
+            Ok(exec_error("no such column: mode"))
+        });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result despite schema drift (non-fatal), got {result:?}"
     );
 }
@@ -508,13 +530,13 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     // Only the apm install runs; no python probe is queued, so the mock would
-    // panic on any unexpected `which("python3")`/`run_unchecked_in` call.
+    // panic on any unexpected `which("python3")`/`execute` call.
     expect_apm_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = InstallApmPackages.run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result with the fixup skipped, got {result:?}"
     );
 }
@@ -539,43 +561,48 @@ fn update_re_arms_apm_workflows_after_apm_update() {
     // Pre-update snapshot: the workflow is not desired yet, so the later diff
     // is a genuine "set 1" change.
     let pre_db = db_str.clone();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, program, args| {
-            assert_eq!(program, "python3");
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(spec.program(), "python3");
             assert_eq!(
-                args,
+                spec.arguments(),
                 ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str(), "apm--a"]
             );
             Ok(ok_result(""))
         });
     // apm update advances the lock and redeploys the workflow disabled.
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, program, args, _| {
-            assert_eq!(program, "apm");
-            assert_eq!(args, ["update", "-g", "--yes"]);
+        .returning(move |spec| {
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
             Ok(ok_result("updated\n"))
         });
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, program, args, _| {
-            assert_eq!(program, "apm");
-            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+        .returning(move |spec| {
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(
+                spec.arguments(),
+                ["install", "-g", "--target", "copilot-app"]
+            );
             Ok(ok_result("installed workflows\n"))
         });
     // Post-update fixup re-arms the workflow to autopilot + enabled; the diff
     // against the empty pre-snapshot reports one newly desired workflow.
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, program, args| {
-            assert_eq!(program, "python3");
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(spec.program(), "python3");
             assert_eq!(
-                args,
+                spec.arguments(),
                 ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
             );
             Ok(ok_result("1 1\napm--a\n"))
@@ -608,41 +635,46 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
 
     // Pre-update snapshot: the workflow is already desired (steady state).
     let pre_db = db_str.clone();
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, program, args| {
-            assert_eq!(program, "python3");
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(spec.program(), "python3");
             assert_eq!(
-                args,
+                spec.arguments(),
                 ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str(), "apm--a"]
             );
             Ok(ok_result("apm--a\n"))
         });
     // apm update leaves the lockfile untouched (Unchanged outcome).
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, _, args, _| {
-            assert_eq!(args, ["update", "-g", "--yes"]);
+        .returning(move |spec| {
+            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
             Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
         });
-    mock.expect_run_in_with_env()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, _, args, _| {
-            assert_eq!(args, ["install", "-g", "--target", "copilot-app"]);
+        .returning(move |spec| {
+            assert_eq!(
+                spec.arguments(),
+                ["install", "-g", "--target", "copilot-app"]
+            );
             Ok(ok_result("installed workflows\n"))
         });
     // The fixup still runs; with the workflow already desired the delta is
     // net-zero, so it stays quiet but must not be skipped.
-    mock.expect_run_unchecked_in()
+    mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(move |_, program, args| {
-            assert_eq!(program, "python3");
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(spec.program(), "python3");
             assert_eq!(
-                args,
+                spec.arguments(),
                 ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
             );
             Ok(ok_result("1 1\napm--a\n"))

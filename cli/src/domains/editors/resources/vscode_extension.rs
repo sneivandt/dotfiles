@@ -5,6 +5,8 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
+#[cfg(not(target_os = "windows"))]
+use crate::infra::exec::CommandSpec;
 use crate::infra::exec::{self, Executor};
 
 #[cfg(target_os = "windows")]
@@ -141,7 +143,7 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 
     #[cfg(not(target_os = "windows"))]
     {
-        executor.run_unchecked(cmd, args)
+        Ok(executor.execute(CommandSpec::new(cmd).args(args).unchecked())?)
     }
 }
 
@@ -176,16 +178,20 @@ mod tests {
 
     fn expect_list_extensions(mock: &mut MockExecutor, result: ExecResult) {
         #[cfg(target_os = "windows")]
-        mock.expect_run_windows_cmd_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|command_line| command_line == r#"""code" "--list-extensions"""#)
+            .withf(|spec| spec.windows_command_line() == Some(r#"""code" "--list-extensions"""#))
             .return_once(|_| Ok(result));
 
         #[cfg(not(target_os = "windows"))]
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| program == "code" && args == ["--list-extensions"])
-            .return_once(|_, _| Ok(result));
+            .withf(|spec| {
+                spec.program() == "code"
+                    && spec.arguments() == ["--list-extensions"]
+                    && !spec.is_checked()
+            })
+            .return_once(|_| Ok(result));
     }
 
     #[test]

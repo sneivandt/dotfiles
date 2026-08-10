@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::engine::{Context, Task, TaskId};
+use crate::engine::{Context, Task, TaskAssessment, TaskId};
 use crate::infra::logging::{ActionCounts, Logger, OutputExt as _, TaskStatus};
 
 /// Outcome of arranging privilege for the tasks that declared they need it.
@@ -39,7 +39,11 @@ impl<'a> ElevationBroker<'a> {
     }
 
     /// Prepare elevation and remove tasks already delegated or unable to run.
-    pub(super) fn prepare(&self, tasks: &mut Vec<&dyn Task>) {
+    pub(super) fn prepare(
+        &self,
+        tasks: &mut Vec<&dyn Task>,
+        assessments: &HashMap<TaskId, TaskAssessment>,
+    ) {
         let elevating: Vec<&dyn Task> = if crate::infra::elevation::is_elevated_child() {
             // The child was spawned precisely to run these tasks; it must not
             // recurse into another elevation request.
@@ -47,7 +51,11 @@ impl<'a> ElevationBroker<'a> {
         } else {
             tasks
                 .iter()
-                .filter(|task| crate::engine::requires_elevation(**task, self.ctx))
+                .filter(|task| {
+                    assessments
+                        .get(&task.task_id())
+                        .is_some_and(TaskAssessment::requires_elevation)
+                })
                 .copied()
                 .collect()
         };
@@ -97,15 +105,17 @@ impl<'a> ElevationBroker<'a> {
             let span = tracing::info_span!("task", name = task.name());
             let _enter = span.enter();
             self.log.debug(message.as_str());
-            self.log.record_task_with_metadata(
+            let task_id = id.record_key();
+            self.log.record_task_with_identity(
+                &task_id,
                 task.name(),
                 TaskStatus::Skipped,
                 Some(message.as_str()),
                 ActionCounts::default(),
                 task.visibility(),
             );
-            self.log.mark_task_completed(task.name());
-            self.log.emit_task_result_and_redraw(task.name());
+            self.log.mark_task_completed_by_id(&task_id);
+            self.log.emit_task_result_and_redraw_by_id(&task_id);
             false
         });
     }

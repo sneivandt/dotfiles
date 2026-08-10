@@ -91,6 +91,8 @@ pub struct Logger {
 /// Buffered user-facing detail lines emitted by a completed task.
 #[derive(Debug, Clone)]
 pub(in crate::infra::logging) struct TaskDetailEntry {
+    /// Scheduler identity key for the owning task, when available.
+    pub(super) task_id: Option<String>,
     /// Human-readable task name.
     pub(super) name: String,
     /// Detail lines emitted by the task while it ran.
@@ -319,6 +321,28 @@ impl Logger {
         visibility: TaskVisibility,
     ) {
         self.lock_tasks().push(TaskEntry {
+            task_id: None,
+            name: name.to_string(),
+            status,
+            message: message.map(String::from),
+            actions,
+            visibility,
+            duration: None,
+        });
+    }
+
+    /// Record an engine task by scheduler identity.
+    pub fn record_task_with_identity(
+        &self,
+        task_id: &str,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        visibility: TaskVisibility,
+    ) {
+        self.lock_tasks().push(TaskEntry {
+            task_id: Some(task_id.to_string()),
             name: name.to_string(),
             status,
             message: message.map(String::from),
@@ -335,6 +359,18 @@ impl Logger {
             .iter_mut()
             .rev()
             .find(|task| task.name == name)
+        {
+            task.duration = Some(duration);
+        }
+    }
+
+    /// Attach a measured duration to the entry for a scheduler identity.
+    pub fn record_task_duration_by_id(&self, task_id: &str, duration: std::time::Duration) {
+        if let Some(task) = self
+            .lock_tasks()
+            .iter_mut()
+            .rev()
+            .find(|task| task.task_id.as_deref() == Some(task_id))
         {
             task.duration = Some(duration);
         }
@@ -358,10 +394,28 @@ impl Logger {
     /// is only known once a task has run, so a non-applicable task leaves the
     /// denominator instead of advancing the numerator.
     pub fn mark_task_completed(&self, task_name: &str) {
-        if !self.task_is_visible(task_name) {
+        self.mark_task_completed_by(|task| task.name == task_name);
+    }
+
+    /// Record completion using the task's scheduler identity.
+    pub fn mark_task_completed_by_id(&self, task_id: &str) {
+        self.mark_task_completed_by(|task| task.task_id.as_deref() == Some(task_id));
+    }
+
+    fn mark_task_completed_by(&self, matches: impl Fn(&TaskEntry) -> bool) {
+        let task = self
+            .lock_tasks()
+            .iter()
+            .rev()
+            .find(|task| matches(task))
+            .cloned();
+        let Some(task) = task else {
+            return;
+        };
+        if !task.visibility.is_visible() {
             return;
         }
-        if self.recorded_task_status(task_name) == Some(TaskStatus::NotApplicable) {
+        if task.status == TaskStatus::NotApplicable {
             self.tasks_excluded.fetch_add(1, Ordering::Relaxed);
         } else {
             self.tasks_completed.fetch_add(1, Ordering::Relaxed);
@@ -383,20 +437,19 @@ impl Logger {
         })
     }
 
-    /// Look up the status recorded for a task, if it has finished.
-    fn recorded_task_status(&self, name: &str) -> Option<TaskStatus> {
-        self.lock_tasks()
-            .iter()
-            .rev()
-            .find(|task| task.name == name)
-            .map(|task| task.status)
-    }
-
     pub(in crate::infra::logging) fn task_is_visible(&self, name: &str) -> bool {
         self.lock_tasks()
             .iter()
             .rev()
             .find(|task| task.name == name)
+            .is_none_or(|task| task.visibility.is_visible())
+    }
+
+    pub(in crate::infra::logging) fn task_is_visible_by_id(&self, task_id: &str) -> bool {
+        self.lock_tasks()
+            .iter()
+            .rev()
+            .find(|task| task.task_id.as_deref() == Some(task_id))
             .is_none_or(|task| task.visibility.is_visible())
     }
 
@@ -409,12 +462,41 @@ impl Logger {
             .and_then(|task| task.message.clone())
     }
 
+    pub(in crate::infra::logging) fn recorded_task_message_by_id(
+        &self,
+        task_id: &str,
+    ) -> Option<String> {
+        self.lock_tasks()
+            .iter()
+            .rev()
+            .find(|task| task.task_id.as_deref() == Some(task_id))
+            .and_then(|task| task.message.clone())
+    }
+
     /// Record buffered user-facing detail lines for a completed task.
     pub(in crate::infra::logging) fn record_task_details(&self, name: &str, lines: Vec<String>) {
         if lines.is_empty() {
             return;
         }
         self.lock_task_details().push(TaskDetailEntry {
+            task_id: None,
+            name: name.to_string(),
+            lines,
+        });
+    }
+
+    /// Record buffered detail lines for an engine task identity.
+    pub(in crate::infra::logging) fn record_task_details_by_id(
+        &self,
+        task_id: &str,
+        name: &str,
+        lines: Vec<String>,
+    ) {
+        if lines.is_empty() {
+            return;
+        }
+        self.lock_task_details().push(TaskDetailEntry {
+            task_id: Some(task_id.to_string()),
             name: name.to_string(),
             lines,
         });
@@ -499,8 +581,29 @@ impl TaskRecorder for Logger {
         self.record_task_with_metadata(name, status, message, actions, visibility);
     }
 
+    fn record_task_with_identity(
+        &self,
+        task_id: &str,
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        visibility: TaskVisibility,
+    ) {
+        self.record_task_with_identity(task_id, name, status, message, actions, visibility);
+    }
+
     fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
         self.record_task_duration(name, duration);
+    }
+
+    fn record_task_duration_by_id(
+        &self,
+        task_id: &str,
+        _name: &str,
+        duration: std::time::Duration,
+    ) {
+        self.record_task_duration_by_id(task_id, duration);
     }
 }
 

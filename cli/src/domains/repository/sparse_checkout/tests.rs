@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::infra::ConfigHandle;
-use crate::infra::exec::{ExecResult, Executor, MockExecutor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 use crate::infra::fs::MockFileSystemOps;
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
@@ -90,11 +90,15 @@ fn reset_excluded_to_head_uses_symlinks_repo_paths() {
 
     let mut executor = MockExecutor::new();
     executor
-        .expect_run_in()
+        .expect_execute()
+        .withf(CommandSpec::is_checked)
         .once()
-        .returning(|_, program, args| {
-            assert_eq!(program, "git");
-            assert_eq!(args, ["checkout", "HEAD", "--", "symlinks/config/nvim"]);
+        .returning(|spec| {
+            assert_eq!(spec.program(), "git");
+            assert_eq!(
+                spec.arguments(),
+                ["checkout", "HEAD", "--", "symlinks/config/nvim"]
+            );
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -211,18 +215,16 @@ fn run_returns_ok_when_already_up_to_date() {
 
     // core.sparseCheckout reports enabled, so the file match short-circuits.
     let mut executor = MockExecutor::new();
-    executor
-        .expect_run_unchecked_in()
-        .once()
-        .returning(|_, _, args| {
-            assert_eq!(args, ["config", "--get", "core.sparseCheckout"]);
-            Ok(ExecResult {
-                stdout: "true\n".to_string(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+    executor.expect_execute().once().returning(|spec| {
+        assert_eq!(spec.arguments(), ["config", "--get", "core.sparseCheckout"]);
+        assert!(!spec.is_checked(), "config query should be unchecked");
+        Ok(ExecResult {
+            stdout: "true\n".to_string(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        })
+    });
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
@@ -249,9 +251,10 @@ fn run_reconfigures_when_file_matches_but_config_disabled() {
     // worktree-config extension is likewise unset, so config writes go to
     // the repository scope.
     executor
-        .expect_run_unchecked_in()
+        .expect_execute()
+        .withf(|spec| !spec.is_checked())
         .times(2)
-        .returning(|_, _, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -261,14 +264,18 @@ fn run_reconfigures_when_file_matches_but_config_disabled() {
         });
     // Full apply path then runs: status, config true, config cone false,
     // read-tree (the excluded "symlinks" path is absent, so no checkout).
-    executor.expect_run_in().times(4).returning(|_, _, _| {
-        Ok(ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
-    });
+    executor
+        .expect_execute()
+        .withf(CommandSpec::is_checked)
+        .times(4)
+        .returning(|_| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
@@ -292,7 +299,7 @@ fn run_returns_planned_change_when_patterns_need_update() {
 
     let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed > 0),
+        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected planned change, got {result:?}"
     );
 }
@@ -306,14 +313,18 @@ fn run_skips_when_worktree_has_local_changes() {
     config.manifest.excluded_files.push("symlinks".to_string());
 
     let mut executor = MockExecutor::new();
-    executor.expect_run_in().once().returning(|_, _, _| {
-        Ok(ExecResult {
-            stdout: "M  cli/src/tasks/packages.rs\n".to_string(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
-    });
+    executor
+        .expect_execute()
+        .withf(CommandSpec::is_checked)
+        .once()
+        .returning(|_| {
+            Ok(ExecResult {
+                stdout: "M  cli/src/tasks/packages.rs\n".to_string(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
@@ -377,12 +388,16 @@ fn run_removes_broken_git_symlinks_before_checking_worktree_status() {
 
     let mut executor = MockExecutor::new();
     executor
-        .expect_run_in()
+        .expect_execute()
+        .withf(CommandSpec::is_checked)
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, program, args| {
-            assert_eq!(program, "git");
-            assert_eq!(args, ["status", "--porcelain", "--untracked-files=no"]);
+        .returning(|spec| {
+            assert_eq!(spec.program(), "git");
+            assert_eq!(
+                spec.arguments(),
+                ["status", "--porcelain", "--untracked-files=no"]
+            );
             Ok(ExecResult {
                 stdout: "M  cli/src/tasks/packages.rs\n".to_string(),
                 stderr: String::new(),
@@ -406,18 +421,12 @@ fn run_removes_broken_git_symlinks_before_checking_worktree_status() {
 struct UntrackedAwareExecutor;
 
 impl Executor for UntrackedAwareExecutor {
-    fn run(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
-        anyhow::bail!("unexpected run() call")
-    }
-
-    fn run_in_with_env(
-        &self,
-        _: &Path,
-        _: &str,
-        args: &[&str],
-        _: &[(&str, &str)],
-    ) -> Result<ExecResult> {
-        let stdout = if args.contains(&"--untracked-files=no") {
+    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
+        let stdout = if spec
+            .arguments()
+            .iter()
+            .any(|arg| arg == "--untracked-files=no")
+        {
             String::new()
         } else {
             "?? scratch.txt\n".to_string()
@@ -429,17 +438,6 @@ impl Executor for UntrackedAwareExecutor {
             success: true,
             code: Some(0),
         })
-    }
-
-    fn run_unchecked(&self, _: &str, _: &[&str]) -> Result<ExecResult> {
-        anyhow::bail!("unexpected run_unchecked() call")
-    }
-
-    fn run_unchecked_in(&self, dir: &Path, program: &str, args: &[&str]) -> Result<ExecResult> {
-        anyhow::bail!(
-            "unexpected run_unchecked_in() call: {program} {args:?} in {}",
-            dir.display()
-        )
     }
 
     fn which(&self, _: &str) -> bool {
@@ -466,30 +464,35 @@ fn worktree_has_local_changes_ignores_untracked_files() {
 #[test]
 fn enable_sparse_checkout_uses_worktree_scope_when_extension_enabled() {
     let mut executor = MockExecutor::new();
-    executor
-        .expect_run_unchecked_in()
-        .once()
-        .returning(|_, _, args| {
-            assert_eq!(args, ["config", "--get", "extensions.worktreeConfig"]);
-            Ok(ExecResult {
-                stdout: "true\n".to_string(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
-    executor.expect_run_in().times(2).returning(|_, _, args| {
-        assert!(
-            args.contains(&"--worktree"),
-            "expected --worktree scope, got {args:?}"
+    executor.expect_execute().once().returning(|spec| {
+        assert_eq!(
+            spec.arguments(),
+            ["config", "--get", "extensions.worktreeConfig"]
         );
         Ok(ExecResult {
-            stdout: String::new(),
+            stdout: "true\n".to_string(),
             stderr: String::new(),
             success: true,
             code: Some(0),
         })
     });
+    executor
+        .expect_execute()
+        .withf(CommandSpec::is_checked)
+        .times(2)
+        .returning(|spec| {
+            assert!(
+                spec.arguments().iter().any(|arg| arg == "--worktree"),
+                "expected --worktree scope, got {:?}",
+                spec.arguments()
+            );
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
     let config = empty_config(PathBuf::from("/repo"));
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
     enable_sparse_checkout_config(&ctx, Path::new("/repo")).unwrap();
@@ -499,9 +502,10 @@ fn enable_sparse_checkout_uses_worktree_scope_when_extension_enabled() {
 fn enable_sparse_checkout_uses_repo_scope_when_extension_disabled() {
     let mut executor = MockExecutor::new();
     executor
-        .expect_run_unchecked_in()
+        .expect_execute()
+        .withf(|spec| !spec.is_checked())
         .once()
-        .returning(|_, _, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -509,18 +513,23 @@ fn enable_sparse_checkout_uses_repo_scope_when_extension_disabled() {
                 code: Some(1),
             })
         });
-    executor.expect_run_in().times(2).returning(|_, _, args| {
-        assert!(
-            !args.contains(&"--worktree"),
-            "expected repository scope (no --worktree), got {args:?}"
-        );
-        Ok(ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
-    });
+    executor
+        .expect_execute()
+        .withf(CommandSpec::is_checked)
+        .times(2)
+        .returning(|spec| {
+            assert!(
+                !spec.arguments().iter().any(|arg| arg == "--worktree"),
+                "expected repository scope (no --worktree), got {:?}",
+                spec.arguments()
+            );
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
     let config = empty_config(PathBuf::from("/repo"));
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
     enable_sparse_checkout_config(&ctx, Path::new("/repo")).unwrap();
@@ -543,22 +552,28 @@ fn run_writes_sparse_checkout_patterns_and_calls_git() {
     let mut executor = MockExecutor::new();
     // extensions.worktreeConfig query → unset, so config writes go to the
     // repository scope.
-    executor.expect_run_unchecked_in().returning(|_, _, _| {
-        Ok(ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: false,
-            code: Some(1),
-        })
-    });
-    executor.expect_run_in().returning(|_, _, _| {
-        Ok(ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
-    });
+    executor
+        .expect_execute()
+        .withf(|spec| !spec.is_checked())
+        .returning(|_| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: false,
+                code: Some(1),
+            })
+        });
+    executor
+        .expect_execute()
+        .withf(CommandSpec::is_checked)
+        .returning(|_| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: true,
+                code: Some(0),
+            })
+        });
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
@@ -602,20 +617,23 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
     let mut seq = mockall::Sequence::new();
     let mut executor = MockExecutor::new();
     // extensions.worktreeConfig query → unset (repository scope).
-    executor.expect_run_unchecked_in().returning(|_, _, _| {
-        Ok(ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: false,
-            code: Some(1),
-        })
-    });
+    executor
+        .expect_execute()
+        .withf(|spec| !spec.is_checked())
+        .returning(|_| {
+            Ok(ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: false,
+                code: Some(1),
+            })
+        });
     // git status (clean worktree)
     executor
-        .expect_run_in()
+        .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -625,10 +643,10 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
         });
     // git config sparseCheckout
     executor
-        .expect_run_in()
+        .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -638,10 +656,10 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
         });
     // git config sparseCheckoutCone
     executor
-        .expect_run_in()
+        .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),
@@ -651,16 +669,21 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
         });
     // git read-tree fails
     executor
-        .expect_run_in()
+        .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| anyhow::bail!("mock read-tree failed"));
+        .returning(|_| {
+            Err(ExecError::spawn(
+                "git",
+                std::io::Error::other("mock read-tree failed"),
+            ))
+        });
     // rollback git read-tree
     executor
-        .expect_run_in()
+        .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_, _, _| {
+        .returning(|_| {
             Ok(ExecResult {
                 stdout: String::new(),
                 stderr: String::new(),

@@ -85,17 +85,22 @@ impl<'a> RunCoordinator<'a> {
         self.log
             .add_task_total(visible_count(plan.tasks.iter().copied()));
 
-        if let Some(late) = plan.late.take() {
-            self.execute_phased(plan.tasks, late)?;
+        let summary = if let Some(late) = plan.late.take() {
+            self.execute_phased(plan.tasks, late)?
         } else {
-            run_task_graph(&mut plan.tasks, self.ctx, self.log)?;
-        }
+            run_task_graph(&mut plan.tasks, self.ctx, self.log)?
+        };
 
-        finish_run(self.log)
+        finish_run(self.log, summary)
     }
 
-    fn execute_phased(&self, tasks: Vec<&dyn Task>, late: LateTaskPlan<'_>) -> Result<()> {
+    fn execute_phased(
+        &self,
+        tasks: Vec<&dyn Task>,
+        late: LateTaskPlan<'_>,
+    ) -> Result<crate::engine::scheduler::ExecutionSummary> {
         let boundary_closure = dependency_closure(&tasks, late.boundary);
+        let mut summary = crate::engine::scheduler::ExecutionSummary::default();
 
         if boundary_closure.is_empty() {
             let late_tasks = (late.provider)();
@@ -103,16 +108,16 @@ impl<'a> RunCoordinator<'a> {
                 .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
             let mut all_tasks = tasks;
             all_tasks.extend(late_tasks.iter().map(Box::as_ref));
-            run_task_graph(&mut all_tasks, self.ctx, self.log)?;
+            summary.merge(run_task_graph(&mut all_tasks, self.ctx, self.log)?);
         } else {
             let mut prefix = tasks
                 .iter()
                 .copied()
                 .filter(|task| boundary_closure.contains(&task.task_id()))
                 .collect::<Vec<_>>();
-            run_task_graph(&mut prefix, self.ctx, self.log)?;
+            summary.merge(run_task_graph(&mut prefix, self.ctx, self.log)?);
 
-            if self.log.failure_count() == 0 && !self.ctx.is_cancelled() {
+            if summary.failure_count() == 0 && !self.ctx.is_cancelled() {
                 let late_tasks = (late.provider)();
                 self.log
                     .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
@@ -122,11 +127,11 @@ impl<'a> RunCoordinator<'a> {
                     .filter(|task| !boundary_closure.contains(&task.task_id()))
                     .collect::<Vec<_>>();
                 remaining.extend(late_tasks.iter().map(Box::as_ref));
-                run_task_graph(&mut remaining, self.ctx, self.log)?;
+                summary.merge(run_task_graph(&mut remaining, self.ctx, self.log)?);
             }
         }
 
-        Ok(())
+        Ok(summary)
     }
 }
 
@@ -185,13 +190,13 @@ fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> 
         return HashSet::new();
     }
 
-    let mut closure = HashSet::from([boundary]);
+    let mut closure = HashSet::from([boundary.clone()]);
     let mut pending = vec![boundary];
     while let Some(id) = pending.pop() {
         if let Some(task) = by_id.get(&id) {
             for dependency in task.dependencies() {
-                if by_id.contains_key(dependency) && closure.insert(*dependency) {
-                    pending.push(*dependency);
+                if by_id.contains_key(dependency) && closure.insert(dependency.clone()) {
+                    pending.push(dependency.clone());
                 }
             }
         }
@@ -199,15 +204,23 @@ fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> 
     closure
 }
 
-fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) -> Result<()> {
+fn run_task_graph(
+    tasks: &mut Vec<&dyn Task>,
+    ctx: &Context,
+    log: &Arc<Logger>,
+) -> Result<crate::engine::scheduler::ExecutionSummary> {
     if ctx.is_cancelled() || tasks.is_empty() {
-        return Ok(());
+        return Ok(crate::engine::scheduler::ExecutionSummary::default());
     }
 
-    ElevationBroker::new(ctx, log).prepare(tasks);
+    let assessments = tasks
+        .iter()
+        .map(|task| (task.task_id(), task.assess(ctx)))
+        .collect::<HashMap<_, _>>();
+    ElevationBroker::new(ctx, log).prepare(tasks, &assessments);
 
     if tasks.is_empty() {
-        return Ok(());
+        return Ok(crate::engine::scheduler::ExecutionSummary::default());
     }
 
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(tasks).map_err(|error| {
@@ -215,17 +228,20 @@ fn run_task_graph(tasks: &mut Vec<&dyn Task>, ctx: &Context, log: &Arc<Logger>) 
         log.error(&message);
         anyhow!(message)
     })?;
-    if ctx.parallel() {
-        crate::engine::scheduler::run_tasks_parallel(tasks, &graph, ctx, log);
+    let summary = if ctx.parallel() {
+        crate::engine::scheduler::run_tasks_parallel(tasks, &graph, &assessments, ctx, log)
     } else {
-        crate::engine::scheduler::run_tasks_sequential(tasks, &graph, ctx, log);
-    }
-    Ok(())
+        crate::engine::scheduler::run_tasks_sequential(tasks, &graph, &assessments, ctx, log)
+    };
+    Ok(summary)
 }
 
-fn finish_run(log: &Arc<Logger>) -> Result<()> {
+fn finish_run(
+    log: &Arc<Logger>,
+    summary: crate::engine::scheduler::ExecutionSummary,
+) -> Result<()> {
     log.print_summary();
-    let count = log.failure_count();
+    let count = summary.failure_count();
     if count > 0 {
         return Err(TaskFailures::new(count).into());
     }
@@ -436,7 +452,7 @@ mod tests {
         }
 
         fn task_id(&self) -> TaskId {
-            self.id
+            self.id.clone()
         }
 
         fn dependencies(&self) -> &[TaskId] {

@@ -3,18 +3,40 @@
 //! Provides [`run_tasks_parallel`](crate::engine::scheduler::run_tasks_parallel) for executing tasks concurrently using OS
 //! threads.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
-use crate::engine::{self, Context, Task};
+use crate::engine::{self, Context, Task, TaskAssessment, TaskId};
 use crate::infra::logging::OutputExt as _;
-use crate::infra::logging::{self, BufferedLog, Log, LogEvent, Logger, Output as _, TaskStatus};
+use crate::infra::logging::{
+    self, ActionCounts, BufferedLog, Log, LogEvent, Logger, Output as _, TaskStatus,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DependencySignal {
     Satisfied,
     Blocked,
     Cancelled,
+}
+
+/// Execution facts returned to application policy independently of logging.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ExecutionSummary {
+    failed_tasks: usize,
+}
+
+impl ExecutionSummary {
+    /// Number of tasks whose own execution failed.
+    #[must_use]
+    pub(crate) const fn failure_count(self) -> usize {
+        self.failed_tasks
+    }
+
+    /// Merge another execution phase into this summary.
+    pub(crate) const fn merge(&mut self, other: Self) {
+        self.failed_tasks = self.failed_tasks.saturating_add(other.failed_tasks);
+    }
 }
 
 impl DependencySignal {
@@ -39,7 +61,7 @@ impl DependencySignal {
 struct TaskRuntime {
     dependency_receiver: Option<mpsc::Receiver<DependencySignal>>,
     dependency_sender: Option<mpsc::Sender<DependencySignal>>,
-    dependent_senders: Vec<mpsc::Sender<DependencySignal>>,
+    dependent_senders: Vec<(mpsc::Sender<DependencySignal>, bool)>,
 }
 
 impl TaskRuntime {
@@ -61,24 +83,21 @@ impl TaskRuntime {
 
 fn signal_dependents(
     task_name: &str,
-    senders: Vec<mpsc::Sender<DependencySignal>>,
+    senders: Vec<(mpsc::Sender<DependencySignal>, bool)>,
     signal: DependencySignal,
 ) {
-    for tx in senders {
-        if tx.send(signal).is_err() {
+    for (tx, blocks_on_failure) in senders {
+        let delivered = if !blocks_on_failure && signal == DependencySignal::Blocked {
+            DependencySignal::Satisfied
+        } else {
+            signal
+        };
+        if tx.send(delivered).is_err() {
             tracing::debug!(
                 "dependent task channel closed before {task_name} signalled completion"
             );
         }
     }
-}
-
-fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str) {
-    let span = tracing::info_span!("task", name = task.name());
-    let _enter = span.enter();
-    log.run_task_event(LogEvent::TaskSkip, task.name(), reason);
-    log.debug(reason);
-    log.record_task(task.name(), TaskStatus::Skipped, Some(reason));
 }
 
 fn dependency_outcome(
@@ -95,6 +114,21 @@ fn dependency_outcome(
     })
 }
 
+fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str) {
+    let span = tracing::info_span!("task", name = task.name());
+    let _enter = span.enter();
+    log.run_task_event(LogEvent::TaskSkip, task.name(), reason);
+    log.debug(reason);
+    log.record_task_with_identity(
+        &task.task_id().record_key(),
+        task.name(),
+        TaskStatus::Skipped,
+        Some(reason),
+        ActionCounts::default(),
+        task.visibility(),
+    );
+}
+
 /// Execute a single task, catching any panic.
 ///
 /// Returns the recorded task status. On panic the task is recorded as
@@ -102,6 +136,7 @@ fn dependency_outcome(
 /// blocked the same way they are for ordinary task failures.
 fn run_task_buffered(
     task: &dyn Task,
+    assessment: &TaskAssessment,
     ctx: &Context,
     log: &Arc<Logger>,
     notify_start: bool,
@@ -114,7 +149,7 @@ fn run_task_buffered(
     let task_ctx = ctx.with_log(buffered_log);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        engine::execute(task, &task_ctx)
+        engine::task::execute_assessed(task, assessment, &task_ctx)
     }));
 
     let status = match result {
@@ -131,12 +166,19 @@ fn run_task_buffered(
                 .unwrap_or_else(|| "task panicked".to_string());
             log.run_task_event(LogEvent::TaskFail, task.name(), &msg);
             buf.error(format!("{}: {msg}", task.name()));
-            log.record_task(task.name(), TaskStatus::Failed, Some(&msg));
+            log.record_task_with_identity(
+                &task.task_id().record_key(),
+                task.name(),
+                TaskStatus::Failed,
+                Some(&msg),
+                ActionCounts::default(),
+                task.visibility(),
+            );
             TaskStatus::Failed
         }
     };
 
-    buf.flush_and_complete(task.name(), status);
+    buf.flush_and_complete_by_id(&task.task_id().record_key(), task.name(), status);
     status
 }
 
@@ -148,11 +190,12 @@ fn run_task_buffered(
 /// sequential path does not need because it never interleaves output.
 fn dispatch_task(
     task: &dyn Task,
+    assessment: &TaskAssessment,
     ctx: &Context,
     log: &Arc<Logger>,
     dependencies: DependencySignal,
     notify_start: bool,
-) -> DependencySignal {
+) -> (DependencySignal, TaskStatus) {
     let skip_reason = match dependencies {
         DependencySignal::Blocked => Some(("dependency failed", DependencySignal::Blocked)),
         DependencySignal::Cancelled => Some(("cancelled", DependencySignal::Cancelled)),
@@ -163,13 +206,15 @@ fn dispatch_task(
     };
 
     let Some((reason, signal)) = skip_reason else {
-        return DependencySignal::from_status(run_task_buffered(task, ctx, log, notify_start));
+        let status = run_task_buffered(task, assessment, ctx, log, notify_start);
+        return (DependencySignal::from_status(status), status);
     };
 
+    let task_id = task.task_id().record_key();
     record_scheduler_skip(task, &**log, reason);
-    log.mark_task_completed(task.name());
-    log.emit_task_result_and_redraw(task.name());
-    signal
+    log.mark_task_completed_by_id(&task_id);
+    log.emit_task_result_and_redraw_by_id(&task_id);
+    (signal, TaskStatus::Skipped)
 }
 
 /// Run tasks in parallel using a dependency graph.
@@ -184,9 +229,10 @@ fn dispatch_task(
 pub(crate) fn run_tasks_parallel(
     tasks: &[&dyn Task],
     graph: &ResolvedTaskGraph,
+    assessments: &std::collections::HashMap<TaskId, TaskAssessment>,
     ctx: &Context,
     log: &Arc<Logger>,
-) {
+) -> ExecutionSummary {
     let mut runtimes: Vec<TaskRuntime> = (0..tasks.len())
         .map(|task_idx| TaskRuntime::new(!graph.dependencies(task_idx).is_empty()))
         .collect();
@@ -200,7 +246,9 @@ pub(crate) fn run_tasks_parallel(
             if let Some(tx) = dependency_sender
                 && let Some(runtime) = runtimes.get_mut(dep_idx)
             {
-                runtime.dependent_senders.push(tx);
+                runtime
+                    .dependent_senders
+                    .push((tx, graph.blocks_on_failure(dependent_idx, dep_idx)));
             }
         }
     }
@@ -211,6 +259,7 @@ pub(crate) fn run_tasks_parallel(
         runtime.dependency_sender = None;
     }
 
+    let failed_tasks = AtomicUsize::new(0);
     std::thread::scope(|s| {
         for (idx, (task, runtime)) in tasks.iter().zip(runtimes.iter_mut()).enumerate() {
             let task = *task;
@@ -222,6 +271,7 @@ pub(crate) fn run_tasks_parallel(
                 .filter_map(|&dep_idx| tasks.get(dep_idx).map(|dep_task| dep_task.name()))
                 .collect();
             let dep_count = dep_names.len();
+            let failed_tasks = &failed_tasks;
 
             s.spawn(move || {
                 logging::set_log_thread_name(task.name());
@@ -242,12 +292,23 @@ pub(crate) fn run_tasks_parallel(
                 // Receive every signal so failure takes precedence over
                 // cancellation when dependency outcomes are mixed.
                 let dependency_signal = dependency_outcome(dependency_receiver, dep_count);
-                let signal = dispatch_task(task, ctx, log, dependency_signal, true);
+                let assessment = assessments
+                    .get(&task.task_id())
+                    .cloned()
+                    .unwrap_or_else(TaskAssessment::applicable);
+                let (signal, status) =
+                    dispatch_task(task, &assessment, ctx, log, dependency_signal, true);
+                if status == TaskStatus::Failed {
+                    failed_tasks.fetch_add(1, Ordering::Relaxed);
+                }
 
                 signal_dependents(task.name(), dependent_senders, signal);
             });
         }
     });
+    ExecutionSummary {
+        failed_tasks: failed_tasks.load(Ordering::Relaxed),
+    }
 }
 
 /// Run tasks sequentially in dependency-safe order.
@@ -257,21 +318,31 @@ pub(crate) fn run_tasks_parallel(
 pub(crate) fn run_tasks_sequential(
     tasks: &[&dyn Task],
     graph: &ResolvedTaskGraph,
+    assessments: &std::collections::HashMap<TaskId, TaskAssessment>,
     ctx: &Context,
     log: &Arc<Logger>,
-) {
+) -> ExecutionSummary {
     let mut signals: Vec<Option<DependencySignal>> = vec![None; tasks.len()];
+    let mut summary = ExecutionSummary::default();
 
     for idx in graph.execution_order() {
         let dependency_signal = graph.dependencies(idx).iter().fold(
             DependencySignal::Satisfied,
             |outcome, &dep_idx| {
                 outcome.combine(
-                    signals
+                    match signals
                         .get(dep_idx)
                         .copied()
                         .flatten()
-                        .unwrap_or(DependencySignal::Blocked),
+                        .unwrap_or(DependencySignal::Blocked)
+                    {
+                        DependencySignal::Blocked if !graph.blocks_on_failure(idx, dep_idx) => {
+                            DependencySignal::Satisfied
+                        }
+                        signal @ (DependencySignal::Satisfied
+                        | DependencySignal::Blocked
+                        | DependencySignal::Cancelled) => signal,
+                    },
                 )
             },
         );
@@ -279,12 +350,21 @@ pub(crate) fn run_tasks_sequential(
         let Some(task) = tasks.get(idx) else {
             continue;
         };
-        let signal = dispatch_task(*task, ctx, log, dependency_signal, false);
+        let assessment = assessments
+            .get(&task.task_id())
+            .cloned()
+            .unwrap_or_else(TaskAssessment::applicable);
+        let (signal, status) =
+            dispatch_task(*task, &assessment, ctx, log, dependency_signal, false);
+        if status == TaskStatus::Failed {
+            summary.failed_tasks = summary.failed_tasks.saturating_add(1);
+        }
 
         if let Some(slot) = signals.get_mut(idx) {
             *slot = Some(signal);
         }
     }
+    summary
 }
 
 #[cfg(test)]

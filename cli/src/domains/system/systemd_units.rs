@@ -6,6 +6,7 @@ use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
 use crate::engine::{Context, ProcessOpts, Task, TaskMeta, TaskResult, process_resources};
 use crate::infra::ConfigHandle;
+use crate::infra::exec::CommandSpec;
 use crate::infra::logging::OutputExt as _;
 
 /// Enable and start systemd units.
@@ -68,7 +69,11 @@ fn systemd_available(ctx: &Context) -> bool {
     if system.platform().is_wsl() {
         system
             .executor()
-            .run_unchecked("systemctl", &["is-system-running"])
+            .execute(
+                CommandSpec::new("systemctl")
+                    .arg("is-system-running")
+                    .unchecked(),
+            )
             .is_ok_and(|result| result.success || result.stdout.trim() == "degraded")
     } else {
         true
@@ -83,7 +88,7 @@ fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
     if units.iter().any(|unit| unit.scope == UnitScope::User) {
         ctx.log().debug("running systemctl --user daemon-reload");
         ctx.executor()
-            .run("systemctl", &["--user", "daemon-reload"])
+            .execute(CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]))
             .context("reloading user systemd daemon")?;
         ctx.log().debug("user daemon-reload succeeded");
     }
@@ -91,7 +96,7 @@ fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
     if units.iter().any(|unit| unit.scope == UnitScope::System) {
         ctx.log().debug("running sudo systemctl daemon-reload");
         ctx.executor()
-            .run("sudo", &["systemctl", "daemon-reload"])
+            .execute(CommandSpec::new("sudo").args(&["systemctl", "daemon-reload"]))
             .context("reloading system systemd daemon")?;
         ctx.log().debug("system daemon-reload succeeded");
     }
@@ -111,7 +116,7 @@ mod tests {
     use crate::domains::system::config::systemd_units::SystemdUnit;
     use crate::engine::{Context, Task, TaskResult};
     use crate::infra::ConfigHandle;
-    use crate::infra::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
     use crate::infra::platform::{Os, Platform};
     use crate::test_helpers::{
         ContextBuilder, empty_config, make_context, make_linux_context,
@@ -231,24 +236,24 @@ mod tests {
         //   3. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
-        mock.expect_run()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(ok_result()));
-        mock.expect_run_unchecked()
+            .returning(|_| Ok(ok_result()));
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(disabled_result()));
-        mock.expect_run_unchecked()
+            .returning(|_| Ok(disabled_result()));
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(ok_result()));
+            .returning(|_| Ok(ok_result()));
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 
         let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
             "expected one changed action after daemon-reload + enable, got {result:?}"
         );
     }
@@ -264,16 +269,16 @@ mod tests {
         // current_state() still runs to decide whether change would be needed.
         //   1. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) -> disabled (Missing)
         let mut mock = MockExecutor::new();
-        mock.expect_run_unchecked()
+        mock.expect_execute()
             .once()
-            .returning(|_, _| Ok(disabled_result()));
+            .returning(|_| Ok(disabled_result()));
         let units = ConfigHandle::new(config.units.clone());
         let mut ctx = make_systemd_context(config, mock);
         ctx = ctx.with_dry_run(true);
 
         let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
             "expected one planned action when unit is missing in dry-run mode, got {result:?}"
         );
     }
@@ -286,10 +291,19 @@ mod tests {
             scope: UnitScope::User,
         });
         let mut mock = MockExecutor::new();
-        mock.expect_run()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| program == "systemctl" && args == ["--user", "daemon-reload"])
-            .returning(|_, _| Err(anyhow::anyhow!("reload failed")));
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["--user", "daemon-reload"]
+                    && spec.is_checked()
+            })
+            .returning(|_| {
+                Err(ExecError::spawn(
+                    "systemctl",
+                    std::io::Error::other("reload failed"),
+                ))
+            });
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 
@@ -307,10 +321,19 @@ mod tests {
             scope: UnitScope::System,
         });
         let mut mock = MockExecutor::new();
-        mock.expect_run()
+        mock.expect_execute()
             .once()
-            .withf(|program, args| program == "sudo" && args == ["systemctl", "daemon-reload"])
-            .returning(|_, _| Err(anyhow::anyhow!("reload failed")));
+            .withf(|spec| {
+                spec.program() == "sudo"
+                    && spec.arguments() == ["systemctl", "daemon-reload"]
+                    && spec.is_checked()
+            })
+            .returning(|_| {
+                Err(ExecError::spawn(
+                    "sudo",
+                    std::io::Error::other("reload failed"),
+                ))
+            });
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 
@@ -349,29 +372,39 @@ mod tests {
         });
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
-        mock.expect_run()
+        mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .withf(|program, args| program == "sudo" && args == ["systemctl", "daemon-reload"])
-            .returning(|_, _| Ok(ok_result()));
-        mock.expect_run_unchecked()
-            .once()
-            .in_sequence(&mut seq)
-            .withf(|program, args| program == "systemctl" && args == ["is-enabled", "sshd.service"])
-            .returning(|_, _| Ok(disabled_result()));
-        mock.expect_run_unchecked()
-            .once()
-            .in_sequence(&mut seq)
-            .withf(|program, args| {
-                program == "sudo" && args == ["systemctl", "enable", "--now", "sshd.service"]
+            .withf(|spec| {
+                spec.program() == "sudo"
+                    && spec.arguments() == ["systemctl", "daemon-reload"]
+                    && spec.is_checked()
             })
-            .returning(|_, _| Ok(ok_result()));
+            .returning(|_| Ok(ok_result()));
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "sshd.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(disabled_result()));
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|spec| {
+                spec.program() == "sudo"
+                    && spec.arguments() == ["systemctl", "enable", "--now", "sshd.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ok_result()));
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 
         let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Batch(ref stats) if stats.changed == 1),
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
             "expected one changed action after system-scope daemon-reload + enable, got {result:?}"
         );
     }

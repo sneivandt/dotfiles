@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
-use crate::infra::exec::Executor;
+use crate::infra::exec::{CommandSpec, Executor};
 
 /// Source for checking whether a directory is already on `PATH`.
 ///
@@ -310,7 +310,11 @@ fn broadcast_environment_change(executor: &dyn Executor) -> Result<()> {
     } else {
         "powershell"
     };
-    executor.run(shell, &["-NoProfile", "-Command", BROADCAST_SCRIPT])?;
+    executor.execute(CommandSpec::new(shell).args(&[
+        "-NoProfile",
+        "-Command",
+        BROADCAST_SCRIPT,
+    ]))?;
     Ok(())
 }
 

@@ -217,12 +217,6 @@ pub fn installed_binary_path(root: &std::path::Path) -> std::path::PathBuf {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use std::fs;
 

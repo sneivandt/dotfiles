@@ -320,12 +320,6 @@ fn parse_dword_for_compare(value: &str) -> Option<u32> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

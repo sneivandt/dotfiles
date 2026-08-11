@@ -149,35 +149,11 @@ impl IntrinsicState for SystemdUnitResource {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use std::sync::Arc;
 
     use super::*;
     use crate::infra::exec::{ExecResult, MockExecutor};
-
-    fn ok_result() -> ExecResult {
-        ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        }
-    }
-
-    fn fail_result() -> ExecResult {
-        ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: false,
-            code: Some(1),
-        }
-    }
 
     #[test]
     fn description_returns_unit_name() {
@@ -209,12 +185,9 @@ mod tests {
     #[test]
     fn current_state_correct_when_systemctl_reports_enabled() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult {
-                stdout: "enabled\n".to_string(),
-                ..ok_result()
-            })
-        });
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::success("enabled\n")));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
@@ -223,12 +196,9 @@ mod tests {
     #[test]
     fn current_state_missing_when_systemctl_reports_disabled() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult {
-                stdout: "disabled\n".to_string(),
-                ..fail_result()
-            })
-        });
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::failure("disabled\n", "", Some(1))));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
@@ -237,12 +207,9 @@ mod tests {
     #[test]
     fn current_state_unknown_when_systemctl_failure_is_ambiguous() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult {
-                stderr: "Failed to connect to bus".to_string(),
-                ..fail_result()
-            })
-        });
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::failure("", "Failed to connect to bus", Some(1))));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert!(matches!(
@@ -261,7 +228,7 @@ mod tests {
                     && spec.arguments() == ["is-enabled", "sshd.service"]
                     && !spec.is_checked()
             })
-            .returning(|_| Ok(ok_result()));
+            .returning(|_| Ok(ExecResult::success("")));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
@@ -289,7 +256,9 @@ mod tests {
     #[test]
     fn apply_returns_applied_when_systemctl_succeeds() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| Ok(ok_result()));
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::success("")));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
@@ -300,7 +269,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
-            .returning(|_| Ok(fail_result()));
+            .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert!(
@@ -319,7 +288,7 @@ mod tests {
                     && spec.arguments() == ["systemctl", "enable", "--now", "sshd.service"]
                     && !spec.is_checked()
             })
-            .returning(|_| Ok(ok_result()));
+            .returning(|_| Ok(ExecResult::success("")));
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);

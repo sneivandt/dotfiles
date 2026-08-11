@@ -193,13 +193,6 @@ fn sorted_children(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

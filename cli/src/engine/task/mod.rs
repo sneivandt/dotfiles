@@ -248,10 +248,4 @@ impl Task for TaskWithExtraDeps {
 
 #[cfg(test)]
 #[path = "tests.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests;

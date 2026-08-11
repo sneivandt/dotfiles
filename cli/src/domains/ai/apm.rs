@@ -58,11 +58,4 @@ use targets::missing_apm_reason;
 mod test_fixture;
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests;

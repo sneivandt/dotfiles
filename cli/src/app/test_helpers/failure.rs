@@ -177,11 +177,10 @@ impl FailingExecutor {
     }
 
     fn success(&self) -> ExecResult {
-        ExecResult {
-            stdout: self.stdout.clone(),
-            stderr: String::new(),
-            success: self.exit_success,
-            code: Some(i32::from(!self.exit_success)),
+        if self.exit_success {
+            ExecResult::success(self.stdout.clone())
+        } else {
+            ExecResult::failure(self.stdout.clone(), "", Some(1))
         }
     }
 }

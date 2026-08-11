@@ -214,12 +214,6 @@ pub(super) fn verify_checksum(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 pub(super) mod test_support {
     use super::*;
 
@@ -250,12 +244,6 @@ pub(super) mod test_support {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::test_support::MockHttpClient;
     use super::*;

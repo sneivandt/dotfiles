@@ -192,11 +192,6 @@ fn incorrect_current(state: &ResourceState) -> Option<String> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::panic,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::engine::{ProcessMode, ProcessOpts};

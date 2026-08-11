@@ -2,6 +2,16 @@
     unreachable_pub,
     reason = "internal modules are hidden behind the binary entry point and the testing facade"
 )]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::unwrap_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        reason = "test code uses panicking helpers"
+    )
+)]
 
 //! Dotfiles management engine library entry point.
 //!

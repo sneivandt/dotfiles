@@ -133,12 +133,7 @@ fn apm_plugin_validation_runs_pack_dry_run_in_each_plugin() {
         assert_eq!(spec.program(), "apm");
         assert_eq!(spec.arguments(), ["pack", "--dry-run", "--verbose"]);
         assert!(!spec.is_checked(), "APM validation should allow non-zero");
-        Ok(ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
+        Ok(ExecResult::success(""))
     });
 
     let ctx = make_context(
@@ -382,14 +377,10 @@ fn linter_passes_without_running_the_tool_when_there_is_nothing_to_lint() {
 fn linter_failure_reports_the_display_name_not_the_executable() {
     let dir = tempfile::tempdir().expect("tempdir should create");
     let mut executor = MockExecutor::new();
-    executor.expect_execute().once().returning(|_| {
-        Ok(ExecResult {
-            success: false,
-            code: Some(1),
-            stdout: "some finding".to_string(),
-            stderr: String::new(),
-        })
-    });
+    executor
+        .expect_execute()
+        .once()
+        .returning(|_| Ok(ExecResult::failure("some finding", "", Some(1))));
     let ctx = make_context(
         empty_config(dir.path().to_path_buf()),
         crate::infra::platform::Platform::detect(),

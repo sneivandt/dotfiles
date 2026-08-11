@@ -37,6 +37,8 @@ description: >
 2. Reuse existing helpers:
    - `cli/src/app/test_helpers/` context/config helpers for unit tests
    - `cli/tests/common/mod.rs` integration helpers and builders
+   - `ExecResult::success` / `ExecResult::failure` for unit-test executor
+     responses instead of repeating result struct literals
 3. Keep assertions specific and behavior-focused.
 4. Update snapshots intentionally (`INSTA_UPDATE=unseen cargo test`, then
    `cargo insta review`).
@@ -61,6 +63,9 @@ description: >
   resource's `env` parameter. Never mutate process-global `std::env` from a
   test, and do not add `#[cfg(test)]` enum seams to source a value that the
   environment already provides.
+- **Unit-test lints**: the library crate root conditionally allows the common
+  panicking-helper lints. Do not repeat those `#[allow(...)]` blocks on unit-test
+  modules; keep crate-level allowances on standalone integration test crates.
 
 ## Validation
 

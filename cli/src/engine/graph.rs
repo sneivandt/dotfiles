@@ -227,12 +227,6 @@ fn find_cycle_path(dependencies: &[Vec<usize>], tasks: &[&dyn Task]) -> Vec<Stri
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use std::any::TypeId;

@@ -99,12 +99,7 @@ fn reset_excluded_to_head_uses_symlinks_repo_paths() {
                 spec.arguments(),
                 ["checkout", "HEAD", "--", "symlinks/config/nvim"]
             );
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
+            Ok(ExecResult::success(""))
         });
     let config = empty_config(dir.path().to_path_buf());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
@@ -218,12 +213,7 @@ fn run_returns_ok_when_already_up_to_date() {
     executor.expect_execute().once().returning(|spec| {
         assert_eq!(spec.arguments(), ["config", "--get", "core.sparseCheckout"]);
         assert!(!spec.is_checked(), "config query should be unchecked");
-        Ok(ExecResult {
-            stdout: "true\n".to_string(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
+        Ok(ExecResult::success("true\n"))
     });
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
@@ -254,28 +244,14 @@ fn run_reconfigures_when_file_matches_but_config_disabled() {
         .expect_execute()
         .withf(|spec| !spec.is_checked())
         .times(2)
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     // Full apply path then runs: status, config true, config cone false,
     // read-tree (the excluded "symlinks" path is absent, so no checkout).
     executor
         .expect_execute()
         .withf(CommandSpec::is_checked)
         .times(4)
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+        .returning(|_| Ok(ExecResult::success("")));
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
@@ -317,14 +293,7 @@ fn run_skips_when_worktree_has_local_changes() {
         .expect_execute()
         .withf(CommandSpec::is_checked)
         .once()
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: "M  cli/src/tasks/packages.rs\n".to_string(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+        .returning(|_| Ok(ExecResult::success("M  cli/src/tasks/packages.rs\n")));
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
@@ -398,12 +367,7 @@ fn run_removes_broken_git_symlinks_before_checking_worktree_status() {
                 spec.arguments(),
                 ["status", "--porcelain", "--untracked-files=no"]
             );
-            Ok(ExecResult {
-                stdout: "M  cli/src/tasks/packages.rs\n".to_string(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
+            Ok(ExecResult::success("M  cli/src/tasks/packages.rs\n"))
         });
 
     let manifest = ConfigHandle::new(config.manifest.clone());
@@ -432,12 +396,7 @@ impl Executor for UntrackedAwareExecutor {
             "?? scratch.txt\n".to_string()
         };
 
-        Ok(ExecResult {
-            stdout,
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
+        Ok(ExecResult::success(stdout))
     }
 
     fn which(&self, _: &str) -> bool {
@@ -469,12 +428,7 @@ fn enable_sparse_checkout_uses_worktree_scope_when_extension_enabled() {
             spec.arguments(),
             ["config", "--get", "extensions.worktreeConfig"]
         );
-        Ok(ExecResult {
-            stdout: "true\n".to_string(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
+        Ok(ExecResult::success("true\n"))
     });
     executor
         .expect_execute()
@@ -486,12 +440,7 @@ fn enable_sparse_checkout_uses_worktree_scope_when_extension_enabled() {
                 "expected --worktree scope, got {:?}",
                 spec.arguments()
             );
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
+            Ok(ExecResult::success(""))
         });
     let config = empty_config(PathBuf::from("/repo"));
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
@@ -505,14 +454,7 @@ fn enable_sparse_checkout_uses_repo_scope_when_extension_disabled() {
         .expect_execute()
         .withf(|spec| !spec.is_checked())
         .once()
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     executor
         .expect_execute()
         .withf(CommandSpec::is_checked)
@@ -523,12 +465,7 @@ fn enable_sparse_checkout_uses_repo_scope_when_extension_disabled() {
                 "expected repository scope (no --worktree), got {:?}",
                 spec.arguments()
             );
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
+            Ok(ExecResult::success(""))
         });
     let config = empty_config(PathBuf::from("/repo"));
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
@@ -555,25 +492,11 @@ fn run_writes_sparse_checkout_patterns_and_calls_git() {
     executor
         .expect_execute()
         .withf(|spec| !spec.is_checked())
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     executor
         .expect_execute()
         .withf(CommandSpec::is_checked)
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+        .returning(|_| Ok(ExecResult::success("")));
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
@@ -620,53 +543,25 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
     executor
         .expect_execute()
         .withf(|spec| !spec.is_checked())
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     // git status (clean worktree)
     executor
         .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+        .returning(|_| Ok(ExecResult::success("")));
     // git config sparseCheckout
     executor
         .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+        .returning(|_| Ok(ExecResult::success("")));
     // git config sparseCheckoutCone
     executor
         .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+        .returning(|_| Ok(ExecResult::success("")));
     // git read-tree fails
     executor
         .expect_execute()
@@ -683,14 +578,7 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
         .expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: true,
-                code: Some(0),
-            })
-        });
+        .returning(|_| Ok(ExecResult::success("")));
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 

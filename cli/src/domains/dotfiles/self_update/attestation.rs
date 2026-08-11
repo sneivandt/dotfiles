@@ -168,11 +168,6 @@ fn stage_for_verification(asset: &str, data: &[u8]) -> Result<crate::infra::fs::
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

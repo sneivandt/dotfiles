@@ -38,7 +38,6 @@ pub fn persist_local(root: &Path, key: &str, value: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 mod tests {
     use super::*;
     use std::path::PathBuf;

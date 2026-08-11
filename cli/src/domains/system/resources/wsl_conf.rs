@@ -187,11 +187,6 @@ fn ensure_section_key(lines: &mut Vec<String>, section: &str, key: &str, value: 
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::exec::{Executor, ProcessExecutor};

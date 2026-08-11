@@ -165,12 +165,6 @@ pub fn validate(
 pub(crate) const REGISTRY_TOML: &str = "registry.toml";
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::config::test_helpers::assert_load_unfiltered_rejects;

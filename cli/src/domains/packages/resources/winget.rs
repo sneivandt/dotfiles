@@ -274,34 +274,9 @@ impl PackageProvider for WingetProvider {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::exec::{ExecResult, MockExecutor};
-
-    fn ok_result(stdout: &str) -> ExecResult {
-        ExecResult {
-            stdout: stdout.to_string(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        }
-    }
-
-    fn failed_result(stdout: &str, stderr: &str, code: i32) -> ExecResult {
-        ExecResult {
-            stdout: stdout.to_string(),
-            stderr: stderr.to_string(),
-            success: false,
-            code: Some(code),
-        }
-    }
 
     #[test]
     fn parse_winget_ids_handles_truncated_name_with_single_space_separator() {
@@ -374,7 +349,11 @@ mod tests {
                         ]
                     && !spec.is_checked()
             })
-            .returning(|_| Ok(ok_result("Name  Id       Version\nGit   Git.Git  2.51.0\n")));
+            .returning(|_| {
+                Ok(ExecResult::success(
+                    "Name  Id       Version\nGit   Git.Git  2.51.0\n",
+                ))
+            });
 
         let ids = WingetProvider.query_installed(&mock).unwrap();
 
@@ -405,7 +384,7 @@ mod tests {
                         ]
                     && !spec.is_checked()
             })
-            .returning(|_| Ok(failed_result("No package found", "", 1)));
+            .returning(|_| Ok(ExecResult::failure("No package found", "", Some(1))));
 
         let change = WingetProvider.install("Git.Git", &mock).unwrap();
 
@@ -418,9 +397,13 @@ mod tests {
     #[test]
     fn winget_install_failure_includes_stdout_and_stderr_when_both_present() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(failed_result("Installer output", "Access denied", 1)));
+        mock.expect_execute().once().returning(|_| {
+            Ok(ExecResult::failure(
+                "Installer output",
+                "Access denied",
+                Some(1),
+            ))
+        });
 
         let change = WingetProvider.install("Git.Git", &mock).unwrap();
 
@@ -439,7 +422,7 @@ mod tests {
                 spec.arguments().iter().any(|arg| arg == "--scope")
                     && spec.arguments().iter().any(|arg| arg == "user")
             })
-            .returning(|_| Ok(ok_result("")));
+            .returning(|_| Ok(ExecResult::success("")));
 
         assert_eq!(
             WingetProvider.install("Git.Git", &mock).unwrap(),
@@ -454,16 +437,16 @@ mod tests {
             .once()
             .withf(|spec| spec.arguments().iter().any(|arg| arg == "--scope"))
             .returning(|_| {
-                Ok(failed_result(
+                Ok(ExecResult::failure(
                     "",
                     "no applicable installer",
-                    exit_code::NO_APPLICABLE_INSTALLER,
+                    Some(exit_code::NO_APPLICABLE_INSTALLER),
                 ))
             });
         mock.expect_execute()
             .once()
             .withf(|spec| !spec.arguments().iter().any(|arg| arg == "--scope"))
-            .returning(|_| Ok(ok_result("")));
+            .returning(|_| Ok(ExecResult::success("")));
 
         assert_eq!(
             WingetProvider.install("Git.Git", &mock).unwrap(),
@@ -476,9 +459,17 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_execute().times(2).returning(|spec| {
             if spec.arguments().iter().any(|arg| arg == "--scope") {
-                Ok(failed_result("", "", exit_code::NO_APPLICABLE_INSTALLER))
+                Ok(ExecResult::failure(
+                    "",
+                    "",
+                    Some(exit_code::NO_APPLICABLE_INSTALLER),
+                ))
             } else {
-                Ok(failed_result("", "", exit_code::COMMAND_REQUIRES_ADMIN))
+                Ok(ExecResult::failure(
+                    "",
+                    "",
+                    Some(exit_code::COMMAND_REQUIRES_ADMIN),
+                ))
             }
         });
 
@@ -507,7 +498,7 @@ mod tests {
             let mut mock = MockExecutor::new();
             mock.expect_execute()
                 .once()
-                .returning(move |_| Ok(failed_result("", "", code)));
+                .returning(move |_| Ok(ExecResult::failure("", "", Some(code))));
 
             assert_eq!(
                 WingetProvider.install("Git.Git", &mock).unwrap(),
@@ -521,10 +512,10 @@ mod tests {
     fn winget_install_reboot_required_counts_as_applied() {
         let mut mock = MockExecutor::new();
         mock.expect_execute().once().returning(|_| {
-            Ok(failed_result(
+            Ok(ExecResult::failure(
                 "",
                 "",
-                exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH,
+                Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH),
             ))
         });
 
@@ -537,9 +528,13 @@ mod tests {
     #[test]
     fn winget_install_skips_when_the_user_declines_the_installer_prompt() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(failed_result("", "", exit_code::INSTALL_CANCELLED_BY_USER)));
+        mock.expect_execute().once().returning(|_| {
+            Ok(ExecResult::failure(
+                "",
+                "",
+                Some(exit_code::INSTALL_CANCELLED_BY_USER),
+            ))
+        });
 
         let ResourceChange::Skipped { reason, .. } =
             WingetProvider.install("Git.Git", &mock).unwrap()

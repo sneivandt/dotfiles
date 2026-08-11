@@ -57,12 +57,6 @@ impl Task for UninstallWrapper {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::engine::Task;

@@ -369,10 +369,4 @@ pub(crate) fn run_tasks_sequential(
 
 #[cfg(test)]
 #[path = "tests/scheduler/mod.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests;

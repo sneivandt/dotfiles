@@ -136,13 +136,6 @@ pub(crate) fn check_error(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

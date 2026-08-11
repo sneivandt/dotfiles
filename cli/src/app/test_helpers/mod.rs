@@ -2,7 +2,6 @@
 //!
 //! Provides common mock types and factory functions so each task test module
 //! does not have to duplicate boilerplate.
-#![allow(clippy::panic, reason = "test code uses panicking helpers")]
 
 use std::path::PathBuf;
 use std::sync::Arc;

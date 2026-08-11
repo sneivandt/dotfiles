@@ -87,28 +87,9 @@ impl PackageProvider for PacmanProvider {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, reason = "test code uses panicking helpers")]
 mod tests {
     use super::*;
     use crate::infra::exec::{ExecResult, MockExecutor};
-
-    fn ok_result(stdout: &str) -> ExecResult {
-        ExecResult {
-            stdout: stdout.to_string(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        }
-    }
-
-    fn failed_result(stdout: &str, stderr: &str, code: i32) -> ExecResult {
-        ExecResult {
-            stdout: stdout.to_string(),
-            stderr: stderr.to_string(),
-            success: false,
-            code: Some(code),
-        }
-    }
 
     #[test]
     fn query_names_extracts_first_tokens_and_ignores_blank_lines() {
@@ -118,7 +99,7 @@ mod tests {
             .withf(|spec| {
                 spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
             })
-            .returning(|_| Ok(ok_result("git 2.51.0\n\nbase-devel 1-2\nvim\n")));
+            .returning(|_| Ok(ExecResult::success("git 2.51.0\n\nbase-devel 1-2\nvim\n")));
 
         let names = query_names(&mock, "pacman", &["-Q"]).unwrap();
 
@@ -134,7 +115,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
-            .returning(|_| Ok(failed_result("", "database lock held", 42)));
+            .returning(|_| Ok(ExecResult::failure("", "database lock held", Some(42))));
 
         let err = query_names(&mock, "pacman", &["-Q"]).unwrap_err();
         let message = err.to_string();

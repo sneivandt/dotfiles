@@ -138,11 +138,6 @@ impl Logger {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use crate::infra::logging::isolated_logger;
     use crate::infra::logging::types::{TaskStatus, TaskVisibility};

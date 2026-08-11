@@ -104,11 +104,6 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use std::path::PathBuf;
     use std::sync::{

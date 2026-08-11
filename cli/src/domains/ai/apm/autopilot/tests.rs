@@ -1,11 +1,3 @@
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
-
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -15,8 +7,8 @@ use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::infra::platform::{Os, Platform};
 
 use super::super::test_fixture::{
-    make_context_with_home, ok_result, write_copilot_app_db,
-    write_current_manifest_lock_and_marker, write_home_fragment,
+    make_context_with_home, write_copilot_app_db, write_current_manifest_lock_and_marker,
+    write_home_fragment,
 };
 use super::super::{InstallApmPackages, UpdateApmPackages};
 use super::DesiredApmWorkflows;
@@ -85,15 +77,6 @@ fn expect_apm_available(mock: &mut MockExecutor) {
         .returning(|_| true);
 }
 
-fn exec_error(stderr: &str) -> ExecResult {
-    ExecResult {
-        stdout: String::new(),
-        stderr: stderr.to_string(),
-        success: false,
-        code: Some(1),
-    }
-}
-
 /// Queue the apm `which` + experimental-enable + install expectations shared
 /// by every autopilot-fixup test (the changed-manifest path).
 fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
@@ -106,7 +89,7 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
         .in_sequence(seq)
         .returning(|spec| {
             assert_eq!(spec.arguments(), ["experimental", "enable", "copilot-app"]);
-            Ok(ok_result("[!] copilot-app is already enabled.\n"))
+            Ok(ExecResult::success("[!] copilot-app is already enabled.\n"))
         });
     mock.expect_execute()
         .once()
@@ -114,7 +97,7 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
         .returning(|spec| {
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ok_result("installed\n"))
+            Ok(ExecResult::success("installed\n"))
         });
     mock.expect_execute()
         .once()
@@ -125,7 +108,7 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
     mock.expect_execute()
         .once()
@@ -139,7 +122,7 @@ fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
             );
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["prune"]);
-            Ok(ok_result("pruned\n"))
+            Ok(ExecResult::success("pruned\n"))
         });
 }
 
@@ -393,7 +376,7 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
                     "apm--c"
                 ]
             );
-            Ok(ok_result(""))
+            Ok(ExecResult::success(""))
         });
     expect_apm_install(&mut mock, &mut seq);
     let post_home = dir.path().to_path_buf();
@@ -415,7 +398,7 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
                     "apm--c"
                 ]
             );
-            Ok(ok_result("3 3\napm--a\napm--b\napm--c\n"))
+            Ok(ExecResult::success("3 3\napm--a\napm--b\napm--c\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -466,7 +449,7 @@ fn run_warns_when_workflow_db_is_locked() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert!(!spec.is_checked());
-            Ok(exec_error("database is locked"))
+            Ok(ExecResult::failure("", "database is locked", Some(1)))
         });
     expect_apm_install(&mut mock, &mut seq);
     mock.expect_execute()
@@ -474,7 +457,7 @@ fn run_warns_when_workflow_db_is_locked() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert!(!spec.is_checked());
-            Ok(exec_error("database is locked"))
+            Ok(ExecResult::failure("", "database is locked", Some(1)))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -504,7 +487,7 @@ fn run_warns_when_workflow_db_schema_drifts() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert!(!spec.is_checked());
-            Ok(exec_error("no such column: mode"))
+            Ok(ExecResult::failure("", "no such column: mode", Some(1)))
         });
     expect_apm_install(&mut mock, &mut seq);
     mock.expect_execute()
@@ -512,7 +495,7 @@ fn run_warns_when_workflow_db_schema_drifts() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert!(!spec.is_checked());
-            Ok(exec_error("no such column: mode"))
+            Ok(ExecResult::failure("", "no such column: mode", Some(1)))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -582,7 +565,7 @@ fn update_re_arms_apm_workflows_after_apm_update() {
                 spec.arguments(),
                 ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str(), "apm--a"]
             );
-            Ok(ok_result(""))
+            Ok(ExecResult::success(""))
         });
     // apm update advances the lock and redeploys the workflow disabled.
     mock.expect_execute()
@@ -591,7 +574,7 @@ fn update_re_arms_apm_workflows_after_apm_update() {
         .returning(move |spec| {
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            Ok(ok_result("updated\n"))
+            Ok(ExecResult::success("updated\n"))
         });
     mock.expect_execute()
         .once()
@@ -602,7 +585,7 @@ fn update_re_arms_apm_workflows_after_apm_update() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
     // Post-update fixup re-arms the workflow to autopilot + enabled; the diff
     // against the empty pre-snapshot reports one newly desired workflow.
@@ -616,7 +599,7 @@ fn update_re_arms_apm_workflows_after_apm_update() {
                 spec.arguments(),
                 ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
             );
-            Ok(ok_result("1 1\napm--a\n"))
+            Ok(ExecResult::success("1 1\napm--a\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -656,7 +639,7 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
                 spec.arguments(),
                 ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str(), "apm--a"]
             );
-            Ok(ok_result("apm--a\n"))
+            Ok(ExecResult::success("apm--a\n"))
         });
     // apm update leaves the lockfile untouched (Unchanged outcome).
     mock.expect_execute()
@@ -664,7 +647,9 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
         .in_sequence(&mut seq)
         .returning(move |spec| {
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
+            Ok(ExecResult::success(
+                "  [+] github.com/example/plugin (cached)\n",
+            ))
         });
     mock.expect_execute()
         .once()
@@ -674,7 +659,7 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
     // The fixup still runs; with the workflow already desired the delta is
     // net-zero, so it stays quiet but must not be skipped.
@@ -688,7 +673,7 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
                 spec.arguments(),
                 ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
             );
-            Ok(ok_result("1 1\napm--a\n"))
+            Ok(ExecResult::success("1 1\napm--a\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -773,21 +758,27 @@ fn decide_fixup_outcome_unparsed_on_malformed_output() {
 fn interpret_fixup_result_classifies_script_failures() {
     let pre = DesiredApmWorkflows::Unavailable;
     assert_eq!(
-        interpret_fixup_result(exec_error("database is locked"), &pre),
+        interpret_fixup_result(ExecResult::failure("", "database is locked", Some(1)), &pre,),
         FixupExecution::Failed(FixupFailure::DatabaseLocked)
     );
     assert_eq!(
-        interpret_fixup_result(exec_error("no such table: workflows"), &pre),
+        interpret_fixup_result(
+            ExecResult::failure("", "no such table: workflows", Some(1)),
+            &pre,
+        ),
         FixupExecution::Failed(FixupFailure::WorkflowsTableMissing)
     );
     assert_eq!(
-        interpret_fixup_result(exec_error("no such column: mode"), &pre),
+        interpret_fixup_result(
+            ExecResult::failure("", "no such column: mode", Some(1)),
+            &pre,
+        ),
         FixupExecution::Failed(FixupFailure::SchemaDrift(
             "no such column: mode".to_string()
         ))
     );
     assert_eq!(
-        interpret_fixup_result(exec_error("permission denied"), &pre),
+        interpret_fixup_result(ExecResult::failure("", "permission denied", Some(1)), &pre,),
         FixupExecution::Failed(FixupFailure::Other("permission denied".to_string()))
     );
 }

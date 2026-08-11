@@ -59,11 +59,6 @@ pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

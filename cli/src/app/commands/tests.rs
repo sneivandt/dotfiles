@@ -68,11 +68,6 @@ mod startup_log_tests {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod task_graph_tests {
     use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
     use crate::engine::{Context, Task, TaskId, TaskMeta, TaskResult, task_deps};

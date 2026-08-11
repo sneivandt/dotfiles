@@ -147,11 +147,6 @@ pub(crate) fn powershell_encode_command(script: &str) -> String {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

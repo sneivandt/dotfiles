@@ -185,13 +185,6 @@ pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClie
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};

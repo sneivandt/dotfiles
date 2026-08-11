@@ -179,12 +179,6 @@ const fn git_symlink_placeholder_reason(_source: &Path, _repo_root: &Path) -> Op
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;

@@ -14,24 +14,6 @@ fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
     Arc::<T>::clone(executor)
 }
 
-fn ok_result(stdout: &str) -> ExecResult {
-    ExecResult {
-        stdout: stdout.to_string(),
-        stderr: String::new(),
-        success: true,
-        code: Some(0),
-    }
-}
-
-fn fail_result() -> ExecResult {
-    ExecResult {
-        stdout: String::new(),
-        stderr: String::new(),
-        success: false,
-        code: Some(1),
-    }
-}
-
 #[cfg(unix)]
 fn running_as_root() -> bool {
     nix::unistd::Uid::effective().is_root()
@@ -115,9 +97,11 @@ fn state_from_installed_missing() {
 #[test]
 fn get_installed_pacman_parses_name_version_lines() {
     let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ok_result("git 2.39.0\nvim 9.0.0\nbase-devel 1.0\n")));
+    mock.expect_execute().once().returning(|_| {
+        Ok(ExecResult::success(
+            "git 2.39.0\nvim 9.0.0\nbase-devel 1.0\n",
+        ))
+    });
     let installed = get_installed_packages(PackageManager::Pacman, &mock).unwrap();
     assert!(installed.contains("git"));
     assert!(installed.contains("vim"));
@@ -148,7 +132,7 @@ fn get_installed_pacman_returns_error_on_failure() {
 fn get_installed_winget_parses_id_tokens() {
     let mut mock = MockExecutor::new();
     mock.expect_execute().once().returning(|_| {
-            Ok(ok_result(
+            Ok(ExecResult::success(
                 "Name          Id                    Version\nGit           Git.Git               2.39.0\nPowerShell    Microsoft.PowerShell  7.3\n",
             ))
         });
@@ -223,7 +207,7 @@ fn apply_pacman_returns_applied_on_success() {
     expect_sudo_lookup_if_needed(&mut mock);
     mock.expect_execute()
         .once()
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let resource = PackageResource::new(
         "git".to_string(),
@@ -238,7 +222,7 @@ fn apply_paru_returns_applied_on_success() {
     let mut mock = MockExecutor::new();
     mock.expect_execute()
         .once()
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let resource = PackageResource::new(
         "paru-bin".to_string(),
@@ -278,12 +262,7 @@ impl Executor for RecordingExecutor {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect(),
         ));
-        Ok(ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
+        Ok(ExecResult::success(""))
     }
 
     fn which(&self, program: &str) -> bool {
@@ -420,7 +399,7 @@ fn batch_install_winget_skipped_returns_error() {
     let mut mock = MockExecutor::new();
     mock.expect_execute()
         .once()
-        .returning(|_| Ok(fail_result()));
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let r1 = PackageResource::new(
         "Git.Git".to_string(),
@@ -441,11 +420,11 @@ fn winget_install_report_tracks_successful_package_names() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(fail_result()));
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
 
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let first = PackageResource::new(
@@ -532,7 +511,7 @@ fn install_report_propagates_cancellation_without_starting_later_packages() {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Err(ExecError::Cancelled {
                 command: "package install".to_string(),
-                result: fail_result(),
+                result: ExecResult::failure("", "", Some(1)),
             }
             .into())
         }

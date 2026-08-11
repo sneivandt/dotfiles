@@ -105,12 +105,6 @@ fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::domains::system::config::systemd_units::SystemdUnit;
@@ -125,29 +119,8 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    fn ok_result() -> ExecResult {
-        ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        }
-    }
-
-    fn fail_result() -> ExecResult {
-        ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: false,
-            code: Some(1),
-        }
-    }
-
     fn disabled_result() -> ExecResult {
-        ExecResult {
-            stdout: "disabled\n".to_string(),
-            ..fail_result()
-        }
+        ExecResult::failure("disabled\n", "", Some(1))
     }
 
     #[test]
@@ -239,7 +212,7 @@ mod tests {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(|_| Ok(ok_result()));
+            .returning(|_| Ok(ExecResult::success("")));
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
@@ -247,7 +220,7 @@ mod tests {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(|_| Ok(ok_result()));
+            .returning(|_| Ok(ExecResult::success("")));
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 
@@ -380,7 +353,7 @@ mod tests {
                     && spec.arguments() == ["systemctl", "daemon-reload"]
                     && spec.is_checked()
             })
-            .returning(|_| Ok(ok_result()));
+            .returning(|_| Ok(ExecResult::success("")));
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
@@ -398,7 +371,7 @@ mod tests {
                     && spec.arguments() == ["systemctl", "enable", "--now", "sshd.service"]
                     && !spec.is_checked()
             })
-            .returning(|_| Ok(ok_result()));
+            .returning(|_| Ok(ExecResult::success("")));
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 

@@ -245,10 +245,4 @@ pub fn overlay_script_tasks(
 
 #[cfg(test)]
 #[path = "tests/scripts.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests;

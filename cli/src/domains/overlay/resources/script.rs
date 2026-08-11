@@ -313,12 +313,6 @@ fn format_check_failure(name: &str, code: Option<i32>, stdout: &str, stderr: &st
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::exec::{ExecResult, MockExecutor};
@@ -455,14 +449,9 @@ mod tests {
         let script_path = dir.path().join("test.sh");
         std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                code: Some(1),
-            })
-        });
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
         let resource = ScriptResource::new(
             "test".to_string(),
             script_path,
@@ -479,14 +468,9 @@ mod tests {
         let script_path = dir.path().join("test.sh");
         std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: "syntax error".to_string(),
-                success: false,
-                code: Some(2),
-            })
-        });
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::failure("", "syntax error", Some(2))));
         let resource = ScriptResource::new(
             "test".to_string(),
             script_path,

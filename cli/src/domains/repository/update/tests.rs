@@ -7,40 +7,18 @@ use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-fn ok_result(stdout: &str) -> ExecResult {
-    ExecResult {
-        stdout: stdout.to_string(),
-        stderr: String::new(),
-        success: true,
-        code: Some(0),
-    }
-}
-
 fn git_error(message: &str) -> ExecError {
     ExecError::spawn("git", std::io::Error::other(message.to_string()))
 }
 
 fn git_non_zero(message: &str) -> ExecError {
-    ExecError::non_zero(
-        "git",
-        ExecResult {
-            stdout: String::new(),
-            stderr: message.to_string(),
-            success: false,
-            code: Some(1),
-        },
-    )
+    ExecError::non_zero("git", ExecResult::failure("", message, Some(1)))
 }
 
 fn cancelled_git_error() -> ExecError {
     ExecError::Cancelled {
         command: "git".to_string(),
-        result: ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: false,
-            code: None,
-        },
+        result: ExecResult::failure("", "", None),
     }
 }
 
@@ -58,7 +36,7 @@ fn expect_git_success(
             assert_eq!(spec.working_dir(), Some(expected_dir.as_path()));
             assert_eq!(spec.program(), "git");
             assert_eq!(spec.arguments(), expected_args);
-            Ok(ok_result(stdout))
+            Ok(ExecResult::success(stdout))
         });
 }
 
@@ -154,7 +132,7 @@ fn run_with_git_output(outputs: &[&str]) -> (TaskResult, bool) {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ExecResult::success(&output)));
     }
     let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), mock);
     let signal = UpdateSignal::new();
@@ -251,12 +229,7 @@ impl Executor for UntrackedAwareExecutor {
             "?? new-file.txt\n".to_string()
         };
 
-        Ok(ExecResult {
-            stdout,
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        })
+        Ok(ExecResult::success(stdout))
     }
 
     fn which(&self, _: &str) -> bool {
@@ -293,7 +266,7 @@ fn run_returns_failed_when_fetch_fails() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ExecResult::success(&s)));
     }
     mock.expect_execute()
         .once()
@@ -317,7 +290,7 @@ fn run_propagates_fetch_cancellation() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ExecResult::success(&output)));
     }
     mock.expect_execute()
         .once()
@@ -345,7 +318,7 @@ fn run_retries_transient_fetch_failure() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ExecResult::success(&output)));
     }
     mock.expect_execute()
         .once()
@@ -361,7 +334,7 @@ fn run_retries_transient_fetch_failure() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ExecResult::success(&output)));
     }
     let ctx = make_update_context(config, mock);
     let repo_updated = UpdateSignal::new();
@@ -383,7 +356,7 @@ fn run_stops_after_transient_fetch_retries_are_exhausted() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&output)));
+            .returning(move |_| Ok(ExecResult::success(&output)));
     }
     mock.expect_execute()
         .times(3)
@@ -577,16 +550,16 @@ fn parallel_fetch_visits_every_repository() {
     mock.expect_execute().returning(move |spec| {
         assert_eq!(spec.program(), "git");
         match spec.arguments().first().and_then(|arg| arg.to_str()) {
-            Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
-            Some("status") => Ok(ok_result("")),
+            Some("symbolic-ref") => Ok(ExecResult::success("refs/heads/main")),
+            Some("status") => Ok(ExecResult::success("")),
             Some("fetch") => {
                 recorded
                     .lock()
                     .unwrap()
                     .push(spec.working_dir().unwrap().to_path_buf());
-                Ok(ok_result(""))
+                Ok(ExecResult::success(""))
             }
-            Some("rev-parse") => Ok(ok_result("abc123")),
+            Some("rev-parse") => Ok(ExecResult::success("abc123")),
             _ => panic!("unexpected git call {:?}", spec.arguments()),
         }
     });
@@ -612,8 +585,8 @@ fn parallel_fetch_failure_reports_the_first_declared_repository() {
     mock.expect_execute().returning(|spec| {
         assert_eq!(spec.program(), "git");
         match spec.arguments().first().and_then(|arg| arg.to_str()) {
-            Some("symbolic-ref") => Ok(ok_result("refs/heads/main")),
-            Some("status") => Ok(ok_result("")),
+            Some("symbolic-ref") => Ok(ExecResult::success("refs/heads/main")),
+            Some("status") => Ok(ExecResult::success("")),
             // Both repositories fail, so the reported reason must come from
             // declaration order rather than whichever thread finished first.
             Some("fetch") => Err(git_error("simulated fetch failure")),
@@ -660,7 +633,7 @@ fn run_dry_run_returns_ok_when_already_up_to_date() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ExecResult::success(&s)));
     }
     let mut ctx = make_update_context(config, mock);
     ctx = ctx.with_dry_run(true);
@@ -696,7 +669,7 @@ fn run_dry_run_returns_dry_run_when_behind_upstream() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ExecResult::success(&s)));
     }
     let mut ctx = make_update_context(config, mock);
     ctx = ctx.with_dry_run(true);
@@ -724,7 +697,7 @@ fn run_dry_run_returns_ok_when_cached_upstream_matches_head() {
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Ok(ok_result(&s)));
+            .returning(move |_| Ok(ExecResult::success(&s)));
     }
     // branch.main.remote lookup fails
     mock.expect_execute()
@@ -735,7 +708,7 @@ fn run_dry_run_returns_ok_when_cached_upstream_matches_head() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("abc123")));
+        .returning(|_| Ok(ExecResult::success("abc123")));
     let mut ctx = make_update_context(config, mock);
     ctx = ctx.with_dry_run(true);
     let task = UpdateRepository::new(UpdateSignal::new());

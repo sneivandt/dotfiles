@@ -148,33 +148,9 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::exec::{ExecResult, MockExecutor};
-
-    fn ok_result(stdout: &str) -> ExecResult {
-        ExecResult {
-            stdout: stdout.to_string(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        }
-    }
-
-    fn fail_result() -> ExecResult {
-        ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: false,
-            code: Some(1),
-        }
-    }
 
     fn expect_list_extensions(mock: &mut MockExecutor, result: ExecResult) {
         #[cfg(target_os = "windows")]
@@ -306,7 +282,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         expect_list_extensions(
             &mut mock,
-            ok_result("GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n"),
+            ExecResult::success("GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n"),
         );
         let installed = get_installed_extensions("code", &mock).unwrap();
         assert!(installed.contains("github.copilot"));
@@ -317,7 +293,7 @@ mod tests {
     #[test]
     fn get_installed_extensions_returns_error_when_command_fails() {
         let mut mock = MockExecutor::new();
-        expect_list_extensions(&mut mock, fail_result());
+        expect_list_extensions(&mut mock, ExecResult::failure("", "", Some(1)));
         let result = get_installed_extensions("code", &mock);
         assert!(
             result.is_err(),
@@ -328,7 +304,7 @@ mod tests {
     #[test]
     fn get_installed_extensions_uses_single_bulk_query() {
         let mut mock = MockExecutor::new();
-        expect_list_extensions(&mut mock, ok_result("github.copilot-chat\n"));
+        expect_list_extensions(&mut mock, ExecResult::success("github.copilot-chat\n"));
         let installed = get_installed_extensions("code", &mock).unwrap();
         assert!(
             installed.contains("github.copilot-chat"),

@@ -301,12 +301,7 @@ mod symlink {
                     == Some(r#"""mklink" "/J" "C:\Users\test\.config\templates" "C:\repo\symlinks\config\git\templates"""#)
             })
             .returning(|_| {
-                Ok(ExecResult {
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    success: true,
-                    code: Some(0),
-                })
+                Ok(ExecResult::success(""))
             });
 
         create_junction(

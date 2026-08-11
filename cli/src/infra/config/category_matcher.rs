@@ -135,11 +135,6 @@ pub fn matches(section_categories: &[Category], active_categories: &[Category]) 
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use proptest::prelude::*;

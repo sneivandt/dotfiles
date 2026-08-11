@@ -8,7 +8,7 @@ use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_linux_context};
 
 use super::test_fixture::{
-    DEFAULT_FRAGMENT, make_context_with_home, ok_result, write_copilot_app_db,
+    DEFAULT_FRAGMENT, make_context_with_home, write_copilot_app_db,
     write_current_manifest_and_lock, write_current_manifest_lock_and_marker,
     write_default_home_fragment, write_home_fragment,
 };
@@ -92,15 +92,7 @@ fn has_env(spec: &CommandSpec, key: &str, value: &str) -> bool {
 }
 
 fn command_failure(message: &str) -> ExecError {
-    ExecError::non_zero(
-        "apm",
-        ExecResult {
-            stdout: String::new(),
-            stderr: message.to_string(),
-            success: false,
-            code: Some(1),
-        },
-    )
+    ExecError::non_zero("apm", ExecResult::failure("", message, Some(1)))
 }
 
 fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
@@ -110,7 +102,7 @@ fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequenc
         .returning(|spec| {
             assert_eq!(spec.arguments(), ["experimental", "enable", "copilot-app"]);
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ok_result("[!] copilot-app is already enabled.\n"))
+            Ok(ExecResult::success("[!] copilot-app is already enabled.\n"))
         });
 }
 
@@ -124,7 +116,7 @@ fn expect_apm_prune(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["prune"]);
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ok_result("pruned\n"))
+            Ok(ExecResult::success("pruned\n"))
         });
 }
 
@@ -151,7 +143,7 @@ fn expect_apm_install_without_enable(
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
             assert!(has_env(&spec, "GCM_INTERACTIVE", "Never"));
             assert!(has_env(&spec, "GCM_GUI_PROMPT", "false"));
-            Ok(ok_result("installed\n"))
+            Ok(ExecResult::success("installed\n"))
         });
     mock.expect_execute()
         .once()
@@ -164,7 +156,7 @@ fn expect_apm_install_without_enable(
                 ["install", "-g", "--target", "copilot-app"]
             );
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
     expect_apm_prune(mock, seq, cwd);
 }
@@ -178,7 +170,7 @@ fn expect_apm_outdated(mock: &mut MockExecutor, cwd: &Path, stdout: &'static str
         assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
         assert!(has_env(&spec, "GCM_INTERACTIVE", "Never"));
         assert!(has_env(&spec, "GCM_GUI_PROMPT", "false"));
-        Ok(ok_result(stdout))
+        Ok(ExecResult::success(stdout))
     });
 }
 
@@ -323,7 +315,7 @@ fn run_uses_runtime_auto_detection_when_copilot_app_database_missing() {
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["install", "-g"]);
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ok_result("installed\n"))
+            Ok(ExecResult::success("installed\n"))
         });
     expect_apm_prune(&mut mock, &mut seq, dir.path());
 
@@ -353,7 +345,7 @@ fn update_runs_native_update_when_dependencies_current() {
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ok_result("already current\n"))
+            Ok(ExecResult::success("already current\n"))
         });
     mock.expect_execute()
         .once()
@@ -364,7 +356,7 @@ fn update_runs_native_update_when_dependencies_current() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -403,7 +395,7 @@ fn update_advances_dependencies_when_lockfile_changes() {
                 "advanced\n",
             )
             .expect("rewrite lock");
-            Ok(ok_result("updated\n"))
+            Ok(ExecResult::success("updated\n"))
         });
     mock.expect_execute()
         .once()
@@ -414,7 +406,7 @@ fn update_advances_dependencies_when_lockfile_changes() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -441,7 +433,9 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
             // The mock leaves the lockfile untouched, so the before/after
             // comparison reports no advance even though `apm update` re-ran.
-            Ok(ok_result("  [+] github.com/example/plugin (cached)\n"))
+            Ok(ExecResult::success(
+                "  [+] github.com/example/plugin (cached)\n",
+            ))
         });
     mock.expect_execute()
         .once()
@@ -451,7 +445,7 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -490,7 +484,7 @@ fn update_ignores_lockfile_timestamp_rewrites() {
         .in_sequence(&mut seq)
         .returning(move |spec| {
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            Ok(ok_result(
+            Ok(ExecResult::success(
                 "All dependencies already at their latest matching refs.\n",
             ))
         });
@@ -512,7 +506,7 @@ fn update_ignores_lockfile_timestamp_rewrites() {
                 lock_with_timestamp("2026-07-25T16:29:53.449377+00:00"),
             )
             .expect("rewrite lock");
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -550,7 +544,7 @@ fn update_reports_change_when_resolved_ref_advances_alongside_timestamp() {
                 lock_with_timestamp("2026-07-25T16:29:53.449377+00:00").replace("abc123", "def456"),
             )
             .expect("rewrite lock");
-            Ok(ok_result("updated\n"))
+            Ok(ExecResult::success("updated\n"))
         });
     mock.expect_execute()
         .once()
@@ -560,7 +554,7 @@ fn update_reports_change_when_resolved_ref_advances_alongside_timestamp() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -953,7 +947,7 @@ fn run_continues_when_experimental_enable_fails() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ok_result("installed\n"))
+            Ok(ExecResult::success("installed\n"))
         });
     mock.expect_execute()
         .once()
@@ -963,7 +957,7 @@ fn run_continues_when_experimental_enable_fails() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
     expect_apm_prune(&mut mock, &mut seq, dir.path());
 
@@ -989,7 +983,7 @@ fn run_propagates_prune_failures_after_persisting_marker() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ok_result("installed\n"))
+            Ok(ExecResult::success("installed\n"))
         });
     mock.expect_execute()
         .once()
@@ -999,7 +993,7 @@ fn run_propagates_prune_failures_after_persisting_marker() {
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app"]
             );
-            Ok(ok_result("installed workflows\n"))
+            Ok(ExecResult::success("installed workflows\n"))
         });
     let marker = dir.path().join(".apm").join(".dotfiles-manifest.sha256");
     mock.expect_execute()
@@ -1058,7 +1052,7 @@ fn run_propagates_copilot_app_install_failures() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ok_result("installed\n"))
+            Ok(ExecResult::success("installed\n"))
         });
     // The separate experimental copilot-app deploy must fail closed too.
     mock.expect_execute()

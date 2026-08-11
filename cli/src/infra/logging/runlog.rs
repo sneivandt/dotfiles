@@ -356,13 +356,6 @@ fn format_log_message(message: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use std::fs;

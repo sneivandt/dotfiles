@@ -1,18 +1,10 @@
 //! Shared test fixtures for APM task tests.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::engine::Context;
-use crate::infra::exec::{ExecResult, MockExecutor};
+use crate::infra::exec::MockExecutor;
 use crate::infra::platform::Platform;
 use crate::test_helpers::{empty_config, make_context};
 
@@ -23,16 +15,6 @@ use super::sources::install_fingerprint;
 /// Default APM fragment shared across APM test suites.
 pub const DEFAULT_FRAGMENT: &str =
     "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - example/plugin\n";
-
-/// Build a successful [`ExecResult`] with the given stdout.
-pub fn ok_result(stdout: &str) -> ExecResult {
-    ExecResult {
-        stdout: stdout.to_string(),
-        stderr: String::new(),
-        success: true,
-        code: Some(0),
-    }
-}
 
 /// Write `content` into `<home>/.apm/config/<filename>`.
 pub fn write_home_fragment(home: &Path, filename: &str, content: &str) {

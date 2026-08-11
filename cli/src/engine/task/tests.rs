@@ -558,12 +558,7 @@ fn execute_detects_cancellation_through_resource_error_wrappers() {
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
             let exec = crate::infra::exec::ExecError::Cancelled {
                 command: "wrapped command".to_string(),
-                result: crate::infra::exec::ExecResult {
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    success: false,
-                    code: None,
-                },
+                result: crate::infra::exec::ExecResult::failure("", "", None),
             };
             let resource = crate::engine::resource::ResourceError::from(anyhow::Error::new(
                 crate::engine::resource::ResourceError::from(exec),

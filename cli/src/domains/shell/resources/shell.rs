@@ -100,25 +100,10 @@ impl IntrinsicState for DefaultShellResource {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
     use std::path::PathBuf;
-
-    fn ok_result() -> ExecResult {
-        ExecResult {
-            stdout: String::new(),
-            stderr: String::new(),
-            success: true,
-            code: Some(0),
-        }
-    }
 
     #[test]
     fn description_includes_shell_name() {
@@ -202,7 +187,7 @@ mod tests {
                     && spec.arguments() == ["-s", "/usr/bin/zsh"]
                     && spec.is_checked()
             })
-            .returning(|_| Ok(ok_result()));
+            .returning(|_| Ok(ExecResult::success("")));
 
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = DefaultShellResource::new(

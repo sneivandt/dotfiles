@@ -257,11 +257,6 @@ fn load_config(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod root_tests {
     use super::*;
 

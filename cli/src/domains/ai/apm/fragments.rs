@@ -314,13 +314,6 @@ fn mcp_dedup_key(entry: &serde_yaml_ng::Value) -> String {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

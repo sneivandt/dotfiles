@@ -395,9 +395,4 @@ impl Context {
 
 #[cfg(test)]
 #[path = "tests.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests;

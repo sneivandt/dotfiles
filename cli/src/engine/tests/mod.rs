@@ -103,12 +103,7 @@ impl Resource for TypedErrorResource {
             "not_supported" => Err(ResourceError::not_supported("linux only")),
             "cancelled" => Err(ExecError::Cancelled {
                 command: "test command".to_string(),
-                result: ExecResult {
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    success: false,
-                    code: None,
-                },
+                result: ExecResult::failure("", "", None),
             }
             .into()),
             other => Err(anyhow::anyhow!("unknown error variant: {other}").into()),

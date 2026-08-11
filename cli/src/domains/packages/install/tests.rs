@@ -238,7 +238,7 @@ fn install_paru_run_returns_changed_result_after_install() {
         .returning(|spec| {
             assert_eq!(spec.program(), "git");
             assert_eq!(spec.arguments()[0], "clone");
-            Ok(ok_result(""))
+            Ok(ExecResult::success(""))
         });
     mock.expect_execute()
         .once()
@@ -248,7 +248,7 @@ fn install_paru_run_returns_changed_result_after_install() {
             assert_eq!(spec.arguments(), ["-si", "--noconfirm"]);
             assert_eq!(spec.environment().len(), 1);
             assert_eq!(spec.environment()[0].0, "MAKEFLAGS");
-            Ok(ok_result(""))
+            Ok(ExecResult::success(""))
         });
 
     let ctx = make_package_context(config, Os::Linux, true, mock);
@@ -284,15 +284,6 @@ fn install_aur_packages_run_skips_when_paru_not_found() {
 // run() — batch install paths (pacman/paru)
 // -----------------------------------------------------------------------
 
-fn ok_result(stdout: &str) -> ExecResult {
-    ExecResult {
-        stdout: stdout.to_string(),
-        stderr: String::new(),
-        success: true,
-        code: Some(0),
-    }
-}
-
 /// Build a context that uses a [`MockExecutor`] with `which=true`.
 ///
 /// This lets tests exercise the `process_packages` batch install path without
@@ -327,11 +318,11 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("vim 9.0\n")));
+        .returning(|_| Ok(ExecResult::success("vim 9.0\n")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
@@ -360,7 +351,7 @@ fn install_packages_all_already_installed_returns_ok() {
     mock.expect_which().returning(|_| true);
     mock.expect_execute()
         .once()
-        .returning(|_| Ok(ok_result("git 2.40\n")));
+        .returning(|_| Ok(ExecResult::success("git 2.40\n")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, false, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
@@ -383,7 +374,7 @@ fn install_packages_dry_run_reports_missing_packages() {
     mock.expect_which().returning(|_| true);
     mock.expect_execute()
         .once()
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let mut ctx = make_package_context(config, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
@@ -410,7 +401,7 @@ fn install_packages_returns_failed_when_batch_install_fails() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -442,19 +433,14 @@ fn install_packages_propagates_batch_cancellation() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
         .returning(|_| {
             Err(ExecError::Cancelled {
                 command: "sudo pacman".to_string(),
-                result: ExecResult {
-                    stdout: String::new(),
-                    stderr: String::new(),
-                    success: false,
-                    code: None,
-                },
+                result: ExecResult::failure("", "", None),
             })
         });
     let packages = ConfigHandle::new(config.packages.clone());
@@ -486,11 +472,11 @@ fn install_packages_winget_installs_per_package() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ok_result("")));
+        .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Windows, false, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();

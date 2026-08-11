@@ -87,11 +87,6 @@ impl Task for MaterializeExcludedSymlinks {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::test_helpers::{empty_config, make_linux_context};

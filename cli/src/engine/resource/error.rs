@@ -162,7 +162,6 @@ impl ResourceError {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 mod tests {
     use super::*;
     use std::io;
@@ -208,12 +207,7 @@ mod tests {
     fn resource_error_preserves_executor_cancellation() {
         let error = ResourceError::from(ExecError::Cancelled {
             command: "git status".to_string(),
-            result: crate::infra::exec::ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                code: None,
-            },
+            result: crate::infra::exec::ExecResult::failure("", "", None),
         });
 
         assert!(error.is_cancelled());
@@ -224,12 +218,7 @@ mod tests {
     fn resource_error_detects_nested_executor_cancellation() {
         let exec = ExecError::Cancelled {
             command: "git status".to_string(),
-            result: crate::infra::exec::ExecResult {
-                stdout: String::new(),
-                stderr: String::new(),
-                success: false,
-                code: None,
-            },
+            result: crate::infra::exec::ExecResult::failure("", "", None),
         };
         let nested = ResourceError::from(anyhow::Error::new(ResourceError::from(exec)));
 

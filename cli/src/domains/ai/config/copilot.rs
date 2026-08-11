@@ -90,12 +90,6 @@ pub fn validate(settings: &[CopilotSetting]) -> Vec<Diagnostic> {
 pub(crate) const COPILOT_TOML: &str = "copilot.toml";
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::config::category_matcher::Category;

@@ -54,6 +54,35 @@ pub struct ExecResult {
     pub code: Option<i32>,
 }
 
+#[cfg(test)]
+impl ExecResult {
+    /// Build a successful result with the given standard output.
+    #[must_use]
+    pub(crate) fn success(stdout: impl Into<String>) -> Self {
+        Self {
+            stdout: stdout.into(),
+            stderr: String::new(),
+            success: true,
+            code: Some(0),
+        }
+    }
+
+    /// Build an unsuccessful result with the given output and optional exit code.
+    #[must_use]
+    pub(crate) fn failure(
+        stdout: impl Into<String>,
+        stderr: impl Into<String>,
+        code: Option<i32>,
+    ) -> Self {
+        Self {
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+            success: false,
+            code,
+        }
+    }
+}
+
 impl From<Output> for ExecResult {
     fn from(output: Output) -> Self {
         Self {
@@ -700,10 +729,4 @@ pub(crate) fn run_tool_unchecked(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests;

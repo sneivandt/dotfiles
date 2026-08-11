@@ -204,12 +204,6 @@ fn discover_runs(log_dir: &Path) -> Result<Vec<RunEntry>> {
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
 

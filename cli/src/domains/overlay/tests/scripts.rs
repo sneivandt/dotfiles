@@ -17,15 +17,6 @@ fn script_entry(name: &str, path: &str) -> ScriptEntry {
     }
 }
 
-fn exec_result(stdout: &str, success: bool, code: Option<i32>) -> ExecResult {
-    ExecResult {
-        stdout: stdout.to_string(),
-        stderr: String::new(),
-        success,
-        code,
-    }
-}
-
 fn shell_script_fixture() -> (tempfile::TempDir, ScriptEntry, String) {
     let overlay = tempfile::tempdir().expect("create overlay dir");
     let script_path = overlay.path().join("scripts/test.sh");
@@ -217,7 +208,7 @@ fn script_task_run_is_ok_when_check_reports_correct() {
                 && args[1] == "--check"
                 && !spec.is_checked()
         })
-        .returning(|_| Ok(exec_result("", true, Some(0))));
+        .returning(|_| Ok(ExecResult::success("")));
 
     let ctx = context_with_executor(overlay.path(), mock);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
@@ -244,7 +235,7 @@ fn script_task_run_applies_when_check_reports_missing() {
                 && args[1] == "--check"
                 && !spec.is_checked()
         })
-        .returning(|_| Ok(exec_result("", false, Some(1))));
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     mock.expect_execute()
         .once()
         .withf(move |spec| {
@@ -255,7 +246,7 @@ fn script_task_run_applies_when_check_reports_missing() {
                 && args[0] == apply_script.as_str()
                 && spec.is_checked()
         })
-        .returning(|_| Ok(exec_result("applied\n", true, Some(0))));
+        .returning(|_| Ok(ExecResult::success("applied\n")));
 
     let ctx = context_with_executor(overlay.path(), mock);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
@@ -282,7 +273,7 @@ fn script_task_run_uses_dry_run_script_when_context_is_dry_run() {
                 && args[1] == "--check"
                 && !spec.is_checked()
         })
-        .returning(|_| Ok(exec_result("", false, Some(1))));
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
     mock.expect_execute()
         .once()
         .withf(move |spec| {
@@ -294,7 +285,7 @@ fn script_task_run_uses_dry_run_script_when_context_is_dry_run() {
                 && args[1] == "--dryrun"
                 && spec.is_checked()
         })
-        .returning(|_| Ok(exec_result("would apply\n", true, Some(0))));
+        .returning(|_| Ok(ExecResult::success("would apply\n")));
 
     let ctx = context_with_executor(overlay.path(), mock).with_dry_run(true);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
@@ -322,14 +313,7 @@ fn script_task_run_treats_check_failures_as_not_applicable() {
                 && args[1] == "--check"
                 && !spec.is_checked()
         })
-        .returning(|_| {
-            Ok(ExecResult {
-                stdout: String::new(),
-                stderr: "boom".to_string(),
-                success: false,
-                code: Some(2),
-            })
-        });
+        .returning(|_| Ok(ExecResult::failure("", "boom", Some(2))));
 
     let ctx = context_with_executor(overlay.path(), mock);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());

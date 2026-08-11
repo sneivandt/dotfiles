@@ -174,12 +174,6 @@ pub(crate) fn filter_by_categories<T>(
 }
 
 #[cfg(test)]
-#[allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    reason = "test code uses panicking helpers"
-)]
 mod tests {
     use super::*;
     use crate::infra::config::test_helpers::write_temp_toml;

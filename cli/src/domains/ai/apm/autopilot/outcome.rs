@@ -1,10 +1,64 @@
 //! Outcome parsing and reporting for APM workflow autopilot fixups.
 
 use crate::engine::Context;
+use crate::infra::exec::ExecResult;
 
 use super::DesiredApmWorkflows;
 use super::scripts::parse_autopilot_result;
 use crate::infra::logging::OutputExt as _;
+
+/// Interpret a completed workflow script process without logging.
+pub(super) fn interpret_fixup_result(
+    result: ExecResult,
+    pre: &DesiredApmWorkflows,
+) -> FixupExecution {
+    if result.success {
+        let outcome = decide_fixup_outcome(&result.stdout, pre);
+        FixupExecution::Completed {
+            outcome,
+            stdout: result.stdout,
+        }
+    } else {
+        FixupExecution::Failed(FixupFailure::classify(&result.stderr))
+    }
+}
+
+/// Report the typed result of running the workflow fixup script.
+pub(super) fn report_fixup_execution(ctx: &Context, execution: FixupExecution) {
+    match execution {
+        FixupExecution::Completed { outcome, stdout } => {
+            report_fixup_outcome(ctx, outcome, &stdout);
+        }
+        FixupExecution::Failed(FixupFailure::DatabaseLocked) => {
+            ctx.log().warn(
+                "autopilot fixup: ~/.copilot/data.db is locked -- close the Copilot App and \
+                 re-run `dotfiles install` or `dotfiles update`, or enable the apm workflows \
+                 manually from the Workflows tab",
+            );
+        }
+        FixupExecution::Failed(FixupFailure::WorkflowsTableMissing) => {
+            ctx.log().warn(
+                "autopilot fixup: the workflows table is missing from ~/.copilot/data.db; open \
+                 the Copilot App once to initialize it, then re-run `dotfiles install` or \
+                 `dotfiles update`",
+            );
+        }
+        FixupExecution::Failed(FixupFailure::SchemaDrift(stderr)) => {
+            ctx.log().warn(format!(
+                "autopilot fixup: ~/.copilot/data.db no longer matches the expected workflows \
+                 schema (columns id, name, prompt, mode, enabled, interval, schedule_hour, \
+                 schedule_minute, schedule_day, next_run_at); the Copilot App database format \
+                 may have changed. Enable the apm workflows manually from the Workflows tab and \
+                 report this so the dotfiles autopilot scripts can be updated: {stderr}"
+            ));
+        }
+        FixupExecution::Failed(FixupFailure::Other(stderr)) => {
+            ctx.log().warn(format!(
+                "autopilot fixup failed (the apm operation still succeeded): {stderr}"
+            ));
+        }
+    }
+}
 
 /// Report the outcome of a successful autopilot-fixup script run.
 ///
@@ -60,6 +114,48 @@ pub(super) enum FixupOutcome {
     Quiet,
     /// The script output could not be parsed; log at debug and continue.
     Unparsed,
+}
+
+/// Fully interpreted result of a completed workflow fixup process.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum FixupExecution {
+    /// The script succeeded and produced an outcome to report.
+    Completed {
+        /// Semantic result derived from the script output.
+        outcome: FixupOutcome,
+        /// Original stdout retained for unparsed-output diagnostics.
+        stdout: String,
+    },
+    /// The script process completed unsuccessfully.
+    Failed(FixupFailure),
+}
+
+/// Actionable categories emitted by the workflow fixup script.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum FixupFailure {
+    /// The Copilot App currently holds the database lock.
+    DatabaseLocked,
+    /// The Copilot App has not initialized its workflows table.
+    WorkflowsTableMissing,
+    /// The workflows schema no longer matches the embedded scripts.
+    SchemaDrift(String),
+    /// Any other script failure.
+    Other(String),
+}
+
+impl FixupFailure {
+    fn classify(stderr: &str) -> Self {
+        let stderr = stderr.trim();
+        if stderr.contains("database is locked") {
+            Self::DatabaseLocked
+        } else if stderr.contains("no such table") {
+            Self::WorkflowsTableMissing
+        } else if stderr.contains("no such column") {
+            Self::SchemaDrift(stderr.to_string())
+        } else {
+            Self::Other(stderr.to_string())
+        }
+    }
 }
 
 /// Decide what the fixup should report by diffing the post-install desired set

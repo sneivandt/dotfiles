@@ -61,8 +61,11 @@ single batch state query rather than checking values individually.
 ### MetadataExt Workaround
 
 Rust's `symlink_metadata().is_dir()` is not reliable for Windows directory
-symlinks. Use `MetadataExt::file_attributes()` and the directory attribute, as
-the existing implementation does.
+symlinks. Use `infra::fs::is_dir_like()` for metadata classification and
+`infra::fs::create_native_symlink()` for native file/directory link dispatch
+rather than duplicating `MetadataExt` or platform primitives. Resource-level
+directory links may still fall back to junction creation when the native call
+fails.
 
 ### Developer Mode and Admin Privileges
 

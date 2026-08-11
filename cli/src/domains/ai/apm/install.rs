@@ -1,7 +1,7 @@
 //! APM install task: merge fragments, write the generated manifest, and run
 //! `apm install` without advancing dependency refs.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
 
@@ -64,41 +64,108 @@ impl Task for InstallApmPackages {
             return Ok(skip("no manifest fragments found under ~/.apm/config/"));
         }
 
-        let manifest_path = home.join(".apm").join("apm.yml");
-        let lock_path = home.join(".apm").join("apm.lock.yaml");
-        let marker_path = home.join(".apm").join(".dotfiles-manifest.sha256");
-        let merged = merge_fragments(&fragments)?;
+        let plan = ApmInstallPlan::build(ctx, &fragments)?;
+        if ctx.dry_run() {
+            return Ok(plan.preview(ctx));
+        }
+        plan.apply(ctx)
+    }
+}
+
+/// Immutable description of the work required to converge APM.
+///
+/// Both preview and apply consume this same filesystem-derived decision so
+/// dry-run cannot drift from real execution.
+#[derive(Debug)]
+struct ApmInstallPlan {
+    change: ApmInstallChange,
+    targets: ApmTargets,
+    fragment_count: usize,
+    manifest_path: PathBuf,
+    lock_path: PathBuf,
+    marker_path: PathBuf,
+    merged: String,
+    manifest_hash: String,
+}
+
+impl ApmInstallPlan {
+    /// Build an install plan from the effective manifest fragments and current
+    /// APM artifacts.
+    fn build(ctx: &Context, fragments: &[PathBuf]) -> Result<Self> {
+        let home = ctx.home();
+        let apm_dir = home.join(".apm");
+        let manifest_path = apm_dir.join("apm.yml");
+        let lock_path = apm_dir.join("apm.lock.yaml");
+        let marker_path = apm_dir.join(".dotfiles-manifest.sha256");
+        let merged = merge_fragments(fragments)?;
         let targets = ApmTargets::detect(ctx)?;
         let manifest_hash = install_fingerprint(&merged, home, targets.includes_copilot_app())?;
-        let state = ApmInstallState::detect(
+        let change = ApmInstallChange::detect(
             &manifest_path,
             &lock_path,
             &marker_path,
             &merged,
             &manifest_hash,
         )?;
-        if ctx.dry_run() {
-            if !state.manifest_changed() {
-                return Ok(TaskResult::Ok);
-            }
-            let planned = preview_install(
-                ctx,
-                targets,
-                state,
-                fragments.len(),
-                &manifest_path,
-                &lock_path,
-            );
-            // Preserve the planned action count so the task records a dry-run outcome.
-            return Ok(TaskStats::from_counts(planned, 0, 0, 0).finish());
-        }
+        Ok(Self {
+            change,
+            targets,
+            fragment_count: fragments.len(),
+            manifest_path,
+            lock_path,
+            marker_path,
+            merged,
+            manifest_hash,
+        })
+    }
 
+    /// Report the plan without mutating APM state.
+    fn preview(&self, ctx: &Context) -> TaskResult {
+        let mut planned = match self.change {
+            ApmInstallChange::Current => return TaskResult::Ok,
+            ApmInstallChange::ManifestChanged => {
+                ctx.log().dry_run(format!(
+                    "merge {} APM manifest fragment(s) into {}",
+                    self.fragment_count,
+                    self.manifest_path.display()
+                ));
+                ctx.log().dry_run(
+                    "run apm install -g with manifest-resolved runtimes to sync changed manifest",
+                );
+                2_u32
+            }
+            ApmInstallChange::LockMissing => {
+                ctx.log().dry_run(format!(
+                    "run apm install -g with manifest-resolved runtimes because {} is missing",
+                    self.lock_path.display()
+                ));
+                1
+            }
+            ApmInstallChange::MarkerStale => {
+                ctx.log().dry_run(
+                    "run apm install -g with manifest-resolved runtimes because the current \
+                     manifest has not been installed successfully yet",
+                );
+                1
+            }
+        };
+        if self.targets.includes_copilot_app() {
+            ctx.log().dry_run(
+                "run apm install -g --target copilot-app to sync Copilot App workflows separately",
+            );
+            planned = planned.saturating_add(1);
+        }
+        TaskStats::from_counts(planned, 0, 0, 0).finish()
+    }
+
+    /// Apply the planned APM convergence.
+    fn apply(&self, ctx: &Context) -> Result<TaskResult> {
         // `manifest_hash` covers the merged manifest, the content of every
         // locally symlinked plugin source, and the resolved target set, so a
         // matching marker means the last successful install already deployed
         // exactly this.  Re-running `apm install` would spawn several seconds
         // of subprocesses to reach the state we are already in.
-        if !state.manifest_changed() {
+        if self.change == ApmInstallChange::Current {
             ctx.debug_fmt(|| {
                 "APM manifest, local plugin sources, and targets are unchanged since the last \
                  successful install; skipping apm install"
@@ -107,22 +174,23 @@ impl Task for InstallApmPackages {
             return Ok(TaskResult::Ok);
         }
 
-        let pre_workflows = targets
+        let pre_workflows = self
+            .targets
             .includes_copilot_app()
             .then(|| snapshot_desired_apm_workflow_ids(ctx));
-        if targets.includes_copilot_app() {
+        if self.targets.includes_copilot_app() {
             ensure_copilot_app_enabled(ctx);
         }
 
-        if state.manifest_needs_write {
-            write_merged_manifest(&manifest_path, &merged)?;
+        if self.change == ApmInstallChange::ManifestChanged {
+            write_merged_manifest(&self.manifest_path, &self.merged)?;
         }
 
         // Reached only when something APM cares about actually changed: a
         // manifest edit, a local plugin edit, a new target, a missing lockfile,
         // or a marker that never recorded a successful install.
         let install_result =
-            install_task_result(run_apm_command(ctx, ApmCommand::Install, targets)?);
+            install_task_result(run_apm_command(ctx, ApmCommand::Install, self.targets)?);
         if !matches!(install_result, TaskResult::Ok) {
             // Auth skip (or similar): do not record the manifest as installed
             // and do not attempt to advance dependencies.
@@ -131,9 +199,11 @@ impl Task for InstallApmPackages {
         // Run log only: the task's own status row already reports the same
         // phrase as its reason, so surfacing it as a detail line would state
         // the change twice.
-        ctx.log()
-            .trace(format!("installed: {}", describe_dependencies(&merged)));
-        write_manifest_marker(&marker_path, &manifest_hash)?;
+        ctx.log().trace(format!(
+            "installed: {}",
+            describe_dependencies(&self.merged)
+        ));
+        write_manifest_marker(&self.marker_path, &self.manifest_hash)?;
         prune_user_scope(ctx)?;
 
         // Convergence is complete.  Advancing locked dependency refs
@@ -142,76 +212,29 @@ impl Task for InstallApmPackages {
         if let Some(pre) = pre_workflows {
             apply_workflow_autopilot_fixup(ctx, &pre);
         }
-        Ok(
-            TaskStats::changed_with_message(format!(
-                "installed {}",
-                describe_dependencies(&merged)
-            ))
-            .finish(),
-        )
+        Ok(TaskStats::changed_with_message(format!(
+            "installed {}",
+            describe_dependencies(&self.merged)
+        ))
+        .finish())
     }
 }
 
-/// Emit the dry-run preview for an APM install, returning the number of
-/// planned actions so the caller can report accurate change counts.
-fn preview_install(
-    ctx: &Context,
-    targets: ApmTargets,
-    state: ApmInstallState,
-    fragment_count: usize,
-    manifest_path: &Path,
-    lock_path: &Path,
-) -> u32 {
-    let mut planned = 0_u32;
-    if state.manifest_needs_write {
-        ctx.log().dry_run(format!(
-            "merge {fragment_count} APM manifest fragment(s) into {}",
-            manifest_path.display()
-        ));
-        ctx.log()
-            .dry_run("run apm install -g with manifest-resolved runtimes to sync changed manifest");
-        planned = planned.saturating_add(2);
-    } else if state.lock_missing {
-        ctx.log().dry_run(format!(
-            "run apm install -g with manifest-resolved runtimes because {} is missing",
-            lock_path.display()
-        ));
-        planned = planned.saturating_add(1);
-    } else if state.marker_missing_or_stale {
-        ctx.log().dry_run(
-            "run apm install -g with manifest-resolved runtimes because the current manifest has \
-             not been installed successfully yet",
-        );
-        planned = planned.saturating_add(1);
-    }
-    if targets.includes_copilot_app() {
-        ctx.log().dry_run(
-            "run apm install -g --target copilot-app to sync Copilot App workflows separately",
-        );
-        planned = planned.saturating_add(1);
-    }
-    planned
+/// The single reason an APM install is either current or needs convergence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApmInstallChange {
+    /// Manifest, lockfile, and success marker all describe the desired state.
+    Current,
+    /// The merged manifest differs from `~/.apm/apm.yml`.
+    ManifestChanged,
+    /// The APM lockfile is absent.
+    LockMissing,
+    /// The success marker is missing or does not match the desired fingerprint.
+    MarkerStale,
 }
 
-/// Filesystem-derived signals that decide whether `apm install` must run and
-/// what to report.
-///
-/// Computed once per [`InstallApmPackages::run`] from the merged manifest and
-/// the on-disk lockfile/marker so the dry-run preview and the real execution
-/// path branch on identical state.
-#[derive(Debug, Clone, Copy)]
-struct ApmInstallState {
-    /// The merged manifest differs from the on-disk `~/.apm/apm.yml`.
-    manifest_needs_write: bool,
-    /// The APM lockfile is absent (a fresh machine or wiped state).
-    lock_missing: bool,
-    /// The success marker is missing or does not match the current
-    /// manifest, local plugin content, and target set.
-    marker_missing_or_stale: bool,
-}
-
-impl ApmInstallState {
-    /// Detect install state from the merged manifest and on-disk artifacts.
+impl ApmInstallChange {
+    /// Detect the highest-priority reason APM needs to converge.
     ///
     /// # Errors
     ///
@@ -229,20 +252,15 @@ impl ApmInstallState {
             .try_exists()
             .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
         let marker_missing_or_stale = !manifest_marker_matches(marker_path, manifest_hash)?;
-        Ok(Self {
-            manifest_needs_write,
-            lock_missing,
-            marker_missing_or_stale,
+        Ok(if manifest_needs_write {
+            Self::ManifestChanged
+        } else if lock_missing {
+            Self::LockMissing
+        } else if marker_missing_or_stale {
+            Self::MarkerStale
+        } else {
+            Self::Current
         })
-    }
-
-    /// Whether `apm install` has any work to do.
-    ///
-    /// False means the marker already records a successful install of exactly
-    /// this manifest, plugin content, and target set, so the install is a
-    /// no-op worth skipping outright.
-    const fn manifest_changed(self) -> bool {
-        self.manifest_needs_write || self.lock_missing || self.marker_missing_or_stale
     }
 }
 

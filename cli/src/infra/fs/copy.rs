@@ -40,42 +40,20 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
         if meta.file_type().is_symlink() {
             // Recreate the symlink in dst rather than following it, preventing
             // traversal of symlinks that point outside the intended source tree.
+            let link_target = std::fs::read_link(&src_path)
+                .with_context(|| format!("reading symlink {}", src_path.display()))?;
+            let result =
+                super::create_native_symlink(&link_target, &dst_path, super::is_dir_like(&meta));
             #[cfg(unix)]
-            {
-                let link_target = std::fs::read_link(&src_path)
-                    .with_context(|| format!("reading symlink {}", src_path.display()))?;
-                std::os::unix::fs::symlink(&link_target, &dst_path).with_context(|| {
-                    format!(
-                        "creating symlink {} -> {}",
-                        dst_path.display(),
-                        link_target.display()
-                    )
-                })?;
-            }
+            result.with_context(|| {
+                format!(
+                    "creating symlink {} -> {}",
+                    dst_path.display(),
+                    link_target.display()
+                )
+            })?;
             #[cfg(windows)]
             {
-                // On Windows, attempt to recreate the symlink.  This requires
-                // either Developer Mode or elevated privileges; if it fails we
-                // log a warning and continue rather than silently dropping the
-                // entry.
-                //
-                // Use the symlink's own metadata (`meta`, from
-                // `symlink_metadata()`) to decide whether this is a directory
-                // or file symlink.  On Windows, directory symlinks carry
-                // FILE_ATTRIBUTE_DIRECTORY on the reparse point itself, so
-                // `meta.is_dir()` is reliable even for dangling symlinks and
-                // symlinks with relative targets that do not exist in the
-                // current working directory.  This avoids the previous
-                // approach of calling `link_target.is_dir()` or
-                // `src_path.is_dir()`, both of which follow the link and
-                // return `false` when the target is absent or relative.
-                let link_target = std::fs::read_link(&src_path)
-                    .with_context(|| format!("reading symlink {}", src_path.display()))?;
-                let result = if meta.is_dir() {
-                    std::os::windows::fs::symlink_dir(&link_target, &dst_path)
-                } else {
-                    std::os::windows::fs::symlink_file(&link_target, &dst_path)
-                };
                 if let Err(e) = result {
                     tracing::warn!(
                         "skipping symlink {} -> {}: {e} (enable Developer Mode or run as administrator)",
@@ -86,6 +64,7 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
             }
             #[cfg(not(any(unix, windows)))]
             {
+                let _ = result;
                 tracing::warn!(
                     "skipping symlink entry {} while copying to {}: symlink creation is unsupported on this platform",
                     src_path.display(),

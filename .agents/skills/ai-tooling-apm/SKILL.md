@@ -93,5 +93,11 @@ apply mode may run `apm update`, but only after a successful installed state is
 confirmed. Keep update-only scheduling in the command pipeline rather than
 teaching the task to inspect command flags.
 
+`InstallApmPackages` derives one immutable `ApmInstallPlan` from the merged
+manifest, lockfile, success marker, local-source fingerprint, and resolved
+targets. Preview and apply must consume that same plan; do not duplicate
+filesystem probes or independently reconstruct the install decision in either
+path.
+
 For changes to `cli/src/domains/ai/apm.rs` or `cli/src/domains/ai/apm/`, also
 run the Rust checks from the `cross-platform-verification` skill.

@@ -9,43 +9,33 @@
 /// Supports identity mapping (`ty`) and explicit entry-to-item mapping
 /// (`entry`, `item`, `map`) variants.
 macro_rules! config_section {
-    // Identity mapping (Entry == Item).
     (field: $field:literal, ty: $ty:ty $(,)?) => {
-        #[derive(Debug, ::serde::Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Section {
-            #[serde(rename = $field)]
-            entries: Vec<$ty>,
-        }
-
-        impl $crate::infra::config::toml_loader::ConfigSection for Section {
-            type Entry = $ty;
-            type Item = $ty;
-
-            fn extract(self) -> Vec<$ty> {
-                self.entries
-            }
-
-            fn map(entry: $ty) -> $ty {
-                entry
-            }
-        }
-
-        /// Load items from the TOML config file, filtered by active categories.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error if the file exists but cannot be parsed.
-        pub fn load(
-            path: &::std::path::Path,
-            active_categories: &[$crate::infra::config::category_matcher::Category],
-        ) -> ::anyhow::Result<Vec<$ty>> {
-            $crate::infra::config::toml_loader::load_section::<Section>(path, active_categories)
+        $crate::infra::config::config_section! {
+            @define
+            field: $field,
+            entry: $ty,
+            item: $ty,
+            map: |entry| entry,
         }
     };
 
-    // With explicit entry-to-item mapping.
     (
+        field: $field:literal,
+        entry: $entry:ty,
+        item: $item:ty,
+        map: |$param:ident| $map_expr:expr $(,)?
+    ) => {
+        $crate::infra::config::config_section! {
+            @define
+            field: $field,
+            entry: $entry,
+            item: $item,
+            map: |$param| $map_expr,
+        }
+    };
+
+    (
+        @define
         field: $field:literal,
         entry: $entry:ty,
         item: $item:ty,

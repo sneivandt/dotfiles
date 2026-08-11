@@ -286,6 +286,43 @@ pub fn is_dir_like(meta: &std::fs::Metadata) -> bool {
     }
 }
 
+/// Create a native symbolic link using the platform's required file/directory
+/// distinction.
+///
+/// `target_is_dir` is ignored on Unix, where one symlink primitive handles both
+/// kinds. Windows requires the caller to classify the link before creation.
+///
+/// # Errors
+///
+/// Returns an error when the platform cannot create the requested link.
+pub fn create_native_symlink(
+    target: &Path,
+    link: &Path,
+    target_is_dir: bool,
+) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        let _ = target_is_dir;
+        std::os::unix::fs::symlink(target, link)
+    }
+    #[cfg(windows)]
+    {
+        if target_is_dir {
+            std::os::windows::fs::symlink_dir(target, link)
+        } else {
+            std::os::windows::fs::symlink_file(target, link)
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (target, link, target_is_dir);
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "symbolic links are unsupported on this platform",
+        ))
+    }
+}
+
 /// Remove the entry at `path` described by `meta`, picking the removal call
 /// that the platform requires for that entry kind.
 ///

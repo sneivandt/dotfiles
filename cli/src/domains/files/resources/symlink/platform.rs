@@ -6,7 +6,7 @@ use crate::infra::exec::Executor;
 /// Create a symlink at `link` pointing to `target`.
 #[cfg(unix)]
 pub(super) fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executor) -> Result<()> {
-    std::os::unix::fs::symlink(target, link).with_context(|| {
+    crate::infra::fs::create_native_symlink(target, link, false).with_context(|| {
         format!(
             "creating symlink {} -> {}",
             link.display(),
@@ -22,13 +22,13 @@ pub(super) fn create_symlink(target: &Path, link: &Path, _executor: &dyn Executo
 pub(super) fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor) -> Result<()> {
     let is_dir = target.is_dir();
     if is_dir {
-        match std::os::windows::fs::symlink_dir(target, link) {
+        match crate::infra::fs::create_native_symlink(target, link, true) {
             Ok(()) => Ok(()),
             Err(e) => create_junction(target, link, executor)
                 .with_context(|| format!("directory symlink failed: {e}")),
         }
     } else {
-        std::os::windows::fs::symlink_file(target, link).map_err(anyhow::Error::from)
+        crate::infra::fs::create_native_symlink(target, link, false).map_err(anyhow::Error::from)
     }
     .with_context(|| {
         format!(

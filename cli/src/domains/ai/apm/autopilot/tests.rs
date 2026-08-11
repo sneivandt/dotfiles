@@ -21,7 +21,9 @@ use super::super::test_fixture::{
 use super::super::{InstallApmPackages, UpdateApmPackages};
 use super::DesiredApmWorkflows;
 use super::lockfile::parse_deployed_workflow_ids;
-use super::outcome::{FixupOutcome, decide_fixup_outcome};
+use super::outcome::{
+    FixupExecution, FixupFailure, FixupOutcome, decide_fixup_outcome, interpret_fixup_result,
+};
 use super::scripts::{
     WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT, build_workflow_script_args,
     parse_autopilot_result, parse_desired_ids,
@@ -764,5 +766,28 @@ fn decide_fixup_outcome_unparsed_on_malformed_output() {
     assert_eq!(
         decide_fixup_outcome("3 3 extra\napm--a\n", &pre),
         FixupOutcome::Unparsed
+    );
+}
+
+#[test]
+fn interpret_fixup_result_classifies_script_failures() {
+    let pre = DesiredApmWorkflows::Unavailable;
+    assert_eq!(
+        interpret_fixup_result(exec_error("database is locked"), &pre),
+        FixupExecution::Failed(FixupFailure::DatabaseLocked)
+    );
+    assert_eq!(
+        interpret_fixup_result(exec_error("no such table: workflows"), &pre),
+        FixupExecution::Failed(FixupFailure::WorkflowsTableMissing)
+    );
+    assert_eq!(
+        interpret_fixup_result(exec_error("no such column: mode"), &pre),
+        FixupExecution::Failed(FixupFailure::SchemaDrift(
+            "no such column: mode".to_string()
+        ))
+    );
+    assert_eq!(
+        interpret_fixup_result(exec_error("permission denied"), &pre),
+        FixupExecution::Failed(FixupFailure::Other("permission denied".to_string()))
     );
 }

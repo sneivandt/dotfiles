@@ -57,12 +57,11 @@ description: >
   counter summaries and lines duplicating the task message are filtered in both
   modes; do not work around the filter by rewording.
 - Normal and verbose output both print all detail lines, uncapped.
-- Summaries lead with affected-task counts and put structured action counts in
-  parentheses: `3 changed (87 applied)` or `5 would change (121 planned)`.
-  Summary groups use no status glyphs. Current, ignored, and failed task counts
-  and elapsed time remain separate ` · `-delimited groups. Outcome groups are
-  green, magenta, dim, yellow, and red respectively. Non-applicable tasks are
-  reported nowhere but the run log. Never infer counts from display text.
+- Summaries report task counts only: `3 changed` or `5 would change`. Summary
+  groups use no status glyphs. Current, ignored, and failed task counts and
+  elapsed time remain separate ` · `-delimited groups. Outcome groups are green,
+  magenta, dim, yellow, and red respectively. Non-applicable tasks are reported
+  nowhere but the run log. Never infer counts from display text.
 - The transient progress line reads
   `Running · {done}/{total} done · {active tasks}`. The counter is completed
   tasks, not active ones, so it keeps its explicit `done` label. Its denominator
@@ -86,8 +85,8 @@ description: >
 - Header and summary lines join segments with ` · `. The shell wrappers
   deliberately mirror this style for bootstrap output so pre-binary and
   post-binary output look like one program; see `shell-patterns`.
-- The startup header is a single line: command, profile, platform, then the
-  optional `dry run` and `overlay <path>` sections. It is emitted with
+- The startup header is a single line: command, optional `dry run`, profile,
+  platform, then the optional `overlay <path>` section. It is emitted with
   `MsgKind::Startup` and rendered dim so it reads as run context rather than a
   result. Never add a second startup line.
 

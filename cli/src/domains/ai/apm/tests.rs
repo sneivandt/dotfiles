@@ -2,13 +2,15 @@
 
 use super::*;
 use crate::engine::Context;
+use crate::infra::ConfigHandle;
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_linux_context};
 
 use super::test_fixture::{
-    make_context_with_home, ok_result, write_copilot_app_db, write_current_manifest_and_lock,
-    write_current_manifest_lock_and_marker, write_default_home_fragment, write_home_fragment,
+    DEFAULT_FRAGMENT, make_context_with_home, ok_result, write_copilot_app_db,
+    write_current_manifest_and_lock, write_current_manifest_lock_and_marker,
+    write_default_home_fragment, write_home_fragment,
 };
 use std::path::PathBuf;
 
@@ -32,6 +34,24 @@ fn write_install_home_fragment(home: &Path) {
 
 fn make_home_context(home: &Path) -> Context {
     make_linux_context(empty_config(home.to_path_buf())).with_home(home.to_path_buf())
+}
+
+fn install_task() -> InstallApmPackages {
+    InstallApmPackages::new(ConfigHandle::new(Vec::new()))
+}
+
+fn update_task() -> UpdateApmPackages {
+    UpdateApmPackages::new(ConfigHandle::new(Vec::new()))
+}
+
+fn install_task_with_fragment(root: &Path, filename: &str) -> InstallApmPackages {
+    InstallApmPackages::new(ConfigHandle::new(vec![ApmFragmentSource::new(
+        root.join("symlinks")
+            .join("apm")
+            .join("config")
+            .join(filename),
+        filename.into(),
+    )]))
 }
 
 fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
@@ -166,16 +186,16 @@ fn expect_apm_outdated(mock: &mut MockExecutor, cwd: &Path, stdout: &'static str
 fn should_run_false_when_no_fragments() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let ctx = make_home_context(dir.path());
-    assert!(!InstallApmPackages.should_run(&ctx));
+    assert!(!install_task().should_run(&ctx));
 }
 
 #[test]
-fn should_run_true_when_repo_yaml_fragment_exists() {
+fn should_run_true_when_configured_repo_fragment_exists() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_repo_fragment(dir.path(), "team.yaml", "name: test\n");
     let config = empty_config(dir.path().to_path_buf());
     let ctx = make_linux_context(config);
-    assert!(InstallApmPackages.should_run(&ctx));
+    assert!(install_task_with_fragment(dir.path(), "team.yaml").should_run(&ctx));
 }
 
 #[test]
@@ -183,7 +203,7 @@ fn should_run_true_when_only_overlay_fragment_in_home() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_home_fragment(dir.path(), "work.yml", "name: work\n");
     let ctx = make_home_context(dir.path());
-    assert!(InstallApmPackages.should_run(&ctx));
+    assert!(install_task().should_run(&ctx));
 }
 
 #[test]
@@ -192,7 +212,7 @@ fn run_skips_when_apm_not_found() {
     write_home_fragment(dir.path(), "base.yml", "name: base\n");
 
     let ctx = make_home_context(dir.path());
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     match result {
         TaskResult::Skipped(reason) => assert!(
             reason.contains("apm not found"),
@@ -252,7 +272,7 @@ fn run_installs_when_manifest_changed() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result after apm install, got {result:?}"
@@ -279,7 +299,7 @@ fn run_installs_copilot_app_separately_on_windows_when_app_database_exists() {
         mock,
     );
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result after apm install, got {result:?}"
@@ -309,7 +329,7 @@ fn run_uses_runtime_auto_detection_when_copilot_app_database_missing() {
 
     let ctx = make_home_context_without_copilot_app_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result after apm install, got {result:?}"
@@ -349,7 +369,7 @@ fn update_runs_native_update_when_dependencies_current() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok when dependencies are already current, got {result:?}"
@@ -399,7 +419,7 @@ fn update_advances_dependencies_when_lockfile_changes() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result after apm update, got {result:?}"
@@ -436,7 +456,7 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok when update made no changes, got {result:?}"
@@ -497,7 +517,7 @@ fn update_ignores_lockfile_timestamp_rewrites() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok when only the lockfile timestamp changed, got {result:?}"
@@ -545,7 +565,7 @@ fn update_reports_change_when_resolved_ref_advances_alongside_timestamp() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result when a resolved ref advanced, got {result:?}"
@@ -564,7 +584,7 @@ fn update_propagates_lockfile_read_failures() {
     expect_which_apm(&mut mock, true);
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let err = UpdateApmPackages
+    let err = update_task()
         .run(&ctx)
         .expect_err("non-NotFound lockfile read failures should propagate");
     assert!(
@@ -586,10 +606,29 @@ fn install_task_skips_apm_when_manifest_sources_and_targets_are_unchanged() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok when nothing APM cares about changed, got {result:?}"
+    );
+}
+
+#[test]
+fn dry_run_uses_managed_fragment_source_when_home_link_is_missing() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+    write_repo_fragment(dir.path(), "base.yml", DEFAULT_FRAGMENT);
+    std::fs::remove_file(dir.path().join(".apm").join("config").join("base.yml"))
+        .expect("remove managed home fragment");
+
+    let task = install_task_with_fragment(dir.path(), "base.yml");
+    let ctx = make_home_context(dir.path()).with_dry_run(true);
+
+    let result = task.run(&ctx).expect("run should not error");
+
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "restoring a fragment link must not falsely preview APM convergence: {result:?}"
     );
 }
 
@@ -609,7 +648,7 @@ fn install_task_redeploys_when_a_local_plugin_source_changes() {
     // manifest text is byte-identical.
     std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected a redeploy after a local plugin edit, got {result:?}"
@@ -658,7 +697,7 @@ fn install_skips_experimental_enable_when_apm_config_reports_it_enabled() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected a redeploy after a local plugin edit, got {result:?}"
@@ -682,7 +721,7 @@ fn install_runs_experimental_enable_when_apm_config_is_unusable() {
         let ctx = make_home_context_with_executor(dir.path(), mock);
         std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
 
-        let result = InstallApmPackages.run(&ctx).expect("run should not error");
+        let result = install_task().run(&ctx).expect("run should not error");
         assert!(
             matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
             "expected a redeploy for config {contents:?}, got {result:?}"
@@ -705,7 +744,7 @@ fn update_skips_advancement_when_install_marker_missing() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Skipped(_)),
         "expected Skipped when the install success marker is missing, got {result:?}"
@@ -724,7 +763,7 @@ fn run_installs_when_success_marker_is_missing() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result after installing unmarked manifest, got {result:?}"
@@ -745,7 +784,7 @@ fn run_dry_run_reports_planned_apm_work_without_writing() {
 
     let ctx = make_home_context(dir.path()).with_dry_run(true);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected quantified planned work with fragments present, got {result:?}"
@@ -763,7 +802,7 @@ fn run_dry_run_is_silent_when_apm_install_state_is_current() {
 
     let ctx = make_home_context(dir.path()).with_dry_run(true);
 
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected no planned install work, got {result:?}"
@@ -785,7 +824,7 @@ fn update_dry_run_is_silent_when_dependencies_are_current() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected no planned update work, got {result:?}"
@@ -802,7 +841,7 @@ fn update_dry_run_reports_discovered_dependency_advancement() {
     expect_apm_outdated(&mut mock, dir.path(), "[!] 2 outdated dependencies found\n");
     let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::DryRun),
         "expected an update plan for discovered outdated dependencies, got {result:?}"
@@ -821,7 +860,7 @@ fn update_skips_when_apm_not_found() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Skipped(_)),
         "expected Skipped when apm is not on PATH, got {result:?}"
@@ -848,9 +887,7 @@ fn run_skips_auth_failures() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages
-        .run(&ctx)
-        .expect("auth failure should skip");
+    let result = install_task().run(&ctx).expect("auth failure should skip");
     match result {
         TaskResult::Skipped(reason) => assert!(
             reason.contains("GitHub authentication"),
@@ -883,7 +920,7 @@ fn run_propagates_non_auth_apm_failures() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let err = InstallApmPackages
+    let err = install_task()
         .run(&ctx)
         .expect_err("non-auth failures should propagate");
     assert!(
@@ -932,7 +969,7 @@ fn run_continues_when_experimental_enable_fails() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = InstallApmPackages
+    let result = install_task()
         .run(&ctx)
         .expect("install should continue despite enable failure");
     assert!(matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0));
@@ -981,7 +1018,7 @@ fn run_propagates_prune_failures_after_persisting_marker() {
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
-    let err = InstallApmPackages
+    let err = install_task()
         .run(&ctx)
         .expect_err("prune failures should propagate");
     assert!(
@@ -1040,7 +1077,7 @@ fn run_propagates_copilot_app_install_failures() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let err = InstallApmPackages
+    let err = install_task()
         .run(&ctx)
         .expect_err("the copilot-app install must fail closed");
     assert!(

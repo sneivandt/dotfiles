@@ -10,6 +10,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::engine::{Context, Task, TaskResult};
+use crate::infra::ConfigHandle;
 use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::infra::platform::{Os, Platform};
 
@@ -36,6 +37,14 @@ const AUTOPILOT_FIXTURE_FRAGMENT: &str = "name: base\nversion: 1.0.0\ndependenci
 fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
     write_copilot_app_db(home);
     make_context_with_home(home, Platform::new(Os::Linux, false), executor)
+}
+
+fn install_task() -> InstallApmPackages {
+    InstallApmPackages::new(ConfigHandle::new(Vec::new()))
+}
+
+fn update_task() -> UpdateApmPackages {
+    UpdateApmPackages::new(ConfigHandle::new(Vec::new()))
 }
 
 /// Write a `<home>/.apm/apm.lock.yaml` whose `deployed_files` record `ids` as
@@ -408,7 +417,7 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result after autopilot fixup, got {result:?}"
@@ -432,7 +441,7 @@ fn run_warns_when_python_missing_for_autopilot_fixup() {
         .returning(|_| false);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result when python is missing (non-fatal), got {result:?}"
@@ -467,7 +476,7 @@ fn run_warns_when_workflow_db_is_locked() {
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result despite locked db (non-fatal), got {result:?}"
@@ -505,7 +514,7 @@ fn run_warns_when_workflow_db_schema_drifts() {
         });
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result despite schema drift (non-fatal), got {result:?}"
@@ -534,7 +543,7 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
     expect_apm_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
-    let result = InstallApmPackages.run(&ctx).expect("run should not error");
+    let result = install_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "expected changed result with the fixup skipped, got {result:?}"
@@ -610,7 +619,7 @@ fn update_re_arms_apm_workflows_after_apm_update() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok after re-arming workflows post apm update, got {result:?}"
@@ -682,7 +691,7 @@ fn update_re_arms_apm_workflows_even_when_apm_update_reports_no_changes() {
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
-    let result = UpdateApmPackages.run(&ctx).expect("run should not error");
+    let result = update_task().run(&ctx).expect("run should not error");
     assert!(
         matches!(result, TaskResult::Ok),
         "expected Ok after re-arming workflows on the no-change path, got {result:?}"

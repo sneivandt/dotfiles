@@ -27,6 +27,7 @@ mod validation;
 
 use crate::engine::TaskResult;
 
+pub(crate) use fragments::ApmFragmentSource;
 pub use install::InstallApmPackages;
 pub use update::UpdateApmPackages;
 pub(crate) use validation::validate;

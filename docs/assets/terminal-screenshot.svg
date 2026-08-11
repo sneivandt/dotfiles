@@ -31,6 +31,6 @@
     <text x="34" y="355"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">Default shell</tspan></text>
     <text x="52" y="376" fill="#a9b1d6">configure default shell → zsh</text>
 
-    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">3 changed (6 applied)</tspan><tspan fill="#565f89"> · 12 current · 1.3s</tspan></text>
+    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">3 changed</tspan><tspan fill="#565f89"> · 12 current · 1.3s</tspan></text>
   </g>
 </svg>

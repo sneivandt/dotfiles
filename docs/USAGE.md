@@ -126,11 +126,12 @@ downstream tasks consume it.
 ## Console output
 
 Every run opens with a dimmed header line that names the command, resolved
-profile, and platform. Two optional sections may follow, in this order:
-`dry run` for a dry run, and `overlay <path>` when an overlay is active.
+command and, for previews, immediately follows it with `dry run`. The resolved
+profile and platform come next, followed by `overlay <path>` when an overlay is
+active.
 
 ```text
-Install · profile desktop · Arch Linux · dry run · overlay ~/src/dotfiles-private
+Install · dry run · profile desktop · Arch Linux · overlay ~/src/dotfiles-private
 ```
 
 Visible task rows are printed as tasks complete, so independent parallel tasks
@@ -187,12 +188,11 @@ accounts for. Applicability is only known once a task has run, so a task that
 turns out not to apply leaves the denominator rather than advancing the
 numerator.
 
-The final line leads with affected-task counts and puts individual change counts
-in parentheses. It uses no status glyphs; color distinguishes each outcome
-group: green for changed, magenta for dry run, dim for current, yellow for
-ignored, and red for failed. For example:
-`2 changed (4 applied) · 14 current · 1 ignored · 2.3s`,
-`5 would change (121 planned) · 8 current · 3 ignored · 0.7s`, or
+The final line reports task counts only. It uses no status glyphs; color
+distinguishes each outcome group: green for changed, magenta for dry run, dim
+for current, yellow for ignored, and red for failed. For example:
+`2 changed · 14 current · 1 ignored · 2.3s`,
+`5 would change · 8 current · 3 ignored · 0.7s`, or
 `6 passed · 1 ignored · 1.4s`.
 
 ## Uninstall

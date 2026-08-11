@@ -120,14 +120,17 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
         with_deps(
-            InstallApmPackages,
+            InstallApmPackages::new(store.apm_fragments.clone()),
             &[
                 id::<InstallPackages>(),
                 id::<InstallAurPackages>(),
                 id::<InstallSymlinks>(),
             ],
         ),
-        with_deps(UpdateApmPackages, &[id::<InstallApmPackages>()]),
+        with_deps(
+            UpdateApmPackages::new(store.apm_fragments.clone()),
+            &[id::<InstallApmPackages>()],
+        ),
         Box::new(InstallWslConf),
         with_deps(
             ReportOverlayScriptSnapshot::new(store.scripts.clone()),

@@ -83,10 +83,7 @@ fn standard_summary_groups_task_and_action_counts() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(
-        lines,
-        ["3 changed (87 applied) · 1 ignored · 1 failed · 2.0s"]
-    );
+    assert_eq!(lines, ["3 changed · 1 ignored · 1 failed · 2.0s"]);
 }
 
 #[test]
@@ -110,7 +107,7 @@ fn dry_run_summary_pairs_affected_and_planned_counts() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["1 would change (81 planned) · 0.8s"]);
+    assert_eq!(lines, ["1 would change · 0.8s"]);
 }
 
 #[test]
@@ -152,7 +149,7 @@ fn summary_totals_account_for_every_reported_task() {
 
     assert_eq!(
         lines,
-        ["2 changed (4 applied) \u{b7} 15 current \u{b7} 1 ignored \u{b7} 2.3s"],
+        ["2 changed \u{b7} 15 current \u{b7} 1 ignored \u{b7} 2.3s"],
         "every task the run reported on must be represented in the totals"
     );
 }
@@ -447,7 +444,7 @@ fn colored_summary_styles_each_outcome_group() {
 
     assert_eq!(
         lines,
-        ["\x1b[32m1 changed (2 applied)\x1b[0m \
+        ["\x1b[32m1 changed\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m2 current\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[33m3 ignored\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[31m4 failed\x1b[0m \

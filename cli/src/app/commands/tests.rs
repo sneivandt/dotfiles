@@ -33,7 +33,7 @@ mod startup_log_tests {
                 true,
                 None,
             ),
-            "Install · profile workstation · Linux · dry run"
+            "Install · dry run · profile workstation · Linux"
         );
     }
 
@@ -53,7 +53,7 @@ mod startup_log_tests {
     }
 
     #[test]
-    fn overlay_follows_the_dry_run_section() {
+    fn dry_run_follows_the_command_and_overlay_stays_last() {
         assert_eq!(
             startup_context_line(
                 "Install",
@@ -62,7 +62,7 @@ mod startup_log_tests {
                 true,
                 Some(Path::new("/private/overlay")),
             ),
-            "Install · profile workstation · Linux · dry run · overlay /private/overlay"
+            "Install · dry run · profile workstation · Linux · overlay /private/overlay"
         );
     }
 }

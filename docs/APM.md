@@ -85,7 +85,8 @@ overlay fragment can add a runtime without restating the base list.
 That ordering ensures the APM executable and repository-managed fragments are
 available. The task:
 
-1. Discovers active main and overlay fragments.
+1. Discovers active main and overlay fragments from their configured symlink
+   sources, while preserving unmanaged home fragments.
 2. Produces the merged manifest in deterministic order.
 3. Computes a fingerprint of the merged desired state.
 4. Runs APM's idempotent convergence.
@@ -93,9 +94,11 @@ available. The task:
 6. Prunes user-scope deployments no longer owned by the generated manifest.
 
 Re-running `dotfiles install` should not advance pinned dependency versions.
-Install previews derive the same merged-manifest, lockfile, and success-marker
-state as apply mode. They emit `~` only when convergence is needed; an
-already-current install stays quiet.
+Install previews derive the same post-symlink merged-manifest, lockfile, and
+success-marker state as apply mode. A missing managed fragment link can
+therefore be previewed and restored by **Home symlinks** without falsely
+previewing an APM reinstall. **APM packages** emits `~` only when convergence is
+needed; an already-current install stays quiet.
 
 ```bash
 dotfiles install --only apm --dry-run --verbose

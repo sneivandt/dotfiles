@@ -5,11 +5,12 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result};
 
+use super::ApmFragmentSource;
 use super::autopilot::{apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids};
 use super::commands::{
     ApmCommand, ensure_copilot_app_enabled, install_task_result, prune_user_scope, run_apm_command,
 };
-use super::fragments::{discover_fragment_files, discover_yaml_files, merge_fragments};
+use super::fragments::{discover_effective_fragment_files, merge_fragments};
 use super::manifest::{
     describe_dependencies, manifest_marker_matches, merged_manifest_needs_write,
     write_manifest_marker, write_merged_manifest,
@@ -18,6 +19,7 @@ use super::skip;
 use super::sources::install_fingerprint;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
+use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 
 /// Converge AI plugin manifests via Microsoft APM.
@@ -27,7 +29,18 @@ use crate::infra::logging::OutputExt as _;
 /// successful install.  It never advances locked dependency refs — that is
 /// [`super::update::UpdateApmPackages`]'s job under the `update` command.
 #[derive(Debug)]
-pub struct InstallApmPackages;
+pub struct InstallApmPackages {
+    fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+}
+
+impl InstallApmPackages {
+    /// Create the task with the managed symlink configuration that supplies APM
+    /// fragments.
+    #[must_use]
+    pub const fn new(fragments: ConfigHandle<Vec<ApmFragmentSource>>) -> Self {
+        Self { fragments }
+    }
+}
 
 impl Task for InstallApmPackages {
     task_metadata! {
@@ -36,7 +49,7 @@ impl Task for InstallApmPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        apm_task_should_run(ctx)
+        apm_task_should_run(ctx, &self.fragments.read())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -46,7 +59,7 @@ impl Task for InstallApmPackages {
             return Ok(skip(missing_apm_reason(ctx)));
         }
 
-        let fragments = discover_fragment_files(home)?;
+        let fragments = discover_effective_fragment_files(home, &self.fragments.read())?;
         if fragments.is_empty() {
             return Ok(skip("no manifest fragments found under ~/.apm/config/"));
         }
@@ -76,7 +89,7 @@ impl Task for InstallApmPackages {
                 &manifest_path,
                 &lock_path,
             );
-            // Report planned actions so the run totals include `(N planned)`.
+            // Preserve the planned action count so the task records a dry-run outcome.
             return Ok(TaskStats::from_counts(planned, 0, 0, 0).finish());
         }
 
@@ -239,25 +252,12 @@ impl ApmInstallState {
 /// fragments have already been linked into `~/.apm/config/`.  Shared by
 /// [`InstallApmPackages`] and [`super::update::UpdateApmPackages`] so both gate
 /// on the same "APM is in play here" signal.
-pub(super) fn apm_task_should_run(ctx: &Context) -> bool {
-    let repo_config_dir = ctx.root().join("symlinks").join("apm").join("config");
-    match discover_yaml_files(&repo_config_dir) {
-        Ok(fragments) if !fragments.is_empty() => return true,
-        Ok(_) => {}
-        Err(err) => {
-            ctx.log().warn(format!(
-                "could not inspect symlinks/apm/config; task will run to avoid hiding the \
-                 error: {err:#}"
-            ));
-            return true;
-        }
-    }
-
-    match discover_fragment_files(ctx.home()) {
+pub(super) fn apm_task_should_run(ctx: &Context, fragments: &[ApmFragmentSource]) -> bool {
+    match discover_effective_fragment_files(ctx.home(), fragments) {
         Ok(fragments) => !fragments.is_empty(),
         Err(err) => {
             ctx.log().warn(format!(
-                "could not inspect ~/.apm/config; task will run to surface the error: {err:#}"
+                "could not inspect APM fragments; task will run: {err:#}"
             ));
             true
         }

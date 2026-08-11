@@ -10,7 +10,10 @@
 //! handle.
 
 use crate::app::config::Config;
+use crate::domains::ai::apm::ApmFragmentSource;
+use crate::domains::files::config::symlinks::{Symlink, resolve_symlinks_dir};
 use crate::infra::ConfigHandle;
+use std::path::Path;
 
 macro_rules! define_config_store {
     ($($field:ident: $ty:ty => $count:expr;)+) => {
@@ -22,6 +25,8 @@ macro_rules! define_config_store {
         pub struct ConfigStore {
             /// Whole configuration, for app-owned validation tasks.
             pub aggregate: ConfigHandle<Config>,
+            /// Resolved APM fragment sources derived from managed symlinks.
+            pub(crate) apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
             $(
                 #[doc = concat!("Configuration handle for `", stringify!($field), "`.")]
                 pub $field: ConfigHandle<$ty>,
@@ -32,8 +37,10 @@ macro_rules! define_config_store {
             /// Split an aggregate [`Config`] into per-domain handles.
             #[must_use]
             pub fn from_config(config: Config) -> Self {
+                let apm_fragments = apm_fragment_sources(&config);
                 Self {
                     $($field: ConfigHandle::new(config.$field.clone()),)+
+                    apm_fragments: ConfigHandle::new(apm_fragments),
                     aggregate: ConfigHandle::new(config),
                 }
             }
@@ -45,6 +52,7 @@ macro_rules! define_config_store {
             /// completes the reload dependency boundary before rebuilding tasks
             /// that consume these handles.
             pub fn reload(&self, config: Config) {
+                self.apm_fragments.swap(apm_fragment_sources(&config));
                 $(self.$field.swap(config.$field.clone());)+
                 self.aggregate.swap(config);
             }
@@ -54,6 +62,42 @@ macro_rules! define_config_store {
 
 config_section_inventory!(define_config_store);
 
+fn apm_fragment_sources(config: &Config) -> Vec<ApmFragmentSource> {
+    config
+        .symlinks
+        .iter()
+        .filter_map(|symlink| {
+            let target_name = apm_fragment_target_name(symlink)?;
+            let source = resolve_symlinks_dir(symlink, &config.root).join(&symlink.source);
+            Some(ApmFragmentSource::new(source, target_name))
+        })
+        .collect()
+}
+
+fn apm_fragment_target_name(symlink: &Symlink) -> Option<std::ffi::OsString> {
+    let target = symlink
+        .target
+        .clone()
+        .unwrap_or_else(|| format!(".{}", symlink.source));
+    let mut segments = target
+        .split(['/', '\\'])
+        .filter(|segment| !segment.is_empty());
+    if segments.next() != Some(".apm") || segments.next() != Some("config") {
+        return None;
+    }
+    let filename = segments.next()?;
+    if segments.next().is_some() {
+        return None;
+    }
+    let path = Path::new(filename);
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml")
+        })
+        .then(|| path.as_os_str().to_os_string())
+}
+
 #[cfg(test)]
 #[allow(
     clippy::indexing_slicing,
@@ -61,6 +105,7 @@ config_section_inventory!(define_config_store);
 )]
 mod tests {
     use super::*;
+    use crate::domains::files::config::symlinks::Symlink;
     use crate::domains::overlay::config::scripts::ScriptEntry;
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
@@ -71,6 +116,34 @@ mod tests {
             path: format!("scripts/{name}.sh"),
             description: None,
         }
+    }
+
+    fn symlink(root: &Path, source: &str) -> Symlink {
+        Symlink {
+            source: source.to_string(),
+            target: None,
+            origin: Some(root.to_path_buf()),
+        }
+    }
+
+    #[test]
+    fn derives_apm_fragments_from_managed_symlinks() {
+        let root = PathBuf::from("/repo");
+        let mut config = empty_config(root.clone());
+        config.symlinks = vec![
+            symlink(&root, "apm/config/base.yml"),
+            symlink(&root, "apm/plugins/dot-agent"),
+        ];
+
+        let store = ConfigStore::from_config(config);
+
+        assert_eq!(
+            *store.apm_fragments.read(),
+            vec![ApmFragmentSource::new(
+                root.join("symlinks").join("apm/config/base.yml"),
+                "base.yml".into(),
+            )]
+        );
     }
 
     #[test]

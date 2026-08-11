@@ -1,11 +1,31 @@
 //! Discovery, merging, and de-duplication of APM YAML config fragments.
 
 use anyhow::{Context as _, Result};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::ffi::OsString;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use super::GENERATED_HEADER;
+
+/// A configured APM fragment source and the filename it occupies under
+/// `~/.apm/config/`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ApmFragmentSource {
+    source: PathBuf,
+    target_name: OsString,
+}
+
+impl ApmFragmentSource {
+    /// Create a managed fragment source resolved by the application layer.
+    #[must_use]
+    pub(crate) const fn new(source: PathBuf, target_name: OsString) -> Self {
+        Self {
+            source,
+            target_name,
+        }
+    }
+}
 
 /// Discover `*.yml` and `*.yaml` files in `~/.apm/config/`.
 ///
@@ -14,6 +34,29 @@ use super::GENERATED_HEADER;
 /// filesystem's enumeration order.
 pub(super) fn discover_fragment_files(home: &Path) -> Result<Vec<PathBuf>> {
     discover_yaml_files(&home.join(".apm").join("config"))
+}
+
+/// Discover the fragment files that the symlink task makes effective.
+///
+/// Managed source paths replace home entries with the same target name. This
+/// lets dry runs evaluate the post-symlink desired state without mutating the
+/// home directory, while preserving unmanaged fragments already present there.
+pub(super) fn discover_effective_fragment_files(
+    home: &Path,
+    managed: &[ApmFragmentSource],
+) -> Result<Vec<PathBuf>> {
+    let mut fragments = BTreeMap::new();
+    for path in discover_fragment_files(home)? {
+        if let Some(name) = path.file_name() {
+            fragments.insert(name.to_os_string(), path);
+        }
+    }
+
+    for fragment in managed {
+        fragments.insert(fragment.target_name.clone(), fragment.source.clone());
+    }
+
+    Ok(fragments.into_values().collect())
 }
 
 /// Discover YAML files in an APM fragment directory.

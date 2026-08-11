@@ -67,14 +67,14 @@ The CLI writes a single ` · `-separated header, then status lines, then a
 ` · `-separated summary:
 
 ```text
-Install · profile desktop · Arch Linux · dry run · overlay ~/src/dotfiles-private
+Install · dry run · profile desktop · Arch Linux · overlay ~/src/dotfiles-private
 ⊘ Dotfiles repository · local changes present
 No changes · 15 current · 1 ignored · 0.7s
 ```
 
-The `dry run` and `overlay <path>` sections are optional and always come last,
-in that order. The CLI renders the header dim; wrappers have no equivalent
-styling and print theirs plain.
+The optional `dry run` section immediately follows the command. The optional
+`overlay <path>` section always comes last. The CLI renders the header dim;
+wrappers have no equivalent styling and print theirs plain.
 
 Bootstrap download output follows the same shape — a header naming the resolved
 tag and target, and a completion line stating what was verified:

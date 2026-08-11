@@ -72,33 +72,17 @@ pub(super) fn format_summary_lines(
 
 pub(super) fn format_standard_totals(
     counts: SummaryCounts,
-    dry_run: bool,
+    _dry_run: bool,
     style: StyleChoice,
 ) -> Vec<String> {
     let mut parts = Vec::new();
-    if counts.dry_run > 0 || (dry_run && counts.actions.planned > 0) {
-        parts.push(format_outcome_with_detail(
-            counts.dry_run,
-            "would change",
-            counts.actions.planned,
-            "planned",
+    if counts.dry_run > 0 {
+        parts.push(style.paint(
             TextStyle::Magenta,
-            style,
+            &format!("{} would change", counts.dry_run),
         ));
     } else if counts.changed > 0 {
-        parts.push(format_outcome_with_detail(
-            counts.changed,
-            "changed",
-            counts.actions.applied,
-            "applied",
-            TextStyle::Green,
-            style,
-        ));
-    } else if counts.actions.applied > 0 {
-        parts.push(style.paint(
-            TextStyle::Green,
-            &format!("{} applied", counts.actions.applied),
-        ));
+        parts.push(style.paint(TextStyle::Green, &format!("{} changed", counts.changed)));
     } else if counts.failed == 0 {
         parts.push("No changes".to_string());
     }
@@ -112,24 +96,6 @@ pub(super) fn format_standard_totals(
     );
     push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     parts
-}
-
-fn format_outcome_with_detail(
-    outcome_count: u32,
-    outcome_label: &str,
-    detail_count: u32,
-    detail_label: &str,
-    text_style: TextStyle,
-    style: StyleChoice,
-) -> String {
-    let text = if outcome_count == 0 {
-        format!("{detail_count} {detail_label}")
-    } else if detail_count == 0 {
-        format!("{outcome_count} {outcome_label}")
-    } else {
-        format!("{outcome_count} {outcome_label} ({detail_count} {detail_label})")
-    };
-    style.paint(text_style, &text)
 }
 
 /// Append a styled `"<count> <label>"` fragment, skipping zero counts.

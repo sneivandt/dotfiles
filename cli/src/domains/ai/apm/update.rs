@@ -4,17 +4,19 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result};
 
+use super::ApmFragmentSource;
 use super::autopilot::{apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids};
 use super::commands::{
     ApmCommand, ApmCommandResult, ApmOutdatedResult, check_apm_outdated, run_apm_command,
 };
-use super::fragments::{discover_fragment_files, merge_fragments};
+use super::fragments::{discover_effective_fragment_files, merge_fragments};
 use super::install::apm_task_should_run;
 use super::manifest::manifest_marker_matches;
 use super::skip;
 use super::sources::install_fingerprint;
 use super::targets::{ApmTargets, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
+use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 
 enum ApmUpdateOutcome {
@@ -33,7 +35,18 @@ enum ApmUpdateOutcome {
 /// the lockfile must exist and the success marker must match the merged manifest
 /// hash. A half-converged install can therefore never advance the lockfile.
 #[derive(Debug)]
-pub struct UpdateApmPackages;
+pub struct UpdateApmPackages {
+    fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+}
+
+impl UpdateApmPackages {
+    /// Create the update task with the managed symlink configuration that
+    /// supplies APM fragments.
+    #[must_use]
+    pub const fn new(fragments: ConfigHandle<Vec<ApmFragmentSource>>) -> Self {
+        Self { fragments }
+    }
+}
 
 impl Task for UpdateApmPackages {
     task_metadata! {
@@ -43,7 +56,7 @@ impl Task for UpdateApmPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        apm_task_should_run(ctx)
+        apm_task_should_run(ctx, &self.fragments.read())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -53,7 +66,7 @@ impl Task for UpdateApmPackages {
             return Ok(skip(missing_apm_reason(ctx)));
         }
 
-        let fragments = discover_fragment_files(home)?;
+        let fragments = discover_effective_fragment_files(home, &self.fragments.read())?;
         if fragments.is_empty() {
             return Ok(skip("no manifest fragments found under ~/.apm/config/"));
         }

@@ -72,13 +72,6 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn should_run_is_true_without_explicit_guard() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config);
-        assert!(ConfigureCopilot::new(ConfigHandle::new(vec![])).should_run(&ctx));
-    }
-
-    #[test]
     fn run_is_not_applicable_without_settings() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config);

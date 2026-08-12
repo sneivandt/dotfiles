@@ -3,7 +3,7 @@ use super::*;
 use crate::engine::UpdateSignal;
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{empty_config, make_context, make_linux_context};
+use crate::test_helpers::{ScriptedExecutor, empty_config, make_context, make_linux_context};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -20,24 +20,6 @@ fn cancelled_git_error() -> ExecError {
         command: "git".to_string(),
         result: ExecResult::failure("", "", None),
     }
-}
-
-fn expect_git_success(
-    mock: &mut MockExecutor,
-    seq: &mut mockall::Sequence,
-    expected_dir: PathBuf,
-    expected_args: &'static [&'static str],
-    stdout: &'static str,
-) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_eq!(spec.working_dir(), Some(expected_dir.as_path()));
-            assert_eq!(spec.program(), "git");
-            assert_eq!(spec.arguments(), expected_args);
-            Ok(ExecResult::success(stdout))
-        });
 }
 
 #[test]
@@ -75,8 +57,9 @@ fn should_run_true_when_git_is_a_file() {
 // run()
 // -----------------------------------------------------------------------
 
-/// Build a context that uses a [`MockExecutor`] so we can control git responses.
-fn make_update_context(config: crate::Config, executor: MockExecutor) -> Context {
+/// Build a context that uses the given executor double so we can control git
+/// responses. Accepts both [`ScriptedExecutor`] and [`MockExecutor`].
+fn make_update_context(config: crate::Config, executor: impl Executor + 'static) -> Context {
     make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
 }
 
@@ -84,11 +67,8 @@ fn make_update_context(config: crate::Config, executor: MockExecutor) -> Context
 fn run_returns_skipped_when_detached_head() {
     let config = empty_config(PathBuf::from("/tmp"));
     // First call (symbolic-ref): fails → detached HEAD
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Err(git_non_zero("simulated failure")));
-    let ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new().err(git_non_zero("simulated failure"));
+    let ctx = make_update_context(config, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -100,11 +80,8 @@ fn run_returns_skipped_when_detached_head() {
 #[test]
 fn run_propagates_symbolic_ref_operational_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Err(git_error("git could not start")));
-    let ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new().err(git_error("git could not start"));
+    let ctx = make_update_context(config, exec);
 
     let err = UpdateRepository::new(UpdateSignal::new())
         .run(&ctx)
@@ -125,16 +102,10 @@ fn run_propagates_symbolic_ref_operational_failure() {
 /// `merge --ff-only` — so a case only supplies stdout for as many calls as it
 /// expects the task to reach.
 fn run_with_git_output(outputs: &[&str]) -> (TaskResult, bool) {
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in outputs {
-        let output = (*stdout).to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&output)));
-    }
-    let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), mock);
+    let exec = outputs
+        .iter()
+        .fold(ScriptedExecutor::new(), |exec, stdout| exec.ok(*stdout));
+    let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), exec);
     let signal = UpdateSignal::new();
     let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
     (result, signal.was_updated())
@@ -259,20 +230,11 @@ fn run_returns_failed_when_fetch_fails() {
     // 1. symbolic-ref → on a branch
     // 2. status → clean worktree
     // 3. fetch → fails
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in ["refs/heads/main", ""] {
-        let s = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&s)));
-    }
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| Err(git_error("simulated fetch failure")));
-    let ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new()
+        .ok("refs/heads/main")
+        .ok("")
+        .err(git_error("simulated fetch failure"));
+    let ctx = make_update_context(config, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated);
 
@@ -283,20 +245,11 @@ fn run_returns_failed_when_fetch_fails() {
 #[test]
 fn run_propagates_fetch_cancellation() {
     let config = empty_config(PathBuf::from("/tmp"));
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in ["refs/heads/main", ""] {
-        let output = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&output)));
-    }
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| Err(cancelled_git_error()));
-    let ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new()
+        .ok("refs/heads/main")
+        .ok("")
+        .err(cancelled_git_error());
+    let ctx = make_update_context(config, exec);
 
     let err = UpdateRepository::new(UpdateSignal::new())
         .run(&ctx)
@@ -311,32 +264,17 @@ fn run_propagates_fetch_cancellation() {
 #[test]
 fn run_retries_transient_fetch_failure() {
     let config = empty_config(PathBuf::from("/tmp"));
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in ["refs/heads/main", ""] {
-        let output = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&output)));
-    }
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| {
-            Err(git_error(
-                "mux_client_request_session: read from master failed: Connection reset by peer\n\
-                 Failed to connect to new control master",
-            ))
-        });
-    for stdout in ["", "abc123", "abc123"] {
-        let output = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&output)));
-    }
-    let ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new()
+        .ok("refs/heads/main")
+        .ok("")
+        .err(git_error(
+            "mux_client_request_session: read from master failed: Connection reset by peer\n\
+             Failed to connect to new control master",
+        ))
+        .ok("")
+        .ok("abc123")
+        .ok("abc123");
+    let ctx = make_update_context(config, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -349,20 +287,11 @@ fn run_retries_transient_fetch_failure() {
 #[test]
 fn run_stops_after_transient_fetch_retries_are_exhausted() {
     let config = empty_config(PathBuf::from("/tmp"));
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in ["refs/heads/main", ""] {
-        let output = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&output)));
-    }
-    mock.expect_execute()
-        .times(3)
-        .in_sequence(&mut seq)
-        .returning(|_| Err(git_error("connection reset by peer")));
-    let ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new()
+        .ok("refs/heads/main")
+        .ok("")
+        .err_times(3, || git_error("connection reset by peer"));
+    let ctx = make_update_context(config, exec);
     let task = UpdateRepository::new(UpdateSignal::new());
 
     let result = task.run(&ctx).unwrap();
@@ -379,38 +308,29 @@ fn run_skips_when_overlay_has_local_changes() {
     let mut config = empty_config(main_root.clone());
     config.overlay = Some(overlay_root.clone());
 
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        main_root.clone(),
-        &["symbolic-ref", "--quiet", "HEAD"],
-        "refs/heads/main",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        main_root,
-        &["status", "--porcelain", "--untracked-files=no"],
-        "",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root.clone(),
-        &["symbolic-ref", "--quiet", "HEAD"],
-        "refs/heads/main",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root,
-        &["status", "--porcelain", "--untracked-files=no"],
-        "M  private.toml",
-    );
+    let exec = ScriptedExecutor::new()
+        .git(
+            main_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        )
+        .git(
+            main_root,
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        )
+        .git(
+            overlay_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        )
+        .git(
+            overlay_root,
+            &["status", "--porcelain", "--untracked-files=no"],
+            "M  private.toml",
+        );
 
-    let ctx = make_update_context(config, mock);
+    let ctx = make_update_context(config, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -430,94 +350,45 @@ fn run_updates_overlay_repository_when_behind_upstream() {
     let mut config = empty_config(main_root.clone());
     config.overlay = Some(overlay_root.clone());
 
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        main_root.clone(),
-        &["symbolic-ref", "--quiet", "HEAD"],
-        "refs/heads/main",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        main_root.clone(),
-        &["status", "--porcelain", "--untracked-files=no"],
-        "",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root.clone(),
-        &["symbolic-ref", "--quiet", "HEAD"],
-        "refs/heads/main",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root.clone(),
-        &["status", "--porcelain", "--untracked-files=no"],
-        "",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        main_root.clone(),
-        &["fetch", "--quiet"],
-        "",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root.clone(),
-        &["fetch", "--quiet"],
-        "",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        main_root.clone(),
-        &["rev-parse", "HEAD"],
-        "abc123",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        main_root,
-        &["rev-parse", "@{u}"],
-        "abc123",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root.clone(),
-        &["rev-parse", "HEAD"],
-        "def456",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root.clone(),
-        &["rev-parse", "@{u}"],
-        "fed654",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root.clone(),
-        &["rev-list", "--count", "@{u}..HEAD"],
-        "0",
-    );
-    expect_git_success(
-        &mut mock,
-        &mut seq,
-        overlay_root,
-        &["merge", "--ff-only", "@{u}"],
-        "Updating def456..fed654\nFast-forward",
-    );
+    let exec = ScriptedExecutor::new()
+        .git(
+            main_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        )
+        .git(
+            main_root.clone(),
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        )
+        .git(
+            overlay_root.clone(),
+            &["symbolic-ref", "--quiet", "HEAD"],
+            "refs/heads/main",
+        )
+        .git(
+            overlay_root.clone(),
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        )
+        .git(main_root.clone(), &["fetch", "--quiet"], "")
+        .git(overlay_root.clone(), &["fetch", "--quiet"], "")
+        .git(main_root.clone(), &["rev-parse", "HEAD"], "abc123")
+        .git(main_root, &["rev-parse", "@{u}"], "abc123")
+        .git(overlay_root.clone(), &["rev-parse", "HEAD"], "def456")
+        .git(overlay_root.clone(), &["rev-parse", "@{u}"], "fed654")
+        .git(
+            overlay_root.clone(),
+            &["rev-list", "--count", "@{u}..HEAD"],
+            "0",
+        )
+        .git(
+            overlay_root,
+            &["merge", "--ff-only", "@{u}"],
+            "Updating def456..fed654\nFast-forward",
+        );
 
-    let ctx = make_update_context(config, mock);
+    let ctx = make_update_context(config, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -619,23 +490,14 @@ fn run_dry_run_returns_ok_when_already_up_to_date() {
     // branch.main.remote: origin
     // branch.main.merge: refs/heads/main
     // ls-remote origin refs/heads/main: abc123
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in [
-        "refs/heads/main",
-        "",
-        "abc123",
-        "origin",
-        "refs/heads/main",
-        "abc123\trefs/heads/main",
-    ] {
-        let s = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&s)));
-    }
-    let mut ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new()
+        .ok("refs/heads/main")
+        .ok("")
+        .ok("abc123")
+        .ok("origin")
+        .ok("refs/heads/main")
+        .ok("abc123\trefs/heads/main");
+    let mut ctx = make_update_context(config, exec);
     ctx = ctx.with_dry_run(true);
     let task = UpdateRepository::new(UpdateSignal::new());
 
@@ -655,23 +517,14 @@ fn run_dry_run_returns_dry_run_when_behind_upstream() {
     // branch.main.remote: origin
     // branch.main.merge: refs/heads/main
     // ls-remote origin refs/heads/main: def456 (different SHA → would pull)
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in [
-        "refs/heads/main",
-        "",
-        "abc123",
-        "origin",
-        "refs/heads/main",
-        "def456\trefs/heads/main",
-    ] {
-        let s = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&s)));
-    }
-    let mut ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new()
+        .ok("refs/heads/main")
+        .ok("")
+        .ok("abc123")
+        .ok("origin")
+        .ok("refs/heads/main")
+        .ok("def456\trefs/heads/main");
+    let mut ctx = make_update_context(config, exec);
     ctx = ctx.with_dry_run(true);
     let task = UpdateRepository::new(UpdateSignal::new());
 
@@ -690,26 +543,13 @@ fn run_dry_run_returns_ok_when_cached_upstream_matches_head() {
     // rev-parse HEAD: abc123
     // branch.main.remote lookup fails
     // rev-parse @{u}: abc123 (cached tracking ref matches HEAD)
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    for stdout in ["refs/heads/main", "", "abc123"] {
-        let s = stdout.to_string();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(ExecResult::success(&s)));
-    }
-    // branch.main.remote lookup fails
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| Err(git_non_zero("no remote config")));
-    // rev-parse @{u}: matches HEAD
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| Ok(ExecResult::success("abc123")));
-    let mut ctx = make_update_context(config, mock);
+    let exec = ScriptedExecutor::new()
+        .ok("refs/heads/main")
+        .ok("")
+        .ok("abc123")
+        .err(git_non_zero("no remote config"))
+        .ok("abc123");
+    let mut ctx = make_update_context(config, exec);
     ctx = ctx.with_dry_run(true);
     let task = UpdateRepository::new(UpdateSignal::new());
 

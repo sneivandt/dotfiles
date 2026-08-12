@@ -4,13 +4,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::engine::Context;
-use crate::infra::exec::MockExecutor;
-use crate::infra::platform::Platform;
+use crate::infra::ConfigHandle;
+use crate::infra::exec::{CommandSpec, ExecResult, MockExecutor};
+use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context};
 
 use super::fragments::{discover_fragment_files, merge_fragments};
+use super::install::InstallApmPackages;
 use super::manifest::write_manifest_marker;
 use super::sources::install_fingerprint;
+use super::update::UpdateApmPackages;
 
 /// Default APM fragment shared across APM test suites.
 pub const DEFAULT_FRAGMENT: &str =
@@ -83,4 +86,148 @@ pub fn make_context_with_home(home: &Path, platform: Platform, executor: MockExe
         Arc::new(executor),
     )
     .with_home(home.to_path_buf())
+}
+
+/// Build a Linux [`Context`] rooted at `home`, seeding `~/.copilot/data.db` so
+/// the copilot-app target and autopilot fixup are enabled.
+///
+/// This is the shared "an install/update is about to run against a converged
+/// or changed home" fixture used by both the top-level and autopilot suites.
+pub fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
+    write_copilot_app_db(home);
+    make_context_with_home(home, Platform::new(Os::Linux, false), executor)
+}
+
+/// Construct an [`InstallApmPackages`] task with no configured fragment
+/// sources; tests seed fragments directly under `home` instead.
+pub fn install_task() -> InstallApmPackages {
+    InstallApmPackages::new(ConfigHandle::new(Vec::new()))
+}
+
+/// Construct an [`UpdateApmPackages`] task with no configured fragment
+/// sources; tests seed fragments directly under `home` instead.
+pub fn update_task() -> UpdateApmPackages {
+    UpdateApmPackages::new(ConfigHandle::new(Vec::new()))
+}
+
+/// Queue a `which("apm")` expectation, resolving to `found`.
+pub fn expect_which_apm(mock: &mut MockExecutor, found: bool) {
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .returning(move |_| found);
+}
+
+/// Does `spec`'s environment contain `key=value`?
+pub fn has_env(spec: &CommandSpec, key: &str, value: &str) -> bool {
+    spec.environment()
+        .iter()
+        .any(|(actual_key, actual_value)| actual_key == key && actual_value == value)
+}
+
+/// Queue the best-effort `apm experimental enable copilot-app` call.
+pub fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(|spec| {
+            assert_eq!(spec.arguments(), ["experimental", "enable", "copilot-app"]);
+            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+            Ok(ExecResult::success("[!] copilot-app is already enabled.\n"))
+        });
+}
+
+/// Queue `apm update -g --yes`, returning `stdout`.
+///
+/// Only checks `program`/`arguments`; use a bespoke closure instead when a
+/// test also needs to assert `working_dir` or mutate the lockfile.
+pub fn expect_apm_update(
+    mock: &mut MockExecutor,
+    seq: &mut mockall::Sequence,
+    stdout: &'static str,
+) {
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(move |spec| {
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
+            Ok(ExecResult::success(stdout))
+        });
+}
+
+/// Queue the separate Copilot App workflow deploy (`apm install -g --target
+/// copilot-app`) that follows every apm install/update cycle.
+pub fn expect_copilot_app_workflow_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(|spec| {
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(
+                spec.arguments(),
+                ["install", "-g", "--target", "copilot-app"]
+            );
+            Ok(ExecResult::success("installed workflows\n"))
+        });
+}
+
+/// Queue `apm prune`, run from `<cwd>/.apm`.
+pub fn expect_apm_prune(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &Path) {
+    let prune_cwd = cwd.join(".apm");
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(move |spec| {
+            assert_eq!(spec.working_dir(), Some(prune_cwd.as_path()));
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(spec.arguments(), ["prune"]);
+            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+            Ok(ExecResult::success("pruned\n"))
+        });
+}
+
+/// Queue the install/deploy/prune tail of an apm install run: `install -g`,
+/// the separate copilot-app target deploy, and `apm prune` -- everything
+/// after `apm experimental enable`.
+pub fn expect_apm_install_without_enable(
+    mock: &mut MockExecutor,
+    seq: &mut mockall::Sequence,
+    cwd: &Path,
+) {
+    let install_cwd = cwd.to_path_buf();
+    let copilot_app_cwd = install_cwd.clone();
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(move |spec| {
+            assert_eq!(spec.working_dir(), Some(copilot_app_cwd.as_path()));
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+            assert!(has_env(&spec, "GCM_INTERACTIVE", "Never"));
+            assert!(has_env(&spec, "GCM_GUI_PROMPT", "false"));
+            Ok(ExecResult::success("installed\n"))
+        });
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(move |spec| {
+            assert_eq!(spec.working_dir(), Some(install_cwd.as_path()));
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(
+                spec.arguments(),
+                ["install", "-g", "--target", "copilot-app"]
+            );
+            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+            Ok(ExecResult::success("installed workflows\n"))
+        });
+    expect_apm_prune(mock, seq, cwd);
+}
+
+/// Queue the full apm install sequence: experimental-enable, install, the
+/// copilot-app target deploy, and prune.
+pub fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &Path) {
+    expect_copilot_app_enable(mock, seq);
+    expect_apm_install_without_enable(mock, seq, cwd);
 }

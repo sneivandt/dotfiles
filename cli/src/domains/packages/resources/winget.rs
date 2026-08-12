@@ -278,6 +278,21 @@ mod tests {
     use super::*;
     use crate::infra::exec::{ExecResult, MockExecutor};
 
+    fn install_with_result(result: ExecResult) -> ResourceChange {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .return_once(move |_| Ok(result));
+        WingetProvider.install("Git.Git", &mock).unwrap()
+    }
+
+    fn skipped_reason(change: ResourceChange) -> String {
+        let ResourceChange::Skipped { reason, .. } = change else {
+            panic!("expected a skipped resource change");
+        };
+        reason
+    }
+
     #[test]
     fn parse_winget_ids_handles_truncated_name_with_single_space_separator() {
         // A 28-char name padded to width 29 leaves exactly ONE trailing space
@@ -396,19 +411,12 @@ mod tests {
 
     #[test]
     fn winget_install_failure_includes_stdout_and_stderr_when_both_present() {
-        let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult::failure(
+        assert_eq!(
+            install_with_result(ExecResult::failure(
                 "Installer output",
                 "Access denied",
                 Some(1),
-            ))
-        });
-
-        let change = WingetProvider.install("Git.Git", &mock).unwrap();
-
-        assert_eq!(
-            change,
+            )),
             ResourceChange::unusable("winget install failed: Installer output\nAccess denied"),
         );
     }
@@ -495,13 +503,8 @@ mod tests {
             exit_code::PACKAGE_ALREADY_INSTALLED,
             exit_code::INSTALL_ALREADY_INSTALLED,
         ] {
-            let mut mock = MockExecutor::new();
-            mock.expect_execute()
-                .once()
-                .returning(move |_| Ok(ExecResult::failure("", "", Some(code))));
-
             assert_eq!(
-                WingetProvider.install("Git.Git", &mock).unwrap(),
+                install_with_result(ExecResult::failure("", "", Some(code))),
                 ResourceChange::AlreadyCorrect,
                 "exit code {code} should not inflate the applied count",
             );
@@ -510,37 +513,23 @@ mod tests {
 
     #[test]
     fn winget_install_reboot_required_counts_as_applied() {
-        let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult::failure(
+        assert_eq!(
+            install_with_result(ExecResult::failure(
                 "",
                 "",
                 Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH),
-            ))
-        });
-
-        assert_eq!(
-            WingetProvider.install("Git.Git", &mock).unwrap(),
+            )),
             ResourceChange::Applied,
         );
     }
 
     #[test]
     fn winget_install_skips_when_the_user_declines_the_installer_prompt() {
-        let mut mock = MockExecutor::new();
-        mock.expect_execute().once().returning(|_| {
-            Ok(ExecResult::failure(
-                "",
-                "",
-                Some(exit_code::INSTALL_CANCELLED_BY_USER),
-            ))
-        });
-
-        let ResourceChange::Skipped { reason, .. } =
-            WingetProvider.install("Git.Git", &mock).unwrap()
-        else {
-            panic!("expected a skip");
-        };
+        let reason = skipped_reason(install_with_result(ExecResult::failure(
+            "",
+            "",
+            Some(exit_code::INSTALL_CANCELLED_BY_USER),
+        )));
         assert!(reason.contains("elevation was declined"), "{reason}");
     }
 

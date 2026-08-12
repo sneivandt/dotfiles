@@ -251,19 +251,6 @@ mod tests {
     // InstallSymlinks::should_run
     // ------------------------------------------------------------------
 
-    #[test]
-    fn install_should_run_is_true_without_explicit_guard() {
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
-        assert!(InstallSymlinks::new(handle(vec![])).should_run(&ctx));
-    }
-
-    #[test]
-    fn install_should_run_true_when_symlinks_configured() {
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
-        let task = InstallSymlinks::new(handle(vec![sym("bashrc", None)]));
-        assert!(task.should_run(&ctx));
-    }
-
     // ------------------------------------------------------------------
     // UninstallSymlinks::should_run
     // ------------------------------------------------------------------

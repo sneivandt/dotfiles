@@ -39,10 +39,16 @@ description: >
    - `cli/tests/common/mod.rs` integration helpers and builders
    - `ExecResult::success` / `ExecResult::failure` for unit-test executor
      responses instead of repeating result struct literals
+   - `ScriptedExecutor` for fixed, ordered Git command sequences; keep
+     `MockExecutor` for branching, unordered, or open-ended behavior
+   - `assert_task_ok`, `assert_task_changed`, `task_batch`, and `task_skipped`
+     for common `TaskResult` checks
 3. Keep assertions specific and behavior-focused.
-4. Update snapshots intentionally (`INSTA_UPDATE=unseen cargo test`, then
+4. Prefer named case tables when several tests differ only by inputs and
+   expected state, counters, or messages.
+5. Update snapshots intentionally (`INSTA_UPDATE=unseen cargo test`, then
    `cargo insta review`).
-5. Commit snapshot updates with the code change.
+6. Commit snapshot updates with the code change.
 
 ### Common module patterns
 
@@ -50,6 +56,9 @@ description: >
 - **Resources**: construct directly for state checks; use executor-backed setup
   where needed.
 - **Tasks**: test pure helper logic and task applicability/result behavior.
+- **APM tasks**: extend `domains/ai/apm/test_fixture.rs` instead of duplicating
+  home setup, manifest/lock writers, task constructors, or command expectations
+  between the install and autopilot suites.
 - **CLI parsing**: use `Cli::parse_from`.
 - **Task metadata**: assert selectors are unique per command catalog, hidden
   tasks are excluded from discovery, conflicting labels cannot share a selector,

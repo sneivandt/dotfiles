@@ -354,23 +354,24 @@ impl Logger {
 
     /// Attach a measured run duration to the most recent entry for `name`.
     pub fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
-        if let Some(task) = self
-            .lock_tasks()
-            .iter_mut()
-            .rev()
-            .find(|task| task.name == name)
-        {
-            task.duration = Some(duration);
-        }
+        self.record_task_duration_by(|task| task.name == name, duration);
     }
 
     /// Attach a measured duration to the entry for a scheduler identity.
     pub fn record_task_duration_by_id(&self, task_id: &str, duration: std::time::Duration) {
+        self.record_task_duration_by(|task| task.task_id.as_deref() == Some(task_id), duration);
+    }
+
+    fn record_task_duration_by(
+        &self,
+        matches: impl Fn(&TaskEntry) -> bool,
+        duration: std::time::Duration,
+    ) {
         if let Some(task) = self
             .lock_tasks()
             .iter_mut()
             .rev()
-            .find(|task| task.task_id.as_deref() == Some(task_id))
+            .find(|task| matches(task))
         {
             task.duration = Some(duration);
         }
@@ -438,51 +439,44 @@ impl Logger {
     }
 
     pub(in crate::infra::logging) fn task_is_visible(&self, name: &str) -> bool {
-        self.lock_tasks()
-            .iter()
-            .rev()
-            .find(|task| task.name == name)
-            .is_none_or(|task| task.visibility.is_visible())
+        self.task_is_visible_by(|task| task.name == name)
     }
 
     pub(in crate::infra::logging) fn task_is_visible_by_id(&self, task_id: &str) -> bool {
+        self.task_is_visible_by(|task| task.task_id.as_deref() == Some(task_id))
+    }
+
+    fn task_is_visible_by(&self, matches: impl Fn(&TaskEntry) -> bool) -> bool {
         self.lock_tasks()
             .iter()
             .rev()
-            .find(|task| task.task_id.as_deref() == Some(task_id))
+            .find(|task| matches(task))
             .is_none_or(|task| task.visibility.is_visible())
     }
 
     /// Return the recorded outcome message for the most recent entry named `name`.
     pub(in crate::infra::logging) fn recorded_task_message(&self, name: &str) -> Option<String> {
-        self.lock_tasks()
-            .iter()
-            .rev()
-            .find(|task| task.name == name)
-            .and_then(|task| task.message.clone())
+        self.recorded_task_message_by(|task| task.name == name)
     }
 
     pub(in crate::infra::logging) fn recorded_task_message_by_id(
         &self,
         task_id: &str,
     ) -> Option<String> {
+        self.recorded_task_message_by(|task| task.task_id.as_deref() == Some(task_id))
+    }
+
+    fn recorded_task_message_by(&self, matches: impl Fn(&TaskEntry) -> bool) -> Option<String> {
         self.lock_tasks()
             .iter()
             .rev()
-            .find(|task| task.task_id.as_deref() == Some(task_id))
+            .find(|task| matches(task))
             .and_then(|task| task.message.clone())
     }
 
     /// Record buffered user-facing detail lines for a completed task.
     pub(in crate::infra::logging) fn record_task_details(&self, name: &str, lines: Vec<String>) {
-        if lines.is_empty() {
-            return;
-        }
-        self.lock_task_details().push(TaskDetailEntry {
-            task_id: None,
-            name: name.to_string(),
-            lines,
-        });
+        self.record_task_details_for(None, name, lines);
     }
 
     /// Record buffered detail lines for an engine task identity.
@@ -492,11 +486,15 @@ impl Logger {
         name: &str,
         lines: Vec<String>,
     ) {
+        self.record_task_details_for(Some(task_id), name, lines);
+    }
+
+    fn record_task_details_for(&self, task_id: Option<&str>, name: &str, lines: Vec<String>) {
         if lines.is_empty() {
             return;
         }
         self.lock_task_details().push(TaskDetailEntry {
-            task_id: Some(task_id.to_string()),
+            task_id: task_id.map(str::to_string),
             name: name.to_string(),
             lines,
         });

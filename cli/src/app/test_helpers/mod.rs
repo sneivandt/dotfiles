@@ -14,13 +14,15 @@ use crate::infra::exec::{Executor, MockExecutor};
 use crate::infra::logging::Logger;
 use crate::infra::platform::Platform;
 
-use crate::engine::Context;
+use crate::engine::{Context, TaskResult, TaskStats};
 
 mod failure;
 mod recording;
+mod scripted;
 
 pub use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
 pub use recording::recording_log;
+pub use scripted::ScriptedExecutor;
 
 /// Build a [`Config`] with all lists empty and `root` set to `root`.
 #[must_use]
@@ -234,4 +236,36 @@ pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
     let log_output: Arc<dyn crate::infra::logging::Log> = Arc::<Logger>::clone(&log);
     let ctx = make_linux_context(config).with_log(log_output);
     (ctx, log)
+}
+
+#[track_caller]
+pub fn assert_task_ok(result: &TaskResult) {
+    assert!(
+        matches!(result, TaskResult::Ok),
+        "expected TaskResult::Ok, got {result:?}"
+    );
+}
+
+#[track_caller]
+pub fn assert_task_changed(result: &TaskResult) {
+    assert!(
+        task_batch(result).changed_count() > 0,
+        "expected a changed batch result, got {result:?}"
+    );
+}
+
+#[track_caller]
+pub fn task_batch(result: &TaskResult) -> &TaskStats {
+    let TaskResult::Batch(stats) = result else {
+        panic!("expected TaskResult::Batch, got {result:?}");
+    };
+    stats
+}
+
+#[track_caller]
+pub fn task_skipped(result: &TaskResult) -> &str {
+    let TaskResult::Skipped(reason) = result else {
+        panic!("expected TaskResult::Skipped, got {result:?}");
+    };
+    reason
 }

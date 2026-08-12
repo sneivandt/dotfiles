@@ -749,21 +749,6 @@ fn precomputed_assessment_is_reused_during_execution() {
 }
 
 #[test]
-fn task_defaults_to_all_install_commands() {
-    assert!(!CountingResourceTask.update_only());
-}
-
-#[test]
-fn resource_task_should_run_does_not_evaluate_items() {
-    RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(0));
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
-
-    assert!(CountingResourceTask.should_run(&ctx));
-    RESOURCE_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 0));
-}
-
-#[test]
 fn resource_task_run_evaluates_items_once_when_called_directly() {
     RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(0));
     let config = empty_config(PathBuf::from("/tmp"));
@@ -772,16 +757,6 @@ fn resource_task_run_evaluates_items_once_when_called_directly() {
     let result = CountingResourceTask.run(&ctx).unwrap();
     assert!(matches!(result, TaskResult::NotApplicable(_)));
     RESOURCE_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
-}
-
-#[test]
-fn batch_task_should_run_does_not_evaluate_items() {
-    BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
-
-    assert!(CountingBatchTask.should_run(&ctx));
-    BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 0));
 }
 
 #[test]

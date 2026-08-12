@@ -3,12 +3,17 @@
 use super::*;
 use crate::engine::Context;
 use crate::infra::ConfigHandle;
-use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor};
+use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{empty_config, make_linux_context};
+use crate::test_helpers::{
+    assert_task_changed, assert_task_ok, empty_config, make_linux_context, task_skipped,
+};
 
 use super::test_fixture::{
-    DEFAULT_FRAGMENT, make_context_with_home, write_copilot_app_db,
+    DEFAULT_FRAGMENT, expect_apm_install, expect_apm_install_without_enable, expect_apm_prune,
+    expect_apm_update, expect_copilot_app_enable, expect_copilot_app_workflow_install,
+    expect_which_apm, has_env, install_task, make_context_with_home,
+    make_home_context_with_executor, update_task, write_copilot_app_db,
     write_current_manifest_and_lock, write_current_manifest_lock_and_marker,
     write_default_home_fragment, write_home_fragment,
 };
@@ -36,14 +41,6 @@ fn make_home_context(home: &Path) -> Context {
     make_linux_context(empty_config(home.to_path_buf())).with_home(home.to_path_buf())
 }
 
-fn install_task() -> InstallApmPackages {
-    InstallApmPackages::new(ConfigHandle::new(Vec::new()))
-}
-
-fn update_task() -> UpdateApmPackages {
-    UpdateApmPackages::new(ConfigHandle::new(Vec::new()))
-}
-
 fn install_task_with_fragment(root: &Path, filename: &str) -> InstallApmPackages {
     InstallApmPackages::new(ConfigHandle::new(vec![ApmFragmentSource::new(
         root.join("symlinks")
@@ -54,111 +51,12 @@ fn install_task_with_fragment(root: &Path, filename: &str) -> InstallApmPackages
     )]))
 }
 
-fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> Context {
-    write_copilot_app_db(home);
-    make_home_context_without_copilot_app_with_executor(home, executor)
-}
-
-fn make_home_context_without_copilot_app_with_executor(
-    home: &Path,
-    executor: MockExecutor,
-) -> Context {
-    make_home_context_for_platform_with_executor(home, Platform::new(Os::Linux, false), executor)
-}
-
-fn make_home_context_for_platform_with_executor(
-    home: &Path,
-    platform: Platform,
-    executor: MockExecutor,
-) -> Context {
-    make_context_with_home(home, platform, executor)
-}
-
 fn make_home_context_for_platform(home: &Path, platform: Platform) -> Context {
-    make_home_context_for_platform_with_executor(home, platform, MockExecutor::new())
-}
-
-fn expect_which_apm(mock: &mut MockExecutor, found: bool) {
-    mock.expect_which()
-        .with(mockall::predicate::eq("apm"))
-        .once()
-        .returning(move |_| found);
-}
-
-fn has_env(spec: &CommandSpec, key: &str, value: &str) -> bool {
-    spec.environment()
-        .iter()
-        .any(|(actual_key, actual_value)| actual_key == key && actual_value == value)
+    make_context_with_home(home, platform, MockExecutor::new())
 }
 
 fn command_failure(message: &str) -> ExecError {
     ExecError::non_zero("apm", ExecResult::failure("", message, Some(1)))
-}
-
-fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["experimental", "enable", "copilot-app"]);
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success("[!] copilot-app is already enabled.\n"))
-        });
-}
-
-fn expect_apm_prune(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &Path) {
-    let prune_cwd = cwd.join(".apm");
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_eq!(spec.working_dir(), Some(prune_cwd.as_path()));
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(spec.arguments(), ["prune"]);
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success("pruned\n"))
-        });
-}
-
-fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &Path) {
-    expect_copilot_app_enable(mock, seq);
-    expect_apm_install_without_enable(mock, seq, cwd);
-}
-
-/// Expect the install/deploy/prune calls without `apm experimental enable`.
-fn expect_apm_install_without_enable(
-    mock: &mut MockExecutor,
-    seq: &mut mockall::Sequence,
-    cwd: &Path,
-) {
-    let install_cwd = cwd.to_path_buf();
-    let copilot_app_cwd = install_cwd.clone();
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_eq!(spec.working_dir(), Some(copilot_app_cwd.as_path()));
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            assert!(has_env(&spec, "GCM_INTERACTIVE", "Never"));
-            assert!(has_env(&spec, "GCM_GUI_PROMPT", "false"));
-            Ok(ExecResult::success("installed\n"))
-        });
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(move |spec| {
-            assert_eq!(spec.working_dir(), Some(install_cwd.as_path()));
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
-            );
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success("installed workflows\n"))
-        });
-    expect_apm_prune(mock, seq, cwd);
 }
 
 fn expect_apm_outdated(mock: &mut MockExecutor, cwd: &Path, stdout: &'static str) {
@@ -205,51 +103,32 @@ fn run_skips_when_apm_not_found() {
 
     let ctx = make_home_context(dir.path());
     let result = install_task().run(&ctx).expect("run should not error");
-    match result {
-        TaskResult::Skipped(reason) => assert!(
-            reason.contains("apm not found"),
-            "expected reason to mention 'apm not found', got {reason:?}"
+    let reason = task_skipped(&result);
+    assert!(
+        reason.contains("apm not found"),
+        "expected reason to mention 'apm not found', got {reason:?}"
+    );
+}
+
+#[test]
+fn missing_apm_reason_cases() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let cases = [
+        (
+            Platform::new_wsl(),
+            "apm not found in PATH; install the Windows package with `winget.exe install \
+             Microsoft.APM` and re-open your WSL shell",
         ),
-        other @ (TaskResult::Ok
-        | TaskResult::DryRun
-        | TaskResult::CheckPassed
-        | TaskResult::NotApplicable(_)
-        | TaskResult::Failed(_)
-        | TaskResult::Batch(_)) => {
-            panic!("expected TaskResult::Skipped, got {other:?}")
-        }
+        (
+            Platform::new(Os::Windows, false),
+            "apm not found in PATH; install it with `winget install Microsoft.APM`",
+        ),
+        (Platform::new(Os::Linux, false), "apm not found in PATH"),
+    ];
+    for (platform, expected) in cases {
+        let ctx = make_home_context_for_platform(dir.path(), platform);
+        assert_eq!(missing_apm_reason(&ctx), expected);
     }
-}
-
-#[test]
-fn missing_apm_reason_recommends_winget_for_wsl() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let ctx = make_home_context_for_platform(dir.path(), Platform::new_wsl());
-
-    assert_eq!(
-        missing_apm_reason(&ctx),
-        "apm not found in PATH; install the Windows package with `winget.exe install \
-         Microsoft.APM` and re-open your WSL shell"
-    );
-}
-
-#[test]
-fn missing_apm_reason_recommends_winget_for_windows() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let ctx = make_home_context_for_platform(dir.path(), Platform::new(Os::Windows, false));
-
-    assert_eq!(
-        missing_apm_reason(&ctx),
-        "apm not found in PATH; install it with `winget install Microsoft.APM`"
-    );
-}
-
-#[test]
-fn missing_apm_reason_omits_unknown_install_command() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let ctx = make_home_context_for_platform(dir.path(), Platform::new(Os::Linux, false));
-
-    assert_eq!(missing_apm_reason(&ctx), "apm not found in PATH");
 }
 
 #[test]
@@ -265,10 +144,7 @@ fn run_installs_when_manifest_changed() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected changed result after apm install, got {result:?}"
-    );
+    assert_task_changed(&result);
     let manifest = std::fs::read_to_string(dir.path().join(".apm").join("apm.yml"))
         .expect("read merged manifest");
     assert!(manifest.contains("github/awesome-copilot/plugins/project-planning"));
@@ -285,17 +161,10 @@ fn run_installs_copilot_app_separately_on_windows_when_app_database_exists() {
     expect_which_apm(&mut mock, true);
     expect_apm_install(&mut mock, &mut seq, dir.path());
 
-    let ctx = make_home_context_for_platform_with_executor(
-        dir.path(),
-        Platform::new(Os::Windows, false),
-        mock,
-    );
+    let ctx = make_context_with_home(dir.path(), Platform::new(Os::Windows, false), mock);
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected changed result after apm install, got {result:?}"
-    );
+    assert_task_changed(&result);
 }
 
 #[test]
@@ -319,13 +188,10 @@ fn run_uses_runtime_auto_detection_when_copilot_app_database_missing() {
         });
     expect_apm_prune(&mut mock, &mut seq, dir.path());
 
-    let ctx = make_home_context_without_copilot_app_with_executor(dir.path(), mock);
+    let ctx = make_context_with_home(dir.path(), Platform::new(Os::Linux, false), mock);
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected changed result after apm install, got {result:?}"
-    );
+    assert_task_changed(&result);
 }
 
 #[test]
@@ -347,25 +213,12 @@ fn update_runs_native_update_when_dependencies_current() {
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
             Ok(ExecResult::success("already current\n"))
         });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
-            );
-            Ok(ExecResult::success("installed workflows\n"))
-        });
+    expect_copilot_app_workflow_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = update_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok when dependencies are already current, got {result:?}"
-    );
+    assert_task_ok(&result);
 }
 
 #[test]
@@ -397,25 +250,12 @@ fn update_advances_dependencies_when_lockfile_changes() {
             .expect("rewrite lock");
             Ok(ExecResult::success("updated\n"))
         });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
-            );
-            Ok(ExecResult::success("installed workflows\n"))
-        });
+    expect_copilot_app_workflow_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = update_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected changed result after apm update, got {result:?}"
-    );
+    assert_task_changed(&result);
 }
 
 #[test]
@@ -426,35 +266,19 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            // The mock leaves the lockfile untouched, so the before/after
-            // comparison reports no advance even though `apm update` re-ran.
-            Ok(ExecResult::success(
-                "  [+] github.com/example/plugin (cached)\n",
-            ))
-        });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
-            );
-            Ok(ExecResult::success("installed workflows\n"))
-        });
+    // The mock leaves the lockfile untouched, so the before/after comparison
+    // reports no advance even though `apm update` re-ran.
+    expect_apm_update(
+        &mut mock,
+        &mut seq,
+        "  [+] github.com/example/plugin (cached)\n",
+    );
+    expect_copilot_app_workflow_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = update_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok when update made no changes, got {result:?}"
-    );
+    assert_task_ok(&result);
 }
 
 /// Build a realistic APM lockfile whose only variable is the `generated_at`
@@ -512,10 +336,7 @@ fn update_ignores_lockfile_timestamp_rewrites() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = update_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok when only the lockfile timestamp changed, got {result:?}"
-    );
+    assert_task_ok(&result);
 }
 
 #[test]
@@ -546,24 +367,12 @@ fn update_reports_change_when_resolved_ref_advances_alongside_timestamp() {
             .expect("rewrite lock");
             Ok(ExecResult::success("updated\n"))
         });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
-            );
-            Ok(ExecResult::success("installed workflows\n"))
-        });
+    expect_copilot_app_workflow_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = update_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected changed result when a resolved ref advanced, got {result:?}"
-    );
+    assert_task_changed(&result);
 }
 
 #[test]
@@ -601,10 +410,7 @@ fn install_task_skips_apm_when_manifest_sources_and_targets_are_unchanged() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok when nothing APM cares about changed, got {result:?}"
-    );
+    assert_task_ok(&result);
 }
 
 #[test]
@@ -620,10 +426,7 @@ fn dry_run_uses_managed_fragment_source_when_home_link_is_missing() {
 
     let result = task.run(&ctx).expect("run should not error");
 
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "restoring a fragment link must not falsely preview APM convergence: {result:?}"
-    );
+    assert_task_ok(&result);
 }
 
 #[test]
@@ -643,10 +446,7 @@ fn install_task_redeploys_when_a_local_plugin_source_changes() {
     std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected a redeploy after a local plugin edit, got {result:?}"
-    );
+    assert_task_changed(&result);
 }
 
 /// Seed a converged home whose manifest declares one local plugin source, and
@@ -692,10 +492,7 @@ fn install_skips_experimental_enable_when_apm_config_reports_it_enabled() {
     std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected a redeploy after a local plugin edit, got {result:?}"
-    );
+    assert_task_changed(&result);
 }
 
 #[test]
@@ -716,10 +513,7 @@ fn install_runs_experimental_enable_when_apm_config_is_unusable() {
         std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
 
         let result = install_task().run(&ctx).expect("run should not error");
-        assert!(
-            matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-            "expected a redeploy for config {contents:?}, got {result:?}"
-        );
+        assert_task_changed(&result);
     }
 }
 
@@ -758,10 +552,7 @@ fn run_installs_when_success_marker_is_missing() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected changed result after installing unmarked manifest, got {result:?}"
-    );
+    assert_task_changed(&result);
     assert!(
         dir.path()
             .join(".apm")
@@ -779,10 +570,7 @@ fn run_dry_run_reports_planned_apm_work_without_writing() {
     let ctx = make_home_context(dir.path()).with_dry_run(true);
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected quantified planned work with fragments present, got {result:?}"
-    );
+    assert_task_changed(&result);
     assert!(
         !dir.path().join(".apm").join("apm.yml").exists(),
         "dry-run must not write the generated manifest"
@@ -797,10 +585,7 @@ fn run_dry_run_is_silent_when_apm_install_state_is_current() {
     let ctx = make_home_context(dir.path()).with_dry_run(true);
 
     let result = install_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected no planned install work, got {result:?}"
-    );
+    assert_task_ok(&result);
 }
 
 #[test]
@@ -819,10 +604,7 @@ fn update_dry_run_is_silent_when_dependencies_are_current() {
     let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
 
     let result = update_task().run(&ctx).expect("run should not error");
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected no planned update work, got {result:?}"
-    );
+    assert_task_ok(&result);
 }
 
 #[test]
@@ -861,8 +643,10 @@ fn update_skips_when_apm_not_found() {
     );
 }
 
-#[test]
-fn run_skips_auth_failures() {
+/// Run install with an `apm install -g` mock that fails with `message`,
+/// after the standard copilot-app-enable prelude. Both the auth-skip and
+/// generic-propagate paths share this setup and differ only downstream.
+fn run_install_after_apm_error(message: &'static str) -> anyhow::Result<TaskResult> {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_default_home_fragment(dir.path());
 
@@ -873,49 +657,27 @@ fn run_skips_auth_failures() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| {
-            Err(command_failure(
-                "fatal: Authentication failed; terminal prompts disabled",
-            ))
-        });
+        .returning(move |_| Err(command_failure(message)));
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
+    install_task().run(&ctx)
+}
 
-    let result = install_task().run(&ctx).expect("auth failure should skip");
-    match result {
-        TaskResult::Skipped(reason) => assert!(
-            reason.contains("GitHub authentication"),
-            "expected auth skip reason, got {reason:?}"
-        ),
-        other @ (TaskResult::Ok
-        | TaskResult::DryRun
-        | TaskResult::CheckPassed
-        | TaskResult::NotApplicable(_)
-        | TaskResult::Failed(_)
-        | TaskResult::Batch(_)) => {
-            panic!("expected TaskResult::Skipped, got {other:?}")
-        }
-    }
+#[test]
+fn run_skips_auth_failures() {
+    let result =
+        run_install_after_apm_error("fatal: Authentication failed; terminal prompts disabled")
+            .expect("auth failure should skip");
+    let reason = task_skipped(&result);
+    assert!(
+        reason.contains("GitHub authentication"),
+        "expected auth skip reason, got {reason:?}"
+    );
 }
 
 #[test]
 fn run_propagates_non_auth_apm_failures() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    write_default_home_fragment(dir.path());
-
-    let mut mock = MockExecutor::new();
-    let mut seq = mockall::Sequence::new();
-    expect_which_apm(&mut mock, true);
-    expect_copilot_app_enable(&mut mock, &mut seq);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| Err(command_failure("archive extraction failed")));
-
-    let ctx = make_home_context_with_executor(dir.path(), mock);
-
-    let err = install_task()
-        .run(&ctx)
+    let err = run_install_after_apm_error("archive extraction failed")
         .expect_err("non-auth failures should propagate");
     assert!(
         format!("{err:#}").contains("archive extraction failed"),
@@ -949,16 +711,7 @@ fn run_continues_when_experimental_enable_fails() {
             assert_eq!(spec.arguments(), ["install", "-g"]);
             Ok(ExecResult::success("installed\n"))
         });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
-            );
-            Ok(ExecResult::success("installed workflows\n"))
-        });
+    expect_copilot_app_workflow_install(&mut mock, &mut seq);
     expect_apm_prune(&mut mock, &mut seq, dir.path());
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -966,7 +719,7 @@ fn run_continues_when_experimental_enable_fails() {
     let result = install_task()
         .run(&ctx)
         .expect("install should continue despite enable failure");
-    assert!(matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0));
+    assert_task_changed(&result);
 }
 
 #[test]
@@ -985,16 +738,7 @@ fn run_propagates_prune_failures_after_persisting_marker() {
             assert_eq!(spec.arguments(), ["install", "-g"]);
             Ok(ExecResult::success("installed\n"))
         });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
-            );
-            Ok(ExecResult::success("installed workflows\n"))
-        });
+    expect_copilot_app_workflow_install(&mut mock, &mut seq);
     let marker = dir.path().join(".apm").join(".dotfiles-manifest.sha256");
     mock.expect_execute()
         .once()
@@ -1022,20 +766,28 @@ fn run_propagates_prune_failures_after_persisting_marker() {
 }
 
 #[test]
-fn auth_failure_detection_matches_specific_auth_messages() {
-    assert!(looks_like_auth_failure(
-        "git failed: HTTP 403 Forbidden while fetching repository"
-    ));
-    assert!(looks_like_auth_failure(
-        "fatal: Authentication failed; terminal prompts disabled"
-    ));
-}
-
-#[test]
-fn auth_failure_detection_ignores_unrelated_credential_text() {
-    assert!(!looks_like_auth_failure(
-        "credential cache cleanup failed after archive extraction"
-    ));
+fn auth_failure_detection_cases() {
+    let cases = [
+        (
+            "git failed: HTTP 403 Forbidden while fetching repository",
+            true,
+        ),
+        (
+            "fatal: Authentication failed; terminal prompts disabled",
+            true,
+        ),
+        (
+            "credential cache cleanup failed after archive extraction",
+            false,
+        ),
+    ];
+    for (message, expected) in cases {
+        assert_eq!(
+            looks_like_auth_failure(message),
+            expected,
+            "message: {message}"
+        );
+    }
 }
 
 #[test]

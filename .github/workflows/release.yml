@@ -8,10 +8,20 @@ on:
     branches:
       - main
   # Allows cutting a release by hand (e.g. to re-cut after an infrastructure
-  # failure) without pushing an empty commit to main.
+  # failure) from a specific successful CI run without pushing an empty commit.
   workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful CI workflow run ID to release
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -19,9 +29,49 @@ jobs:
     name: Check CI succeeded
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository) }}
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
     steps:
-      - name: CI passed
-        run: echo "CI workflow passed, proceeding with release."
+      - name: Resolve tested commit
+        id: resolve
+        env:
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            echo "sha=$EVENT_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "CI workflow passed for $EVENT_HEAD_SHA; proceeding with release."
+            exit 0
+          fi
+
+          if [[ -z "$CI_RUN_ID" || "$CI_RUN_ID" == *[!0-9]* ]]; then
+            echo "ci_run_id must be a numeric GitHub Actions run ID." >&2
+            exit 1
+          fi
+
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID")"
+          name="$(jq -r '.name' <<< "$run")"
+          path="$(jq -r '.path' <<< "$run")"
+          status="$(jq -r '.status' <<< "$run")"
+          conclusion="$(jq -r '.conclusion' <<< "$run")"
+          event="$(jq -r '.event' <<< "$run")"
+          branch="$(jq -r '.head_branch' <<< "$run")"
+          repository="$(jq -r '.head_repository.full_name' <<< "$run")"
+          sha="$(jq -r '.head_sha' <<< "$run")"
+
+          if [[ "$name" != "CI" || "$path" != ".github/workflows/ci.yml" ||
+                "$status" != "completed" || "$conclusion" != "success" ||
+                "$event" != "push" || "$branch" != "main" || "$repository" != "$GITHUB_REPOSITORY" ]]; then
+            echo "CI run $CI_RUN_ID is not a successful canonical CI push to main from this repository." >&2
+            exit 1
+          fi
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Validated CI run $CI_RUN_ID for $sha; proceeding with release."
 
   # Resolves the release identity (version tag + commit) exactly once so every
   # downstream job builds, attests, and tags the same thing.
@@ -41,13 +91,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.check-ci.outputs.sha }}
           fetch-depth: 0
 
       - name: Resolve version and commit
         id: resolve
         env:
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          HEAD_SHA: ${{ needs.check-ci.outputs.sha }}
         run: |
           set -euo pipefail
           date_part="$(date -u +%Y.%m.%d)"

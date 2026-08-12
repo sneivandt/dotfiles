@@ -159,6 +159,39 @@ run_wrapper_guards() {
   fi
 }
 
+require_workflow_pattern() {
+  pattern="$1"
+  description="$2"
+  if ! printf '%s\n' "$workflow_contents" | grep -Eq "$pattern"; then
+    abort_with_hint \
+      "release workflow is missing $description." \
+      "restore the publishing invariant in .github/workflows/release.yml"
+  fi
+}
+
+run_release_workflow_guards() {
+  printf "Running release workflow guards...\n"
+
+  if ! workflow_contents=$(git show ":.github/workflows/release.yml"); then
+    abort_with_hint \
+      "staged release workflow cannot be read." \
+      "stage .github/workflows/release.yml before running the publishing guards"
+  fi
+
+  require_workflow_pattern '^[[:space:]]+group:[[:space:]]+release[[:space:]]*$' "serialized release concurrency"
+  require_workflow_pattern '^[[:space:]]+cancel-in-progress:[[:space:]]+false[[:space:]]*$' "non-cancelling release concurrency"
+  require_workflow_pattern '^[[:space:]]+actions:[[:space:]]+read[[:space:]]*$' "read access to CI run metadata"
+  require_workflow_pattern '^[[:space:]]+ci_run_id:[[:space:]]*$' "the manual CI run input"
+  require_workflow_pattern '\.github/workflows/ci\.yml' "canonical CI workflow validation"
+  require_workflow_pattern 'needs\.check-ci\.outputs\.sha' "the validated CI commit handoff"
+
+  if printf '%s\n' "$workflow_contents" | grep -Fq 'github.event.workflow_run.head_sha || github.sha'; then
+    abort_with_hint \
+      "manual releases can fall back to an unverified workflow commit." \
+      "use needs.check-ci.outputs.sha for every release checkout and build"
+  fi
+}
+
 if has_staged_match '^(conf/.*\.toml|symlinks/)'; then
   run_config_validation
 fi
@@ -175,6 +208,10 @@ if full_checks_enabled && has_staged_match '(^dotfiles\.sh$|^\.github/workflows/
   run_wrapper_guards
 elif has_staged_match '(^dotfiles\.sh$|^\.github/workflows/scripts/linux/test-shell-wrapper\.sh$)'; then
   printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
+fi
+
+if has_staged_match '^\.github/workflows/release\.yml$'; then
+  run_release_workflow_guards
 fi
 
 exit 0

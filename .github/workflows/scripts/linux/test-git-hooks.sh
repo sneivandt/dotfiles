@@ -154,6 +154,42 @@ EOF
   rm -rf "$repo"
 }
 
+test_release_workflow_guards() {
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  repo="$(mktemp -d)"
+
+  git init -q "$repo"
+  mkdir -p "$repo/hooks" "$repo/.github/workflows"
+  cp "$repo_root/hooks/check-ci-guards.sh" "$repo/hooks/check-ci-guards.sh"
+  cp "$repo_root/.github/workflows/release.yml" "$repo/.github/workflows/release.yml"
+  git -C "$repo" add .github/workflows/release.yml
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    pass "Release workflow guards accept the hardened workflow"
+  else
+    fail "Release workflow guards rejected the hardened workflow"
+  fi
+
+  sed '/^[[:space:]]*group:[[:space:]]*release[[:space:]]*$/d' \
+    "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
+  git -C "$repo" add .github/workflows/release.yml
+  cp "$repo_root/.github/workflows/release.yml" "$repo/.github/workflows/release.yml"
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Release workflow guards read the safe working tree instead of the unsafe index"
+  else
+    pass "Release workflow guards validate the staged workflow"
+  fi
+
+  rm -rf "$repo"
+}
+
 test_sensitive_scan_without_paste() {
   repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
   repo="$(mktemp -d)"
@@ -237,6 +273,9 @@ test_hook_wiring
 
 printf "Testing hook modes...\n"
 test_hook_modes
+
+printf "Testing release workflow guards...\n"
+test_release_workflow_guards
 
 printf "Testing hook portability...\n"
 test_sensitive_scan_without_paste

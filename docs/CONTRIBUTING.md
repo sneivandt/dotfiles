@@ -138,8 +138,11 @@ profile. Recurring integration logic belongs in
 Releases are tagged `vYYYY.MM.DD-N`, where `N` starts at 1 and increments for
 each additional release published on the same day. A dedicated `version` job
 resolves the tag once and passes it to every downstream build job, so all
-artifacts in a release agree on their version. `release.yml` also accepts
-`workflow_dispatch` for a manual publish.
+artifacts in a release agree on their version. Release runs are serialized so
+two runs cannot reserve the same tag. `release.yml` also accepts
+`workflow_dispatch` for a manual publish, but requires the run ID of a completed,
+successful `CI` push run for `main`; the release always builds that run's tested
+commit.
 
 The CLI's self-update path only recognizes this tag format. Binaries built
 before it was adopted cannot parse current release tags and will stop

@@ -133,9 +133,11 @@ CI includes:
 - publishing guard checks
 
 Publishing workflows run only after successful CI from a same-repository push to
-`main`, before jobs receive write permissions or publishing secrets. Release
-assets include checksums and build provenance attestations consumed by the
-wrappers and the self-update path.
+`main`, before jobs receive write permissions or publishing secrets. Manual
+release dispatches must identify a completed, successful CI push run with the
+same provenance, and all release runs are serialized to prevent tag-allocation
+races. Release assets include checksums and build provenance attestations
+consumed by the wrappers and the self-update path.
 
 ## Safe contribution practices
 

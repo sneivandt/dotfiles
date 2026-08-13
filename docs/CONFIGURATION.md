@@ -39,6 +39,8 @@ symlinks = ["config/hypr/hyprland.lua"]
 
 A hyphenated section uses **AND semantics**. `[arch-desktop]` is active only
 when both `arch` and `desktop` are active. It does not mean either category.
+Category tags must be built in or declared by a profile; misspelled tags are
+configuration errors.
 
 `base` is always active. Platform categories are detected by the CLI; role
 categories come from the selected profile. See [Profiles](PROFILES.md).
@@ -157,8 +159,10 @@ Directory paths should end in `/`. A manifest section can cover a more specific
 symlink section when its category tags are a subset; for example, `[desktop]`
 may cover a source linked from `[windows-desktop]`.
 
-The manifest is filtered from the selected profile's **excluded** categories.
-Unlike normal desired-state sections, it is not appended from overlays.
+Manifest sections describe which active category combinations own each path.
+A path is retained when any section declaring it is active and excluded when
+all declaring sections are inactive. Unlike normal desired-state sections, the
+manifest is not appended from overlays.
 
 ## Packages
 
@@ -350,7 +354,8 @@ the command began.
 
 ## Unknown keys are errors
 
-Every configuration file is parsed strictly. An unrecognised key — or a
+Every main `conf/*.toml` file listed above is required and parsed strictly,
+including files for the inactive platform. An unrecognised key — or a
 misspelled one — aborts the load with the file, line, column, and the list of
 accepted keys:
 
@@ -365,6 +370,10 @@ table entries (`targett` instead of `target`), and to profile definitions. A typ
 can no longer silently reduce to a default — for example `excludee` in
 `profiles.toml` previously produced an empty exclude list, so the `base` profile
 quietly stopped excluding desktop categories.
+
+Section category tags are checked too. Built-in tags are `base`, `desktop`,
+`linux`, `windows`, and `arch`; custom tags must appear in a profile's
+`include` or `exclude` list before another config file can use them.
 
 Entries that accept either a bare string or a table (symlinks, packages,
 systemd units) are also strict in both forms: a value that is neither a string

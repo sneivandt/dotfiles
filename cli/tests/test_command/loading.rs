@@ -53,26 +53,18 @@ fn config_loads_with_desktop_fixture() {
     );
 }
 
-/// Config loading must succeed even when optional config files are absent.
+/// Config loading must reject a missing main configuration file.
 #[test]
-fn config_loads_with_missing_optional_files() {
-    let root = tempfile::tempdir().expect("tempdir");
-    let conf = root.path().join("conf");
-    std::fs::create_dir_all(&conf).expect("create conf dir");
-    std::fs::create_dir_all(root.path().join("symlinks")).expect("create symlinks dir");
-
-    // Only required files; optional ones are intentionally absent.
-    std::fs::write(
-        conf.join("profiles.toml"),
-        "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
-    )
-    .expect("write profiles.toml");
+fn config_rejects_missing_main_config_file() {
+    let ctx = common::IntegrationTestContext::new();
+    let conf = ctx.root_path().join("conf");
+    std::fs::remove_file(conf.join("copilot.toml")).expect("remove copilot.toml");
 
     let platform = Platform::detect();
     let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
-    let config = Config::load(root.path(), &profile, platform, None).expect("load config");
-    assert!(config.symlinks.is_empty());
-    assert!(config.packages.is_empty());
+    let error = Config::load(ctx.root_path(), &profile, platform, None)
+        .expect_err("missing config should fail");
+    assert!(error.to_string().contains("copilot.toml"));
 }
 
 // ---------------------------------------------------------------------------

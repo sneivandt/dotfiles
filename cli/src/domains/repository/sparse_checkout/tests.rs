@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::infra::ConfigHandle;
-use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor};
 use crate::infra::fs::MockFileSystemOps;
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{ScriptedExecutor, empty_config, make_context, make_linux_context};
@@ -270,12 +270,18 @@ fn run_reconfigures_when_file_matches_but_config_disabled() {
 #[test]
 fn run_returns_planned_change_when_patterns_need_update() {
     let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
     // No sparse-checkout file means the patterns would change.
 
     let mut config = empty_config(dir.path().to_path_buf());
     config.manifest.excluded_files.push("symlinks".to_string());
     let manifest = ConfigHandle::new(config.manifest.clone());
-    let mut ctx = make_linux_context(config);
+    let executor = ScriptedExecutor::new().git(
+        dir.path(),
+        &["status", "--porcelain", "--untracked-files=no"],
+        "",
+    );
+    let mut ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
     ctx = ctx.with_dry_run(true);
 
     let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
@@ -309,7 +315,31 @@ fn run_skips_when_worktree_has_local_changes() {
 }
 
 #[test]
-fn run_removes_broken_git_symlinks_before_checking_worktree_status() {
+fn dry_run_skips_when_worktree_has_local_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
+
+    let mut config = empty_config(dir.path().to_path_buf());
+    config.manifest.excluded_files.push("symlinks".to_string());
+
+    let executor = ScriptedExecutor::new().git(
+        dir.path(),
+        &["status", "--porcelain", "--untracked-files=no"],
+        "M  cli/src/tasks/packages.rs\n",
+    );
+    let manifest = ConfigHandle::new(config.manifest.clone());
+    let mut ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+    ctx = ctx.with_dry_run(true);
+
+    let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
+    assert!(
+        matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes present")),
+        "expected local changes skip, got {result:?}"
+    );
+}
+
+#[test]
+fn run_removes_broken_git_symlinks_before_applying_sparse_checkout() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join(".git")).unwrap();
 
@@ -359,20 +389,24 @@ fn run_removes_broken_git_symlinks_before_checking_worktree_status() {
         .withf(move |p| p == broken_link.as_path())
         .returning(|_| Ok(()));
 
-    let mut executor = MockExecutor::new();
-    executor
-        .expect_execute()
-        .withf(CommandSpec::is_checked)
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.program(), "git");
-            assert_eq!(
-                spec.arguments(),
-                ["status", "--porcelain", "--untracked-files=no"]
-            );
-            Ok(ExecResult::success("M  cli/src/tasks/packages.rs\n"))
-        });
+    let executor = ScriptedExecutor::new()
+        .git(
+            dir.path(),
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        )
+        .git_unchecked_result(
+            dir.path(),
+            &["config", "--get", "extensions.worktreeConfig"],
+            Ok(ExecResult::failure("", "", Some(1))),
+        )
+        .git(dir.path(), &["config", "core.sparseCheckout", "true"], "")
+        .git(
+            dir.path(),
+            &["config", "core.sparseCheckoutCone", "false"],
+            "",
+        )
+        .git(dir.path(), &["read-tree", "-mu", "HEAD"], "");
 
     let manifest = ConfigHandle::new(config.manifest.clone());
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
@@ -380,8 +414,8 @@ fn run_removes_broken_git_symlinks_before_checking_worktree_status() {
 
     let result = task.run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes present")),
-        "expected local changes skip, got {result:?}"
+        matches!(result, TaskResult::Ok),
+        "expected sparse checkout apply, got {result:?}"
     );
 }
 

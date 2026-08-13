@@ -1,5 +1,6 @@
 //! Configuration loading and validation for all TOML config files.
 mod error;
+mod preflight;
 pub mod profiles;
 
 macro_rules! config_section_inventory {
@@ -49,6 +50,18 @@ use crate::infra::config::{Diagnostic, category_matcher};
 use crate::infra::platform::Platform;
 
 const MANIFEST_TOML: &str = "manifest.toml";
+pub(crate) const REQUIRED_CONFIG_FILES: &[&str] = &[
+    "chmod.toml",
+    "copilot.toml",
+    "git-config.toml",
+    "manifest.toml",
+    "packages.toml",
+    "profiles.toml",
+    "registry.toml",
+    "symlinks.toml",
+    "systemd-units.toml",
+    "vscode-extensions.toml",
+];
 
 #[derive(Debug, Clone, Copy)]
 enum ConfigSource {
@@ -145,7 +158,6 @@ struct SectionLoader<'a> {
     main: ConfigLoader,
     overlay: Option<ConfigLoader>,
     active: &'a [category_matcher::Category],
-    excluded: &'a [category_matcher::Category],
 }
 
 impl<'a> SectionLoader<'a> {
@@ -156,7 +168,6 @@ impl<'a> SectionLoader<'a> {
             main: ConfigLoader::main(root),
             overlay: overlay_root.map(ConfigLoader::overlay),
             active: &profile.active_categories,
-            excluded: &profile.excluded_categories,
         }
     }
 
@@ -221,19 +232,15 @@ impl<'a> SectionLoader<'a> {
         Ok(items)
     }
 
-    /// Load a single-value section filtered by the profile's *excluded*
-    /// categories.  Not merged from the overlay.
-    fn load_excluded<T>(
+    /// Load a single-value section filtered by active categories.
+    /// Not merged from the overlay.
+    fn load_active<T>(
         &self,
         file: &str,
         load: fn(&Path, &[category_matcher::Category]) -> Result<T>,
     ) -> Result<T> {
-        self.main.load_filtered(file, load, self.excluded)
+        self.main.load_filtered(file, load, self.active)
     }
-}
-
-fn load_if<T>(enabled: bool, load: impl FnOnce() -> Result<Vec<T>>) -> Result<Vec<T>> {
-    if enabled { load() } else { Ok(Vec::new()) }
 }
 
 /// A configured section's item count, for the verbose configuration summary.
@@ -361,6 +368,8 @@ impl Config {
         platform: Platform,
         overlay: Option<&Path>,
     ) -> Result<Self> {
+        let configured_categories = profiles::configured_categories(&root.join("conf"))?;
+        preflight::validate(root, overlay, &configured_categories)?;
         let sections = SectionLoader::new(root, overlay, profile);
 
         // Each field is loaded and overlay-merged by a single `SectionLoader`
@@ -370,6 +379,9 @@ impl Config {
             .main
             .load(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
         symlinks::set_origin(&mut all_symlinks, root);
+        let registry = sections.collect_unfiltered(registry::REGISTRY_TOML, registry::load)?;
+        let units =
+            sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::load)?;
         let mut config = Self {
             root: root.to_path_buf(),
             overlay: overlay.map(Path::to_path_buf),
@@ -381,12 +393,16 @@ impl Config {
                 symlinks::set_origin,
             )?,
             all_symlinks,
-            registry: load_if(platform.has_registry(), || {
-                sections.collect_unfiltered(registry::REGISTRY_TOML, registry::load)
-            })?,
-            units: load_if(platform.supports_systemd(), || {
-                sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::load)
-            })?,
+            registry: if platform.has_registry() {
+                registry
+            } else {
+                Vec::new()
+            },
+            units: if platform.supports_systemd() {
+                units
+            } else {
+                Vec::new()
+            },
             chmod: sections.collect_filtered(chmod::CHMOD_TOML, chmod::load)?,
             vscode_extensions: sections.collect_filtered(
                 vscode_extensions::VSCODE_EXTENSIONS_TOML,
@@ -395,7 +411,7 @@ impl Config {
             git_settings: sections
                 .collect_filtered(git_config::GIT_CONFIG_TOML, git_config::load)?,
             copilot_settings: sections.collect_filtered(copilot::COPILOT_TOML, copilot::load)?,
-            manifest: sections.load_excluded(MANIFEST_TOML, manifest::load)?,
+            manifest: sections.load_active(MANIFEST_TOML, manifest::load)?,
             scripts: sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::load)?,
         };
 

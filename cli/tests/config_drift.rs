@@ -268,6 +268,27 @@ fn non_base_symlink_sources_covered_by_manifest() {
     );
 }
 
+/// VS Code's platform-specific and remote links all target the shared
+/// `config/Code` backing store, so every desktop ownership combination must
+/// retain that directory.
+#[test]
+fn vscode_internal_link_targets_are_retained_for_every_desktop_platform() {
+    let manifest = load_manifest_sections(&repo_root().join("conf").join("manifest.toml"));
+    let targets = [
+        "config/Code/User/keybindings.json",
+        "config/Code/User/settings.json",
+    ];
+
+    for section in ["desktop", "linux-desktop", "windows-desktop"] {
+        for target in targets {
+            assert!(
+                is_covered_by_any_section(section, target, &manifest),
+                "[{section}] internal VS Code link target is excluded: {target}"
+            );
+        }
+    }
+}
+
 /// Returns paths excluded by sparse checkout (relative to `symlinks/`).
 ///
 /// Reads `info/sparse-checkout` from the git directory and collects negated

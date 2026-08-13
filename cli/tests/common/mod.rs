@@ -35,6 +35,7 @@ fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
 /// - `conf/systemd-units.toml`
 /// - `conf/vscode-extensions.toml`
 /// - `conf/git-config.toml`
+/// - `conf/copilot.toml`
 /// - `conf/registry.toml`
 /// - `symlinks/`                    — directory expected by validation tasks
 /// - `hooks/`                       — directory expected by validation tasks
@@ -58,6 +59,7 @@ pub(crate) fn setup_minimal_repo(root: &Path) {
         "systemd-units.toml",
         "vscode-extensions.toml",
         "git-config.toml",
+        "copilot.toml",
         "registry.toml",
     ] {
         std::fs::write(conf.join(file), "").expect("write config file");

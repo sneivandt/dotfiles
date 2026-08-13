@@ -4,7 +4,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::infra::config::category_matcher::Category;
+use crate::infra::config::category_matcher::{self, Category};
 use crate::infra::config::toml_loader;
 
 /// Sparse checkout manifest — files to exclude by category.
@@ -36,20 +36,36 @@ struct ManifestSection {
     paths: Vec<String>,
 }
 
-/// Load manifest from manifest.toml using AND exclusion logic.
+/// Load the sparse-checkout manifest for the active category set.
 ///
-/// A file section is excluded only if ALL of its category tags match the
-/// excluded set — the same logic used by all other config files.
+/// A path is retained when at least one section that declares it is active.
+/// It is excluded only when every declaring section is inactive. This supports
+/// paths shared by multiple category combinations without letting one inactive
+/// owner hide a path needed by another active owner.
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path, excluded_categories: &[Category]) -> Result<Manifest> {
-    let config: BTreeMap<String, ManifestSection> = toml_loader::load_optional_config(path)?;
+pub fn load(config_path: &Path, active_categories: &[Category]) -> Result<Manifest> {
+    let config: BTreeMap<String, ManifestSection> = toml_loader::load_optional_config(config_path)?;
 
-    let items: Vec<(String, Vec<String>)> = config.into_iter().map(|(k, v)| (k, v.paths)).collect();
-
-    let excluded_files = toml_loader::filter_by_categories(items, excluded_categories);
+    let mut path_activity = BTreeMap::<String, bool>::new();
+    for (section, manifest) in config {
+        let section_active = category_matcher::matches(
+            &category_matcher::parse_section_key(&section),
+            active_categories,
+        );
+        for manifest_path in manifest.paths {
+            path_activity
+                .entry(manifest_path)
+                .and_modify(|active| *active |= section_active)
+                .or_insert(section_active);
+        }
+    }
+    let excluded_files = path_activity
+        .into_iter()
+        .filter_map(|(manifest_path, active)| (!active).then_some(manifest_path))
+        .collect();
 
     Ok(Manifest { excluded_files })
 }
@@ -71,7 +87,7 @@ path = ["file1"]
     }
 
     #[test]
-    fn and_exclusion_logic() {
+    fn inactive_compound_section_is_excluded() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
 paths = ["file1"]
@@ -86,28 +102,39 @@ paths = ["file3"]
 paths = ["file4"]
 "#,
         );
-        // Excluding 'windows' excludes file3 (single-category match),
-        // but NOT file4 — [arch-desktop] requires BOTH arch AND desktop to be excluded.
-        let manifest = load(&path, &[Category::Windows]).unwrap();
-        assert_eq!(manifest.excluded_files, vec!["file3"]);
+        let manifest = load(&path, &[Category::Base, Category::Arch]).unwrap();
+        assert_eq!(manifest.excluded_files, vec!["file3", "file4"]);
     }
 
     #[test]
-    fn and_logic_multi_category_both_excluded() {
+    fn active_compound_section_is_retained() {
         let (_dir, path) = write_temp_toml(
             r#"[arch-desktop]
 paths = ["file1"]
 "#,
         );
-        // Excluding both 'arch' and 'desktop' excludes the section (AND logic)
-        let manifest = load(&path, &[Category::Arch, Category::Desktop]).unwrap();
-        assert_eq!(manifest.excluded_files, vec!["file1"]);
+        let manifest = load(&path, &[Category::Base, Category::Arch, Category::Desktop]).unwrap();
+        assert!(manifest.excluded_files.is_empty());
+    }
+
+    #[test]
+    fn shared_path_is_retained_when_any_owner_is_active() {
+        let (_dir, path) = write_temp_toml(
+            r#"[desktop]
+paths = ["shared"]
+
+[windows-desktop]
+paths = ["shared"]
+"#,
+        );
+        let manifest = load(&path, &[Category::Base, Category::Desktop]).unwrap();
+        assert!(manifest.excluded_files.is_empty());
     }
 
     #[test]
     fn load_missing_file_returns_empty() {
         let dir = tempfile::tempdir().unwrap();
-        let manifest = load(&dir.path().join("nope.toml"), &[Category::Windows]).unwrap();
+        let manifest = load(&dir.path().join("nope.toml"), &[Category::Base]).unwrap();
         assert!(
             manifest.excluded_files.is_empty(),
             "missing file should produce empty manifest"
@@ -115,7 +142,7 @@ paths = ["file1"]
     }
 
     #[test]
-    fn excludes_nothing_when_no_categories_match() {
+    fn excludes_sections_without_active_categories() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
 paths = ["file1"]
@@ -124,11 +151,8 @@ paths = ["file1"]
 paths = ["file2"]
 "#,
         );
-        let manifest = load(&path, &[Category::Windows]).unwrap();
-        assert!(
-            manifest.excluded_files.is_empty(),
-            "no categories matched — nothing should be excluded"
-        );
+        let manifest = load(&path, &[Category::Base, Category::Windows]).unwrap();
+        assert_eq!(manifest.excluded_files, vec!["file2"]);
     }
 
     #[test]

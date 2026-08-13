@@ -28,16 +28,7 @@ fn setup_load(
     let conf = dir.path().join("conf");
     std::fs::create_dir_all(&conf).expect("create conf dir");
 
-    for file in &[
-        "packages.toml",
-        "symlinks.toml",
-        "registry.toml",
-        "systemd-units.toml",
-        "chmod.toml",
-        "vscode-extensions.toml",
-        "git-config.toml",
-        "manifest.toml",
-    ] {
+    for file in REQUIRED_CONFIG_FILES {
         std::fs::write(conf.join(file), "").expect("write empty toml");
     }
 
@@ -266,6 +257,34 @@ fn load_skips_systemd_units_on_windows() {
     let (dir, profile, platform) = setup_load(windows(), &[]);
     let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
     assert!(config.units.is_empty(), "systemd units skipped on windows");
+}
+
+#[test]
+fn load_still_parses_systemd_config_on_windows() {
+    let (dir, profile, platform) = setup_load(
+        windows(),
+        &[(
+            "systemd-units.toml",
+            "[base]\nunits = [{ name = \"example.service\", scop = \"user\" }]\n",
+        )],
+    );
+    let result = Config::load(dir.path(), &profile, platform, None);
+    assert!(
+        result.is_err(),
+        "platform-inactive config should still be parsed strictly"
+    );
+}
+
+#[test]
+fn load_rejects_missing_main_config_file() {
+    let (dir, profile, platform) = setup_load(linux(), &[]);
+    std::fs::remove_file(dir.path().join("conf").join("copilot.toml"))
+        .expect("remove copilot config");
+
+    let error = Config::load(dir.path(), &profile, platform, None)
+        .expect_err("missing main config should fail");
+
+    assert!(error.to_string().contains("copilot.toml"));
 }
 
 #[test]

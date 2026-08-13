@@ -28,8 +28,8 @@ by controlling which files are checked out based on the selected profile.
 ## Manifest File Format
 
 Paths are relative to `symlinks/`. Section names use the same AND logic as
-other config files, but are filtered against `excluded_categories` (not
-`active_categories`):
+other config files and describe the active category combinations that own each
+path:
 
 ```toml
 [windows]
@@ -42,26 +42,29 @@ paths = ["config/pacman.conf", "config/paru/"]
 paths = ["config/Code/", "config/rofi/"]
 
 [arch-desktop]
-paths = ["config/hypr/", "config/dunst/"]    # excluded only if BOTH arch AND desktop excluded
+paths = ["config/hypr/", "config/dunst/"]    # retained only when BOTH are active
 ```
 
+- A path is retained when any section declaring it is active; otherwise it is excluded
 - Directories **must** end with `/`
 - Files in the `[base]` profile are never excluded — don't list them here
 
 ## Adding a New File
 
-1. Determine which categories should **not** have the file
+1. Determine which active category combination owns the file
 2. Add to the appropriate section in `conf/manifest.toml` (relative to `symlinks/`)
 3. Run `./dotfiles.sh install -p <profile> -d` to verify the exclusion
 4. Apply sparse checkout only from a clean working tree
 
 ## Relationship with Config Processing
 
-The AND-logic section name means different things depending on context:
+The AND-logic section name has the same ownership meaning everywhere:
 
 | File | Filtered against | Meaning of `[arch-desktop]` |
 |---|---|---|
-| `manifest.toml` | `excluded_categories` | exclude only if **both** arch and desktop are excluded |
+| `manifest.toml` | `active_categories` | retain only if **both** arch and desktop are active |
 | `packages.toml`, `symlinks.toml`, etc. | `active_categories` | include only if **both** arch and desktop are active |
 
-This ensures files are available whenever their corresponding config items are active.
+When multiple sections declare the same path, any active owner keeps it in the
+checkout. This supports genuinely shared paths without broadening their
+category ownership.

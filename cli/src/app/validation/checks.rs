@@ -130,15 +130,10 @@ impl Task for ValidateConfigFiles {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let root = ctx.root();
         let conf = root.join("conf");
-        let required = [
-            "profiles.toml",
-            "symlinks.toml",
-            "packages.toml",
-            "manifest.toml",
-        ];
+        let required = crate::app::config::REQUIRED_CONFIG_FILES;
 
         let mut errors = 0u32;
-        for config_file in &required {
+        for config_file in required {
             let path = conf.join(config_file);
             if path.exists() {
                 ctx.debug_fmt(|| format!("found conf/{config_file}"));

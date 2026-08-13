@@ -9,9 +9,9 @@
 # Directories should end with /
 # Individual files listed explicitly
 #
-# Section names use hyphen-separated categories and follow AND logic, identical to all other
-# config files. A section is excluded only when ALL of its category tags match the excluded set.
-# Example: [arch-desktop] is excluded only if BOTH arch AND desktop are excluded.
+# Section names use hyphen-separated categories and follow the same AND logic
+# as other config files. A path is retained when at least one section declaring
+# it is active; otherwise it is excluded.
 #
 # Note: Files in the [base] profile category do not need to be listed here
 # since base files are never excluded - they're included in all profiles.
@@ -59,25 +59,17 @@ paths = [
 
 # Desktop-specific files (excluded on non-desktop)
 #
-# Note: these paths cover VSCode config dirs that are also symlinked from
-# [linux-desktop] and [windows].  The manifest entry lives here (not in those
-# sub-sections) because the files must be present in the sparse checkout for
-# *any* desktop environment.  The validation test understands cross-section
-# coverage: a [linux-desktop] symlink is considered covered if its source
-# path is matched by any manifest section whose tags are a subset of
-# "linux-desktop" — [desktop] qualifies because desktop ⊆ {linux, desktop}.
 [desktop]
 paths = [
+  # Cross-platform backing store for VS Code, VS Code Insiders, and Remote.
   "config/Code/",
-  "config/Code - Insiders/",
-  "AppData/Roaming/Code - Insiders/",
-  "AppData/Roaming/Code/",
   "vscode-remote/",
 ]
 
 # Desktop-specific files that also require Linux
 [linux-desktop]
 paths = [
+  "config/Code - Insiders/",
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
 ]

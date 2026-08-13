@@ -20,10 +20,6 @@ pub(super) struct ProfileDef {
 }
 
 pub(super) fn load_definitions(path: &Path) -> Result<HashMap<String, ProfileDef>, ConfigError> {
-    if !path.exists() {
-        return Ok(default_definitions());
-    }
-
     let content = std::fs::read_to_string(path).map_err(|source| ConfigError::Io {
         path: path.display().to_string(),
         source,
@@ -35,6 +31,7 @@ pub(super) fn load_definitions(path: &Path) -> Result<HashMap<String, ProfileDef
     })
 }
 
+#[cfg(test)]
 pub(super) fn default_definitions() -> HashMap<String, ProfileDef> {
     HashMap::from([
         (
@@ -111,14 +108,13 @@ excludee = ["desktop"]
     }
 
     #[test]
-    fn missing_file_falls_back_to_builtin_definitions() {
+    fn missing_file_is_rejected() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let definitions = load_definitions(&dir.path().join("absent.toml"))
-            .expect("missing file is not an error");
-        assert_eq!(
-            definitions.len(),
-            default_definitions().len(),
-            "a missing file should fall back to the built-in definitions"
+        let error = load_definitions(&dir.path().join("absent.toml"))
+            .expect_err("profiles.toml is required");
+        assert!(
+            error.to_string().contains("I/O error reading config file"),
+            "missing profiles.toml should report a read error: {error}"
         );
     }
 }

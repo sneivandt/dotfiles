@@ -24,7 +24,7 @@ Platform categories (`linux`, `windows`, `arch`) are auto-detected — users onl
 2. **Platform auto-detection**: `Platform::excludes_category()` auto-adds/excludes platform categories (`linux`, `windows`, `arch`)
 3. **Always-active**: `base` is always in `active_categories`
 4. **Config filtering**: `toml_loader::filter_by_categories(sections, active_categories)` includes sections where ALL categories are active
-5. **Sparse checkout**: `manifest.toml` uses the same AND logic, but filters against `excluded_categories`
+5. **Sparse checkout**: `manifest.toml` retains paths owned by any section whose categories are all active
 
 ## Profile Selection Priority
 

@@ -21,22 +21,22 @@ QuickEdit = 1                          # Enable quick edit mode (select text wit
 ScreenColors = 0x0F                    # Tokyo Night foreground/background indexes
 PopupColors = 0xF0                     # Popup menu colors
 WindowAlpha = 0xFF                     # Window transparency (0xFF = opaque)
-ColorTable00 = 1971729                 # Tokyo Night black (#15161e)
+ColorTable00 = 1971733                 # Tokyo Night black (#15161e)
 ColorTable01 = 16228986                # Tokyo Night blue (#7aa2f7)
-ColorTable02 = 7007902                 # Tokyo Night green (#9ece6a)
-ColorTable03 = 16764861                # Tokyo Night cyan (#7dcfff)
+ColorTable02 = 6999710                 # Tokyo Night green (#9ece6a)
+ColorTable03 = 16764797                # Tokyo Night cyan (#7dcfff)
 ColorTable04 = 9336567                 # Tokyo Night red (#f7768e)
 ColorTable05 = 16227003                # Tokyo Night magenta (#bb9af7)
-ColorTable06 = 6868960                 # Tokyo Night yellow (#e0af68)
-ColorTable07 = 14004649                # Tokyo Night white (#a9b1d6)
-ColorTable08 = 6842433                 # Tokyo Night bright black (#414868)
+ColorTable06 = 6860768                 # Tokyo Night yellow (#e0af68)
+ColorTable07 = 14070185                # Tokyo Night white (#a9b1d6)
+ColorTable08 = 6834241                 # Tokyo Night bright black (#414868)
 ColorTable09 = 16228986                # Tokyo Night bright blue (#7aa2f7)
-ColorTable10 = 7007902                 # Tokyo Night bright green (#9ece6a)
-ColorTable11 = 16764861                # Tokyo Night bright cyan (#7dcfff)
+ColorTable10 = 6999710                 # Tokyo Night bright green (#9ece6a)
+ColorTable11 = 16764797                # Tokyo Night bright cyan (#7dcfff)
 ColorTable12 = 9336567                 # Tokyo Night bright red (#f7768e)
 ColorTable13 = 16227003                # Tokyo Night bright magenta (#bb9af7)
-ColorTable14 = 6868960                 # Tokyo Night bright yellow (#e0af68)
-ColorTable15 = 16173760                # Tokyo Night bright white (#c0caf5)
+ColorTable14 = 6860768                 # Tokyo Night bright yellow (#e0af68)
+ColorTable15 = 16108224                # Tokyo Night bright white (#c0caf5)
 
 # PowerShell PSReadLine syntax highlighting colors
 [psreadline]

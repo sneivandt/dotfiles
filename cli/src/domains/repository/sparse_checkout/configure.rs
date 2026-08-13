@@ -308,8 +308,14 @@ struct SparseCheckoutOperation {
     config: ConfigHandle<Manifest>,
 }
 
+#[derive(Debug, Clone)]
+enum SparseCheckoutPlan {
+    Configure(Vec<String>),
+    Skip(String),
+}
+
 impl Operation for SparseCheckoutOperation {
-    type Plan = Vec<String>;
+    type Plan = SparseCheckoutPlan;
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let excluded_files: Vec<String> = self.config.read().excluded_files.clone();
@@ -332,30 +338,45 @@ impl Operation for SparseCheckoutOperation {
             return Ok(OperationState::Complete);
         }
 
+        if worktree_has_local_changes(ctx)? {
+            return Ok(OperationState::needs_run(
+                "local changes present",
+                SparseCheckoutPlan::Skip("local changes present".to_string()),
+            ));
+        }
+
         Ok(OperationState::needs_run(
             "configure sparse checkout",
-            excluded_files,
+            SparseCheckoutPlan::Configure(excluded_files),
         ))
     }
 
-    fn preview(&self, ctx: &Context, excluded_files: &Self::Plan) -> Result<TaskResult> {
-        ctx.log().dry_run("configure git sparse checkout");
-        for file in excluded_files {
-            ctx.log().dry_run(format!("  exclude: {file}"));
+    fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        match plan {
+            SparseCheckoutPlan::Configure(excluded_files) => {
+                ctx.log().dry_run("configure git sparse checkout");
+                for file in excluded_files {
+                    ctx.log().dry_run(format!("  exclude: {file}"));
+                }
+                Ok(TaskStats::changed().finish())
+            }
+            SparseCheckoutPlan::Skip(reason) => Ok(TaskResult::Skipped(reason.clone())),
         }
-        Ok(TaskStats::changed().finish())
     }
 
-    fn apply(&self, ctx: &Context, excluded_files: &Self::Plan) -> Result<TaskResult> {
+    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        let excluded_files = match plan {
+            SparseCheckoutPlan::Configure(excluded_files) => excluded_files,
+            SparseCheckoutPlan::Skip(reason) => {
+                return Ok(TaskResult::Skipped(reason.clone()));
+            }
+        };
+
         let patterns_str = build_patterns(excluded_files);
         let sparse_file = ctx.root().join(".git/info/sparse-checkout");
 
         // Clean up broken git config symlinks that prevent git from running.
         remove_broken_git_symlinks(ctx, &*self.fs_ops);
-
-        if worktree_has_local_changes(ctx)? {
-            return Ok(TaskResult::Skipped("local changes present".to_string()));
-        }
 
         let previous_patterns = read_existing_patterns(&sparse_file)?;
 

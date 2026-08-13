@@ -22,8 +22,7 @@ settings = [
   { key = "logLevel",       value = "all"             },
 
   # Appearance
-  { key = "theme",     value = "auto"   },
-  { key = "colorMode", value = "default" },
+  { key = "theme", value = "default" },
 
   # Footer / status line (managed per-field so the CLI can still add new ones)
   { key = "footer.showModelEffort",   value = false },

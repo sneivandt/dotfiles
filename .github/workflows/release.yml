@@ -24,6 +24,8 @@ permissions:
   actions: read
   contents: read
 
+# Release builds intentionally avoid dependency caches so checked-out code never
+# receives cache write credentials in this privileged workflow.
 jobs:
   check-ci:
     name: Check CI succeeded
@@ -134,11 +136,6 @@ jobs:
       - name: Install Rust toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: "cli -> target"
-          cache-on-failure: true
-
       - name: Build release binary
         run: cargo build --release --locked --manifest-path cli/Cargo.toml
         env:
@@ -166,11 +163,6 @@ jobs:
 
       - name: Install Rust toolchain
         run: rustup show
-
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: "cli -> target"
-          cache-on-failure: true
 
       - name: Build release binary
         run: cargo build --release --locked --manifest-path cli/Cargo.toml

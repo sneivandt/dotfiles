@@ -12,7 +12,7 @@ use clap::{CommandFactory, Parser};
 
 use crate::infra::{elevation, logging};
 
-use super::{cli, commands, interrupt};
+use super::{catalog, cli, commands, interrupt};
 use crate::infra::logging::OutputExt as _;
 
 /// Run the dotfiles CLI and return the process exit code.
@@ -34,8 +34,13 @@ pub fn run() -> ExitCode {
     // here keeps the engine dispatch in `run_engine` total.
     let command = match args.command {
         cli::Command::Completions(opts) => {
-            let mut cmd = cli::Cli::command();
-            clap_complete::generate(opts.shell, &mut cmd, "dotfiles", &mut std::io::stdout());
+            if matches!(opts.shell, clap_complete::Shell::PowerShell) {
+                let script = catalog::generate_powershell_completions();
+                drop(std::io::stdout().lock().write_all(script.as_bytes()));
+            } else {
+                let mut cmd = cli::Cli::command();
+                clap_complete::generate(opts.shell, &mut cmd, "dotfiles", &mut std::io::stdout());
+            }
             return ExitCode::SUCCESS;
         }
         // Log viewing is read-only: do not initialize the tracing subscriber or

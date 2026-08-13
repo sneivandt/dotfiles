@@ -36,6 +36,20 @@ use crate::domains::system::wsl_conf::InstallWslConf;
 use crate::engine::update_signal::UpdateSignal;
 use crate::engine::{Task, TaskId, TaskWithExtraDeps};
 
+const POWERSHELL_DOT_COMPLETER: &str = r"
+Register-ArgumentCompleter -CommandName 'dot' -ParameterName 'Arguments' -ScriptBlock {
+    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
+
+    $expandedLine = [regex]::Replace(
+        $commandAst.ToString(),
+        '^dot(?=\s|$)',
+        'dotfiles',
+        1
+    )
+    (TabExpansion2 -InputScript $expandedLine -CursorColumn $expandedLine.Length).CompletionMatches
+}
+";
+
 /// The `TaskId` of a static task type.
 const fn id<T: 'static>() -> TaskId {
     TaskId::Type(TypeId::of::<T>())
@@ -59,6 +73,25 @@ pub fn generate_zsh_completions() -> String {
     String::from_utf8(buf).unwrap_or_default()
 }
 
+/// Generate the PowerShell completion script for the CLI and its `dot` function.
+///
+/// Native completers are not invoked through PowerShell aliases or functions,
+/// so `dot` uses a parameter completer that expands the command name and
+/// delegates to the generated `dotfiles` native completer.
+#[must_use]
+pub fn generate_powershell_completions() -> String {
+    let mut buf = Vec::new();
+    let mut cmd = Cli::command();
+    clap_complete::generate(
+        clap_complete::Shell::PowerShell,
+        &mut cmd,
+        "dotfiles",
+        &mut buf,
+    );
+    buf.extend_from_slice(POWERSHELL_DOT_COMPLETER.as_bytes());
+    String::from_utf8(buf).unwrap_or_default()
+}
+
 /// The complete set of tasks run by the uninstall command.
 #[must_use]
 pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
@@ -77,7 +110,8 @@ pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
 #[must_use]
 pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
     let repo_updated = UpdateSignal::new();
-    let completions = generate_zsh_completions();
+    let zsh_completions = generate_zsh_completions();
+    let powershell_completions = generate_powershell_completions();
 
     vec![
         Box::new(EnableDeveloperMode),
@@ -94,7 +128,7 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         Box::new(ConfigureCopilot::new(store.copilot_settings.clone())),
         with_deps(InstallGitHooks::new(), &[id::<UpdateRepository>()]),
         with_deps(
-            GenerateCompletions::new(completions),
+            GenerateCompletions::new(zsh_completions, powershell_completions),
             &[id::<UpdateRepository>()],
         ),
         Box::new(InstallPackages::new(store.packages.clone())),
@@ -151,6 +185,25 @@ mod tests {
 
     fn test_params() -> ConfigStore {
         ConfigStore::from_config(empty_config(PathBuf::from("/tmp")))
+    }
+
+    #[test]
+    fn powershell_completions_register_cli_and_alias() {
+        let script = generate_powershell_completions();
+
+        assert_eq!(
+            script.matches("Register-ArgumentCompleter").count(),
+            2,
+            "PowerShell should register the CLI and function completers"
+        );
+        assert!(
+            script.contains("-CommandName 'dotfiles'"),
+            "PowerShell completions should register dotfiles"
+        );
+        assert!(
+            script.contains("-CommandName 'dot' -ParameterName 'Arguments'"),
+            "PowerShell completions should register the dot function parameter"
+        );
     }
 
     #[test]

@@ -1,5 +1,10 @@
 # Global variables justified: profile file maintains session state
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidGlobalVars", "")]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    "PSUseApprovedVerbs",
+    "dot",
+    Justification = "dot is the established short form of the dotfiles command"
+)]
 param()
 
 if (Get-Module PSReadLine)
@@ -31,7 +36,16 @@ if (Get-Command "code-insiders" -ErrorAction SilentlyContinue)
     Set-Alias -Name code -Value code-insiders
 }
 
-Set-Alias -Name dot -Value dotfiles
+function dot
+{
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $Arguments
+    )
+
+    dotfiles @Arguments
+}
 
 $Global:IsNestedPwsh = $false
 if ($null -eq $env:windir)

@@ -61,6 +61,23 @@ fn standard_no_op_has_only_no_changes_line() {
 }
 
 #[test]
+fn standard_error_summary_starts_with_failed_count() {
+    let lines = format_summary_lines(
+        SummaryCounts {
+            ok: 1,
+            failed: 1,
+            ..SummaryCounts::default()
+        },
+        SummaryMode::Standard,
+        false,
+        "7.2s",
+        StyleChoice::plain(),
+    );
+
+    assert_eq!(lines, ["1 failed · 1 current · 7.2s"]);
+}
+
+#[test]
 fn standard_summary_groups_task_and_action_counts() {
     let lines = format_summary_lines(
         SummaryCounts {
@@ -83,7 +100,7 @@ fn standard_summary_groups_task_and_action_counts() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["3 changed · 1 ignored · 1 failed · 2.0s"]);
+    assert_eq!(lines, ["1 failed · 3 changed · 1 ignored · 2.0s"]);
 }
 
 #[test]
@@ -193,7 +210,7 @@ fn test_summary_uses_check_vocabulary_and_omits_not_run() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["7 passed · 2 ignored · 1 failed · 3.4s"]);
+    assert_eq!(lines, ["1 failed · 7 passed · 2 ignored · 3.4s"]);
 }
 
 #[test]
@@ -423,6 +440,33 @@ fn task_result_visibility_is_unchanged_for_every_status() {
 }
 
 #[test]
+fn internal_tasks_never_produce_console_rows() {
+    let mut task = task_entry(
+        "Reload configuration",
+        TaskStatus::Skipped,
+        Some("dependency failed"),
+    );
+    task.visibility = TaskVisibility::Internal;
+
+    assert_eq!(
+        SummaryCounts::from_tasks(std::slice::from_ref(&task)),
+        SummaryCounts::default()
+    );
+    assert!(task_result_lines(&task, &[], plain_opts()).is_empty());
+    assert!(
+        task_result_lines(
+            &task,
+            &[],
+            RowOpts {
+                verbose: true,
+                ..plain_opts()
+            }
+        )
+        .is_empty()
+    );
+}
+
+#[test]
 fn colored_summary_styles_each_outcome_group() {
     let lines = format_summary_lines(
         SummaryCounts {
@@ -444,10 +488,10 @@ fn colored_summary_styles_each_outcome_group() {
 
     assert_eq!(
         lines,
-        ["\x1b[32m1 changed\x1b[0m \
+        ["\x1b[31m4 failed\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[32m1 changed\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m2 current\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[33m3 ignored\x1b[0m \
-             \x1b[2m·\x1b[0m \x1b[31m4 failed\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"]
     );
 }

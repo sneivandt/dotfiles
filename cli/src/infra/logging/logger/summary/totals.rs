@@ -76,6 +76,7 @@ pub(super) fn format_standard_totals(
     style: StyleChoice,
 ) -> Vec<String> {
     let mut parts = Vec::new();
+    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     if counts.dry_run > 0 {
         parts.push(style.paint(
             TextStyle::Magenta,
@@ -94,7 +95,6 @@ pub(super) fn format_standard_totals(
         "ignored",
         style,
     );
-    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     parts
 }
 
@@ -113,6 +113,7 @@ pub(super) fn push_count(
 
 pub(super) fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> {
     let mut parts = Vec::new();
+    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     push_count(&mut parts, counts.passed, TextStyle::Green, "passed", style);
     push_count(
         &mut parts,
@@ -121,7 +122,6 @@ pub(super) fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> V
         "ignored",
         style,
     );
-    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     if parts.is_empty() {
         parts.push("No checks ran".to_string());
     }

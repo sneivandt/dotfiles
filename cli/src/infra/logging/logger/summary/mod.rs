@@ -93,7 +93,7 @@ impl Logger {
         let Some(task) = self.recorded_task(task_name) else {
             return;
         };
-        if !should_emit_task_result(task.status, self.verbose) {
+        if !task.visibility.is_visible() || !should_emit_task_result(task.status, self.verbose) {
             return;
         }
         self.begin_task_block();
@@ -105,7 +105,7 @@ impl Logger {
         let Some(task) = self.recorded_task_by_id(task_id) else {
             return;
         };
-        if !should_emit_task_result(task.status, self.verbose) {
+        if !task.visibility.is_visible() || !should_emit_task_result(task.status, self.verbose) {
             return;
         }
         self.begin_task_block();

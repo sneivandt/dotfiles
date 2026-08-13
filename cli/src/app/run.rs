@@ -101,7 +101,7 @@ fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
     {
         log.error(format!("{error:#}"));
     }
-    log.always("Run 'dotfiles log' for details.");
+    log.startup("Run 'dotfiles log' for details.");
 }
 
 #[cfg(test)]
@@ -113,20 +113,20 @@ mod tests {
     #[derive(Default)]
     struct CapturingOutput {
         errors: Mutex<Vec<String>>,
-        always: Mutex<Vec<String>>,
+        startup: Mutex<Vec<String>>,
     }
 
     impl logging::Output for CapturingOutput {
         fn emit(&self, kind: logging::MsgKind, msg: std::borrow::Cow<'_, str>) {
             let sink = match kind {
                 logging::MsgKind::Error => &self.errors,
-                logging::MsgKind::Always => &self.always,
+                logging::MsgKind::Startup => &self.startup,
                 logging::MsgKind::Stage
                 | logging::MsgKind::TaskStage
                 | logging::MsgKind::Info
                 | logging::MsgKind::Debug
                 | logging::MsgKind::Trace
-                | logging::MsgKind::Startup
+                | logging::MsgKind::Always
                 | logging::MsgKind::Warn
                 | logging::MsgKind::DryRun => return,
             };
@@ -137,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_task_failure_only_prints_plain_log_hint() {
+    fn aggregate_task_failure_only_prints_dim_log_hint() {
         let log = CapturingOutput::default();
         let error = anyhow::Error::from(commands::error::TaskFailures::new(2));
 
@@ -151,14 +151,14 @@ mod tests {
             "aggregate task failure should not repeat the failed task count"
         );
         assert_eq!(
-            *log.always.lock().unwrap_or_else(PoisonError::into_inner),
+            *log.startup.lock().unwrap_or_else(PoisonError::into_inner),
             ["Run 'dotfiles log' for details."],
-            "log hint should use the always-visible plain-text channel"
+            "log hint should use the always-visible dim channel"
         );
     }
 
     #[test]
-    fn unexpected_failure_still_prints_error_and_plain_log_hint() {
+    fn unexpected_failure_still_prints_error_and_dim_log_hint() {
         let log = CapturingOutput::default();
         let error = anyhow::anyhow!("configuration failed");
 
@@ -170,9 +170,9 @@ mod tests {
             "unexpected command failures should remain visible as errors"
         );
         assert_eq!(
-            *log.always.lock().unwrap_or_else(PoisonError::into_inner),
+            *log.startup.lock().unwrap_or_else(PoisonError::into_inner),
             ["Run 'dotfiles log' for details."],
-            "log hint should use the always-visible plain-text channel"
+            "log hint should use the always-visible dim channel"
         );
     }
 }

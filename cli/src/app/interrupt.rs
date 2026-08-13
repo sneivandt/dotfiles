@@ -211,7 +211,7 @@ fn end_prompt_line() {
 fn force_quit(log: &dyn Output) -> ! {
     log.clear_status_line();
     log.error(FORCE_QUIT_MESSAGE);
-    log.always("Run 'dotfiles log' for details.");
+    log.startup("Run 'dotfiles log' for details.");
     elevation::wait_if_elevated();
     std::process::exit(FORCE_QUIT_EXIT_CODE)
 }

@@ -31,7 +31,7 @@ pub(super) fn task_result_lines(
     details: &[TaskDetailEntry],
     opts: RowOpts,
 ) -> Vec<String> {
-    if !should_emit_task_result(task.status, opts.verbose) {
+    if !task.visibility.is_visible() || !should_emit_task_result(task.status, opts.verbose) {
         return Vec::new();
     }
 

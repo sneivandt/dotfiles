@@ -121,7 +121,7 @@ pub enum MsgKind {
     ///
     /// Always visible, like [`MsgKind::Always`], but rendered dim because it
     /// describes the run rather than reporting its results. Used for the
-    /// startup context header and the self-update notice.
+    /// startup context header, self-update notice, and failure log hint.
     Startup,
 }
 

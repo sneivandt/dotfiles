@@ -13,7 +13,6 @@ mod totals;
 
 use crate::infra::logging::utils::format_elapsed;
 use render::{RowOpts, format_task_line, should_emit_task_result, task_result_lines};
-use std::sync::atomic::Ordering;
 use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 
 impl Logger {
@@ -69,7 +68,7 @@ impl Logger {
         for line in detail_rows {
             self.task_result(line);
         }
-        self.end_task_block(!detail_rows.is_empty());
+        self.end_task_block();
     }
 
     pub(in crate::infra::logging) fn emit_recorded_task_result_by_id(&self, task_id: &str) {
@@ -87,7 +86,7 @@ impl Logger {
         for line in detail_rows {
             self.task_result(line);
         }
-        self.end_task_block(!detail_rows.is_empty());
+        self.end_task_block();
     }
 
     pub(in crate::infra::logging) fn emit_recorded_task_status(&self, task_name: &str) {
@@ -114,29 +113,14 @@ impl Logger {
         self.mark_task_console_output();
     }
 
-    /// Open a task block, separating it from a preceding block of details.
-    ///
-    /// Without this a long list of actions runs straight into the next task's
-    /// status row, and the two blocks read as one.
+    /// Open a task block after the startup separator.
     fn begin_task_block(&self) {
         self.separate_from_startup();
-        if self.last_block_had_details.swap(false, Ordering::Relaxed) {
-            self.task_result("");
-        }
     }
 
-    /// Close a task block, remembering whether it printed indented details.
-    fn end_task_block(&self, had_details: bool) {
-        self.last_block_had_details
-            .store(had_details, Ordering::Relaxed);
+    /// Close a task block and mark its output as durable.
+    fn end_task_block(&self) {
         self.mark_task_console_output();
-    }
-
-    /// Remember that verbose replay printed indented details for a task.
-    pub(in crate::infra::logging) fn note_replayed_details(&self, had_details: bool) {
-        if had_details {
-            self.last_block_had_details.store(true, Ordering::Relaxed);
-        }
     }
 
     fn recorded_task(&self, task_name: &str) -> Option<TaskEntry> {

@@ -58,12 +58,6 @@ pub struct Logger {
     pub(super) status_row_visible: AtomicBool,
     /// Whether any completed task has emitted durable console output.
     pub(super) task_console_output_emitted: AtomicBool,
-    /// Whether the most recent task block printed indented detail lines.
-    ///
-    /// Drives the blank line that separates a detail block from whatever row
-    /// follows it, so a long list of actions never runs straight into the next
-    /// task's status row.
-    pub(super) last_block_had_details: AtomicBool,
     /// Number of tasks scheduled for this run, used as the progress denominator.
     pub(super) task_total: AtomicUsize,
     /// Number of tasks that have finished, used as the progress numerator.
@@ -143,7 +137,6 @@ impl Logger {
             progress_rows: AtomicU16::new(0),
             status_row_visible: AtomicBool::new(false),
             task_console_output_emitted: AtomicBool::new(false),
-            last_block_had_details: AtomicBool::new(false),
             task_total: AtomicUsize::new(0),
             tasks_completed: AtomicUsize::new(0),
             tasks_excluded: AtomicUsize::new(0),
@@ -525,11 +518,6 @@ impl Output for Logger {
     fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
         if let Some(run_log) = &self.run_log {
             run_log.emit(kind.log_event(), &msg);
-        }
-        if self.verbose && matches!(kind, MsgKind::Debug) {
-            // Verbose prints debug lines indented, so the startup diagnostics
-            // form a detail block that the first task row must be spaced from.
-            self.last_block_had_details.store(true, Ordering::Relaxed);
         }
         emit_console_event!(kind, &*msg);
     }

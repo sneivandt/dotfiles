@@ -44,7 +44,7 @@ impl CommandRunner {
             global.overlay.as_deref(),
             &root,
             env.as_ref(),
-        );
+        )?;
         let profile = resolve_profile(global, &root, platform, overlay.as_deref(), log)?;
         let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
         let store = ConfigStore::from_config(config);

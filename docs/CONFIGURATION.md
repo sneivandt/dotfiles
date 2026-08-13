@@ -288,6 +288,11 @@ Important boundaries:
 When an overlay is active, its resolved path is reported as the final
 ` · overlay <path>` section of the startup header line.
 
+When `--overlay` points to a linked Git worktree, the CLI asks for confirmation
+before using and persisting that path. The `[y/N]` prompt defaults to no, and a
+non-interactive invocation rejects the new worktree path. Normal repository
+checkouts, whose `.git` entry is a directory, do not require confirmation.
+
 Validate combined state explicitly:
 
 ```bash

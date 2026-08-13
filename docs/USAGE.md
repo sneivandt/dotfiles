@@ -157,8 +157,8 @@ reason after a `·` separator:
 ```
 
 Indented dimmed lines beneath a row are the individual actions the task took or
-planned, listed in full without truncation. A blank line separates a task that
-printed actions from the row that follows it.
+planned, listed in full without truncation. Task rows follow these actions
+immediately, without blank lines between task outputs.
 
 Normal output only prints rows for tasks that did something or need attention.
 `--verbose` accounts for every task — including up-to-date and non-applicable
@@ -291,6 +291,10 @@ to the main configuration:
 ```bash
 dotfiles install --overlay C:\Code\private-dotfiles
 ```
+
+An explicit overlay path that is a linked Git worktree requires interactive
+confirmation before it is used or persisted. The `[y/N]` prompt defaults to no;
+non-interactive runs reject the new worktree path.
 
 Only overlay repositories can define `conf/scripts.toml`. See
 [Configuration overlays](CONFIGURATION.md#overlays).

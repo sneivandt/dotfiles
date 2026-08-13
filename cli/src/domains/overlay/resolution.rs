@@ -4,7 +4,8 @@
 //! custom scripts that extend the main dotfiles configuration.  The overlay
 //! path is resolved from CLI args, the `DOTFILES_OVERLAY` environment
 //! variable, or the repository's local git config (`dotfiles.overlay`).
-use anyhow::Result;
+use anyhow::{Context as _, Result, bail};
+use std::io::{self, IsTerminal as _, Write as _};
 use std::path::{Path, PathBuf};
 
 /// Try to read the overlay path from the `DOTFILES_OVERLAY` environment variable.
@@ -49,26 +50,81 @@ pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
 /// to the repository's local git config so future runs use it automatically.
 ///
 /// Returns `None` if no overlay is configured.
-#[must_use]
-#[allow(clippy::print_stderr, reason = "intentional user-facing output")]
+///
+/// # Errors
+///
+/// Returns an error if a linked Git worktree is declined as the overlay or its
+/// confirmation prompt cannot be read.
 pub fn resolve_from_args(
     cli_overlay: Option<&Path>,
     root: &Path,
     env: &dyn crate::infra::env::Env,
-) -> Option<PathBuf> {
+) -> Result<Option<PathBuf>> {
+    resolve_from_args_with_confirmation(cli_overlay, root, env, confirm_linked_worktree)
+}
+
+#[allow(
+    clippy::print_stderr,
+    reason = "overlay persistence failures are intentionally surfaced before logger setup completes"
+)]
+fn resolve_from_args_with_confirmation(
+    cli_overlay: Option<&Path>,
+    root: &Path,
+    env: &dyn crate::infra::env::Env,
+    confirm: impl FnOnce(&Path) -> Result<bool>,
+) -> Result<Option<PathBuf>> {
     if let Some(path) = cli_overlay {
+        if is_linked_worktree(path) && !confirm(path)? {
+            bail!(
+                "overlay path {} is a linked Git worktree; selection cancelled",
+                path.display()
+            );
+        }
         let path = path.to_path_buf();
         if let Err(e) = persist(root, &path) {
             eprintln!("warning: could not persist overlay path to git config: {e}");
         }
-        return Some(path);
+        return Ok(Some(path));
     }
 
     if let Some(path) = read_from_env(env) {
-        return Some(path);
+        return Ok(Some(path));
     }
 
-    read_persisted(root)
+    Ok(read_persisted(root))
+}
+
+fn is_linked_worktree(path: &Path) -> bool {
+    path.join(".git").is_file()
+}
+
+#[allow(
+    clippy::print_stderr,
+    reason = "the interactive safety prompt must remain on one terminal line"
+)]
+fn confirm_linked_worktree(path: &Path) -> Result<bool> {
+    if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+        return Ok(false);
+    }
+
+    eprint!(
+        "Overlay path {} is a linked Git worktree. Use this worktree anyway? [y/N] ",
+        path.display()
+    );
+    io::stderr()
+        .flush()
+        .context("flushing overlay worktree confirmation")?;
+
+    let mut answer = String::new();
+    io::stdin()
+        .read_line(&mut answer)
+        .context("reading overlay worktree confirmation")?;
+    Ok(is_affirmative(&answer))
+}
+
+fn is_affirmative(answer: &str) -> bool {
+    let answer = answer.trim();
+    answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes")
 }
 
 #[cfg(test)]
@@ -141,7 +197,8 @@ mod tests {
     fn resolve_from_args_prefers_cli_arg() {
         let (dir, root) = init_test_repo();
         let cli_path = PathBuf::from("/cli/overlay");
-        let result = resolve_from_args(Some(&cli_path), &root, &crate::infra::env::MapEnv::new());
+        let result = resolve_from_args(Some(&cli_path), &root, &crate::infra::env::MapEnv::new())
+            .expect("ordinary overlay should resolve");
         assert_eq!(result, Some(cli_path.clone()));
         // Also persisted
         assert_eq!(read_persisted(&root), Some(cli_path));
@@ -151,7 +208,8 @@ mod tests {
     #[test]
     fn resolve_from_args_returns_none_when_nothing_configured() {
         let (dir, root) = init_test_repo();
-        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new());
+        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new())
+            .expect("missing overlay should resolve");
         assert_eq!(result, None);
         drop(dir);
     }
@@ -161,8 +219,89 @@ mod tests {
         let (dir, root) = init_test_repo();
         let overlay = PathBuf::from("/persisted/overlay");
         persist(&root, &overlay).expect("persist");
-        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new());
+        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new())
+            .expect("persisted overlay should resolve");
         assert_eq!(result, Some(overlay));
         drop(dir);
+    }
+
+    #[test]
+    fn linked_worktree_overlay_requires_confirmation_before_persisting() {
+        let (dir, root) = init_test_repo();
+        let overlay = tempfile::tempdir().expect("overlay tempdir");
+        std::fs::write(
+            overlay.path().join(".git"),
+            "gitdir: ../main/.git/worktrees/overlay\n",
+        )
+        .expect("write linked worktree marker");
+
+        let error = resolve_from_args_with_confirmation(
+            Some(overlay.path()),
+            &root,
+            &crate::infra::env::MapEnv::new(),
+            |_| Ok(false),
+        )
+        .expect_err("declined linked worktree should be rejected");
+
+        assert!(
+            error.to_string().contains("selection cancelled"),
+            "declined selection should explain why it stopped: {error}"
+        );
+        assert_eq!(
+            read_persisted(&root),
+            None,
+            "declined linked worktree must not be persisted"
+        );
+        drop(dir);
+    }
+
+    #[test]
+    fn linked_worktree_overlay_is_persisted_after_confirmation() {
+        let (dir, root) = init_test_repo();
+        let overlay = tempfile::tempdir().expect("overlay tempdir");
+        std::fs::write(
+            overlay.path().join(".git"),
+            "gitdir: ../main/.git/worktrees/overlay\n",
+        )
+        .expect("write linked worktree marker");
+
+        let result = resolve_from_args_with_confirmation(
+            Some(overlay.path()),
+            &root,
+            &crate::infra::env::MapEnv::new(),
+            |_| Ok(true),
+        )
+        .expect("confirmed linked worktree should resolve");
+
+        assert_eq!(result.as_deref(), Some(overlay.path()));
+        assert_eq!(read_persisted(&root).as_deref(), Some(overlay.path()));
+        drop(dir);
+    }
+
+    #[test]
+    fn git_directory_is_not_treated_as_a_linked_worktree() {
+        let overlay = tempfile::tempdir().expect("overlay tempdir");
+        std::fs::create_dir(overlay.path().join(".git")).expect("create git directory");
+
+        assert!(
+            !is_linked_worktree(overlay.path()),
+            "a primary checkout should not require linked-worktree confirmation"
+        );
+    }
+
+    #[test]
+    fn worktree_confirmation_defaults_to_no() {
+        for answer in ["", "\n", "n", "no", "unexpected"] {
+            assert!(
+                !is_affirmative(answer),
+                "{answer:?} should decline worktree use"
+            );
+        }
+        for answer in ["y", "Y", "yes", "YES"] {
+            assert!(
+                is_affirmative(answer),
+                "{answer:?} should confirm worktree use"
+            );
+        }
     }
 }

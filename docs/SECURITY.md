@@ -156,6 +156,6 @@ consumed by the wrappers and the self-update path.
 
 ## Reporting a vulnerability
 
-Do not include exploit details or credentials in a public issue. Use the
-repository host's private security-reporting mechanism when enabled, or contact
-the repository owner privately through an established trusted channel.
+Do not include exploit details or credentials in a public issue. Report the
+vulnerability privately through
+[GitHub's vulnerability reporting form](https://github.com/sneivandt/dotfiles/security/advisories/new).

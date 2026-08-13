@@ -43,8 +43,9 @@ description: >
   cannot render them. `⁃` rows carry no elapsed time because nothing ran.
 - A task's reason belongs on its status row after a ` · ` separator, not on an
   indented line. Indented, dim, two-space lines beneath a row are therefore
-  always actions the task took or planned. A blank line separates a task that
-  printed actions from the row that follows it.
+  always actions the task took or planned. Task blocks are contiguous even when
+  a task prints multiple action lines; only the final totals use a blank-line
+  separator.
 - Detail lines are normalized identically in both modes through
   `compact_detail_line`, so a given action reads the same whether or not
   `--verbose` is set. Maximal runs of consecutive action lines within a task are

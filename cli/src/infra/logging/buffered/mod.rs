@@ -119,13 +119,9 @@ impl BufferedLog {
             } else {
                 self.inner.emit_recorded_task_status(task_name);
             }
-            let mut replayed = false;
             for entry in &entries {
-                if entry.replay_verbose(message) {
-                    replayed = true;
-                }
+                entry.replay_verbose(message);
             }
-            self.inner.note_replayed_details(replayed);
         } else if !matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) {
             let has_visible_entries = entries
                 .iter()

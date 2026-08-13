@@ -23,6 +23,11 @@ Resolution and persistence live in
 `cli/src/domains/overlay/resolution.rs`. Do not repeatedly resolve the path
 inside loaders or tasks.
 
+An explicit `--overlay` path whose `.git` entry is a file is a linked Git
+worktree. Require interactive `[y/N]` confirmation before using or persisting
+that path; empty input and non-interactive runs decline it. Normal checkouts
+whose `.git` entry is a directory do not require confirmation.
+
 The resolved overlay path is reported as the optional final ` · ` section of the
 startup header, not on a line of its own.
 

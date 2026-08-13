@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="464" viewBox="0 0 960 464" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="422" viewBox="0 0 960 422" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles terminal output</title>
-  <desc id="desc">Example of symlinks, packages, and a default shell being installed beneath a dimmed run header. Status rows appear in completion order, with the actions a task took listed as indented lines beneath it and a blank line separating one block of actions from the next row, followed by an aggregate summary.</desc>
+  <desc id="desc">Example of symlinks, packages, and a default shell being installed beneath a dimmed run header. Status rows appear in completion order, with the actions a task took listed as indented lines beneath it, contiguous task blocks, and an aggregate summary separated by a blank line.</desc>
   <defs>
     <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
       <feDropShadow dx="0" dy="0" stdDeviation="16" flood-color="#16161e" flood-opacity="0.45"/>
     </filter>
   </defs>
   <rect width="100%" height="100%" rx="28" fill="#1a1b26"/>
-  <rect x="18" y="18" width="924" height="428" rx="14" fill="#1a1b26" opacity="0.96" filter="url(#shadow)"/>
+  <rect x="18" y="18" width="924" height="386" rx="14" fill="#1a1b26" opacity="0.96" filter="url(#shadow)"/>
   <path d="M32 18h896a14 14 0 0 1 14 14v28H18V32a14 14 0 0 1 14-14z" fill="#24283b"/>
   <line x1="18" y1="60" x2="942" y2="60" stroke="#414868" stroke-opacity="0.75"/>
   <circle cx="44" cy="39" r="6" fill="#f7768e"/>
@@ -24,13 +24,13 @@
     <text x="52" y="208" fill="#a9b1d6">link ~/.config/nvim → symlinks/config/nvim</text>
     <text x="52" y="229" fill="#a9b1d6">link ~/.zshrc → symlinks/zshrc</text>
 
-    <text x="34" y="271"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">System packages</tspan></text>
-    <text x="52" y="292" fill="#a9b1d6">install neovim</text>
-    <text x="52" y="313" fill="#a9b1d6">install ripgrep</text>
+    <text x="34" y="250"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">System packages</tspan></text>
+    <text x="52" y="271" fill="#a9b1d6">install neovim</text>
+    <text x="52" y="292" fill="#a9b1d6">install ripgrep</text>
 
-    <text x="34" y="355"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">Default shell</tspan></text>
-    <text x="52" y="376" fill="#a9b1d6">configure default shell → zsh</text>
+    <text x="34" y="313"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">Default shell</tspan></text>
+    <text x="52" y="334" fill="#a9b1d6">configure default shell → zsh</text>
 
-    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">3 changed</tspan><tspan fill="#565f89"> · 12 current · 1.3s</tspan></text>
+    <text x="34" y="376"><tspan fill="#9ece6a" font-weight="700">3 changed</tspan><tspan fill="#565f89"> · 12 current · 1.3s</tspan></text>
   </g>
 </svg>

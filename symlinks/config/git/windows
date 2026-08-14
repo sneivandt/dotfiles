@@ -5,7 +5,3 @@
 
 [interactive]
   diffFilter =
-
-[safe]
-  directory = *
-

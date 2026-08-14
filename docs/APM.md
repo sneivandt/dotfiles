@@ -78,9 +78,11 @@ dependency's `target_subset` after the primary install, selects packages whose
 filter includes `copilot-cowork` (or has no filter), and copies their resolved
 skills from `~/.agents/skills` file-by-file. It removes `SKILL.md` from excluded
 or removed skills while preserving Cowork-owned placeholder files, directories,
-and ACLs. Dry-run compares this state directly, so missing, changed, or
-incorrectly included Cowork skills are reported before apply performs the same
-reconciliation.
+and ACLs. Reconciliation also removes legacy `cowork://` deployment records
+left by older direct installs so unrelated APM commands do not retry
+OneDrive-blocked directory deletion. Dry-run compares both the files and this
+ledger state, so missing, changed, or incorrectly included Cowork skills are
+reported before apply performs the same reconciliation.
 
 Fragments merge their `targets:` lists by union with deduplication, so a private
 overlay fragment can add a runtime without restating the base list.

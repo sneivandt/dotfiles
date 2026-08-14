@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::cowork::reconcile_cowork_skills;
+use super::cowork::{reconcile_cowork_skills, remove_legacy_cowork_lock_deployments};
 use super::targets::{ApmTargets, CopilotDeployment, CopilotTarget};
 use crate::engine::{Context, TaskResult};
 use crate::infra::exec::CommandSpec;
@@ -87,6 +87,9 @@ pub(super) fn run_apm_command(
     command: ApmCommand,
     targets: ApmTargets,
 ) -> Result<ApmCommandResult> {
+    if targets.includes(CopilotTarget::Cowork) {
+        remove_legacy_cowork_lock_deployments(ctx.home())?;
+    }
     match run_apm_invocation(ctx, command, command.args())? {
         ApmCommandResult::Success => {}
         result @ ApmCommandResult::AuthSkipped(_) => return Ok(result),

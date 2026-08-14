@@ -10,11 +10,15 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::engine::Context;
-use crate::infra::fs::copy_dir_recursive;
+use crate::infra::fs::{copy_dir_recursive, write_atomic};
 use anyhow::{Context as _, Result};
 use serde::Deserialize;
+use serde_yaml_ng::Value;
 
 use super::targets::copilot_cowork_skills_path;
+
+const COWORK_TARGET: &str = "copilot-cowork";
+const COWORK_URI_PREFIX: &str = "cowork://";
 
 /// Reconcile APM's shared skill deployment into Cowork's protected skill tree.
 ///
@@ -65,6 +69,7 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<()> {
             remove_skill_entry_point(&entry.path())?;
         }
     }
+    remove_legacy_cowork_lock_deployments(ctx.home())?;
     Ok(())
 }
 
@@ -130,7 +135,129 @@ pub(super) fn cowork_skills_are_current(ctx: &Context) -> Result<bool> {
             }
         }
     }
+    Ok(!legacy_cowork_lock_deployments_exist(ctx.home())?)
+}
+
+/// Remove deployment records left by older direct Cowork APM installs.
+///
+/// Dotfiles owns Cowork file reconciliation now. Leaving those records in APM's
+/// shared ledger makes unrelated installs retry directory deletion, which
+/// `OneDrive` rejects even when the managed skill files are already current.
+pub(super) fn remove_legacy_cowork_lock_deployments(home: &Path) -> Result<bool> {
+    let lock_path = home.join(".apm").join("apm.lock.yaml");
+    let text = match std::fs::read_to_string(&lock_path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("reading APM lockfile {}", lock_path.display()));
+        }
+    };
+    let mut lock: Value = serde_yaml_ng::from_str(&text)
+        .with_context(|| format!("parsing APM lockfile {}", lock_path.display()))?;
+    if !strip_legacy_cowork_deployments(&mut lock) {
+        return Ok(false);
+    }
+    let serialized = serde_yaml_ng::to_string(&lock)
+        .with_context(|| format!("serializing APM lockfile {}", lock_path.display()))?;
+    write_atomic(&lock_path, serialized)
+        .with_context(|| format!("updating APM lockfile {}", lock_path.display()))?;
     Ok(true)
+}
+
+fn legacy_cowork_lock_deployments_exist(home: &Path) -> Result<bool> {
+    let lock_path = home.join(".apm").join("apm.lock.yaml");
+    let text = std::fs::read_to_string(&lock_path)
+        .with_context(|| format!("reading APM lockfile {}", lock_path.display()))?;
+    let mut lock: Value = serde_yaml_ng::from_str(&text)
+        .with_context(|| format!("parsing APM lockfile {}", lock_path.display()))?;
+    Ok(strip_legacy_cowork_deployments(&mut lock))
+}
+
+fn strip_legacy_cowork_deployments(lock: &mut Value) -> bool {
+    let Some(root) = lock.as_mapping_mut() else {
+        return false;
+    };
+    let mut changed = false;
+
+    if let Some(dependencies) = root
+        .get_mut(Value::String("dependencies".to_owned()))
+        .and_then(Value::as_sequence_mut)
+    {
+        for dependency in dependencies {
+            let Some(dependency) = dependency.as_mapping_mut() else {
+                continue;
+            };
+            if let Some(files) = dependency
+                .get_mut(Value::String("deployed_files".to_owned()))
+                .and_then(Value::as_sequence_mut)
+            {
+                let before = files.len();
+                files.retain(|file| !is_cowork_uri(file));
+                changed |= files.len() != before;
+            }
+            if let Some(hashes) = dependency
+                .get_mut(Value::String("deployed_file_hashes".to_owned()))
+                .and_then(Value::as_mapping_mut)
+            {
+                let keys: Vec<Value> = hashes
+                    .keys()
+                    .filter(|key| is_cowork_uri(key))
+                    .cloned()
+                    .collect();
+                changed |= !keys.is_empty();
+                for key in keys {
+                    hashes.remove(&key);
+                }
+            }
+        }
+    }
+
+    if let Some(deployments) = root.get_mut(Value::String("deployments".to_owned())) {
+        match deployments {
+            Value::Sequence(records) => {
+                let before = records.len();
+                records.retain(|record| !is_cowork_deployment(record));
+                changed |= records.len() != before;
+            }
+            Value::Mapping(by_owner) => {
+                for records in by_owner.values_mut().filter_map(Value::as_sequence_mut) {
+                    let before = records.len();
+                    records.retain(|record| !is_cowork_deployment(record));
+                    changed |= records.len() != before;
+                }
+            }
+            Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Tagged(_) => {}
+        }
+    }
+
+    changed
+}
+
+fn is_cowork_deployment(value: &Value) -> bool {
+    if is_cowork_uri(value) {
+        return true;
+    }
+    let Some(record) = value.as_mapping() else {
+        return false;
+    };
+    record
+        .get(Value::String("target".to_owned()))
+        .and_then(Value::as_str)
+        .is_some_and(|target| target == COWORK_TARGET)
+        || record
+            .get(Value::String("value".to_owned()))
+            .is_some_and(is_cowork_uri)
+}
+
+fn is_cowork_uri(value: &Value) -> bool {
+    value
+        .as_str()
+        .is_some_and(|value| value.starts_with(COWORK_URI_PREFIX))
 }
 
 fn remove_skill_entry_point(target_skill: &Path) -> Result<()> {
@@ -380,6 +507,59 @@ mod tests {
         assert!(cowork_skills_are_current(&ctx).expect("compare skills"));
         assert!(!target_skill.join("SKILL.md").exists());
         assert!(target_skill.join("placeholder.txt").exists());
+    }
+
+    #[test]
+    fn reconcile_removes_legacy_cowork_entries_from_apm_lock() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let onedrive = dir.path().join("OneDrive - Test");
+        let source_skill = dir.path().join(".agents").join("skills").join("example");
+        let target_skill = onedrive
+            .join("Documents")
+            .join("Cowork")
+            .join("skills")
+            .join("example");
+        std::fs::create_dir_all(&source_skill).expect("create source skill");
+        std::fs::create_dir_all(&target_skill).expect("create target skill");
+        std::fs::create_dir_all(dir.path().join(".apm")).expect("create APM directory");
+        std::fs::write(source_skill.join("SKILL.md"), "current").expect("write source");
+        std::fs::write(target_skill.join("SKILL.md"), "current").expect("write target");
+        std::fs::write(
+            dir.path().join(".apm").join("apm.lock.yaml"),
+            "dependencies:\n\
+             - deployed_files:\n\
+             \x20 - .agents/skills/example/SKILL.md\n\
+             \x20 - cowork://skills/example\n\
+             \x20 deployed_file_hashes:\n\
+             \x20   cowork://skills/example: stale\n\
+             \x20   copilot-app://workflows/example: current\n\
+             \x20 target_subset: [agent-skills, copilot-cowork]\n\
+             deployments:\n\
+             - kind: uri\n\
+             \x20 target: copilot-cowork\n\
+             \x20 value: cowork://skills/example\n\
+             - kind: uri\n\
+             \x20 target: copilot-app\n\
+             \x20 value: copilot-app://workflows/example\n",
+        )
+        .expect("write lock");
+
+        let ctx = make_context_with_home(
+            dir.path(),
+            Platform::new(Os::Windows, false),
+            MockExecutor::new(),
+        )
+        .with_env(Arc::new(MapEnv::new().with(ONEDRIVE_COMMERCIAL, &onedrive)));
+
+        assert!(!cowork_skills_are_current(&ctx).expect("detect stale ledger"));
+        reconcile_cowork_skills(&ctx).expect("reconcile skills");
+        assert!(cowork_skills_are_current(&ctx).expect("compare reconciled deployment"));
+
+        let lock = std::fs::read_to_string(dir.path().join(".apm").join("apm.lock.yaml"))
+            .expect("read lock");
+        assert!(!lock.contains("cowork://"));
+        assert!(lock.contains(".agents/skills/example/SKILL.md"));
+        assert!(lock.contains("copilot-app://workflows/example"));
     }
 
     #[test]

@@ -139,17 +139,17 @@ fn load_expands_overlay_symlink_globs() {
             .path()
             .join("symlinks")
             .join("skills")
-            .join("authz-oncall"),
+            .join("example-skill"),
     )
     .expect("create overlay skill");
 
     let config = Config::load(dir.path(), &profile, platform, Some(overlay.path()))
         .expect("load should succeed");
     assert_eq!(config.symlinks.len(), 1);
-    assert_eq!(config.symlinks[0].source, "skills/authz-oncall");
+    assert_eq!(config.symlinks[0].source, "skills/example-skill");
     assert_eq!(
         config.symlinks[0].target.as_deref(),
-        Some(".copilot/skills/authz-oncall")
+        Some(".copilot/skills/example-skill")
     );
     assert_eq!(config.symlinks[0].origin.as_deref(), Some(overlay.path()));
 }

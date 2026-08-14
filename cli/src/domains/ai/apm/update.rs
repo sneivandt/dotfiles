@@ -80,7 +80,12 @@ impl Task for UpdateApmPackages {
             .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
         let merged = merge_fragments(&fragments)?;
         let targets = ApmTargets::detect(ctx)?;
-        let manifest_hash = install_fingerprint(&merged, home, targets.includes_copilot_app())?;
+        let manifest_hash = install_fingerprint(
+            &merged,
+            home,
+            targets.includes_copilot_app(),
+            targets.includes_copilot_cowork(),
+        )?;
         let marker_path = home.join(".apm").join(".dotfiles-manifest.sha256");
         let marker_matches = manifest_marker_matches(&marker_path, &manifest_hash)?;
         if !lock_present || !marker_matches {
@@ -91,20 +96,24 @@ impl Task for UpdateApmPackages {
             return Ok(TaskResult::Skipped(reason));
         }
 
-        if ctx.dry_run() {
-            return match check_apm_outdated(ctx)? {
-                ApmOutdatedResult::Outdated => Ok(preview_apm_update(ctx, targets)),
-                ApmOutdatedResult::Current => Ok(TaskResult::Ok),
-                ApmOutdatedResult::Unknown => {
+        match check_apm_outdated(ctx)? {
+            status @ (ApmOutdatedResult::Outdated | ApmOutdatedResult::Unknown)
+                if ctx.dry_run() =>
+            {
+                if matches!(status, ApmOutdatedResult::Unknown) {
                     ctx.log().debug(
-                        "APM could not determine whether remote dependency updates are available",
+                        "APM could not determine whether remote dependency updates are available; \
+                         conservatively previewing an update",
                     );
-                    Ok(TaskResult::Ok)
                 }
-                ApmOutdatedResult::AuthSkipped(reason) => Ok(TaskResult::Skipped(reason)),
-            };
+                Ok(preview_apm_update(ctx, targets))
+            }
+            ApmOutdatedResult::Outdated | ApmOutdatedResult::Unknown => {
+                advance_apm_dependencies(ctx, targets)
+            }
+            ApmOutdatedResult::Current => Ok(TaskResult::Ok),
+            ApmOutdatedResult::AuthSkipped(reason) => Ok(TaskResult::Skipped(reason)),
         }
-        advance_apm_dependencies(ctx, targets)
     }
 }
 
@@ -113,11 +122,24 @@ fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> TaskResult {
         "run apm update -g --yes with manifest-resolved runtimes; APM skips dependencies already \
          at their latest matching refs",
     );
-    if targets.includes_copilot_app() {
-        ctx.log().dry_run(
+    match (
+        targets.includes_copilot_app(),
+        targets.includes_copilot_cowork(),
+    ) {
+        (true, true) => ctx.log().dry_run(
+            "run apm install -g --target copilot-app,copilot-cowork to redeploy updated Copilot \
+             App workflows and Microsoft 365 Copilot Cowork skills, then re-assert workflows to \
+             autopilot + enabled in ~/.copilot/data.db",
+        ),
+        (true, false) => ctx.log().dry_run(
             "run apm install -g --target copilot-app to redeploy updated Copilot App workflows \
              separately, then re-assert them to autopilot + enabled in ~/.copilot/data.db",
-        );
+        ),
+        (false, true) => ctx.log().dry_run(
+            "run apm install -g --target copilot-cowork to redeploy updated Microsoft 365 \
+             Copilot Cowork skills separately",
+        ),
+        (false, false) => {}
     }
     TaskResult::DryRun
 }
@@ -172,15 +194,18 @@ fn run_apm_update(ctx: &Context, targets: ApmTargets) -> Result<ApmUpdateOutcome
     }
 }
 
-/// Top-level lockfile keys APM rewrites on every write regardless of whether
-/// any dependency ref advanced.
+/// Top-level lockfile keys unrelated to dependency resolution.
 ///
-/// `apm` stamps `generated_at` with the current time each time it serializes
-/// the lockfile, and the update task always follows `apm update` with a
-/// `apm install --target copilot-app` redeploy on machines that have Copilot
-/// App. Comparing raw bytes would therefore report a change on every single
-/// run, so these keys are stripped before comparison.
-const VOLATILE_LOCK_KEYS: &[&str] = &["generated_at"];
+/// Explicit target redeploys rewrite deployment and MCP ledgers even when no
+/// package ref advances, so those ledgers must not drive the update result.
+const VOLATILE_LOCK_KEYS: &[&str] = &[
+    "generated_at",
+    "deployments",
+    "mcp_servers",
+    "mcp_configs",
+    "mcp_target_servers",
+];
+const VOLATILE_DEPENDENCY_KEYS: &[&str] = &["deployed_files", "deployed_file_hashes"];
 
 /// Read the APM lockfile for before/after change detection.
 ///
@@ -200,7 +225,7 @@ fn read_lock_snapshot(path: &Path) -> Result<Option<String>> {
 /// Falls back to the raw text whenever the lockfile cannot be parsed or
 /// re-serialized as YAML: an unparseable lockfile still compares
 /// deterministically, it just keeps the old byte-for-byte semantics.
-fn normalize_lock_snapshot(text: &str) -> String {
+pub(super) fn normalize_lock_snapshot(text: &str) -> String {
     use serde_yaml_ng::Value;
 
     let Ok(mut value) = serde_yaml_ng::from_str::<Value>(text) else {
@@ -211,6 +236,19 @@ fn normalize_lock_snapshot(text: &str) -> String {
     };
     for key in VOLATILE_LOCK_KEYS {
         mapping.remove(Value::String((*key).to_owned()));
+    }
+    if let Some(dependencies) = mapping
+        .get_mut(Value::String("dependencies".to_owned()))
+        .and_then(Value::as_sequence_mut)
+    {
+        for dependency in dependencies {
+            let Some(dependency) = dependency.as_mapping_mut() else {
+                continue;
+            };
+            for key in VOLATILE_DEPENDENCY_KEYS {
+                dependency.remove(Value::String((*key).to_owned()));
+            }
+        }
     }
     serde_yaml_ng::to_string(&value).unwrap_or_else(|_| text.to_owned())
 }

@@ -43,8 +43,7 @@ available without publishing a package.
 
 ## Deployment targets
 
-`symlinks/apm/config/base.yml` declares a top-level `targets:` list that pins
-which runtimes APM is allowed to deploy into:
+`symlinks/apm/config/base.yml` declares the cross-platform `targets:` list:
 
 ```yaml
 targets:
@@ -66,10 +65,25 @@ APM resolves the runtime set in this order:
 4. Auto-detection.
 
 The APM packages task deliberately omits `--target` on its primary invocation so
-the manifest stays the source of truth. `copilot-app` is the exception: it is
-experimental and is deployed by a dedicated
-`apm install -g --target copilot-app` pass gated on the Copilot App database, so
-it is intentionally absent from `targets:`.
+the merged manifest stays the source of truth. Experimental targets are
+exceptions because APM does not accept them in `apm.yml`:
+
+- On Windows, the task idempotently enables `copilot-cowork`, then includes it
+  in one explicit experimental-target install so package skills deploy to the
+  detected OneDrive Cowork skills directory.
+- When the Copilot App database exists, that same explicit install includes
+  `copilot-app` to deploy workflows. Combining active experimental targets keeps
+  APM's shared deployment ledger intact.
+
+Cowork stores skills under OneDrive and protects existing skill directories
+from deletion. APM currently replaces colliding directories as a unit, which
+can leave Cowork placeholders incomplete. After the explicit target install,
+the task therefore uses the lockfile's `cowork://skills/...` ledger to recopy
+only Cowork-targeted skills from `~/.agents/skills` without replacing their
+directories. It removes `SKILL.md` from shared skills excluded by dependency
+target filters while preserving Cowork-owned placeholder files and ACLs.
+Dry-run compares this state directly, so missing, changed, or incorrectly
+included Cowork skills are reported before apply performs the repair.
 
 Fragments merge their `targets:` lists by union with deduplication, so a private
 overlay fragment can add a runtime without restating the base list.
@@ -116,13 +130,12 @@ the current merged-manifest fingerprint. If install convergence did not succeed,
 or the desired state changed afterward, update is skipped rather than mutating
 an unrelated or partial lockfile.
 
-An update preview runs non-mutating `apm outdated -g` and emits `~` only
-when APM reports outdated dependencies. Apply mode invokes APM's native
-idempotent update directly, then compares the lockfile before and after to
-report whether refs advanced instead of parsing update output. The comparison
-ignores APM's volatile `generated_at` bookkeeping stamp, which is rewritten on
-every serialization — including the follow-up `copilot-app` redeploy — so only
-real dependency-state changes are reported.
+Both update preview and apply run non-mutating `apm outdated -g`. Current
+dependencies stay quiet in both modes; an unrecognized probe result is
+previewed conservatively rather than producing a false negative. When updates
+exist, apply invokes APM's native update and compares only dependency-resolution
+state before and after. Volatile timestamps and deployment/MCP ledgers rewritten
+by experimental-target convergence do not count as version advances.
 
 ```bash
 dotfiles update --only apm,apm-update

@@ -10,13 +10,15 @@ use crate::test_helpers::{
 };
 
 use super::test_fixture::{
-    DEFAULT_FRAGMENT, expect_apm_install, expect_apm_install_without_enable, expect_apm_prune,
-    expect_apm_update, expect_copilot_app_enable, expect_copilot_app_workflow_install,
-    expect_which_apm, has_env, install_task, make_context_with_home,
-    make_home_context_with_executor, update_task, write_copilot_app_db,
-    write_current_manifest_and_lock, write_current_manifest_lock_and_marker,
+    DEFAULT_FRAGMENT, expect_apm_install, expect_apm_install_without_enable, expect_apm_outdated,
+    expect_apm_outdated_in_sequence, expect_apm_prune, expect_apm_update,
+    expect_copilot_app_enable, expect_copilot_app_workflow_install, expect_copilot_cowork_enable,
+    expect_copilot_cowork_install, expect_copilot_experimental_install, expect_which_apm, has_env,
+    install_task, make_context_with_home, make_home_context_with_executor, update_task,
+    write_copilot_app_db, write_current_manifest_and_lock, write_current_manifest_lock_and_marker,
     write_default_home_fragment, write_home_fragment,
 };
+use super::update::normalize_lock_snapshot;
 use std::path::PathBuf;
 
 const INSTALL_FIXTURE_FRAGMENT: &str = "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - github/awesome-copilot/plugins/project-planning\n";
@@ -57,19 +59,6 @@ fn make_home_context_for_platform(home: &Path, platform: Platform) -> Context {
 
 fn command_failure(message: &str) -> ExecError {
     ExecError::non_zero("apm", ExecResult::failure("", message, Some(1)))
-}
-
-fn expect_apm_outdated(mock: &mut MockExecutor, cwd: &Path, stdout: &'static str) {
-    let outdated_cwd = cwd.to_path_buf();
-    mock.expect_execute().once().returning(move |spec| {
-        assert_eq!(spec.working_dir(), Some(outdated_cwd.as_path()));
-        assert_eq!(spec.program(), "apm");
-        assert_eq!(spec.arguments(), ["outdated", "-g"]);
-        assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-        assert!(has_env(&spec, "GCM_INTERACTIVE", "Never"));
-        assert!(has_env(&spec, "GCM_GUI_PROMPT", "false"));
-        Ok(ExecResult::success(stdout))
-    });
 }
 
 #[test]
@@ -159,7 +148,17 @@ fn run_installs_copilot_app_separately_on_windows_when_app_database_exists() {
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_which_apm(&mut mock, true);
-    expect_apm_install(&mut mock, &mut seq, dir.path());
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|spec| {
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            Ok(ExecResult::success("installed\n"))
+        });
+    expect_copilot_app_enable(&mut mock, &mut seq);
+    expect_copilot_cowork_enable(&mut mock, &mut seq);
+    expect_copilot_experimental_install(&mut mock, &mut seq);
+    expect_apm_prune(&mut mock, &mut seq, dir.path());
 
     let ctx = make_context_with_home(dir.path(), Platform::new(Os::Windows, false), mock);
 
@@ -195,25 +194,19 @@ fn run_uses_runtime_auto_detection_when_copilot_app_database_missing() {
 }
 
 #[test]
-fn update_runs_native_update_when_dependencies_current() {
+fn update_apply_stays_quiet_when_dependencies_are_current() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
 
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
-    let update_cwd = dir.path().to_path_buf();
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert_eq!(spec.working_dir(), Some(update_cwd.as_path()));
-            assert_eq!(spec.program(), "apm");
-            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success("already current\n"))
-        });
-    expect_copilot_app_workflow_install(&mut mock, &mut seq);
+    expect_apm_outdated_in_sequence(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        "[*] No remote dependencies to check\n",
+    );
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
@@ -229,6 +222,12 @@ fn update_advances_dependencies_when_lockfile_changes() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
+    expect_apm_outdated_in_sequence(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        "[!] 1 outdated dependency found\n",
+    );
     let update_cwd = dir.path().to_path_buf();
     mock.expect_execute()
         .once()
@@ -250,6 +249,7 @@ fn update_advances_dependencies_when_lockfile_changes() {
             .expect("rewrite lock");
             Ok(ExecResult::success("updated\n"))
         });
+    expect_copilot_app_enable(&mut mock, &mut seq);
     expect_copilot_app_workflow_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -266,6 +266,12 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
+    expect_apm_outdated_in_sequence(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        "[!] 1 outdated dependency found\n",
+    );
     // The mock leaves the lockfile untouched, so the before/after comparison
     // reports no advance even though `apm update` re-ran.
     expect_apm_update(
@@ -273,6 +279,7 @@ fn update_stays_quiet_when_apm_update_reports_no_changes() {
         &mut seq,
         "  [+] github.com/example/plugin (cached)\n",
     );
+    expect_copilot_app_enable(&mut mock, &mut seq);
     expect_copilot_app_workflow_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -303,6 +310,12 @@ fn update_ignores_lockfile_timestamp_rewrites() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
+    expect_apm_outdated_in_sequence(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        "[!] 1 outdated dependency found\n",
+    );
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -312,6 +325,7 @@ fn update_ignores_lockfile_timestamp_rewrites() {
                 "All dependencies already at their latest matching refs.\n",
             ))
         });
+    expect_copilot_app_enable(&mut mock, &mut seq);
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -352,6 +366,12 @@ fn update_reports_change_when_resolved_ref_advances_alongside_timestamp() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
+    expect_apm_outdated_in_sequence(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        "[!] 1 outdated dependency found\n",
+    );
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -367,6 +387,7 @@ fn update_reports_change_when_resolved_ref_advances_alongside_timestamp() {
             .expect("rewrite lock");
             Ok(ExecResult::success("updated\n"))
         });
+    expect_copilot_app_enable(&mut mock, &mut seq);
     expect_copilot_app_workflow_install(&mut mock, &mut seq);
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
@@ -385,6 +406,7 @@ fn update_propagates_lockfile_read_failures() {
 
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
+    expect_apm_outdated(&mut mock, dir.path(), "[!] 1 outdated dependency found\n");
     let ctx = make_home_context_with_executor(dir.path(), mock);
 
     let err = update_task()
@@ -393,6 +415,51 @@ fn update_propagates_lockfile_read_failures() {
     assert!(
         format!("{err:#}").contains("reading APM lockfile"),
         "expected lockfile read context, got {err:#}"
+    );
+}
+
+#[test]
+fn update_ignores_deployment_ledger_rewrites() {
+    let before = br"
+lockfile_version: '1'
+dependencies:
+- repo_url: example/plugin
+  resolved_commit: abc123
+  deployed_files:
+  - copilot-app://workflows/example
+  deployed_file_hashes:
+    copilot-app://workflows/example: old
+deployments:
+  example/plugin:
+  - copilot-app://workflows/example
+mcp_servers:
+  copilot-app:
+  - example
+";
+    let after = br"
+lockfile_version: '1'
+generated_at: '2026-07-25T16:29:53.449377+00:00'
+dependencies:
+- repo_url: example/plugin
+  resolved_commit: abc123
+  deployed_files:
+  - cowork://skills/example/SKILL.md
+  deployed_file_hashes:
+    cowork://skills/example/SKILL.md: new
+deployments:
+  example/plugin:
+  - cowork://skills/example/SKILL.md
+mcp_configs:
+  copilot-app:
+  - example
+mcp_target_servers:
+  copilot-app:
+  - example
+";
+
+    assert_eq!(
+        normalize_lock_snapshot(&String::from_utf8_lossy(before)),
+        normalize_lock_snapshot(&String::from_utf8_lossy(after))
     );
 }
 
@@ -492,6 +559,56 @@ fn install_skips_experimental_enable_when_apm_config_reports_it_enabled() {
     std::fs::write(plugin.join("skill.md"), "v2\n").expect("edit plugin file");
 
     let result = install_task().run(&ctx).expect("run should not error");
+    assert_task_changed(&result);
+}
+
+#[test]
+fn install_deploys_copilot_cowork_separately_on_windows() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_install_home_fragment(dir.path());
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|spec| {
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            Ok(ExecResult::success("installed\n"))
+        });
+    expect_copilot_cowork_enable(&mut mock, &mut seq);
+    expect_copilot_cowork_install(&mut mock, &mut seq);
+    expect_apm_prune(&mut mock, &mut seq, dir.path());
+
+    let ctx = make_context_with_home(dir.path(), Platform::new(Os::Windows, false), mock);
+    let result = install_task().run(&ctx).expect("run should not error");
+
+    assert_task_changed(&result);
+}
+
+#[test]
+fn install_skips_cowork_enable_when_apm_config_reports_it_enabled() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_install_home_fragment(dir.path());
+    write_apm_config(dir.path(), "{\"experimental\":{\"copilot_cowork\":true}}");
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|spec| {
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            Ok(ExecResult::success("installed\n"))
+        });
+    expect_copilot_cowork_install(&mut mock, &mut seq);
+    expect_apm_prune(&mut mock, &mut seq, dir.path());
+
+    let ctx = make_context_with_home(dir.path(), Platform::new(Os::Windows, false), mock);
+    let result = install_task().run(&ctx).expect("run should not error");
+
     assert_task_changed(&result);
 }
 
@@ -643,9 +760,9 @@ fn update_skips_when_apm_not_found() {
     );
 }
 
-/// Run install with an `apm install -g` mock that fails with `message`,
-/// after the standard copilot-app-enable prelude. Both the auth-skip and
-/// generic-propagate paths share this setup and differ only downstream.
+/// Run install with an `apm install -g` mock that fails with `message`.
+/// Both the auth-skip and generic-propagate paths share this setup and differ
+/// only downstream.
 fn run_install_after_apm_error(message: &'static str) -> anyhow::Result<TaskResult> {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_default_home_fragment(dir.path());
@@ -653,7 +770,6 @@ fn run_install_after_apm_error(message: &'static str) -> anyhow::Result<TaskResu
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_which_apm(&mut mock, true);
-    expect_copilot_app_enable(&mut mock, &mut seq);
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -693,6 +809,13 @@ fn run_continues_when_experimental_enable_fails() {
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_which_apm(&mut mock, true);
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|spec| {
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            Ok(ExecResult::success("installed\n"))
+        });
     // A best-effort experimental-enable failure (e.g. an older apm without
     // the `experimental` subcommand) must never abort the install.
     mock.expect_execute()
@@ -703,13 +826,6 @@ fn run_continues_when_experimental_enable_fails() {
             Err(command_failure(
                 "error: unrecognized subcommand 'experimental'",
             ))
-        });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ExecResult::success("installed\n"))
         });
     expect_copilot_app_workflow_install(&mut mock, &mut seq);
     expect_apm_prune(&mut mock, &mut seq, dir.path());
@@ -730,7 +846,6 @@ fn run_propagates_prune_failures_after_persisting_marker() {
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_which_apm(&mut mock, true);
-    expect_copilot_app_enable(&mut mock, &mut seq);
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -738,6 +853,7 @@ fn run_propagates_prune_failures_after_persisting_marker() {
             assert_eq!(spec.arguments(), ["install", "-g"]);
             Ok(ExecResult::success("installed\n"))
         });
+    expect_copilot_app_enable(&mut mock, &mut seq);
     expect_copilot_app_workflow_install(&mut mock, &mut seq);
     let marker = dir.path().join(".apm").join(".dotfiles-manifest.sha256");
     mock.expect_execute()
@@ -798,7 +914,6 @@ fn run_propagates_copilot_app_install_failures() {
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_which_apm(&mut mock, true);
-    expect_copilot_app_enable(&mut mock, &mut seq);
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -806,6 +921,7 @@ fn run_propagates_copilot_app_install_failures() {
             assert_eq!(spec.arguments(), ["install", "-g"]);
             Ok(ExecResult::success("installed\n"))
         });
+    expect_copilot_app_enable(&mut mock, &mut seq);
     // The separate experimental copilot-app deploy must fail closed too.
     mock.expect_execute()
         .once()

@@ -38,6 +38,30 @@ the Rust `InstallApmPackages` task.
   See `docs/APM.md`.
 - Update docs when the user-facing install, Windows, or usage workflow changes.
 
+## Dependency Target Filters
+
+- Use object-form APM dependencies with package-level `targets:` filters when
+  plugins have different runtime compatibility:
+  ```yaml
+  dependencies:
+    apm:
+      - path: ~/.apm/plugins/dot-reference
+        targets: [agent-skills, copilot-cowork]
+      - path: ~/.apm/plugins/dot-mcp-required
+        targets: [agent-skills]
+      - path: ~/.apm/plugins/dot-workflow
+        targets: [copilot-app]
+  ```
+- The filter applies to an entire dependency. APM cannot select different
+  skills from one plugin for different targets, so split the plugin by
+  compatibility instead of adding a per-skill convention.
+- Cowork receives skills only. A Cowork-targeted skill must work without MCP,
+  hooks, prompts, agents, commands, or instructions from its package. Keep
+  skills whose core workflow requires live MCP tools off `copilot-cowork`.
+- Top-level `targets:` selects the manifest's default harnesses;
+  dependency-level `targets:` narrows one package. Preserve that distinction
+  when merging fragments or validating target coverage.
+
 ## MCP Servers and Hooks via APM
 
 APM owns more than skills. `merge_fragments` in `apm/fragments.rs` layers

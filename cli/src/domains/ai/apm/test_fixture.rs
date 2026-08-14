@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::engine::Context;
 use crate::infra::ConfigHandle;
+use crate::infra::env::MapEnv;
 use crate::infra::exec::{CommandSpec, ExecResult, MockExecutor};
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context};
@@ -57,7 +58,8 @@ fn refresh_manifest_marker(home: &Path) {
     let includes_copilot_app = home.join(".copilot").join("data.db").exists();
     write_manifest_marker(
         &home.join(".apm").join(".dotfiles-manifest.sha256"),
-        &install_fingerprint(&manifest, home, includes_copilot_app).expect("fingerprint manifest"),
+        &install_fingerprint(&manifest, home, includes_copilot_app, false)
+            .expect("fingerprint manifest"),
     )
     .expect("write marker");
 }
@@ -80,12 +82,25 @@ pub fn write_copilot_app_db(home: &Path) -> PathBuf {
 
 /// Build a [`Context`] rooted at `home` with the given platform and executor.
 pub fn make_context_with_home(home: &Path, platform: Platform, executor: MockExecutor) -> Context {
-    make_context(
+    let ctx = make_context(
         empty_config(home.to_path_buf()),
         platform,
         Arc::new(executor),
     )
-    .with_home(home.to_path_buf())
+    .with_home(home.to_path_buf());
+    if platform.is_windows() {
+        std::fs::create_dir_all(home.join(".agents").join("skills"))
+            .expect("create shared APM skills target");
+        let onedrive = home.join("OneDrive - Test");
+        ctx.with_env(
+            MapEnv::new()
+                .with("USERPROFILE", home)
+                .with("ONEDRIVECOMMERCIAL", &onedrive)
+                .into_handle(),
+        )
+    } else {
+        ctx
+    }
 }
 
 /// Build a Linux [`Context`] rooted at `home`, seeding `~/.copilot/data.db` so
@@ -137,6 +152,71 @@ pub fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Seq
         });
 }
 
+/// Queue the best-effort `apm experimental enable copilot-cowork` call.
+pub fn expect_copilot_cowork_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(|spec| {
+            assert_eq!(
+                spec.arguments(),
+                ["experimental", "enable", "copilot-cowork"]
+            );
+            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+            Ok(ExecResult::success(
+                "[+] Enabled experimental feature: copilot-cowork\n",
+            ))
+        });
+}
+
+/// Queue the separate Microsoft 365 Copilot Cowork skills deploy.
+pub fn expect_copilot_cowork_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(|spec| {
+            assert_eq!(
+                spec.arguments(),
+                ["install", "-g", "--target", "copilot-cowork"]
+            );
+            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+            std::fs::write(
+                spec.working_dir()
+                    .expect("Cowork install working directory")
+                    .join(".apm")
+                    .join("apm.lock.yaml"),
+                "deployments: []\n",
+            )
+            .expect("write Cowork lock fixture");
+            Ok(ExecResult::success("installed Cowork skills\n"))
+        });
+}
+
+/// Queue the combined Copilot App and Cowork experimental deployment.
+pub fn expect_copilot_experimental_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(|spec| {
+            assert_eq!(
+                spec.arguments(),
+                ["install", "-g", "--target", "copilot-app,copilot-cowork"]
+            );
+            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+            std::fs::write(
+                spec.working_dir()
+                    .expect("experimental install working directory")
+                    .join(".apm")
+                    .join("apm.lock.yaml"),
+                "deployments: []\n",
+            )
+            .expect("write experimental lock fixture");
+            Ok(ExecResult::success(
+                "installed Copilot workflows and Cowork skills\n",
+            ))
+        });
+}
+
 /// Queue `apm update -g --yes`, returning `stdout`.
 ///
 /// Only checks `program`/`arguments`; use a bespoke closure instead when a
@@ -152,6 +232,39 @@ pub fn expect_apm_update(
         .returning(move |spec| {
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
+            Ok(ExecResult::success(stdout))
+        });
+}
+
+/// Queue `apm outdated -g` with the supplied stdout.
+pub fn expect_apm_outdated(mock: &mut MockExecutor, cwd: &Path, stdout: &'static str) {
+    let outdated_cwd = cwd.to_path_buf();
+    mock.expect_execute().once().returning(move |spec| {
+        assert_eq!(spec.working_dir(), Some(outdated_cwd.as_path()));
+        assert_eq!(spec.program(), "apm");
+        assert_eq!(spec.arguments(), ["outdated", "-g"]);
+        assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
+        assert!(has_env(&spec, "GCM_INTERACTIVE", "Never"));
+        assert!(has_env(&spec, "GCM_GUI_PROMPT", "false"));
+        Ok(ExecResult::success(stdout))
+    });
+}
+
+/// Queue `apm outdated -g` in a larger ordered command sequence.
+pub fn expect_apm_outdated_in_sequence(
+    mock: &mut MockExecutor,
+    seq: &mut mockall::Sequence,
+    cwd: &Path,
+    stdout: &'static str,
+) {
+    let outdated_cwd = cwd.to_path_buf();
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(move |spec| {
+            assert_eq!(spec.working_dir(), Some(outdated_cwd.as_path()));
+            assert_eq!(spec.program(), "apm");
+            assert_eq!(spec.arguments(), ["outdated", "-g"]);
             Ok(ExecResult::success(stdout))
         });
 }
@@ -228,6 +341,16 @@ pub fn expect_apm_install_without_enable(
 /// Queue the full apm install sequence: experimental-enable, install, the
 /// copilot-app target deploy, and prune.
 pub fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, cwd: &Path) {
+    let install_cwd = cwd.to_path_buf();
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(move |spec| {
+            assert_eq!(spec.working_dir(), Some(install_cwd.as_path()));
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            Ok(ExecResult::success("installed\n"))
+        });
     expect_copilot_app_enable(mock, seq);
-    expect_apm_install_without_enable(mock, seq, cwd);
+    expect_copilot_app_workflow_install(mock, seq);
+    expect_apm_prune(mock, seq, cwd);
 }

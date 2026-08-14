@@ -2,6 +2,7 @@
 -- This file auto-installs lazy.nvim and loads plugin configurations
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
+local uv = vim.uv or vim.loop
 local function bootstrap_error(message, output)
   vim.api.nvim_err_writeln("lazy.nvim bootstrap failed: " .. message)
   if output and output ~= "" then
@@ -10,7 +11,7 @@ local function bootstrap_error(message, output)
   error("lazy.nvim bootstrap failed", 0)
 end
 
-if not vim.uv.fs_stat(lazypath) then
+if not uv.fs_stat(lazypath) then
   -- Pin to a specific commit for security and reproducibility
   -- Update this commit hash periodically to get security fixes
   local lazy_commit = "85c7ff3711b730b4030d03144f6db6375044ae82" -- v11.17.5

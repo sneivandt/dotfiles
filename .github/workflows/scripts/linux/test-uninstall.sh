@@ -36,22 +36,23 @@ assert_symlink() {
 
 # Verify that a path is materialized with the expected content.
 assert_materialized() {
-  path="$1"
-  expected="$2"
-  snapshot="$3"
-  if [ ! -f "$path" ]; then
-    printf "%sERROR: expected file after uninstall: %s%s\n" "${RED}" "$path" "${NC}" >&2
+  materialized_path="$1"
+  materialized_expected="$2"
+  materialized_snapshot="$3"
+  if [ ! -f "$materialized_path" ]; then
+    printf "%sERROR: expected file after uninstall: %s%s\n" "${RED}" "$materialized_path" "${NC}" >&2
     return 1
   fi
-  if [ -L "$path" ]; then
-    printf "%sERROR: expected materialized file, still a symlink: %s%s\n" "${RED}" "$path" "${NC}" >&2
+  if [ -L "$materialized_path" ]; then
+    printf "%sERROR: expected materialized file, still a symlink: %s%s\n" "${RED}" "$materialized_path" "${NC}" >&2
     return 1
   fi
-  if ! cmp -s "$path" "$expected" || ! cmp -s "$path" "$snapshot"; then
-    printf "%sERROR: materialized content does not match the installed source: %s%s\n" "${RED}" "$path" "${NC}" >&2
+  if ! cmp -s "$materialized_path" "$materialized_expected" ||
+    ! cmp -s "$materialized_path" "$materialized_snapshot"; then
+    printf "%sERROR: materialized content does not match the installed source: %s%s\n" "${RED}" "$materialized_path" "${NC}" >&2
     return 1
   fi
-  log_verbose "✓ materialized content: $path"
+  log_verbose "✓ materialized content: $materialized_path"
 }
 
 test_assertion_helpers() {

@@ -52,6 +52,33 @@ dotfiles repo:
 - Prefer direct MCP declarations in the private fragment unless explicitly
   choosing to trust transitive MCP servers.
 
+## Target Compatibility
+
+- Use object-form dependencies with dependency-level `targets:` when a plugin
+  should deploy only to selected harnesses:
+  ```yaml
+  dependencies:
+    apm:
+      - path: ~/.apm/plugins/dot-reference
+        targets: [agent-skills, copilot-cowork]
+      - path: ~/.apm/plugins/dot-mcp-required
+        targets: [agent-skills]
+      - path: ~/.apm/plugins/dot-workflow
+        targets: [copilot-app]
+  ```
+- A dependency filter applies to the whole plugin, not individual skills.
+  Split primitives into separate plugins when their target compatibility
+  differs; do not rely on a per-skill target override.
+- Treat `copilot-cowork` as skill-only deployment. Cowork does not receive the
+  plugin's MCP declarations, hooks, prompts, agents, commands, or instructions.
+  Only include a plugin when its skills remain truthful and useful without
+  those primitives. Keep workflows requiring live MCP tools on
+  `agent-skills`.
+- Do not confuse dependency-level filters with the manifest's top-level
+  `targets:` setting: the top-level list controls the default deployment
+  harnesses, while each dependency's `targets:` narrows where that package is
+  installed.
+
 ## Editing Rules
 
 - Use APM native plugin layout: `apm.yml` at plugin root and primitives under

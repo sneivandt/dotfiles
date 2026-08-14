@@ -6,8 +6,9 @@ use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::test_helpers::assert_task_changed;
 
 use super::super::test_fixture::{
-    expect_apm_install, expect_apm_update, expect_copilot_app_workflow_install, expect_which_apm,
-    install_task, make_home_context_with_executor, update_task, write_copilot_app_db,
+    expect_apm_install, expect_apm_outdated_in_sequence, expect_apm_update,
+    expect_copilot_app_enable, expect_copilot_app_workflow_install, expect_which_apm, install_task,
+    make_home_context_with_executor, update_task, write_copilot_app_db,
     write_current_manifest_lock_and_marker, write_home_fragment,
 };
 use super::DesiredApmWorkflows;
@@ -451,6 +452,12 @@ fn update_re_arms_apm_workflows_cases() {
         let mut mock = MockExecutor::new();
         expect_which_apm(&mut mock, true);
         expect_python3(&mut mock, 2, true);
+        expect_apm_outdated_in_sequence(
+            &mut mock,
+            &mut seq,
+            dir.path(),
+            "[!] 1 outdated dependency found\n",
+        );
 
         let pre_db = db_str.clone();
         mock.expect_execute()
@@ -466,6 +473,7 @@ fn update_re_arms_apm_workflows_cases() {
                 Ok(ExecResult::success(pre_stdout))
             });
         expect_apm_update(&mut mock, &mut seq, update_stdout);
+        expect_copilot_app_enable(&mut mock, &mut seq);
         expect_copilot_app_workflow_install(&mut mock, &mut seq);
         // Post-update fixup re-arms the workflow to autopilot + enabled.
         mock.expect_execute()

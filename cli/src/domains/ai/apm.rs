@@ -10,6 +10,7 @@
 //! - [`install`] converges the generated manifest and runs `apm install`.
 //! - [`update`] advances locked dependency refs for the `update` command.
 //! - [`commands`] centralizes APM process invocation and common error handling.
+//! - [`cowork`] reconciles Cowork's OneDrive-backed skill tree after APM runs.
 //! - [`sources`] fingerprints the manifest, local plugin content, and target
 //!   set so a converged tree can skip `apm install` entirely.
 //! - [`targets`] detects whether Copilot App needs a separate primitive deploy.
@@ -17,6 +18,7 @@
 
 mod autopilot;
 mod commands;
+mod cowork;
 mod fragments;
 mod install;
 mod manifest;

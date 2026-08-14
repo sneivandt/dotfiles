@@ -6,7 +6,7 @@
 //! `~/.apm/plugins/` — are symlinked straight at the repository, so editing a
 //! skill changes what APM must deploy without changing a single byte of
 //! `~/.apm/apm.yml`. The resolved target set matters for the same reason:
-//! installing the Copilot App adds a deployment target that an unchanged
+//! installing Copilot App or Cowork adds deployment targets that an unchanged
 //! manifest would otherwise never be redeployed into.
 //!
 //! Folding all three into one fingerprint is what lets
@@ -32,13 +32,14 @@ const MAX_DEPTH: usize = 16;
 /// These hold derived or vendored content whose churn says nothing about what
 /// APM would deploy, and walking them would dominate the hash cost.
 const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "target"];
+const FINGERPRINT_VERSION: &[u8] = b"apm-install-plan-v3\n";
 
 /// Build the fingerprint recorded in the APM install marker.
 ///
 /// Covers the merged manifest, the on-disk content of every local dependency
-/// source it references, and whether the Copilot App target is in play, so a
-/// matching marker means "the last successful install already deployed exactly
-/// this".
+/// source it references, and whether the explicit Copilot App and Cowork
+/// targets are in play, so a matching marker means "the last successful install
+/// already deployed exactly this".
 ///
 /// # Errors
 ///
@@ -50,11 +51,15 @@ pub(super) fn install_fingerprint(
     merged: &str,
     home: &Path,
     includes_copilot_app: bool,
+    includes_copilot_cowork: bool,
 ) -> Result<String> {
     let mut hasher = Sha256::new();
+    hasher.update(FINGERPRINT_VERSION);
     hasher.update(merged.as_bytes());
     hasher.update(b"\ntargets:copilot-app=");
     hasher.update(if includes_copilot_app { b"1" } else { b"0" });
+    hasher.update(b"\ntargets:copilot-cowork=");
+    hasher.update(if includes_copilot_cowork { b"1" } else { b"0" });
     hasher.update(b"\n");
 
     for path in local_dependency_paths(merged, home) {
@@ -256,10 +261,10 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# before\n");
-        let before = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
 
         seed_plugin(home, "# after\n");
-        let after = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let after = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
 
         assert_ne!(
             before, after,
@@ -272,8 +277,8 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# body\n");
-        let first = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
-        let second = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let first = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let second = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
         assert_eq!(
             first, second,
             "repeated hashing of an unchanged tree must agree"
@@ -285,7 +290,7 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# body\n");
-        let before = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
 
         std::fs::write(
             home.join(".apm")
@@ -298,7 +303,7 @@ dependencies:
             "extra\n",
         )
         .expect("write");
-        let after = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let after = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
 
         assert_ne!(before, after, "a new plugin file must change the print");
     }
@@ -309,12 +314,27 @@ dependencies:
         let home = dir.path();
         seed_plugin(home, "# body\n");
 
-        let without = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
-        let with = install_fingerprint(MANIFEST, home, true).expect("fingerprint");
+        let without = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let with = install_fingerprint(MANIFEST, home, true, false).expect("fingerprint");
 
         assert_ne!(
             without, with,
             "gaining the Copilot App target must force a redeploy"
+        );
+    }
+
+    #[test]
+    fn fingerprint_changes_when_the_copilot_cowork_target_appears() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let home = dir.path();
+        seed_plugin(home, "# body\n");
+
+        let without = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let with = install_fingerprint(MANIFEST, home, false, true).expect("fingerprint");
+
+        assert_ne!(
+            without, with,
+            "gaining the Copilot Cowork target must force a redeploy"
         );
     }
 
@@ -324,10 +344,11 @@ dependencies:
         let home = dir.path();
         seed_plugin(home, "# body\n");
 
-        let before = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
         let after = install_fingerprint(
             &format!("{MANIFEST}    - owner/another-package\n"),
             home,
+            false,
             false,
         )
         .expect("fingerprint");
@@ -338,7 +359,7 @@ dependencies:
     #[test]
     fn missing_local_sources_do_not_fail_the_fingerprint() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let print = install_fingerprint(MANIFEST, dir.path(), false)
+        let print = install_fingerprint(MANIFEST, dir.path(), false, false)
             .expect("an absent plugin must not fail fingerprinting");
         assert_eq!(print.len(), 64, "fingerprint should be a sha256 hex digest");
     }
@@ -348,7 +369,7 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# body\n");
-        let before = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
 
         let git_dir = home
             .join(".apm")
@@ -357,7 +378,7 @@ dependencies:
             .join(".git");
         std::fs::create_dir_all(&git_dir).expect("mkdir");
         std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").expect("write");
-        let after = install_fingerprint(MANIFEST, home, false).expect("fingerprint");
+        let after = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
 
         assert_eq!(
             before, after,

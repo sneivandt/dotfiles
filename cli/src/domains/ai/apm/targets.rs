@@ -10,10 +10,11 @@ use crate::engine::Context;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ApmTargets {
     include_copilot_app: bool,
+    include_copilot_cowork: bool,
 }
 
 impl ApmTargets {
-    /// Detect whether the Copilot App target should be included.
+    /// Detect which experimental Copilot targets should be included.
     ///
     /// # Errors
     ///
@@ -33,12 +34,18 @@ impl ApmTargets {
         }
         Ok(Self {
             include_copilot_app,
+            include_copilot_cowork: ctx.system().platform().is_windows(),
         })
     }
 
     #[must_use]
     pub(super) const fn includes_copilot_app(self) -> bool {
         self.include_copilot_app
+    }
+
+    #[must_use]
+    pub(super) const fn includes_copilot_cowork(self) -> bool {
+        self.include_copilot_cowork
     }
 
     #[must_use]
@@ -52,11 +59,12 @@ impl ApmTargets {
     }
 
     #[must_use]
-    pub(super) const fn copilot_app_install_args(self) -> Option<&'static [&'static str]> {
-        if self.include_copilot_app {
-            Some(&["install", "-g", "--target", "copilot-app"])
-        } else {
-            None
+    pub(super) const fn experimental_install_args(self) -> Option<&'static [&'static str]> {
+        match (self.include_copilot_app, self.include_copilot_cowork) {
+            (true, true) => Some(&["install", "-g", "--target", "copilot-app,copilot-cowork"]),
+            (true, false) => Some(&["install", "-g", "--target", "copilot-app"]),
+            (false, true) => Some(&["install", "-g", "--target", "copilot-cowork"]),
+            (false, false) => None,
         }
     }
 }

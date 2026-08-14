@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn persist_and_read_persisted_round_trip() {
         let (dir, root) = init_test_repo();
-        let overlay = PathBuf::from("/home/user/dotfiles-msft");
+        let overlay = PathBuf::from("/home/user/dotfiles-overlay");
         persist(&root, &overlay).expect("persist should succeed");
         let result = read_persisted(&root);
         assert_eq!(result, Some(overlay));

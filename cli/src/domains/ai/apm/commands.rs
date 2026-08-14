@@ -2,12 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, Result};
-
+use super::cowork::reconcile_cowork_skills;
 use super::targets::ApmTargets;
 use crate::engine::{Context, TaskResult};
 use crate::infra::exec::CommandSpec;
 use crate::infra::logging::OutputExt as _;
+use anyhow::{Context as _, Result};
 
 pub(super) const APM_NONINTERACTIVE_ENV: &[(&str, &str)] = &[
     ("GIT_TERMINAL_PROMPT", "0"),
@@ -73,9 +73,9 @@ pub(super) enum ApmOutdatedResult {
 /// runtime set itself and reconciles their shared ledger together. APM resolves
 /// runtimes as `--target` > `targets:` in the merged manifest > `apm config
 /// target` > auto-detect, so `symlinks/apm/config/base.yml` pins the runtime set
-/// without this call having to enumerate it. Copilot App workflows require an
-/// explicit experimental target, so they are deployed by a separate install
-/// after the primary command.
+/// without this call having to enumerate it. Cowork skills and Copilot App
+/// workflows require explicit experimental targets, so they are deployed by
+/// separate installs after the primary command.
 ///
 /// # Errors
 ///
@@ -91,10 +91,21 @@ pub(super) fn run_apm_command(
         result @ ApmCommandResult::AuthSkipped(_) => return Ok(result),
     }
 
-    let Some(copilot_app_args) = targets.copilot_app_install_args() else {
+    if targets.includes_copilot_app() {
+        ensure_experimental_target_enabled(ctx, "copilot-app", "copilot_app");
+    }
+    if targets.includes_copilot_cowork() {
+        ensure_experimental_target_enabled(ctx, "copilot-cowork", "copilot_cowork");
+    }
+
+    let Some(experimental_args) = targets.experimental_install_args() else {
         return Ok(ApmCommandResult::Success);
     };
-    run_apm_invocation(ctx, ApmCommand::Install, copilot_app_args)
+    let result = run_apm_invocation(ctx, ApmCommand::Install, experimental_args)?;
+    if matches!(result, ApmCommandResult::Success) && targets.includes_copilot_cowork() {
+        reconcile_cowork_skills(ctx)?;
+    }
+    Ok(result)
 }
 
 /// Check locked user-scope dependencies for remote updates without mutating
@@ -210,7 +221,8 @@ fn classify_apm_error(
 /// `experimental` subcommand will error, but the manifest-resolved runtimes and
 /// standard primitives must still install. Any error is logged as a warning and
 /// swallowed.
-pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
+/// Best-effort enable of an experimental APM deployment target.
+fn ensure_experimental_target_enabled(ctx: &Context, target: &str, config_key: &str) {
     let system = ctx.system();
     let cwd = system.home();
 
@@ -218,11 +230,10 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
     // flag that is almost always already set.  Reading the config apm itself
     // writes answers the same question for free; anything ambiguous falls
     // through to the authoritative idempotent command.
-    if copilot_app_experimental_enabled(cwd) == Some(true) {
+    if experimental_target_enabled(cwd, config_key) == Some(true) {
         ctx.debug_fmt(|| {
             format!(
-                "apm experimental copilot-app already enabled in {}; skipping `apm experimental \
-                 enable`",
+                "apm experimental {target} already enabled in {}; skipping `apm experimental enable`",
                 apm_config_path(cwd).display()
             )
         });
@@ -231,13 +242,13 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
 
     ctx.debug_fmt(|| {
         format!(
-            "running `apm experimental enable copilot-app` in {} (idempotent)",
+            "running `apm experimental enable {target}` in {} (idempotent)",
             cwd.display()
         )
     });
     match system.executor().execute(
         CommandSpec::new("apm")
-            .args(&["experimental", "enable", "copilot-app"])
+            .args(&["experimental", "enable", target])
             .current_dir(cwd)
             .envs(APM_NONINTERACTIVE_ENV),
     ) {
@@ -245,7 +256,7 @@ pub(super) fn ensure_copilot_app_enabled(ctx: &Context) {
         Err(err) => {
             let msg = format!("{err:#}");
             ctx.log().warn(format!(
-                "could not enable apm experimental copilot-app target; continuing without it \
+                "could not enable apm experimental {target} target; continuing without it \
                  (details: {})",
                 msg.trim()
             ));
@@ -258,18 +269,17 @@ fn apm_config_path(home: &Path) -> PathBuf {
     home.join(".apm").join("config.json")
 }
 
-/// Read the `copilot_app` experimental flag out of apm's own config.
+/// Read an experimental flag out of apm's own config.
 ///
 /// Returns `None` whenever the answer cannot be established — the file is
 /// missing, unreadable, not JSON, or shaped differently than expected — so
 /// callers treat "unknown" as "ask apm", never as "already enabled".
 ///
-/// Note the spelling difference: the config key is the snake-case
-/// `copilot_app` while the CLI argument is the kebab-case `copilot-app`.
-fn copilot_app_experimental_enabled(home: &Path) -> Option<bool> {
+/// APM stores flag keys in snake case while CLI target names use kebab case.
+fn experimental_target_enabled(home: &Path, config_key: &str) -> Option<bool> {
     let raw = std::fs::read_to_string(apm_config_path(home)).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    value.get("experimental")?.get("copilot_app")?.as_bool()
+    value.get("experimental")?.get(config_key)?.as_bool()
 }
 
 /// Convert a command result into the task-level result used by install.

@@ -62,10 +62,9 @@ test_vim_opens()
   vim --version >/dev/null 2>&1 || { printf "%sERROR: vim --version failed%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Vim binary OK"
 
-  if [ -f "$HOME/.vim/vimrc" ]; then
-    timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1 || { printf "%sERROR: vim failed to load vimrc%s\n" "${RED}" "${NC}" >&2; return 1; }
-    log_verbose "Vim loads custom vimrc"
-  fi
+  [ -f "$HOME/.vim/vimrc" ] || { printf "%sERROR: vimrc not installed: %s%s\n" "${RED}" "$HOME/.vim/vimrc" "${NC}" >&2; return 1; }
+  timeout 5 vim -E -s -c 'quit' </dev/null >/dev/null 2>&1 || { printf "%sERROR: vim failed to load vimrc%s\n" "${RED}" "${NC}" >&2; return 1; }
+  log_verbose "Vim loads custom vimrc"
 )}
 
 # ---------------------------------------------------------------------------
@@ -80,20 +79,19 @@ test_nvim_opens()
   nvim --version >/dev/null 2>&1 || { printf "%sERROR: nvim --version failed%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Nvim binary OK"
 
-  if [ -d "$HOME/.config/nvim" ]; then
-    timeout 30 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1 || { printf "%sERROR: nvim failed to load config%s\n" "${RED}" "${NC}" >&2; return 1; }
-    log_verbose "Nvim loads custom config"
-  fi
+  [ -d "$HOME/.config/nvim" ] || { printf "%sERROR: nvim config not installed: %s%s\n" "${RED}" "$HOME/.config/nvim" "${NC}" >&2; return 1; }
+  timeout 30 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1 || { printf "%sERROR: nvim failed to load config%s\n" "${RED}" "${NC}" >&2; return 1; }
+  log_verbose "Nvim loads custom config"
 )}
 
 test_nvim_plugins()
 {(
   is_program_installed "nvim" || { log_verbose "Skipping: nvim not installed"; return 0; }
-  [ -f "$HOME/.config/nvim/nvimrc" ] || { log_verbose "Skipping: nvimrc not installed"; return 0; }
+  [ -f "$HOME/.config/nvim/nvimrc" ] || { printf "%sERROR: nvimrc not installed: %s%s\n" "${RED}" "$HOME/.config/nvim/nvimrc" "${NC}" >&2; return 1; }
   log_stage "Testing nvim plugins"
 
   lazy_dir="$HOME/.local/share/nvim/lazy"
-  [ -d "$lazy_dir/lazy.nvim" ] || { log_verbose "lazy.nvim not bootstrapped yet"; return 0; }
+  [ -d "$lazy_dir/lazy.nvim" ] || { printf "%sERROR: lazy.nvim not bootstrapped: %s%s\n" "${RED}" "$lazy_dir/lazy.nvim" "${NC}" >&2; return 1; }
 
   count=$(find "$lazy_dir" -mindepth 1 -maxdepth 1 -type d | wc -l)
   log_verbose "Found $count plugin directories"
@@ -112,7 +110,7 @@ test_git_config()
   log_stage "Testing git configuration"
 
   git --version >/dev/null 2>&1 || { printf "%sERROR: git --version failed%s\n" "${RED}" "${NC}" >&2; return 1; }
-  [ -f "$HOME/.config/git/config" ] || { log_verbose "Custom git config not installed"; return 0; }
+  [ -f "$HOME/.config/git/config" ] || { printf "%sERROR: custom git config not installed: %s%s\n" "${RED}" "$HOME/.config/git/config" "${NC}" >&2; return 1; }
   log_verbose "Custom git config found"
 
   # Check key config values
@@ -134,8 +132,8 @@ test_git_aliases()
 {(
   is_program_installed "git" || { log_verbose "Skipping: git not installed"; return 0; }
   log_stage "Testing git aliases"
-  [ -f "$HOME/.config/git/config" ] || { log_verbose "Git config not installed"; return 0; }
-  [ -f "$HOME/.config/git/aliases" ] || { log_verbose "Aliases file not installed"; return 0; }
+  [ -f "$HOME/.config/git/config" ] || { printf "%sERROR: git config not installed: %s%s\n" "${RED}" "$HOME/.config/git/config" "${NC}" >&2; return 1; }
+  [ -f "$HOME/.config/git/aliases" ] || { printf "%sERROR: git aliases not installed: %s%s\n" "${RED}" "$HOME/.config/git/aliases" "${NC}" >&2; return 1; }
 
   errors=0
   for a in st br lo ci; do
@@ -153,7 +151,7 @@ test_git_behavior()
 {(
   is_program_installed "git" || { log_verbose "Skipping: git not installed"; return 0; }
   log_stage "Testing git behavior"
-  [ -f "$HOME/.config/git/config" ] || { log_verbose "Git config not installed"; return 0; }
+  [ -f "$HOME/.config/git/config" ] || { printf "%sERROR: git config not installed: %s%s\n" "${RED}" "$HOME/.config/git/config" "${NC}" >&2; return 1; }
 
   repo="$(mktemp -d)"
   trap 'rm -rf "$repo"' EXIT
@@ -175,6 +173,101 @@ test_git_behavior()
   echo test > test.txt && git add test.txt
   git commit -m "Test commit" >/dev/null 2>&1 || { printf "%sERROR: commit failed%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "✓ Commit created successfully"
+)}
+
+# ---------------------------------------------------------------------------
+# Volume initialization
+# ---------------------------------------------------------------------------
+
+test_volume_init()
+{(
+  log_stage "Testing volume initialization failures"
+
+  script="$DIR/symlinks/config/volume/init-volume.sh"
+  [ -x "$script" ] || { printf "%sERROR: volume initialization script missing or not executable: %s%s\n" "${RED}" "$script" "${NC}" >&2; return 1; }
+
+  fixture="$(mktemp -d)"
+  trap 'rm -rf "$fixture"' EXIT
+  mock_bin="$fixture/bin"
+  output="$fixture/output"
+  mkdir -p "$mock_bin"
+
+  if PATH="$mock_bin" "$script" >"$output" 2>&1; then
+    printf "%sERROR: volume initialization succeeded without pactl%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  grep -q "pactl is required" "$output" || { printf "%sERROR: missing-pactl failure was not explained%s\n" "${RED}" "${NC}" >&2; return 1; }
+
+  cat > "$mock_bin/pactl" <<'EOF'
+#!/bin/sh
+case "$1" in
+  get-sink-volume)
+    [ "${PACTL_SCENARIO:-success}" != "sink-timeout" ] || exit 1
+    if [ "${PACTL_SCENARIO:-success}" = "unstable" ]; then
+      count=0
+      [ ! -f "$PACTL_STATE_FILE" ] || IFS= read -r count < "$PACTL_STATE_FILE"
+      count=$((count + 1))
+      printf '%s\n' "$count" > "$PACTL_STATE_FILE"
+      if [ $((count % 2)) -eq 0 ]; then
+        printf 'Volume: 60%%\n'
+      else
+        printf 'Volume: 70%%\n'
+      fi
+    else
+      printf 'Volume: 70%%\n'
+    fi
+    ;;
+  list)
+    printf '1\tmock-sink\n'
+    ;;
+  set-sink-mute)
+    [ "${PACTL_SCENARIO:-success}" != "mutation-failure" ]
+    ;;
+  set-sink-volume)
+    exit 0
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+EOF
+  cat > "$mock_bin/sleep" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  chmod +x "$mock_bin/pactl" "$mock_bin/sleep"
+  ln -s "$(command -v awk)" "$mock_bin/awk"
+
+  if PATH="$mock_bin" PACTL_SCENARIO=sink-timeout "$script" >"$output" 2>&1; then
+    printf "%sERROR: volume initialization succeeded without a default sink%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  grep -q "no default audio sink" "$output" || { printf "%sERROR: sink-timeout failure was not explained%s\n" "${RED}" "${NC}" >&2; return 1; }
+
+  if PATH="$mock_bin" PACTL_SCENARIO=unstable PACTL_STATE_FILE="$fixture/pactl-state" "$script" >"$output" 2>&1; then
+    printf "%sERROR: volume initialization succeeded before volume stabilized%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  grep -q "volume did not stabilize" "$output" || { printf "%sERROR: stabilization timeout was not explained%s\n" "${RED}" "${NC}" >&2; return 1; }
+
+  if PATH="$mock_bin" PACTL_SCENARIO=mutation-failure "$script" >"$output" 2>&1; then
+    printf "%sERROR: volume initialization ignored a sink mutation failure%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+
+  PATH="$mock_bin" PACTL_SCENARIO=success "$script" >"$output" 2>&1 || { printf "%sERROR: volume initialization failed with working pactl%s\n" "${RED}" "${NC}" >&2; return 1; }
+
+  cat > "$mock_bin/amixer" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+  chmod +x "$mock_bin/amixer"
+  if PATH="$mock_bin" PACTL_SCENARIO=success "$script" >"$output" 2>&1; then
+    printf "%sERROR: volume initialization ignored an amixer failure%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+
+  log_verbose "Volume initialization reports missing tools, timeouts, and command failures"
 )}
 
 # Execute tests when run directly: sh test-applications.sh <app> <test1> [test2...]

@@ -295,7 +295,7 @@ scheduler:
 | Selector | Task label | What it checks |
 |---|---|---|
 | `config-warnings` | Validate config warnings | Emits non-fatal diagnostics collected while loading configuration |
-| `symlink-sources` | Validate symlink sources | Confirms configured symlink sources exist and globs resolve |
+| `symlink-sources` | Validate symlink sources | Confirms configured symlink and file-permission sources exist and globs resolve |
 | `config-files` | Validate config files | Requires and parses core TOML files; warns when `hooks/` is absent |
 | `manifest-sync` | Validate manifest sync | Checks exact category-section synchronization between symlinks and sparse-checkout manifest |
 | `apm-plugins` | Validate APM plugins | Validates active APM plugin and package references when APM is available |

@@ -9,8 +9,8 @@
 #   5. PSScriptAnalyzer                        (PowerShell linting, on .ps1/.psm1)
 #
 # Full-mode checks run only when DOTFILES_HOOKS_FULL=1 so ordinary commits stay
-# fast. PSScriptAnalyzer is skipped (with a notice) when the required tooling is
-# not installed locally.
+# fast. PSScriptAnalyzer is skipped when pwsh is unavailable, but a missing or
+# broken analyzer module fails rather than reporting a clean check.
 #
 # Can be run standalone or called from the pre-commit hook.
 # Usage: sh check-rust.sh
@@ -106,15 +106,14 @@ if printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1)$'; then
     export PS_FILES
     # shellcheck disable=SC2016  # PowerShell variables are expanded by pwsh.
     if ! pwsh -NoProfile -Command '
+      $ErrorActionPreference = "Stop"
       if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-        Write-Host "PSScriptAnalyzer module not installed; skipping." -ForegroundColor DarkGray
-        Write-Host "  Install: pwsh -Command Install-Module PSScriptAnalyzer -Scope CurrentUser" -ForegroundColor DarkGray
-        exit 0
+        throw "PSScriptAnalyzer module is not installed"
       }
-      Import-Module PSScriptAnalyzer -Force
+      Import-Module PSScriptAnalyzer -Force -ErrorAction Stop
       $hasErrors = $false
       $env:PS_FILES.Split(";") | Where-Object { $_ -ne "" } | ForEach-Object {
-        $results = Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
+        $results = Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error -ErrorAction Stop
         if ($results) {
           $results | Format-Table -AutoSize
           $hasErrors = $true

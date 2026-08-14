@@ -1,8 +1,47 @@
-//! Task filter matching helpers for `install --only` and `install --skip`.
+//! Task filter matching helpers for command `--only` and `--skip` options.
 
 use crate::engine::Task;
-use crate::infra::logging::Output;
 use crate::infra::logging::OutputExt as _;
+use crate::infra::logging::{Logger, Output};
+
+/// Warn about filters that match no task, then return the tasks that survive them.
+pub(crate) fn apply_task_filters<'a>(
+    all_tasks: &'a [Box<dyn Task>],
+    additional_known_tasks: &[Box<dyn Task>],
+    only: &[String],
+    skip: &[String],
+    log: &Logger,
+) -> Vec<&'a dyn Task> {
+    let known_task_refs: Vec<&dyn Task> = all_tasks
+        .iter()
+        .chain(additional_known_tasks)
+        .map(Box::as_ref)
+        .collect();
+    let unmatched_only = unmatched_filters(&known_task_refs, only);
+    let unmatched_skip = unmatched_filters(&known_task_refs, skip);
+    if !log.is_verbose() && (!unmatched_only.is_empty() || !unmatched_skip.is_empty()) {
+        log.separate_from_startup();
+    }
+    warn_unmatched_filters(&unmatched_only, "--only", log);
+    warn_unmatched_filters(&unmatched_skip, "--skip", log);
+
+    let filtered: Vec<&dyn Task> = all_tasks
+        .iter()
+        .filter(|task| task_passes_filters(task.as_ref(), only, skip))
+        .map(Box::as_ref)
+        .collect();
+
+    if !only.is_empty() || !skip.is_empty() {
+        let names: Vec<&str> = filtered.iter().map(|task| task.name()).collect();
+        log.debug(format!(
+            "active filters — running {} task(s): {}",
+            names.len(),
+            names.join(", ")
+        ));
+    }
+
+    filtered
+}
 
 /// Return filters that do not match any known task.
 pub(crate) fn unmatched_filters<'a>(tasks: &[&dyn Task], filters: &'a [String]) -> Vec<&'a str> {

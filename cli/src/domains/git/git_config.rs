@@ -27,11 +27,23 @@ impl ConfigureGit {
 
     fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
         let settings = self.config.read().to_vec();
+        let manages_autocrlf = settings
+            .iter()
+            .any(|setting| setting.key.eq_ignore_ascii_case("core.autocrlf"));
+        let mut resources = settings
+            .into_iter()
+            .map(|setting| GitConfigResource::new(setting.key, setting.value))
+            .collect::<Vec<_>>();
+
+        if ctx.platform().is_windows() && !manages_autocrlf {
+            resources.push(GitConfigResource::absent("core.autocrlf".to_string()));
+        }
+
         run_resource_task(
             ctx,
             announce,
-            settings,
-            |setting, _ctx| GitConfigResource::new(setting.key, setting.value),
+            resources,
+            |resource, _ctx| resource,
             &ProcessOpts::strict("configure").sequential(),
         )
     }

@@ -156,8 +156,9 @@ pub type UpdateOpts = InstallOpts;
 pub struct UninstallOpts;
 
 /// Options for the `test` subcommand.
-#[derive(Parser, Debug, Clone)]
-pub struct TestOpts;
+///
+/// Validation uses the same stable task selector interface as install/update.
+pub type TestOpts = InstallOpts;
 
 /// Options for the `log` subcommand.
 #[derive(Parser, Debug, Clone)]
@@ -427,6 +428,20 @@ mod tests {
     fn parse_test() {
         let cli = Cli::parse_from(["dotfiles", "test"]);
         assert!(matches!(cli.command, Command::Test(_)));
+    }
+
+    #[test]
+    fn parse_test_only_tasks() {
+        let cli = Cli::parse_from([
+            "dotfiles",
+            "test",
+            "--only",
+            "config-warnings,manifest-sync",
+        ]);
+        let Command::Test(opts) = cli.command else {
+            panic!("expected Test command");
+        };
+        assert_eq!(opts.only, vec!["config-warnings", "manifest-sync"]);
     }
 
     #[test]

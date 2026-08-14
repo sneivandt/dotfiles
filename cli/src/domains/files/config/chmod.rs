@@ -143,6 +143,15 @@ impl ChmodEntry {
 
 config_section!(field: "permissions", ty: ChmodEntry);
 
+/// Load every chmod entry without category filtering.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be parsed.
+pub(crate) fn load_all(path: &Path) -> anyhow::Result<Vec<ChmodEntry>> {
+    crate::infra::config::toml_loader::load_section_unfiltered::<Section>(path)
+}
+
 /// Validate chmod entries and return any warnings.
 #[must_use]
 pub fn validate(
@@ -222,6 +231,33 @@ permissions = [
         assert_eq!(entries[0].mode, "600");
         assert_eq!(entries[0].path, "ssh/config");
         assert_eq!(entries[1].mode, "755");
+    }
+
+    #[test]
+    fn load_all_includes_reordered_entries_from_every_category() {
+        let (_dir, path) = write_temp_toml(
+            r#"[linux]
+permissions = [{ path = "ssh/config", mode = "600" }]
+
+[arch-desktop]
+permissions = [{ path = "config/volume/init-volume.sh", mode = "755" }]
+"#,
+        );
+
+        let mut paths = load_all(&path)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect::<Vec<_>>();
+        paths.sort_unstable();
+
+        assert_eq!(
+            paths,
+            vec![
+                "config/volume/init-volume.sh".to_string(),
+                "ssh/config".to_string(),
+            ]
+        );
     }
 
     test_load_missing_returns_empty!(load);

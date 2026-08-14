@@ -52,7 +52,10 @@ fn test_command_fails_on_config_warnings() {
         no_symbols: false,
         elevated_child: false,
     };
-    let opts = test_api::cli::TestOpts {};
+    let opts = test_api::cli::TestOpts {
+        skip: vec![],
+        only: vec![],
+    };
     let log = Arc::new(Logger::new("test-command"));
 
     let result = test_api::commands::test::run(

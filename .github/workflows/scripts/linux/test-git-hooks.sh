@@ -292,6 +292,8 @@ test_hook_blocks "AWS key ID format" "export AWS_KEY=AKIAIOSFODNN7EXAMPLE"
 printf "\nTesting GitHub patterns...\n"
 test_hook_blocks "GitHub PAT" "token = ghp_1234567890123456789012345678901234567890"
 test_hook_blocks "GitHub token assignment" "GITHUB_TOKEN=gho_abcdefghijklmnopqrstuvwxyz12345678901234"
+fine_grained_pat="github_pat_$(printf '%s' 'abcdefghijklmnopqrstuv')"
+test_hook_blocks "GitHub fine-grained PAT" "GITHUB_TOKEN=$fine_grained_pat"
 
 # Test API keys
 printf "\nTesting API key patterns...\n"

@@ -12,9 +12,14 @@ use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, Re
 pub struct GitConfigResource {
     /// Config key (e.g., "core.autocrlf").
     pub key: String,
-    /// Desired value (e.g., "false").
-    pub desired_value: String,
+    desired: DesiredGitConfig,
     config_path: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+enum DesiredGitConfig {
+    Value(String),
+    Absent,
 }
 
 impl GitConfigResource {
@@ -23,7 +28,17 @@ impl GitConfigResource {
     pub const fn new(key: String, desired_value: String) -> Self {
         Self {
             key,
-            desired_value,
+            desired: DesiredGitConfig::Value(desired_value),
+            config_path: None,
+        }
+    }
+
+    /// Create a resource that removes a global Git setting.
+    #[must_use]
+    pub const fn absent(key: String) -> Self {
+        Self {
+            key,
+            desired: DesiredGitConfig::Absent,
             config_path: None,
         }
     }
@@ -37,7 +52,7 @@ impl GitConfigResource {
     ) -> Self {
         Self {
             key,
-            desired_value,
+            desired: DesiredGitConfig::Value(desired_value),
             config_path: Some(config_path),
         }
     }
@@ -61,11 +76,23 @@ impl GitConfigResource {
     ///
     /// This enables unit testing without touching the real global git config.
     fn state_from_config(&self, config: &git2::Config) -> ResourceResult<ResourceState> {
-        match config.get_string(&self.key) {
-            Ok(ref current) if current == &self.desired_value => Ok(ResourceState::Correct),
-            Ok(current) => Ok(ResourceState::Incorrect { current }),
-            Err(e) if e.code() == git2::ErrorCode::NotFound => Ok(ResourceState::Missing),
-            Err(e) => Err(anyhow::Error::from(e)
+        let current = config.get_string(&self.key);
+        match (&self.desired, current) {
+            (DesiredGitConfig::Value(desired), Ok(current)) if current == *desired => {
+                Ok(ResourceState::Correct)
+            }
+            (DesiredGitConfig::Value(_) | DesiredGitConfig::Absent, Ok(current)) => {
+                Ok(ResourceState::Incorrect { current })
+            }
+            (DesiredGitConfig::Value(_), Err(error))
+                if error.code() == git2::ErrorCode::NotFound =>
+            {
+                Ok(ResourceState::Missing)
+            }
+            (DesiredGitConfig::Absent, Err(error)) if error.code() == git2::ErrorCode::NotFound => {
+                Ok(ResourceState::Correct)
+            }
+            (_, Err(error)) => Err(anyhow::Error::from(error)
                 .context(format!("reading git config {}", self.key))
                 .into()),
         }
@@ -75,16 +102,24 @@ impl GitConfigResource {
     ///
     /// This enables unit testing without touching the real global git config.
     fn apply_to_config(&self, config: &mut git2::Config) -> Result<ResourceChange> {
-        config
-            .set_str(&self.key, &self.desired_value)
-            .with_context(|| format!("setting {} = {}", self.key, self.desired_value))?;
+        match &self.desired {
+            DesiredGitConfig::Value(desired) => config
+                .set_str(&self.key, desired)
+                .with_context(|| format!("setting {} = {desired}", self.key))?,
+            DesiredGitConfig::Absent => config
+                .remove(&self.key)
+                .with_context(|| format!("removing git config {}", self.key))?,
+        }
         Ok(ResourceChange::Applied)
     }
 }
 
 impl Resource for GitConfigResource {
     fn description(&self) -> String {
-        format!("{} = {}", self.key, self.desired_value)
+        match &self.desired {
+            DesiredGitConfig::Value(desired) => format!("{} = {desired}", self.key),
+            DesiredGitConfig::Absent => format!("{} is unset", self.key),
+        }
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
@@ -133,6 +168,9 @@ mod tests {
     fn description_format() {
         let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
         assert_eq!(resource.description(), "core.autocrlf = false");
+
+        let absent = GitConfigResource::absent("core.autocrlf".to_string());
+        assert_eq!(absent.description(), "core.autocrlf is unset");
     }
 
     // ------------------------------------------------------------------
@@ -178,6 +216,27 @@ mod tests {
         assert!(
             matches!(state, ResourceState::Incorrect { ref current } if current == "true"),
             "expected Incorrect(true), got {state:?}"
+        );
+    }
+
+    #[test]
+    fn absent_state_is_correct_only_when_key_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let mut config = git2::Config::open(&path).unwrap();
+        let resource = GitConfigResource::absent("core.autocrlf".to_string());
+
+        assert_eq!(
+            resource.state_from_config(&config).unwrap(),
+            ResourceState::Correct
+        );
+
+        config.set_str("core.autocrlf", "false").unwrap();
+        assert_eq!(
+            resource.state_from_config(&config).unwrap(),
+            ResourceState::Incorrect {
+                current: "false".to_string()
+            }
         );
     }
 
@@ -230,6 +289,24 @@ mod tests {
 
         let val = config.get_string("core.autocrlf").unwrap();
         assert_eq!(val, "false");
+    }
+
+    #[test]
+    fn apply_removes_obsolete_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let mut config = git2::Config::open(&path).unwrap();
+        config.set_str("core.autocrlf", "false").unwrap();
+        let resource = GitConfigResource::absent("core.autocrlf".to_string());
+
+        assert_eq!(
+            resource.apply_to_config(&mut config).unwrap(),
+            ResourceChange::Applied
+        );
+        assert!(
+            config.get_string("core.autocrlf").is_err(),
+            "obsolete global core.autocrlf must be removed"
+        );
     }
 
     #[test]

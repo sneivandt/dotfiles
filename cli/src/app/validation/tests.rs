@@ -6,6 +6,7 @@ use std::io::Write;
 use crate::infra::config::Diagnostic;
 use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
+use crate::{domains::files::config::chmod::ChmodEntry, infra::ConfigHandle};
 
 #[test]
 fn display_diagnostics_formats_severity_and_code() {
@@ -48,6 +49,41 @@ fn manifest_sync_errors_when_manifest_file_is_missing() {
         msg.contains("manifest.toml"),
         "missing manifest error should include file path: {msg}"
     );
+}
+
+#[test]
+fn configured_source_validation_rejects_missing_chmod_source() {
+    let dir = tempfile::tempdir().expect("tempdir should create");
+    let root = dir.path().to_path_buf();
+    let mut config = empty_config(root.clone());
+    config.validation_chmod = vec![ChmodEntry::new("755", "config/missing.sh")];
+    let task = ValidateSymlinkSources::new(ConfigHandle::new(config));
+    let ctx = make_linux_context(empty_config(root));
+
+    let error = task
+        .run(&ctx)
+        .expect_err("missing chmod source must fail validation");
+
+    assert!(
+        error.to_string().contains("configured source"),
+        "error should identify the configured source failure: {error}"
+    );
+}
+
+#[test]
+fn sparse_sources_match_files_directories_and_globs() {
+    let sparse = SparseSources {
+        paths: vec![
+            PathBuf::from("symlinks/config/windows/settings.json"),
+            PathBuf::from("symlinks/apm/plugins/example/apm.yml"),
+        ],
+    };
+
+    assert!(sparse.contains_source("config/windows"));
+    assert!(sparse.contains_source("config/windows/settings.json"));
+    assert!(sparse.contains_glob("apm/plugins/*"));
+    assert!(!sparse.contains_source("config/missing"));
+    assert!(!sparse.contains_glob("apm/other/*"));
 }
 
 #[test]
@@ -163,6 +199,22 @@ fn powershell_command_escapes_single_quotes_in_paths() {
     assert!(
         script.contains("C:\\Users\\o''connor\\script.ps1"),
         "single quotes in file paths must be PowerShell-escaped"
+    );
+}
+
+#[test]
+fn powershell_command_fails_when_analyzer_cannot_run() {
+    let script = build_psscriptanalyzer_command(&[PathBuf::from("script.ps1")]);
+
+    assert!(script.contains("$ErrorActionPreference = 'Stop'"));
+    assert!(script.contains("PSScriptAnalyzer module is not installed"));
+    assert!(script.contains("Import-Module PSScriptAnalyzer -Force -ErrorAction Stop"));
+    assert!(
+        script.contains("Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error -ErrorAction Stop")
+    );
+    assert!(
+        !script.contains("skipping"),
+        "missing analyzer must not be reported as a clean skip"
     );
 }
 

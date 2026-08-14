@@ -63,11 +63,13 @@ pub(crate) fn build_psscriptanalyzer_command(paths: &[PathBuf]) -> String {
         .join(", ");
 
     format!(
-        "$paths = @({path_literals}); \
+        "$ErrorActionPreference = 'Stop'; \
+         $paths = @({path_literals}); \
          if (!(Get-Module -ListAvailable PSScriptAnalyzer)) \
-         {{ Write-Host 'PSScriptAnalyzer not installed, skipping'; exit 0 }}; \
+         {{ throw 'PSScriptAnalyzer module is not installed' }}; \
+         Import-Module PSScriptAnalyzer -Force -ErrorAction Stop; \
          $results = $paths | ForEach-Object \
-         {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error }}; \
+         {{ Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error -ErrorAction Stop }}; \
          if ($results.Count -gt 0) {{ $results | Format-Table -AutoSize; exit 1 }} \
          else {{ exit 0 }}"
     )

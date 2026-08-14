@@ -3,6 +3,7 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use crate::app::cli::{GlobalOpts, TestOpts};
+use crate::app::filter::apply_task_filters;
 use crate::app::validation::{
     RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
     ValidateConfigWarnings, ValidateManifestSync, ValidateSymlinkSources,
@@ -17,13 +18,14 @@ use crate::infra::logging::Logger;
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(
     global: &GlobalOpts,
-    _opts: &TestOpts,
+    opts: &TestOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
     let runner = super::CommandRunner::new(global, log, token)?;
     let tasks = validation_tasks(runner.config_handle());
-    runner.run(tasks.iter().map(Box::as_ref))
+    let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, log);
+    runner.run(filtered)
 }
 
 /// Build the complete task set used by the `test` command.

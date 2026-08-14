@@ -4,6 +4,8 @@ mod checks;
 mod discovery;
 mod linters;
 
+#[cfg(test)]
+use checks::SparseSources;
 pub use checks::{
     RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
     ValidateConfigWarnings, ValidateManifestSync, ValidateSymlinkSources,

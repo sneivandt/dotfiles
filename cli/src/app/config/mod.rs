@@ -12,12 +12,16 @@ macro_rules! config_section_inventory {
                 |config: &Config| Some(SectionCount::new("symlink", "symlinks", config.symlinks.len()));
             all_symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
                 |_config: &Config| None;
+            validation_symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
+                |_config: &Config| None;
             registry: Vec<crate::domains::system::config::registry::RegistryEntry> =>
                 |config: &Config| Some(SectionCount::new("registry entry", "registry entries", config.registry.len()));
             units: Vec<crate::domains::system::config::systemd_units::SystemdUnit> =>
                 |config: &Config| Some(SectionCount::new("systemd unit", "systemd units", config.units.len()));
             chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
                 |config: &Config| Some(SectionCount::new("chmod entry", "chmod entries", config.chmod.len()));
+            validation_chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
+                |_config: &Config| None;
             vscode_extensions: Vec<String> =>
                 |config: &Config| Some(SectionCount::new("vscode extension", "vscode extensions", config.vscode_extensions.len()));
             git_settings: Vec<crate::domains::git::config::git_config::GitSetting> =>
@@ -337,12 +341,19 @@ pub struct Config {
     /// Used to preserve managed targets before sparse checkout removes newly
     /// excluded sources.
     pub all_symlinks: Vec<symlinks::Symlink>,
+    /// Main and overlay symlink definitions before category filtering.
+    ///
+    /// Used by repository validation without changing sparse-checkout
+    /// preservation behavior, which intentionally uses only [`Self::all_symlinks`].
+    pub validation_symlinks: Vec<symlinks::Symlink>,
     /// Windows registry entries to configure.
     pub registry: Vec<registry::RegistryEntry>,
     /// Systemd user units to enable.
     pub units: Vec<systemd_units::SystemdUnit>,
     /// File permissions to apply (chmod).
     pub chmod: Vec<chmod::ChmodEntry>,
+    /// Main and overlay chmod definitions before category filtering.
+    pub validation_chmod: Vec<chmod::ChmodEntry>,
     /// VS Code extensions to install.
     pub vscode_extensions: Vec<String>,
     /// Git configuration settings to apply globally.
@@ -379,6 +390,16 @@ impl Config {
             .main
             .load(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
         symlinks::set_origin(&mut all_symlinks, root);
+        let mut validation_symlinks = all_symlinks.clone();
+        if let (Some(overlay_loader), Some(overlay_root)) =
+            (&sections.overlay, sections.overlay_root)
+        {
+            let mut overlay_symlinks =
+                overlay_loader.load_overlay(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
+            symlinks::set_origin(&mut overlay_symlinks, overlay_root);
+            validation_symlinks.extend(overlay_symlinks);
+        }
+        let validation_chmod = sections.collect_unfiltered(chmod::CHMOD_TOML, chmod::load_all)?;
         let registry = sections.collect_unfiltered(registry::REGISTRY_TOML, registry::load)?;
         let units =
             sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::load)?;
@@ -393,6 +414,7 @@ impl Config {
                 symlinks::set_origin,
             )?,
             all_symlinks,
+            validation_symlinks,
             registry: if platform.has_registry() {
                 registry
             } else {
@@ -404,6 +426,7 @@ impl Config {
                 Vec::new()
             },
             chmod: sections.collect_filtered(chmod::CHMOD_TOML, chmod::load)?,
+            validation_chmod,
             vscode_extensions: sections.collect_filtered(
                 vscode_extensions::VSCODE_EXTENSIONS_TOML,
                 vscode_extensions::load,

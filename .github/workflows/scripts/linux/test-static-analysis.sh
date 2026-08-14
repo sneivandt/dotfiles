@@ -28,10 +28,14 @@ test_psscriptanalyzer()
   fi
   log_stage "Running PSScriptAnalyzer"
   pwsh -NoProfile -Command "
-    Import-Module PSScriptAnalyzer -Force
+    \$ErrorActionPreference = 'Stop'
+    if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+      throw 'PSScriptAnalyzer module is not installed'
+    }
+    Import-Module PSScriptAnalyzer -Force -ErrorAction Stop
     \$hasErrors = \$false
     Get-ChildItem -Path '$DIR' -Include '*.ps1','*.psm1' -Recurse -File | ForEach-Object {
-      \$results = Invoke-ScriptAnalyzer -Path \$_.FullName -Severity Warning,Error
+      \$results = Invoke-ScriptAnalyzer -Path \$_.FullName -Severity Warning,Error -ErrorAction Stop
       if (\$results) {
         \$results | Format-Table -AutoSize
         \$hasErrors = \$true

@@ -62,34 +62,27 @@ abort_with_hint() {
 }
 
 run_config_validation() {
-  printf "Running config reference validation...\n"
-  export DIR="$REPO_ROOT"
-  scripts_dir="$REPO_ROOT/.github/workflows/scripts/linux"
-  if ! (
-    cd "$scripts_dir"
-    rc=0
-    sh test-config.sh config_validation    || rc=1
-    sh test-config.sh symlinks_validation  || rc=1
-    sh test-config.sh chmod_validation     || rc=1
-    sh test-config.sh toml_syntax          || rc=1
-    sh test-config.sh category_consistency || rc=1
-    sh test-config.sh empty_sections       || rc=1
-    exit "$rc"
-  ); then
-    abort_with_hint \
-      "configuration validation failed." \
-      "cd .github/workflows/scripts/linux && DIR=\"\$(git rev-parse --show-toplevel)\" sh test-config.sh symlinks_validation"
+  if ! command -v cargo >/dev/null 2>&1; then
+    printf '%sSkipping typed config validation: cargo not installed.%s\n' "$DIM" "$NC"
+    return
   fi
 
-  if full_checks_enabled && command -v cargo >/dev/null 2>&1; then
+  printf "Running typed config validation...\n"
+  if ! cargo run --quiet --profile ci --manifest-path "$MANIFEST" -- \
+    --root "$REPO_ROOT" -p desktop test \
+    --only config-warnings,symlink-sources,config-files,manifest-sync 2>&1; then
+    abort_with_hint \
+      "configuration validation failed." \
+      "cargo run --profile ci --manifest-path cli/Cargo.toml -- --root . -p desktop test --only config-warnings,symlink-sources,config-files,manifest-sync"
+  fi
+
+  if full_checks_enabled; then
     printf "Running config drift integration test...\n"
     if ! cargo test --profile ci --manifest-path "$MANIFEST" --test config_drift 2>&1; then
       abort_with_hint \
         "config drift tests failed." \
         "cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift"
     fi
-  elif full_checks_enabled; then
-    printf '%sSkipping config drift integration test: cargo not installed.%s\n' "$DIM" "$NC"
   else
     printf '%sSkipping config drift integration test: set DOTFILES_HOOKS_FULL=1 to run it.%s\n' "$DIM" "$NC"
   fi

@@ -168,6 +168,7 @@ those areas surface only after release.
 | Wrapper | yes | yes | `dotfiles.sh` / `dotfiles.ps1` |
 | Application: git | yes | yes | Windows also asserts the `core.autocrlf` override |
 | Application: zsh, vim, nvim | yes | n/a | Excluded from the Windows profile |
+| Application: volume initialization | yes | n/a | PipeWire/PulseAudio integration is Linux-only |
 | Git hook sensitive-data check | yes | no | Hooks are POSIX `sh`; not run on Windows |
 | ShellCheck, PSScriptAnalyzer | yes | n/a | Both run on the Linux runner |
 | `cargo audit`, `cargo deny`, MSRV | yes | n/a | Platform-independent |
@@ -176,12 +177,10 @@ Cross-target Clippy catches most compile-time Windows breakage from Linux, but
 it does not validate runtime Windows behavior. When changing Windows-specific
 code paths, rely on the Windows CI jobs rather than local Linux checks alone.
 
-The git application test asserts values contributed by files under
-`~/.config/git`, not git's final effective value. Git reads `~/.gitconfig`
-after `$XDG_CONFIG_HOME/git/config`, so anything set there wins; GitHub's
-Windows runners ship a `~/.gitconfig` that would otherwise mask the
-`core.autocrlf` override. Scoping to the files this repository installs keeps
-the assertion about the dotfiles rather than about the machine.
+The Windows git application test asserts the final effective configuration
+outside any repository. Installation removes the obsolete managed
+`core.autocrlf` entry from `~/.gitconfig`, leaving the platform include under
+`~/.config/git` authoritative.
 
 ## Choosing coverage
 

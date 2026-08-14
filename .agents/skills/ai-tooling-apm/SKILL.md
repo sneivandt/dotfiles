@@ -58,6 +58,10 @@ the Rust `InstallApmPackages` task.
 - Cowork receives skills only. A Cowork-targeted skill must work without MCP,
   hooks, prompts, agents, commands, or instructions from its package. Keep
   skills whose core workflow requires live MCP tools off `copilot-cowork`.
+- On Windows, dotfiles does not invoke APM's direct Cowork deployment because
+  Cowork's OneDrive ACL blocks directory replacement. It reads dependency
+  `target_subset` values from the lockfile and reconciles allowed shared skills
+  file-by-file. Keep package filters accurate; they are the deployment policy.
 - Top-level `targets:` selects the manifest's default harnesses;
   dependency-level `targets:` narrows one package. Preserve that distinction
   when merging fragments or validating target coverage.

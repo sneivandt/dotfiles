@@ -14,7 +14,7 @@ use super::install::apm_task_should_run;
 use super::manifest::manifest_marker_matches;
 use super::skip;
 use super::sources::install_fingerprint;
-use super::targets::{ApmTargets, missing_apm_reason};
+use super::targets::{ApmTargets, CopilotDeployment, CopilotTarget, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
@@ -80,12 +80,7 @@ impl Task for UpdateApmPackages {
             .with_context(|| format!("checking APM lockfile {}", lock_path.display()))?;
         let merged = merge_fragments(&fragments)?;
         let targets = ApmTargets::detect(ctx)?;
-        let manifest_hash = install_fingerprint(
-            &merged,
-            home,
-            targets.includes_copilot_app(),
-            targets.includes_copilot_cowork(),
-        )?;
+        let manifest_hash = install_fingerprint(&merged, home, targets)?;
         let marker_path = home.join(".apm").join(".dotfiles-manifest.sha256");
         let marker_matches = manifest_marker_matches(&marker_path, &manifest_hash)?;
         if !lock_present || !marker_matches {
@@ -122,24 +117,19 @@ fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> TaskResult {
         "run apm update -g --yes with manifest-resolved runtimes; APM skips dependencies already \
          at their latest matching refs",
     );
-    match (
-        targets.includes_copilot_app(),
-        targets.includes_copilot_cowork(),
-    ) {
-        (true, true) => ctx.log().dry_run(
-            "run apm install -g --target copilot-app,copilot-cowork to redeploy updated Copilot \
-             App workflows and Microsoft 365 Copilot Cowork skills, then re-assert workflows to \
-             autopilot + enabled in ~/.copilot/data.db",
-        ),
-        (true, false) => ctx.log().dry_run(
-            "run apm install -g --target copilot-app to redeploy updated Copilot App workflows \
-             separately, then re-assert them to autopilot + enabled in ~/.copilot/data.db",
-        ),
-        (false, true) => ctx.log().dry_run(
-            "run apm install -g --target copilot-cowork to redeploy updated Microsoft 365 \
-             Copilot Cowork skills separately",
-        ),
-        (false, false) => {}
+    for target in targets.active() {
+        match target.deployment() {
+            CopilotDeployment::ExperimentalInstall { args, .. } => ctx.log().dry_run(format!(
+                "run apm {} to redeploy updated {} workflows separately, then re-assert them to \
+                 autopilot + enabled in ~/.copilot/data.db",
+                args.join(" "),
+                target.display_name()
+            )),
+            CopilotDeployment::CoworkReconcile => ctx.log().dry_run(
+                "reconcile updated Microsoft 365 Copilot Cowork skills from the shared APM \
+                 deployment without replacing Cowork-owned directories",
+            ),
+        }
     }
     TaskResult::DryRun
 }
@@ -150,7 +140,7 @@ fn preview_apm_update(ctx: &Context, targets: ApmTargets) -> TaskResult {
 /// it runs directly and the lockfile determines whether any ref advanced.
 fn advance_apm_dependencies(ctx: &Context, targets: ApmTargets) -> Result<TaskResult> {
     let pre_workflows = targets
-        .includes_copilot_app()
+        .includes(CopilotTarget::App)
         .then(|| snapshot_desired_apm_workflow_ids(ctx));
     let result = match run_apm_update(ctx, targets)? {
         ApmUpdateOutcome::Changed => {

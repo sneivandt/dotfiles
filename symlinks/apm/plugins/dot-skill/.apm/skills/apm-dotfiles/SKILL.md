@@ -74,6 +74,10 @@ dotfiles repo:
   Only include a plugin when its skills remain truthful and useful without
   those primitives. Keep workflows requiring live MCP tools on
   `agent-skills`.
+- On Windows, dotfiles avoids APM's direct Cowork target because Cowork's
+  OneDrive ACL blocks directory replacement. It uses locked dependency
+  `target_subset` values to reconcile allowed shared skills file-by-file, so
+  those package filters are authoritative.
 - Do not confuse dependency-level filters with the manifest's top-level
   `targets:` setting: the top-level list controls the default deployment
   harnesses, while each dependency's `targets:` narrows where that package is

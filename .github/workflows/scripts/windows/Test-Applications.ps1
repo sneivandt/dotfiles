@@ -153,13 +153,15 @@ function Test-GitConfig
         Write-TestPass "windows git include found: $windowsInclude"
         Assert-GitConfig -Key 'core.autocrlf' -Expected 'true'
 
-        $safeDirectories = @(& git config --get-all safe.directory 2>$null)
+        # Validate the repository-owned Windows fragment, not unrelated
+        # runner/system config that may deliberately trust the CI workspace.
+        $safeDirectories = @(& git config --file $windowsInclude --get-all safe.directory 2>$null)
         if ($safeDirectories -contains '*')
         {
             Write-TestFail 'safe.directory must not trust every repository'
             throw 'Assertion failed: unsafe safe.directory wildcard'
         }
-        Write-TestPass 'safe.directory contains no wildcard'
+        Write-TestPass 'managed safe.directory contains no wildcard'
     }
 }
 

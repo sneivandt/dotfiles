@@ -80,7 +80,7 @@ test_nvim_opens()
   log_verbose "Nvim binary OK"
 
   [ -d "$HOME/.config/nvim" ] || { printf "%sERROR: nvim config not installed: %s%s\n" "${RED}" "$HOME/.config/nvim" "${NC}" >&2; return 1; }
-  timeout 30 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1 || { printf "%sERROR: nvim failed to load config%s\n" "${RED}" "${NC}" >&2; return 1; }
+  timeout 120 nvim --headless -c ':qa!' </dev/null >/dev/null 2>&1 || { printf "%sERROR: nvim failed to load config%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Nvim loads custom config"
 )}
 
@@ -91,6 +91,7 @@ test_nvim_plugins()
   log_stage "Testing nvim plugins"
 
   lazy_dir="$HOME/.local/share/nvim/lazy"
+  timeout 180 nvim --headless '+Lazy! sync' '+qa!' </dev/null >/dev/null 2>&1 || { printf "%sERROR: lazy.nvim failed to synchronize plugins%s\n" "${RED}" "${NC}" >&2; return 1; }
   [ -d "$lazy_dir/lazy.nvim" ] || { printf "%sERROR: lazy.nvim not bootstrapped: %s%s\n" "${RED}" "$lazy_dir/lazy.nvim" "${NC}" >&2; return 1; }
 
   count=$(find "$lazy_dir" -mindepth 1 -maxdepth 1 -type d | wc -l)

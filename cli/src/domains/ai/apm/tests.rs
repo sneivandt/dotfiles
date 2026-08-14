@@ -12,11 +12,10 @@ use crate::test_helpers::{
 use super::test_fixture::{
     DEFAULT_FRAGMENT, expect_apm_install, expect_apm_install_without_enable, expect_apm_outdated,
     expect_apm_outdated_in_sequence, expect_apm_prune, expect_apm_update,
-    expect_copilot_app_enable, expect_copilot_app_workflow_install, expect_copilot_cowork_enable,
-    expect_copilot_cowork_install, expect_copilot_experimental_install, expect_which_apm, has_env,
+    expect_copilot_app_enable, expect_copilot_app_workflow_install, expect_which_apm, has_env,
     install_task, make_context_with_home, make_home_context_with_executor, update_task,
     write_copilot_app_db, write_current_manifest_and_lock, write_current_manifest_lock_and_marker,
-    write_default_home_fragment, write_home_fragment,
+    write_default_home_fragment, write_empty_apm_lock, write_home_fragment,
 };
 use super::update::normalize_lock_snapshot;
 use std::path::PathBuf;
@@ -153,11 +152,11 @@ fn run_installs_copilot_app_separately_on_windows_when_app_database_exists() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert_eq!(spec.arguments(), ["install", "-g"]);
+            write_empty_apm_lock(&spec);
             Ok(ExecResult::success("installed\n"))
         });
     expect_copilot_app_enable(&mut mock, &mut seq);
-    expect_copilot_cowork_enable(&mut mock, &mut seq);
-    expect_copilot_experimental_install(&mut mock, &mut seq);
+    expect_copilot_app_workflow_install(&mut mock, &mut seq);
     expect_apm_prune(&mut mock, &mut seq, dir.path());
 
     let ctx = make_context_with_home(dir.path(), Platform::new(Os::Windows, false), mock);
@@ -563,7 +562,7 @@ fn install_skips_experimental_enable_when_apm_config_reports_it_enabled() {
 }
 
 #[test]
-fn install_deploys_copilot_cowork_separately_on_windows() {
+fn install_reconciles_copilot_cowork_without_direct_apm_target() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_install_home_fragment(dir.path());
 
@@ -575,35 +574,9 @@ fn install_deploys_copilot_cowork_separately_on_windows() {
         .in_sequence(&mut seq)
         .returning(|spec| {
             assert_eq!(spec.arguments(), ["install", "-g"]);
+            write_empty_apm_lock(&spec);
             Ok(ExecResult::success("installed\n"))
         });
-    expect_copilot_cowork_enable(&mut mock, &mut seq);
-    expect_copilot_cowork_install(&mut mock, &mut seq);
-    expect_apm_prune(&mut mock, &mut seq, dir.path());
-
-    let ctx = make_context_with_home(dir.path(), Platform::new(Os::Windows, false), mock);
-    let result = install_task().run(&ctx).expect("run should not error");
-
-    assert_task_changed(&result);
-}
-
-#[test]
-fn install_skips_cowork_enable_when_apm_config_reports_it_enabled() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    write_install_home_fragment(dir.path());
-    write_apm_config(dir.path(), "{\"experimental\":{\"copilot_cowork\":true}}");
-
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    expect_which_apm(&mut mock, true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["install", "-g"]);
-            Ok(ExecResult::success("installed\n"))
-        });
-    expect_copilot_cowork_install(&mut mock, &mut seq);
     expect_apm_prune(&mut mock, &mut seq, dir.path());
 
     let ctx = make_context_with_home(dir.path(), Platform::new(Os::Windows, false), mock);
@@ -839,7 +812,7 @@ fn run_continues_when_experimental_enable_fails() {
 }
 
 #[test]
-fn run_propagates_prune_failures_after_persisting_marker() {
+fn run_propagates_prune_failures_without_persisting_marker() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_default_home_fragment(dir.path());
 
@@ -856,6 +829,7 @@ fn run_propagates_prune_failures_after_persisting_marker() {
     expect_copilot_app_enable(&mut mock, &mut seq);
     expect_copilot_app_workflow_install(&mut mock, &mut seq);
     let marker = dir.path().join(".apm").join(".dotfiles-manifest.sha256");
+    let marker_during_prune = marker.clone();
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -867,7 +841,10 @@ fn run_propagates_prune_failures_after_persisting_marker() {
                 Some(".apm")
             );
             assert_eq!(spec.arguments(), ["prune"]);
-            assert!(marker.exists(), "marker must be persisted before pruning");
+            assert!(
+                !marker_during_prune.exists(),
+                "marker must not be persisted before pruning succeeds"
+            );
             Err(command_failure("prune failed"))
         });
 
@@ -878,6 +855,10 @@ fn run_propagates_prune_failures_after_persisting_marker() {
     assert!(
         format!("{err:#}").contains("prune failed"),
         "expected propagated prune failure, got {err:#}"
+    );
+    assert!(
+        !marker.exists(),
+        "failed pruning must leave the install marker stale"
     );
 }
 

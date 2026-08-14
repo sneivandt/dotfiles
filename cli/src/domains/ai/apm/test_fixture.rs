@@ -14,6 +14,7 @@ use super::fragments::{discover_fragment_files, merge_fragments};
 use super::install::InstallApmPackages;
 use super::manifest::write_manifest_marker;
 use super::sources::install_fingerprint;
+use super::targets::{ApmTargets, CopilotTarget};
 use super::update::UpdateApmPackages;
 
 /// Default APM fragment shared across APM test suites.
@@ -55,11 +56,14 @@ pub fn write_current_manifest_lock_and_marker(home: &Path) {
 fn refresh_manifest_marker(home: &Path) {
     let manifest =
         std::fs::read_to_string(home.join(".apm").join("apm.yml")).expect("read manifest");
-    let includes_copilot_app = home.join(".copilot").join("data.db").exists();
+    let targets = if home.join(".copilot").join("data.db").exists() {
+        ApmTargets::from_targets(&[CopilotTarget::App])
+    } else {
+        ApmTargets::default()
+    };
     write_manifest_marker(
         &home.join(".apm").join(".dotfiles-manifest.sha256"),
-        &install_fingerprint(&manifest, home, includes_copilot_app, false)
-            .expect("fingerprint manifest"),
+        &install_fingerprint(&manifest, home, targets).expect("fingerprint manifest"),
     )
     .expect("write marker");
 }
@@ -152,69 +156,16 @@ pub fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Seq
         });
 }
 
-/// Queue the best-effort `apm experimental enable copilot-cowork` call.
-pub fn expect_copilot_cowork_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_eq!(
-                spec.arguments(),
-                ["experimental", "enable", "copilot-cowork"]
-            );
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            Ok(ExecResult::success(
-                "[+] Enabled experimental feature: copilot-cowork\n",
-            ))
-        });
-}
-
-/// Queue the separate Microsoft 365 Copilot Cowork skills deploy.
-pub fn expect_copilot_cowork_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-cowork"]
-            );
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            std::fs::write(
-                spec.working_dir()
-                    .expect("Cowork install working directory")
-                    .join(".apm")
-                    .join("apm.lock.yaml"),
-                "deployments: []\n",
-            )
-            .expect("write Cowork lock fixture");
-            Ok(ExecResult::success("installed Cowork skills\n"))
-        });
-}
-
-/// Queue the combined Copilot App and Cowork experimental deployment.
-pub fn expect_copilot_experimental_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
-    mock.expect_execute()
-        .once()
-        .in_sequence(seq)
-        .returning(|spec| {
-            assert_eq!(
-                spec.arguments(),
-                ["install", "-g", "--target", "copilot-app,copilot-cowork"]
-            );
-            assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
-            std::fs::write(
-                spec.working_dir()
-                    .expect("experimental install working directory")
-                    .join(".apm")
-                    .join("apm.lock.yaml"),
-                "deployments: []\n",
-            )
-            .expect("write experimental lock fixture");
-            Ok(ExecResult::success(
-                "installed Copilot workflows and Cowork skills\n",
-            ))
-        });
+/// Simulate APM writing a lockfile during a successful primary install.
+pub fn write_empty_apm_lock(spec: &CommandSpec) {
+    std::fs::write(
+        spec.working_dir()
+            .expect("APM install working directory")
+            .join(".apm")
+            .join("apm.lock.yaml"),
+        "dependencies: []\n",
+    )
+    .expect("write APM lock fixture");
 }
 
 /// Queue `apm update -g --yes`, returning `stdout`.

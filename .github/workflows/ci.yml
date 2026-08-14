@@ -130,6 +130,7 @@ jobs:
           ./bin/dotfiles --root . -p desktop test --only config-warnings,symlink-sources,config-files,manifest-sync
       - name: Run configuration-specific script tests
         run: |
+          export DIR="${{ github.workspace }}"
           python3 .github/workflows/scripts/linux/test-fullscreen-waybar.py
           python3 .github/workflows/scripts/linux/test-workspaces.py
 
@@ -387,7 +388,9 @@ jobs:
       - name: Install dotfiles with base profile
         run: |
           chmod +x bin/dotfiles
-          ./bin/dotfiles --root . -p base install -v --skip apm
+          # Keep the full checkout available to matrix tests, including assets
+          # that are intentionally excluded from the runner's active profile.
+          ./bin/dotfiles --root . -p base install -v --skip apm,sparse-checkout
       - name: Test ${{ matrix.application }}
         run: |
           export DIR="$(pwd)"

@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result};
 use super::ApmFragmentSource;
 use super::autopilot::{apply_workflow_autopilot_fixup, snapshot_desired_apm_workflow_ids};
 use super::commands::{ApmCommand, install_task_result, prune_user_scope, run_apm_command};
-use super::cowork::cowork_skills_are_current;
+use super::cowork::{cowork_skills_are_current, reconcile_cowork_skills};
 use super::fragments::{discover_effective_fragment_files, merge_fragments};
 use super::manifest::{
     describe_dependencies, manifest_marker_matches, merged_manifest_needs_write,
@@ -16,7 +16,7 @@ use super::manifest::{
 };
 use super::skip;
 use super::sources::install_fingerprint;
-use super::targets::{ApmTargets, missing_apm_reason};
+use super::targets::{ApmTargets, CopilotDeployment, CopilotTarget, missing_apm_reason};
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
@@ -98,12 +98,7 @@ impl ApmInstallPlan {
         let marker_path = apm_dir.join(".dotfiles-manifest.sha256");
         let merged = merge_fragments(fragments)?;
         let targets = ApmTargets::detect(ctx)?;
-        let manifest_hash = install_fingerprint(
-            &merged,
-            home,
-            targets.includes_copilot_app(),
-            targets.includes_copilot_cowork(),
-        )?;
+        let manifest_hash = install_fingerprint(&merged, home, targets)?;
         let mut change = ApmInstallChange::detect(
             &manifest_path,
             &lock_path,
@@ -112,7 +107,7 @@ impl ApmInstallPlan {
             &manifest_hash,
         )?;
         if change == ApmInstallChange::Current
-            && targets.includes_copilot_cowork()
+            && targets.includes(CopilotTarget::Cowork)
             && !cowork_skills_are_current(ctx)?
         {
             change = ApmInstallChange::CoworkDrift;
@@ -160,31 +155,29 @@ impl ApmInstallPlan {
             }
             ApmInstallChange::CoworkDrift => {
                 ctx.log().dry_run(
-                    "run apm install -g because Microsoft 365 Copilot Cowork skill files have \
-                     drifted from the shared APM deployment",
+                    "reconcile Microsoft 365 Copilot Cowork skill files from the shared APM \
+                     deployment without replacing Cowork-owned directories",
                 );
                 1
             }
         };
-        match (
-            self.targets.includes_copilot_app(),
-            self.targets.includes_copilot_cowork(),
-        ) {
-            (true, true) => ctx.log().dry_run(
-                "run apm install -g --target copilot-app,copilot-cowork to sync Copilot App \
-                 workflows and Microsoft 365 Copilot Cowork skills",
-            ),
-            (true, false) => ctx.log().dry_run(
-                "run apm install -g --target copilot-app to sync Copilot App workflows separately",
-            ),
-            (false, true) => ctx.log().dry_run(
-                "run apm install -g --target copilot-cowork to sync Microsoft 365 Copilot Cowork \
-                 skills separately",
-            ),
-            (false, false) => {}
-        }
-        if self.targets.includes_copilot_app() || self.targets.includes_copilot_cowork() {
-            planned = planned.saturating_add(1);
+        if self.change != ApmInstallChange::CoworkDrift {
+            for target in self.targets.active() {
+                match target.deployment() {
+                    CopilotDeployment::ExperimentalInstall { args, .. } => {
+                        ctx.log().dry_run(format!(
+                            "run apm {} to sync {} workflows separately",
+                            args.join(" "),
+                            target.display_name()
+                        ));
+                    }
+                    CopilotDeployment::CoworkReconcile => ctx.log().dry_run(
+                        "reconcile Microsoft 365 Copilot Cowork skills from the shared APM \
+                         deployment without replacing Cowork-owned directories",
+                    ),
+                }
+                planned = planned.saturating_add(1);
+            }
         }
         TaskStats::from_counts(planned, 0, 0, 0).finish()
     }
@@ -204,10 +197,17 @@ impl ApmInstallPlan {
             });
             return Ok(TaskResult::Ok);
         }
+        if self.change == ApmInstallChange::CoworkDrift {
+            reconcile_cowork_skills(ctx)?;
+            return Ok(TaskStats::changed_with_message(
+                "reconciled Microsoft 365 Copilot Cowork skills",
+            )
+            .finish());
+        }
 
         let pre_workflows = self
             .targets
-            .includes_copilot_app()
+            .includes(CopilotTarget::App)
             .then(|| snapshot_desired_apm_workflow_ids(ctx));
         if self.change == ApmInstallChange::ManifestChanged {
             write_merged_manifest(&self.manifest_path, &self.merged)?;
@@ -230,8 +230,8 @@ impl ApmInstallPlan {
             "installed: {}",
             describe_dependencies(&self.merged)
         ));
-        write_manifest_marker(&self.marker_path, &self.manifest_hash)?;
         prune_user_scope(ctx)?;
+        write_manifest_marker(&self.marker_path, &self.manifest_hash)?;
 
         // Convergence is complete.  Advancing locked dependency refs
         // is a separate concern handled by the `update`-only task, so this task

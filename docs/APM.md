@@ -65,25 +65,22 @@ APM resolves the runtime set in this order:
 4. Auto-detection.
 
 The APM packages task deliberately omits `--target` on its primary invocation so
-the merged manifest stays the source of truth. Experimental targets are
-exceptions because APM does not accept them in `apm.yml`:
-
-- On Windows, the task idempotently enables `copilot-cowork`, then includes it
-  in one explicit experimental-target install so package skills deploy to the
-  detected OneDrive Cowork skills directory.
-- When the Copilot App database exists, that same explicit install includes
-  `copilot-app` to deploy workflows. Combining active experimental targets keeps
-  APM's shared deployment ledger intact.
+the merged manifest stays the source of truth. Copilot App is an exception
+because APM does not accept its experimental target in `apm.yml`: when the App
+database exists, the task idempotently enables `copilot-app` and runs a separate
+`apm install -g --target copilot-app` to deploy workflows.
 
 Cowork stores skills under OneDrive and protects existing skill directories
-from deletion. APM currently replaces colliding directories as a unit, which
-can leave Cowork placeholders incomplete. After the explicit target install,
-the task therefore uses the lockfile's `cowork://skills/...` ledger to recopy
-only Cowork-targeted skills from `~/.agents/skills` without replacing their
-directories. It removes `SKILL.md` from shared skills excluded by dependency
-target filters while preserving Cowork-owned placeholder files and ACLs.
-Dry-run compares this state directly, so missing, changed, or incorrectly
-included Cowork skills are reported before apply performs the repair.
+from deletion. APM currently replaces colliding directories as a unit, so
+repeated direct `copilot-cowork` installs fail with access denied once Cowork
+has created those directories. On Windows, the task instead reads each locked
+dependency's `target_subset` after the primary install, selects packages whose
+filter includes `copilot-cowork` (or has no filter), and copies their resolved
+skills from `~/.agents/skills` file-by-file. It removes `SKILL.md` from excluded
+or removed skills while preserving Cowork-owned placeholder files, directories,
+and ACLs. Dry-run compares this state directly, so missing, changed, or
+incorrectly included Cowork skills are reported before apply performs the same
+reconciliation.
 
 Fragments merge their `targets:` lists by union with deduplication, so a private
 overlay fragment can add a runtime without restating the base list.
@@ -135,7 +132,7 @@ dependencies stay quiet in both modes; an unrecognized probe result is
 previewed conservatively rather than producing a false negative. When updates
 exist, apply invokes APM's native update and compares only dependency-resolution
 state before and after. Volatile timestamps and deployment/MCP ledgers rewritten
-by experimental-target convergence do not count as version advances.
+by target convergence do not count as version advances.
 
 ```bash
 dotfiles update --only apm,apm-update

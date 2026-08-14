@@ -6,8 +6,8 @@
 //! `~/.apm/plugins/` — are symlinked straight at the repository, so editing a
 //! skill changes what APM must deploy without changing a single byte of
 //! `~/.apm/apm.yml`. The resolved target set matters for the same reason:
-//! installing Copilot App or Cowork adds deployment targets that an unchanged
-//! manifest would otherwise never be redeployed into.
+//! installing Copilot App or reconciling Cowork adds managed targets that an
+//! unchanged manifest would otherwise never be redeployed into.
 //!
 //! Folding all three into one fingerprint is what lets
 //! [`super::install::InstallApmPackages`] skip a redundant multi-second `apm
@@ -20,6 +20,7 @@ use anyhow::{Context as _, Result};
 use sha2::{Digest as _, Sha256};
 
 use super::manifest::hex_digest;
+use super::targets::ApmTargets;
 
 /// Directory depth walked when hashing a local dependency source.
 ///
@@ -32,14 +33,14 @@ const MAX_DEPTH: usize = 16;
 /// These hold derived or vendored content whose churn says nothing about what
 /// APM would deploy, and walking them would dominate the hash cost.
 const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "target"];
-const FINGERPRINT_VERSION: &[u8] = b"apm-install-plan-v3\n";
+const FINGERPRINT_VERSION: &[u8] = b"apm-install-plan-v4\n";
 
 /// Build the fingerprint recorded in the APM install marker.
 ///
 /// Covers the merged manifest, the on-disk content of every local dependency
-/// source it references, and whether the explicit Copilot App and Cowork
-/// targets are in play, so a matching marker means "the last successful install
-/// already deployed exactly this".
+/// source it references, and whether the explicit Copilot App install and
+/// managed Cowork reconciliation are in play, so a matching marker means "the
+/// last successful install already deployed exactly this".
 ///
 /// # Errors
 ///
@@ -50,16 +51,15 @@ const FINGERPRINT_VERSION: &[u8] = b"apm-install-plan-v3\n";
 pub(super) fn install_fingerprint(
     merged: &str,
     home: &Path,
-    includes_copilot_app: bool,
-    includes_copilot_cowork: bool,
+    targets: ApmTargets,
 ) -> Result<String> {
     let mut hasher = Sha256::new();
     hasher.update(FINGERPRINT_VERSION);
     hasher.update(merged.as_bytes());
-    hasher.update(b"\ntargets:copilot-app=");
-    hasher.update(if includes_copilot_app { b"1" } else { b"0" });
-    hasher.update(b"\ntargets:copilot-cowork=");
-    hasher.update(if includes_copilot_cowork { b"1" } else { b"0" });
+    for target in targets.active() {
+        hasher.update(b"\ntarget:");
+        hasher.update(target.apm_name().as_bytes());
+    }
     hasher.update(b"\n");
 
     for path in local_dependency_paths(merged, home) {
@@ -200,6 +200,7 @@ fn sorted_children(dir: &Path) -> Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::ai::apm::targets::CopilotTarget;
 
     const MANIFEST: &str = "\
 name: dotfiles
@@ -209,6 +210,10 @@ dependencies:
     - ~/.apm/plugins/dot-agent
     - owner/registry-package
 ";
+
+    fn fingerprint(manifest: &str, home: &Path, targets: &[CopilotTarget]) -> Result<String> {
+        install_fingerprint(manifest, home, ApmTargets::from_targets(targets))
+    }
 
     fn seed_plugin(home: &Path, body: &str) {
         let plugin = home.join(".apm").join("plugins").join("dot-agent");
@@ -261,10 +266,10 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# before\n");
-        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let before = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
 
         seed_plugin(home, "# after\n");
-        let after = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let after = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
 
         assert_ne!(
             before, after,
@@ -277,8 +282,8 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# body\n");
-        let first = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
-        let second = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let first = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
+        let second = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
         assert_eq!(
             first, second,
             "repeated hashing of an unchanged tree must agree"
@@ -290,7 +295,7 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# body\n");
-        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let before = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
 
         std::fs::write(
             home.join(".apm")
@@ -303,7 +308,7 @@ dependencies:
             "extra\n",
         )
         .expect("write");
-        let after = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let after = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
 
         assert_ne!(before, after, "a new plugin file must change the print");
     }
@@ -314,8 +319,8 @@ dependencies:
         let home = dir.path();
         seed_plugin(home, "# body\n");
 
-        let without = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
-        let with = install_fingerprint(MANIFEST, home, true, false).expect("fingerprint");
+        let without = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
+        let with = fingerprint(MANIFEST, home, &[CopilotTarget::App]).expect("fingerprint");
 
         assert_ne!(
             without, with,
@@ -329,8 +334,8 @@ dependencies:
         let home = dir.path();
         seed_plugin(home, "# body\n");
 
-        let without = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
-        let with = install_fingerprint(MANIFEST, home, false, true).expect("fingerprint");
+        let without = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
+        let with = fingerprint(MANIFEST, home, &[CopilotTarget::Cowork]).expect("fingerprint");
 
         assert_ne!(
             without, with,
@@ -344,12 +349,11 @@ dependencies:
         let home = dir.path();
         seed_plugin(home, "# body\n");
 
-        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
-        let after = install_fingerprint(
+        let before = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
+        let after = fingerprint(
             &format!("{MANIFEST}    - owner/another-package\n"),
             home,
-            false,
-            false,
+            &[],
         )
         .expect("fingerprint");
 
@@ -359,7 +363,7 @@ dependencies:
     #[test]
     fn missing_local_sources_do_not_fail_the_fingerprint() {
         let dir = tempfile::tempdir().expect("temp dir");
-        let print = install_fingerprint(MANIFEST, dir.path(), false, false)
+        let print = fingerprint(MANIFEST, dir.path(), &[])
             .expect("an absent plugin must not fail fingerprinting");
         assert_eq!(print.len(), 64, "fingerprint should be a sha256 hex digest");
     }
@@ -369,7 +373,7 @@ dependencies:
         let dir = tempfile::tempdir().expect("temp dir");
         let home = dir.path();
         seed_plugin(home, "# body\n");
-        let before = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let before = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
 
         let git_dir = home
             .join(".apm")
@@ -378,7 +382,7 @@ dependencies:
             .join(".git");
         std::fs::create_dir_all(&git_dir).expect("mkdir");
         std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").expect("write");
-        let after = install_fingerprint(MANIFEST, home, false, false).expect("fingerprint");
+        let after = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
 
         assert_eq!(
             before, after,

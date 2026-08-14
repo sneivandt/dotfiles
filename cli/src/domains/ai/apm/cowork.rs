@@ -1,10 +1,10 @@
 //! Microsoft 365 Copilot Cowork deployment repair.
 //!
 //! Cowork protects its `OneDrive` skill directories from deletion. APM currently
-//! replaces colliding skill directories as a unit, so previously-created
-//! Cowork placeholders can be left without their managed files. Recopying the
-//! already-resolved shared APM skill target converges those directories without
-//! deleting or replacing them.
+//! replaces colliding skill directories as a unit, so direct Cowork deployment
+//! fails once those directories exist. Recopying the already-resolved shared APM
+//! skill target converges allowed packages without deleting or replacing Cowork
+//! directories.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -12,8 +12,9 @@ use std::path::{Path, PathBuf};
 use crate::engine::Context;
 use crate::infra::fs::copy_dir_recursive;
 use anyhow::{Context as _, Result};
+use serde::Deserialize;
 
-const ONEDRIVE_COMMERCIAL: &str = "ONEDRIVECOMMERCIAL";
+use super::targets::copilot_cowork_skills_path;
 
 /// Reconcile APM's shared skill deployment into Cowork's protected skill tree.
 ///
@@ -23,7 +24,9 @@ const ONEDRIVE_COMMERCIAL: &str = "ONEDRIVECOMMERCIAL";
 /// skill target is missing, or a skill file cannot be copied.
 pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<()> {
     let (source, target) = cowork_skill_paths(ctx)?;
-    let deployed = deployed_cowork_skill_names(ctx.home())?;
+    let deployed = desired_cowork_skill_names(ctx.home())?;
+    std::fs::create_dir_all(&target)
+        .with_context(|| format!("creating Copilot Cowork skill target {}", target.display()))?;
     for entry in
         std::fs::read_dir(&source).with_context(|| format!("reading {}", source.display()))?
     {
@@ -46,19 +49,20 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<()> {
                 )
             })?;
         } else {
-            let entry_point = target_skill.join("SKILL.md");
-            match std::fs::remove_file(&entry_point) {
-                Ok(()) => {}
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => {
-                    return Err(err).with_context(|| {
-                        format!(
-                            "removing excluded Copilot Cowork skill entry point {}",
-                            entry_point.display()
-                        )
-                    });
-                }
-            }
+            remove_skill_entry_point(&target_skill)?;
+        }
+    }
+    for entry in
+        std::fs::read_dir(&target).with_context(|| format!("reading {}", target.display()))?
+    {
+        let entry = entry.with_context(|| format!("reading entry in {}", target.display()))?;
+        if entry
+            .file_type()
+            .with_context(|| format!("reading type for {}", entry.path().display()))?
+            .is_dir()
+            && !deployed.contains(&entry.file_name().to_string_lossy().into_owned())
+        {
+            remove_skill_entry_point(&entry.path())?;
         }
     }
     Ok(())
@@ -70,7 +74,7 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<()> {
 /// prevents deletion. Those do not make the managed files stale.
 pub(super) fn cowork_skills_are_current(ctx: &Context) -> Result<bool> {
     let (source, target) = cowork_skill_paths(ctx)?;
-    let deployed = deployed_cowork_skill_names(ctx.home())?;
+    let deployed = desired_cowork_skill_names(ctx.home())?;
     for entry in
         std::fs::read_dir(&source).with_context(|| format!("reading {}", source.display()))?
     {
@@ -101,7 +105,46 @@ pub(super) fn cowork_skills_are_current(ctx: &Context) -> Result<bool> {
             return Ok(false);
         }
     }
+    if target.is_dir() {
+        for entry in
+            std::fs::read_dir(&target).with_context(|| format!("reading {}", target.display()))?
+        {
+            let entry = entry.with_context(|| format!("reading entry in {}", target.display()))?;
+            if entry
+                .file_type()
+                .with_context(|| format!("reading type for {}", entry.path().display()))?
+                .is_dir()
+                && !deployed.contains(&entry.file_name().to_string_lossy().into_owned())
+                && entry
+                    .path()
+                    .join("SKILL.md")
+                    .try_exists()
+                    .with_context(|| {
+                        format!(
+                            "checking excluded Copilot Cowork skill {}",
+                            entry.path().display()
+                        )
+                    })?
+            {
+                return Ok(false);
+            }
+        }
+    }
     Ok(true)
+}
+
+fn remove_skill_entry_point(target_skill: &Path) -> Result<()> {
+    let entry_point = target_skill.join("SKILL.md");
+    match std::fs::remove_file(&entry_point) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err).with_context(|| {
+            format!(
+                "removing excluded Copilot Cowork skill entry point {}",
+                entry_point.display()
+            )
+        }),
+    }
 }
 
 fn skill_tree_is_current(source: &Path, target: &Path) -> Result<bool> {
@@ -157,53 +200,50 @@ fn cowork_skill_paths(ctx: &Context) -> Result<(PathBuf, PathBuf)> {
         source.display()
     );
 
-    let onedrive = ctx
-        .env()
-        .var_os(ONEDRIVE_COMMERCIAL)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
+    let target = copilot_cowork_skills_path(ctx)
         .context("ONEDRIVECOMMERCIAL is not set; cannot locate Copilot Cowork skills")?;
-    let target = onedrive.join("Documents").join("Cowork").join("skills");
     Ok((source, target))
 }
 
-fn deployed_cowork_skill_names(home: &Path) -> Result<BTreeSet<String>> {
+#[derive(Debug, Deserialize)]
+struct ApmLock {
+    #[serde(default)]
+    dependencies: Vec<LockedDependency>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LockedDependency {
+    #[serde(default)]
+    deployed_files: Vec<String>,
+    target_subset: Option<Vec<String>>,
+}
+
+fn desired_cowork_skill_names(home: &Path) -> Result<BTreeSet<String>> {
     let lock_path = home.join(".apm").join("apm.lock.yaml");
     let lock = std::fs::read_to_string(&lock_path)
         .with_context(|| format!("reading APM lockfile {}", lock_path.display()))?;
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&lock)
+    let lock: ApmLock = serde_yaml_ng::from_str(&lock)
         .with_context(|| format!("parsing APM lockfile {}", lock_path.display()))?;
     let mut names = BTreeSet::new();
-    collect_cowork_skill_names(&value, &mut names);
-    Ok(names)
-}
-
-fn collect_cowork_skill_names(value: &serde_yaml_ng::Value, names: &mut BTreeSet<String>) {
-    use serde_yaml_ng::Value;
-
-    match value {
-        Value::String(value) => {
-            if let Some(path) = value.strip_prefix("cowork://skills/")
+    for dependency in lock.dependencies {
+        if dependency
+            .target_subset
+            .as_ref()
+            .is_some_and(|targets| !targets.iter().any(|target| target == "copilot-cowork"))
+        {
+            continue;
+        }
+        for deployed_file in dependency.deployed_files {
+            let normalized = deployed_file.replace('\\', "/");
+            if let Some(path) = normalized.strip_prefix(".agents/skills/")
                 && let Some(name) = path.split('/').next()
                 && !name.is_empty()
             {
                 names.insert(name.to_owned());
             }
         }
-        Value::Sequence(items) => {
-            for item in items {
-                collect_cowork_skill_names(item, names);
-            }
-        }
-        Value::Mapping(entries) => {
-            for (key, item) in entries {
-                collect_cowork_skill_names(key, names);
-                collect_cowork_skill_names(item, names);
-            }
-        }
-        Value::Tagged(tagged) => collect_cowork_skill_names(&tagged.value, names),
-        Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
+    Ok(names)
 }
 
 #[cfg(test)]
@@ -215,6 +255,7 @@ mod tests {
     use crate::infra::platform::{Os, Platform};
 
     use super::*;
+    use crate::domains::ai::apm::targets::ONEDRIVE_COMMERCIAL;
     use crate::domains::ai::apm::test_fixture::make_context_with_home;
 
     #[test]
@@ -232,7 +273,11 @@ mod tests {
         std::fs::create_dir_all(dir.path().join(".apm")).expect("create APM directory");
         std::fs::write(
             dir.path().join(".apm").join("apm.lock.yaml"),
-            "deployments:\n- cowork://skills/example/SKILL.md\n",
+            "dependencies:\n\
+             - deployed_files:\n\
+             \x20 - .agents/skills/example\n\
+             \x20 - .agents/skills/example/SKILL.md\n\
+             \x20 target_subset: [agent-skills, copilot-cowork]\n",
         )
         .expect("write lock");
         std::fs::write(source_skill.join("SKILL.md"), "current").expect("write source");
@@ -274,11 +319,52 @@ mod tests {
         std::fs::create_dir_all(dir.path().join(".apm")).expect("create APM directory");
         std::fs::write(
             dir.path().join(".apm").join("apm.lock.yaml"),
-            "deployments: []\n",
+            "dependencies:\n\
+             - deployed_files:\n\
+             \x20 - .agents/skills/mcp-only\n\
+             \x20 - .agents/skills/mcp-only/SKILL.md\n\
+             \x20 - cowork://skills/mcp-only\n\
+             \x20 target_subset: [agent-skills]\n",
         )
         .expect("write lock");
         std::fs::write(source_skill.join("SKILL.md"), "requires MCP").expect("write source");
         std::fs::write(target_skill.join("SKILL.md"), "requires MCP").expect("write target");
+        std::fs::write(target_skill.join("placeholder.txt"), "preserved")
+            .expect("write placeholder");
+
+        let ctx = make_context_with_home(
+            dir.path(),
+            Platform::new(Os::Windows, false),
+            MockExecutor::new(),
+        )
+        .with_env(Arc::new(MapEnv::new().with(ONEDRIVE_COMMERCIAL, &onedrive)));
+
+        assert!(!cowork_skills_are_current(&ctx).expect("compare skills"));
+        reconcile_cowork_skills(&ctx).expect("reconcile skills");
+        assert!(cowork_skills_are_current(&ctx).expect("compare skills"));
+        assert!(!target_skill.join("SKILL.md").exists());
+        assert!(target_skill.join("placeholder.txt").exists());
+    }
+
+    #[test]
+    fn reconcile_removes_entry_point_for_package_no_longer_installed() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let onedrive = dir.path().join("OneDrive - Test");
+        let target_skill = onedrive
+            .join("Documents")
+            .join("Cowork")
+            .join("skills")
+            .join("removed");
+        std::fs::create_dir_all(dir.path().join(".agents").join("skills"))
+            .expect("create source skills");
+        std::fs::create_dir_all(&target_skill).expect("create target skill");
+        std::fs::create_dir_all(dir.path().join(".apm")).expect("create APM directory");
+        std::fs::write(
+            dir.path().join(".apm").join("apm.lock.yaml"),
+            "dependencies: []\n",
+        )
+        .expect("write lock");
+        std::fs::write(target_skill.join("SKILL.md"), "removed").expect("write target");
         std::fs::write(target_skill.join("placeholder.txt"), "preserved")
             .expect("write placeholder");
 

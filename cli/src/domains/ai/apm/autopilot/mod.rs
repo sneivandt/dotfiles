@@ -40,7 +40,7 @@ mod scripts;
 
 use db::{WorkflowDbProbe, probe_workflow_db};
 use lockfile::read_deployed_workflow_ids;
-use outcome::{interpret_fixup_result, report_fixup_execution};
+use outcome::{FixupExecution, FixupOutcome, interpret_fixup_result, report_fixup_execution};
 #[cfg(test)]
 pub(super) use scripts::{WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT};
 #[cfg(not(test))]
@@ -89,21 +89,53 @@ fn run_workflow_script(
 /// toggle the workflows by hand).  The update runs through Python's stdlib
 /// `sqlite3` module so we do not need a `SQLite` binary on PATH or a Rust
 /// `SQLite` dependency.
-pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWorkflows) {
+pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWorkflows) -> bool {
     let Some(ids) = fixup_workflow_ids(ctx) else {
-        return;
+        return false;
     };
     let Some((python, db_str)) = fixup_runtime(ctx) else {
-        return;
+        return false;
     };
 
     match run_workflow_script(ctx, python, &db_str, WORKFLOW_AUTOPILOT_SCRIPT, &ids) {
-        Ok(result) => report_fixup_execution(ctx, interpret_fixup_result(result, pre)),
+        Ok(result) => {
+            let execution = interpret_fixup_result(result, pre);
+            let changed = matches!(
+                &execution,
+                FixupExecution::Completed {
+                    outcome: FixupOutcome::Set(_),
+                    ..
+                }
+            );
+            report_fixup_execution(ctx, execution);
+            changed
+        }
         Err(e) => {
             ctx.log().warn(format!(
                 "autopilot fixup could not run {python} (the apm operation still succeeded): {e:#}"
             ));
+            false
         }
+    }
+}
+
+/// Detect whether any dotfiles-managed Copilot App workflow is not currently
+/// configured for autopilot and enabled.
+///
+/// Returns the pre-fixup workflow snapshot when repair is needed so apply can
+/// report the exact number of workflows changed without probing the database a
+/// second time. Probe failures remain best-effort and return `None`; a later
+/// APM install or update will retry the existing post-deployment fixup.
+pub(super) fn detect_workflow_autopilot_drift(ctx: &Context) -> Option<DesiredApmWorkflows> {
+    let deployed = read_deployed_workflow_ids(ctx)?;
+    if deployed.is_empty() {
+        return None;
+    }
+    let current = snapshot_desired_apm_workflow_ids(ctx);
+    match &current {
+        DesiredApmWorkflows::Known(desired) if desired.len() == deployed.len() => None,
+        DesiredApmWorkflows::Known(_) | DesiredApmWorkflows::FirstInstall => Some(current),
+        DesiredApmWorkflows::Unavailable => None,
     }
 }
 

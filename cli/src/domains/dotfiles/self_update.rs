@@ -103,6 +103,15 @@ fn classify_update(current: &str, latest: String) -> UpdateCheck {
     }
 }
 
+fn update_check_failure_message(error: &anyhow::Error) -> String {
+    let detail = format!("{error:#}");
+    if detail.to_ascii_lowercase().contains("http status: 403") {
+        return "GitHub denied the anonymous release check (HTTP 403), likely due to API rate limiting; try again later"
+            .to_string();
+    }
+    format!("could not reach GitHub: {detail}")
+}
+
 /// Check whether an update is available by comparing the local cache and
 /// the latest GitHub release.
 ///
@@ -140,7 +149,10 @@ fn check_for_update_with_current(
         // either: without the cause, a persistently broken update (expired
         // proxy, rate limit, DNS) looks identical to being up to date.
         Err(error) => {
-            tracing::warn!("skipping self-update, could not reach GitHub: {error:#}");
+            tracing::warn!(
+                "skipping self-update: {}",
+                update_check_failure_message(&error)
+            );
             return Ok(UpdateCheck::Offline);
         }
     };
@@ -294,5 +306,28 @@ mod tests {
         let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1").unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
+    }
+
+    #[test]
+    fn http_403_failure_explains_anonymous_rate_limiting() {
+        let error = anyhow::anyhow!(
+            "querying latest release: GET https://api.github.com/repos/example/releases/latest: http status: 403"
+        );
+
+        let message = update_check_failure_message(&error);
+
+        assert_eq!(
+            message,
+            "GitHub denied the anonymous release check (HTTP 403), likely due to API rate limiting; try again later"
+        );
+    }
+
+    #[test]
+    fn other_update_failures_preserve_the_underlying_detail() {
+        let error = anyhow::anyhow!("DNS lookup failed");
+
+        let message = update_check_failure_message(&error);
+
+        assert_eq!(message, "could not reach GitHub: DNS lookup failed");
     }
 }

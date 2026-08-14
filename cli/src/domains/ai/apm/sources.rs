@@ -320,7 +320,7 @@ dependencies:
         seed_plugin(home, "# body\n");
 
         let without = fingerprint(MANIFEST, home, &[]).expect("fingerprint");
-        let with = fingerprint(MANIFEST, home, &[CopilotTarget::App]).expect("fingerprint");
+        let with = fingerprint(MANIFEST, home, &[CopilotTarget::CopilotApp]).expect("fingerprint");
 
         assert_ne!(
             without, with,

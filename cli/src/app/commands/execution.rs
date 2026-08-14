@@ -170,10 +170,9 @@ pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
     RunCoordinator::new(ctx, log).execute(ExecutionPlan::with_late_tasks(tasks, boundary, provider))
 }
 
-/// Count the tasks a run will report on, excluding internal ones.
+/// Count the visible tasks scheduled for progress reporting.
 ///
-/// The progress denominator and the run summary must agree, and the summary
-/// only accounts for visible tasks.
+/// Internal tasks appear in neither normal progress nor the run summary.
 fn visible_count<'a>(tasks: impl IntoIterator<Item = &'a dyn Task>) -> usize {
     tasks
         .into_iter()

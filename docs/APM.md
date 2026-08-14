@@ -68,7 +68,10 @@ The APM packages task deliberately omits `--target` on its primary invocation so
 the merged manifest stays the source of truth. Copilot App is an exception
 because APM does not accept its experimental target in `apm.yml`: when the App
 database exists, the task idempotently enables `copilot-app` and runs a separate
-`apm install -g --target copilot-app` to deploy workflows.
+`apm install -g --target copilot-app` to deploy workflows. The task also checks
+dotfiles-managed workflow rows when the APM manifest is otherwise current and
+re-arms any workflow that drifted from `autopilot` + enabled without rerunning
+APM.
 
 Cowork stores skills under OneDrive and protects existing skill directories
 from deletion. APM currently replaces colliding directories as a unit, so

@@ -62,9 +62,6 @@ pub struct Logger {
     pub(super) task_total: AtomicUsize,
     /// Number of tasks that have finished, used as the progress numerator.
     pub(super) tasks_completed: AtomicUsize,
-    /// Number of scheduled tasks the run does not report on, subtracted from
-    /// the progress denominator once each one finishes.
-    pub(super) tasks_excluded: AtomicUsize,
     /// The run log; `None` when the log directory is unavailable.
     ///
     /// Shared with the tracing bridge so that logger messages and raw
@@ -139,7 +136,6 @@ impl Logger {
             task_console_output_emitted: AtomicBool::new(false),
             task_total: AtomicUsize::new(0),
             tasks_completed: AtomicUsize::new(0),
-            tasks_excluded: AtomicUsize::new(0),
             run_log,
             start,
             verbose: true,
@@ -382,11 +378,9 @@ impl Logger {
 
     /// Record that one more task has finished, for the progress counter.
     ///
-    /// The counter must agree with the run summary, which reports on neither
-    /// internal tasks nor tasks that turned out not to apply. Internal tasks
-    /// were never added to the total, so they are simply ignored. Applicability
-    /// is only known once a task has run, so a non-applicable task leaves the
-    /// denominator instead of advancing the numerator.
+    /// Internal tasks were never added to the total, so they are ignored.
+    /// Every visible scheduled task advances the numerator, including tasks
+    /// that turn out not to apply, so the denominator remains stable.
     pub fn mark_task_completed(&self, task_name: &str) {
         self.mark_task_completed_by(|task| task.name == task_name);
     }
@@ -409,11 +403,7 @@ impl Logger {
         if !task.visibility.is_visible() {
             return;
         }
-        if task.status == TaskStatus::NotApplicable {
-            self.tasks_excluded.fetch_add(1, Ordering::Relaxed);
-        } else {
-            self.tasks_completed.fetch_add(1, Ordering::Relaxed);
-        }
+        self.tasks_completed.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Return the completed/total task counts for the progress line.
@@ -421,10 +411,7 @@ impl Logger {
     /// The numerator is clamped to the total so a miscount can never render a
     /// nonsensical `22/20`.
     pub(in crate::infra::logging) fn task_progress(&self) -> Option<(usize, usize)> {
-        let total = self
-            .task_total
-            .load(Ordering::Relaxed)
-            .saturating_sub(self.tasks_excluded.load(Ordering::Relaxed));
+        let total = self.task_total.load(Ordering::Relaxed);
         (total > 0).then(|| {
             let done = self.tasks_completed.load(Ordering::Relaxed).min(total);
             (done, total)

@@ -57,7 +57,7 @@ fn refresh_manifest_marker(home: &Path) {
     let manifest =
         std::fs::read_to_string(home.join(".apm").join("apm.yml")).expect("read manifest");
     let targets = if home.join(".copilot").join("data.db").exists() {
-        ApmTargets::from_targets(&[CopilotTarget::App])
+        ApmTargets::from_targets(&[CopilotTarget::CopilotApp])
     } else {
         ApmTargets::default()
     };

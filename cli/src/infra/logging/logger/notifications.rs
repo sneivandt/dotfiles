@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn non_applicable_tasks_leave_the_progress_denominator() {
+    fn non_applicable_tasks_complete_without_changing_the_denominator() {
         use crate::infra::logging::types::TaskStatus;
 
         let (log, _tmp, _guard) = isolated_logger();
@@ -218,8 +218,16 @@ mod tests {
 
         assert_eq!(
             log.task_progress(),
-            Some((1, 2)),
-            "applicability is only known after a task runs, so the total shrinks instead"
+            Some((2, 3)),
+            "a completed non-applicable task should advance progress without shrinking the total"
+        );
+        assert_eq!(
+            log.task_entries()
+                .last()
+                .expect("non-applicable task should remain recorded")
+                .status,
+            TaskStatus::NotApplicable,
+            "progress accounting must not change the reported task result"
         );
     }
 

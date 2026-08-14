@@ -12,17 +12,17 @@ pub(super) const ONEDRIVE_COMMERCIAL: &str = "ONEDRIVECOMMERCIAL";
 /// manifest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CopilotTarget {
-    App,
+    CopilotApp,
     Cowork,
 }
 
 impl CopilotTarget {
-    const ALL: [Self; 2] = [Self::App, Self::Cowork];
+    const ALL: [Self; 2] = [Self::CopilotApp, Self::Cowork];
 
     #[must_use]
     pub(super) const fn apm_name(self) -> &'static str {
         match self {
-            Self::App => "copilot-app",
+            Self::CopilotApp => "copilot-app",
             Self::Cowork => "copilot-cowork",
         }
     }
@@ -30,7 +30,7 @@ impl CopilotTarget {
     #[must_use]
     pub(super) const fn display_name(self) -> &'static str {
         match self {
-            Self::App => "Copilot App",
+            Self::CopilotApp => "Copilot App",
             Self::Cowork => "Microsoft 365 Copilot Cowork",
         }
     }
@@ -38,7 +38,7 @@ impl CopilotTarget {
     #[must_use]
     pub(super) const fn deployment(self) -> CopilotDeployment {
         match self {
-            Self::App => CopilotDeployment::ExperimentalInstall {
+            Self::CopilotApp => CopilotDeployment::ExperimentalInstall {
                 config_key: "copilot_app",
                 args: &["install", "-g", "--target", "copilot-app"],
             },
@@ -48,14 +48,14 @@ impl CopilotTarget {
 
     const fn mask(self) -> u8 {
         match self {
-            Self::App => 1,
+            Self::CopilotApp => 1,
             Self::Cowork => 2,
         }
     }
 
     fn is_available(self, ctx: &Context) -> Result<bool> {
         match self {
-            Self::App => {
+            Self::CopilotApp => {
                 let path = copilot_app_db_path(ctx);
                 path.try_exists()
                     .with_context(|| format!("checking Copilot App database {}", path.display()))
@@ -66,7 +66,7 @@ impl CopilotTarget {
 
     fn unavailable_detail(self, ctx: &Context) -> String {
         match self {
-            Self::App => copilot_app_db_path(ctx).display().to_string(),
+            Self::CopilotApp => copilot_app_db_path(ctx).display().to_string(),
             Self::Cowork if !ctx.system().platform().is_windows() => {
                 "this is not native Windows".to_string()
             }
@@ -134,16 +134,6 @@ impl ApmTargets {
             .into_iter()
             .filter(move |target| self.includes(*target))
     }
-
-    #[must_use]
-    pub(super) const fn install_args() -> &'static [&'static str] {
-        &["install", "-g"]
-    }
-
-    #[must_use]
-    pub(super) const fn update_args() -> &'static [&'static str] {
-        &["update", "-g", "--yes"]
-    }
 }
 
 /// Return the user-scope Copilot App database path used by APM.
@@ -209,7 +199,7 @@ mod tests {
 
         let targets = ApmTargets::detect(&ctx).expect("detect targets");
 
-        assert!(targets.includes(CopilotTarget::App));
+        assert!(targets.includes(CopilotTarget::CopilotApp));
         assert!(targets.includes(CopilotTarget::Cowork));
         assert_eq!(targets.active().count(), 2);
     }
@@ -226,7 +216,7 @@ mod tests {
 
         let targets = ApmTargets::detect(&ctx).expect("detect targets");
 
-        assert!(!targets.includes(CopilotTarget::App));
+        assert!(!targets.includes(CopilotTarget::CopilotApp));
         assert!(!targets.includes(CopilotTarget::Cowork));
         assert_eq!(targets.active().count(), 0);
     }

@@ -422,6 +422,79 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
 }
 
 #[test]
+fn current_install_repairs_autopilot_drift_without_rerunning_apm() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+    write_workflow_lock(dir.path(), &["apm--a"]);
+    let db_path = write_copilot_app_db(dir.path());
+    let db_str = db_path.to_str().expect("db path utf-8").to_string();
+
+    let mut seq = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    expect_python3(&mut mock, 2, true);
+
+    let drift_db = db_str.clone();
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(
+                spec.arguments(),
+                [
+                    "-c",
+                    WORKFLOW_DESIRED_IDS_SCRIPT,
+                    drift_db.as_str(),
+                    "apm--a"
+                ]
+            );
+            Ok(ExecResult::success(""))
+        });
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(move |spec| {
+            assert!(!spec.is_checked());
+            assert_eq!(
+                spec.arguments(),
+                ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
+            );
+            Ok(ExecResult::success("1 1\napm--a\n"))
+        });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock);
+    let result = install_task().run(&ctx).expect("run should not error");
+
+    assert_task_changed(&result);
+}
+
+#[test]
+fn current_install_previews_autopilot_drift_without_repairing_it() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_lock_and_marker(dir.path());
+    write_workflow_lock(dir.path(), &["apm--a"]);
+    let db_path = write_copilot_app_db(dir.path());
+    let db_str = db_path.to_str().expect("db path utf-8").to_string();
+
+    let mut mock = MockExecutor::new();
+    expect_python3(&mut mock, 1, true);
+    mock.expect_execute().once().returning(move |spec| {
+        assert!(!spec.is_checked());
+        assert_eq!(
+            spec.arguments(),
+            ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, db_str.as_str(), "apm--a"]
+        );
+        Ok(ExecResult::success(""))
+    });
+
+    let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
+    let result = install_task().run(&ctx).expect("run should not error");
+
+    assert_task_changed(&result);
+}
+
+#[test]
 fn update_re_arms_apm_workflows_cases() {
     // Regardless of whether `apm update` advances the lock ("updated\n") or
     // reports no changes (cached), it can redeploy a workflow disabled, so

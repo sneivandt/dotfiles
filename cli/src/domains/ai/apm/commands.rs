@@ -2,8 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-use super::cowork::{reconcile_cowork_skills, remove_legacy_cowork_lock_deployments};
-use super::targets::{ApmTargets, CopilotDeployment, CopilotTarget};
 use crate::engine::{Context, TaskResult};
 use crate::infra::exec::CommandSpec;
 use crate::infra::logging::OutputExt as _;
@@ -29,10 +27,10 @@ impl ApmCommand {
         }
     }
 
-    const fn args(self) -> &'static [&'static str] {
+    pub(super) const fn args(self) -> &'static [&'static str] {
         match self {
-            Self::Install => ApmTargets::install_args(),
-            Self::Update => ApmTargets::update_args(),
+            Self::Install => &["install", "-g"],
+            Self::Update => &["update", "-g", "--yes"],
         }
     }
 
@@ -64,50 +62,6 @@ pub(super) enum ApmOutdatedResult {
     Current,
     Unknown,
     AuthSkipped(String),
-}
-
-/// Run an APM install/update command with shared environment, logging, and
-/// failure classification.
-///
-/// The primary command deliberately omits `--target` so APM resolves the
-/// runtime set itself and reconciles their shared ledger together. APM resolves
-/// runtimes as `--target` > `targets:` in the merged manifest > `apm config
-/// target` > auto-detect, so `symlinks/apm/config/base.yml` pins the runtime set
-/// without this call having to enumerate it. Copilot App workflows require a
-/// separate explicit experimental-target install. Cowork skills are reconciled
-/// file-by-file from the primary shared skill deployment because Cowork's
-/// `OneDrive` ACL prevents APM from replacing existing skill directories.
-///
-/// # Errors
-///
-/// Returns an error when APM exits unsuccessfully for anything other than a
-/// recognized authentication skip.
-pub(super) fn run_apm_command(
-    ctx: &Context,
-    command: ApmCommand,
-    targets: ApmTargets,
-) -> Result<ApmCommandResult> {
-    if targets.includes(CopilotTarget::Cowork) {
-        remove_legacy_cowork_lock_deployments(ctx.home())?;
-    }
-    match run_apm_invocation(ctx, command, command.args())? {
-        ApmCommandResult::Success => {}
-        result @ ApmCommandResult::AuthSkipped(_) => return Ok(result),
-    }
-
-    for target in targets.active() {
-        match target.deployment() {
-            CopilotDeployment::ExperimentalInstall { config_key, args } => {
-                ensure_experimental_target_enabled(ctx, target, config_key);
-                let result = run_apm_invocation(ctx, ApmCommand::Install, args)?;
-                if !matches!(result, ApmCommandResult::Success) {
-                    return Ok(result);
-                }
-            }
-            CopilotDeployment::CoworkReconcile => reconcile_cowork_skills(ctx)?,
-        }
-    }
-    Ok(ApmCommandResult::Success)
 }
 
 /// Check locked user-scope dependencies for remote updates without mutating
@@ -166,7 +120,7 @@ fn line_reports_current_dependencies(line: &str) -> bool {
         || line.contains("no remote dependencies to check")
 }
 
-fn run_apm_invocation(
+pub(super) fn run_apm_invocation(
     ctx: &Context,
     command: ApmCommand,
     args: &[&str],
@@ -212,10 +166,9 @@ fn classify_apm_error(
 }
 
 /// Best-effort enable of an experimental APM deployment target.
-fn ensure_experimental_target_enabled(ctx: &Context, target: CopilotTarget, config_key: &str) {
+pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, config_key: &str) {
     let system = ctx.system();
     let cwd = system.home();
-    let target = target.apm_name();
 
     // The CLI call costs a full apm process start (~1.3s) purely to re-assert a
     // flag that is almost always already set.  Reading the config apm itself

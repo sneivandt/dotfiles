@@ -12,12 +12,13 @@
 //!
 //! 1. Every non-base section in `symlinks.toml` has a matching section in
 //!    `manifest.toml` so sparse checkout can exclude the right files.
-//! 2. Every symlink source path in a non-base section is covered by at least
-//!    one manifest path in the same section **or any manifest section whose
-//!    category tags are a subset** (i.e. the manifest section always applies
-//!    whenever the symlink section applies).  For example, a symlink in
-//!    `[linux-desktop]` may be covered by the `[desktop]` manifest because
-//!    the desktop manifest is always present when linux-desktop is active.
+//! 2. Every symlink source path in a non-base section is retained either by
+//!    `[base]` ownership or by a manifest path in the same section **or any
+//!    manifest section whose category tags are a subset** (i.e. the manifest
+//!    section always applies whenever the symlink section applies). For
+//!    example, a symlink in `[linux-desktop]` may be covered by the `[desktop]`
+//!    manifest because the desktop manifest is always present when
+//!    linux-desktop is active.
 //! 3. Every path listed in `manifest.toml` actually exists in `symlinks/`.
 
 use serde::{Deserialize, Deserializer, de::Error as _};
@@ -237,9 +238,8 @@ fn manifest_sections_have_symlink_sections() {
     );
 }
 
-/// Every symlink source in a non-base section must be covered by a manifest
-/// path in the same section or any manifest section whose category tags are a
-/// strict subset (i.e. always active when the symlink section is active).
+/// Every symlink source in a non-base section must either also be base-owned or
+/// be covered by a manifest path in the same section or a compatible subset.
 #[test]
 fn non_base_symlink_sources_covered_by_manifest() {
     let root = repo_root();
@@ -247,6 +247,7 @@ fn non_base_symlink_sources_covered_by_manifest() {
 
     let symlinks = load_symlink_sections(&conf.join("symlinks.toml"));
     let manifest = load_manifest_sections(&conf.join("manifest.toml"));
+    let base_sources = symlinks.get("base");
 
     let mut uncovered: Vec<String> = Vec::new();
 
@@ -255,7 +256,9 @@ fn non_base_symlink_sources_covered_by_manifest() {
             continue;
         }
         for source in sources {
-            if !is_covered_by_any_section(section, source, &manifest) {
+            let retained_by_base =
+                base_sources.is_some_and(|base_entries| base_entries.contains(source));
+            if !retained_by_base && !is_covered_by_any_section(section, source, &manifest) {
                 uncovered.push(format!("[{section}] {source}"));
             }
         }
@@ -268,11 +271,11 @@ fn non_base_symlink_sources_covered_by_manifest() {
     );
 }
 
-/// VS Code's platform-specific and remote links all target the shared
-/// `config/Code` backing store, so every desktop ownership combination must
-/// retain that directory.
+/// VS Code's platform-specific and remote links all use the shared
+/// `config/Code` sources, so every desktop ownership combination must retain
+/// that directory.
 #[test]
-fn vscode_internal_link_targets_are_retained_for_every_desktop_platform() {
+fn vscode_shared_sources_are_retained_for_every_desktop_platform() {
     let manifest = load_manifest_sections(&repo_root().join("conf").join("manifest.toml"));
     let targets = [
         "config/Code/User/keybindings.json",
@@ -283,7 +286,7 @@ fn vscode_internal_link_targets_are_retained_for_every_desktop_platform() {
         for target in targets {
             assert!(
                 is_covered_by_any_section(section, target, &manifest),
-                "[{section}] internal VS Code link target is excluded: {target}"
+                "[{section}] shared VS Code source is excluded: {target}"
             );
         }
     }

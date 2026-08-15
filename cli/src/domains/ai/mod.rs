@@ -1,6 +1,6 @@
-//! AI tooling domain: Copilot settings and Microsoft APM plugin management.
+//! AI tooling domain: agent settings and Microsoft APM plugin management.
 
+pub mod agent_settings;
 pub mod apm;
 pub mod config;
-pub mod copilot_settings;
 pub mod resources;

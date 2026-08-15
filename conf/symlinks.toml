@@ -27,8 +27,7 @@ symlinks = [
 [linux]
 symlinks = [
   "bash_profile",
-  # Internal chain: symlinks/config/nvim -> ../vim, reusing the Vim config.
-  "config/nvim",
+  { source = "vim", target = ".config/nvim" },
   "bashrc",
   "config/bash/prompt.bash",
   "config/readline/inputrc",
@@ -100,16 +99,13 @@ symlinks = [
 
 [desktop]
 symlinks = [
-  # Internal chain: symlinks/vscode-remote/data/Machine/settings.json
-  # -> ../../../config/Code/User/settings.json.
-  "vscode-remote/data/Machine/settings.json",
+  { source = "config/Code/User/settings.json", target = ".vscode-remote/data/Machine/settings.json" },
 ]
 
 [linux-desktop]
 symlinks = [
-  # Internal chains: Code Insiders settings/keybindings reuse stable Code files.
-  "config/Code - Insiders/User/keybindings.json",
-  "config/Code - Insiders/User/settings.json",
+  { source = "config/Code/User/keybindings.json", target = ".config/Code - Insiders/User/keybindings.json" },
+  { source = "config/Code/User/settings.json", target = ".config/Code - Insiders/User/settings.json" },
   "config/Code/User/keybindings.json",
   "config/Code/User/settings.json",
   "config/shell/aliases-desktop.sh",
@@ -120,17 +116,16 @@ symlinks = [
 symlinks = [
   "config/git/windows",
   "wslconfig",
-  { source = "AppData/Roaming/NuGet/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
-  { source = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1", target = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1" },
-  { source = "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1", target = "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1" },
+  { source = "config/nuget/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
+  { source = "config/powershell/Microsoft.PowerShell_profile.ps1", target = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1" },
+  { source = "config/powershell/Microsoft.PowerShell_profile.ps1", target = "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1" },
 ]
 
 [windows-desktop]
 symlinks = [
   { source = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json", target = "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json" },
-  # Internal chains: Windows VS Code settings/keybindings reuse config/Code files.
-  { source = "AppData/Roaming/Code - Insiders/User/keybindings.json", target = "AppData/Roaming/Code - Insiders/User/keybindings.json" },
-  { source = "AppData/Roaming/Code - Insiders/User/settings.json", target = "AppData/Roaming/Code - Insiders/User/settings.json" },
-  { source = "AppData/Roaming/Code/User/keybindings.json", target = "AppData/Roaming/Code/User/keybindings.json" },
-  { source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
+  { source = "config/Code/User/keybindings.json", target = "AppData/Roaming/Code - Insiders/User/keybindings.json" },
+  { source = "config/Code/User/settings.json", target = "AppData/Roaming/Code - Insiders/User/settings.json" },
+  { source = "config/Code/User/keybindings.json", target = "AppData/Roaming/Code/User/keybindings.json" },
+  { source = "config/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" },
 ]

@@ -8,7 +8,7 @@ Excluded home files
 Sparse checkout
 Dotfiles repository
 Git settings
-Copilot settings
+Agent settings
 Git hooks
 Shell completions
 System packages

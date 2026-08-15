@@ -18,6 +18,9 @@ const SYMLINK_PARENT_IN_SOURCE: DiagnosticCode = DiagnosticCode::new("symlink", 
 const SYMLINK_PARENT_IN_TARGET: DiagnosticCode = DiagnosticCode::new("symlink", "parent-in-target");
 /// Diagnostic code: `symlink.source-missing`.
 const SYMLINK_SOURCE_MISSING: DiagnosticCode = DiagnosticCode::new("symlink", "source-missing");
+/// Diagnostic code: `symlink.source-outside-root`.
+const SYMLINK_SOURCE_OUTSIDE_ROOT: DiagnosticCode =
+    DiagnosticCode::new("symlink", "source-outside-root");
 
 mod glob_expansion;
 mod target_capture;
@@ -101,11 +104,11 @@ pub fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec
     glob_expansion::expand_glob_patterns(symlinks, fallback)
 }
 
-/// Reject symlink entries that resolve to the same target.
+/// Reject symlink entries that resolve to the same or overlapping targets.
 ///
 /// # Errors
 ///
-/// Returns an error identifying the colliding sources and target.
+/// Returns an error identifying the conflicting sources and targets.
 pub(crate) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
     target_validation::validate_unique_targets(symlinks)
 }
@@ -170,6 +173,36 @@ pub(crate) fn validate_paths(symlink: &Symlink) -> Result<()> {
     Ok(())
 }
 
+fn source_containment_error(symlink: &Symlink, fallback: &Path) -> Option<String> {
+    let symlinks_dir = resolve_symlinks_dir(symlink, fallback);
+    let resolved_root = std::fs::canonicalize(&symlinks_dir).ok()?;
+    let source = symlinks_dir.join(&symlink.source);
+    let resolved_source = std::fs::canonicalize(&source).ok()?;
+    (!resolved_source.starts_with(&resolved_root)).then(|| {
+        format!(
+            "source resolves outside its symlinks directory: {} -> {}",
+            source.display(),
+            resolved_source.display()
+        )
+    })
+}
+
+/// Reject a configured source that resolves outside its owning `symlinks/` tree.
+///
+/// Missing sources are handled separately by resource state discovery and do
+/// not produce a containment error.
+///
+/// # Errors
+///
+/// Returns an error when the source canonicalizes outside the resolved
+/// `symlinks/` directory.
+pub(crate) fn validate_source_containment(symlink: &Symlink, fallback: &Path) -> Result<()> {
+    if let Some(message) = source_containment_error(symlink, fallback) {
+        bail!(message);
+    }
+    Ok(())
+}
+
 fn is_absolute_like(path: &str) -> bool {
     Path::new(path).is_absolute()
         || path.starts_with('/')
@@ -203,6 +236,7 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
             |s| {
                 let symlinks_dir = resolve_symlinks_dir(s, root);
                 let source_path = symlinks_dir.join(&s.source);
+                let containment_error = source_containment_error(s, root);
                 let target_checks: Vec<CheckItem> = s.target.as_ref().map_or_else(Vec::new, |t| {
                     vec![
                         check(
@@ -232,6 +266,13 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
                         has_parent_component(&s.source),
                         SYMLINK_PARENT_IN_SOURCE,
                         "source path must not contain '..' components",
+                    ),
+                    check_error(
+                        containment_error.is_some(),
+                        SYMLINK_SOURCE_OUTSIDE_ROOT,
+                        containment_error.unwrap_or_else(|| {
+                            "source must resolve inside its symlinks directory".to_string()
+                        }),
                     ),
                 ];
                 checks.extend(target_checks);
@@ -320,6 +361,26 @@ symlinks = [
         assert!(symlinks[0].target.is_none());
         assert_eq!(symlinks[1].source, "config/something");
         assert_eq!(symlinks[1].target.as_deref(), Some(".custom-name"));
+    }
+
+    #[test]
+    fn load_allows_canonical_source_with_distinct_targets() {
+        let (_dir, path) = write_temp_toml(
+            r#"[base]
+symlinks = ["config/shared"]
+
+[windows]
+symlinks = [
+  { source = "config/shared", target = "AppData/Example/config" },
+  { source = "config/shared", target = "Documents/Example/config" },
+]
+"#,
+        );
+
+        let symlinks = load(&path, &[Category::Base, Category::Windows]).unwrap();
+
+        assert_eq!(symlinks.len(), 3);
+        validate_unique_targets(&symlinks).unwrap();
     }
 
     #[test]
@@ -452,6 +513,51 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
         assert!(warnings[0].message.contains("'..'"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn validate_detects_source_symlink_outside_root() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let outside_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = temp_dir.path().join("symlinks");
+        std::fs::create_dir_all(&symlinks_dir).unwrap();
+        let outside = outside_dir.path().join("outside");
+        std::fs::write(&outside, "outside").unwrap();
+        std::os::unix::fs::symlink(&outside, symlinks_dir.join("escaped")).unwrap();
+        let symlink = Symlink {
+            source: "escaped".to_string(),
+            target: None,
+            origin: None,
+        };
+
+        let diagnostics = validate(std::slice::from_ref(&symlink), temp_dir.path());
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code.to_string(),
+            "symlink.source-outside-root"
+        );
+        assert!(diagnostics[0].message.contains("outside"));
+        assert!(validate_source_containment(&symlink, temp_dir.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_allows_source_symlink_inside_root() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = temp_dir.path().join("symlinks");
+        std::fs::create_dir_all(&symlinks_dir).unwrap();
+        let canonical = symlinks_dir.join("canonical");
+        std::fs::write(&canonical, "inside").unwrap();
+        std::os::unix::fs::symlink(&canonical, symlinks_dir.join("alias")).unwrap();
+        let symlink = Symlink {
+            source: "alias".to_string(),
+            target: None,
+            origin: None,
+        };
+
+        assert!(validate(&[symlink], temp_dir.path()).is_empty());
+    }
+
     #[test]
     fn validate_unique_targets_rejects_explicit_and_computed_collision() {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -474,6 +580,45 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
 
         let error = validate_unique_targets(&symlinks).unwrap_err();
         assert!(error.to_string().contains("collision"));
+    }
+
+    #[test]
+    fn validate_unique_targets_rejects_ancestor_overlap_in_either_order() {
+        let parent = Symlink {
+            source: "config/example".to_string(),
+            target: None,
+            origin: None,
+        };
+        let child = Symlink {
+            source: "example-file".to_string(),
+            target: Some(".config/example/file".to_string()),
+            origin: None,
+        };
+
+        for symlinks in [vec![parent.clone(), child.clone()], vec![child, parent]] {
+            let error = validate_unique_targets(&symlinks).unwrap_err();
+            assert!(error.to_string().contains("overlap"));
+            assert!(error.to_string().contains(".config/example"));
+            assert!(error.to_string().contains(".config/example/file"));
+        }
+    }
+
+    #[test]
+    fn validate_unique_targets_allows_shared_textual_prefix() {
+        let symlinks = vec![
+            Symlink {
+                source: "one".to_string(),
+                target: Some(".config/example".to_string()),
+                origin: None,
+            },
+            Symlink {
+                source: "two".to_string(),
+                target: Some(".config/example-extra/file".to_string()),
+                origin: None,
+            },
+        ];
+
+        validate_unique_targets(&symlinks).unwrap();
     }
 
     #[test]

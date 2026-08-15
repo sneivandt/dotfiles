@@ -15,7 +15,8 @@ installed by `domains::files::symlinks`.
 Source files in `symlinks/` have **no leading dots**.
 Source and explicit target paths must be relative and must not contain `..`
 components; invalid paths are reported as unsafe configuration instead of being
-applied.
+applied. A configured source that canonicalizes outside its owning `symlinks/`
+tree is also unsafe.
 
 ## Target Path
 
@@ -25,10 +26,17 @@ For paths that must **not** receive a dot prefix (Windows paths like `AppData/` 
 `Documents/`), use an explicit `target` field in `conf/symlinks.toml`:
 
 ```toml
-{ source = "AppData/Roaming/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
+{ source = "config/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
 ```
 
 The explicit target is joined to `$HOME` directly: `home.join(target)`.
+The same canonical source may be listed multiple times with distinct explicit
+targets. Prefer this over forwarding files or symlink chains inside
+`symlinks/`.
+
+Configured targets must be unique and non-overlapping. A target cannot equal
+another target or be nested beneath another managed target because the parent
+link would prevent the child from being created.
 
 ## Task Implementation
 
@@ -41,8 +49,8 @@ creation inside `SymlinkResource::apply()`, not the task.
 1. Create source: `symlinks/config/myapp/config` (no leading dot)
 2. Add to `conf/symlinks.toml` under correct profile section:
    - Plain string `"config/myapp/config"` → target `~/.config/myapp/config` (dot prepended automatically)
-   - `{ source = "AppData/Roaming/MyApp/config", target = "AppData/Roaming/MyApp/config" }` → target `~/AppData/Roaming/MyApp/config` (no dot prefix)
-3. For non-`base` sections, add the source path to the matching `conf/manifest.toml` section for sparse checkout validation
+   - `{ source = "config/myapp/config", target = "AppData/Roaming/MyApp/config" }` → target `~/AppData/Roaming/MyApp/config` (no dot prefix)
+3. For non-`base` sections, add the source path to the matching `conf/manifest.toml` section for sparse checkout validation. Skip this only when the same source is also declared in `[base]`, because base sources are always retained.
 4. Test: `./dotfiles.sh install -d`
 
 ## Idempotency
@@ -68,3 +76,4 @@ real files/directories.
 
 - Use directory symlinks for entire config dirs, file symlinks for selective management
 - Don't create symlinks inside already-symlinked directories
+- Reuse canonical sources with explicit targets instead of adding repository-internal forwarding links

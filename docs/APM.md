@@ -9,6 +9,7 @@ resolution and materialization.
 
 | Layer | Responsibility |
 |---|---|
+| `conf/agent-settings.toml` | Converges stable per-harness preferences in Copilot JSON and Codex TOML |
 | `symlinks/apm/config/*.yml` | Profile-specific APM source fragments |
 | `conf/symlinks.toml` | Selects and links applicable fragments and local plugins |
 | `conf/manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
@@ -18,6 +19,13 @@ resolution and materialization.
 
 Agent directories should generally receive APM-managed content through APM
 rather than ad hoc copies.
+
+APM owns distributable primitives such as skills, plugins, hooks, instructions,
+and MCP declarations. `conf/agent-settings.toml` separately owns selected
+harness preferences such as model, reasoning effort, and terminal UI options.
+Codex settings in `~/.codex/config.toml` are shared by its CLI, IDE extension,
+and agent inside the ChatGPT desktop app; app-only preferences remain in the
+desktop app.
 
 ## Configuration fragments
 

@@ -16,6 +16,8 @@ the Rust `InstallApmPackages` task.
 
 | Path | Purpose |
 |---|---|
+| `conf/agent-settings.toml` | Target-aware stable preferences converged into Copilot JSON and Codex TOML |
+| `cli/src/domains/ai/agent_settings.rs` + `config/agent_settings.rs` + `resources/agent_settings.rs` | Agent settings task, typed config, and JSON/TOML key convergence |
 | `symlinks/apm/config/*.yml` | APM manifest fragments merged by APM; `base.yml` is the baseline, platform-scoped fragments such as `arch.yml` layer on top |
 | `symlinks/apm/plugins/dot-agent` | Local agent interaction workflow skills |
 | `symlinks/apm/plugins/dot-skill` | Local skill/plugin maintenance skills |
@@ -28,6 +30,13 @@ the Rust `InstallApmPackages` task.
   guide agents working on this dotfiles codebase.
 - Update `symlinks/apm/plugins/dot-*` for personal reusable skills that should
   be installed into the user's global APM environment.
+- Update `conf/agent-settings.toml` for stable per-harness preferences such as
+  model, reasoning effort, personality, or terminal UI options. Every entry
+  names a supported `target`; Copilot writes `~/.copilot/settings.json`, while
+  Codex writes `~/.codex/config.toml`.
+- Treat Codex user settings as shared by the CLI, IDE extension, and agent
+  inside the ChatGPT desktop app. Keep ChatGPT Work and app-only appearance,
+  notification, and keyboard preferences out of `agent-settings.toml`.
 - Update the relevant `symlinks/apm/config/*.yml` fragment when adding,
   removing, or re-grouping external APM plugin dependencies: `base.yml` for
   everything cross-platform, a platform-scoped fragment (for example
@@ -129,3 +138,6 @@ path.
 
 For changes to `cli/src/domains/ai/apm.rs` or `cli/src/domains/ai/apm/`, also
 run the Rust checks from the `cross-platform-verification` skill.
+
+For changes to `conf/agent-settings.toml` or its Rust config/task/resource
+modules, run the Rust and config checks from `cross-platform-verification`.

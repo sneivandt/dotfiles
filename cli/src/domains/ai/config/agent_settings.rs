@@ -1,70 +1,62 @@
-//! Copilot CLI settings loading.
+//! Agent harness settings loading.
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
 use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `copilot.empty-key`.
-const COPILOT_EMPTY_KEY: DiagnosticCode = DiagnosticCode::new("copilot", "empty-key");
-/// Diagnostic code: `copilot.key-empty-segment`.
-const COPILOT_KEY_EMPTY_SEGMENT: DiagnosticCode =
-    DiagnosticCode::new("copilot", "key-empty-segment");
+/// Diagnostic code: `agent-settings.empty-key`.
+const AGENT_SETTINGS_EMPTY_KEY: DiagnosticCode = DiagnosticCode::new("agent-settings", "empty-key");
+/// Diagnostic code: `agent-settings.key-empty-segment`.
+const AGENT_SETTINGS_KEY_EMPTY_SEGMENT: DiagnosticCode =
+    DiagnosticCode::new("agent-settings", "key-empty-segment");
 
-/// A single Copilot settings key to converge inside a JSON settings document.
+/// An agent harness with a supported user settings document.
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AgentHarness {
+    /// GitHub Copilot CLI.
+    Copilot,
+    /// `OpenAI` Codex CLI, IDE extension, and desktop app agent.
+    Codex,
+}
+
+impl AgentHarness {
+    /// Stable configuration name for the harness.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Copilot => "copilot",
+            Self::Codex => "codex",
+        }
+    }
+}
+
+/// A single agent settings key to converge in one harness's settings document.
 ///
 /// The `key` is a dot-separated path into the JSON document (for example
-/// `"model"` or `"footer.showBranch"`), and `value` is the desired value
-/// expressed in TOML.  TOML scalars, arrays, and inline tables are converted to
-/// their JSON equivalents via [`CopilotSetting::json_value`].
+/// `"footer.showBranch"`) or TOML document (for example
+/// `"model_reasoning_effort"` or `"tui.theme"`). The value is expressed in
+/// TOML and converted to JSON when the target uses JSON.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CopilotSetting {
+pub struct AgentSetting {
+    /// Harness whose user settings document owns this key.
+    pub target: AgentHarness,
     /// Dot-separated key path (e.g. `"model"`, `"footer.showBranch"`).
     pub key: String,
     /// Desired value, expressed in TOML and converted to JSON on demand.
     pub value: toml::Value,
 }
 
-impl CopilotSetting {
-    /// Convert the TOML value into its JSON equivalent.
-    ///
-    /// The conversion is total: TOML datetimes are rendered as their RFC 3339
-    /// string form, and floats that cannot be represented as JSON numbers
-    /// (`NaN`, infinities) become `null`.
-    #[must_use]
-    pub fn json_value(&self) -> serde_json::Value {
-        toml_to_json(&self.value)
-    }
-}
+config_section!(field: "settings", ty: AgentSetting);
 
-/// Recursively convert a [`toml::Value`] into a [`serde_json::Value`].
-fn toml_to_json(value: &toml::Value) -> serde_json::Value {
-    use serde_json::Value as Json;
-    match value {
-        toml::Value::String(s) => Json::String(s.clone()),
-        toml::Value::Integer(i) => Json::Number((*i).into()),
-        toml::Value::Float(f) => serde_json::Number::from_f64(*f).map_or(Json::Null, Json::Number),
-        toml::Value::Boolean(b) => Json::Bool(*b),
-        toml::Value::Datetime(dt) => Json::String(dt.to_string()),
-        toml::Value::Array(items) => Json::Array(items.iter().map(toml_to_json).collect()),
-        toml::Value::Table(table) => Json::Object(
-            table
-                .iter()
-                .map(|(k, v)| (k.clone(), toml_to_json(v)))
-                .collect(),
-        ),
-    }
-}
-
-config_section!(field: "settings", ty: CopilotSetting);
-
-/// Validate Copilot settings entries and return any warnings.
+/// Validate agent settings entries and return any warnings.
 #[must_use]
-pub fn validate(settings: &[CopilotSetting]) -> Vec<Diagnostic> {
+pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{Validator, check};
 
-    Validator::new(COPILOT_TOML)
+    Validator::new(AGENT_SETTINGS_TOML)
         .check_each(
             settings,
             |setting| &setting.key,
@@ -72,12 +64,12 @@ pub fn validate(settings: &[CopilotSetting]) -> Vec<Diagnostic> {
                 [
                     check(
                         setting.key.trim().is_empty(),
-                        COPILOT_EMPTY_KEY,
+                        AGENT_SETTINGS_EMPTY_KEY,
                         "settings key is empty",
                     ),
                     check(
                         setting.key.split('.').any(str::is_empty),
-                        COPILOT_KEY_EMPTY_SEGMENT,
+                        AGENT_SETTINGS_KEY_EMPTY_SEGMENT,
                         "settings key has an empty path segment (e.g. 'a..b')",
                     ),
                 ]
@@ -87,7 +79,7 @@ pub fn validate(settings: &[CopilotSetting]) -> Vec<Diagnostic> {
 }
 
 /// TOML filename that backs this config section.
-pub(crate) const COPILOT_TOML: &str = "copilot.toml";
+pub(crate) const AGENT_SETTINGS_TOML: &str = "agent-settings.toml";
 
 #[cfg(test)]
 mod tests {
@@ -101,43 +93,45 @@ mod tests {
         let (_dir, path) = write_temp_toml(
             r#"[base]
 settings = [
-  { key = "model", value = "claude-opus-4.8" },
-  { key = "beep", value = false },
-  { key = "footer.showBranch", value = true },
+  { target = "copilot", key = "model", value = "claude-opus-4.8" },
+  { target = "copilot", key = "beep", value = false },
+  { target = "codex", key = "model_reasoning_effort", value = "high" },
 ]
 "#,
         );
         let settings = load(&path, &[Category::Base]).unwrap();
         assert_eq!(settings.len(), 3);
+        assert_eq!(settings[0].target, AgentHarness::Copilot);
         assert_eq!(settings[0].key, "model");
         assert_eq!(
-            settings[0].json_value(),
-            serde_json::Value::String("claude-opus-4.8".to_string())
+            settings[0].value,
+            toml::Value::String("claude-opus-4.8".to_string())
         );
-        assert_eq!(settings[1].json_value(), serde_json::Value::Bool(false));
-        assert_eq!(settings[2].json_value(), serde_json::Value::Bool(true));
+        assert_eq!(settings[1].value, toml::Value::Boolean(false));
+        assert_eq!(settings[2].target, AgentHarness::Codex);
+        assert_eq!(settings[2].value, toml::Value::String("high".to_string()));
     }
 
     #[test]
-    fn json_value_converts_nested_table() {
+    fn load_preserves_nested_table_value() {
         let (_dir, path) = write_temp_toml(
             r#"[base]
 settings = [
-  { key = "footer", value = { showBranch = true, showQuota = false } },
+  { target = "copilot", key = "footer", value = { showBranch = true, showQuota = false } },
 ]
 "#,
         );
         let settings = load(&path, &[Category::Base]).unwrap();
-        let json = settings[0].json_value();
-        assert_eq!(json["showBranch"], serde_json::Value::Bool(true));
-        assert_eq!(json["showQuota"], serde_json::Value::Bool(false));
+        let table = settings[0].value.as_table().unwrap();
+        assert_eq!(table["showBranch"], toml::Value::Boolean(true));
+        assert_eq!(table["showQuota"], toml::Value::Boolean(false));
     }
 
     #[test]
     fn load_excludes_unmatched_category() {
         let (_dir, path) = write_temp_toml(
             r#"[desktop]
-settings = [{ key = "model", value = "x" }]
+settings = [{ target = "codex", key = "model", value = "x" }]
 "#,
         );
         let settings = load(&path, &[Category::Base, Category::Linux]).unwrap();
@@ -152,7 +146,8 @@ settings = [{ key = "model", value = "x" }]
 
     #[test]
     fn validate_valid_setting_produces_no_warnings() {
-        let settings = vec![CopilotSetting {
+        let settings = vec![AgentSetting {
+            target: AgentHarness::Copilot,
             key: "model".to_string(),
             value: toml::Value::String("claude-opus-4.8".to_string()),
         }];
@@ -161,7 +156,8 @@ settings = [{ key = "model", value = "x" }]
 
     #[test]
     fn validate_detects_empty_key() {
-        let settings = vec![CopilotSetting {
+        let settings = vec![AgentSetting {
+            target: AgentHarness::Copilot,
             key: "  ".to_string(),
             value: toml::Value::Boolean(true),
         }];
@@ -171,7 +167,8 @@ settings = [{ key = "model", value = "x" }]
 
     #[test]
     fn validate_detects_empty_path_segment() {
-        let settings = vec![CopilotSetting {
+        let settings = vec![AgentSetting {
+            target: AgentHarness::Codex,
             key: "footer..showBranch".to_string(),
             value: toml::Value::Boolean(true),
         }];
@@ -188,10 +185,19 @@ settings = [{ key = "model", value = "x" }]
     #[test]
     fn load_returns_error_on_unknown_field_in_entry() {
         let (_dir, path) = write_temp_toml(
-            "[base]\nsettings = [{ key = \"model\", value = \"x\", typo = \"y\" }]\n",
+            "[base]\nsettings = [{ target = \"copilot\", key = \"model\", value = \"x\", typo = \"y\" }]\n",
         );
         let result = load(&path, &[Category::Base]);
         assert!(result.is_err(), "unknown field 'typo' should error");
+    }
+
+    #[test]
+    fn load_returns_error_on_unknown_target() {
+        let (_dir, path) = write_temp_toml(
+            "[base]\nsettings = [{ target = \"other\", key = \"model\", value = \"x\" }]\n",
+        );
+        let result = load(&path, &[Category::Base]);
+        assert!(result.is_err(), "unknown target should error");
     }
 
     #[test]

@@ -12,7 +12,7 @@ use super::REQUIRED_CONFIG_FILES;
 
 const CATEGORY_CONFIG_FILES: &[&str] = &[
     "chmod.toml",
-    "copilot.toml",
+    "agent-settings.toml",
     "git-config.toml",
     "manifest.toml",
     "packages.toml",
@@ -23,7 +23,7 @@ const CATEGORY_CONFIG_FILES: &[&str] = &[
 
 const OVERLAY_CATEGORY_CONFIG_FILES: &[&str] = &[
     "chmod.toml",
-    "copilot.toml",
+    "agent-settings.toml",
     "git-config.toml",
     "packages.toml",
     "scripts.toml",
@@ -117,12 +117,13 @@ mod tests {
     #[test]
     fn rejects_missing_main_config() {
         let dir = complete_repo();
-        std::fs::remove_file(dir.path().join("conf").join("copilot.toml")).expect("remove config");
+        std::fs::remove_file(dir.path().join("conf").join("agent-settings.toml"))
+            .expect("remove config");
 
         let error = validate(dir.path(), None, &[Category::Base])
             .expect_err("missing main config should fail");
 
-        assert!(error.to_string().contains("copilot.toml"));
+        assert!(error.to_string().contains("agent-settings.toml"));
     }
 
     #[test]

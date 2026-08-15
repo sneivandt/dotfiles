@@ -13,6 +13,9 @@ fragments, local plugins, skills, hooks, MCP servers, and instructions.
 
 - Public dotfiles link `symlinks/apm/config/*.yml` and
   `symlinks/apm/plugins/*` into `~/.apm/` through `conf/symlinks.toml`.
+- Public `conf/agent-settings.toml` separately converges stable preferences into
+  Copilot's JSON settings and Codex's TOML settings; APM does not own those
+  per-harness values.
 - The Rust dotfiles engine installs APM during the AI tooling task:
   `install` runs `apm install`; `update` runs `apm outdated` and `apm update`
   only after a successful installed state exists.
@@ -22,6 +25,9 @@ fragments, local plugins, skills, hooks, MCP servers, and instructions.
 - Local APM plugins are the preferred way to distribute reusable personal
   primitives. Keep plugin names short and scoped, such as `dot-agent` and
   `dot-skill`.
+- Codex reads `~/.codex/config.toml` across its CLI, IDE extension, and agent
+  inside the ChatGPT desktop app. ChatGPT Work and app-only appearance,
+  notification, and keyboard settings remain outside dotfiles agent settings.
 
 ## Per-Agent Organization
 
@@ -95,6 +101,9 @@ dotfiles repo:
   records exact refs in the user lockfile.
 - When adding a local personal skill, choose the existing `dot-*` plugin that
   matches the audience before creating a new plugin.
+- Put stable model, reasoning effort, personality, and harness UI defaults in
+  `conf/agent-settings.toml`; keep skills, hooks, instructions, and MCP
+  declarations in APM.
 
 ## Validation
 

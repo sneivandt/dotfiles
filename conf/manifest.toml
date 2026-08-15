@@ -23,7 +23,6 @@ paths = [
   "bash_profile",
   "bashrc",
   "config/bash/",
-  "config/nvim",
   "config/readline/",
   "config/shell/aliases.sh",
   "config/shell/path.sh",
@@ -42,9 +41,7 @@ paths = [
 # Windows-specific files
 [windows]
 paths = [
-  "AppData/",
   "config/git/windows",
-  "Documents/",
   "wslconfig",
 ]
 
@@ -63,13 +60,11 @@ paths = [
 paths = [
   # Cross-platform backing store for VS Code, VS Code Insiders, and Remote.
   "config/Code/",
-  "vscode-remote/",
 ]
 
 # Desktop-specific files that also require Linux
 [linux-desktop]
 paths = [
-  "config/Code - Insiders/",
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
 ]
@@ -106,6 +101,5 @@ paths = [
 # Windows desktop-specific files
 [windows-desktop]
 paths = [
-  "AppData/Roaming/Code - Insiders/",
-  "AppData/Roaming/Code/",
+  "AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json",
 ]

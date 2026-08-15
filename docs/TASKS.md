@@ -44,7 +44,7 @@ idempotency and dry-run safety depend on the script honoring its contract.
 | `sparse-checkout` | Sparse checkout | install, update | Writes profile-derived sparse-checkout rules |
 | `repository` | Dotfiles repository | install, update | Synchronizes repository content |
 | `git` | Git settings | install, update | Applies declared global Git settings |
-| `copilot` | Copilot settings | install, update | Converges selected Copilot CLI settings |
+| `agent-settings` | Agent settings | install, update | Converges selected harness settings |
 | `git-hooks` | Git hooks | install, update, uninstall | Installs or removes repository-maintained hooks |
 | `completions` | Shell completions | install, update | Installs generated shell completions |
 | `packages` | System packages | install, update | Installs non-AUR packages through pacman or winget |
@@ -152,11 +152,11 @@ discovered count. Actual execution is handled by dynamically injected tasks.
 Reads `conf/git-config.toml` and converges each selected setting using global Git
 configuration. Empty configuration produces no work.
 
-#### Copilot settings
+#### Agent settings
 
-Reads `conf/copilot.toml` and updates only the declared dot-separated keys in
-`~/.copilot/settings.json`. Undeclared and volatile CLI-owned keys are
-preserved.
+Reads `conf/agent-settings.toml` and updates declared dot-separated keys in
+Copilot's JSON settings and Codex's TOML settings. Undeclared and volatile
+harness-owned keys are preserved.
 
 #### System packages
 

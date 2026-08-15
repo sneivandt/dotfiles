@@ -13,7 +13,7 @@ exposed to tasks through shared handles.
 | `symlinks.toml` | Category sections containing home-relative source paths | Symlink tasks |
 | `packages.toml` | Category sections containing package strings or AUR records | Package tasks |
 | `git-config.toml` | Category sections containing key/value settings | Git configuration |
-| `copilot.toml` | Category sections containing dot-path JSON settings | Copilot configuration |
+| `agent-settings.toml` | Targeted dot-path JSON/TOML settings | Agent harness configuration |
 | `chmod.toml` | Category sections containing mode/path records | Unix permissions |
 | `registry.toml` | Named registry records with `path` and `values` | Windows registry |
 | `systemd-units.toml` | Category sections containing user unit names | systemd configuration |
@@ -31,7 +31,9 @@ Most files group records under category names:
 symlinks = ["config/git/config"]
 
 [windows]
-symlinks = ["Documents/PowerShell/Microsoft.PowerShell_profile.ps1"]
+symlinks = [
+  { source = "config/powershell/Microsoft.PowerShell_profile.ps1", target = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1" },
+]
 
 [arch-desktop]
 symlinks = ["config/hypr/hyprland.lua"]
@@ -86,9 +88,14 @@ form because they take no leading dot:
 ```toml
 [windows]
 symlinks = [
-  { source = "AppData/Roaming/NuGet/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
+  { source = "config/nuget/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
 ]
 ```
+
+The same canonical source may be listed more than once when each entry has a
+different target. This avoids forwarding files and symlink chains inside the
+repository when multiple applications share one configuration. A source that
+resolves outside its owning `symlinks/` tree is rejected as unsafe.
 
 Overlay symlinks resolve from the overlay's own `symlinks/` tree, not the main
 repository.
@@ -134,8 +141,8 @@ symlinks = [
 
 Globs expand while configuration loads, after category filtering and before
 validation, so every later stage sees only concrete paths. Expanded targets
-take part in the normal duplicate-target check: two entries that resolve to the
-same home path are a configuration error.
+take part in the normal target conflict check: duplicate targets and targets
+nested beneath another managed target are configuration errors.
 
 Every non-`base` symlink category must have an exact section in
 `manifest.toml`, and every manifest section must exist in `symlinks.toml`.
@@ -157,7 +164,9 @@ paths = [
 
 Directory paths should end in `/`. A manifest section can cover a more specific
 symlink section when its category tags are a subset; for example, `[desktop]`
-may cover a source linked from `[windows-desktop]`.
+may cover a source linked from `[windows-desktop]`. A non-base entry that reuses
+a source also declared in `[base]` needs no manifest path because that source is
+always retained.
 
 Manifest sections describe which active category combinations own each path.
 A path is retained when any section declaring it is active and excluded when
@@ -199,19 +208,25 @@ settings = [
 The CLI applies these settings to global Git configuration. Keep platform-only
 behavior in platform category sections.
 
-## Copilot settings
+## Agent harness settings
 
 ```toml
 [base]
 settings = [
-  { key = "model", value = "gpt-5.6-sol" },
-  { key = "footer.showDirectory", value = true },
+  { target = "copilot", key = "model", value = "gpt-5.6-sol" },
+  { target = "codex", key = "model", value = "gpt-5.6" },
+  { target = "codex", key = "model_reasoning_effort", value = "high" },
 ]
 ```
 
-Keys are dot-separated paths into `~/.copilot/settings.json`. Only declared
-keys are managed. Sibling properties and volatile Copilot CLI state remain
-untouched.
+Supported targets are `copilot` (`~/.copilot/settings.json`) and `codex`
+(`~/.codex/config.toml`). Keys are dot-separated paths, and only declared keys
+are managed; siblings and volatile harness-owned state remain untouched.
+
+Codex uses the same user configuration for its CLI, IDE extension, and agent
+inside the ChatGPT desktop app. ChatGPT Work chats do not read local Codex
+configuration, and app-only appearance, notification, and keyboard preferences
+remain managed through the desktop app.
 
 ## File permissions
 

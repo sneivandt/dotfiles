@@ -1,3 +1,3 @@
 //! TOML configuration models for AI tooling.
 
-pub mod copilot;
+pub mod agent_settings;

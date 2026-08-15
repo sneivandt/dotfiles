@@ -14,7 +14,7 @@ fn section_inventory_reports_every_user_configured_slice() {
         .collect();
 
     assert!(labels.contains(&"git settings"));
-    assert!(labels.contains(&"copilot settings"));
+    assert!(labels.contains(&"agent settings"));
     assert_eq!(labels.len(), 10);
 }
 
@@ -278,13 +278,13 @@ fn load_still_parses_systemd_config_on_windows() {
 #[test]
 fn load_rejects_missing_main_config_file() {
     let (dir, profile, platform) = setup_load(linux(), &[]);
-    std::fs::remove_file(dir.path().join("conf").join("copilot.toml"))
-        .expect("remove copilot config");
+    std::fs::remove_file(dir.path().join("conf").join("agent-settings.toml"))
+        .expect("remove agent settings config");
 
     let error = Config::load(dir.path(), &profile, platform, None)
         .expect_err("missing main config should fail");
 
-    assert!(error.to_string().contains("copilot.toml"));
+    assert!(error.to_string().contains("agent-settings.toml"));
 }
 
 #[test]

@@ -49,7 +49,7 @@ pub fn empty_config(root: PathBuf) -> Config {
         validation_chmod: vec![],
         vscode_extensions: vec![],
         git_settings: vec![],
-        copilot_settings: vec![],
+        agent_settings: vec![],
         manifest: Manifest {
             excluded_files: vec![],
         },

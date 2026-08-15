@@ -33,7 +33,7 @@ path:
 
 ```toml
 [windows]
-paths = ["AppData/", "config/git/windows"]   # excluded if windows is excluded
+paths = ["config/git/windows", "wslconfig"]  # excluded if windows is excluded
 
 [arch]
 paths = ["config/pacman.conf", "config/paru/"]
@@ -48,11 +48,14 @@ paths = ["config/hypr/", "config/dunst/"]    # retained only when BOTH are activ
 - A path is retained when any section declaring it is active; otherwise it is excluded
 - Directories **must** end with `/`
 - Files in the `[base]` profile are never excluded — don't list them here
+- A non-base symlink may reuse a source declared in `[base]` without adding a
+  manifest entry; the base declaration already guarantees retention
 
 ## Adding a New File
 
 1. Determine which active category combination owns the file
-2. Add to the appropriate section in `conf/manifest.toml` (relative to `symlinks/`)
+2. Add to the appropriate section in `conf/manifest.toml` (relative to
+   `symlinks/`), unless the source is already declared in `[base]`
 3. Run `./dotfiles.sh install -p <profile> -d` to verify the exclusion
 4. Apply sparse checkout only from a clean working tree
 

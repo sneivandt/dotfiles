@@ -81,8 +81,8 @@ Both severities fail `dotfiles test`; severity controls rendering and meaning.
 consistency. Treat that file as the authoritative inventory rather than
 duplicating its test list here. It covers, non-exhaustively: symlink section to
 `manifest.toml` section coverage in both directions, every non-base symlink
-source being covered by some manifest path, and every manifest path existing
-under `symlinks/`.
+source being retained by `[base]` ownership or covered by some compatible
+manifest path, and every manifest path existing under `symlinks/`.
 
 These tests use private TOML structs (not library types) to stay self-contained.
 The `is_covered_by()` helper handles directory prefix matching (trailing `/`).

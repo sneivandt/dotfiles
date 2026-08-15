@@ -26,8 +26,8 @@ macro_rules! config_section_inventory {
                 |config: &Config| Some(SectionCount::new("vscode extension", "vscode extensions", config.vscode_extensions.len()));
             git_settings: Vec<crate::domains::git::config::git_config::GitSetting> =>
                 |config: &Config| Some(SectionCount::new("git setting", "git settings", config.git_settings.len()));
-            copilot_settings: Vec<crate::domains::ai::config::copilot::CopilotSetting> =>
-                |config: &Config| Some(SectionCount::new("copilot setting", "copilot settings", config.copilot_settings.len()));
+            agent_settings: Vec<crate::domains::ai::config::agent_settings::AgentSetting> =>
+                |config: &Config| Some(SectionCount::new("agent setting", "agent settings", config.agent_settings.len()));
             manifest: crate::domains::repository::config::manifest::Manifest =>
                 |config: &Config| Some(SectionCount::new("manifest exclusion", "manifest exclusions", config.manifest.excluded_files.len()));
             scripts: Vec<crate::domains::overlay::config::scripts::ScriptEntry> =>
@@ -42,7 +42,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
 
-use crate::domains::ai::{apm, config::copilot};
+use crate::domains::ai::{apm, config::agent_settings};
 use crate::domains::editors::config::vscode_extensions;
 use crate::domains::files::config::{chmod, symlinks};
 use crate::domains::git::config::git_config;
@@ -56,7 +56,7 @@ use crate::infra::platform::Platform;
 const MANIFEST_TOML: &str = "manifest.toml";
 pub(crate) const REQUIRED_CONFIG_FILES: &[&str] = &[
     "chmod.toml",
-    "copilot.toml",
+    "agent-settings.toml",
     "git-config.toml",
     "manifest.toml",
     "packages.toml",
@@ -305,7 +305,7 @@ impl<'a> ConfigValidator<'a> {
                 vscode_extensions::validate(&config.vscode_extensions)
             })
             .validate_with(|config, _platform| git_config::validate(&config.git_settings))
-            .validate_with(|config, _platform| copilot::validate(&config.copilot_settings))
+            .validate_with(|config, _platform| agent_settings::validate(&config.agent_settings))
             .validate_with(|config, _platform| scripts::validate(&config.scripts))
     }
 
@@ -358,8 +358,8 @@ pub struct Config {
     pub vscode_extensions: Vec<String>,
     /// Git configuration settings to apply globally.
     pub git_settings: Vec<git_config::GitSetting>,
-    /// GitHub Copilot CLI settings to converge in `~/.copilot/settings.json`.
-    pub copilot_settings: Vec<copilot::CopilotSetting>,
+    /// User settings to converge for supported agent harnesses.
+    pub agent_settings: Vec<agent_settings::AgentSetting>,
     /// Sparse checkout manifest for file exclusions.
     pub manifest: manifest::Manifest,
     /// Custom scripts from the overlay repository.
@@ -433,7 +433,8 @@ impl Config {
             )?,
             git_settings: sections
                 .collect_filtered(git_config::GIT_CONFIG_TOML, git_config::load)?,
-            copilot_settings: sections.collect_filtered(copilot::COPILOT_TOML, copilot::load)?,
+            agent_settings: sections
+                .collect_filtered(agent_settings::AGENT_SETTINGS_TOML, agent_settings::load)?,
             manifest: sections.load_active(MANIFEST_TOML, manifest::load)?,
             scripts: sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::load)?,
         };

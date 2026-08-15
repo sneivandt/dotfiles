@@ -1,0 +1,46 @@
+# Agent harness settings
+#
+# Each entry targets one harness and converges a dot-separated key in its user
+# settings document:
+#   copilot -> ~/.copilot/settings.json (JSON)
+#   codex   -> ~/.codex/config.toml      (TOML)
+#
+# Only listed keys are managed. Volatile harness state, credentials, integrations,
+# and every other key are preserved. APM remains responsible for shared skills,
+# plugins, and MCP deployment (see symlinks/apm/config/*.yml).
+
+[base]
+settings = [
+  # Copilot CLI core behaviour
+  { target = "copilot", key = "model",          value = "gpt-5.6-sol" },
+  { target = "copilot", key = "effortLevel",    value = "high"        },
+  { target = "copilot", key = "banner",         value = "never"       },
+  { target = "copilot", key = "beep",           value = false         },
+  { target = "copilot", key = "memory",         value = true          },
+  { target = "copilot", key = "renderMarkdown", value = true          },
+  { target = "copilot", key = "logLevel",       value = "all"         },
+
+  # Copilot CLI appearance
+  { target = "copilot", key = "theme", value = "default" },
+
+  # Copilot CLI footer / status line
+  { target = "copilot", key = "footer.showModelEffort",   value = false },
+  { target = "copilot", key = "footer.showDirectory",     value = true  },
+  { target = "copilot", key = "footer.showBranch",        value = true  },
+  { target = "copilot", key = "footer.showContextWindow", value = false },
+  { target = "copilot", key = "footer.showQuota",         value = false },
+  { target = "copilot", key = "footer.showAiUsed",        value = false },
+  { target = "copilot", key = "footer.showAgent",         value = true  },
+  { target = "copilot", key = "footer.showCodeChanges",   value = false },
+  { target = "copilot", key = "footer.showUsername",      value = false },
+  { target = "copilot", key = "footer.showSandbox",       value = false },
+  { target = "copilot", key = "footer.showCustom",        value = true  },
+
+  # Codex agent defaults shared by the CLI, IDE extension, and desktop app
+  { target = "codex", key = "model",                                    value = "gpt-5.6"   },
+  { target = "codex", key = "model_reasoning_effort",                   value = "high"      },
+  { target = "codex", key = "personality",                              value = "pragmatic" },
+  { target = "codex", key = "web_search",                               value = "cached"    },
+  { target = "codex", key = "file_opener",                              value = "vscode"    },
+  { target = "codex", key = "shell_environment_policy.ignore_default_excludes", value = false },
+]

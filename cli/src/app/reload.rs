@@ -152,7 +152,7 @@ mod tests {
         "vscode-extensions.toml",
         "git-config.toml",
         "registry.toml",
-        "copilot.toml",
+        "agent-settings.toml",
     ];
 
     /// Create a repository root with an empty but complete `conf/` directory.

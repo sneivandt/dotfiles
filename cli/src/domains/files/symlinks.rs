@@ -25,6 +25,9 @@ fn build_resource(
         |explicit| home.join(explicit),
     );
     let validation_error = crate::domains::files::config::symlinks::validate_paths(s)
+        .and_then(|()| {
+            crate::domains::files::config::symlinks::validate_source_containment(s, repo_root)
+        })
         .err()
         .map(|e| e.to_string())
         .or_else(|| git_symlink_placeholder_reason(&source, repo_root));
@@ -321,6 +324,31 @@ mod tests {
             TaskResult::Batch(stats) if stats.failed_count() == 1
         ));
         assert!(!home_dir.path().join("escaped-source").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn install_run_skips_source_symlink_outside_root() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let home_dir = tempfile::tempdir().unwrap();
+        let outside_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = repo_dir.path().join("symlinks");
+        std::fs::create_dir(&symlinks_dir).unwrap();
+        let outside = outside_dir.path().join("outside");
+        std::fs::write(&outside, "outside").unwrap();
+        std::os::unix::fs::symlink(&outside, symlinks_dir.join("escaped")).unwrap();
+
+        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+            .with_home(home_dir.path().to_path_buf());
+        let task = InstallSymlinks::new(handle(vec![sym("escaped", None)]));
+
+        let result = task.run(&ctx).unwrap();
+
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.failed_count() == 1
+        ));
+        assert!(!home_dir.path().join(".escaped").exists());
     }
 
     #[cfg(unix)]

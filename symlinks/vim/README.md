@@ -21,8 +21,9 @@ When you first launch Neovim:
 
 1. lazy.nvim will auto-install to `~/.local/share/nvim/lazy/lazy.nvim`
 2. All plugins will be automatically downloaded
-3. The checked-in lockfile is used from `~/.config/nvim/lazy-lock.json`
-   through the `~/.config/nvim -> ~/.vim` symlink.
+3. The checked-in lockfile is available from
+   `~/.config/nvim/lazy-lock.json`; both `~/.vim` and `~/.config/nvim` link
+   directly to this directory.
 
 No configuration or environment variables needed - it works out of the box.
 

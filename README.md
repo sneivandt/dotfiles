@@ -26,7 +26,7 @@ machine, so nothing below is installed everywhere.
 | Linux desktop | Hyprland, Waybar, mako, fuzzel, gammastep, and GTK settings |
 | Services | systemd user units for desktop components and maintenance timers |
 | Sensitive files | SSH and GnuPG configuration, with declared Unix file modes enforced |
-| AI tooling | APM packages and plugins, and Copilot CLI settings |
+| AI tooling | APM packages and plugins plus targeted Copilot and Codex settings |
 | Windows | Current-user registry values, Developer Mode, and WSL configuration |
 
 See the [Task Reference](docs/TASKS.md) for the task behind each area.
@@ -107,6 +107,7 @@ Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI a
 | `symlinks.toml` | Files linked into `$HOME` |
 | `packages.toml` | Packages for pacman, AUR, or winget |
 | `git-config.toml` | Git settings |
+| `agent-settings.toml` | Copilot and Codex user settings |
 | `registry.toml` | Windows registry keys |
 
 See the [Configuration Reference](docs/CONFIGURATION.md) for the full TOML format.

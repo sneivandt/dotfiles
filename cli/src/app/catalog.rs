@@ -14,8 +14,8 @@ use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::app::preserve::MaterializeExcludedSymlinks;
 use crate::app::reload::ReloadConfig;
+use crate::domains::ai::agent_settings::ConfigureAgentSettings;
 use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
-use crate::domains::ai::copilot_settings::ConfigureCopilot;
 use crate::domains::dotfiles::path::ConfigurePath;
 use crate::domains::dotfiles::wrapper::{InstallWrapper, UninstallWrapper};
 use crate::domains::editors::vscode_extensions::InstallVsCodeExtensions;
@@ -125,7 +125,7 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         ),
         Box::new(UpdateRepository::new(repo_updated.clone())),
         Box::new(ConfigureGit::new(store.git_settings.clone())),
-        Box::new(ConfigureCopilot::new(store.copilot_settings.clone())),
+        Box::new(ConfigureAgentSettings::new(store.agent_settings.clone())),
         with_deps(InstallGitHooks::new(), &[id::<UpdateRepository>()]),
         with_deps(
             GenerateCompletions::new(zsh_completions, powershell_completions),
@@ -219,7 +219,7 @@ mod tests {
             id::<ConfigureSparseCheckout>(),
             id::<UpdateRepository>(),
             id::<ConfigureGit>(),
-            id::<ConfigureCopilot>(),
+            id::<ConfigureAgentSettings>(),
             id::<InstallGitHooks>(),
             id::<GenerateCompletions>(),
             id::<InstallPackages>(),

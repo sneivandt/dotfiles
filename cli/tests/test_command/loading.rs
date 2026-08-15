@@ -58,13 +58,13 @@ fn config_loads_with_desktop_fixture() {
 fn config_rejects_missing_main_config_file() {
     let ctx = common::IntegrationTestContext::new();
     let conf = ctx.root_path().join("conf");
-    std::fs::remove_file(conf.join("copilot.toml")).expect("remove copilot.toml");
+    std::fs::remove_file(conf.join("agent-settings.toml")).expect("remove agent-settings.toml");
 
     let platform = Platform::detect();
     let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
     let error = Config::load(ctx.root_path(), &profile, platform, None)
         .expect_err("missing config should fail");
-    assert!(error.to_string().contains("copilot.toml"));
+    assert!(error.to_string().contains("agent-settings.toml"));
 }
 
 // ---------------------------------------------------------------------------

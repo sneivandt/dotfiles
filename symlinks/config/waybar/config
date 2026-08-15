@@ -1,5 +1,6 @@
 {
-    "layer": "top",
+    "layer": "bottom",
+    "exclusive": true,
     "position": "top",
     "height": 26,
     "modules-left": ["group/workspaces", "custom/window"],

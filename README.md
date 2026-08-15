@@ -1,104 +1,107 @@
 # Dotfiles
 
-My personal dotfiles manager built around a **Rust CLI** and declarative TOML configuration. It keeps my Linux and Windows environments consistent across shell, editor, Git, packages, AI tooling and more.
+A personal dotfiles manager for Linux and Windows, powered by a **Rust CLI**
+and declarative TOML.
 
 ![Generated terminal output of a dotfiles install](docs/assets/terminal-screenshot.svg)
+
+## Quick start
+
+From a repository checkout, preview the changes before applying them:
+
+**Linux**
+
+```bash
+./dotfiles.sh install --profile base --dry-run
+./dotfiles.sh install --profile base
+```
+
+**Windows**
+
+```powershell
+.\dotfiles.ps1 install --profile desktop --dry-run
+.\dotfiles.ps1 install --profile desktop
+```
+
+Each wrapper downloads and verifies the latest compatible release binary when
+needed. Pass `--build` to compile from source. After installation, use the
+`dotfiles` command directly.
 
 ## Core ideas
 
 - **Cross-platform:** one Rust CLI plans and applies the desired machine state across Linux and Windows.
-- **Adaptive:** one repository serves every machine. Choose `base` or `desktop`; the `linux`, `windows`, and `arch` categories are detected and layered on automatically.
-- **Declarative:** TOML files describe packages, links, tools, and settings without turning setup into a collection of one-off scripts.
-- **Idempotent:** re-running `install` converges on the declared state. Preview changes first with `-d`.
+- **Adaptive:** select `base` or `desktop`; platform-specific settings are added automatically.
+- **Declarative:** TOML describes packages, links, tools, and settings.
+- **Idempotent:** repeated installs apply only the changes needed to match the configuration.
 
 ## What it manages
 
-The active profile and detected platform decide which of these apply on a given
-machine, so nothing below is installed everywhere.
+The selected profile and detected platform determine which entries apply.
 
 | Area | Managed state |
 |------|---------------|
-| Shell | Zsh and Bash configuration, login shell selection, `PATH` entry, generated completions |
-| Editors | Neovim, Vim, and VS Code configuration plus declared VS Code extensions |
+| Shell | Zsh and Bash configuration, login shell, `PATH`, and completions |
+| Editors | Neovim, Vim, VS Code, and VS Code extensions |
 | Terminal | Alacritty, tmux, and readline configuration |
-| Git | Global Git settings and repository-maintained hooks |
-| Packages | pacman and AUR packages via `paru` on Arch, winget packages on Windows |
-| Linux desktop | Hyprland, Waybar, mako, fuzzel, gammastep, and GTK settings |
-| Services | systemd user units for desktop components and maintenance timers |
-| Sensitive files | SSH and GnuPG configuration, with declared Unix file modes enforced |
-| AI tooling | APM packages and plugins plus targeted Copilot and Codex settings |
+| Git | Global settings and repository hooks |
+| Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
+| Linux desktop | Hyprland, Waybar, mako, fuzzel, gammastep, and GTK configuration |
+| Services | systemd user units and maintenance timers |
+| SSH and GnuPG | Configuration files with enforced Unix file modes |
+| AI tooling | APM packages and plugins, plus Copilot and Codex settings |
 | Windows | Current-user registry values, Developer Mode, and WSL configuration |
 
-See the [Task Reference](docs/TASKS.md) for the task behind each area.
+See the [Task Reference](docs/TASKS.md) for the tasks behind these areas.
 
 ## Commands
 
-Bootstrap with the platform wrapper from the repository root: `./dotfiles.sh` on
-Linux or `.\dotfiles.ps1` on Windows. The wrapper downloads the latest release
-binary when none is present; add `--build` to compile from source instead. After
-the first run, the installed `dotfiles` command is the normal entry point.
-
-Every command accepts `-d, --dry-run`, which plans and reports changes without
-touching the machine. Preview a first run before applying it:
-
-```bash
-./dotfiles.sh install -p desktop -d   # dry run
-./dotfiles.sh install -p desktop      # apply
-```
-
-These commands change machine state:
-
 | Command | What it does |
 |---------|--------------|
-| `dotfiles install` | Converges the machine on the declared state |
-| `dotfiles update` | Runs `install` and additionally advances pinned dependency versions |
-| `dotfiles uninstall` | Detaches managed links, hooks, and wrappers, replacing symlinks with real files |
-
-Reach for `update` only when you want to advance pinned versions; `install` is
-the command for normal repeatable convergence. `uninstall` leaves broader
-machine state such as packages, services, and registry values alone.
-
-These commands only read state:
-
-| Command | What it does |
-|---------|--------------|
+| `dotfiles install` | Brings the machine in line with the configuration |
+| `dotfiles update` | Installs and advances pinned dependency versions |
+| `dotfiles uninstall` | Removes managed integrations while preserving user files |
 | `dotfiles test` | Validates configuration and runs available script analyzers |
-| `dotfiles tasks` | Lists task selectors and the commands that include each one |
-| `dotfiles log` | Lists retained run logs or prints one of them |
+| `dotfiles tasks` | Lists task selectors and which commands use each task |
+| `dotfiles log` | Reads retained run logs |
+
+Use `install` for normal setup and maintenance, and `update` only when advancing
+pinned versions. `uninstall` leaves packages, services, and registry values in
+place. Commands that make changes accept `-d, --dry-run` to report changes
+without applying them.
 
 ### Targeting specific tasks
 
-`--only` and `--skip` narrow a run to a subset of tasks, using the stable
-selectors reported by `dotfiles tasks`:
+Use `--only` and `--skip` with selectors reported by `dotfiles tasks`:
 
 ```bash
-dotfiles tasks                          # list selectors
-dotfiles install --only symlinks,git -d # dry run only those tasks
-dotfiles install --skip packages        # converge everything else
+dotfiles tasks
+dotfiles install --only symlinks,git --dry-run
+dotfiles install --skip packages
 ```
 
 See the [Usage Guide](docs/USAGE.md) for the full command reference.
 
 ## Profiles
 
-Each machine uses one profile; `linux`, `windows`, and `arch` are detected automatically and combined with the selected profile. Select a profile with `-p, --profile`:
+Each machine uses one profile. The CLI adds the detected `linux`, `windows`, and
+`arch` categories automatically.
 
 ```bash
 dotfiles install -p desktop
 ```
 
-If no profile is set, `install` prompts for one and saves the selection for future runs.
+If no profile is set, `install` prompts for one and saves the choice.
 
 | Profile | Best for |
 |---------|----------|
 | `base` | Servers, WSL, minimal shell environments |
-| `desktop` | Full desktop/workstation setups with GUI tools |
+| `desktop` | Workstations with GUI tools |
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
 
 ## Configuration
 
-Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI applies the requested state. The table below highlights the core configuration files; it is not a complete list:
+Configuration lives in `conf/*.toml`. Key files include:
 
 | File | Controls |
 |------|----------|
@@ -110,32 +113,35 @@ Declarative settings are stored in `conf/*.toml`. Edit these files and the CLI a
 | `agent-settings.toml` | Copilot and Codex user settings |
 | `registry.toml` | Windows registry keys |
 
-See the [Configuration Reference](docs/CONFIGURATION.md) for the full TOML format.
+See the [Configuration Reference](docs/CONFIGURATION.md) for every file and its
+TOML format.
 
 ## Development
 
-Run Rust development commands from the `cli/` directory:
+Run Rust commands from `cli/`:
 
 ```bash
-cargo build                      # build
-cargo test                       # unit + integration tests
-cargo clippy -- -D warnings      # lint
-cargo fmt                        # format
+cargo build
+cargo test
+cargo clippy -- -D warnings
+cargo fmt
 ```
 
-From the repo root, build from source and dry run changes against the active config:
+From the repository root:
 
 ```bash
-./dotfiles.sh --build install -d # run from repo root
+./dotfiles.sh --build install --dry-run
 ```
+
+See the [Contributing Guide](docs/CONTRIBUTING.md) for development workflows.
 
 ## Documentation
 
 | Guide | What's in it |
 |-------|--------------|
+| [Documentation index](docs/README.md) | All user, platform, and development guides |
 | [Usage Guide](docs/USAGE.md) | All commands and flags |
 | [Task Reference](docs/TASKS.md) | Every install, update, uninstall, validation, and overlay task |
-| [Profile System](docs/PROFILES.md) | How profiles work |
 | [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
 | [Architecture](docs/ARCHITECTURE.md) | Rust CLI design |
-| [APM Tooling](docs/APM.md) | AI tooling packages and APM flow |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common setup and configuration failures |

@@ -26,7 +26,7 @@
 
     <text x="34" y="250"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">System packages</tspan></text>
     <text x="52" y="271" fill="#a9b1d6">install neovim</text>
-    <text x="52" y="292" fill="#a9b1d6">install ripgrep</text>
+    <text x="52" y="292" fill="#a9b1d6">install zsh</text>
 
     <text x="34" y="313"><tspan fill="#9ece6a" font-weight="700">✓</tspan><tspan x="52" fill="#c0caf5">Default shell</tspan></text>
     <text x="52" y="334" fill="#a9b1d6">configure default shell → zsh</text>

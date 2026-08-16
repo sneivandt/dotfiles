@@ -496,7 +496,9 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
         .build();
     let pacman_config = repo
         .root_path()
-        .join("symlinks/config/pacman.conf")
+        .join("symlinks")
+        .join("config")
+        .join("pacman.conf")
         .to_string_lossy()
         .into_owned();
     let executor = Arc::new(RecordingExecutor::new(
@@ -559,7 +561,9 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
         .build();
     let pacman_config = repo
         .root_path()
-        .join("symlinks/config/pacman.conf")
+        .join("symlinks")
+        .join("config")
+        .join("pacman.conf")
         .to_string_lossy()
         .into_owned();
     let executor = Arc::new(RecordingExecutor::new(

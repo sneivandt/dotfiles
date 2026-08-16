@@ -5,7 +5,7 @@
     "height": 26,
     "modules-left": ["group/workspaces", "custom/window"],
     "modules-center": [],
-    "modules-right": ["custom/playing", "custom/stocks", "pulseaudio", "clock"],
+    "modules-right": ["custom/playing", "custom/stocks", "tray", "pulseaudio", "clock"],
 
     "group/workspaces": {
         "orientation": "horizontal",
@@ -92,6 +92,11 @@
         "exec-if": "command -v hyprctl >/dev/null 2>&1 && test -x ~/.config/hypr/scripts/window-title.py",
         "return-type": "json",
         "tooltip": false
+    },
+
+    "tray": {
+        "icon-size": 14,
+        "spacing": 8
     },
 
     "pulseaudio": {

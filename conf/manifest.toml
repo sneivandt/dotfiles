@@ -38,13 +38,6 @@ paths = [
   "zshrc",
 ]
 
-# Windows-specific files
-[windows]
-paths = [
-  "config/git/windows",
-  "wslconfig",
-]
-
 # Arch Linux-specific files
 [arch]
 paths = [
@@ -54,26 +47,12 @@ paths = [
   "config/zsh/functions/update-mirrors",
 ]
 
-# Desktop-specific files (excluded on non-desktop)
-#
-[desktop]
-paths = [
-  # Cross-platform backing store for VS Code, VS Code Insiders, and Remote.
-  "config/Code/",
-]
-
-# Desktop-specific files that also require Linux
-[linux-desktop]
-paths = [
-  "config/shell/aliases-desktop.sh",
-  "config/shell/profile-desktop.sh",
-]
-
 # Desktop-specific files that also require Arch Linux
 [arch-desktop]
 paths = [
   "config/alacritty/",
   "config/chromium-flags.conf",
+  "config/fuzzel/",
   "config/gammastep/",
   "config/gtk-2.0/",
   "config/gtk-3.0/",
@@ -95,7 +74,27 @@ paths = [
   "config/volume/",
   "config/wallpaper/",
   "config/waybar/",
-  "config/fuzzel/",
+]
+
+# Desktop-specific files (excluded on non-desktop)
+[desktop]
+paths = [
+  # Cross-platform backing store for VS Code, VS Code Insiders, and Remote.
+  "config/Code/",
+]
+
+# Desktop-specific files that also require Linux
+[linux-desktop]
+paths = [
+  "config/shell/aliases-desktop.sh",
+  "config/shell/profile-desktop.sh",
+]
+
+# Windows-specific files
+[windows]
+paths = [
+  "config/git/windows",
+  "wslconfig",
 ]
 
 # Windows desktop-specific files

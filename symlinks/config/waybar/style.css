@@ -66,6 +66,7 @@ window#waybar #custom-window.empty {
 }
 
 #clock,
+#tray,
 #pulseaudio,
 #custom-playing,
 #custom-stocks {
@@ -73,6 +74,24 @@ window#waybar #custom-window.empty {
     margin: 4px 2px;
     border-radius: 6px;
     background: rgba(26, 27, 38, 0.94);
+}
+
+#tray > widget {
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+#tray > widget:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    background: rgba(247, 118, 142, 0.18);
+    -gtk-icon-effect: highlight;
 }
 
 #clock {

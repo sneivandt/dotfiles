@@ -27,7 +27,6 @@ symlinks = [
 [linux]
 symlinks = [
   "bash_profile",
-  { source = "vim", target = ".config/nvim" },
   "bashrc",
   "config/bash/prompt.bash",
   "config/readline/inputrc",
@@ -49,6 +48,7 @@ symlinks = [
   "config/zsh/prompt.zsh",
   "gnupg/gpg-agent.conf",
   "vim",
+  { source = "vim", target = ".config/nvim" },
   # Login shell setup for zsh. The uwsm graphical-session launch inside is
   # guarded on `command -v uwsm` and tty1, so it is inert off arch-desktop.
   "zprofile",
@@ -67,6 +67,7 @@ symlinks = [
 symlinks = [
   "config/alacritty/alacritty.toml",
   "config/chromium-flags.conf",
+  "config/fuzzel/fuzzel.ini",
   "config/gammastep/config.ini",
   "config/gtk-2.0/gtkrc-2.0",
   "config/gtk-3.0/settings.ini",
@@ -94,7 +95,6 @@ symlinks = [
   "config/wallpaper",
   "config/waybar/config",
   "config/waybar/style.css",
-  "config/fuzzel/fuzzel.ini",
 ]
 
 [desktop]
@@ -115,10 +115,10 @@ symlinks = [
 [windows]
 symlinks = [
   "config/git/windows",
-  "wslconfig",
   { source = "config/nuget/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
   { source = "config/powershell/Microsoft.PowerShell_profile.ps1", target = "Documents/PowerShell/Microsoft.PowerShell_profile.ps1" },
   { source = "config/powershell/Microsoft.PowerShell_profile.ps1", target = "Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1" },
+  "wslconfig",
 ]
 
 [windows-desktop]

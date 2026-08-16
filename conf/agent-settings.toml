@@ -42,5 +42,6 @@ settings = [
   { target = "codex", key = "personality",                              value = "pragmatic" },
   { target = "codex", key = "web_search",                               value = "cached"    },
   { target = "codex", key = "file_opener",                              value = "vscode"    },
+  { target = "codex", key = "tui.show_tooltips",                        value = false       },
   { target = "codex", key = "shell_environment_policy.ignore_default_excludes", value = false },
 ]

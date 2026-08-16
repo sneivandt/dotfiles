@@ -14,7 +14,7 @@ hl.bind(mod .. " + v", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-editor.sh"
 -- Window management
 hl.bind(mod .. " + q", hl.dsp.window.close())
 hl.bind(mod .. " + f", hl.dsp.window.fullscreen({ mode = "maximized" }))
-hl.bind(mod .. " + SHIFT + f", hl.dsp.window.fullscreen_state({ internal = 0, client = 2 }))
+hl.bind(mod .. " + SHIFT + f", hl.dsp.window.fullscreen_state({ internal = 0, client = 2, action = "toggle" }))
 hl.bind(mod .. " + j", hl.dsp.layout("cyclenext"))
 hl.bind(mod .. " + k", hl.dsp.layout("cycleprev"))
 hl.bind(mod .. " + SHIFT + j", hl.dsp.layout("swapnext"))

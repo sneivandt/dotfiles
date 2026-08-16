@@ -100,7 +100,11 @@ pub(super) fn build_install_plan(
     let installed = get_installed_packages(manager, system.executor())?;
     let provider_config = match manager {
         PackageManager::Pacman | PackageManager::Paru => {
-            let path = ctx.paths().symlinks_dir().join("config/pacman.conf");
+            let path = ctx
+                .paths()
+                .symlinks_dir()
+                .join("config")
+                .join("pacman.conf");
             path.is_file().then(|| path.to_string_lossy().into_owned())
         }
         PackageManager::Winget => None,

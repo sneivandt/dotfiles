@@ -37,7 +37,7 @@ settings = [
   { target = "copilot", key = "footer.showCustom",        value = true  },
 
   # Codex agent defaults shared by the CLI, IDE extension, and desktop app
-  { target = "codex", key = "model",                                    value = "gpt-5.6"   },
+  { target = "codex", key = "model",                                    value = "gpt-5.6-sol" },
   { target = "codex", key = "model_reasoning_effort",                   value = "high"      },
   { target = "codex", key = "personality",                              value = "pragmatic" },
   { target = "codex", key = "web_search",                               value = "cached"    },

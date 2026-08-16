@@ -214,7 +214,7 @@ behavior in platform category sections.
 [base]
 settings = [
   { target = "copilot", key = "model", value = "gpt-5.6-sol" },
-  { target = "codex", key = "model", value = "gpt-5.6" },
+  { target = "codex", key = "model", value = "gpt-5.6-sol" },
   { target = "codex", key = "model_reasoning_effort", value = "high" },
 ]
 ```

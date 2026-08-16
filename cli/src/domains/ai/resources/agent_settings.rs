@@ -413,7 +413,7 @@ command = "example"
         let toml = AgentSettingResource::new(
             "codex".to_string(),
             "model".to_string(),
-            toml::Value::String("gpt-5.6".to_string()),
+            toml::Value::String("gpt-5.6-sol".to_string()),
             SettingsFormat::Toml,
             toml_path,
         );

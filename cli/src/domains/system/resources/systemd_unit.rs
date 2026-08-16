@@ -454,6 +454,7 @@ mod tests {
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 
+    #[cfg(unix)]
     #[test]
     fn offline_user_unit_is_enabled_without_contacting_the_bus() {
         let home = tempfile::tempdir().unwrap();
@@ -485,6 +486,7 @@ mod tests {
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
+    #[cfg(unix)]
     #[test]
     fn offline_user_unit_missing_definition_is_plannable_for_dry_run() {
         let home = tempfile::tempdir().unwrap();
@@ -502,6 +504,7 @@ mod tests {
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     }
 
+    #[cfg(unix)]
     #[test]
     fn offline_user_unit_supports_required_by_targets() {
         let home = tempfile::tempdir().unwrap();
@@ -531,6 +534,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn offline_user_unit_rejects_install_targets_that_escape_the_user_directory() {
         let home = tempfile::tempdir().unwrap();

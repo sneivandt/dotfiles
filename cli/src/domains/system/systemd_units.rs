@@ -336,6 +336,7 @@ mod tests {
         assert!(error.to_string().contains("reloading user systemd daemon"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn run_enables_user_units_offline_when_the_user_manager_is_unavailable() {
         let home = tempfile::tempdir().unwrap();

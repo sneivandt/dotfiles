@@ -14,8 +14,12 @@ use crate::infra::exec::{CommandSpec, Executor};
 pub(super) struct ParuProvider;
 
 /// Build the argument vector for a `paru -S` invocation over `names`.
-fn paru_args<'a>(names: &[&'a str]) -> Vec<&'a str> {
-    let mut args = vec!["-S", "--needed", "--noconfirm"];
+fn paru_args<'a>(names: &[&'a str], config_path: Option<&'a str>) -> Vec<&'a str> {
+    let mut args = Vec::new();
+    if let Some(path) = config_path {
+        args.extend(["--config", path]);
+    }
+    args.extend(["-S", "--needed", "--noconfirm"]);
     args.extend_from_slice(names);
     args
 }
@@ -31,8 +35,13 @@ impl PackageProvider for ParuProvider {
             .context("querying installed paru packages")
     }
 
-    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
-        executor.execute(CommandSpec::new("paru").args(&paru_args(&[name])))?;
+    fn install(
+        &self,
+        name: &str,
+        executor: &dyn Executor,
+        config_path: Option<&str>,
+    ) -> Result<ResourceChange> {
+        executor.execute(CommandSpec::new("paru").args(&paru_args(&[name], config_path)))?;
         Ok(ResourceChange::Applied)
     }
 
@@ -40,7 +49,8 @@ impl PackageProvider for ParuProvider {
         &self,
         names: &[&'a str],
         _executor: &dyn Executor,
+        config_path: Option<&'a str>,
     ) -> Result<Option<(&'static str, Vec<&'a str>)>> {
-        Ok(Some(("paru", paru_args(names))))
+        Ok(Some(("paru", paru_args(names, config_path))))
     }
 }

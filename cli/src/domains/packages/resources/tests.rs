@@ -470,7 +470,12 @@ fn install_report_counts_already_correct_packages_separately_from_applied() {
             Ok(HashSet::new())
         }
 
-        fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
+        fn install(
+            &self,
+            _name: &str,
+            _executor: &dyn Executor,
+            _config_path: Option<&str>,
+        ) -> Result<ResourceChange> {
             Ok(ResourceChange::AlreadyCorrect)
         }
     }
@@ -507,7 +512,12 @@ fn install_report_propagates_cancellation_without_starting_later_packages() {
             Ok(HashSet::new())
         }
 
-        fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
+        fn install(
+            &self,
+            _name: &str,
+            _executor: &dyn Executor,
+            _config_path: Option<&str>,
+        ) -> Result<ResourceChange> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Err(ExecError::Cancelled {
                 command: "package install".to_string(),

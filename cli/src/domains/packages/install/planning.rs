@@ -98,9 +98,23 @@ pub(super) fn build_install_plan(
 
     let system = ctx.system();
     let installed = get_installed_packages(manager, system.executor())?;
+    let provider_config = match manager {
+        PackageManager::Pacman | PackageManager::Paru => {
+            let path = ctx.paths().symlinks_dir().join("config/pacman.conf");
+            path.is_file().then(|| path.to_string_lossy().into_owned())
+        }
+        PackageManager::Winget => None,
+    };
     let resources: Vec<PackageResource> = packages
         .iter()
-        .map(|pkg| PackageResource::new(pkg.name.clone(), manager, system.executor_arc()))
+        .map(|pkg| {
+            let mut resource =
+                PackageResource::new(pkg.name.clone(), manager, system.executor_arc());
+            if let Some(path) = &provider_config {
+                resource = resource.with_provider_config(path.clone());
+            }
+            resource
+        })
         .collect();
     let mut missing = Vec::new();
     let mut already_ok = 0usize;

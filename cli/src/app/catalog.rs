@@ -131,7 +131,10 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
             GenerateCompletions::new(zsh_completions, powershell_completions),
             &[id::<UpdateRepository>()],
         ),
-        Box::new(InstallPackages::new(store.packages.clone())),
+        with_deps(
+            InstallPackages::new(store.packages.clone()),
+            &[id::<ConfigureSparseCheckout>()],
+        ),
         Box::new(InstallParu),
         Box::new(InstallAurPackages::new(store.packages.clone())),
         with_deps(
@@ -317,6 +320,12 @@ mod tests {
                 .dependencies()
                 .contains(&id::<MaterializeExcludedSymlinks>()),
             "sparse checkout must preserve excluded managed symlinks first"
+        );
+        assert!(
+            find("System packages")
+                .dependencies()
+                .contains(&id::<ConfigureSparseCheckout>()),
+            "package installation must wait for managed pacman configuration"
         );
         assert!(
             find("Systemd units")

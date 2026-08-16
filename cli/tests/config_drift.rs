@@ -22,7 +22,7 @@
 //! 3. Every path listed in `manifest.toml` actually exists in `symlinks/`.
 
 use serde::{Deserialize, Deserializer, de::Error as _};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
@@ -84,6 +84,19 @@ struct ManifestSection {
     paths: Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChmodSection {
+    permissions: Vec<PermissionEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PermissionEntry {
+    mode: String,
+    path: String,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -113,6 +126,11 @@ fn load_manifest_sections(path: &Path) -> HashMap<String, Vec<String>> {
     let raw: HashMap<String, ManifestSection> =
         toml::from_str(&content).expect("parse manifest.toml");
     raw.into_iter().map(|(k, v)| (k, v.paths)).collect()
+}
+
+fn load_permission_sections(path: &Path) -> HashMap<String, ChmodSection> {
+    let content = std::fs::read_to_string(path).expect("read chmod.toml");
+    toml::from_str(&content).expect("parse chmod.toml")
 }
 
 #[test]
@@ -165,7 +183,7 @@ fn is_covered_by(source: &str, manifest_paths: &[String]) -> bool {
 ///
 /// Section names are hyphen-separated category tags, e.g. `linux-desktop`
 /// produces `{"linux", "desktop"}`.
-fn section_tags(section: &str) -> std::collections::HashSet<&str> {
+fn section_tags(section: &str) -> HashSet<&str> {
     section.split('-').collect()
 }
 
@@ -354,6 +372,7 @@ fn manifest_paths_exist_in_symlinks_dir() {
             if is_excluded_by_sparse(path, &excluded) {
                 continue;
             }
+
             let full = symlinks_dir.join(path);
             if !full.exists() {
                 missing.push(format!("[{section}] {path}"));
@@ -364,6 +383,49 @@ fn manifest_paths_exist_in_symlinks_dir() {
     assert!(
         missing.is_empty(),
         "manifest paths not found in symlinks/:\n  {}",
+        missing.join("\n  ")
+    );
+}
+
+#[test]
+fn hypr_helper_scripts_have_executable_permissions() {
+    let root = repo_root();
+    let scripts_dir = root.join("symlinks/config/hypr/scripts");
+    let excluded = sparse_checkout_excluded_paths(&root);
+    if is_excluded_by_sparse("config/hypr/scripts/", &excluded) {
+        return;
+    }
+
+    let configured: HashSet<String> = load_permission_sections(&root.join("conf/chmod.toml"))
+        .into_values()
+        .flat_map(|section| section.permissions)
+        .filter(|entry| entry.mode == "755")
+        .map(|entry| entry.path)
+        .collect();
+
+    let mut missing = Vec::new();
+    for entry in std::fs::read_dir(&scripts_dir).expect("read Hypr helper directory") {
+        let path = entry.expect("read Hypr helper entry").path();
+        if !path.is_file() {
+            continue;
+        }
+        let content = std::fs::read_to_string(&path).expect("read Hypr helper");
+        if !content.starts_with("#!") {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root.join("symlinks"))
+            .expect("Hypr helper should be under symlinks")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if !configured.contains(&relative) {
+            missing.push(relative);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "Hypr helper scripts missing executable chmod entries:\n  {}",
         missing.join("\n  ")
     );
 }

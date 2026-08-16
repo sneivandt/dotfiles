@@ -492,7 +492,13 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
             "packages.toml",
             "[arch]\npackages = [\"git\", \"ripgrep\"]\n",
         )
+        .with_symlink_source_content("config/pacman.conf", "[options]\nColor\n")
         .build();
+    let pacman_config = repo
+        .root_path()
+        .join("symlinks/config/pacman.conf")
+        .to_string_lossy()
+        .into_owned();
     let executor = Arc::new(RecordingExecutor::new(
         &["pacman", "sudo"],
         vec![
@@ -505,7 +511,15 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
             expect(
                 CallKind::Run,
                 "sudo",
-                &["pacman", "-Syu", "--needed", "--noconfirm", "ripgrep"],
+                &[
+                    "pacman",
+                    "--config",
+                    &pacman_config,
+                    "-Syu",
+                    "--needed",
+                    "--noconfirm",
+                    "ripgrep",
+                ],
                 ok(""),
             ),
         ],
@@ -541,7 +555,13 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
             "packages.toml",
             "[arch]\npackages = [{ name = \"apm-bin\", aur = true }, { name = \"powershell-bin\", aur = true }]\n",
         )
+        .with_symlink_source_content("config/pacman.conf", "[options]\nColor\n")
         .build();
+    let pacman_config = repo
+        .root_path()
+        .join("symlinks/config/pacman.conf")
+        .to_string_lossy()
+        .into_owned();
     let executor = Arc::new(RecordingExecutor::new(
         &["paru"],
         vec![
@@ -554,7 +574,14 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
             expect(
                 CallKind::Run,
                 "paru",
-                &["-S", "--needed", "--noconfirm", "powershell-bin"],
+                &[
+                    "--config",
+                    &pacman_config,
+                    "-S",
+                    "--needed",
+                    "--noconfirm",
+                    "powershell-bin",
+                ],
                 ok(""),
             ),
         ],

@@ -1,6 +1,7 @@
 [Unit]
 Description=Hypridle idle daemon
 
+PartOf=graphical-session.target
 Wants=graphical-session.target
 After=graphical-session.target
 

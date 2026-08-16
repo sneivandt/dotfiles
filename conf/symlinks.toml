@@ -19,7 +19,6 @@ symlinks = [
   "config/git/delta",
   "config/git/ignore",
   "config/git/templates",
-  "config/nuget/nuget.config",
   "config/powershell/Microsoft.PowerShell_profile.ps1",
   "ssh/config",
 ]
@@ -29,6 +28,7 @@ symlinks = [
   "bash_profile",
   "bashrc",
   "config/bash/prompt.bash",
+  { source = "config/nuget/nuget.config", target = ".nuget/config/dotfiles.config" },
   "config/readline/inputrc",
   "config/shell/aliases.sh",
   "config/shell/path.sh",

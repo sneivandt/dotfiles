@@ -2,9 +2,9 @@
 set -o errexit
 set -o nounset
 
-# Wait for PulseAudio to be ready and a default sink to appear.
-# PipeWire restores saved state asynchronously after reporting active,
-# so we must wait for the volume to stabilize before overriding it.
+# Wait for PulseAudio and a default sink. PulseAudio restores saved state
+# asynchronously after reporting active, so wait for the volume to stabilize
+# before overriding it.
 if ! command -v pactl >/dev/null 2>&1; then
   printf 'ERROR: pactl is required to initialize audio volume\n' >&2
   exit 1

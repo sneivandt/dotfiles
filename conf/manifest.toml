@@ -23,6 +23,7 @@ paths = [
   "bash_profile",
   "bashrc",
   "config/bash/",
+  "config/nuget/",
   "config/readline/",
   "config/shell/aliases.sh",
   "config/shell/path.sh",
@@ -94,6 +95,7 @@ paths = [
 [windows]
 paths = [
   "config/git/windows",
+  "config/nuget/",
   "wslconfig",
 ]
 

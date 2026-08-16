@@ -32,6 +32,10 @@ alias sudo="sudo "
 alias diff="diff --color=auto"
 alias ip="ip -c"
 
+if command -v pacman >/dev/null 2>&1 && [ -r "$HOME/.config/pacman.conf" ]; then
+  alias pacman='pacman --config "$HOME/.config/pacman.conf"'
+fi
+
 # Modern replacements
 if command -v eza >/dev/null 2>&1; then
   alias l="eza"

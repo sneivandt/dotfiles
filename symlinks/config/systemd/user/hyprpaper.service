@@ -1,6 +1,7 @@
 [Unit]
 Description=Hyprpaper wallpaper daemon
 
+PartOf=graphical-session.target
 Wants=graphical-session.target
 After=graphical-session.target
 

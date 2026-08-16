@@ -1,6 +1,7 @@
 [Unit]
 Description=Mako notification daemon
 
+PartOf=graphical-session.target
 Wants=graphical-session.target
 After=graphical-session.target
 

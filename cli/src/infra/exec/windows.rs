@@ -112,7 +112,12 @@ impl PowerShellCommand {
         executor: &dyn Executor,
         powershell: &str,
     ) -> std::result::Result<ExecResult, ExecError> {
-        executor.execute(CommandSpec::new(powershell).args(&self.args()).unchecked())
+        executor.execute(
+            CommandSpec::new(powershell)
+                .args(&self.args())
+                .redact_arguments()
+                .unchecked(),
+        )
     }
 
     fn args(&self) -> [&str; 3] {

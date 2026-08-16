@@ -235,6 +235,45 @@ fn command_spec_builds_owned_request() {
 }
 
 #[test]
+fn command_diagnostic_label_includes_safe_arguments_and_working_directory() {
+    let spec = CommandSpec::new("systemctl")
+        .args(&["--user", "daemon-reload"])
+        .current_dir("/tmp/work tree");
+
+    assert_eq!(
+        spec.label(),
+        "systemctl --user daemon-reload (in /tmp/work tree)"
+    );
+}
+
+#[test]
+fn command_diagnostic_label_can_redact_sensitive_arguments() {
+    let spec = CommandSpec::new("credential-helper")
+        .args(&["--token", "secret-value"])
+        .redact_arguments();
+
+    assert_eq!(spec.label(), "credential-helper [arguments redacted]");
+    assert!(
+        !spec.label().contains("secret-value"),
+        "redacted diagnostics must not expose argument values"
+    );
+}
+
+#[test]
+fn nonzero_error_reports_command_status_stdout_and_stderr() {
+    let error = ExecError::non_zero(
+        "systemctl --user daemon-reload",
+        ExecResult::failure("out", "Failed to connect to bus", Some(1)),
+    );
+    let message = error.to_string();
+
+    assert!(message.contains("systemctl --user daemon-reload"));
+    assert!(message.contains("exit 1"));
+    assert!(message.contains("stdout: out"));
+    assert!(message.contains("stderr: Failed to connect to bus"));
+}
+
+#[test]
 fn missing_program_returns_typed_spawn_error() {
     let executor = ProcessExecutor::system();
     let result = executor.execute(CommandSpec::new(

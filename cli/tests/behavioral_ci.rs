@@ -723,6 +723,12 @@ fn systemd_task_reloads_then_enables_user_and_system_units() {
         &["systemctl"],
         vec![
             expect(
+                CallKind::RunUnchecked,
+                "systemctl",
+                &["--user", "show-environment"],
+                ok(""),
+            ),
+            expect(
                 CallKind::Run,
                 "systemctl",
                 &["--user", "daemon-reload"],

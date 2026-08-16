@@ -246,7 +246,6 @@ impl Logger {
     }
 
     /// Return the run log file path, if available.
-    #[cfg(test)]
     #[must_use]
     pub fn log_path(&self) -> Option<&std::path::Path> {
         self.run_log.as_deref().map(RunLog::path)
@@ -775,19 +774,15 @@ mod tests {
     }
 
     #[test]
-    fn summary_omits_log_paths() {
+    fn summary_reports_the_persistent_log_path() {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task("summary-test", TaskStatus::Ok, None);
         log.print_summary();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
         assert!(
-            !contents.contains("log: "),
-            "summary should not repeat the main log path: {contents}"
-        );
-        assert!(
-            !contents.contains("run log: "),
-            "summary should not repeat the run log path: {contents}"
+            contents.contains(&format!("Log: {}", path.display())),
+            "summary should expose the exact persistent log path: {contents}"
         );
         assert!(
             !contents.contains("Summary"),

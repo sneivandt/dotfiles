@@ -105,6 +105,7 @@ pub struct CommandSpec {
     current_dir: Option<PathBuf>,
     env: Vec<(OsString, OsString)>,
     checked: bool,
+    log_arguments: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,6 +125,7 @@ impl CommandSpec {
             current_dir: None,
             env: Vec::new(),
             checked: true,
+            log_arguments: true,
         }
     }
 
@@ -137,6 +139,7 @@ impl CommandSpec {
             current_dir: None,
             env: Vec::new(),
             checked: false,
+            log_arguments: false,
         }
     }
 
@@ -186,6 +189,14 @@ impl CommandSpec {
         self
     }
 
+    /// Suppress arguments in diagnostics for commands whose argv may contain
+    /// credentials or other sensitive values.
+    #[must_use]
+    pub const fn redact_arguments(mut self) -> Self {
+        self.log_arguments = false;
+        self
+    }
+
     /// Return the executable name.
     #[must_use]
     pub fn program(&self) -> &OsStr {
@@ -232,10 +243,24 @@ impl CommandSpec {
     }
 
     fn label(&self) -> String {
-        let program = self.program().to_string_lossy().into_owned();
+        let program = render_command_token(self.program());
+        let command = if self.args.is_empty() {
+            program
+        } else if self.log_arguments {
+            format!(
+                "{program} {}",
+                self.args
+                    .iter()
+                    .map(|arg| render_command_token(arg))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        } else {
+            format!("{program} [arguments redacted]")
+        };
         self.current_dir.as_ref().map_or_else(
-            || program.clone(),
-            |dir| format!("{program} in {}", dir.display()),
+            || command.clone(),
+            |dir| format!("{command} (in {})", dir.display()),
         )
     }
 
@@ -267,6 +292,19 @@ impl CommandSpec {
                 command
             }
         }
+    }
+}
+
+fn render_command_token(value: &OsStr) -> String {
+    let value = value.to_string_lossy();
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "/._-:=,@+".contains(character))
+    {
+        value.into_owned()
+    } else {
+        format!("{value:?}")
     }
 }
 

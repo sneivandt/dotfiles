@@ -145,7 +145,6 @@ pub fn log_thread_name() -> String {
 #[derive(Debug)]
 pub struct RunLog {
     file: Mutex<fs::File>,
-    #[cfg(test)]
     path: PathBuf,
     start: Instant,
     sequence: AtomicU64,
@@ -189,11 +188,8 @@ impl RunLog {
         // Prune after the new file exists so a crashed run still leaves a log
         // behind, and so pruning stays off the end-of-run critical path.
         prune_run_logs(log_dir, keep);
-        #[cfg(not(test))]
-        drop(path);
         Some(Self {
             file: Mutex::new(file),
-            #[cfg(test)]
             path,
             start,
             sequence: AtomicU64::new(0),
@@ -272,7 +268,6 @@ impl RunLog {
     }
 
     /// Return the path of the run log file.
-    #[cfg(test)]
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path

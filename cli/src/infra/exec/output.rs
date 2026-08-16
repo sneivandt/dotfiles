@@ -4,6 +4,22 @@ use super::ExecResult;
 
 /// Log captured child-process output at debug level.
 pub(super) fn log_command_output(label: &str, result: &ExecResult) {
+    if !result.success {
+        tracing::debug!(
+            target: "dotfiles::exec",
+            "command failed: {label}; exit status: {}",
+            result.code.map_or_else(
+                || "signal".to_string(),
+                |code| code.to_string(),
+            )
+        );
+        if result.stdout.trim().is_empty() {
+            tracing::debug!(target: "dotfiles::exec", "{label} stdout: <empty>");
+        }
+        if result.stderr.trim().is_empty() {
+            tracing::debug!(target: "dotfiles::exec", "{label} stderr: <empty>");
+        }
+    }
     log_stream(label, "stdout", &result.stdout, result.success);
     log_stream(label, "stderr", &result.stderr, result.success);
 }
@@ -46,10 +62,9 @@ pub(super) fn stream_summary(output: &str) -> String {
 pub(super) fn failure_output(result: &ExecResult) -> String {
     let stdout = result.stdout.trim();
     let stderr = result.stderr.trim();
-    match (stdout.is_empty(), stderr.is_empty()) {
-        (true, true) => "no output".to_string(),
-        (false, true) => format!("stdout: {stdout}"),
-        (true, false) => stderr.to_string(),
-        (false, false) => format!("stdout: {stdout}; stderr: {stderr}"),
-    }
+    format!(
+        "stdout: {}; stderr: {}",
+        if stdout.is_empty() { "<empty>" } else { stdout },
+        if stderr.is_empty() { "<empty>" } else { stderr }
+    )
 }

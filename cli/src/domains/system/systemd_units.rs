@@ -45,17 +45,23 @@ impl Task for ConfigureSystemd {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let units = self.config.read();
+        let units = self.config.read().to_vec();
         if units.is_empty() {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
 
-        reload_daemons(ctx, &units)?;
+        let user_manager_available = user_manager_available(ctx, &units);
+        reload_daemons(ctx, &units, user_manager_available)?;
 
         let system = ctx.system();
-        let resources = units
-            .iter()
-            .map(|entry| SystemdUnitResource::from_entry(entry, system.executor_arc()));
+        let resources = units.iter().map(|entry| {
+            SystemdUnitResource::from_entry(
+                entry,
+                system.executor_arc(),
+                system.home(),
+                user_manager_available,
+            )
+        });
         process_resources(
             ctx,
             resources,
@@ -80,12 +86,36 @@ fn systemd_available(ctx: &Context) -> bool {
     }
 }
 
-fn reload_daemons(ctx: &Context, units: &[SystemdUnit]) -> Result<()> {
+fn user_manager_available(ctx: &Context, units: &[SystemdUnit]) -> bool {
+    if !units.iter().any(|unit| unit.scope == UnitScope::User) {
+        return false;
+    }
+    let available = ctx
+        .executor()
+        .execute(
+            CommandSpec::new("systemctl")
+                .args(&["--user", "show-environment"])
+                .unchecked(),
+        )
+        .is_ok_and(|result| result.success);
+    if !available {
+        ctx.log().debug(
+            "user systemd manager unavailable; enabling user units offline for the next login",
+        );
+    }
+    available
+}
+
+fn reload_daemons(
+    ctx: &Context,
+    units: &[SystemdUnit],
+    user_manager_available: bool,
+) -> Result<()> {
     if ctx.dry_run() {
         return Ok(());
     }
 
-    if units.iter().any(|unit| unit.scope == UnitScope::User) {
+    if user_manager_available {
         ctx.log().debug("running systemctl --user daemon-reload");
         ctx.executor()
             .execute(CommandSpec::new("systemctl").args(&["--user", "daemon-reload"]))
@@ -204,11 +234,16 @@ mod tests {
             scope: UnitScope::User,
         });
         // Ordered expectations:
-        //   1. run("systemctl", ["--user", "daemon-reload"]) -> success
-        //   2. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) -> disabled (Missing)
-        //   3. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
+        //   1. probe the live user manager
+        //   2. run("systemctl", ["--user", "daemon-reload"]) -> success
+        //   3. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) -> disabled
+        //   4. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(ExecResult::success("")));
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
@@ -239,12 +274,16 @@ mod tests {
             scope: UnitScope::User,
         });
         // In dry-run mode daemon-reload is NOT called (guarded by `!ctx.dry_run`).
-        // current_state() still runs to decide whether change would be needed.
-        //   1. run_unchecked("systemctl", ["--user", "is-enabled", "dunst.service"]) -> disabled (Missing)
+        // The manager probe and current_state() still run to decide whether a
+        // change would be needed.
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(disabled_result()));
+        mock.expect_execute().times(2).returning(|spec| {
+            if spec.arguments() == ["--user", "show-environment"] {
+                Ok(ExecResult::success(""))
+            } else {
+                Ok(disabled_result())
+            }
+        });
         let units = ConfigHandle::new(config.units.clone());
         let mut ctx = make_systemd_context(config, mock);
         ctx = ctx.with_dry_run(true);
@@ -264,8 +303,19 @@ mod tests {
             scope: UnitScope::User,
         });
         let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
         mock.expect_execute()
             .once()
+            .in_sequence(&mut seq)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["--user", "show-environment"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
             .withf(|spec| {
                 spec.program() == "systemctl"
                     && spec.arguments() == ["--user", "daemon-reload"]
@@ -284,6 +334,53 @@ mod tests {
             .run(&ctx)
             .expect_err("daemon-reload failure should abort the task");
         assert!(error.to_string().contains("reloading user systemd daemon"));
+    }
+
+    #[test]
+    fn run_enables_user_units_offline_when_the_user_manager_is_unavailable() {
+        let home = tempfile::tempdir().unwrap();
+        let unit_dir = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(&unit_dir).unwrap();
+        std::fs::write(
+            unit_dir.join("clean-home-tmp.timer"),
+            "[Install]\nWantedBy=timers.target\n",
+        )
+        .unwrap();
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "clean-home-tmp.timer".to_string(),
+            scope: UnitScope::User,
+        });
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["--user", "show-environment"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| {
+                Ok(ExecResult::failure(
+                    "",
+                    "Failed to connect to bus: No medium found",
+                    Some(1),
+                ))
+            });
+        let units = ConfigHandle::new(config.units.clone());
+        let ctx = make_systemd_context(config, mock).with_home(home.path().to_path_buf());
+
+        let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
+
+        assert!(
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
+            "offline enablement should be reported as changed: {result:?}"
+        );
+        assert!(
+            unit_dir
+                .join("timers.target.wants/clean-home-tmp.timer")
+                .is_symlink(),
+            "offline enablement should converge before the first login"
+        );
     }
 
     #[test]

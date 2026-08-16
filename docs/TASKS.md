@@ -202,13 +202,19 @@ execute bits cleared unless explicitly targeted by another entry.
 #### Default shell
 
 Linux-only task that converges the user's default shell. It runs after package
-installation so the desired shell executable can be present.
+installation so the desired shell executable can be present. State comes from
+the account database rather than the invoking process's `SHELL` variable. A
+root invocation uses `usermod` directly; an unprivileged non-interactive
+invocation uses passwordless or cached sudo when available, while a normal
+interactive run retains the `chsh` path.
 
 #### Systemd units
 
 Reads `conf/systemd-units.toml` and enables/starts selected user units. It runs
 after package, AUR, and symlink tasks because a unit may depend on installed
-binaries and linked unit definitions.
+binaries and linked unit definitions. When the user manager is unavailable in
+a fresh-install chroot, it creates the per-user enablement links declared by
+the units' `[Install]` sections and leaves startup to the first real login.
 
 #### Windows registry
 

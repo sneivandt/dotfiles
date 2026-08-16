@@ -232,7 +232,11 @@ the validation task set.
 ## Logs
 
 Every run writes its own log file. The most recent 50 are retained, so a failed
-run is still readable after later runs have happened.
+run is still readable after later runs have happened. The exact file path is
+printed after each run so automation such as an installation script can retain
+or collect it. On Linux the default directory is
+`$XDG_STATE_HOME/dotfiles/logs`, or `~/.local/state/dotfiles/logs` when
+`XDG_STATE_HOME` is unset; set `DOTFILES_LOG_DIR` to choose another directory.
 
 ```bash
 dotfiles log            # newest run

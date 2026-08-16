@@ -34,6 +34,9 @@ impl Logger {
         for line in format_summary_lines(counts, summary_mode, self.dry_run, &elapsed_str, style) {
             self.always(&line);
         }
+        if let Some(path) = self.log_path() {
+            self.startup(format!("Log: {}", path.display()));
+        }
     }
 
     /// Whether a blank line should separate the totals from preceding output.

@@ -74,6 +74,25 @@ cargo build --manifest-path cli/Cargo.toml
 If only the wrapper build fails, running Cargo directly usually exposes the
 underlying compiler or linker error without wrapper output.
 
+## Paru bootstrap reports an incomplete Rust/Cargo prerequisite
+
+The Paru task executes `cargo --version` before cloning or building. On Arch,
+install the distribution-managed toolchain and AUR build prerequisites:
+
+```bash
+sudo pacman -Syu --needed base-devel git rust sudo
+```
+
+If `rustup` was chosen intentionally, installing the manager alone is not
+enough; install and select a default toolchain before retrying:
+
+```bash
+rustup default stable
+```
+
+Fresh systems provisioned by `install-arch` use the first approach and verify
+Cargo inside the target system before starting dotfiles.
+
 ## No profile can be selected
 
 Profile priority is CLI, environment, local Git config, then an interactive

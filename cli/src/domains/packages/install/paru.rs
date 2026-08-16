@@ -58,6 +58,26 @@ pub(super) fn check_prerequisites(ctx: &Context) -> Result<()> {
         }
         ctx.debug_fmt(|| format!("prerequisite ok: {dep}"));
     }
+
+    let cargo = ctx.executor().which_path("cargo").with_context(|| {
+        "missing prerequisite: cargo is not available; on Arch install the complete toolchain with `sudo pacman -Syu --needed rust`"
+    })?;
+    let result = ctx
+        .executor()
+        .execute(CommandSpec::new(cargo.as_os_str()).arg("--version"))
+        .with_context(|| {
+            format!(
+                "Rust/Cargo prerequisite is incomplete: {} exists but `cargo --version` failed; on Arch install `rust` with `sudo pacman -Syu --needed rust`, or if rustup is intentional configure a toolchain with `rustup default stable`",
+                cargo.display()
+            )
+        })?;
+    let version = result
+        .stdout
+        .lines()
+        .chain(result.stderr.lines())
+        .find(|line| !line.trim().is_empty())
+        .map_or("version check passed", str::trim);
+    ctx.debug_fmt(|| format!("prerequisite ok: cargo · {version}"));
     Ok(())
 }
 

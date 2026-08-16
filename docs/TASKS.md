@@ -181,8 +181,11 @@ to finish those.
 Arch-only bootstrap for the `paru` AUR helper. It resolves the PATH-selected
 executable and runs `paru --version`; a missing helper is installed and a
 present but unusable helper is rebuilt from AUR source against the current
-system libraries. The rebuilt PATH-selected executable must pass the same
-check before dependent tasks run.
+system libraries. Before cloning, the task requires `git`, `makepkg`, and
+`sudo`, then resolves Cargo and runs `cargo --version` so an unconfigured
+`rustup` proxy fails with remediation guidance instead of failing inside
+`makepkg`. The rebuilt PATH-selected executable must pass the same check before
+dependent tasks run.
 
 #### AUR packages
 

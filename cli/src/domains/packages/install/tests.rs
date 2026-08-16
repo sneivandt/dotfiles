@@ -229,12 +229,7 @@ fn install_paru_run_returns_changed_result_after_install() {
             }
             Ok(paru_path())
         });
-    for dep in ["git", "makepkg", "sudo"] {
-        mock.expect_which()
-            .once()
-            .with(mockall::predicate::eq(dep))
-            .returning(|_| true);
-    }
+    expect_paru_build_prerequisites(&mut mock);
     mock.expect_execute()
         .once()
         .withf(is_git_clone)
@@ -284,12 +279,20 @@ fn paru_path() -> PathBuf {
     PathBuf::from("/usr/bin/paru")
 }
 
+fn cargo_path() -> PathBuf {
+    PathBuf::from("/usr/bin/cargo")
+}
+
 fn is_paru_version(spec: &crate::infra::exec::CommandSpec) -> bool {
     spec.program() == paru_path().as_os_str() && spec.arguments() == ["--version"]
 }
 
 fn is_git_clone(spec: &crate::infra::exec::CommandSpec) -> bool {
     spec.program() == "git" && spec.arguments().first().is_some_and(|arg| arg == "clone")
+}
+
+fn is_cargo_version(spec: &crate::infra::exec::CommandSpec) -> bool {
+    spec.program() == cargo_path().as_os_str() && spec.arguments() == ["--version"]
 }
 
 fn is_makepkg(spec: &crate::infra::exec::CommandSpec) -> bool {
@@ -358,6 +361,56 @@ fn paru_health_preserves_missing_libalpm_failure() {
         ParuHealth::Broken { path, reason }
             if path == paru_path() && reason.contains("libalpm.so.15")
     ));
+}
+
+#[test]
+fn paru_prerequisites_reject_missing_cargo_with_arch_guidance() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let mut mock = MockExecutor::new();
+    expect_paru_native_build_tools(&mut mock);
+    mock.expect_which_path()
+        .once()
+        .with(mockall::predicate::eq("cargo"))
+        .returning(|_| anyhow::bail!("cargo not found on PATH"));
+
+    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let error = check_prerequisites(&ctx).unwrap_err();
+    let message = format!("{error:#}");
+
+    assert!(message.contains("missing prerequisite: cargo"), "{message}");
+    assert!(message.contains("pacman -Syu --needed rust"), "{message}");
+}
+
+#[test]
+fn paru_prerequisites_reject_unconfigured_rustup_cargo() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let mut mock = MockExecutor::new();
+    expect_paru_native_build_tools(&mut mock);
+    expect_cargo_path(&mut mock);
+    mock.expect_execute()
+        .once()
+        .withf(is_cargo_version)
+        .returning(|_| {
+            Err(ExecError::non_zero(
+                "/usr/bin/cargo --version",
+                ExecResult::failure(
+                    "",
+                    "rustup could not choose a version of cargo to run because no default is configured",
+                    Some(1),
+                ),
+            ))
+        });
+
+    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let error = check_prerequisites(&ctx).unwrap_err();
+    let message = format!("{error:#}");
+
+    assert!(
+        message.contains("Rust/Cargo prerequisite is incomplete"),
+        "{message}"
+    );
+    assert!(message.contains("rustup default stable"), "{message}");
+    assert!(message.contains("no default is configured"), "{message}");
 }
 
 #[test]
@@ -524,13 +577,33 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
     }
 }
 
-fn expect_paru_build_prerequisites(mock: &mut MockExecutor) {
+fn expect_paru_native_build_tools(mock: &mut MockExecutor) {
     for dependency in ["git", "makepkg", "sudo"] {
         mock.expect_which()
             .once()
             .with(mockall::predicate::eq(dependency))
             .returning(|_| true);
     }
+}
+
+fn expect_cargo_path(mock: &mut MockExecutor) {
+    mock.expect_which_path()
+        .once()
+        .with(mockall::predicate::eq("cargo"))
+        .returning(|_| Ok(cargo_path()));
+}
+
+fn expect_working_cargo(mock: &mut MockExecutor) {
+    expect_cargo_path(mock);
+    mock.expect_execute()
+        .once()
+        .withf(is_cargo_version)
+        .returning(|_| Ok(ExecResult::success("cargo 1.97.1\n")));
+}
+
+fn expect_paru_build_prerequisites(mock: &mut MockExecutor) {
+    expect_paru_native_build_tools(mock);
+    expect_working_cargo(mock);
 }
 
 // -----------------------------------------------------------------------

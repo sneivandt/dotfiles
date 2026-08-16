@@ -25,7 +25,7 @@ packages = [
   "openssh",
   "reflector",
   "ripgrep",
-  "rustup",
+  "rust",
   "sed",
   "shellcheck",
   "sudo",

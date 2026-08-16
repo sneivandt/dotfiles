@@ -1,6 +1,7 @@
 //! Pacman package provider.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 
@@ -92,8 +93,9 @@ impl PackageProvider for PacmanProvider {
         names: &[&'a str],
         executor: &dyn Executor,
         config_path: Option<&'a str>,
-    ) -> Result<Option<(&'static str, Vec<&'a str>)>> {
-        pacman_invocation(names, executor, config_path).map(Some)
+    ) -> Result<Option<(PathBuf, Vec<&'a str>)>> {
+        pacman_invocation(names, executor, config_path)
+            .map(|(program, args)| Some((PathBuf::from(program), args)))
     }
 }
 

@@ -1,6 +1,6 @@
 //! Tasks: install system packages.
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::domains::packages::config::packages::Package;
 use crate::domains::packages::resources::package::{
@@ -18,7 +18,10 @@ use crate::infra::logging::OutputExt as _;
 mod paru;
 mod planning;
 
-use paru::{build_paru, check_prerequisites, clone_paru_from_aur, prepare_build_directory};
+use paru::{
+    ParuHealth, build_paru, check_paru_health, check_prerequisites, clone_paru_from_aur,
+    prepare_build_directory,
+};
 use planning::{
     PackageInstallPlan, build_install_plan, predict_sudo, resolve_native_manager, select_packages,
 };
@@ -120,11 +123,17 @@ impl PackageTaskKind {
                 }
             }
             Self::Aur => {
-                if !ctx.system().which("paru") {
-                    ctx.log()
-                        .debug("paru not found in PATH, skipping AUR packages");
-                    return Ok(TaskResult::Skipped("paru not installed".to_string()));
-                }
+                let path = match check_paru_health(ctx.executor()) {
+                    ParuHealth::Healthy { path, .. } => path,
+                    ParuHealth::Missing { reason } => anyhow::bail!(
+                        "paru became unavailable after bootstrap validation: {reason}"
+                    ),
+                    ParuHealth::Broken { path, reason } => anyhow::bail!(
+                        "PATH-selected paru executable {} failed after bootstrap validation: {reason}",
+                        path.display()
+                    ),
+                };
+                ctx.debug_fmt(|| format!("using validated paru executable: {}", path.display()));
                 ctx.debug_fmt(|| format!("checking {} AUR packages", selected.len()));
                 PackageManager::Paru
             }
@@ -179,7 +188,11 @@ impl Task for InstallParu {
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
         // makepkg -si calls sudo internally to install the built package
-        ctx.system().platform().uses_pacman() && !ctx.system().which("paru")
+        ctx.system().platform().uses_pacman()
+            && !matches!(
+                check_paru_health(ctx.executor()),
+                ParuHealth::Healthy { .. }
+            )
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -190,35 +203,117 @@ impl Task for InstallParu {
 #[derive(Debug, Clone, Copy)]
 struct ParuInstallOperation;
 
-impl Operation for ParuInstallOperation {
-    type Plan = ();
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParuInstallPlan {
+    Install {
+        reason: String,
+    },
+    Rebuild {
+        path: std::path::PathBuf,
+        reason: String,
+    },
+}
 
-    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        if ctx.system().which("paru") {
-            ctx.log().debug("paru already in PATH");
-            Ok(OperationState::Complete)
-        } else {
-            Ok(OperationState::needs_run(
-                "install paru from AUR (paru-bin)",
-                (),
-            ))
+impl ParuInstallPlan {
+    const fn action(&self) -> &'static str {
+        match self {
+            Self::Install { .. } => "install",
+            Self::Rebuild { .. } => "rebuild",
         }
     }
 
-    fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        ctx.log().dry_run("install paru from AUR (paru-bin)");
+    const fn completed_action(&self) -> &'static str {
+        match self {
+            Self::Install { .. } => "installed",
+            Self::Rebuild { .. } => "rebuilt",
+        }
+    }
+}
+
+impl Operation for ParuInstallOperation {
+    type Plan = ParuInstallPlan;
+
+    fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
+        match check_paru_health(ctx.executor()) {
+            ParuHealth::Missing { reason } => {
+                ctx.log().debug(format!("paru status: missing · {reason}"));
+                Ok(OperationState::needs_run(
+                    "install missing paru from AUR source",
+                    ParuInstallPlan::Install { reason },
+                ))
+            }
+            ParuHealth::Healthy { path, version } => {
+                ctx.log().debug(format!(
+                    "paru status: healthy · executable {} · {version}",
+                    path.display()
+                ));
+                Ok(OperationState::Complete)
+            }
+            ParuHealth::Broken { path, reason } => {
+                ctx.log().warn(format!(
+                    "paru status: broken · executable {} · {reason}",
+                    path.display()
+                ));
+                Ok(OperationState::needs_run(
+                    format!("rebuild broken paru at {}", path.display()),
+                    ParuInstallPlan::Rebuild { path, reason },
+                ))
+            }
+        }
+    }
+
+    fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        match plan {
+            ParuInstallPlan::Install { reason } => ctx
+                .log()
+                .dry_run(format!("install missing paru from AUR source · {reason}")),
+            ParuInstallPlan::Rebuild { path, reason } => ctx.log().dry_run(format!(
+                "rebuild broken paru from AUR source · executable {} · {reason}",
+                path.display()
+            )),
+        }
         Ok(TaskStats::changed().finish())
     }
 
-    fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
+    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        match plan {
+            ParuInstallPlan::Install { reason } => ctx.log().info(format!(
+                "paru install attempted · missing from PATH · {reason}"
+            )),
+            ParuInstallPlan::Rebuild { path, reason } => ctx.log().info(format!(
+                "paru rebuild attempted · executable {} · {reason}",
+                path.display()
+            )),
+        }
         check_prerequisites(ctx)?;
         let guard = crate::infra::fs::TempGuard::dir(prepare_build_directory(ctx)?);
         clone_paru_from_aur(ctx, guard.path())?;
-        build_paru(ctx, guard.path())?;
+        build_paru(ctx, guard.path())
+            .with_context(|| format!("paru {} attempt failed", plan.action()))?;
 
-        // Run log only: the status row already reports `installed paru`.
-        ctx.log().trace("paru installed successfully");
-        Ok(TaskStats::changed_with_message("installed paru").finish())
+        match check_paru_health(ctx.executor()) {
+            ParuHealth::Healthy { path, version } => ctx.log().info(format!(
+                "{} paru passed validation · executable {} · {version}",
+                plan.completed_action(),
+                path.display()
+            )),
+            ParuHealth::Missing { reason } => anyhow::bail!(
+                "paru {} completed but no PATH executable was found during validation: {reason}",
+                plan.action()
+            ),
+            ParuHealth::Broken { path, reason } => anyhow::bail!(
+                "paru {} completed but PATH-selected executable {} failed validation: {reason}; an earlier stale PATH entry may be masking the rebuilt /usr/bin/paru",
+                plan.action(),
+                path.display()
+            ),
+        }
+
+        // Run log only: the status row already reports the completed action.
+        ctx.log().trace(format!(
+            "paru {} and validated successfully",
+            plan.completed_action()
+        ));
+        Ok(TaskStats::changed_with_message(format!("{} paru", plan.completed_action())).finish())
     }
 }
 

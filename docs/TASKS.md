@@ -178,8 +178,11 @@ to finish those.
 
 #### Paru package manager
 
-Arch-only bootstrap for the `paru` AUR helper. It is only useful when AUR
-packages are selected and the helper is unavailable.
+Arch-only bootstrap for the `paru` AUR helper. It resolves the PATH-selected
+executable and runs `paru --version`; a missing helper is installed and a
+present but unusable helper is rebuilt from AUR source against the current
+system libraries. The rebuilt PATH-selected executable must pass the same
+check before dependent tasks run.
 
 #### AUR packages
 

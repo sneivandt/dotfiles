@@ -8,6 +8,7 @@
 #[cfg(test)]
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -76,7 +77,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         names: &[&'a str],
         executor: &dyn Executor,
         config_path: Option<&'a str>,
-    ) -> Result<Option<(&'static str, Vec<&'a str>)>> {
+    ) -> Result<Option<(PathBuf, Vec<&'a str>)>> {
         let _ = (names, executor, config_path);
         Ok(None)
     }

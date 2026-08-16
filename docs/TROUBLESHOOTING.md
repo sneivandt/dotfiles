@@ -230,6 +230,13 @@ dotfiles install --only packages --dry-run --verbose
 An AUR failure may originate in **Paru package manager** before **AUR packages**.
 Do not mark a provider failure as already installed.
 
+The bootstrap records the exact PATH-selected `paru` executable and validates
+it with `--version`. A loader failure such as a missing `libalpm.so.*` triggers
+a source rebuild. If a stale executable earlier on PATH still masks the rebuilt
+`/usr/bin/paru`, validation fails with both the selected path and loader error;
+remove or replace that stale entry rather than creating a compatibility
+symlink for the old library ABI.
+
 ## APM update is skipped
 
 APM updates require a successful install fingerprint for the current merged

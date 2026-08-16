@@ -220,9 +220,14 @@ fn apply_pacman_returns_applied_on_success() {
 #[test]
 fn apply_paru_returns_applied_on_success() {
     let mut mock = MockExecutor::new();
-    mock.expect_execute()
+    mock.expect_which_path()
         .once()
-        .returning(|_| Ok(ExecResult::success("")));
+        .with(mockall::predicate::eq("paru"))
+        .returning(|_| Ok(std::path::PathBuf::from("/usr/bin/paru")));
+    mock.expect_execute().once().returning(|spec| {
+        assert_eq!(spec.program(), "/usr/bin/paru");
+        Ok(ExecResult::success(""))
+    });
     let executor: Arc<dyn Executor> = Arc::new(mock);
     let resource = PackageResource::new(
         "paru-bin".to_string(),
@@ -270,7 +275,11 @@ impl Executor for RecordingExecutor {
     }
 
     fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
-        anyhow::bail!("{program} not found on PATH")
+        if program == "paru" {
+            Ok(std::path::PathBuf::from("/usr/bin/paru"))
+        } else {
+            anyhow::bail!("{program} not found on PATH")
+        }
     }
 }
 
@@ -327,7 +336,7 @@ fn batch_install_paru_groups_into_single_command() {
     let calls = executor.recorded_calls();
     assert_eq!(calls.len(), 1, "exactly one command for two paru packages");
     let (prog, args) = &calls[0];
-    assert_eq!(prog, "paru");
+    assert_eq!(prog, "/usr/bin/paru");
     assert_eq!(args[0], "-S");
     assert_eq!(args[1], "--needed");
     assert_eq!(args[2], "--noconfirm");
@@ -361,7 +370,7 @@ fn batch_install_mixed_managers_sends_separate_commands() {
     // Paru batch uses paru_exec
     let paru_calls = paru_exec.recorded_calls();
     assert_eq!(paru_calls.len(), 1);
-    assert_eq!(paru_calls[0].0, "paru");
+    assert_eq!(paru_calls[0].0, "/usr/bin/paru");
     assert!(paru_calls[0].1.contains(&"paru-bin".to_string()));
 }
 

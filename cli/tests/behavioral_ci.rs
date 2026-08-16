@@ -570,6 +570,12 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
         &["paru"],
         vec![
             expect(
+                CallKind::Run,
+                "/fake/bin/paru",
+                &["--version"],
+                ok("paru v2.1.0 - libalpm v16.0.1\n"),
+            ),
+            expect(
                 CallKind::RunUnchecked,
                 "pacman",
                 &["-Q"],
@@ -577,7 +583,7 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
             ),
             expect(
                 CallKind::Run,
-                "paru",
+                "/fake/bin/paru",
                 &[
                     "--config",
                     &pacman_config,

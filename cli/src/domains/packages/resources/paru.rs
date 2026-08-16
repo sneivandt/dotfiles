@@ -1,6 +1,7 @@
 //! Paru package provider.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 
@@ -41,16 +42,22 @@ impl PackageProvider for ParuProvider {
         executor: &dyn Executor,
         config_path: Option<&str>,
     ) -> Result<ResourceChange> {
-        executor.execute(CommandSpec::new("paru").args(&paru_args(&[name], config_path)))?;
+        let executable = executor
+            .which_path("paru")
+            .context("resolving paru executable for package install")?;
+        executor.execute(CommandSpec::new(executable).args(&paru_args(&[name], config_path)))?;
         Ok(ResourceChange::Applied)
     }
 
     fn batch_invocation<'a>(
         &self,
         names: &[&'a str],
-        _executor: &dyn Executor,
+        executor: &dyn Executor,
         config_path: Option<&'a str>,
-    ) -> Result<Option<(&'static str, Vec<&'a str>)>> {
-        Ok(Some(("paru", paru_args(names, config_path))))
+    ) -> Result<Option<(PathBuf, Vec<&'a str>)>> {
+        let executable = executor
+            .which_path("paru")
+            .context("resolving paru executable for package batch install")?;
+        Ok(Some((executable, paru_args(names, config_path))))
     }
 }

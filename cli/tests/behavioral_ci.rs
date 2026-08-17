@@ -741,6 +741,12 @@ fn systemd_task_reloads_then_enables_user_and_system_units() {
                 ok(""),
             ),
             expect(
+                CallKind::RunUnchecked,
+                "systemctl",
+                &["is-enabled", "sshd.service"],
+                disabled("disabled\n"),
+            ),
+            expect(
                 CallKind::Run,
                 "systemctl",
                 &["--user", "daemon-reload"],

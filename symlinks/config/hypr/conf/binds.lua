@@ -8,7 +8,7 @@ hl.bind(mod .. " + p", hl.dsp.exec_cmd("fuzzel"))
 hl.bind(mod .. " + o", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-browser.sh"))
 -- Use `test -x` rather than `[ -x ... ]`: Hyprland parses a leading bracket
 -- group in an exec command as execution rules and strips it.
-hl.bind(mod .. " + g", hl.dsp.exec_cmd('test -x "$HOME/.local/bin/github-copilot" && exec "$HOME/.local/bin/github-copilot"'))
+hl.bind(mod .. " + g", hl.dsp.exec_cmd("test -x /usr/bin/github && exec /usr/bin/github"))
 hl.bind(mod .. " + v", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-editor.sh"))
 
 -- Window management

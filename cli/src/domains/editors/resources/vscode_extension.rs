@@ -187,7 +187,7 @@ mod tests {
             .once()
             .withf(|spec| {
                 spec.windows_command_line()
-                    == Some(r#""code" "--install-extension" "ms-python.python" "--force""#)
+                    == Some(r#"""code" "--install-extension" "ms-python.python" "--force"""#)
             })
             .return_once(|_| Ok(result));
 

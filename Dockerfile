@@ -70,7 +70,9 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
 # Add user (let system assign UID to avoid conflicts)
 RUN useradd -m -s /bin/zsh -U sneivandt
 WORKDIR /home/sneivandt
-ENV SHELL=/bin/zsh
+ENV SHELL=/bin/zsh \
+    USER=sneivandt \
+    LOGNAME=sneivandt
 
 # Install a self-managing dotfiles checkout. Keep sanitized Git metadata so
 # update and sparse-checkout tasks can operate inside the image.

@@ -83,6 +83,7 @@ symlinks = [
   "config/spotify-flags.conf",
   "config/systemd/user/clean-screenshots.service",
   "config/systemd/user/clean-screenshots.timer",
+  "config/systemd/user/dotfiles-first-login.service",
   "config/systemd/user/gammastep.service",
   "config/systemd/user/hypridle.service",
   "config/systemd/user/hyprpaper.service",

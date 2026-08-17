@@ -90,6 +90,12 @@ fn user_manager_available(ctx: &Context, units: &[SystemdUnit]) -> bool {
     if !units.iter().any(|unit| unit.scope == UnitScope::User) {
         return false;
     }
+    if crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()) {
+        ctx.log().debug(
+            "Arch chroot provisioning has no user session; enabling user units offline for the next login",
+        );
+        return false;
+    }
     let available = ctx
         .executor()
         .execute(
@@ -140,6 +146,8 @@ mod tests {
     use crate::domains::system::config::systemd_units::SystemdUnit;
     use crate::engine::{Context, Task, TaskResult};
     use crate::infra::ConfigHandle;
+    #[cfg(unix)]
+    use crate::infra::env::MapEnv;
     use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
     use crate::infra::platform::{Os, Platform};
     use crate::test_helpers::{
@@ -381,6 +389,48 @@ mod tests {
                 .join("timers.target.wants/clean-home-tmp.timer")
                 .is_symlink(),
             "offline enablement should converge before the first login"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn arch_chroot_provisioning_never_probes_the_user_manager() {
+        let home = tempfile::tempdir().unwrap();
+        let unit_dir = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(&unit_dir).unwrap();
+        std::fs::write(
+            unit_dir.join("clean-home-tmp.timer"),
+            "[Install]\nWantedBy=timers.target\n",
+        )
+        .unwrap();
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "clean-home-tmp.timer".to_string(),
+            scope: UnitScope::User,
+        });
+        let units = ConfigHandle::new(config.units.clone());
+        let ctx = make_systemd_context(config, MockExecutor::new())
+            .with_home(home.path().to_path_buf())
+            .with_env(
+                MapEnv::new()
+                    .with(
+                        crate::infra::provisioning::ENV_VAR,
+                        crate::infra::provisioning::ARCH_CHROOT,
+                    )
+                    .into_handle(),
+            );
+
+        let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
+
+        assert!(
+            matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
+            "offline provisioning should report one changed unit: {result:?}"
+        );
+        assert!(
+            unit_dir
+                .join("timers.target.wants/clean-home-tmp.timer")
+                .is_symlink(),
+            "offline provisioning should enable the timer without using the user bus"
         );
     }
 

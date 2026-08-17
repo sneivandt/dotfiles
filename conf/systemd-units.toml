@@ -9,6 +9,7 @@ units = [
 [arch-desktop]
 units = [
   "clean-screenshots.timer",
+  "dotfiles-first-login.service",
   "gammastep.service",
   "hypridle.service",
   "hyprpaper.service",

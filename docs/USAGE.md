@@ -77,6 +77,17 @@ dotfiles install --dry-run --verbose
 required change. Independent ready tasks may run concurrently; explicit
 dependencies preserve ordering.
 
+When `install-arch` runs the desktop profile inside `arch-chroot`, dotfiles
+enables user units directly on disk because no user service manager exists yet.
+It also records VS Code extension work for
+`dotfiles-first-login.service`. The service retries verified Marketplace
+installation after the graphical session starts and removes its marker only
+after every configured extension converges. Inspect a failed deferred run with:
+
+```bash
+journalctl --user -u dotfiles-first-login.service
+```
+
 ### Select tasks
 
 `--only` and `--skip` accept comma-separated, case-insensitive task selectors.

@@ -104,12 +104,22 @@ impl Resource for VsCodeExtensionResource {
         if result.success {
             Ok(ResourceChange::Applied)
         } else {
+            let exit_status = result
+                .code
+                .map_or_else(|| "unknown".to_string(), |code| code.to_string());
+            let stdout = nonempty_output(&result.stdout);
+            let stderr = nonempty_output(&result.stderr);
             Ok(ResourceChange::unusable(format!(
-                "failed to install: {}",
-                result.stderr.trim()
+                "{} failed to install {} (exit {exit_status}); stdout: {stdout}; stderr: {stderr}",
+                self.code_cmd, self.id
             )))
         }
     }
+}
+
+fn nonempty_output(output: &str) -> &str {
+    let output = output.trim();
+    if output.is_empty() { "<empty>" } else { output }
 }
 
 /// Find the VS Code CLI command, preferring Code Insiders.
@@ -150,6 +160,7 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::resource::SkipKind;
     use crate::infra::exec::{ExecResult, MockExecutor};
 
     fn expect_list_extensions(mock: &mut MockExecutor, result: ExecResult) {
@@ -165,6 +176,27 @@ mod tests {
             .withf(|spec| {
                 spec.program() == "code"
                     && spec.arguments() == ["--list-extensions"]
+                    && !spec.is_checked()
+            })
+            .return_once(|_| Ok(result));
+    }
+
+    fn expect_install_extension(mock: &mut MockExecutor, result: ExecResult) {
+        #[cfg(target_os = "windows")]
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.windows_command_line()
+                    == Some(r#""code" "--install-extension" "ms-python.python" "--force""#)
+            })
+            .return_once(|_| Ok(result));
+
+        #[cfg(not(target_os = "windows"))]
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "code"
+                    && spec.arguments() == ["--install-extension", "ms-python.python", "--force"]
                     && !spec.is_checked()
             })
             .return_once(|_| Ok(result));
@@ -270,6 +302,30 @@ mod tests {
         assert_eq!(
             resource.state_from_installed(&installed),
             ResourceState::Missing
+        );
+    }
+
+    #[test]
+    fn apply_failure_preserves_cli_diagnostics() {
+        let mut mock = MockExecutor::new();
+        expect_install_extension(
+            &mut mock,
+            ExecResult::failure(
+                "Installing extensions...",
+                "Signature verification failed",
+                Some(1),
+            ),
+        );
+        let resource = VsCodeExtensionResource::new("ms-python.python", "code", Arc::new(mock));
+
+        let change = resource.apply().unwrap();
+
+        assert_eq!(
+            change,
+            ResourceChange::Skipped {
+                reason: "code failed to install ms-python.python (exit 1); stdout: Installing extensions...; stderr: Signature verification failed".to_string(),
+                kind: SkipKind::UnmetWork,
+            }
         );
     }
 

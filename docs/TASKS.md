@@ -53,9 +53,9 @@ idempotency and dry-run safety depend on the script honoring its contract.
 | `symlinks` | Home symlinks | install, update, uninstall | Converges or materializes managed home links |
 | `file-permissions` | File permissions | install, update | Applies declared Unix modes |
 | `shell` | Default shell | install, update | Converges the configured login shell |
-| `systemd` | Systemd units | install, update | Enables and starts configured user units |
+| `systemd` | Systemd units | install, update | Enables and starts configured units, or enables user units offline during target provisioning |
 | `registry` | Windows registry | install, update | Converges declared current-user values |
-| `vscode-extensions` | VS Code extensions | install, update | Installs missing declared extensions |
+| `vscode-extensions` | VS Code extensions | install, update | Installs missing declared extensions, or schedules them for first login during target provisioning |
 | `apm` | APM packages | install, update | Converges merged APM manifests and AI tooling |
 | `apm-update` | APM package updates | update | Advances eligible pinned APM dependencies |
 | `wsl-config` | WSL configuration files | install, update | Converges required `/etc/wsl.conf` settings |

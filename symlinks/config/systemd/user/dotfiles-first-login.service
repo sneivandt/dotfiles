@@ -1,0 +1,17 @@
+[Unit]
+Description=Finish deferred dotfiles provisioning
+Documentation=https://github.com/sneivandt/dotfiles
+ConditionPathExists=%h/.local/state/dotfiles/deferred-vscode-extensions
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/dotfiles install --profile desktop --only vscode-extensions --verbose
+ExecStartPost=/usr/bin/rm -f %h/.local/state/dotfiles/deferred-vscode-extensions
+Restart=on-failure
+RestartSec=5min
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target

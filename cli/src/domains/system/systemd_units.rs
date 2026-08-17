@@ -1,10 +1,15 @@
 //! Task: configure systemd units.
 
+use std::sync::Arc;
+
 use anyhow::{Context as _, Result};
 
 use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
-use crate::engine::{Context, ProcessOpts, Task, TaskMeta, TaskResult, process_resources};
+use crate::engine::{
+    Context, IntrinsicState, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
+    process_resources,
+};
 use crate::infra::ConfigHandle;
 use crate::infra::exec::CommandSpec;
 use crate::infra::logging::OutputExt as _;
@@ -37,11 +42,8 @@ impl Task for ConfigureSystemd {
             && !system.is_ci()
     }
 
-    fn needs_elevation(&self, _ctx: &Context) -> bool {
-        self.config
-            .read()
-            .iter()
-            .any(|unit| unit.scope == UnitScope::System)
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        system_unit_needs_enablement(ctx, &self.config.read())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -51,7 +53,8 @@ impl Task for ConfigureSystemd {
         }
 
         let user_manager_available = user_manager_available(ctx, &units);
-        reload_daemons(ctx, &units, user_manager_available)?;
+        let system_reload_required = system_unit_needs_enablement(ctx, &units);
+        reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
         let system = ctx.system();
         let resources = units.iter().map(|entry| {
@@ -68,6 +71,24 @@ impl Task for ConfigureSystemd {
             &ProcessOpts::install_missing("enable").sequential(),
         )
     }
+}
+
+fn system_unit_needs_enablement(ctx: &Context, units: &[SystemdUnit]) -> bool {
+    let executor = ctx.system().executor_arc();
+    units
+        .iter()
+        .filter(|unit| unit.scope == UnitScope::System)
+        .any(|unit| {
+            matches!(
+                SystemdUnitResource::new(
+                    unit.name.clone(),
+                    UnitScope::System,
+                    Arc::clone(&executor),
+                )
+                .current_state(),
+                Ok(ResourceState::Missing)
+            )
+        })
 }
 
 fn systemd_available(ctx: &Context) -> bool {
@@ -114,8 +135,8 @@ fn user_manager_available(ctx: &Context, units: &[SystemdUnit]) -> bool {
 
 fn reload_daemons(
     ctx: &Context,
-    units: &[SystemdUnit],
     user_manager_available: bool,
+    system_reload_required: bool,
 ) -> Result<()> {
     if ctx.dry_run() {
         return Ok(());
@@ -129,7 +150,7 @@ fn reload_daemons(
         ctx.log().debug("user daemon-reload succeeded");
     }
 
-    if units.iter().any(|unit| unit.scope == UnitScope::System) {
+    if system_reload_required {
         ctx.log().debug("running sudo systemctl daemon-reload");
         ctx.executor()
             .execute(CommandSpec::new("sudo").args(&["systemctl", "daemon-reload"]))
@@ -441,9 +462,20 @@ mod tests {
             name: "sshd.service".to_string(),
             scope: UnitScope::System,
         });
+        let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
+            .in_sequence(&mut seq)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "sshd.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(disabled_result()));
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
             .withf(|spec| {
                 spec.program() == "sudo"
                     && spec.arguments() == ["systemctl", "daemon-reload"]
@@ -469,19 +501,88 @@ mod tests {
     }
 
     #[test]
-    fn needs_sudo_true_for_system_scope_unit() {
+    fn needs_sudo_true_for_disabled_system_scope_unit() {
         let mut config = empty_config(PathBuf::from("/tmp"));
         config.units.push(SystemdUnit {
             name: "sshd.service".to_string(),
             scope: UnitScope::System,
         });
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq("systemctl"))
+            .return_const(true);
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "sshd.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(disabled_result()));
         let units = ConfigHandle::new(config.units.clone());
-        let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
+        let ctx = make_systemd_context(config, mock);
 
         assert!(crate::engine::requires_elevation(
             &ConfigureSystemd::new(units),
             &ctx
         ));
+    }
+
+    #[test]
+    fn needs_sudo_false_for_enabled_system_scope_unit() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "NetworkManager.service".to_string(),
+            scope: UnitScope::System,
+        });
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq("systemctl"))
+            .return_const(true);
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "NetworkManager.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("enabled\n")));
+        let units = ConfigHandle::new(config.units.clone());
+        let ctx = make_systemd_context(config, mock);
+
+        assert!(!crate::engine::requires_elevation(
+            &ConfigureSystemd::new(units),
+            &ctx
+        ));
+    }
+
+    #[test]
+    fn run_does_not_reload_enabled_system_scope_units() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.units.push(SystemdUnit {
+            name: "NetworkManager.service".to_string(),
+            scope: UnitScope::System,
+        });
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .times(2)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "NetworkManager.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("enabled\n")));
+        let units = ConfigHandle::new(config.units.clone());
+        let ctx = make_systemd_context(config, mock);
+
+        let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
+
+        assert!(
+            matches!(result, TaskResult::Batch(ref stats) if stats.already_ok_count() == 1),
+            "enabled system units should remain a no-op without sudo: {result:?}"
+        );
     }
 
     #[test]
@@ -493,6 +594,15 @@ mod tests {
         });
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "sshd.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(disabled_result()));
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)

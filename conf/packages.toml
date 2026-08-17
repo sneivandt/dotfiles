@@ -40,7 +40,6 @@ packages = [
   "zsh-completions",
   "zsh-syntax-highlighting",
   { name = "apm-bin", aur = true },
-  { name = "github-copilot-cli-bin", aur = true },
   { name = "openai-codex-bin", aur = true },
   { name = "powershell-bin", aur = true },
 ]

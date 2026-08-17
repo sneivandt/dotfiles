@@ -110,51 +110,30 @@ function Prompt
 }
 
 # AI / GitHub Copilot CLI aliases
-if (Get-Command "gh" -ErrorAction SilentlyContinue)
+if (Get-Command "copilot" -ErrorAction SilentlyContinue)
 {
     function Invoke-CopilotChat
     {
         if ($args.Count -eq 0)
         {
-            gh copilot -- --yolo
+            copilot --yolo
         }
         else
         {
-            $previousGhPromptDisabled = $env:GH_PROMPT_DISABLED
-            $previousGitTerminalPrompt = $env:GIT_TERMINAL_PROMPT
-
-            try
-            {
-                $env:GH_PROMPT_DISABLED = "1"
-                $env:GIT_TERMINAL_PROMPT = "0"
-                gh copilot -- --yolo -p ($args -join ' ')
-            }
-            finally
-            {
-                if ($null -eq $previousGhPromptDisabled)
-                {
-                    Remove-Item Env:\GH_PROMPT_DISABLED -ErrorAction SilentlyContinue
-                }
-                else
-                {
-                    $env:GH_PROMPT_DISABLED = $previousGhPromptDisabled
-                }
-
-                if ($null -eq $previousGitTerminalPrompt)
-                {
-                    Remove-Item Env:\GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue
-                }
-                else
-                {
-                    $env:GIT_TERMINAL_PROMPT = $previousGitTerminalPrompt
-                }
-            }
+            copilot --yolo -p ($args -join ' ')
         }
     }
 
     function Invoke-CopilotSuggest
     {
-        gh copilot -i suggest $args
+        if ($args.Count -eq 0)
+        {
+            copilot -i "Suggest a shell command"
+        }
+        else
+        {
+            copilot -i "Suggest a shell command for: $($args -join ' ')"
+        }
     }
 
     Set-Alias -Name ai -Value Invoke-CopilotChat

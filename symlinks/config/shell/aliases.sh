@@ -74,15 +74,22 @@ if command -v xclip >/dev/null 2>&1; then
 fi
 
 # AI / GitHub Copilot CLI aliases
-if command -v gh >/dev/null 2>&1; then
+if command -v copilot >/dev/null 2>&1; then
   # Chat mode: interactive if no args, prompt mode if args provided
   ai() {
     if [ $# -eq 0 ]; then
-      gh copilot -- --yolo
+      copilot --yolo
     else
-      GH_PROMPT_DISABLED=1 GIT_TERMINAL_PROMPT=0 gh copilot -- --yolo -p "$*"
+      copilot --yolo -p "$*"
     fi
   }
-  # Suggest mode: interactive
-  alias aic="gh copilot -i suggest"
+
+  # Suggest mode: start interactively with a command-focused prompt
+  aic() {
+    if [ $# -eq 0 ]; then
+      copilot -i "Suggest a shell command"
+    else
+      copilot -i "Suggest a shell command for: $*"
+    fi
+  }
 fi

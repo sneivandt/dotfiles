@@ -8,12 +8,14 @@ units = [
 
 [arch-desktop]
 units = [
+  { name = "NetworkManager.service", scope = "system" },
   "clean-screenshots.timer",
   "dotfiles-first-login.service",
   "gammastep.service",
   "hypridle.service",
   "hyprpaper.service",
   "mako.service",
+  "network-manager-applet.service",
   "volume.service",
   "waybar.service",
 ]

@@ -75,7 +75,11 @@ impl SystemdUnitResource {
         }
 
         let output = command_output(result);
-        if output.lines().any(|line| line.trim() == "disabled") {
+        if output
+            .lines()
+            .map(str::trim)
+            .any(|state| matches!(state, "disabled" | "linked" | "linked-runtime"))
+        {
             return ResourceState::Missing;
         }
 
@@ -362,6 +366,29 @@ mod tests {
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_missing_when_systemctl_reports_linked() {
+        for state in ["linked", "linked-runtime"] {
+            let state = state.to_string();
+            let output = state.clone();
+            let mut mock = MockExecutor::new();
+            mock.expect_execute()
+                .once()
+                .returning(move |_| Ok(ExecResult::failure(format!("{output}\n"), "", Some(1))));
+            let executor: Arc<dyn Executor> = Arc::new(mock);
+            let resource = SystemdUnitResource::new(
+                "network-manager-applet.service",
+                UnitScope::User,
+                executor,
+            );
+            assert_eq!(
+                resource.current_state().unwrap(),
+                ResourceState::Missing,
+                "{state} units should be enabled"
+            );
+        }
     }
 
     #[test]

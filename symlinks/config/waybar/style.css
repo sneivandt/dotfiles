@@ -68,6 +68,7 @@ window#waybar #custom-window.empty {
 #clock,
 #tray,
 #pulseaudio,
+#battery,
 #custom-playing,
 #custom-stocks {
     padding: 2px 12px;
@@ -109,4 +110,17 @@ window#waybar #custom-window.empty {
 
 #pulseaudio.muted {
     color: #565f89;
+}
+
+#battery.charging,
+#battery.plugged {
+    color: #9ece6a;
+}
+
+#battery.warning:not(.charging) {
+    color: #e0af68;
+}
+
+#battery.critical:not(.charging) {
+    color: #f7768e;
 }

@@ -29,7 +29,12 @@ pub(super) fn process_single<R: Resource>(
             delta.record(ItemOutcome::AlreadyOk);
         }
         ApplyOperation::Skip { reason, kind } => {
-            ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
+            if kind.is_failure() {
+                ctx.log()
+                    .warn(format!("skipping {}: {reason}", plan.description()));
+            } else {
+                ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
+            }
             delta.record(if kind.is_failure() {
                 ItemOutcome::Failed
             } else {

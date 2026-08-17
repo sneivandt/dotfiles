@@ -1,0 +1,20 @@
+[Unit]
+Description=NetworkManager tray applet
+
+PartOf=graphical-session.target
+Wants=graphical-session.target
+After=graphical-session.target
+
+ConditionFileIsExecutable=/usr/bin/nm-applet
+
+[Service]
+Type=simple
+
+ExecStart=/usr/bin/nm-applet --indicator
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=graphical-session.target

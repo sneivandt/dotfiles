@@ -40,6 +40,8 @@ packages = [
   "zsh-completions",
   "zsh-syntax-highlighting",
   { name = "apm-bin", aur = true },
+  { name = "github-copilot-cli", aur = true },
+  { name = "openai-codex-bin", aur = true },
   { name = "powershell-bin", aur = true },
 ]
 
@@ -58,6 +60,8 @@ packages = [
   "hyprlock",
   "hyprpaper",
   "mako",
+  "network-manager-applet",
+  "networkmanager",
   "noto-fonts",
   "noto-fonts-emoji",
   "otf-font-awesome",
@@ -73,7 +77,9 @@ packages = [
   "waybar",
   "wl-clipboard",
   "xorg-xwayland",
+  { name = "chatgpt-desktop", aur = true },
   { name = "chromium-widevine", aur = true },
+  { name = "github-copilot-app-bin", aur = true },
   { name = "spotify", aur = true },
   { name = "visual-studio-code-insiders-bin", aur = true },
 ]

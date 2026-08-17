@@ -774,15 +774,15 @@ mod tests {
     }
 
     #[test]
-    fn summary_reports_the_persistent_log_path() {
+    fn summary_does_not_report_the_persistent_log_path() {
         let (log, _tmp, _guard) = isolated_logger();
         log.record_task("summary-test", TaskStatus::Ok, None);
         log.print_summary();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();
         assert!(
-            contents.contains(&format!("Log: {}", path.display())),
-            "summary should expose the exact persistent log path: {contents}"
+            !contents.contains(&format!("Log: {}", path.display())),
+            "summary should not expose the persistent log path: {contents}"
         );
         assert!(
             !contents.contains("Summary"),

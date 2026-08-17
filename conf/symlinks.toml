@@ -88,6 +88,7 @@ symlinks = [
   "config/systemd/user/hypridle.service",
   "config/systemd/user/hyprpaper.service",
   "config/systemd/user/mako.service",
+  "config/systemd/user/network-manager-applet.service",
   "config/systemd/user/volume.service",
   "config/systemd/user/waybar.service",
   "config/user-dirs.conf",

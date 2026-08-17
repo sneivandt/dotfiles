@@ -120,6 +120,35 @@ fn process_single_classifies_resource_states() {
 }
 
 #[test]
+fn process_single_reports_unmet_work_as_a_warning() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, _log) = test_context(config);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let ctx = ctx.with_log(Arc::new(OrderedEventLog {
+        events: Arc::clone(&events),
+    }));
+    let resource = MockResource::new(ResourceState::Unknown {
+        reason: "systemctl failed".to_string(),
+    });
+
+    let stats = apply::process_single(
+        &ctx,
+        &resource,
+        &ResourceState::Unknown {
+            reason: "systemctl failed".to_string(),
+        },
+        &default_opts(),
+    )
+    .unwrap();
+
+    assert_eq!(counts(&stats), (0, 0, 0, 1));
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        ["warn: skipping mock resource: state unknown: systemctl failed"]
+    );
+}
+
+#[test]
 fn process_single_dry_run_never_applies() {
     for state in [
         ResourceState::Missing,

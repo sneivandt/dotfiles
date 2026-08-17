@@ -5,7 +5,7 @@
     "height": 26,
     "modules-left": ["group/workspaces", "custom/window"],
     "modules-center": [],
-    "modules-right": ["custom/playing", "custom/stocks", "tray", "pulseaudio", "clock"],
+    "modules-right": ["custom/playing", "custom/stocks", "tray", "pulseaudio", "battery", "clock"],
 
     "group/workspaces": {
         "orientation": "horizontal",
@@ -104,6 +104,18 @@
         "format-muted": "\uf028   0%",
         "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
         "tooltip": false
+    },
+
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{icon} {capacity}%",
+        "format-charging": "\uf0e7 {capacity}%",
+        "format-plugged": "\uf1e6 {capacity}%",
+        "format-icons": ["\uf244", "\uf243", "\uf242", "\uf241", "\uf240"],
+        "tooltip-format": "{time}"
     },
 
     "clock": {

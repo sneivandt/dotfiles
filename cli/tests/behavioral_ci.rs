@@ -567,11 +567,17 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
         .to_string_lossy()
         .into_owned();
     let executor = Arc::new(RecordingExecutor::new(
-        &["paru"],
+        &[],
         vec![
             expect(
+                CallKind::RunUnchecked,
+                "pacman",
+                &["-Q", "paru"],
+                ok("paru 2.1.0-2\n"),
+            ),
+            expect(
                 CallKind::Run,
-                "/fake/bin/paru",
+                "/usr/bin/paru",
                 &["--version"],
                 ok("paru v2.1.0 - libalpm v16.0.1\n"),
             ),
@@ -583,7 +589,7 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
             ),
             expect(
                 CallKind::Run,
-                "/fake/bin/paru",
+                "/usr/bin/paru",
                 &[
                     "--config",
                     &pacman_config,

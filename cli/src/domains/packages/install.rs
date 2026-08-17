@@ -242,9 +242,13 @@ impl Operation for ParuInstallOperation {
                     ParuInstallPlan::Install { reason },
                 ))
             }
-            ParuHealth::Healthy { path, version } => {
+            ParuHealth::Healthy {
+                path,
+                package,
+                version,
+            } => {
                 ctx.log().debug(format!(
-                    "paru status: healthy · executable {} · {version}",
+                    "paru status: healthy · target package {package} · executable {} · {version}",
                     path.display()
                 ));
                 Ok(OperationState::Complete)
@@ -278,7 +282,7 @@ impl Operation for ParuInstallOperation {
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         match plan {
             ParuInstallPlan::Install { reason } => ctx.log().info(format!(
-                "paru install attempted · missing from PATH · {reason}"
+                "paru install attempted · missing from target · {reason}"
             )),
             ParuInstallPlan::Rebuild { path, reason } => ctx.log().info(format!(
                 "paru rebuild attempted · executable {} · {reason}",
@@ -292,17 +296,21 @@ impl Operation for ParuInstallOperation {
             .with_context(|| format!("paru {} attempt failed", plan.action()))?;
 
         match check_paru_health(ctx.executor()) {
-            ParuHealth::Healthy { path, version } => ctx.log().info(format!(
-                "{} paru passed validation · executable {} · {version}",
+            ParuHealth::Healthy {
+                path,
+                package,
+                version,
+            } => ctx.log().info(format!(
+                "{} paru passed target validation · package {package} · executable {} · {version}",
                 plan.completed_action(),
                 path.display()
             )),
             ParuHealth::Missing { reason } => anyhow::bail!(
-                "paru {} completed but no PATH executable was found during validation: {reason}",
+                "paru {} completed but the target package was not found during validation: {reason}",
                 plan.action()
             ),
             ParuHealth::Broken { path, reason } => anyhow::bail!(
-                "paru {} completed but PATH-selected executable {} failed validation: {reason}; an earlier stale PATH entry may be masking the rebuilt /usr/bin/paru",
+                "paru {} completed but target executable {} failed validation: {reason}",
                 plan.action(),
                 path.display()
             ),

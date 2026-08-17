@@ -249,12 +249,13 @@ dotfiles install --only packages --dry-run --verbose
 An AUR failure may originate in **Paru package manager** before **AUR packages**.
 Do not mark a provider failure as already installed.
 
-The bootstrap records the exact PATH-selected `paru` executable and validates
-it with `--version`. A loader failure such as a missing `libalpm.so.*` triggers
-a source rebuild. If a stale executable earlier on PATH still masks the rebuilt
-`/usr/bin/paru`, validation fails with both the selected path and loader error;
-remove or replace that stale entry rather than creating a compatibility
-symlink for the old library ABI.
+The bootstrap checks both the current Arch package database (`pacman -Q paru`)
+and the installed executable (`/usr/bin/paru --version`). `install-arch` runs
+dotfiles through `arch-chroot /mnt`, so these checks address the target system,
+not the live ISO. A loader failure such as a missing `libalpm.so.*` triggers a
+source rebuild. A `paru` visible on PATH without a corresponding target package
+is reported as stale/broken; later AUR operations use the validated
+`/usr/bin/paru` directly.
 
 ## APM update is skipped
 

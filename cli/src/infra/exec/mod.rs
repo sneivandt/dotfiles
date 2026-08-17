@@ -1,14 +1,12 @@
 //! Command execution, output handling, and process-tree management.
 
 use anyhow::{Result, anyhow};
-use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
-use std::sync::{LazyLock, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -719,19 +717,8 @@ impl Executor for ProcessExecutor {
     }
 }
 
-static PATH_LOOKUPS: LazyLock<Mutex<HashMap<String, Option<PathBuf>>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
 fn resolve_on_path(program: &str) -> Option<PathBuf> {
-    let mut cache = PATH_LOOKUPS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some(cached) = cache.get(program) {
-        return cached.clone();
-    }
-    let resolved = which::which(program).ok();
-    cache.insert(program.to_string(), resolved.clone());
-    resolved
+    which::which(program).ok()
 }
 
 /// Run a path-addressed command with the smoke-test timeout.

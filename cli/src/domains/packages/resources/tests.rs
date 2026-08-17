@@ -220,10 +220,6 @@ fn apply_pacman_returns_applied_on_success() {
 #[test]
 fn apply_paru_returns_applied_on_success() {
     let mut mock = MockExecutor::new();
-    mock.expect_which_path()
-        .once()
-        .with(mockall::predicate::eq("paru"))
-        .returning(|_| Ok(std::path::PathBuf::from("/usr/bin/paru")));
     mock.expect_execute().once().returning(|spec| {
         assert_eq!(spec.program(), "/usr/bin/paru");
         Ok(ExecResult::success(""))

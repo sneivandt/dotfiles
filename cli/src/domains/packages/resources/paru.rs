@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 
+use super::super::PARU_EXECUTABLE;
 use super::package::PackageProvider;
 use super::pacman::PacmanProvider;
 use crate::engine::ResourceChange;
@@ -42,22 +43,20 @@ impl PackageProvider for ParuProvider {
         executor: &dyn Executor,
         config_path: Option<&str>,
     ) -> Result<ResourceChange> {
-        let executable = executor
-            .which_path("paru")
-            .context("resolving paru executable for package install")?;
-        executor.execute(CommandSpec::new(executable).args(&paru_args(&[name], config_path)))?;
+        executor
+            .execute(CommandSpec::new(PARU_EXECUTABLE).args(&paru_args(&[name], config_path)))?;
         Ok(ResourceChange::Applied)
     }
 
     fn batch_invocation<'a>(
         &self,
         names: &[&'a str],
-        executor: &dyn Executor,
+        _executor: &dyn Executor,
         config_path: Option<&'a str>,
     ) -> Result<Option<(PathBuf, Vec<&'a str>)>> {
-        let executable = executor
-            .which_path("paru")
-            .context("resolving paru executable for package batch install")?;
-        Ok(Some((executable, paru_args(names, config_path))))
+        Ok(Some((
+            PathBuf::from(PARU_EXECUTABLE),
+            paru_args(names, config_path),
+        )))
     }
 }

@@ -85,31 +85,30 @@ fn which_path_finds_known_program() {
     );
 }
 
-/// Repeated lookups are served from the memo table, so they must agree with
-/// the first answer for both hits and misses.
 #[test]
-fn which_lookups_are_cached_consistently() {
+#[cfg(unix)]
+fn path_lookup_observes_an_executable_created_after_an_initial_miss() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let directory = tempfile::tempdir().unwrap();
+    let executable = directory.path().join("dotfiles-newly-installed-program");
+    let program = executable.to_str().unwrap();
     let executor = ProcessExecutor::system();
-    #[cfg(windows)]
-    let known = "cmd";
-    #[cfg(not(windows))]
-    let known = "echo";
-
-    let first = executor.which_path(known).unwrap();
-    let second = executor.which_path(known).unwrap();
-    assert_eq!(first, second, "cached lookup should return the same path");
-    assert!(executor.which(known), "cached hit should stay resolvable");
-
-    let missing = "dotfiles-definitely-not-a-real-program";
     assert!(
-        !executor.which(missing),
-        "missing program should not resolve"
+        executor.which_path(program).is_err(),
+        "program should initially be absent"
     );
-    assert!(
-        !executor.which(missing),
-        "negative lookup should stay cached as missing"
+
+    std::fs::write(&executable, "#!/bin/sh\nexit 0\n").unwrap();
+    let mut permissions = executable.metadata().unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&executable, permissions).unwrap();
+
+    assert_eq!(
+        executor.which_path(program).unwrap(),
+        executable,
+        "a fresh lookup must observe a newly installed executable"
     );
-    assert!(executor.which_path(missing).is_err());
 }
 
 #[test]

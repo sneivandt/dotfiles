@@ -183,10 +183,10 @@ fn install_packages_run_skips_when_winget_not_found() {
 }
 
 #[test]
-fn install_paru_run_returns_ok_when_already_installed() {
+fn installed_target_paru_is_accepted_when_host_path_lookup_would_miss() {
     let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
-    expect_paru_path(&mut mock, 1);
+    expect_installed_paru_package(&mut mock, 1);
     expect_healthy_paru(&mut mock, 1);
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallParu.run(&ctx).unwrap();
@@ -197,7 +197,7 @@ fn install_paru_run_returns_ok_when_already_installed() {
 fn install_paru_run_returns_ok_when_already_installed_in_dry_run() {
     let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
-    expect_paru_path(&mut mock, 1);
+    expect_installed_paru_package(&mut mock, 1);
     expect_healthy_paru(&mut mock, 1);
     let mut ctx = make_package_context(config, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
@@ -208,8 +208,10 @@ fn install_paru_run_returns_ok_when_already_installed_in_dry_run() {
 #[test]
 fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
     let config = empty_config(PathBuf::from("/tmp"));
-    // which_result=false ⇒ paru missing in PATH
-    let mut ctx = make_platform_context_with_which(config, Os::Linux, true, false);
+    let mut mock = MockExecutor::new();
+    expect_missing_paru_package(&mut mock, 1);
+    expect_missing_paru_path(&mut mock, 1);
+    let mut ctx = make_package_context(config, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
     let result = InstallParu.run(&ctx).unwrap();
     assert_task_changed(&result);
@@ -219,16 +221,24 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
 fn install_paru_run_returns_changed_result_after_install() {
     let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
-    let lookups = Arc::new(AtomicUsize::new(0));
-    mock.expect_which_path()
+    let package_queries = Arc::new(AtomicUsize::new(0));
+    mock.expect_execute()
         .times(2)
-        .with(mockall::predicate::eq("paru"))
+        .withf(is_paru_package_query)
         .returning(move |_| {
-            if lookups.fetch_add(1, Ordering::SeqCst) == 0 {
-                anyhow::bail!("paru not found on PATH")
+            if package_queries.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Ok(ExecResult::failure(
+                    "",
+                    "error: package 'paru' was not found",
+                    Some(1),
+                ));
             }
-            Ok(paru_path())
+            Ok(ExecResult::success("paru 2.1.0-2\n"))
         });
+    mock.expect_which_path()
+        .once()
+        .with(mockall::predicate::eq("paru"))
+        .returning(|_| anyhow::bail!("paru not found on PATH"));
     expect_paru_build_prerequisites(&mut mock);
     mock.expect_execute()
         .once()
@@ -267,7 +277,10 @@ fn install_aur_packages_errors_when_paru_disappears_after_bootstrap() {
         is_aur: true,
     });
     let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_platform_context_with_which(config, Os::Linux, true, false);
+    let mut mock = MockExecutor::new();
+    expect_missing_paru_package(&mut mock, 1);
+    expect_missing_paru_path(&mut mock, 1);
+    let ctx = make_package_context(config, Os::Linux, true, mock);
     let error = InstallAurPackages::new(packages).run(&ctx).unwrap_err();
     assert!(
         error.to_string().contains("became unavailable"),
@@ -287,6 +300,10 @@ fn is_paru_version(spec: &crate::infra::exec::CommandSpec) -> bool {
     spec.program() == paru_path().as_os_str() && spec.arguments() == ["--version"]
 }
 
+fn is_paru_package_query(spec: &crate::infra::exec::CommandSpec) -> bool {
+    spec.program() == "pacman" && spec.arguments() == ["-Q", "paru"] && !spec.is_checked()
+}
+
 fn is_git_clone(spec: &crate::infra::exec::CommandSpec) -> bool {
     spec.program() == "git" && spec.arguments().first().is_some_and(|arg| arg == "clone")
 }
@@ -299,11 +316,31 @@ fn is_makepkg(spec: &crate::infra::exec::CommandSpec) -> bool {
     spec.program() == "makepkg"
 }
 
-fn expect_paru_path(mock: &mut MockExecutor, times: usize) {
+fn expect_missing_paru_path(mock: &mut MockExecutor, times: usize) {
     mock.expect_which_path()
         .times(times)
         .with(mockall::predicate::eq("paru"))
-        .returning(|_| Ok(paru_path()));
+        .returning(|_| anyhow::bail!("paru not found on PATH"));
+}
+
+fn expect_installed_paru_package(mock: &mut MockExecutor, times: usize) {
+    mock.expect_execute()
+        .times(times)
+        .withf(is_paru_package_query)
+        .returning(|_| Ok(ExecResult::success("paru 2.1.0-2\n")));
+}
+
+fn expect_missing_paru_package(mock: &mut MockExecutor, times: usize) {
+    mock.expect_execute()
+        .times(times)
+        .withf(is_paru_package_query)
+        .returning(|_| {
+            Ok(ExecResult::failure(
+                "",
+                "error: package 'paru' was not found",
+                Some(1),
+            ))
+        });
 }
 
 fn expect_healthy_paru(mock: &mut MockExecutor, times: usize) {
@@ -316,7 +353,7 @@ fn expect_healthy_paru(mock: &mut MockExecutor, times: usize) {
 #[test]
 fn paru_health_marks_nonzero_executable_broken() {
     let mut mock = MockExecutor::new();
-    expect_paru_path(&mut mock, 1);
+    expect_installed_paru_package(&mut mock, 1);
     mock.expect_execute()
         .once()
         .withf(is_paru_version)
@@ -339,7 +376,7 @@ fn paru_health_marks_nonzero_executable_broken() {
 #[test]
 fn paru_health_preserves_missing_libalpm_failure() {
     let mut mock = MockExecutor::new();
-    expect_paru_path(&mut mock, 1);
+    expect_installed_paru_package(&mut mock, 1);
     mock.expect_execute()
         .once()
         .withf(is_paru_version)
@@ -360,6 +397,25 @@ fn paru_health_preserves_missing_libalpm_failure() {
         health,
         ParuHealth::Broken { path, reason }
             if path == paru_path() && reason.contains("libalpm.so.15")
+    ));
+}
+
+#[test]
+fn paru_health_marks_path_executable_without_target_package_broken() {
+    let mut mock = MockExecutor::new();
+    expect_missing_paru_package(&mut mock, 1);
+    mock.expect_which_path()
+        .once()
+        .with(mockall::predicate::eq("paru"))
+        .returning(|_| Ok(PathBuf::from("/usr/local/bin/paru")));
+
+    let health = check_paru_health(&mock);
+
+    assert!(matches!(
+        health,
+        ParuHealth::Broken { path, reason }
+            if path == std::path::Path::new("/usr/local/bin/paru")
+                && reason.contains("not backed by the target package database")
     ));
 }
 
@@ -417,7 +473,7 @@ fn paru_prerequisites_reject_unconfigured_rustup_cargo() {
 fn broken_paru_is_rebuilt_and_revalidated() {
     let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
-    expect_paru_path(&mut mock, 2);
+    expect_installed_paru_package(&mut mock, 2);
     let checks = Arc::new(AtomicUsize::new(0));
     mock.expect_execute()
         .times(2)
@@ -452,7 +508,7 @@ fn broken_paru_is_rebuilt_and_revalidated() {
 fn failed_paru_rebuild_returns_clear_root_error() {
     let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
-    expect_paru_path(&mut mock, 1);
+    expect_installed_paru_package(&mut mock, 1);
     mock.expect_execute()
         .once()
         .withf(is_paru_version)
@@ -500,7 +556,7 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
     });
     let packages = ConfigHandle::new(config.packages.clone());
     let mut mock = MockExecutor::new();
-    expect_paru_path(&mut mock, 1);
+    expect_installed_paru_package(&mut mock, 1);
     mock.expect_execute()
         .once()
         .withf(is_paru_version)

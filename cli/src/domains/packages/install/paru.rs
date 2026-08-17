@@ -5,43 +5,88 @@ use crate::engine::Context;
 use crate::infra::exec::{CommandSpec, Executor};
 use crate::infra::logging::OutputExt as _;
 
+use super::super::{PARU_EXECUTABLE, PARU_PACKAGE};
+
 /// Default number of parallel jobs for makepkg if nproc detection fails.
 const DEFAULT_NPROC: &str = "4";
 
-/// Result of resolving and executing the PATH-selected `paru` binary.
+/// Result of validating the target system's installed `paru` package.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ParuHealth {
-    /// No `paru` executable was found on `PATH`.
+    /// The target package is absent and no stale executable was found on `PATH`.
     Missing { reason: String },
-    /// The resolved executable successfully ran its non-destructive version check.
-    Healthy { path: PathBuf, version: String },
-    /// An executable was found, but the dynamic loader or process returned an error.
+    /// The target package and its canonical executable passed validation.
+    Healthy {
+        path: PathBuf,
+        package: String,
+        version: String,
+    },
+    /// The target package or an executable visible on `PATH` is inconsistent or unusable.
     Broken { path: PathBuf, reason: String },
 }
 
-/// Resolve `paru` on `PATH` and run that exact executable.
+fn first_output_line(result: &crate::infra::exec::ExecResult) -> Option<&str> {
+    result
+        .stdout
+        .lines()
+        .chain(result.stderr.lines())
+        .find(|line| !line.trim().is_empty())
+        .map(str::trim)
+}
+
+fn missing_or_stale(executor: &dyn Executor, reason: String) -> ParuHealth {
+    match executor.which_path(PARU_PACKAGE) {
+        Ok(path) => ParuHealth::Broken {
+            path,
+            reason: format!(
+                "{reason}; a PATH-selected paru executable exists but is not backed by the target package database"
+            ),
+        },
+        Err(_) => ParuHealth::Missing { reason },
+    }
+}
+
+/// Query the current Arch package database and execute its canonical `paru` binary.
+///
+/// `install-arch` launches dotfiles through `arch-chroot /mnt`, so `pacman` and
+/// `/usr/bin/paru` here both refer to the target system. The explicit path also
+/// makes validation independent of the caller's PATH and is reused by later AUR
+/// package operations.
 pub(super) fn check_paru_health(executor: &dyn Executor) -> ParuHealth {
-    let path = match executor.which_path("paru") {
-        Ok(path) => path,
+    let package_result = match executor.execute(
+        CommandSpec::new("pacman")
+            .args(&["-Q", PARU_PACKAGE])
+            .unchecked(),
+    ) {
+        Ok(result) => result,
         Err(error) => {
-            return ParuHealth::Missing {
-                reason: error.to_string(),
-            };
+            return missing_or_stale(
+                executor,
+                format!("could not query target package {PARU_PACKAGE}: {error}"),
+            );
         }
     };
+    if !package_result.success {
+        let detail =
+            first_output_line(&package_result).unwrap_or("package query returned no output");
+        return missing_or_stale(
+            executor,
+            format!("target package {PARU_PACKAGE} is not installed: {detail}"),
+        );
+    }
+    let package = first_output_line(&package_result)
+        .map_or_else(|| PARU_PACKAGE.to_string(), ToString::to_string);
+    let path = PathBuf::from(PARU_EXECUTABLE);
 
     match executor.execute(CommandSpec::new(path.as_os_str()).arg("--version")) {
         Ok(result) => {
-            let version = result
-                .stdout
-                .lines()
-                .chain(result.stderr.lines())
-                .find(|line| !line.trim().is_empty())
-                .map_or_else(
-                    || "version check passed".to_string(),
-                    |line| line.trim().to_string(),
-                );
-            ParuHealth::Healthy { path, version }
+            let version = first_output_line(&result)
+                .map_or_else(|| "version check passed".to_string(), ToString::to_string);
+            ParuHealth::Healthy {
+                path,
+                package,
+                version,
+            }
         }
         Err(error) => ParuHealth::Broken {
             path,

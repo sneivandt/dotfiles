@@ -178,14 +178,16 @@ to finish those.
 
 #### Paru package manager
 
-Arch-only bootstrap for the `paru` AUR helper. It resolves the PATH-selected
-executable and runs `paru --version`; a missing helper is installed and a
-present but unusable helper is rebuilt from AUR source against the current
-system libraries. Before cloning, the task requires `git`, `makepkg`, and
-`sudo`, then resolves Cargo and runs `cargo --version` so an unconfigured
-`rustup` proxy fails with remediation guidance instead of failing inside
-`makepkg`. The rebuilt PATH-selected executable must pass the same check before
-dependent tasks run.
+Arch-only bootstrap for the `paru` AUR helper. It queries `pacman -Q paru` and
+runs `/usr/bin/paru --version` in the current system context; under
+`install-arch`, both commands run inside the target chroot. A missing helper is
+installed and a present but unusable helper is rebuilt from AUR source against
+the current system libraries. Before cloning, the task requires `git`,
+`makepkg`, and `sudo`, then resolves Cargo and runs `cargo --version` so an
+unconfigured `rustup` proxy fails with remediation guidance instead of failing
+inside `makepkg`. The target package and executable must pass the same check
+before dependent tasks run, which invoke that exact `/usr/bin/paru` rather than
+resolving a host or stale PATH entry.
 
 #### AUR packages
 

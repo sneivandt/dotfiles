@@ -53,6 +53,7 @@ packages = [
   "chromium",
   "fuzzel",
   "gammastep",
+  "gnome-keyring",
   "gnome-themes-extra",
   "grim",
   "hypridle",

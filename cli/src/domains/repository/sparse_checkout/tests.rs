@@ -180,12 +180,42 @@ fn is_broken_symlink_into_true_for_dangling_symlink_into_dir() {
 
 #[test]
 fn run_returns_ok_when_no_excluded_files() {
-    // Empty manifest → no exclusions → returns Ok immediately without git calls.
-    let config = empty_config(PathBuf::from("/tmp"));
+    let dir = tempfile::tempdir().unwrap();
+    let config = empty_config(dir.path().to_path_buf());
     let manifest = ConfigHandle::new(config.manifest.clone());
-    let ctx = make_linux_context(config);
+    let executor = ScriptedExecutor::new().git_unchecked_result(
+        dir.path(),
+        &["config", "--get", "core.sparseCheckout"],
+        Ok(ExecResult::failure("", "", Some(1))),
+    );
+    let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
     let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
     assert!(matches!(result, TaskResult::Ok));
+}
+
+#[test]
+fn run_disables_sparse_checkout_when_exclusions_become_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
+    let config = empty_config(dir.path().to_path_buf());
+    let manifest = ConfigHandle::new(config.manifest.clone());
+    let executor = ScriptedExecutor::new()
+        .git_unchecked(
+            dir.path(),
+            &["config", "--get", "core.sparseCheckout"],
+            "true\n",
+        )
+        .git(
+            dir.path(),
+            &["status", "--porcelain", "--untracked-files=no"],
+            "",
+        )
+        .git(dir.path(), &["sparse-checkout", "disable"], "");
+    let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+
+    let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
+
+    assert!(matches!(result, TaskResult::Batch(stats) if stats.changed_count() == 1));
 }
 
 #[test]
@@ -309,7 +339,11 @@ fn run_skips_when_worktree_has_local_changes() {
 
     let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes present")),
+        matches!(
+            result,
+            TaskResult::Skipped { ref reason, .. }
+                if reason.contains("local changes present")
+        ),
         "expected local changes skip, got {result:?}"
     );
 }
@@ -333,7 +367,11 @@ fn dry_run_skips_when_worktree_has_local_changes() {
 
     let result = ConfigureSparseCheckout::new(manifest).run(&ctx).unwrap();
     assert!(
-        matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes present")),
+        matches!(
+            result,
+            TaskResult::Skipped { ref reason, .. }
+                if reason.contains("local changes present")
+        ),
         "expected local changes skip, got {result:?}"
     );
 }

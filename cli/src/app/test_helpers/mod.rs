@@ -266,7 +266,7 @@ pub fn task_batch(result: &TaskResult) -> &TaskStats {
 
 #[track_caller]
 pub fn task_skipped(result: &TaskResult) -> &str {
-    let TaskResult::Skipped(reason) = result else {
+    let TaskResult::Skipped { reason, .. } = result else {
         panic!("expected TaskResult::Skipped, got {result:?}");
     };
     reason

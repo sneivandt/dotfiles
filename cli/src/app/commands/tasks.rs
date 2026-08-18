@@ -54,6 +54,9 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
+    if global.retry_failed {
+        anyhow::bail!("--retry-failed is not valid with the tasks command");
+    }
     let runner = super::CommandRunner::new(global, log, token)?;
     let mut listings = Vec::new();
 

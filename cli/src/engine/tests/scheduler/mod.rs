@@ -132,6 +132,24 @@ impl Task for FailedTask {
     }
 }
 
+struct IncompleteTask;
+
+impl Task for IncompleteTask {
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("incomplete-task")
+    }
+
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        Ok(TaskResult::unmet("prerequisite unavailable"))
+    }
+}
+
+flag_task!(
+    DepOnIncompleteTask,
+    "dep-on-incomplete",
+    deps: [IncompleteTask]
+);
+
 struct CancellingTask;
 
 impl Task for CancellingTask {
@@ -235,7 +253,7 @@ impl Task for SkippedTask {
     }
 
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        Ok(TaskResult::Skipped("deliberate skip".to_string()))
+        Ok(TaskResult::skipped("deliberate skip"))
     }
 }
 

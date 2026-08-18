@@ -36,7 +36,7 @@ fn stats(result: &TaskResult) -> (u32, u32, u32) {
         | TaskResult::DryRun
         | TaskResult::CheckPassed
         | TaskResult::NotApplicable(_)
-        | TaskResult::Skipped(_)
+        | TaskResult::Skipped { .. }
         | TaskResult::Failed(_) => None,
     }
     .expect("resource processing should produce a batch result")

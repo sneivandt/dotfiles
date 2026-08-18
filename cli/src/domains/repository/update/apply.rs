@@ -56,7 +56,7 @@ pub(super) fn apply_repository_updates(
     for repository in repositories {
         match plan_repository_update(ctx, repository, git_env)? {
             RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
-            RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::Skipped(reason)),
+            RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
         }
     }
 
@@ -158,11 +158,10 @@ fn fetch_with_retry(
 ) -> std::result::Result<(), ExecError> {
     let mut attempt = 1_u32;
     loop {
-        match ctx.executor().execute(git_command(
-            &repository.target.root,
-            &["fetch", "--quiet"],
-            git_env,
-        )) {
+        match ctx.executor().execute(
+            git_command(&repository.target.root, &["fetch", "--quiet"], git_env)
+                .timeout(Duration::from_mins(5)),
+        ) {
             Ok(_) => return Ok(()),
             Err(error) if attempt < MAX_FETCH_ATTEMPTS && is_transient_fetch_error(&error) => {
                 ctx.log().warn(format!(

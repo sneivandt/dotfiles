@@ -88,10 +88,10 @@ impl<'a> RunCoordinator<'a> {
         let summary = if let Some(late) = plan.late.take() {
             self.execute_phased(plan.tasks, late)?
         } else {
-            run_task_graph(&mut plan.tasks, self.ctx, self.log)?
+            run_task_graph(&mut plan.tasks, self.ctx, self.log, None)?
         };
 
-        finish_run(self.log, summary)
+        finish_run(self.ctx, self.log, &summary)
     }
 
     fn execute_phased(
@@ -99,7 +99,7 @@ impl<'a> RunCoordinator<'a> {
         tasks: Vec<&dyn Task>,
         late: LateTaskPlan<'_>,
     ) -> Result<crate::engine::scheduler::ExecutionSummary> {
-        let boundary_closure = dependency_closure(&tasks, late.boundary);
+        let boundary_closure = dependency_closure(&tasks, late.boundary.clone());
         let mut summary = crate::engine::scheduler::ExecutionSummary::default();
 
         if boundary_closure.is_empty() {
@@ -108,26 +108,33 @@ impl<'a> RunCoordinator<'a> {
                 .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
             let mut all_tasks = tasks;
             all_tasks.extend(late_tasks.iter().map(Box::as_ref));
-            summary.merge(run_task_graph(&mut all_tasks, self.ctx, self.log)?);
+            summary.merge(run_task_graph(&mut all_tasks, self.ctx, self.log, None)?);
         } else {
             let mut prefix = tasks
                 .iter()
                 .copied()
                 .filter(|task| boundary_closure.contains(&task.task_id()))
                 .collect::<Vec<_>>();
-            summary.merge(run_task_graph(&mut prefix, self.ctx, self.log)?);
+            summary.merge(run_task_graph(&mut prefix, self.ctx, self.log, None)?);
 
-            if summary.failure_count() == 0 && !self.ctx.is_cancelled() {
-                let late_tasks = (late.provider)();
-                self.log
-                    .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
+            if !self.ctx.is_cancelled() {
+                let boundary_satisfied = matches!(
+                    summary.outcome(&late.boundary),
+                    Some(crate::engine::scheduler::TaskOutcome::Satisfied)
+                );
                 let mut remaining = tasks
                     .iter()
                     .copied()
                     .filter(|task| !boundary_closure.contains(&task.task_id()))
                     .collect::<Vec<_>>();
-                remaining.extend(late_tasks.iter().map(Box::as_ref));
-                summary.merge(run_task_graph(&mut remaining, self.ctx, self.log)?);
+                let late_tasks = boundary_satisfied.then(|| (late.provider)());
+                if let Some(late_tasks) = late_tasks.as_ref() {
+                    self.log
+                        .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
+                    remaining.extend(late_tasks.iter().map(Box::as_ref));
+                }
+                let next = run_task_graph(&mut remaining, self.ctx, self.log, Some(&summary))?;
+                summary.merge(next);
             }
         }
 
@@ -207,6 +214,7 @@ fn run_task_graph(
     tasks: &mut Vec<&dyn Task>,
     ctx: &Context,
     log: &Arc<Logger>,
+    prior: Option<&crate::engine::scheduler::ExecutionSummary>,
 ) -> Result<crate::engine::scheduler::ExecutionSummary> {
     if ctx.is_cancelled() || tasks.is_empty() {
         return Ok(crate::engine::scheduler::ExecutionSummary::default());
@@ -216,10 +224,10 @@ fn run_task_graph(
         .iter()
         .map(|task| (task.task_id(), task.assess(ctx)))
         .collect::<HashMap<_, _>>();
-    ElevationBroker::new(ctx, log).prepare(tasks, &assessments);
+    let mut summary = ElevationBroker::new(ctx, log).prepare(tasks, &assessments);
 
     if tasks.is_empty() {
-        return Ok(crate::engine::scheduler::ExecutionSummary::default());
+        return Ok(summary);
     }
 
     let graph = crate::engine::graph::ResolvedTaskGraph::resolve(tasks).map_err(|error| {
@@ -227,19 +235,40 @@ fn run_task_graph(
         log.error(&message);
         anyhow!(message)
     })?;
-    let summary = if ctx.parallel() {
-        crate::engine::scheduler::run_tasks_parallel(tasks, &graph, &assessments, ctx, log)
+    let mut combined_prior = prior.cloned().unwrap_or_default();
+    combined_prior.merge(summary.clone());
+    let scheduled = if ctx.parallel() {
+        crate::engine::scheduler::run_tasks_parallel_with_prior(
+            tasks,
+            &graph,
+            &assessments,
+            ctx,
+            log,
+            Some(&combined_prior),
+        )
     } else {
-        crate::engine::scheduler::run_tasks_sequential(tasks, &graph, &assessments, ctx, log)
+        crate::engine::scheduler::run_tasks_sequential_with_prior(
+            tasks,
+            &graph,
+            &assessments,
+            ctx,
+            log,
+            Some(&combined_prior),
+        )
     };
+    summary.merge(scheduled);
     Ok(summary)
 }
 
 fn finish_run(
+    ctx: &Context,
     log: &Arc<Logger>,
-    summary: crate::engine::scheduler::ExecutionSummary,
+    summary: &crate::engine::scheduler::ExecutionSummary,
 ) -> Result<()> {
     log.print_summary();
+    if let Err(error) = crate::app::recovery::persist(ctx, &log.command_title(), summary) {
+        log.warn(format!("could not persist recovery state: {error:#}"));
+    }
     let count = summary.failure_count();
     if count > 0 {
         return Err(TaskFailures::new(count).into());
@@ -323,6 +352,15 @@ mod tests {
             assert!(!built.iter().any(|arg| arg.contains("packages")));
             assert!(!built.iter().any(|arg| arg.contains("registry")));
         }
+    }
+
+    #[test]
+    fn elevated_child_args_drop_retry_mode_after_parent_selection() {
+        let built =
+            build_elevated_child_args(&args(&["install", "--retry-failed"]), &["developer-mode"]);
+
+        assert!(!built.contains(&"--retry-failed".to_string()));
+        assert!(built.contains(&"--only".to_string()));
     }
 
     #[test]
@@ -846,6 +884,7 @@ mod tests {
         let tasks = vec![
             ProbeTask::new("boundary", 1, &trace).failing(),
             ProbeTask::new("after-boundary", 2, &trace).depends_on(&[1]),
+            ProbeTask::new("independent", 3, &trace),
         ];
         let (ctx, log) = sequential_context();
         let provider_called = Arc::new(Mutex::new(false));
@@ -874,8 +913,8 @@ mod tests {
         );
         assert_eq!(
             entries(&trace),
-            vec!["boundary".to_string()],
-            "remaining tasks must not run after the boundary fails"
+            vec!["boundary".to_string(), "independent".to_string()],
+            "independent static tasks should continue while failed dependents remain blocked"
         );
     }
 

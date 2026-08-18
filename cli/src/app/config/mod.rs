@@ -324,7 +324,7 @@ impl<'a> ConfigValidator<'a> {
 }
 
 /// All loaded configuration for a resolved profile.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Root directory of the dotfiles repository.
     pub root: PathBuf,

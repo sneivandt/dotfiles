@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::engine::scheduler::{ExecutionSummary, TaskOutcome};
 use crate::engine::{Context, Task, TaskAssessment, TaskId};
 use crate::infra::logging::{ActionCounts, Logger, OutputExt as _, TaskStatus};
 
@@ -43,7 +44,8 @@ impl<'a> ElevationBroker<'a> {
         &self,
         tasks: &mut Vec<&dyn Task>,
         assessments: &HashMap<TaskId, TaskAssessment>,
-    ) {
+    ) -> ExecutionSummary {
+        let mut summary = ExecutionSummary::default();
         let elevating: Vec<&dyn Task> = if crate::infra::elevation::is_elevated_child() {
             // The child was spawned precisely to run these tasks; it must not
             // recurse into another elevation request.
@@ -61,7 +63,7 @@ impl<'a> ElevationBroker<'a> {
         };
 
         if elevating.is_empty() {
-            return;
+            return summary;
         }
 
         let names: Vec<&str> = elevating.iter().map(|task| task.name()).collect();
@@ -78,13 +80,15 @@ impl<'a> ElevationBroker<'a> {
         };
 
         let Some(reason) = reason else {
-            return;
+            return summary;
         };
-
         let roots: HashMap<TaskId, &str> = elevating
             .iter()
             .map(|task| (task.task_id(), task.name()))
             .collect();
+        if cascade && self.ctx.require_complete() {
+            summary.add_failures(roots.len());
+        }
         let blocked = if cascade {
             blocked_dependents(tasks, &roots)
         } else {
@@ -106,18 +110,38 @@ impl<'a> ElevationBroker<'a> {
             let _enter = span.enter();
             self.log.debug(message.as_str());
             let task_id = id.record_key();
+            let status = if roots.contains_key(&id) && self.ctx.require_complete() && cascade {
+                TaskStatus::Failed
+            } else {
+                TaskStatus::Skipped
+            };
             self.log.record_task_with_identity(
                 &task_id,
                 task.name(),
-                TaskStatus::Skipped,
+                status,
                 Some(message.as_str()),
                 ActionCounts::default(),
                 task.visibility(),
             );
             self.log.mark_task_completed_by_id(&task_id);
             self.log.emit_task_result_and_redraw_by_id(&task_id);
+            summary.record(
+                id,
+                task.selector(),
+                task.name(),
+                if roots.contains_key(&task.task_id()) {
+                    if cascade {
+                        TaskOutcome::Unmet
+                    } else {
+                        TaskOutcome::Satisfied
+                    }
+                } else {
+                    TaskOutcome::Blocked
+                },
+            );
             false
         });
+        summary
     }
 }
 
@@ -134,12 +158,6 @@ fn prepare_elevation(
     _selectors: &[&str],
     task_count: usize,
 ) -> ElevationPlan {
-    // A single task, or a sequential run, can prompt inline without garbling
-    // output, so there is nothing to arrange up front.
-    if !ctx.parallel() || task_count <= 1 {
-        return ElevationPlan::Ready;
-    }
-
     if !crate::infra::elevation::sudo_available(ctx.executor()) {
         log.separate_from_startup();
         log.warn("sudo not found on PATH");
@@ -151,6 +169,22 @@ fn prepare_elevation(
 
     if crate::infra::elevation::sudo_credentials_cached() {
         log.debug("sudo credentials already cached");
+        return ElevationPlan::Ready;
+    }
+
+    if ctx.non_interactive() {
+        log.warn(format!(
+            "sudo credentials are required for: {}",
+            names.join(", ")
+        ));
+        return ElevationPlan::Unavailable {
+            reason: "sudo credentials unavailable in a non-interactive session",
+        };
+    }
+
+    // A single task, or a sequential run, can prompt inline without garbling
+    // output, so there is nothing else to arrange up front.
+    if !ctx.parallel() || task_count <= 1 {
         return ElevationPlan::Ready;
     }
 
@@ -201,7 +235,10 @@ fn prepare_elevation(
     // any other headless session there is nobody to answer it, so requesting it
     // would at best fail and at worst stall the run until the command timeout.
     // Degrade to the same outcome as a declined prompt instead.
-    if ctx.system().is_ci() || !std::io::IsTerminal::is_terminal(&std::io::stdout()) {
+    if ctx.non_interactive()
+        || ctx.system().is_ci()
+        || !std::io::IsTerminal::is_terminal(&std::io::stdout())
+    {
         log.warn(format!(
             "administrator access is required for: {}",
             names.join(", ")
@@ -265,16 +302,17 @@ const fn prepare_elevation(
 
 /// Rewrite this run's arguments so the elevated child runs only `selectors`.
 ///
-/// Existing `--only` / `--skip` filters are dropped because the child's scope is
-/// decided here, and `--no-parallel` is forced so its output stays readable in
-/// the separate console `Start-Process` opens. Every other flag is preserved.
+/// Existing `--only` / `--skip` filters and `--retry-failed` are dropped because
+/// the parent has already resolved the child's exact scope. `--no-parallel` is
+/// forced so output stays readable in the separate console `Start-Process`
+/// opens. Every other flag is preserved.
 #[cfg_attr(
     not(any(windows, test)),
     allow(dead_code, reason = "used by the Windows elevation broker")
 )]
 pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> Vec<String> {
     /// Filters whose values the child must not inherit.
-    const DROPPED: [&str; 2] = ["--only", "--skip"];
+    const DROPPED_WITH_VALUE: [&str; 2] = ["--only", "--skip"];
 
     let mut out: Vec<String> = Vec::with_capacity(args.len().saturating_add(4));
     let mut skip_next = false;
@@ -284,14 +322,17 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
             skip_next = false;
             continue;
         }
-        if DROPPED.contains(&arg.as_str()) {
+        if DROPPED_WITH_VALUE.contains(&arg.as_str()) {
             skip_next = true;
             continue;
         }
-        if DROPPED
+        if DROPPED_WITH_VALUE
             .iter()
             .any(|flag| arg.starts_with(&format!("{flag}=")))
         {
+            continue;
+        }
+        if arg == "--retry-failed" {
             continue;
         }
         if arg == "--no-parallel" || arg == "--elevated-child" {

@@ -13,6 +13,7 @@ pub mod fs;
 pub mod logging;
 pub mod platform;
 pub mod provisioning;
+pub(crate) mod run_lock;
 
 /// Shared one-shot boolean flag backing cross-thread signalling primitives.
 pub(crate) mod atomic_flag;

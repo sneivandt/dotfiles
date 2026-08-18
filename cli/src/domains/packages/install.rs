@@ -111,7 +111,7 @@ impl PackageTaskKind {
                 Self::Native => "no packages to install",
                 Self::Aur => "no AUR packages",
             };
-            return Ok(TaskResult::Skipped(reason.to_string()));
+            return Ok(TaskResult::NotApplicable(reason.to_string()));
         }
 
         let manager = match self {
@@ -119,7 +119,7 @@ impl PackageTaskKind {
                 ctx.trace_fmt(|| format!("{} non-AUR packages to process", selected.len()));
                 match resolve_native_manager(ctx) {
                     Ok(manager) => manager,
-                    Err(reason) => return Ok(TaskResult::Skipped(reason)),
+                    Err(reason) => return Ok(TaskResult::unmet(reason)),
                 }
             }
             Self::Aur => {

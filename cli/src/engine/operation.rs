@@ -97,7 +97,7 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
             Ok(TaskResult::Ok)
         }
         OperationState::NotApplicable { reason } => Ok(TaskResult::NotApplicable(reason)),
-        OperationState::Blocked { reason } => Ok(TaskResult::Skipped(reason)),
+        OperationState::Blocked { reason } => Ok(TaskResult::unmet(reason)),
         OperationState::NeedsRun { plan, .. } if ctx.dry_run() => operation.preview(ctx, &plan),
         OperationState::NeedsRun { plan, .. } => operation.apply(ctx, &plan),
     }
@@ -237,7 +237,10 @@ mod tests {
 
         let result = process_operation(&ctx, &operation).unwrap();
 
-        assert!(matches!(result, TaskResult::Skipped(reason) if reason == "local changes present"));
+        assert!(matches!(
+            result,
+            TaskResult::Skipped { reason, .. } if reason == "local changes present"
+        ));
         assert!(
             log.info
                 .lock()

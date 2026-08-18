@@ -6,6 +6,7 @@ use crate::app::cli::{GlobalOpts, InstallOpts};
 use crate::app::filter::{apply_task_filters, task_passes_filters};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
+use crate::infra::logging::OutputExt as _;
 
 /// Install pipeline behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,9 +55,8 @@ pub(crate) fn run_pipeline(
     token: &crate::engine::CancellationToken,
     mode: RunMode,
 ) -> Result<()> {
-    super::prepare_self_update(global, &**log)?;
-
-    let runner = super::CommandRunner::new(global, log, token)?;
+    let run_lock = super::prepare_self_update(global, log)?;
+    let runner = super::CommandRunner::new_with_lock(global, log, token, run_lock)?;
 
     // Build the static task list. Dynamic overlay scripts are rebuilt after
     // configuration reload so they observe changes pulled in this run.
@@ -65,27 +65,56 @@ pub(crate) fn run_pipeline(
     // Version-advancing tasks are only scheduled by `update`. Filter command
     // membership before user filters so warnings reflect eligible tasks.
     all_tasks.retain(|task| mode.includes_task(task.as_ref()));
+    if global.offline {
+        let repository_task = TaskId::Type(std::any::TypeId::of::<
+            crate::domains::repository::update::UpdateRepository,
+        >());
+        all_tasks.retain(|task| task.task_id() != repository_task);
+        log.debug("offline mode — using the current repository checkout");
+    }
 
     let startup_overlay_tasks = runner.overlay_script_tasks();
-    let filtered = apply_task_filters(
-        &all_tasks,
-        &startup_overlay_tasks,
-        &opts.only,
-        &opts.skip,
-        log,
-    );
+    let boundary = TaskId::Type(std::any::TypeId::of::<
+        crate::app::reconcile::ReconcileUpdatedCheckout,
+    >());
+    let recovery_selectors = runner.recovery_selectors().cloned();
+    let filtered = if let Some(selectors) = recovery_selectors.as_ref() {
+        if !opts.only.is_empty() || !opts.skip.is_empty() {
+            anyhow::bail!("--retry-failed cannot be combined with --only or --skip");
+        }
+        let dynamic_retry = startup_overlay_tasks
+            .iter()
+            .any(|task| crate::app::recovery::task_selected(task.as_ref(), selectors));
+        let required = if dynamic_retry {
+            std::slice::from_ref(&boundary)
+        } else {
+            &[]
+        };
+        crate::app::recovery::select_tasks(&all_tasks, &startup_overlay_tasks, selectors, required)?
+    } else {
+        apply_task_filters(
+            &all_tasks,
+            &startup_overlay_tasks,
+            &opts.only,
+            &opts.skip,
+            log,
+        )
+    };
 
-    runner.run_with_late_tasks(
-        filtered,
-        TaskId::Type(std::any::TypeId::of::<crate::app::reload::ReloadConfig>()),
-        || {
-            runner
-                .overlay_script_tasks()
+    runner.run_with_late_tasks(filtered, boundary, || {
+        let tasks = runner.overlay_script_tasks();
+        if let Some(selectors) = recovery_selectors.as_ref() {
+            tasks
+                .into_iter()
+                .filter(|task| crate::app::recovery::task_selected(task.as_ref(), selectors))
+                .collect()
+        } else {
+            tasks
                 .into_iter()
                 .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
                 .collect()
-        },
-    )
+        }
+    })
 }
 
 #[cfg(test)]

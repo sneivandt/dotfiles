@@ -73,7 +73,10 @@ fn run_returns_skipped_when_detached_head() {
     let task = UpdateRepository::new(repo_updated.clone());
 
     let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::Skipped(ref s) if s.contains("detached HEAD")));
+    assert!(matches!(
+        result,
+        TaskResult::Skipped { ref reason, .. } if reason.contains("detached HEAD")
+    ));
     assert!(!repo_updated.was_updated());
 }
 
@@ -172,7 +175,10 @@ fn run_classifies_repository_state_from_git_output() {
 
         if let Some(fragment) = expected_skip {
             assert!(
-                matches!(result, TaskResult::Skipped(ref reason) if reason.contains(fragment)),
+                matches!(
+                    result,
+                    TaskResult::Skipped { ref reason, .. } if reason.contains(fragment)
+                ),
                 "{case}: expected a skip mentioning {fragment:?}, got {result:?}"
             );
         } else {
@@ -335,9 +341,11 @@ fn run_skips_when_overlay_has_local_changes() {
     let task = UpdateRepository::new(repo_updated.clone());
 
     let result = task.run(&ctx).unwrap();
-    assert!(
-        matches!(result, TaskResult::Skipped(ref s) if s.contains("local changes") && s.contains("overlay"))
-    );
+    assert!(matches!(
+        result,
+        TaskResult::Skipped { ref reason, .. }
+            if reason.contains("local changes") && reason.contains("overlay")
+    ));
     assert!(!repo_updated.was_updated());
 }
 

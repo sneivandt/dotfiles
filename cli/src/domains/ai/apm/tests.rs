@@ -624,7 +624,7 @@ fn update_skips_advancement_when_install_marker_missing() {
 
     let result = update_task().run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Skipped(_)),
+        matches!(result, TaskResult::Skipped { .. }),
         "expected Skipped when the install success marker is missing, got {result:?}"
     );
 }
@@ -728,7 +728,7 @@ fn update_skips_when_apm_not_found() {
 
     let result = update_task().run(&ctx).expect("run should not error");
     assert!(
-        matches!(result, TaskResult::Skipped(_)),
+        matches!(result, TaskResult::Skipped { .. }),
         "expected Skipped when apm is not on PATH, got {result:?}"
     );
 }

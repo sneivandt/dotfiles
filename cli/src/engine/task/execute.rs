@@ -11,6 +11,31 @@ use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, format_elapsed, 
 use super::{Task, TaskAssessment};
 use crate::infra::logging::OutputExt as _;
 
+/// Dependency meaning of a task's recorded result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TaskDisposition {
+    Satisfied,
+    Unmet,
+    Failed,
+    Cancelled,
+}
+
+/// Recorded presentation status plus dependency semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TaskExecution {
+    pub(crate) status: TaskStatus,
+    pub(crate) disposition: TaskDisposition,
+}
+
+impl TaskExecution {
+    const fn new(status: TaskStatus, disposition: TaskDisposition) -> Self {
+        Self {
+            status,
+            disposition,
+        }
+    }
+}
+
 /// Record a task that does not apply to this run.
 ///
 /// `reason` is `None` when applicability was decided by the task's own
@@ -46,7 +71,7 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: 
 /// measurement is taken here.
 pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let assessment = task.assess(ctx);
-    execute_assessed(task, &assessment, ctx)
+    execute_assessed(task, &assessment, ctx).status
 }
 
 /// Execute using the assessment precomputed by the application coordinator.
@@ -54,20 +79,20 @@ pub(crate) fn execute_assessed(
     task: &dyn Task,
     assessment: &TaskAssessment,
     ctx: &Context,
-) -> TaskStatus {
+) -> TaskExecution {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
     let _diag_context = log_task_context(task.name());
     let task_id = task.task_id().record_key();
     if !assessment.is_applicable() {
         record_not_applicable(ctx, task, &task_id, assessment.not_applicable_reason());
-        return TaskStatus::NotApplicable;
+        return TaskExecution::new(TaskStatus::NotApplicable, TaskDisposition::Satisfied);
     }
 
     ctx.log()
         .run_task_event(LogEvent::TaskStart, task.name(), "executing");
     let started = std::time::Instant::now();
-    let status = record_run_outcome(task, &task_id, ctx);
+    let execution = record_run_outcome(task, &task_id, ctx);
     let elapsed = started.elapsed();
     ctx.log()
         .record_task_duration_by_id(&task_id, task.name(), elapsed);
@@ -76,7 +101,7 @@ pub(crate) fn execute_assessed(
         task.name(),
         &format!("elapsed {}", format_elapsed(elapsed)),
     );
-    status
+    execution
 }
 
 /// Record a task outcome with the task's own visibility, returning the status.
@@ -127,7 +152,7 @@ fn record_interrupted(
 ///
 /// Typed executor cancellation errors are downgraded to [`TaskStatus::Skipped`]
 /// so the summary does not count signal interruptions as real failures.
-fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskStatus {
+fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExecution {
     let rec = |status: TaskStatus, msg: Option<&str>| {
         record(task, task_id, ctx, status, msg, ActionCounts::default())
     };
@@ -135,36 +160,68 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskStat
         Ok(None) => {
             ctx.log()
                 .run_task_event(LogEvent::TaskSkip, task.name(), "nothing configured");
-            rec(TaskStatus::NotApplicable, Some("nothing configured"))
+            TaskExecution::new(
+                rec(TaskStatus::NotApplicable, Some("nothing configured")),
+                TaskDisposition::Satisfied,
+            )
         }
         Ok(Some(result)) => match result {
             TaskResult::Ok => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskDone, task.name(), "ok");
-                rec(TaskStatus::Ok, None)
+                TaskExecution::new(rec(TaskStatus::Ok, None), TaskDisposition::Satisfied)
             }
             TaskResult::DryRun => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskDone, task.name(), "planned");
-                rec(TaskStatus::DryRun, None)
+                TaskExecution::new(rec(TaskStatus::DryRun, None), TaskDisposition::Satisfied)
             }
             TaskResult::CheckPassed => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskDone, task.name(), "passed");
-                rec(TaskStatus::Passed, None)
+                TaskExecution::new(rec(TaskStatus::Passed, None), TaskDisposition::Satisfied)
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
-                rec(TaskStatus::NotApplicable, Some(&reason))
+                TaskExecution::new(
+                    rec(TaskStatus::NotApplicable, Some(&reason)),
+                    TaskDisposition::Satisfied,
+                )
             }
-            TaskResult::Skipped(reason) => {
+            TaskResult::Skipped { reason, kind } => {
+                if kind.is_failure() && ctx.require_complete() {
+                    return TaskExecution::new(
+                        record_failed_outcome(task, task_id, ctx, &reason),
+                        TaskDisposition::Unmet,
+                    );
+                }
                 ctx.log()
                     .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
-                rec(TaskStatus::Skipped, Some(&reason))
+                TaskExecution::new(
+                    rec(TaskStatus::Skipped, Some(&reason)),
+                    if kind.is_failure() {
+                        TaskDisposition::Unmet
+                    } else {
+                        TaskDisposition::Satisfied
+                    },
+                )
             }
-            TaskResult::Failed(reason) => record_failed_outcome(task, task_id, ctx, &reason),
-            TaskResult::Batch(stats) => record_batch_outcome(task, task_id, ctx, &stats),
+            TaskResult::Failed(reason) => TaskExecution::new(
+                record_failed_outcome(task, task_id, ctx, &reason),
+                TaskDisposition::Failed,
+            ),
+            TaskResult::Batch(stats) => {
+                let batch_status = record_batch_outcome(task, task_id, ctx, &stats);
+                TaskExecution::new(
+                    batch_status,
+                    if batch_status == TaskStatus::Failed {
+                        TaskDisposition::Failed
+                    } else {
+                        TaskDisposition::Satisfied
+                    },
+                )
+            }
         },
         Err(error)
             if error.chain().any(|cause| {
@@ -176,14 +233,20 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskStat
                         .is_some_and(crate::engine::resource::ResourceError::is_cancelled)
             }) =>
         {
-            record_interrupted(task, task_id, ctx, task.name(), ActionCounts::default())
+            TaskExecution::new(
+                record_interrupted(task, task_id, ctx, task.name(), ActionCounts::default()),
+                TaskDisposition::Cancelled,
+            )
         }
         Err(e) => {
             let message = format!("{e:#}");
             ctx.log()
                 .run_task_event(LogEvent::TaskFail, task.name(), &message);
             ctx.log().error(format!("{}: {message}", task.name()));
-            rec(TaskStatus::Failed, Some(&message))
+            TaskExecution::new(
+                rec(TaskStatus::Failed, Some(&message)),
+                TaskDisposition::Failed,
+            )
         }
     }
 }

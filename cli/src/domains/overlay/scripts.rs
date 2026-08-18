@@ -136,9 +136,13 @@ impl Operation for OverlayScriptOperation {
         let (change, output) = self.resource(ctx)?.apply_with_output()?;
         emit_script_lines(ctx, &output, false);
         match change {
-            ResourceChange::Skipped { reason, .. } => {
+            ResourceChange::Skipped { reason, kind } => {
                 ctx.log().warn(format!("skipping: {reason}"));
-                Ok(TaskResult::Skipped(reason))
+                Ok(if kind.is_failure() {
+                    TaskResult::unmet(reason)
+                } else {
+                    TaskResult::skipped(reason)
+                })
             }
             ResourceChange::Applied | ResourceChange::AlreadyCorrect => Ok(TaskResult::Ok),
         }

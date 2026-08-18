@@ -12,6 +12,8 @@ pub mod config;
 pub mod filter;
 pub mod interrupt;
 pub mod preserve;
+pub mod reconcile;
+pub(crate) mod recovery;
 pub mod reload;
 pub mod run;
 pub mod validation;

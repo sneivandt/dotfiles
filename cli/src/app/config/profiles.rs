@@ -64,6 +64,7 @@ pub fn resolve_from_args(
     root: &Path,
     platform: Platform,
     env: &dyn crate::infra::env::Env,
+    non_interactive: bool,
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
     let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
@@ -75,6 +76,11 @@ pub fn resolve_from_args(
     {
         name
     } else {
+        if non_interactive {
+            anyhow::bail!(
+                "profile selection is required in non-interactive mode; pass --profile, set DOTFILES_PROFILE, or persist a profile"
+            );
+        }
         let name = prompt_interactive_with_defs(&defs)?;
         #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
         if let Err(e) = persist(root, &name) {
@@ -102,6 +108,32 @@ mod tests {
 
     fn windows_platform() -> Platform {
         Platform::new(Os::Windows, false)
+    }
+
+    #[test]
+    fn non_interactive_resolution_fails_instead_of_prompting() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let conf = root.path().join("conf");
+        std::fs::create_dir(&conf).expect("create conf");
+        std::fs::write(
+            conf.join("profiles.toml"),
+            "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
+        )
+        .expect("write profiles");
+
+        let error = resolve_from_args(
+            None,
+            root.path(),
+            linux_platform(),
+            &crate::infra::env::MapEnv::new(),
+            true,
+        )
+        .expect_err("non-interactive resolution must not read stdin");
+
+        assert!(
+            error.to_string().contains("profile selection is required"),
+            "unexpected error: {error:#}"
+        );
     }
 
     fn resolve_default(

@@ -62,9 +62,10 @@ idempotency and dry-run safety depend on the script honoring its contract.
 | `launcher` | Dotfiles launcher | install, update, uninstall | Installs or removes the platform wrapper |
 | `path` | Shell PATH | install, update | Ensures the launcher directory is on user PATH |
 
-`Reload configuration` and `Report overlay scripts` are internal orchestration
-tasks. They keep their scheduler identities and run-log entries, but do not
-appear in `dotfiles tasks`, normal console rows, or aggregate totals.
+`Reload configuration`, `Reconcile updated checkout`, and `Report overlay
+scripts` are internal orchestration tasks. They keep their scheduler identities
+and run-log entries, but do not appear in `dotfiles tasks`, normal console rows,
+or aggregate totals.
 
 ### Host capability and wrapper tasks
 
@@ -117,6 +118,10 @@ Runs after sparse checkout and updates the current repository when supported.
 Successful content changes set an update signal consumed by **Reload
 configuration**. Install and update both synchronize the repository; only tasks
 explicitly marked update-only are exclusive to the update command.
+With `--offline`, repository synchronization is omitted and the current
+checkout is treated as the desired source; the normal preservation and sparse
+checkout tasks still converge it without activating the post-update reload
+boundary.
 
 #### Git hooks
 
@@ -134,14 +139,26 @@ installs it into the managed completion location.
 #### Reload configuration
 
 Runs after **Dotfiles repository** only when the repository update signal
-indicates that content changed. It reloads configuration and updates shared
-configuration handles in place. Because overlay configuration changes the task
-set, the command executes this task's dependency closure first, rebuilds
-dynamic tasks, then runs the remaining static and dynamic tasks together.
+indicates that content changed. It re-resolves the selected profile from the
+updated `profiles.toml`, reloads configuration, and updates shared configuration
+handles by publishing one immutable configuration generation. Tasks cannot
+observe a mix of sections from before and after the reload.
+
+If this boundary or one of its prerequisites fails, late dynamic tasks are not
+discovered from inconsistent state. Static tasks independent of the failed
+prefix continue, while tasks with failed blocking prerequisites remain skipped.
+
+#### Reconcile updated checkout
+
+Runs after **Reload configuration** and reapplies excluded-file preservation and
+sparse-checkout rules from the refreshed profile and manifest. Because profile,
+manifest, and overlay changes can affect later task discovery, the command
+executes this task's dependency closure first, rebuilds dynamic tasks, then runs
+the remaining static and dynamic tasks together.
 
 #### Report overlay scripts
 
-Runs after **Reload configuration** when an overlay was supplied and
+Runs after **Reconcile updated checkout** when an overlay was supplied and
 `conf/scripts.toml` produced at least one active script. It only reports the
 discovered count. Actual execution is handled by dynamically injected tasks.
 

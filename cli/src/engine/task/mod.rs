@@ -10,7 +10,7 @@ mod types;
 use crate::infra::logging::OutputExt as _;
 pub use crate::infra::logging::TaskVisibility;
 pub use execute::execute;
-pub(crate) use execute::execute_assessed;
+pub(crate) use execute::{TaskDisposition, TaskExecution, execute_assessed};
 pub(crate) use macros::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
@@ -177,6 +177,83 @@ pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
 pub struct TaskWithExtraDeps {
     inner: Box<dyn Task>,
     deps: Vec<TaskId>,
+}
+
+/// A [`Task`] decorator that appends cross-domain ordering-only dependencies.
+///
+/// Unlike [`TaskWithExtraDeps`], failures in these dependencies do not block
+/// the inner task. Use this when the inner task rechecks the required runtime
+/// capability and can still converge after an attempted prerequisite fails.
+pub struct TaskWithExtraOrderingDeps {
+    inner: Box<dyn Task>,
+    deps: Vec<TaskId>,
+}
+
+impl TaskWithExtraOrderingDeps {
+    /// Wrap `inner`, merging `extra` ordering ids with its existing ordering.
+    #[must_use]
+    pub fn new(inner: Box<dyn Task>, extra: &[TaskId]) -> Self {
+        let mut deps = Vec::new();
+        for id in inner.ordering_dependencies().iter().chain(extra) {
+            if !deps.contains(id) {
+                deps.push(id.clone());
+            }
+        }
+        Self { inner, deps }
+    }
+
+    /// Wrap `inner` and box the decorator as a `dyn Task`.
+    #[must_use]
+    pub fn boxed(inner: Box<dyn Task>, extra: &[TaskId]) -> Box<dyn Task> {
+        Box::new(Self::new(inner, extra))
+    }
+}
+
+impl std::fmt::Debug for TaskWithExtraOrderingDeps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TaskWithExtraOrderingDeps")
+            .field("name", &self.inner.name())
+            .field("deps", &self.deps)
+            .finish()
+    }
+}
+
+impl Task for TaskWithExtraOrderingDeps {
+    fn meta(&self) -> TaskMeta<'_> {
+        self.inner.meta()
+    }
+
+    fn task_id(&self) -> TaskId {
+        self.inner.task_id()
+    }
+
+    fn dependencies(&self) -> &[TaskId] {
+        self.inner.dependencies()
+    }
+
+    fn ordering_dependencies(&self) -> &[TaskId] {
+        &self.deps
+    }
+
+    fn should_run(&self, ctx: &Context) -> bool {
+        self.inner.should_run(ctx)
+    }
+
+    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+        self.inner.run_configured(ctx)
+    }
+
+    fn needs_elevation(&self, ctx: &Context) -> bool {
+        self.inner.needs_elevation(ctx)
+    }
+
+    fn assess(&self, ctx: &Context) -> TaskAssessment {
+        self.inner.assess(ctx)
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        self.inner.run(ctx)
+    }
 }
 
 impl TaskWithExtraDeps {

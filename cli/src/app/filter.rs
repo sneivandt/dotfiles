@@ -1,6 +1,8 @@
 //! Task filter matching helpers for command `--only` and `--skip` options.
 
-use crate::engine::Task;
+use std::collections::{HashMap, HashSet};
+
+use crate::engine::{Task, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{Logger, Output};
 
@@ -19,17 +21,23 @@ pub(crate) fn apply_task_filters<'a>(
         .collect();
     let unmatched_only = unmatched_filters(&known_task_refs, only);
     let unmatched_skip = unmatched_filters(&known_task_refs, skip);
-    if !log.is_verbose() && (!unmatched_only.is_empty() || !unmatched_skip.is_empty()) {
-        log.separate_from_startup();
-    }
-    warn_unmatched_filters(&unmatched_only, "--only", log);
-    warn_unmatched_filters(&unmatched_skip, "--skip", log);
-
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
         .filter(|task| task_passes_filters(task.as_ref(), only, skip))
         .map(Box::as_ref)
         .collect();
+    let omitted_dependencies = omitted_dependencies(all_tasks, &filtered);
+
+    if !log.is_verbose()
+        && (!unmatched_only.is_empty()
+            || !unmatched_skip.is_empty()
+            || !omitted_dependencies.is_empty())
+    {
+        log.separate_from_startup();
+    }
+    warn_unmatched_filters(&unmatched_only, "--only", log);
+    warn_unmatched_filters(&unmatched_skip, "--skip", log);
+    warn_omitted_dependencies(&omitted_dependencies, log);
 
     if !only.is_empty() || !skip.is_empty() {
         let names: Vec<&str> = filtered.iter().map(|task| task.name()).collect();
@@ -73,6 +81,10 @@ pub(crate) fn task_passes_filters(task: &dyn Task, only: &[String], skip: &[Stri
 /// selector IDs are the authoritative interface.
 #[must_use]
 pub fn task_matches_filter(task: &dyn Task, filter: &str) -> bool {
+    if !task.visibility().is_visible() {
+        return false;
+    }
+
     let normalized_filter = normalize_task_filter(filter);
     if normalized_filter.is_empty() {
         return false;
@@ -80,6 +92,47 @@ pub fn task_matches_filter(task: &dyn Task, filter: &str) -> bool {
 
     normalized_filter == normalize_task_filter(task.selector())
         || normalized_filter == normalize_task_filter(task.name())
+}
+
+fn omitted_dependencies<'a>(
+    all_tasks: &'a [Box<dyn Task>],
+    filtered: &[&'a dyn Task],
+) -> Vec<(&'a str, &'a str)> {
+    let active = filtered
+        .iter()
+        .map(|task| task.task_id())
+        .collect::<HashSet<_>>();
+    let known = all_tasks
+        .iter()
+        .map(|task| (task.task_id(), task.as_ref()))
+        .collect::<HashMap<TaskId, &dyn Task>>();
+    let mut omitted = Vec::new();
+
+    for task in filtered {
+        for dependency in task
+            .dependencies()
+            .iter()
+            .chain(task.ordering_dependencies())
+        {
+            let Some(dependency_task) = known.get(dependency) else {
+                continue;
+            };
+            let pair = (task.name(), dependency_task.name());
+            if !active.contains(dependency) && !omitted.contains(&pair) {
+                omitted.push(pair);
+            }
+        }
+    }
+
+    omitted
+}
+
+fn warn_omitted_dependencies(dependencies: &[(&str, &str)], log: &dyn Output) {
+    for (task, dependency) in dependencies {
+        log.warn(format!(
+            "task '{task}' will run without filtered prerequisite '{dependency}'; assuming it is already satisfied"
+        ));
+    }
 }
 
 fn normalize_task_filter(value: &str) -> String {
@@ -97,7 +150,7 @@ fn normalized_task_tokens(value: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Context, TaskMeta, TaskResult};
+    use crate::engine::{Context, TaskId, TaskMeta, TaskResult, TaskVisibility};
     use crate::infra::logging::MsgKind;
     use anyhow::Result;
     use std::borrow::Cow;
@@ -120,6 +173,37 @@ mod tests {
     impl Task for OtherTask {
         fn meta(&self) -> TaskMeta<'_> {
             TaskMeta::new("System packages").with_selector("packages")
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct InternalTask;
+
+    impl Task for InternalTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Reload configuration")
+                .with_selector("reload-configuration")
+                .with_visibility(TaskVisibility::Internal)
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct DependentTask;
+
+    impl Task for DependentTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Dependent").with_selector("dependent")
+        }
+
+        fn dependencies(&self) -> &[TaskId] {
+            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<SampleTask>())];
+            DEPS
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -166,6 +250,21 @@ mod tests {
     fn selector_matching_normalizes_punctuation_and_case() {
         let task = SampleTask;
         assert!(task_matches_filter(&task, "HOME_SYMLINKS"));
+    }
+
+    #[test]
+    fn internal_tasks_cannot_match_user_filters() {
+        let task = InternalTask;
+        assert!(!task_matches_filter(&task, "reload-configuration"));
+        assert!(!task_matches_filter(&task, "Reload configuration"));
+        assert!(
+            task_passes_filters(&task, &[], &["reload-configuration".to_string()]),
+            "--skip must not remove an internal orchestration boundary"
+        );
+        assert!(
+            !task_passes_filters(&task, &["reload-configuration".to_string()], &[]),
+            "--only must not select an internal orchestration task"
+        );
     }
 
     #[test]
@@ -245,6 +344,35 @@ mod tests {
                 "--only 'nope' did not match any task".to_string(),
             ],
             "only unmatched filters should warn, preserving user order"
+        );
+    }
+
+    #[test]
+    fn omitted_dependencies_are_reported_without_expanding_the_filter() {
+        let all: Vec<Box<dyn Task>> = vec![Box::new(SampleTask), Box::new(DependentTask)];
+        let log = RecordingOutput::default();
+
+        let filtered = apply_task_filters(
+            &all,
+            &[],
+            &["dependent".to_string()],
+            &[],
+            &Logger::new("test"),
+        );
+        assert_eq!(
+            filtered.iter().map(|task| task.name()).collect::<Vec<_>>(),
+            vec!["Dependent"],
+            "targeted execution should retain its existing non-expanding semantics"
+        );
+
+        let dependencies = omitted_dependencies(&all, &filtered);
+        warn_omitted_dependencies(&dependencies, &log);
+        assert_eq!(
+            log.warnings(),
+            vec![
+                "task 'Dependent' will run without filtered prerequisite 'Home symlinks'; assuming it is already satisfied"
+                    .to_string()
+            ]
         );
     }
 }

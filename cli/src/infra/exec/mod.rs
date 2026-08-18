@@ -36,6 +36,7 @@ fn new_command<S: AsRef<OsStr>>(program: S) -> Command {
         use std::os::unix::process::CommandExt as _;
         cmd.process_group(0);
     }
+
     cmd
 }
 
@@ -104,6 +105,7 @@ pub struct CommandSpec {
     env: Vec<(OsString, OsString)>,
     checked: bool,
     log_arguments: bool,
+    timeout: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,6 +126,7 @@ impl CommandSpec {
             env: Vec::new(),
             checked: true,
             log_arguments: true,
+            timeout: None,
         }
     }
 
@@ -138,6 +141,7 @@ impl CommandSpec {
             env: Vec::new(),
             checked: false,
             log_arguments: false,
+            timeout: None,
         }
     }
 
@@ -192,6 +196,13 @@ impl CommandSpec {
     #[must_use]
     pub const fn redact_arguments(mut self) -> Self {
         self.log_arguments = false;
+        self
+    }
+
+    /// Override the executor's default timeout for this invocation.
+    #[must_use]
+    pub const fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 
@@ -475,6 +486,13 @@ impl CommandSettings {
             .as_ref()
             .is_some_and(CancellationToken::is_cancelled)
     }
+
+    fn with_timeout(&self, timeout: Duration) -> Self {
+        Self {
+            timeout,
+            cancellation: self.cancellation.clone(),
+        }
+    }
 }
 
 fn execute_spec(
@@ -482,8 +500,9 @@ fn execute_spec(
     settings: &CommandSettings,
 ) -> std::result::Result<ExecResult, ExecError> {
     let checked = spec.checked;
+    let effective_settings = settings.with_timeout(spec.timeout.unwrap_or(settings.timeout));
     let label = spec.label();
-    let result = execute_unchecked(spec.into_command(), &label, settings)?;
+    let result = execute_unchecked(spec.into_command(), &label, &effective_settings)?;
     log_command_output(&label, &result);
     if checked && !result.success {
         return Err(ExecError::NonZero {

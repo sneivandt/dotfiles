@@ -13,6 +13,7 @@ use crate::app::config::Config;
 use crate::domains::ai::apm::ApmFragmentSource;
 use crate::domains::files::config::symlinks::{Symlink, resolve_symlinks_dir};
 use crate::infra::ConfigHandle;
+use crate::infra::config::ConfigSource;
 use std::path::Path;
 
 macro_rules! define_config_store {
@@ -23,6 +24,7 @@ macro_rules! define_config_store {
         /// all clones observe the same slots.
         #[derive(Debug, Clone)]
         pub struct ConfigStore {
+            source: ConfigSource<PublishedConfig>,
             /// Whole configuration, for app-owned validation tasks.
             pub aggregate: ConfigHandle<Config>,
             /// Resolved APM fragment sources derived from managed symlinks.
@@ -37,30 +39,43 @@ macro_rules! define_config_store {
             /// Split an aggregate [`Config`] into per-domain handles.
             #[must_use]
             pub fn from_config(config: Config) -> Self {
-                let apm_fragments = apm_fragment_sources(&config);
+                let source = ConfigSource::new(PublishedConfig::new(config));
                 Self {
-                    $($field: ConfigHandle::new(config.$field.clone()),)+
-                    apm_fragments: ConfigHandle::new(apm_fragments),
-                    aggregate: ConfigHandle::new(config),
+                    $($field: source.project(|snapshot| snapshot.config.$field.clone()),)+
+                    apm_fragments: source.project(|snapshot| snapshot.apm_fragments.clone()),
+                    aggregate: source.project(|snapshot| snapshot.config.clone()),
+                    source,
                 }
             }
 
             /// Replace reloadable handles from a freshly-loaded [`Config`].
             ///
-            /// Each individual handle swap is atomic, but the complete store
-            /// update is not one aggregate transaction. The command runner
-            /// completes the reload dependency boundary before rebuilding tasks
-            /// that consume these handles.
+            /// All projected handles switch to the new immutable generation in
+            /// one publication step.
             pub fn reload(&self, config: Config) {
-                self.apm_fragments.swap(apm_fragment_sources(&config));
-                $(self.$field.swap(config.$field.clone());)+
-                self.aggregate.swap(config);
+                self.source.swap(PublishedConfig::new(config));
             }
         }
     };
 }
 
 config_section_inventory!(define_config_store);
+
+#[derive(Debug)]
+struct PublishedConfig {
+    config: Config,
+    apm_fragments: Vec<ApmFragmentSource>,
+}
+
+impl PublishedConfig {
+    fn new(config: Config) -> Self {
+        let apm_fragments = apm_fragment_sources(&config);
+        Self {
+            config,
+            apm_fragments,
+        }
+    }
+}
 
 fn apm_fragment_sources(config: &Config) -> Vec<ApmFragmentSource> {
     config

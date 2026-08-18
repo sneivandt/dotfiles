@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use std::io::IsTerminal as _;
+
 use anyhow::Result;
 
 use crate::app::cli::GlobalOpts;
@@ -19,10 +21,12 @@ use crate::infra::logging::OutputExt as _;
 /// Shared orchestration helper that combines setup and task execution.
 #[derive(Debug)]
 pub struct CommandRunner {
+    _run_lock: Option<crate::infra::run_lock::RunLock>,
     ctx: Context,
     log: Arc<Logger>,
     store: ConfigStore,
     overlay: Option<std::path::PathBuf>,
+    recovery_selectors: Option<std::collections::HashSet<String>>,
 }
 
 impl CommandRunner {
@@ -36,6 +40,38 @@ impl CommandRunner {
         global: &GlobalOpts,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
+    ) -> Result<Self> {
+        let run_lock = Self::acquire_run_lock(global, log)?;
+        Self::new_with_lock(global, log, token, run_lock)
+    }
+
+    pub(crate) fn acquire_run_lock(
+        global: &GlobalOpts,
+        log: &Arc<Logger>,
+    ) -> Result<Option<crate::infra::run_lock::RunLock>> {
+        if crate::infra::elevation::is_elevated_child()
+            || std::env::var_os(super::reexec::REEXEC_GUARD_VAR).is_some()
+        {
+            return Ok(None);
+        }
+
+        let platform = Platform::detect();
+        let root = resolve_root(global)?;
+        let env = crate::infra::env::system();
+        crate::infra::run_lock::RunLock::acquire(
+            &root,
+            env.as_ref(),
+            platform,
+            &log.command_title(),
+        )
+        .map(Some)
+    }
+
+    pub(crate) fn new_with_lock(
+        global: &GlobalOpts,
+        log: &Arc<Logger>,
+        token: &crate::engine::CancellationToken,
+        run_lock: Option<crate::infra::run_lock::RunLock>,
     ) -> Result<Self> {
         let platform = Platform::detect();
         let root = resolve_root(global)?;
@@ -65,13 +101,28 @@ impl CommandRunner {
                 is_ci: None,
             },
         )?
+        .with_require_complete(
+            global.require_complete
+                || crate::infra::env::Env::var_os(&crate::infra::env::SystemEnv, "CI").is_some(),
+        )
+        .with_non_interactive(
+            global.non_interactive
+                || crate::infra::env::Env::var_os(&crate::infra::env::SystemEnv, "CI").is_some()
+                || !std::io::stdin().is_terminal(),
+        )
         .with_cancellation(token.clone());
+        let recovery_selectors = global
+            .retry_failed
+            .then(|| crate::app::recovery::load(&ctx, &log.command_title()))
+            .transpose()?;
 
         Ok(Self {
+            _run_lock: run_lock,
             ctx,
             log: Arc::clone(log),
             store,
             overlay,
+            recovery_selectors,
         })
     }
 
@@ -100,6 +151,12 @@ impl CommandRunner {
             let scripts = self.store.scripts.read();
             crate::domains::overlay::scripts::overlay_script_tasks(&scripts, root)
         })
+    }
+
+    /// Selectors recovered from the previous run, when retry mode is active.
+    #[must_use]
+    pub(crate) const fn recovery_selectors(&self) -> Option<&std::collections::HashSet<String>> {
+        self.recovery_selectors.as_ref()
     }
 
     /// Execute the given tasks to completion using the stored context.
@@ -179,11 +236,15 @@ fn resolve_profile(
 ) -> Result<profiles::Profile> {
     // Run-log only: the startup header must be the first console line.
     log.run_event(LogEvent::Stage, "resolving profile");
+    let non_interactive = global.non_interactive
+        || crate::infra::env::Env::var_os(&crate::infra::env::SystemEnv, "CI").is_some()
+        || !std::io::stdin().is_terminal();
     let profile = profiles::resolve_from_args(
         global.profile.as_deref(),
         root,
         platform,
         &crate::infra::env::SystemEnv,
+        non_interactive,
     )?;
     log.startup(startup_context_line(
         &log.command_title(),
@@ -267,6 +328,10 @@ mod root_tests {
             dry_run: false,
             overlay: None,
             parallel: true,
+            offline: false,
+            require_complete: false,
+            non_interactive: false,
+            retry_failed: false,
             no_symbols: false,
             elevated_child: false,
         }

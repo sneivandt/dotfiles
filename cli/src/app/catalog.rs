@@ -4,7 +4,8 @@
 //! domains, so all cross-domain wiring lives here: each domain task is
 //! constructed with a handle to its configuration slice (from the shared
 //! [`ConfigStore`]), and cross-domain ordering constraints are applied by
-//! wrapping tasks in [`TaskWithExtraDeps`].
+//! wrapping tasks in [`TaskWithExtraDeps`] or
+//! [`TaskWithExtraOrderingDeps`](crate::engine::TaskWithExtraOrderingDeps).
 
 use std::any::TypeId;
 
@@ -13,6 +14,7 @@ use clap::CommandFactory as _;
 use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::app::preserve::MaterializeExcludedSymlinks;
+use crate::app::reconcile::ReconcileUpdatedCheckout;
 use crate::app::reload::ReloadConfig;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
 use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
@@ -34,7 +36,7 @@ use crate::domains::system::registry::ApplyRegistry;
 use crate::domains::system::systemd_units::ConfigureSystemd;
 use crate::domains::system::wsl_conf::InstallWslConf;
 use crate::engine::update_signal::UpdateSignal;
-use crate::engine::{Task, TaskId, TaskWithExtraDeps};
+use crate::engine::{Task, TaskId, TaskWithExtraDeps, TaskWithExtraOrderingDeps};
 
 const POWERSHELL_DOT_COMPLETER: &str = r"
 Register-ArgumentCompleter -CommandName 'dot' -ParameterName 'Arguments' -ScriptBlock {
@@ -58,6 +60,11 @@ const fn id<T: 'static>() -> TaskId {
 /// Wrap a task, adding cross-domain dependency edges declared by the app.
 fn with_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
     TaskWithExtraDeps::boxed(Box::new(inner), extra)
+}
+
+/// Wrap a task, adding cross-domain ordering-only edges declared by the app.
+fn with_ordering_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
+    TaskWithExtraOrderingDeps::boxed(Box::new(inner), extra)
 }
 
 /// Generate the zsh completion script for the CLI.
@@ -126,8 +133,8 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         Box::new(UpdateRepository::new(repo_updated.clone())),
         Box::new(ConfigureGit::new(store.git_settings.clone())),
         Box::new(ConfigureAgentSettings::new(store.agent_settings.clone())),
-        with_deps(InstallGitHooks::new(), &[id::<UpdateRepository>()]),
-        with_deps(
+        with_ordering_deps(InstallGitHooks::new(), &[id::<UpdateRepository>()]),
+        with_ordering_deps(
             GenerateCompletions::new(zsh_completions, powershell_completions),
             &[id::<UpdateRepository>()],
         ),
@@ -142,7 +149,7 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
             &[id::<EnableDeveloperMode>()],
         ),
         Box::new(ApplyFilePermissions::new(store.chmod.clone())),
-        with_deps(ConfigureShell, &[id::<InstallPackages>()]),
+        with_ordering_deps(ConfigureShell, &[id::<InstallPackages>()]),
         with_deps(
             ConfigureSystemd::new(store.units.clone()),
             &[
@@ -152,17 +159,16 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
             ],
         ),
         Box::new(ApplyRegistry::new(store.registry.clone())),
-        with_deps(
+        with_ordering_deps(
             InstallVsCodeExtensions::new(store.vscode_extensions.clone()),
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
-        with_deps(
-            InstallApmPackages::new(store.apm_fragments.clone()),
-            &[
-                id::<InstallPackages>(),
-                id::<InstallAurPackages>(),
-                id::<InstallSymlinks>(),
-            ],
+        TaskWithExtraOrderingDeps::boxed(
+            TaskWithExtraDeps::boxed(
+                Box::new(InstallApmPackages::new(store.apm_fragments.clone())),
+                &[id::<InstallSymlinks>()],
+            ),
+            &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
         with_deps(
             UpdateApmPackages::new(store.apm_fragments.clone()),
@@ -171,11 +177,12 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         Box::new(InstallWslConf),
         with_deps(
             ReportOverlayScriptSnapshot::new(store.scripts.clone()),
-            &[id::<ReloadConfig>()],
+            &[id::<ReconcileUpdatedCheckout>()],
         ),
         Box::new(InstallWrapper),
         Box::new(ConfigurePath),
-        Box::new(ReloadConfig::new(repo_updated, store)),
+        Box::new(ReloadConfig::new(repo_updated.clone(), store.clone())),
+        Box::new(ReconcileUpdatedCheckout::new(repo_updated, store)),
     ]
 }
 
@@ -241,6 +248,7 @@ mod tests {
             id::<InstallWrapper>(),
             id::<ConfigurePath>(),
             id::<ReloadConfig>(),
+            id::<ReconcileUpdatedCheckout>(),
         ]
         .into_iter()
         .collect::<HashSet<_>>();
@@ -286,7 +294,11 @@ mod tests {
         assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
         let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         for task in &tasks {
-            for dep in task.dependencies() {
+            for dep in task
+                .dependencies()
+                .iter()
+                .chain(task.ordering_dependencies())
+            {
                 assert!(
                     present.contains(dep),
                     "task '{}' depends on a TaskId not in the task list",
@@ -335,21 +347,45 @@ mod tests {
         );
         assert!(
             find("Shell completions")
-                .dependencies()
+                .ordering_dependencies()
                 .contains(&id::<UpdateRepository>()),
-            "completions must depend on repository update (app-injected)"
+            "completions should wait for repository update without being blocked by it"
         );
         assert!(
             find("Report overlay scripts")
                 .dependencies()
-                .contains(&id::<ReloadConfig>()),
-            "overlay script report must depend on reload (app-injected)"
+                .contains(&id::<ReconcileUpdatedCheckout>()),
+            "overlay script report must depend on checkout reconciliation (app-injected)"
         );
         assert!(
             find("Git hooks")
-                .dependencies()
+                .ordering_dependencies()
                 .contains(&id::<UpdateRepository>()),
-            "git hooks must depend on repository update (app-injected)"
+            "git hooks should wait for repository update without being blocked by it"
+        );
+        assert!(
+            find("Default shell")
+                .ordering_dependencies()
+                .contains(&id::<InstallPackages>()),
+            "shell configuration should wait for packages without being blocked by package failures"
+        );
+        assert!(
+            find("VS Code extensions")
+                .ordering_dependencies()
+                .contains(&id::<InstallPackages>()),
+            "VS Code extension installation should recheck launchers after package installation"
+        );
+        assert!(
+            find("APM packages")
+                .dependencies()
+                .contains(&id::<InstallSymlinks>()),
+            "APM fragments must be linked before APM convergence"
+        );
+        assert!(
+            find("APM packages")
+                .ordering_dependencies()
+                .contains(&id::<InstallPackages>()),
+            "APM should recheck its CLI after package installation without being blocked by unrelated package failures"
         );
     }
 }

@@ -59,6 +59,10 @@ Global options may be placed before or after the subcommand.
 | `--root <PATH>` | Treat another path as the dotfiles repository |
 | `--overlay <PATH>` | Append configuration from a private overlay repository |
 | `--no-parallel` | Run independent tasks sequentially |
+| `--offline` | Converge the current checkout without synchronizing the repository |
+| `--require-complete` | Fail when applicable work cannot be completed |
+| `--non-interactive` | Disable prompts and fail when input is required |
+| `--retry-failed` | Retry failed, incomplete, and dependency-blocked tasks from the previous run |
 | `--no-symbols` | Use ASCII words instead of status symbols |
 | `--version` | Print the CLI version |
 
@@ -76,6 +80,26 @@ dotfiles install --dry-run --verbose
 `install` is idempotent: each task inspects current state and only applies the
 required change. Independent ready tasks may run concurrently; explicit
 dependencies preserve ordering.
+
+Use `--offline` when network access is unavailable or the current checkout must
+remain pinned. The normal preservation and sparse-checkout tasks converge the
+current checkout without running the post-update reload boundary.
+
+CI automatically enables `--require-complete` and `--non-interactive`.
+Non-interactive mode is also enabled when stdin is not a terminal; select a
+profile explicitly or through `DOTFILES_PROFILE` in unattended environments.
+Strict completion turns missing capabilities such as package managers, VS Code,
+APM authentication, or elevation into command failures instead of successful
+skips.
+
+Only one command may operate on a repository at a time. A second run reports
+the PID, command, and start time of the owner recorded in the repository's
+common Git directory.
+
+After a failed run, use `dotfiles install --retry-failed` (or the same original
+command) to retry incomplete tasks and their prerequisite closure. Recovery
+state is structured and repository-scoped; it is not reconstructed from display
+logs. Retry mode cannot be combined with `--only` or `--skip`.
 
 When `install-arch` runs the desktop profile inside `arch-chroot`, dotfiles
 enables user units directly on disk because no user service manager exists yet.
@@ -107,6 +131,8 @@ arbitrary substrings, action-prefix removal, or the first word of a label.
 For example, `repository` and `dotfiles-repository` both match **Dotfiles
 repository**, but `dotfiles` does not. Unmatched selectors produce a warning.
 Internal orchestration tasks are omitted from discovery and cannot be selected.
+When filtering removes a declared prerequisite, the CLI warns and preserves the
+targeted-run behavior by assuming that prerequisite is already satisfied.
 
 ## Discover tasks
 

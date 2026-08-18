@@ -311,6 +311,7 @@ struct SparseCheckoutOperation {
 #[derive(Debug, Clone)]
 enum SparseCheckoutPlan {
     Configure(Vec<String>),
+    Disable,
     Skip(String),
 }
 
@@ -321,6 +322,18 @@ impl Operation for SparseCheckoutOperation {
         let excluded_files: Vec<String> = self.config.read().excluded_files.clone();
 
         if excluded_files.is_empty() {
+            if sparse_checkout_config_enabled(ctx, ctx.root()) {
+                if worktree_has_local_changes(ctx)? {
+                    return Ok(OperationState::needs_run(
+                        "local changes present",
+                        SparseCheckoutPlan::Skip("local changes present".to_string()),
+                    ));
+                }
+                return Ok(OperationState::needs_run(
+                    "disable sparse checkout",
+                    SparseCheckoutPlan::Disable,
+                ));
+            }
             ctx.log().info("no files to exclude from sparse checkout");
             return Ok(OperationState::Complete);
         }
@@ -360,15 +373,26 @@ impl Operation for SparseCheckoutOperation {
                 }
                 Ok(TaskStats::changed().finish())
             }
-            SparseCheckoutPlan::Skip(reason) => Ok(TaskResult::Skipped(reason.clone())),
+            SparseCheckoutPlan::Disable => {
+                ctx.log().dry_run("disable git sparse checkout");
+                Ok(TaskStats::changed().finish())
+            }
+            SparseCheckoutPlan::Skip(reason) => Ok(TaskResult::unmet(reason.clone())),
         }
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         let excluded_files = match plan {
             SparseCheckoutPlan::Configure(excluded_files) => excluded_files,
+            SparseCheckoutPlan::Disable => {
+                remove_broken_git_symlinks(ctx, &*self.fs_ops);
+                ctx.executor()
+                    .execute(git_command(ctx.root(), &["sparse-checkout", "disable"]))?;
+                ctx.log().info("disabled sparse checkout");
+                return Ok(TaskStats::changed().finish());
+            }
             SparseCheckoutPlan::Skip(reason) => {
-                return Ok(TaskResult::Skipped(reason.clone()));
+                return Ok(TaskResult::unmet(reason.clone()));
             }
         };
 

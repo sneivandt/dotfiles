@@ -77,6 +77,6 @@ fn dependency_failure_takes_precedence_over_cancellation() {
     assert_eq!(dependent_entry.status, TaskStatus::Skipped);
     assert_eq!(
         dependent_entry.message.as_deref(),
-        Some("dependency failed")
+        Some("blocked by failed dependency: failed-task")
     );
 }

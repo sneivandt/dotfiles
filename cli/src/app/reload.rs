@@ -8,8 +8,8 @@
 
 use anyhow::{Context as _, Result};
 
-use crate::app::config::Config;
 use crate::app::config::store::ConfigStore;
+use crate::app::config::{Config, profiles};
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskStats, UpdateSignal,
     process_operation, task_metadata,
@@ -44,18 +44,15 @@ impl ReloadConfig {
     }
 
     fn reload(&self, ctx: &Context) -> Result<TaskResult> {
-        // Re-load configuration using the repository parameters recorded on the
-        // current aggregate snapshot; the root, profile, and overlay are fixed
-        // for the lifetime of the process, so re-reading them here is safe.
+        // The selected profile name is fixed for this process, but its category
+        // definition may have changed in the fetched profiles.toml.
         let new_config = {
             let old = self.store.aggregate.read();
-            Config::load(
-                &old.root,
-                &old.profile,
-                ctx.platform(),
-                old.overlay.as_deref(),
-            )
-            .context("reloading configuration after repository update")?
+            let profile =
+                profiles::resolve(&old.profile.name, &old.root.join("conf"), ctx.platform())
+                    .context("re-resolving profile after repository update")?;
+            Config::load(&old.root, &profile, ctx.platform(), old.overlay.as_deref())
+                .context("reloading configuration after repository update")?
         };
 
         ctx.debug_fmt(|| {
@@ -254,6 +251,46 @@ mod tests {
             vec!["git"],
             "reload should publish the newly-loaded packages to the shared store"
         );
+    }
+
+    #[test]
+    fn run_re_resolves_the_selected_profile_from_updated_definitions() {
+        let dir = make_repo();
+        write_conf(
+            dir.path(),
+            "profiles.toml",
+            "[base]\ninclude = [\"desktop\"]\nexclude = []\n",
+        );
+        write_conf(
+            dir.path(),
+            "packages.toml",
+            "[desktop]\npackages = [\"desktop-package\"]\n",
+        );
+
+        let ctx = make_linux_context(empty_config(dir.path().to_path_buf()));
+        let store = base_store(dir.path());
+        assert!(
+            !store
+                .aggregate
+                .read()
+                .profile
+                .active_categories
+                .contains(&Category::Desktop)
+        );
+
+        let result = updated_task(store.clone()).run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+
+        assert!(
+            store
+                .aggregate
+                .read()
+                .profile
+                .active_categories
+                .contains(&Category::Desktop),
+            "reload should use the fetched profile definition, not stale resolved categories"
+        );
+        assert_eq!(store.packages.read()[0].name, "desktop-package");
     }
 
     #[test]

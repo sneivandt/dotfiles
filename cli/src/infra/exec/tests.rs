@@ -195,6 +195,24 @@ fn managed_executor_times_out_commands() {
 }
 
 #[test]
+fn command_spec_timeout_overrides_executor_default() {
+    let executor = ProcessExecutor::system();
+    #[cfg(windows)]
+    let spec = CommandSpec::new("cmd")
+        .args(&["/C", "ping", "localhost", "-n", "5"])
+        .timeout(Duration::from_millis(50));
+    #[cfg(not(windows))]
+    let spec = CommandSpec::new("sh")
+        .args(&["-c", "sleep 5"])
+        .timeout(Duration::from_millis(50));
+
+    assert!(
+        matches!(executor.execute(spec), Err(ExecError::TimedOut { .. })),
+        "per-command timeout should override the executor default"
+    );
+}
+
+#[test]
 fn managed_executor_cancels_commands() {
     let token = CancellationToken::new();
     token.cancel();

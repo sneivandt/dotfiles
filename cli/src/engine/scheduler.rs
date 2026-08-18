@@ -3,56 +3,179 @@
 //! Provides [`run_tasks_parallel`](crate::engine::scheduler::run_tasks_parallel) for executing tasks concurrently using OS
 //! threads.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
+use crate::engine::task::{TaskDisposition, TaskExecution};
 use crate::engine::{self, Context, Task, TaskAssessment, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{
     self, ActionCounts, BufferedLog, Log, LogEvent, Logger, Output as _, TaskStatus,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum BlockingOutcome {
+    Blocked,
+    Incomplete,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum DependencySignal {
     Satisfied,
-    Blocked,
+    Blocked {
+        task: String,
+        outcome: BlockingOutcome,
+    },
     Cancelled,
 }
 
 /// Execution facts returned to application policy independently of logging.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskOutcome {
+    Satisfied,
+    Unmet,
+    Failed,
+    Blocked,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ExecutionSummary {
     failed_tasks: usize,
+    outcomes: HashMap<TaskId, TaskOutcome>,
+    selectors: HashMap<TaskId, String>,
+    names: HashMap<TaskId, String>,
 }
 
 impl ExecutionSummary {
     /// Number of tasks whose own execution failed.
     #[must_use]
-    pub(crate) const fn failure_count(self) -> usize {
+    pub(crate) const fn failure_count(&self) -> usize {
         self.failed_tasks
     }
 
     /// Merge another execution phase into this summary.
-    pub(crate) const fn merge(&mut self, other: Self) {
+    pub(crate) fn merge(&mut self, other: Self) {
         self.failed_tasks = self.failed_tasks.saturating_add(other.failed_tasks);
+        self.outcomes.extend(other.outcomes);
+        self.selectors.extend(other.selectors);
+        self.names.extend(other.names);
+    }
+
+    /// Include failures detected before scheduler dispatch.
+    pub(crate) const fn add_failures(&mut self, count: usize) {
+        self.failed_tasks = self.failed_tasks.saturating_add(count);
+    }
+
+    /// Record one task's dependency outcome.
+    pub(crate) fn record(
+        &mut self,
+        task_id: TaskId,
+        selector: impl Into<String>,
+        name: impl Into<String>,
+        outcome: TaskOutcome,
+    ) {
+        self.selectors.insert(task_id.clone(), selector.into());
+        self.names.insert(task_id.clone(), name.into());
+        self.outcomes.insert(task_id, outcome);
+    }
+
+    /// Look up an outcome recorded by this or an earlier phase.
+    #[must_use]
+    pub(crate) fn outcome(&self, task_id: &TaskId) -> Option<TaskOutcome> {
+        self.outcomes.get(task_id).copied()
+    }
+
+    fn task_name(&self, task_id: &TaskId) -> String {
+        self.names
+            .get(task_id)
+            .or_else(|| self.selectors.get(task_id))
+            .cloned()
+            .unwrap_or_else(|| "earlier task".to_string())
+    }
+
+    /// Selectors that should be retried after this run.
+    #[must_use]
+    pub(crate) fn incomplete_selectors(&self) -> HashSet<String> {
+        self.outcomes
+            .iter()
+            .filter(|(_, outcome)| {
+                matches!(
+                    outcome,
+                    TaskOutcome::Unmet | TaskOutcome::Failed | TaskOutcome::Blocked
+                )
+            })
+            .filter_map(|(task_id, _)| self.selectors.get(task_id).cloned())
+            .collect()
     }
 }
 
 impl DependencySignal {
-    const fn from_status(status: TaskStatus) -> Self {
-        if matches!(status, TaskStatus::Failed) {
-            Self::Blocked
-        } else {
-            Self::Satisfied
+    fn blocked(task: impl Into<String>, outcome: BlockingOutcome) -> Self {
+        Self::Blocked {
+            task: task.into(),
+            outcome,
         }
     }
 
-    const fn combine(self, other: Self) -> Self {
+    fn combine(self, other: Self) -> Self {
         match (self, other) {
-            (Self::Blocked, _) | (_, Self::Blocked) => Self::Blocked,
+            (
+                Self::Blocked {
+                    task: left_task,
+                    outcome: left_outcome,
+                },
+                Self::Blocked {
+                    task: right_task,
+                    outcome: right_outcome,
+                },
+            ) => {
+                if (right_outcome, &right_task) > (left_outcome, &left_task) {
+                    Self::blocked(right_task, right_outcome)
+                } else {
+                    Self::blocked(left_task, left_outcome)
+                }
+            }
+            (blocked @ Self::Blocked { .. }, _) | (_, blocked @ Self::Blocked { .. }) => blocked,
             (Self::Cancelled, _) | (_, Self::Cancelled) => Self::Cancelled,
             _ => Self::Satisfied,
+        }
+    }
+
+    fn from_task(task: &dyn Task, disposition: TaskDisposition) -> Self {
+        match disposition {
+            TaskDisposition::Satisfied => Self::Satisfied,
+            TaskDisposition::Unmet => Self::blocked(task.name(), BlockingOutcome::Incomplete),
+            TaskDisposition::Failed => Self::blocked(task.name(), BlockingOutcome::Failed),
+            TaskDisposition::Cancelled => Self::Cancelled,
+        }
+    }
+
+    fn reason(&self) -> Option<String> {
+        match self {
+            Self::Blocked { task, outcome } => {
+                let state = match outcome {
+                    BlockingOutcome::Blocked => "",
+                    BlockingOutcome::Incomplete => "incomplete ",
+                    BlockingOutcome::Failed => "failed ",
+                };
+                Some(format!("blocked by {state}dependency: {task}"))
+            }
+            Self::Satisfied | Self::Cancelled => None,
+        }
+    }
+}
+
+impl From<TaskDisposition> for TaskOutcome {
+    fn from(disposition: TaskDisposition) -> Self {
+        match disposition {
+            TaskDisposition::Satisfied => Self::Satisfied,
+            TaskDisposition::Unmet => Self::Unmet,
+            TaskDisposition::Failed => Self::Failed,
+            TaskDisposition::Cancelled => Self::Cancelled,
         }
     }
 }
@@ -84,13 +207,14 @@ impl TaskRuntime {
 fn signal_dependents(
     task_name: &str,
     senders: Vec<(mpsc::Sender<DependencySignal>, bool)>,
-    signal: DependencySignal,
+    signal: &DependencySignal,
 ) {
     for (tx, blocks_on_failure) in senders {
-        let delivered = if !blocks_on_failure && signal == DependencySignal::Blocked {
+        let delivered = if !blocks_on_failure && matches!(signal, DependencySignal::Blocked { .. })
+        {
             DependencySignal::Satisfied
         } else {
-            signal
+            signal.clone()
         };
         if tx.send(delivered).is_err() {
             tracing::debug!(
@@ -109,7 +233,9 @@ fn dependency_outcome(
     };
 
     (0..dependency_count).fold(DependencySignal::Satisfied, |outcome, _| {
-        let signal = receiver.recv().unwrap_or(DependencySignal::Blocked);
+        let signal = receiver.recv().unwrap_or_else(|_| {
+            DependencySignal::blocked("dependency task", BlockingOutcome::Blocked)
+        });
         outcome.combine(signal)
     })
 }
@@ -140,7 +266,7 @@ fn run_task_buffered(
     ctx: &Context,
     log: &Arc<Logger>,
     notify_start: bool,
-) -> TaskStatus {
+) -> TaskExecution {
     if notify_start {
         log.notify_task_start(task.name());
     }
@@ -152,8 +278,8 @@ fn run_task_buffered(
         engine::task::execute_assessed(task, assessment, &task_ctx)
     }));
 
-    let status = match result {
-        Ok(status) => status,
+    let execution = match result {
+        Ok(execution) => execution,
         Err(payload) => {
             let msg = payload
                 .downcast_ref::<&str>()
@@ -174,12 +300,15 @@ fn run_task_buffered(
                 ActionCounts::default(),
                 task.visibility(),
             );
-            TaskStatus::Failed
+            TaskExecution {
+                status: TaskStatus::Failed,
+                disposition: TaskDisposition::Failed,
+            }
         }
     };
 
-    buf.flush_and_complete_by_id(&task.task_id().record_key(), task.name(), status);
-    status
+    buf.flush_and_complete_by_id(&task.task_id().record_key(), task.name(), execution.status);
+    execution
 }
 
 /// Resolve one task against its dependency outcome, running it only when the
@@ -193,28 +322,39 @@ fn dispatch_task(
     assessment: &TaskAssessment,
     ctx: &Context,
     log: &Arc<Logger>,
-    dependencies: DependencySignal,
+    dependencies: &DependencySignal,
     notify_start: bool,
-) -> (DependencySignal, TaskStatus) {
+) -> (DependencySignal, TaskStatus, TaskOutcome) {
     let skip_reason = match dependencies {
-        DependencySignal::Blocked => Some(("dependency failed", DependencySignal::Blocked)),
-        DependencySignal::Cancelled => Some(("cancelled", DependencySignal::Cancelled)),
+        DependencySignal::Blocked { .. } => dependencies
+            .reason()
+            .map(|reason| (reason, dependencies.clone())),
+        DependencySignal::Cancelled => Some(("cancelled".to_string(), DependencySignal::Cancelled)),
         DependencySignal::Satisfied if ctx.is_cancelled() => {
-            Some(("cancelled", DependencySignal::Cancelled))
+            Some(("cancelled".to_string(), DependencySignal::Cancelled))
         }
         DependencySignal::Satisfied => None,
     };
 
     let Some((reason, signal)) = skip_reason else {
-        let status = run_task_buffered(task, assessment, ctx, log, notify_start);
-        return (DependencySignal::from_status(status), status);
+        let execution = run_task_buffered(task, assessment, ctx, log, notify_start);
+        return (
+            DependencySignal::from_task(task, execution.disposition),
+            execution.status,
+            execution.disposition.into(),
+        );
     };
 
     let task_id = task.task_id().record_key();
-    record_scheduler_skip(task, &**log, reason);
+    record_scheduler_skip(task, &**log, &reason);
     log.mark_task_completed_by_id(&task_id);
     log.emit_task_result_and_redraw_by_id(&task_id);
-    (signal, TaskStatus::Skipped)
+    let outcome = if signal == DependencySignal::Cancelled {
+        TaskOutcome::Cancelled
+    } else {
+        TaskOutcome::Blocked
+    };
+    (signal, TaskStatus::Skipped, outcome)
 }
 
 /// Run tasks in parallel using a dependency graph.
@@ -226,12 +366,24 @@ fn dispatch_task(
 /// than the number of tasks with unsatisfied dependencies (common on 2-vCPU CI
 /// runners).  Output is buffered per-task and flushed to the console
 /// immediately on completion.
+#[cfg(test)]
 pub(crate) fn run_tasks_parallel(
     tasks: &[&dyn Task],
     graph: &ResolvedTaskGraph,
-    assessments: &std::collections::HashMap<TaskId, TaskAssessment>,
+    assessments: &HashMap<TaskId, TaskAssessment>,
     ctx: &Context,
     log: &Arc<Logger>,
+) -> ExecutionSummary {
+    run_tasks_parallel_with_prior(tasks, graph, assessments, ctx, log, None)
+}
+
+pub(crate) fn run_tasks_parallel_with_prior(
+    tasks: &[&dyn Task],
+    graph: &ResolvedTaskGraph,
+    assessments: &HashMap<TaskId, TaskAssessment>,
+    ctx: &Context,
+    log: &Arc<Logger>,
+    prior: Option<&ExecutionSummary>,
 ) -> ExecutionSummary {
     let mut runtimes: Vec<TaskRuntime> = (0..tasks.len())
         .map(|task_idx| TaskRuntime::new(!graph.dependencies(task_idx).is_empty()))
@@ -259,7 +411,8 @@ pub(crate) fn run_tasks_parallel(
         runtime.dependency_sender = None;
     }
 
-    let failed_tasks = AtomicUsize::new(0);
+    let recorded_outcomes = std::sync::Mutex::new(HashMap::new());
+    let failed_tasks = std::sync::Mutex::new(0_usize);
     std::thread::scope(|s| {
         for (idx, (task, runtime)) in tasks.iter().zip(runtimes.iter_mut()).enumerate() {
             let task = *task;
@@ -272,6 +425,8 @@ pub(crate) fn run_tasks_parallel(
                 .collect();
             let dep_count = dep_names.len();
             let failed_tasks = &failed_tasks;
+            let recorded_outcomes = &recorded_outcomes;
+            let prior_signal = prior_dependency_signal(task, prior);
 
             s.spawn(move || {
                 logging::set_log_thread_name(task.name());
@@ -291,23 +446,55 @@ pub(crate) fn run_tasks_parallel(
                 // Wait for all deps: receive one outcome per dependency.
                 // Receive every signal so failure takes precedence over
                 // cancellation when dependency outcomes are mixed.
-                let dependency_signal = dependency_outcome(dependency_receiver, dep_count);
+                let dependency_signal =
+                    dependency_outcome(dependency_receiver, dep_count).combine(prior_signal);
                 let assessment = assessments
                     .get(&task.task_id())
                     .cloned()
                     .unwrap_or_else(TaskAssessment::applicable);
-                let (signal, status) =
-                    dispatch_task(task, &assessment, ctx, log, dependency_signal, true);
+                let (signal, status, outcome) =
+                    dispatch_task(task, &assessment, ctx, log, &dependency_signal, true);
                 if status == TaskStatus::Failed {
-                    failed_tasks.fetch_add(1, Ordering::Relaxed);
+                    let mut count = failed_tasks
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    *count = count.saturating_add(1);
                 }
+                recorded_outcomes
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .insert(
+                        task.task_id(),
+                        (
+                            task.selector().to_string(),
+                            task.name().to_string(),
+                            outcome,
+                        ),
+                    );
 
-                signal_dependents(task.name(), dependent_senders, signal);
+                signal_dependents(task.name(), dependent_senders, &signal);
             });
         }
     });
+    let failed_count = *failed_tasks
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let recorded = recorded_outcomes
+        .into_inner()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut outcomes = HashMap::with_capacity(recorded.len());
+    let mut selectors = HashMap::with_capacity(recorded.len());
+    let mut names = HashMap::with_capacity(recorded.len());
+    for (task_id, (selector, name, outcome)) in recorded {
+        selectors.insert(task_id.clone(), selector);
+        names.insert(task_id.clone(), name);
+        outcomes.insert(task_id, outcome);
+    }
     ExecutionSummary {
-        failed_tasks: failed_tasks.load(Ordering::Relaxed),
+        failed_tasks: failed_count,
+        outcomes,
+        selectors,
+        names,
     }
 }
 
@@ -315,32 +502,46 @@ pub(crate) fn run_tasks_parallel(
 ///
 /// Normal task failures block dependent tasks just like the parallel scheduler;
 /// deliberate skips and not-applicable outcomes still satisfy dependencies.
+#[cfg(test)]
 pub(crate) fn run_tasks_sequential(
     tasks: &[&dyn Task],
     graph: &ResolvedTaskGraph,
-    assessments: &std::collections::HashMap<TaskId, TaskAssessment>,
+    assessments: &HashMap<TaskId, TaskAssessment>,
     ctx: &Context,
     log: &Arc<Logger>,
+) -> ExecutionSummary {
+    run_tasks_sequential_with_prior(tasks, graph, assessments, ctx, log, None)
+}
+
+pub(crate) fn run_tasks_sequential_with_prior(
+    tasks: &[&dyn Task],
+    graph: &ResolvedTaskGraph,
+    assessments: &HashMap<TaskId, TaskAssessment>,
+    ctx: &Context,
+    log: &Arc<Logger>,
+    prior: Option<&ExecutionSummary>,
 ) -> ExecutionSummary {
     let mut signals: Vec<Option<DependencySignal>> = vec![None; tasks.len()];
     let mut summary = ExecutionSummary::default();
 
     for idx in graph.execution_order() {
         let dependency_signal = graph.dependencies(idx).iter().fold(
-            DependencySignal::Satisfied,
+            tasks.get(idx).map_or_else(
+                || DependencySignal::blocked("missing task", BlockingOutcome::Blocked),
+                |task| prior_dependency_signal(*task, prior),
+            ),
             |outcome, &dep_idx| {
                 outcome.combine(
-                    match signals
-                        .get(dep_idx)
-                        .copied()
-                        .flatten()
-                        .unwrap_or(DependencySignal::Blocked)
-                    {
-                        DependencySignal::Blocked if !graph.blocks_on_failure(idx, dep_idx) => {
+                    match signals.get(dep_idx).cloned().flatten().unwrap_or_else(|| {
+                        DependencySignal::blocked("missing dependency", BlockingOutcome::Blocked)
+                    }) {
+                        DependencySignal::Blocked { .. }
+                            if !graph.blocks_on_failure(idx, dep_idx) =>
+                        {
                             DependencySignal::Satisfied
                         }
                         signal @ (DependencySignal::Satisfied
-                        | DependencySignal::Blocked
+                        | DependencySignal::Blocked { .. }
                         | DependencySignal::Cancelled) => signal,
                     },
                 )
@@ -354,8 +555,8 @@ pub(crate) fn run_tasks_sequential(
             .get(&task.task_id())
             .cloned()
             .unwrap_or_else(TaskAssessment::applicable);
-        let (signal, status) =
-            dispatch_task(*task, &assessment, ctx, log, dependency_signal, false);
+        let (signal, status, outcome) =
+            dispatch_task(*task, &assessment, ctx, log, &dependency_signal, false);
         if status == TaskStatus::Failed {
             summary.failed_tasks = summary.failed_tasks.saturating_add(1);
         }
@@ -363,8 +564,54 @@ pub(crate) fn run_tasks_sequential(
         if let Some(slot) = signals.get_mut(idx) {
             *slot = Some(signal);
         }
+        summary.record(task.task_id(), task.selector(), task.name(), outcome);
     }
     summary
+}
+
+fn prior_dependency_signal(task: &dyn Task, prior: Option<&ExecutionSummary>) -> DependencySignal {
+    let Some(prior) = prior else {
+        return DependencySignal::Satisfied;
+    };
+    let blocking = task
+        .dependencies()
+        .iter()
+        .filter_map(|dependency| {
+            prior
+                .outcome(dependency)
+                .map(|outcome| (dependency, outcome))
+        })
+        .fold(
+            DependencySignal::Satisfied,
+            |signal, (dependency, outcome)| {
+                signal.combine(match outcome {
+                    TaskOutcome::Satisfied => DependencySignal::Satisfied,
+                    TaskOutcome::Unmet => DependencySignal::blocked(
+                        prior.task_name(dependency),
+                        BlockingOutcome::Incomplete,
+                    ),
+                    TaskOutcome::Failed => DependencySignal::blocked(
+                        prior.task_name(dependency),
+                        BlockingOutcome::Failed,
+                    ),
+                    TaskOutcome::Blocked => DependencySignal::blocked(
+                        prior.task_name(dependency),
+                        BlockingOutcome::Blocked,
+                    ),
+                    TaskOutcome::Cancelled => DependencySignal::Cancelled,
+                })
+            },
+        );
+    task.ordering_dependencies()
+        .iter()
+        .filter_map(|dependency| prior.outcome(dependency))
+        .fold(blocking, |signal, outcome| {
+            signal.combine(if outcome == TaskOutcome::Cancelled {
+                DependencySignal::Cancelled
+            } else {
+                DependencySignal::Satisfied
+            })
+        })
 }
 
 #[cfg(test)]

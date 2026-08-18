@@ -79,6 +79,7 @@ pub struct Context {
     /// this without reading env-globals themselves and tests can inject the
     /// value without mutating process state.
     is_ci: bool,
+    execution_policy: ExecutionPolicy,
     /// Read-only access to the process environment.
     ///
     /// Injected rather than read inline so that resources depending on
@@ -90,6 +91,12 @@ pub struct Context {
     /// Processing loops check this before dispatching each work item so that
     /// in-flight operations finish cleanly and a partial summary is printed.
     cancelled: CancellationToken,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ExecutionPolicy {
+    require_complete: bool,
+    non_interactive: bool,
 }
 
 impl std::fmt::Debug for Context {
@@ -104,6 +111,7 @@ impl std::fmt::Debug for Context {
             .field("executor", &"<dyn Executor>")
             .field("parallel", &self.parallel)
             .field("is_ci", &self.is_ci)
+            .field("execution_policy", &self.execution_policy)
             .field("env", &"<dyn Env>")
             .field("cancelled", &self.cancelled)
             .finish()
@@ -157,6 +165,10 @@ impl Context {
             executor,
             parallel: opts.parallel,
             is_ci,
+            execution_policy: ExecutionPolicy {
+                require_complete: is_ci,
+                non_interactive: is_ci,
+            },
             env,
             cancelled: CancellationToken::new(),
         })
@@ -189,6 +201,10 @@ impl Context {
             executor,
             parallel: opts.parallel,
             is_ci: opts.is_ci.unwrap_or(false),
+            execution_policy: ExecutionPolicy {
+                require_complete: opts.is_ci.unwrap_or(false),
+                non_interactive: opts.is_ci.unwrap_or(false),
+            },
             env: crate::infra::env::system(),
             cancelled: CancellationToken::new(),
         }
@@ -294,6 +310,18 @@ impl Context {
         self.parallel
     }
 
+    /// Whether unmet work must make the command fail.
+    #[must_use]
+    pub const fn require_complete(&self) -> bool {
+        self.execution_policy.require_complete
+    }
+
+    /// Whether interactive prompts are disabled.
+    #[must_use]
+    pub const fn non_interactive(&self) -> bool {
+        self.execution_policy.non_interactive
+    }
+
     /// Clone the cooperative cancellation token.
     #[must_use]
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -320,6 +348,18 @@ impl Context {
     #[must_use]
     pub fn with_parallel(&self, parallel: bool) -> Self {
         self.clone_with(|ctx| ctx.parallel = parallel)
+    }
+
+    /// Create a copy of this context with strict completion policy set.
+    #[must_use]
+    pub fn with_require_complete(&self, require_complete: bool) -> Self {
+        self.clone_with(|ctx| ctx.execution_policy.require_complete = require_complete)
+    }
+
+    /// Create a copy of this context with prompt policy set.
+    #[must_use]
+    pub fn with_non_interactive(&self, non_interactive: bool) -> Self {
+        self.clone_with(|ctx| ctx.execution_policy.non_interactive = non_interactive)
     }
 
     /// Create a copy of this context with a different home directory.

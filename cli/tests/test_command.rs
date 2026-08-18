@@ -49,6 +49,10 @@ fn test_command_fails_on_config_warnings() {
         dry_run: true,
         overlay: None,
         parallel: false,
+        offline: false,
+        require_complete: false,
+        non_interactive: false,
+        retry_failed: false,
         no_symbols: false,
         elevated_child: false,
     };

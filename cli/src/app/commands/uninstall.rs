@@ -16,11 +16,15 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    super::prepare_self_update(global, &**log)?;
-
-    let runner = super::CommandRunner::new(global, log, token)?;
+    let run_lock = super::prepare_self_update(global, log)?;
+    let runner = super::CommandRunner::new_with_lock(global, log, token, run_lock)?;
     let tasks = runner.uninstall_tasks();
-    runner.run(tasks.iter().map(Box::as_ref))
+    let selected = if let Some(selectors) = runner.recovery_selectors() {
+        crate::app::recovery::select_tasks(&tasks, &[], selectors, &[])?
+    } else {
+        tasks.iter().map(Box::as_ref).collect()
+    };
+    runner.run(selected)
 }
 
 #[cfg(test)]

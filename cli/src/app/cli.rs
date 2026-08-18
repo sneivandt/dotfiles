@@ -67,6 +67,22 @@ pub struct GlobalOpts {
     #[arg(long = "no-parallel", global = true, action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
 
+    /// Converge the current checkout without updating the repository
+    #[arg(long, global = true)]
+    pub offline: bool,
+
+    /// Fail when applicable work is skipped
+    #[arg(long, global = true)]
+    pub require_complete: bool,
+
+    /// Disable prompts and fail when input is required
+    #[arg(long, global = true)]
+    pub non_interactive: bool,
+
+    /// Retry failed, incomplete, and dependency-blocked tasks from the last run
+    #[arg(long, global = true)]
+    pub retry_failed: bool,
+
     /// Use ASCII words instead of status symbols
     #[arg(long, global = true)]
     pub no_symbols: bool,
@@ -398,6 +414,13 @@ mod tests {
         let cli = Cli::parse_from(["dotfiles", "-d", "update"]);
         assert!(cli.global.dry_run);
         assert!(matches!(cli.command, Command::Update(_)));
+    }
+
+    #[test]
+    fn parse_install_offline() {
+        let cli = Cli::parse_from(["dotfiles", "install", "--offline"]);
+        assert!(cli.global.offline);
+        assert!(matches!(cli.command, Command::Install(_)));
     }
 
     #[test]

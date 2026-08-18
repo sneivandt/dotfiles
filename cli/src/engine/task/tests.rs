@@ -244,6 +244,7 @@ struct DelegationCalls {
 struct DelegatedTask {
     calls: Arc<DelegationCalls>,
     deps: Vec<TaskId>,
+    ordering_deps: Vec<TaskId>,
 }
 
 impl Task for DelegatedTask {
@@ -262,6 +263,10 @@ impl Task for DelegatedTask {
         &self.deps
     }
 
+    fn ordering_dependencies(&self) -> &[TaskId] {
+        &self.ordering_deps
+    }
+
     fn should_run(&self, _ctx: &Context) -> bool {
         self.calls.should_run.fetch_add(1, Ordering::SeqCst);
         true
@@ -269,7 +274,7 @@ impl Task for DelegatedTask {
 
     fn run_configured(&self, _ctx: &Context) -> Result<Option<TaskResult>> {
         self.calls.run_configured.fetch_add(1, Ordering::SeqCst);
-        Ok(Some(TaskResult::Skipped("configured".to_string())))
+        Ok(Some(TaskResult::skipped("configured")))
     }
 
     fn needs_elevation(&self, _ctx: &Context) -> bool {
@@ -294,6 +299,7 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
         Box::new(DelegatedTask {
             calls: Arc::clone(&calls),
             deps: vec![existing.clone(), existing.clone()],
+            ordering_deps: Vec::new(),
         }),
         &[existing.clone(), additional.clone(), additional.clone()],
     );
@@ -309,7 +315,7 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     assert!(requires_elevation(&task, &ctx));
     assert!(matches!(
         task.run_configured(&ctx).unwrap(),
-        Some(TaskResult::Skipped(reason)) if reason == "configured"
+        Some(TaskResult::Skipped { reason, .. }) if reason == "configured"
     ));
     assert!(matches!(
         task.run(&ctx).unwrap(),
@@ -320,6 +326,26 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     assert_eq!(calls.needs_elevation.load(Ordering::SeqCst), 2);
     assert_eq!(calls.run_configured.load(Ordering::SeqCst), 1);
     assert_eq!(calls.run.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn task_with_extra_ordering_deps_preserves_blocking_edges_and_deduplicates_ordering() {
+    let calls = Arc::new(DelegationCalls::default());
+    let blocking = TaskId::Type(TypeId::of::<u8>());
+    let existing = TaskId::Type(TypeId::of::<u16>());
+    let additional = TaskId::Type(TypeId::of::<u32>());
+    let task = TaskWithExtraOrderingDeps::new(
+        Box::new(DelegatedTask {
+            calls,
+            deps: vec![blocking.clone()],
+            ordering_deps: vec![existing.clone(), existing.clone()],
+        }),
+        &[existing.clone(), additional.clone(), additional.clone()],
+    );
+
+    assert_eq!(task.dependencies(), &[blocking]);
+    assert_eq!(task.ordering_dependencies(), &[existing, additional]);
+    assert_eq!(task.task_id(), TaskId::Dynamic(17));
 }
 
 #[test]
@@ -407,11 +433,26 @@ fn execute_records_skipped_task() {
     let task = MockTask {
         name: "skip-task",
         should_run: true,
-        result: Ok(TaskResult::Skipped("not needed".to_string())),
+        result: Ok(TaskResult::skipped("not needed")),
     };
 
     execute(&task, &ctx);
     assert_eq!(log.failure_count(), 0);
+}
+
+#[test]
+fn strict_completion_escalates_unmet_task_skip() {
+    let config = empty_config(PathBuf::from("/tmp"));
+    let (ctx, log) = make_static_context(config);
+    let ctx = ctx.with_require_complete(true);
+    let task = MockTask {
+        name: "missing-tool",
+        should_run: true,
+        result: Ok(TaskResult::unmet("required tool unavailable")),
+    };
+
+    assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
+    assert_eq!(log.failure_count(), 1);
 }
 
 #[test]
@@ -741,7 +782,10 @@ fn precomputed_assessment_is_reused_during_execution() {
 
     let assessment = task.assess(&ctx);
     assert!(!assessment.requires_elevation());
-    assert_eq!(execute_assessed(&task, &assessment, &ctx), TaskStatus::Ok);
+    assert_eq!(
+        execute_assessed(&task, &assessment, &ctx).status,
+        TaskStatus::Ok
+    );
 
     assert!(ran.load(Ordering::SeqCst));
     assert_eq!(should_run_calls.load(Ordering::SeqCst), 1);

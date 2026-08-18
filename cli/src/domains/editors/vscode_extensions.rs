@@ -50,7 +50,7 @@ impl Task for InstallVsCodeExtensions {
         }
         let Some(cmd) = find_code_command(system.executor()) else {
             ctx.log().debug("no VS Code CLI launcher found in PATH");
-            return Ok(TaskResult::Skipped("VS Code CLI not found".to_string()));
+            return Ok(TaskResult::unmet("VS Code CLI not found"));
         };
 
         ctx.debug_fmt(|| format!("using VS Code CLI: {cmd}"));
@@ -111,7 +111,11 @@ mod tests {
         let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
         let result = task.run(&ctx).unwrap();
         assert!(
-            matches!(result, TaskResult::Skipped(ref s) if s.contains("VS Code CLI not found")),
+            matches!(
+                result,
+                TaskResult::Skipped { ref reason, .. }
+                    if reason.contains("VS Code CLI not found")
+            ),
             "expected 'VS Code CLI not found' skip, got {result:?}"
         );
     }

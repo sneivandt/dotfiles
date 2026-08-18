@@ -616,7 +616,10 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
         .find(|entry| entry.name == "AUR packages")
         .expect("AUR task entry");
     assert_eq!(aur_entry.status, TaskStatus::Skipped);
-    assert_eq!(aur_entry.message.as_deref(), Some("dependency failed"));
+    assert_eq!(
+        aur_entry.message.as_deref(),
+        Some("blocked by failed dependency: Paru package manager")
+    );
 
     let run_log = std::fs::read_to_string(log.log_path().expect("run log path")).unwrap();
     for diagnostic in [

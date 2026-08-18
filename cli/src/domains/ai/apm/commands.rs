@@ -1,6 +1,7 @@
 //! APM process invocation and common output/error handling.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::engine::{Context, TaskResult};
 use crate::infra::exec::CommandSpec;
@@ -82,7 +83,8 @@ pub(super) fn check_apm_outdated(ctx: &Context) -> Result<ApmOutdatedResult> {
         CommandSpec::new("apm")
             .args(&args)
             .current_dir(cwd)
-            .envs(APM_NONINTERACTIVE_ENV),
+            .envs(APM_NONINTERACTIVE_ENV)
+            .timeout(Duration::from_mins(2)),
     ) {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
@@ -139,7 +141,8 @@ pub(super) fn run_apm_invocation(
         CommandSpec::new("apm")
             .args(args)
             .current_dir(cwd)
-            .envs(APM_NONINTERACTIVE_ENV),
+            .envs(APM_NONINTERACTIVE_ENV)
+            .timeout(Duration::from_mins(15)),
     ) {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
@@ -194,7 +197,8 @@ pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, co
         CommandSpec::new("apm")
             .args(&["experimental", "enable", target])
             .current_dir(cwd)
-            .envs(APM_NONINTERACTIVE_ENV),
+            .envs(APM_NONINTERACTIVE_ENV)
+            .timeout(Duration::from_mins(2)),
     ) {
         Ok(result) => report_apm_output(ctx, &result.stdout, &result.stderr),
         Err(err) => {
@@ -230,7 +234,7 @@ fn experimental_target_enabled(home: &Path, config_key: &str) -> Option<bool> {
 pub(super) fn install_task_result(result: ApmCommandResult) -> TaskResult {
     match result {
         ApmCommandResult::Success => TaskResult::Ok,
-        ApmCommandResult::AuthSkipped(reason) => TaskResult::Skipped(reason),
+        ApmCommandResult::AuthSkipped(reason) => TaskResult::unmet(reason),
     }
 }
 
@@ -248,7 +252,8 @@ pub(super) fn prune_user_scope(ctx: &Context) -> Result<()> {
             CommandSpec::new("apm")
                 .arg("prune")
                 .current_dir(&cwd)
-                .envs(APM_NONINTERACTIVE_ENV),
+                .envs(APM_NONINTERACTIVE_ENV)
+                .timeout(Duration::from_mins(2)),
         )
         .context("pruning unowned user-scope APM deployments")?;
     report_apm_output(ctx, &result.stdout, &result.stderr);

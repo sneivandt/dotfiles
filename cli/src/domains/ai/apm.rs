@@ -47,7 +47,7 @@ pub(super) const GENERATED_HEADER: &str =
 /// not also emit a warning: that would report the same fact twice, on two
 /// streams, with only one of the two naming the task it came from.
 fn skip(reason: impl Into<String>) -> TaskResult {
-    TaskResult::Skipped(reason.into())
+    TaskResult::unmet(reason)
 }
 
 #[cfg(test)]

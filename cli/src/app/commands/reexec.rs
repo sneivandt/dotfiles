@@ -13,43 +13,27 @@ pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
 
 /// Replace the current process with a fresh invocation of the same binary.
 ///
-/// On Unix the process image is replaced outright.  Elsewhere the updated
-/// binary is spawned as a child that inherits stdio and waited on, so its
-/// output stays sequential with the parent's and the shell prompt is only
-/// redrawn once everything has finished.
+/// The updated binary is spawned as a child that inherits stdio and is waited
+/// on, so the parent retains the repository run lock until the replacement
+/// process finishes.
 pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let exe = re_exec_path(root);
 
-    #[cfg(unix)]
+    match std::process::Command::new(&exe)
+        .args(&args)
+        .env(REEXEC_GUARD_VAR, "1")
+        .status()
     {
-        use std::os::unix::process::CommandExt;
-
-        let err = std::process::Command::new(&exe)
-            .args(&args)
-            .env(REEXEC_GUARD_VAR, "1")
-            .exec();
-        log.error(format!("failed to re-exec: {err}"));
-        std::process::exit(1);
-    }
-
-    #[cfg(not(unix))]
-    {
-        match std::process::Command::new(&exe)
-            .args(&args)
-            .env(REEXEC_GUARD_VAR, "1")
-            .status()
-        {
-            Ok(status) => {
-                if status.code().is_none() {
-                    log.warn("child process terminated by signal");
-                }
-                std::process::exit(status.code().unwrap_or(1))
+        Ok(status) => {
+            if status.code().is_none() {
+                log.warn("child process terminated by signal");
             }
-            Err(error) => {
-                log.error(format!("failed to re-exec: {error}"));
-                std::process::exit(1);
-            }
+            std::process::exit(status.code().unwrap_or(1))
+        }
+        Err(error) => {
+            log.error(format!("failed to re-exec: {error}"));
+            std::process::exit(1);
         }
     }
 }
@@ -60,14 +44,21 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
 ///
 /// Returns an error if the repository root cannot be resolved or the pre-update
 /// check fails.
-pub(crate) fn prepare_self_update(global: &GlobalOpts, log: &dyn Output) -> Result<()> {
-    let root = runner::resolve_root(global)?;
-    if std::env::var_os(REEXEC_GUARD_VAR).is_none()
-        && crate::domains::dotfiles::self_update::pre_update(&root, log, global.dry_run)?
+pub(crate) fn prepare_self_update(
+    global: &GlobalOpts,
+    log: &std::sync::Arc<crate::infra::logging::Logger>,
+) -> Result<Option<crate::infra::run_lock::RunLock>> {
+    let run_lock = runner::CommandRunner::acquire_run_lock(global, log)?;
+    if crate::infra::elevation::is_elevated_child() || std::env::var_os(REEXEC_GUARD_VAR).is_some()
     {
-        re_exec(&root, log);
+        return Ok(run_lock);
     }
-    Ok(())
+
+    let root = runner::resolve_root(global)?;
+    if crate::domains::dotfiles::self_update::pre_update(&root, &**log, global.dry_run)? {
+        re_exec(&root, &**log);
+    }
+    Ok(run_lock)
 }
 
 /// Path of the freshly installed binary to re-exec.

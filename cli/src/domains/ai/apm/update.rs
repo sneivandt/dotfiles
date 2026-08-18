@@ -85,7 +85,7 @@ impl Task for UpdateApmPackages {
                           dependency advancement"
                 .to_string();
             ctx.log().debug(&reason);
-            return Ok(TaskResult::Skipped(reason));
+            return Ok(TaskResult::unmet(reason));
         }
 
         match check_apm_outdated(ctx)? {
@@ -104,7 +104,7 @@ impl Task for UpdateApmPackages {
                 advance_apm_dependencies(ctx, targets)
             }
             ApmOutdatedResult::Current => Ok(TaskResult::Ok),
-            ApmOutdatedResult::AuthSkipped(reason) => Ok(TaskResult::Skipped(reason)),
+            ApmOutdatedResult::AuthSkipped(reason) => Ok(TaskResult::unmet(reason)),
         }
     }
 }
@@ -134,7 +134,7 @@ fn advance_apm_dependencies(ctx: &Context, targets: ManagedTargets) -> Result<Ta
             ctx.log().debug("APM dependencies already at latest refs");
             TaskResult::Ok
         }
-        ApmUpdateOutcome::Skipped(reason) => return Ok(TaskResult::Skipped(reason)),
+        ApmUpdateOutcome::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
     };
     targets.finish(ctx, &target_snapshot);
     Ok(result)

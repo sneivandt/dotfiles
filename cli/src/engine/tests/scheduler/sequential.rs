@@ -35,6 +35,31 @@ fn sequential_runner_skips_dependents_when_dependency_fails() {
 }
 
 #[test]
+fn sequential_runner_names_incomplete_blocking_dependency() {
+    let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
+    let ran = Arc::new(AtomicBool::new(false));
+    let incomplete = IncompleteTask;
+    let dependent = DepOnIncompleteTask {
+        ran: Arc::clone(&ran),
+    };
+    let tasks: Vec<&dyn Task> = vec![&incomplete, &dependent];
+    let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
+
+    run_test_tasks_sequential(&tasks, &graph, &ctx, &log);
+
+    assert!(!ran.load(Ordering::SeqCst));
+    let entries = log.task_entries();
+    let dependent_entry = entries
+        .iter()
+        .find(|entry| entry.name == "dep-on-incomplete")
+        .expect("dependent should be recorded");
+    assert_eq!(
+        dependent_entry.message.as_deref(),
+        Some("blocked by incomplete dependency: incomplete-task")
+    );
+}
+
+#[test]
 fn sequential_runner_records_panics_as_failures() {
     let (log, ctx, _dispatch_lock) = make_test_log_and_ctx();
     let ran = Arc::new(AtomicBool::new(false));

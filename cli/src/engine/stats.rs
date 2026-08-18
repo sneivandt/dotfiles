@@ -19,13 +19,13 @@ pub(crate) enum ItemOutcome {
 /// let ok = TaskResult::Ok;
 /// let changed = TaskResult::Batch(TaskStats::changed_with_message("installed 1 package"));
 /// let na = TaskResult::NotApplicable("nothing configured".into());
-/// let skipped = TaskResult::Skipped("not on arch".into());
+/// let skipped = TaskResult::skipped("not on arch");
 /// let failed = TaskResult::Failed("git pull failed".into());
 ///
 /// assert!(matches!(ok, TaskResult::Ok));
 /// assert!(matches!(changed, TaskResult::Batch(_)));
 /// assert!(matches!(na, TaskResult::NotApplicable(_)));
-/// assert!(matches!(skipped, TaskResult::Skipped(_)));
+/// assert!(matches!(skipped, TaskResult::Skipped { .. }));
 /// assert!(matches!(failed, TaskResult::Failed(_)));
 /// ```
 #[derive(Debug, Clone)]
@@ -45,7 +45,12 @@ pub enum TaskResult {
     /// the task attempted work but did not succeed.
     ///
     /// [`Failed`]: Self::Failed
-    Skipped(String),
+    Skipped {
+        /// Human-readable explanation shown on the task status row.
+        reason: String,
+        /// Whether the skip is harmless or leaves desired work incomplete.
+        kind: crate::engine::SkipKind,
+    },
     /// Task attempted work but encountered a non-fatal failure.
     ///
     /// Unlike [`Skipped`], this variant means the task tried to do something
@@ -56,6 +61,24 @@ pub enum TaskResult {
     Failed(String),
     /// Task processed a batch of actions with structured counters.
     Batch(TaskStats),
+}
+
+impl TaskResult {
+    /// Deliberately skip work without making the run incomplete.
+    pub fn skipped(reason: impl Into<String>) -> Self {
+        Self::Skipped {
+            reason: reason.into(),
+            kind: crate::engine::SkipKind::Benign,
+        }
+    }
+
+    /// Skip applicable work that could not be converged.
+    pub fn unmet(reason: impl Into<String>) -> Self {
+        Self::Skipped {
+            reason: reason.into(),
+            kind: crate::engine::SkipKind::UnmetWork,
+        }
+    }
 }
 
 /// Counters for batch tasks that process many items.

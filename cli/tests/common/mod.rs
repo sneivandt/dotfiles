@@ -315,8 +315,8 @@ impl IntegrationTestContext {
 ///
 /// Builds an isolated repository (with a `.git/` directory so the profile can be
 /// persisted), then invokes [`commands::install::run`](test_api::commands::install::run)
-/// with the given `skip`/`only` selectors and `parallel` flag. The temporary
-/// repository lives only for the duration of the call.
+/// offline with the given `skip`/`only` selectors and `parallel` flag. The
+/// temporary repository lives only for the duration of the call.
 ///
 /// Returns the command result so callers can assert success or inspect errors.
 pub(crate) fn run_install_dry_run(
@@ -337,7 +337,7 @@ pub(crate) fn run_install_dry_run(
         dry_run: true,
         overlay: None,
         parallel,
-        offline: false,
+        offline: true,
         require_complete: false,
         non_interactive: false,
         retry_failed: false,

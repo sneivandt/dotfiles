@@ -291,7 +291,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Dry-run install
-        run: ./bin/dotfiles --root . -p ${{ matrix.profile }} -d install
+        run: ./bin/dotfiles --root . -p ${{ matrix.profile }} -d install --skip vscode-extensions
       - name: Run validation
         run: ./bin/dotfiles --root . -p ${{ matrix.profile }} test
 
@@ -312,7 +312,7 @@ jobs:
           path: bin/
       - name: Dry-run install
         shell: bash
-        run: ./bin/dotfiles.exe --root . -p ${{ matrix.profile }} -d install
+        run: ./bin/dotfiles.exe --root . -p ${{ matrix.profile }} -d install --skip vscode-extensions
       - name: Run validation
         shell: bash
         run: ./bin/dotfiles.exe --root . -p ${{ matrix.profile }} test
@@ -420,11 +420,10 @@ jobs:
           path: bin/
       - name: Install dotfiles with base profile
         shell: pwsh
-        # Skip packages as well as apm: unlike the Linux runner, where the
-        # package task finds no supported manager and no-ops, winget is present
-        # on windows-latest and its installs fail inside CI. This job validates
-        # the git symlink and config chain, not package installation.
-        run: .\bin\dotfiles.exe --root . -p base install -v --skip apm,packages
+        # Skip unavailable external installers: winget installs fail inside CI
+        # and windows-latest does not provide a VS Code CLI launcher. This job
+        # validates the git symlink and config chain instead.
+        run: .\bin\dotfiles.exe --root . -p base install -v --skip apm,packages,vscode-extensions
       - name: Test ${{ matrix.application }}
         shell: pwsh
         run: |

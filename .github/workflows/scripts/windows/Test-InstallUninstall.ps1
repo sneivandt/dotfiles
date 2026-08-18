@@ -76,7 +76,7 @@ function Test-InstallUninstallBaseProfile {
     $psProfile = Join-Path $homeDir "Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
 
     Write-Information "Running install..." -InformationAction Continue
-    & $env:BINARY_PATH --root $env:DIR -p base install --skip packages --skip apm
+    & $env:BINARY_PATH --root $env:DIR -p base install --skip packages,apm,vscode-extensions
     if ($LASTEXITCODE -ne 0) {
         throw "Install command failed with exit code $LASTEXITCODE"
     }

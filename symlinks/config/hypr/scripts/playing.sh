@@ -2,15 +2,26 @@
 set -o errexit
 set -o nounset
 
-# Playing indicator for waybar
-if [ "$(playerctl status --player=spotify 2>/dev/null || true)" = "Playing" ]; then
-  metadata="$(playerctl metadata --player=spotify --format '{{ artist }} - {{ album }} - {{ title }}')"
-  case "$metadata" in
-    " - "*) metadata=$(echo "$metadata" | cut -c4-)
-  esac
-  # Truncate first, then escape, so truncation can never split an entity.
-  metadata=$(echo "$metadata" | awk -v len=128 '{ if (length($0) > len) print substr($0, 1, len-3) "..."; else print; }')
-  # Waybar renders module text as Pango markup, so &, < and > must be escaped
-  # or the module fails to render (e.g. artists like "Simon & Garfunkel").
-  printf '%s\n' "$metadata" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-fi
+status="$(playerctl status --player=spotify 2>/dev/null || true)"
+case "$status" in
+  Playing|Paused) ;;
+  *)
+    printf '{"text":"","tooltip":"","class":"stopped"}\n'
+    exit 0
+    ;;
+esac
+
+summary="$(playerctl metadata --player=spotify --format '{{ artist }} - {{ title }}')"
+details="$(playerctl metadata --player=spotify --format '{{ artist }} - {{ album }} - {{ title }}')"
+case "$summary" in
+  " - "*) summary=$(printf '%s\n' "$summary" | cut -c4-) ;;
+esac
+case "$details" in
+  " - "*) details=$(printf '%s\n' "$details" | cut -c4-) ;;
+esac
+
+summary=$(printf '%s\n' "$summary" | awk -v len=72 \
+  '{ if (length($0) > len) print substr($0, 1, len-3) "..."; else print; }')
+class=$(printf '%s' "$status" | tr '[:upper:]' '[:lower:]')
+jq -nc --arg text "$summary" --arg tooltip "$details" --arg class "$class" \
+  '{text:("&#xf001; " + $text), tooltip:$tooltip, class:$class}'

@@ -62,7 +62,11 @@ def main() -> int:
     sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if not sig or not runtime:
-        return 0
+        print(
+            "fullscreen-waybar: Hyprland IPC environment is unavailable",
+            file=sys.stderr,
+        )
+        return 1
 
     sock_path = f"{runtime}/hypr/{sig}/.socket2.sock"
     state = {"hidden": False, "pids": set()}
@@ -97,8 +101,9 @@ def main() -> int:
                     line = raw.decode("utf-8", "replace")
                     if line.startswith(triggers):
                         update(state)
-    except OSError:
-        return 0
+    except OSError as error:
+        print(f"fullscreen-waybar: Hyprland IPC failed: {error}", file=sys.stderr)
+        return 1
     return 0
 
 

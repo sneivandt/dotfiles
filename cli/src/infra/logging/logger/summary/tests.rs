@@ -49,15 +49,26 @@ fn format_elapsed_values() {
 
 #[test]
 fn standard_no_op_has_only_no_changes_line() {
-    let lines = format_summary_lines(
+    let plain_lines = format_summary_lines(
         SummaryCounts::default(),
         SummaryMode::Standard,
         false,
         "1.2s",
         StyleChoice::plain(),
     );
+    let colored_lines = format_summary_lines(
+        SummaryCounts::default(),
+        SummaryMode::Standard,
+        false,
+        "1.2s",
+        StyleChoice::colored(),
+    );
 
-    assert_eq!(lines, ["No changes · 1.2s"]);
+    assert_eq!(plain_lines, ["No changes · 1.2s"]);
+    assert_eq!(
+        colored_lines,
+        ["\x1b[2mNo changes\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.2s\x1b[0m"]
+    );
 }
 
 #[test]

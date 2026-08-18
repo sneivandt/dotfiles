@@ -11,6 +11,7 @@ units = [
   { name = "NetworkManager.service", scope = "system" },
   "clean-screenshots.timer",
   "dotfiles-first-login.service",
+  "fullscreen-waybar.service",
   "gammastep.service",
   "hypridle.service",
   "hyprpaper.service",
@@ -18,4 +19,5 @@ units = [
   "network-manager-applet.service",
   "volume.service",
   "waybar.service",
+  "waybar-workspaces.service",
 ]

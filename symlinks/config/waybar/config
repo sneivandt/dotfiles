@@ -100,9 +100,12 @@
     },
 
     "pulseaudio": {
-        "format": "\uf028 {volume:3}%",
-        "format-muted": "\uf028   0%",
+        "format": "\uf028 {volume}%",
+        "format-muted": "\uf028 0%",
         "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
+        "on-click-middle": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
+        "on-scroll-up": "pactl set-sink-volume @DEFAULT_SINK@ +5%",
+        "on-scroll-down": "pactl set-sink-volume @DEFAULT_SINK@ -5%",
         "tooltip": false
     },
 
@@ -120,21 +123,38 @@
 
     "clock": {
         "format": "\uf073 {:%d %b %H:%M}",
-        "tooltip": false
+        "tooltip-format": "<tt><small>{calendar}</small></tt>",
+        "calendar": {
+            "mode": "month",
+            "weeks-pos": "right",
+            "on-scroll": 1,
+            "format": {
+                "months": "<b>{}</b>",
+                "days": "{}",
+                "weeks": "<span color='#565f89'>W{}</span>",
+                "weekdays": "<span color='#7aa2f7'><b>{}</b></span>",
+                "today": "<span color='#f7768e'><b><u>{}</u></b></span>"
+            }
+        }
     },
 
     "custom/playing": {
         "exec": "~/.config/hypr/scripts/playing.sh",
-        "exec-if": "command -v playerctl >/dev/null 2>&1 && test -x ~/.config/hypr/scripts/playing.sh",
+        "exec-if": "command -v playerctl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 && test -x ~/.config/hypr/scripts/playing.sh",
         "interval": 5,
-        "format": "\uf001 {}"
+        "format": "{}",
+        "return-type": "json",
+        "on-click": "playerctl --player=spotify play-pause",
+        "on-click-middle": "playerctl --player=spotify previous",
+        "on-click-right": "playerctl --player=spotify next"
     },
 
     "custom/stocks": {
         "exec": "~/.config/hypr/scripts/stocks.sh",
         "exec-if": "command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 && test -x ~/.config/hypr/scripts/stocks.sh",
         "interval": 300,
+        "signal": 2,
         "return-type": "json",
-        "tooltip": false
+        "on-click": "~/.config/hypr/scripts/stocks.sh --toggle"
     }
 }

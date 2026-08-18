@@ -16,10 +16,12 @@ Usage:
 
 import json
 import os
+from pathlib import Path
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 
 ACTIVE_ICON = "\u25cf"  # ●
 OCCUPIED_ICON = "\u25cb"  # ○
@@ -41,29 +43,77 @@ def hyprctl(*args: str):
         return None
 
 
-def active_id() -> int | None:
+def query_state() -> dict | None:
     workspace = hyprctl("activeworkspace")
-    if not isinstance(workspace, dict):
+    workspaces = hyprctl("workspaces")
+    if not isinstance(workspace, dict) or not isinstance(workspaces, list):
         return None
     ident = workspace.get("id")
-    return ident if isinstance(ident, int) else None
+    active = ident if isinstance(ident, int) else None
+    occupied = sorted(
+        {
+            item["id"]
+            for item in workspaces
+            if isinstance(item, dict) and isinstance(item.get("id"), int)
+        }
+    )
+    return {"active": active, "occupied": occupied}
 
 
-def occupied_ids() -> set[int]:
-    workspaces = hyprctl("workspaces")
-    if not isinstance(workspaces, list):
-        return set()
-    return {
-        ws["id"]
-        for ws in workspaces
-        if isinstance(ws, dict) and isinstance(ws.get("id"), int)
-    }
+def state_path() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime:
+        return Path(runtime) / "waybar-workspaces.json"
+    cache = os.environ.get("XDG_CACHE_HOME")
+    return Path(cache) / "waybar-workspaces.json" if cache else (
+        Path.home() / ".cache/waybar-workspaces.json"
+    )
+
+
+def write_state(state: dict) -> None:
+    path = state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w", dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as handle:
+        json.dump(state, handle)
+        temporary = Path(handle.name)
+    temporary.replace(path)
+
+
+def read_state() -> dict | None:
+    try:
+        state = json.loads(state_path().read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    active = state.get("active")
+    occupied = state.get("occupied")
+    if active is not None and not isinstance(active, int):
+        return None
+    if not isinstance(occupied, list) or not all(
+        isinstance(item, int) for item in occupied
+    ):
+        return None
+    return state
+
+
+def refresh_state() -> bool:
+    state = query_state()
+    if state is None:
+        return False
+    write_state(state)
+    return True
 
 
 def emit(workspace: int) -> None:
-    if workspace == active_id():
+    state = read_state()
+    active = state.get("active") if state else None
+    occupied = set(state.get("occupied", [])) if state else set()
+    if workspace == active:
         payload = {"text": ACTIVE_ICON, "class": "active", "alt": "active"}
-    elif workspace in occupied_ids():
+    elif workspace in occupied:
         payload = {"text": OCCUPIED_ICON, "class": "occupied", "alt": "occupied"}
     else:
         # Waybar hides a module whose text is empty, matching the old
@@ -92,7 +142,8 @@ def watch() -> int:
     sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if not sig or not runtime:
-        return 0
+        print("workspaces: Hyprland IPC environment is unavailable", file=sys.stderr)
+        return 1
 
     sock_path = f"{runtime}/hypr/{sig}/.socket2.sock"
     triggers = (
@@ -111,6 +162,9 @@ def watch() -> int:
         "movewindowv2>>",
     )
 
+    if refresh_state():
+        notify_waybar()
+
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(sock_path)
@@ -123,9 +177,11 @@ def watch() -> int:
                 while b"\n" in buf:
                     raw, buf = buf.split(b"\n", 1)
                     if raw.decode("utf-8", "replace").startswith(triggers):
-                        notify_waybar()
-    except OSError:
-        return 0
+                        if refresh_state():
+                            notify_waybar()
+    except OSError as error:
+        print(f"workspaces: Hyprland IPC failed: {error}", file=sys.stderr)
+        return 1
     return 0
 
 

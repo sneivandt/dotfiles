@@ -1,0 +1,19 @@
+[Unit]
+Description=Refresh Waybar workspace state from Hyprland
+
+PartOf=graphical-session.target
+Wants=graphical-session.target waybar.service
+After=graphical-session.target waybar.service
+
+ConditionFileIsExecutable=%h/.config/hypr/scripts/workspaces.py
+
+[Service]
+Type=simple
+ExecStart=%h/.config/hypr/scripts/workspaces.py --watch
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=graphical-session.target

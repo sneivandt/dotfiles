@@ -34,20 +34,11 @@ window#waybar {
     color: #7aa2f7;
 }
 
-#workspaces label.urgent {
-    color: #f7768e;
-}
-
 #workspaces label:hover {
     color: #c0caf5;
     background: rgba(255, 255, 255, 0.06);
 }
 
-window#waybar.fullscreen #workspaces label.active {
-    color: #7aa2f7;
-}
-
-#window,
 #custom-window {
     padding: 2px 12px;
     margin: 4px 2px;
@@ -56,7 +47,6 @@ window#waybar.fullscreen #workspaces label.active {
     color: #c0caf5;
 }
 
-window#waybar #window.empty,
 window#waybar #custom-window.empty {
     background: transparent;
     padding: 0;
@@ -75,6 +65,10 @@ window#waybar #custom-window.empty {
     margin: 4px 2px;
     border-radius: 6px;
     background: rgba(26, 27, 38, 0.94);
+}
+
+#clock {
+    margin-right: 8px;
 }
 
 #tray > widget {
@@ -97,11 +91,20 @@ window#waybar #custom-window.empty {
 
 #clock {
     color: #c0caf5;
-    margin-right: 8px;
 }
 
 #custom-playing {
     color: #bb9af7;
+}
+
+#custom-playing.paused {
+    color: #565f89;
+}
+
+#custom-playing.stopped {
+    padding: 0;
+    margin: 0;
+    background: transparent;
 }
 
 #custom-stocks {

@@ -11,8 +11,9 @@ MSFT|&#xf3ca;|$
 BTC-USD|&#xf15a;|$
 '
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/waybar-stocks"
-cache_file="$cache_dir/quotes-prices.json"
+cache_file="$cache_dir/quotes.json"
 lock_dir="$cache_dir/quotes-prices.lock"
+expanded_file="$cache_dir/expanded"
 cache_ttl=300
 tmp_file=""
 
@@ -20,9 +21,22 @@ empty_output() {
   printf '{"text":"","tooltip":""}'
 }
 
+render() {
+  parts="$1"
+  if [ -z "$parts" ]; then
+    empty_output
+  elif [ -f "$expanded_file" ]; then
+    jq -nc --arg text "$parts" --arg tooltip "$parts" \
+      '{text:$text, tooltip:$tooltip, class:"expanded"}'
+  else
+    jq -nc --arg tooltip "$parts" \
+      '{text:"&#xf201;", tooltip:$tooltip, class:"collapsed"}'
+  fi
+}
+
 cached_or_empty() {
   if [ -s "$cache_file" ]; then
-    cat "$cache_file"
+    render "$(jq -r '.quotes // empty' "$cache_file" 2>/dev/null || true)"
   else
     empty_output
   fi
@@ -39,6 +53,17 @@ cleanup() {
 
 mkdir -p "$cache_dir"
 
+if [ "${1:-}" = "--toggle" ]; then
+  if [ -f "$expanded_file" ]; then
+    rm -f "$expanded_file"
+  else
+    : > "$expanded_file"
+  fi
+  systemctl --user kill --signal=SIGRTMIN+2 --kill-whom=main \
+    waybar.service >/dev/null 2>&1 || true
+  exit 0
+fi
+
 for cmd in curl jq awk stat mktemp; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     cached_or_empty
@@ -53,7 +78,7 @@ if [ -f "$cache_file" ]; then
 fi
 
 if [ "$((now - mtime))" -lt "$cache_ttl" ] && [ -s "$cache_file" ]; then
-  cat "$cache_file"
+  cached_or_empty
   exit 0
 fi
 
@@ -83,7 +108,7 @@ while IFS='|' read -r sym label price_prefix; do
   formatted=$(awk -v p="$price" -v c="$prev" -v l="$label" -v prefix="$price_prefix" '
     BEGIN {
       pct = (p - c) / c * 100;
-      color = (pct >= 0) ? "#a3be8c" : "#bf616a";
+      color = (pct >= 0) ? "#9ece6a" : "#f7768e";
       sign  = (pct >= 0) ? "+" : "";
       printf "%s %s%.2f <span color=\"%s\">%s%.2f%%</span>", l, prefix, p, color, sign, pct;
     }')
@@ -102,9 +127,9 @@ if [ -z "$parts" ]; then
   exit 0
 fi
 
-out=$(jq -nc --arg t "$parts" '{text:$t, tooltip:"", class:"stocks"}')
+out=$(jq -nc --arg quotes "$parts" '{quotes:$quotes}')
 tmp_file=$(mktemp "$cache_dir/.quotes-prices.XXXXXX")
 printf '%s' "$out" > "$tmp_file"
 mv -f "$tmp_file" "$cache_file"
 tmp_file=""
-printf '%s' "$out"
+render "$parts"

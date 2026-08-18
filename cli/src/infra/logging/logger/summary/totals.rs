@@ -85,7 +85,7 @@ pub(super) fn format_standard_totals(
     } else if counts.changed > 0 {
         parts.push(style.paint(TextStyle::Green, &format!("{} changed", counts.changed)));
     } else if counts.failed == 0 {
-        parts.push("No changes".to_string());
+        parts.push(style.paint(TextStyle::Dim, "No changes"));
     }
     push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);
     push_count(

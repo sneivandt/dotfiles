@@ -5,7 +5,6 @@ import io
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import unittest
 from unittest.mock import patch
@@ -32,9 +31,8 @@ def emit(workspace: int) -> dict:
 
 class WorkspacesTests(unittest.TestCase):
     def test_active_workspace_renders_the_active_icon(self) -> None:
-        with (
-            patch.object(workspaces, "active_id", return_value=2),
-            patch.object(workspaces, "occupied_ids", return_value={1, 2}),
+        with patch.object(
+            workspaces, "read_state", return_value={"active": 2, "occupied": [1, 2]}
         ):
             payload = emit(2)
 
@@ -42,9 +40,8 @@ class WorkspacesTests(unittest.TestCase):
         self.assertEqual(payload["class"], "active")
 
     def test_occupied_workspace_renders_the_occupied_icon(self) -> None:
-        with (
-            patch.object(workspaces, "active_id", return_value=2),
-            patch.object(workspaces, "occupied_ids", return_value={1, 2}),
+        with patch.object(
+            workspaces, "read_state", return_value={"active": 2, "occupied": [1, 2]}
         ):
             payload = emit(1)
 
@@ -52,32 +49,40 @@ class WorkspacesTests(unittest.TestCase):
         self.assertEqual(payload["class"], "occupied")
 
     def test_unused_workspace_is_hidden(self) -> None:
-        with (
-            patch.object(workspaces, "active_id", return_value=2),
-            patch.object(workspaces, "occupied_ids", return_value={1, 2}),
+        with patch.object(
+            workspaces, "read_state", return_value={"active": 2, "occupied": [1, 2]}
         ):
             payload = emit(3)
 
         self.assertEqual(payload["text"], "")
         self.assertEqual(payload["class"], "empty")
 
-    def test_unreachable_hyprland_hides_every_dot(self) -> None:
-        with patch.object(
-            workspaces.subprocess,
-            "check_output",
-            side_effect=subprocess.CalledProcessError(1, "hyprctl"),
-        ):
-            self.assertIsNone(workspaces.active_id())
-            self.assertEqual(workspaces.occupied_ids(), set())
+    def test_missing_cached_state_hides_every_dot(self) -> None:
+        with patch.object(workspaces, "read_state", return_value=None):
             self.assertEqual(emit(1)["text"], "")
 
-    def test_malformed_workspace_ids_are_ignored(self) -> None:
+    def test_query_state_ignores_malformed_workspace_ids(self) -> None:
         with patch.object(
             workspaces.subprocess,
             "check_output",
-            return_value='[{"id": 1}, {"id": "two"}, "three"]',
+            side_effect=[
+                '{"id": 2}',
+                '[{"id": 1}, {"id": "two"}, "three"]',
+            ],
         ):
-            self.assertEqual(workspaces.occupied_ids(), {1})
+            self.assertEqual(
+                workspaces.query_state(), {"active": 2, "occupied": [1]}
+            )
+
+    def test_refresh_caches_one_snapshot(self) -> None:
+        state = {"active": 2, "occupied": [1, 2]}
+        with (
+            patch.object(workspaces, "query_state", return_value=state),
+            patch.object(workspaces, "write_state") as write_state,
+        ):
+            self.assertTrue(workspaces.refresh_state())
+
+        write_state.assert_called_once_with(state)
 
     def test_waybar_is_signalled_on_workspace_changes(self) -> None:
         with (
@@ -131,6 +136,38 @@ class WaybarConfigTests(unittest.TestCase):
             )
             self.assertEqual(module["signal"], workspaces.WAYBAR_SIGNAL_ID)
             self.assertEqual(module["return-type"], "json")
+
+    def test_status_modules_are_separate(self) -> None:
+        self.assertEqual(
+            self.config["modules-right"],
+            [
+                "custom/playing",
+                "custom/stocks",
+                "tray",
+                "pulseaudio",
+                "battery",
+                "clock",
+            ],
+        )
+
+    def test_volume_is_unpadded_and_scrollable(self) -> None:
+        volume = self.config["pulseaudio"]
+        self.assertEqual(volume["format"], "\uf028 {volume}%")
+        self.assertEqual(volume["format-muted"], "\uf028 0%")
+        self.assertIn("on-scroll-up", volume)
+        self.assertIn("on-scroll-down", volume)
+        self.assertIn("on-click-middle", volume)
+
+    def test_media_and_stocks_are_interactive(self) -> None:
+        playing = self.config["custom/playing"]
+        self.assertEqual(playing["on-click"], "playerctl --player=spotify play-pause")
+        self.assertIn("on-click-middle", playing)
+        self.assertIn("on-click-right", playing)
+        self.assertEqual(playing["return-type"], "json")
+
+        stocks = self.config["custom/stocks"]
+        self.assertEqual(stocks["signal"], 2)
+        self.assertIn("--toggle", stocks["on-click"])
 
 
 if __name__ == "__main__":

@@ -1,9 +1,8 @@
 {
     "layer": "bottom",
-    "exclusive": false,
+    "exclusive": true,
     "position": "top",
     "height": 30,
-    "margin-top": -30,
     "modules-left": ["group/workspaces", "custom/window"],
     "modules-center": [],
     "modules-right": ["custom/playing", "custom/stocks", "tray", "pulseaudio", "battery", "clock"],

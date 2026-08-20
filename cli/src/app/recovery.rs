@@ -138,7 +138,9 @@ pub(crate) fn task_selected(task: &dyn Task, selectors: &HashSet<String>) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::scheduler::TaskOutcome;
     use crate::engine::{TaskMeta, TaskResult};
+    use crate::test_helpers::{empty_config, make_static_context};
 
     #[derive(Debug)]
     struct RecoveryTask {
@@ -195,5 +197,89 @@ mod tests {
         let names = selected.iter().map(|task| task.name()).collect::<Vec<_>>();
 
         assert_eq!(names, vec!["root", "middle", "failed"]);
+    }
+
+    fn recovery_context() -> (tempfile::TempDir, Context) {
+        let root = tempfile::tempdir().expect("temp repository");
+        git2::Repository::init(root.path()).expect("initialize repository");
+        let (ctx, _log) = make_static_context(empty_config(root.path().to_path_buf()));
+        (root, ctx)
+    }
+
+    fn state_path(ctx: &Context) -> std::path::PathBuf {
+        crate::infra::run_lock::repository_state_path(
+            ctx.root(),
+            ctx.env().as_ref(),
+            ctx.platform(),
+            STATE_FILE,
+        )
+        .expect("recovery state path")
+    }
+
+    #[test]
+    fn persisted_recovery_state_round_trips_incomplete_selectors() {
+        let (_root, ctx) = recovery_context();
+        let mut summary = ExecutionSummary::default();
+        summary.record(TaskId::Dynamic(1), "zeta", "Zeta task", TaskOutcome::Failed);
+        summary.record(
+            TaskId::Dynamic(2),
+            "alpha",
+            "Alpha task",
+            TaskOutcome::Blocked,
+        );
+
+        persist(&ctx, "install", &summary).expect("persist recovery state");
+        let loaded = load(&ctx, "install").expect("load recovery state");
+
+        assert_eq!(
+            loaded,
+            HashSet::from(["alpha".to_string(), "zeta".to_string()])
+        );
+        let contents = std::fs::read_to_string(state_path(&ctx)).expect("read recovery state");
+        assert!(
+            contents.find("alpha") < contents.find("zeta"),
+            "persisted selectors should be deterministic"
+        );
+    }
+
+    #[test]
+    fn recovery_state_rejects_a_different_command() {
+        let (_root, ctx) = recovery_context();
+        let mut summary = ExecutionSummary::default();
+        summary.record(
+            TaskId::Dynamic(1),
+            "packages",
+            "Packages",
+            TaskOutcome::Failed,
+        );
+        persist(&ctx, "install", &summary).expect("persist recovery state");
+
+        let error = load(&ctx, "uninstall").expect_err("command mismatch should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("last recorded run was 'install'")
+        );
+    }
+
+    #[test]
+    fn recovery_state_rejects_malformed_json() {
+        let (_root, ctx) = recovery_context();
+        std::fs::write(state_path(&ctx), "{not-json").expect("write malformed state");
+
+        let error = load(&ctx, "install").expect_err("malformed state should fail");
+
+        assert!(format!("{error:#}").contains("parsing recovery state"));
+    }
+
+    #[test]
+    fn recovery_state_rejects_runs_without_incomplete_tasks() {
+        let (_root, ctx) = recovery_context();
+        persist(&ctx, "install", &ExecutionSummary::default()).expect("persist recovery state");
+
+        let error = load(&ctx, "install").expect_err("empty retry set should fail");
+
+        assert!(error.to_string().contains("no failed or blocked tasks"));
     }
 }

@@ -20,9 +20,12 @@ function Write-TestFail {
     Write-Information "FAIL: $Message" -InformationAction Continue
 }
 
-# Verify that a path exists and is a symlink (reparse point on Windows).
+# Verify that a path exists and is a symlink to the expected source.
 function Assert-Symlink {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [string]$ExpectedTarget
+    )
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if (-not $item) {
         Write-TestFail "expected symlink, path does not exist: $Path"
@@ -32,12 +35,32 @@ function Assert-Symlink {
         Write-TestFail "expected symlink (reparse point), but got regular file: $Path"
         throw "Assertion failed: not a symlink at $Path"
     }
-    Write-TestPass "symlink exists: $Path"
+
+    $rawTarget = @($item.Target)[0]
+    if (-not $rawTarget) {
+        Write-TestFail "symlink has no target: $Path"
+        throw "Assertion failed: symlink target missing at $Path"
+    }
+    if (-not [System.IO.Path]::IsPathRooted($rawTarget)) {
+        $rawTarget = Join-Path $item.DirectoryName $rawTarget
+    }
+
+    $actualTarget = [System.IO.Path]::GetFullPath($rawTarget).TrimEnd('\')
+    $expected = (Get-Item -LiteralPath $ExpectedTarget -Force).FullName.TrimEnd('\')
+    if (-not [string]::Equals($actualTarget, $expected, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-TestFail "symlink $Path points to '$actualTarget', expected '$expected'"
+        throw "Assertion failed: wrong symlink target at $Path"
+    }
+    Write-TestPass "symlink target: $Path -> $expected"
 }
 
-# Verify that a path exists as a regular file or directory (not a symlink).
+# Verify that a path is materialized and preserves the installed source content.
 function Assert-Materialized {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [string]$ExpectedSource,
+        [string]$InstalledSnapshot
+    )
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     if (-not $item) {
         Write-TestFail "expected materialized file/dir after uninstall, path missing: $Path"
@@ -47,7 +70,15 @@ function Assert-Materialized {
         Write-TestFail "expected materialized file, still a symlink: $Path"
         throw "Assertion failed: still a symlink at $Path"
     }
-    Write-TestPass "materialized: $Path"
+
+    $actualHash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    $sourceHash = (Get-FileHash -LiteralPath $ExpectedSource -Algorithm SHA256).Hash
+    $snapshotHash = (Get-FileHash -LiteralPath $InstalledSnapshot -Algorithm SHA256).Hash
+    if ($actualHash -ne $sourceHash -or $actualHash -ne $snapshotHash) {
+        Write-TestFail "materialized content does not match the installed source: $Path"
+        throw "Assertion failed: materialized content changed at $Path"
+    }
+    Write-TestPass "materialized content: $Path"
 }
 
 # ---------------------------------------------------------------------------
@@ -72,28 +103,45 @@ function Test-InstallUninstallBaseProfile {
 
     # Representative symlinks from the [base] section of symlinks.toml
     $gitConfig = Join-Path $homeDir ".config\git\config"
+    $gitConfigSource = Join-Path $env:DIR "symlinks\config\git\config"
     # Representative symlinks from the [windows] section of symlinks.toml
     $psProfile = Join-Path $homeDir "Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
+    $psProfileSource = Join-Path $env:DIR "symlinks\config\powershell\Microsoft.PowerShell_profile.ps1"
 
-    Write-Information "Running install..." -InformationAction Continue
-    & $env:BINARY_PATH --root $env:DIR -p base install --skip packages,apm,vscode-extensions
-    if ($LASTEXITCODE -ne 0) {
-        throw "Install command failed with exit code $LASTEXITCODE"
+    $gitConfigSnapshot = [System.IO.Path]::GetTempFileName()
+    $psProfileSnapshot = [System.IO.Path]::GetTempFileName()
+    try {
+        Write-Information "Running install..." -InformationAction Continue
+        & $env:BINARY_PATH --root $env:DIR -p base install --skip packages,apm,vscode-extensions
+        if ($LASTEXITCODE -ne 0) {
+            throw "Install command failed with exit code $LASTEXITCODE"
+        }
+        Write-Information "Install complete" -InformationAction Continue
+
+        Assert-Symlink $gitConfig $gitConfigSource
+        Assert-Symlink $psProfile $psProfileSource
+        [System.IO.File]::WriteAllBytes(
+            $gitConfigSnapshot,
+            [System.IO.File]::ReadAllBytes($gitConfig)
+        )
+        [System.IO.File]::WriteAllBytes(
+            $psProfileSnapshot,
+            [System.IO.File]::ReadAllBytes($psProfile)
+        )
+
+        Write-Information "Running uninstall..." -InformationAction Continue
+        & $env:BINARY_PATH --root $env:DIR -p base uninstall
+        if ($LASTEXITCODE -ne 0) {
+            throw "Uninstall command failed with exit code $LASTEXITCODE"
+        }
+        Write-Information "Uninstall complete" -InformationAction Continue
+
+        Assert-Materialized $gitConfig $gitConfigSource $gitConfigSnapshot
+        Assert-Materialized $psProfile $psProfileSource $psProfileSnapshot
     }
-    Write-Information "Install complete" -InformationAction Continue
-
-    Assert-Symlink $gitConfig
-    Assert-Symlink $psProfile
-
-    Write-Information "Running uninstall..." -InformationAction Continue
-    & $env:BINARY_PATH --root $env:DIR -p base uninstall
-    if ($LASTEXITCODE -ne 0) {
-        throw "Uninstall command failed with exit code $LASTEXITCODE"
+    finally {
+        Remove-Item -LiteralPath $gitConfigSnapshot, $psProfileSnapshot -Force -ErrorAction SilentlyContinue
     }
-    Write-Information "Uninstall complete" -InformationAction Continue
-
-    Assert-Materialized $gitConfig
-    Assert-Materialized $psProfile
 }
 
 Test-InstallUninstallBaseProfile

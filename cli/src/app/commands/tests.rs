@@ -15,6 +15,30 @@ mod reexec_tests {
         };
         assert_eq!(re_exec_path(root), root.join("bin").join(expected));
     }
+
+    #[test]
+    fn re_exec_command_preserves_arguments_and_sets_loop_guard() {
+        let args = vec![
+            "install".to_string(),
+            "--profile".to_string(),
+            "desktop".to_string(),
+        ];
+        let command = build_reexec_command(Path::new("/repo/bin/dotfiles"), &args);
+
+        assert_eq!(command.get_program(), "/repo/bin/dotfiles");
+        assert_eq!(
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            args
+        );
+        let guard = command
+            .get_envs()
+            .find(|(key, _)| *key == REEXEC_GUARD_VAR)
+            .and_then(|(_, value)| value);
+        assert_eq!(guard, Some(std::ffi::OsStr::new("1")));
+    }
 }
 
 #[cfg(test)]

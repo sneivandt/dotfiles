@@ -219,11 +219,19 @@ jobs:
 
   # ── Coverage (informational, non-gating) ──────────────
   coverage:
-    name: "Rust: Coverage"
-    runs-on: ubuntu-latest
+    name: "Rust: Coverage (${{ matrix.name }})"
+    runs-on: ${{ matrix.os }}
     continue-on-error: true
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
@@ -237,7 +245,54 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - name: Generate coverage report
-        run: cargo llvm-cov --manifest-path cli/Cargo.toml --lib --summary-only
+        run: cargo llvm-cov --profile ci --manifest-path cli/Cargo.toml --all-targets --summary-only
+      - name: Generate HTML coverage report
+        run: cargo llvm-cov report --profile ci --manifest-path cli/Cargo.toml --html
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: rust-coverage-${{ matrix.name }}
+          path: cli/target/llvm-cov/html
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── Mutation Testing (informational, non-gating) ───────
+  mutation:
+    name: "Rust: Mutation (changed code)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_rust_checks == 'true' && github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "cli -> target"
+          cache-on-failure: true
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        with:
+          tool: cargo-mutants
+      - name: Build changed-code diff
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git diff --relative=cli --unified=0 "$BASE_SHA..$HEAD_SHA" -- cli/src > mutants.diff
+      - name: Test changed-code mutants
+        run: cargo mutants --manifest-path cli/Cargo.toml --in-place --no-shuffle --in-diff mutants.diff
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: rust-mutation-results
+          path: cli/mutants.out
+          if-no-files-found: ignore
+          retention-days: 7
 
   build-windows:
     name: "Build: Windows"

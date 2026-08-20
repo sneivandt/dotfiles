@@ -282,7 +282,8 @@ mod tests {
 
     use proptest::prelude::*;
 
-    use crate::engine::{TaskMeta, TaskResult};
+    use crate::engine::scheduler::TaskOutcome;
+    use crate::engine::{TaskAssessment, TaskMeta, TaskResult};
     use crate::test_helpers::{empty_config, make_static_context};
 
     use super::*;
@@ -430,6 +431,58 @@ mod tests {
         let roots = HashMap::from([(TaskId::Dynamic(1), "Home symlinks")]);
 
         assert!(blocked_dependents(&tasks, &roots).is_empty());
+    }
+
+    #[test]
+    fn unavailable_elevation_prunes_roots_and_transitive_dependents() {
+        let trace = trace();
+        let root = ProbeTask::new("Home symlinks", 1, &trace);
+        let dependent = ProbeTask::new("APM packages", 2, &trace).depends_on(&[1]);
+        let transitive = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
+        let unrelated = ProbeTask::new("Registry settings", 4, &trace);
+        let mut tasks: Vec<&dyn Task> = vec![&root, &dependent, &transitive, &unrelated];
+        let assessments = HashMap::from([(
+            root.task_id(),
+            TaskAssessment::applicable().with_elevation(true),
+        )]);
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_non_interactive(true);
+
+        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments);
+
+        assert_eq!(
+            tasks.iter().map(|task| task.name()).collect::<Vec<_>>(),
+            vec!["Registry settings"]
+        );
+        assert_eq!(summary.outcome(&root.task_id()), Some(TaskOutcome::Unmet));
+        assert_eq!(
+            summary.outcome(&dependent.task_id()),
+            Some(TaskOutcome::Blocked)
+        );
+        assert_eq!(
+            summary.outcome(&transitive.task_id()),
+            Some(TaskOutcome::Blocked)
+        );
+        assert_eq!(summary.failure_count(), 0);
+    }
+
+    #[test]
+    fn strict_completion_counts_unavailable_elevation_as_failure() {
+        let trace = trace();
+        let root = ProbeTask::new("Home symlinks", 1, &trace);
+        let mut tasks: Vec<&dyn Task> = vec![&root];
+        let assessments = HashMap::from([(
+            root.task_id(),
+            TaskAssessment::applicable().with_elevation(true),
+        )]);
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_non_interactive(true).with_require_complete(true);
+
+        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments);
+
+        assert!(tasks.is_empty());
+        assert_eq!(summary.failure_count(), 1);
+        assert_eq!(summary.outcome(&root.task_id()), Some(TaskOutcome::Unmet));
     }
 
     fn trace() -> Trace {

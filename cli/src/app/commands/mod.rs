@@ -16,7 +16,7 @@ pub(crate) use reexec::prepare_self_update;
 pub use runner::CommandRunner;
 
 #[cfg(test)]
-use reexec::re_exec_path;
+use reexec::{REEXEC_GUARD_VAR, build_reexec_command, re_exec_path};
 
 #[cfg(test)]
 #[path = "tests.rs"]

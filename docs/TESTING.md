@@ -151,8 +151,13 @@ The main CI workflow includes:
 - Rust test suites
 - wrapper, hook, install, uninstall, and application integration tests
 
-The coverage job is informational and intentionally does not gate
+The Linux and Windows coverage jobs run all Cargo targets and upload HTML
+reports. Coverage is informational and intentionally does not gate
 `ci-success`.
+
+Pull requests also run changed-code mutation testing when Rust code changes and
+upload the `cargo-mutants` report. Mutation results are informational and do not
+gate `ci-success`.
 
 ## Platform coverage parity
 
@@ -163,6 +168,7 @@ those areas surface only after release.
 | Area | Linux | Windows | Notes |
 |---|---|---|---|
 | Build, Clippy, tests | yes | yes | |
+| All-target coverage report | yes | yes | Informational HTML artifact |
 | Profile dry-run and `dotfiles test` | yes | yes | `base` and `desktop` |
 | Install/uninstall round-trip | yes | yes | |
 | Wrapper | yes | yes | `dotfiles.sh` / `dotfiles.ps1` |

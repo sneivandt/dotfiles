@@ -19,12 +19,9 @@ pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
 pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let exe = re_exec_path(root);
+    let mut command = build_reexec_command(&exe, &args);
 
-    match std::process::Command::new(&exe)
-        .args(&args)
-        .env(REEXEC_GUARD_VAR, "1")
-        .status()
-    {
+    match command.status() {
         Ok(status) => {
             if status.code().is_none() {
                 log.warn("child process terminated by signal");
@@ -36,6 +33,16 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
             std::process::exit(1);
         }
     }
+}
+
+/// Build the replacement process while preserving the original CLI arguments.
+pub(super) fn build_reexec_command(
+    exe: &std::path::Path,
+    args: &[String],
+) -> std::process::Command {
+    let mut command = std::process::Command::new(exe);
+    command.args(args).env(REEXEC_GUARD_VAR, "1");
+    command
 }
 
 /// Run the shared self-update preflight and re-exec if the binary changed.

@@ -40,19 +40,16 @@ Repository and GitHub account security remain part of the trust chain.
 ## Build provenance verification
 
 Provenance verification uses the `gh` CLI (`gh attestation verify`), which is
-not required to bootstrap. Because the checksum has already been verified, the
-default behavior is advisory:
+required for release binary bootstrap and self-update by default:
 
 | Environment variable | Effect |
 |---|---|
-| unset | Verify when `gh` is available; warn and continue otherwise |
-| `DOTFILES_REQUIRE_ATTESTATION=1` | Fail the download when provenance cannot be verified |
+| unset | Fail the download when provenance cannot be verified |
 | `DOTFILES_SKIP_ATTESTATION=1` | Skip provenance verification entirely |
 
-`DOTFILES_SKIP_ATTESTATION` takes precedence over
-`DOTFILES_REQUIRE_ATTESTATION`. Set `DOTFILES_REQUIRE_ATTESTATION=1` on machines
-where an unverifiable release asset must never be executed. Verification can be
-performed manually at any time:
+An unverifiable self-update leaves the currently installed binary unchanged.
+During initial bootstrap, install `gh`, use wrapper `--build`, or set the
+explicit bypass. Verification can be performed manually at any time:
 
 ```sh
 gh attestation verify bin/dotfiles --repo sneivandt/dotfiles

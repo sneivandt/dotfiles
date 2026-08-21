@@ -5,12 +5,10 @@
 //! downloaded bytes are additionally checked against that attestation using the
 //! `gh` CLI.
 //!
-//! Verification is advisory by default: the checksum has already been verified,
-//! so a missing or unauthenticated `gh` only produces a warning. The policy is
-//! controlled by two environment variables:
+//! Verification is required by default. The policy can be relaxed explicitly
+//! with one environment variable:
 //!
 //! - `DOTFILES_SKIP_ATTESTATION=1` — skip the check entirely.
-//! - `DOTFILES_REQUIRE_ATTESTATION=1` — treat any unverified download as fatal.
 
 use std::path::Path;
 
@@ -21,36 +19,27 @@ use super::REPO;
 /// Environment variable that disables provenance verification.
 const SKIP_ENV: &str = "DOTFILES_SKIP_ATTESTATION";
 
-/// Environment variable that makes provenance verification mandatory.
-const REQUIRE_ENV: &str = "DOTFILES_REQUIRE_ATTESTATION";
-
 /// How strictly provenance verification is enforced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Policy {
     /// Do not verify provenance at all.
     Skip,
-    /// Verify when possible; warn but continue otherwise.
-    Advisory,
     /// Verification must succeed.
     Required,
 }
 
-/// Resolve the policy from the two supported flag values.
-fn policy_from_flags(skip: Option<&str>, require: Option<&str>) -> Policy {
+/// Resolve the policy from the supported flag value.
+fn policy_from_flag(skip: Option<&str>) -> Policy {
     if skip == Some("1") {
         return Policy::Skip;
     }
-    if require == Some("1") {
-        return Policy::Required;
-    }
-    Policy::Advisory
+    Policy::Required
 }
 
 /// Resolve the policy from the process environment.
 pub(super) fn policy_from_env() -> Policy {
     let skip = std::env::var(SKIP_ENV).ok();
-    let require = std::env::var(REQUIRE_ENV).ok();
-    policy_from_flags(skip.as_deref(), require.as_deref())
+    policy_from_flag(skip.as_deref())
 }
 
 /// Abstraction over the `gh` CLI, enabling test injection.
@@ -115,22 +104,14 @@ pub(super) fn verify_provenance(
     }
 
     if !gh.available() {
-        return unverified(
-            policy,
-            asset,
-            "gh CLI not found; cannot verify build provenance",
-        );
+        return unverified(asset, "gh CLI not found; cannot verify build provenance");
     }
 
     let staged = stage_for_verification(asset, data)?;
     let verified = match gh.verify(staged.path(), REPO) {
         Ok(verified) => verified,
         Err(error) => {
-            return unverified(
-                policy,
-                asset,
-                &format!("gh could not be executed: {error:#}"),
-            );
+            return unverified(asset, &format!("gh could not be executed: {error:#}"));
         }
     };
 
@@ -139,19 +120,12 @@ pub(super) fn verify_provenance(
         return Ok(());
     }
 
-    unverified(policy, asset, "gh reported no verified attestation")
+    unverified(asset, "gh reported no verified attestation")
 }
 
-/// Apply the policy to an asset whose provenance could not be verified.
-fn unverified(policy: Policy, asset: &str, reason: &str) -> Result<()> {
-    if policy == Policy::Required {
-        bail!("build provenance verification failed for {asset}: {reason}");
-    }
-    tracing::warn!(
-        "could not verify build provenance for {asset}: {reason}. \
-         The SHA-256 checksum matched the published release."
-    );
-    Ok(())
+/// Reject an asset whose provenance could not be verified.
+fn unverified(asset: &str, reason: &str) -> Result<()> {
+    bail!("build provenance verification failed for {asset}: {reason}");
 }
 
 /// Write `data` to a uniquely named temporary file for verification.
@@ -200,31 +174,20 @@ mod tests {
     }
 
     #[test]
-    fn skip_flag_wins_over_require_flag() {
-        assert_eq!(policy_from_flags(Some("1"), Some("1")), Policy::Skip);
+    fn skip_flag_selects_skip_policy() {
+        assert_eq!(policy_from_flag(Some("1")), Policy::Skip);
     }
 
     #[test]
-    fn require_flag_selects_required_policy() {
-        assert_eq!(policy_from_flags(None, Some("1")), Policy::Required);
-    }
-
-    #[test]
-    fn unset_flags_select_advisory_policy() {
-        assert_eq!(policy_from_flags(None, None), Policy::Advisory);
-        assert_eq!(policy_from_flags(Some("0"), Some("0")), Policy::Advisory);
+    fn unset_or_disabled_skip_flag_selects_required_policy() {
+        assert_eq!(policy_from_flag(None), Policy::Required);
+        assert_eq!(policy_from_flag(Some("0")), Policy::Required);
     }
 
     #[test]
     fn skip_policy_does_not_invoke_gh() {
         let gh = stub(false, false);
         verify_provenance(&gh, Policy::Skip, "dotfiles-linux-x86_64", b"data").unwrap();
-    }
-
-    #[test]
-    fn advisory_policy_tolerates_missing_gh() {
-        let gh = stub(false, false);
-        verify_provenance(&gh, Policy::Advisory, "dotfiles-linux-x86_64", b"data").unwrap();
     }
 
     #[test]
@@ -258,13 +221,19 @@ mod tests {
     }
 
     #[test]
-    fn advisory_policy_tolerates_gh_execution_failure() {
+    fn required_policy_fails_on_gh_execution_failure() {
         let gh = StubGh {
             available: true,
             result: false,
             fails_to_run: true,
         };
-        verify_provenance(&gh, Policy::Advisory, "dotfiles-linux-x86_64", b"data").unwrap();
+        let error = verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("gh could not be executed"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -273,7 +242,7 @@ mod tests {
         // sibling tests running on other threads.
         let asset = "cleanup-probe-x86_64";
         let gh = stub(true, true);
-        verify_provenance(&gh, Policy::Advisory, asset, b"data").unwrap();
+        verify_provenance(&gh, Policy::Required, asset, b"data").unwrap();
         let leftovers: Vec<_> = std::fs::read_dir(std::env::temp_dir())
             .expect("temp dir should be readable")
             .filter_map(std::result::Result::ok)

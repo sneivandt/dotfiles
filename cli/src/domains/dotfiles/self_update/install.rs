@@ -7,7 +7,7 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result, bail};
 
-use super::attestation::{SystemGh, policy_from_env, verify_provenance};
+use super::attestation::{GhCli, Policy, SystemGh, policy_from_env, verify_provenance};
 use super::cache::write_cache;
 use super::http::{HttpClient, download_bytes, verify_checksum};
 use super::paths::{asset_name, binary_path, old_binary_name, old_binary_path};
@@ -156,6 +156,16 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
 /// failure the previous binary is restored from the backup written by
 /// [`replace_binary`].
 pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClient) -> Result<()> {
+    download_and_install_with_gh(root, tag, client, &SystemGh, policy_from_env())
+}
+
+fn download_and_install_with_gh(
+    root: &Path,
+    tag: &str,
+    client: &dyn HttpClient,
+    gh: &dyn GhCli,
+    policy: Policy,
+) -> Result<()> {
     let asset = asset_name();
     let url = format!(
         "https://github.com/{repo}/releases/download/{tag}/{asset}",
@@ -163,7 +173,7 @@ pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClie
     );
     let data = download_bytes(client, &url)?;
     verify_checksum(client, tag, asset, &data)?;
-    verify_provenance(&SystemGh, policy_from_env(), asset, &data)?;
+    verify_provenance(gh, policy, asset, &data)?;
 
     let bin = binary_path(root);
     replace_binary(&bin, &data)?;
@@ -191,6 +201,21 @@ mod tests {
 
     use super::super::cache::cache_path;
     use super::super::http::test_support::MockHttpClient;
+
+    #[derive(Debug)]
+    struct StubGh {
+        verified: bool,
+    }
+
+    impl GhCli for StubGh {
+        fn available(&self) -> bool {
+            true
+        }
+
+        fn verify(&self, _path: &Path, _repo: &str) -> Result<bool> {
+            Ok(self.verified)
+        }
+    }
 
     #[test]
     fn replace_binary_writes_and_sets_permissions() {
@@ -287,12 +312,56 @@ mod tests {
 
         let client = MockHttpClient::new(vec![Ok(binary_data.clone()), Ok(checksums.into_bytes())]);
 
-        download_and_install(dir.path(), "v1.0.0", &client).unwrap();
+        download_and_install_with_gh(
+            dir.path(),
+            "v1.0.0",
+            &client,
+            &StubGh { verified: true },
+            Policy::Required,
+        )
+        .unwrap();
 
         let installed = fs::read(binary_path(dir.path())).unwrap();
         assert_eq!(installed, binary_data);
         let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
         assert!(cache.starts_with("v1.0.0\n"));
+    }
+
+    #[test]
+    fn unverified_download_leaves_existing_binary_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_dir = dir.path().join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let bin = binary_path(dir.path());
+        fs::write(&bin, b"old-content").unwrap();
+
+        let binary_data = b"new-content";
+        let mut hasher = Sha256::new();
+        hasher.update(binary_data);
+        let hash = super::super::hex_encode(&hasher.finalize());
+        let checksums = format!("{hash}  {}\n", asset_name());
+        let client =
+            MockHttpClient::new(vec![Ok(binary_data.to_vec()), Ok(checksums.into_bytes())]);
+
+        let error = download_and_install_with_gh(
+            dir.path(),
+            "v1.0.0",
+            &client,
+            &StubGh { verified: false },
+            Policy::Required,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            error.contains("build provenance verification failed"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(fs::read(&bin).unwrap(), b"old-content");
+        assert!(
+            !cache_path(dir.path()).exists(),
+            "cache should not be written after rejected provenance"
+        );
     }
 
     #[cfg(unix)]
@@ -393,7 +462,13 @@ mod tests {
 
         let client = MockHttpClient::new(vec![Ok(bad_binary.to_vec()), Ok(checksums.into_bytes())]);
 
-        let result = download_and_install(dir.path(), "v1.0.0", &client);
+        let result = download_and_install_with_gh(
+            dir.path(),
+            "v1.0.0",
+            &client,
+            &StubGh { verified: true },
+            Policy::Required,
+        );
         assert!(result.is_err(), "expected smoke-test failure");
 
         let restored = fs::read(&bin).unwrap();

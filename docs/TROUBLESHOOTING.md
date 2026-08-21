@@ -41,9 +41,11 @@ Actions:
 
 Do not bypass checksum verification.
 
-Build provenance verification is advisory unless
-`DOTFILES_REQUIRE_ATTESTATION=1` is set; see
-[Security model](SECURITY.md#build-provenance-verification).
+Build provenance verification is required by default. An unverifiable
+self-update leaves the installed binary unchanged; see
+[Security model](SECURITY.md#build-provenance-verification). Do not set
+`DOTFILES_SKIP_ATTESTATION=1` unless you explicitly accept bypassing provenance
+verification.
 
 ## The binary never self-updates
 

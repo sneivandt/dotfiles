@@ -17,6 +17,7 @@ packages = [
   "fzf",
   "git",
   "git-delta",
+  "github-cli",
   "jq",
   "lazygit",
   "man-db",
@@ -89,6 +90,7 @@ packages = [
 packages = [
   "Chocolatey.Chocolatey",
   "Git.Git",
+  "GitHub.cli",
   "jqlang.jq",
   "Microsoft.APM",
   "Microsoft.PowerShell",

@@ -112,10 +112,8 @@ _verify_checksum() {
 
 # Verify GitHub build provenance for a downloaded asset.
 #
-# Verification is advisory by default: the checksum has already been verified,
-# so a missing or unauthenticated `gh` CLI only produces a warning. Set
-# DOTFILES_REQUIRE_ATTESTATION=1 to treat any unverified download as fatal, or
-# DOTFILES_SKIP_ATTESTATION=1 to skip the check entirely.
+# Verification is required by default. Set DOTFILES_SKIP_ATTESTATION=1 to skip
+# the check explicitly.
 _verify_attestation() {
   _va_binary="$1"
 
@@ -123,28 +121,17 @@ _verify_attestation() {
     return 0
   fi
 
-  _va_required="${DOTFILES_REQUIRE_ATTESTATION:-0}"
-
   if ! command -v gh >/dev/null 2>&1; then
-    if [ "$_va_required" = "1" ]; then
-      echo "ERROR: gh not found. Cannot verify build provenance." >&2
-      return 1
-    fi
-    echo "WARNING: gh not found. Skipping build provenance verification." >&2
-    return 0
+    echo "ERROR: gh not found. Cannot verify build provenance." >&2
+    return 1
   fi
 
   if gh attestation verify "$_va_binary" --repo "$REPO" >/dev/null 2>&1; then
     return 0
   fi
 
-  if [ "$_va_required" = "1" ]; then
-    echo "ERROR: Build provenance verification failed for $_va_binary." >&2
-    return 1
-  fi
-  echo "WARNING: Could not verify build provenance for $_va_binary." >&2
-  echo "The SHA-256 checksum matched the published release." >&2
-  return 0
+  echo "ERROR: Build provenance verification failed for $_va_binary." >&2
+  return 1
 }
 
 # Download the bootstrap binary if needed.

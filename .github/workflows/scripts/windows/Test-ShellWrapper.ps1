@@ -324,8 +324,7 @@ function Test-AttestationVerification {
     if (
         -not $content.Contains('function Test-Attestation') -or
         -not $content.Contains('gh attestation verify') -or
-        -not $content.Contains('DOTFILES_SKIP_ATTESTATION') -or
-        -not $content.Contains('DOTFILES_REQUIRE_ATTESTATION')
+        -not $content.Contains('DOTFILES_SKIP_ATTESTATION')
     ) {
         Write-TestFail "Wrapper does not verify build provenance for downloaded binaries"
         return $false

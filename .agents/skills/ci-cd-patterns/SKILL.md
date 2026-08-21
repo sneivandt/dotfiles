@@ -96,8 +96,8 @@ successful CI head SHA.
 
 Download paths (`dotfiles.sh`, `dotfiles.ps1`, and the Rust self-update task)
 verify the checksum first and then the provenance attestation through the `gh`
-CLI. Provenance verification is advisory by default and is controlled by
-`DOTFILES_SKIP_ATTESTATION` and `DOTFILES_REQUIRE_ATTESTATION`; keep wrapper
+CLI. Provenance verification is required by default and can only be bypassed by
+`DOTFILES_SKIP_ATTESTATION`; keep wrapper
 integration tests hermetic by stubbing `gh` or setting
 `DOTFILES_SKIP_ATTESTATION=1`.
 

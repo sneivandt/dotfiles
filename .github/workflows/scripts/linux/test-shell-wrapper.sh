@@ -590,36 +590,22 @@ exit 1
 EOF
   chmod +x "$tmpdir/fake-bin/gh"
 
-  # Advisory (default): unverified provenance warns but keeps the binary.
+  # Required (default): unverified provenance is fatal and removes the download.
   rm -rf "${tmpdir:?}/bin"
-  output=$(PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --version 2>&1)
-  if [ ! -x "$tmpdir/bin/dotfiles" ]; then
-    printf "%sERROR: Advisory provenance failure removed the binary%s\n" "${RED}" "${NC}" >&2
-    return 1
-  fi
-  if ! echo "$output" | grep -q "provenance"; then
-    printf "%sERROR: Advisory provenance failure did not warn: %s%s\n" "${RED}" "$output" "${NC}" >&2
-    return 1
-  fi
-  log_verbose "✓ Unverified provenance warns and continues by default"
-
-  # Required: unverified provenance is fatal and removes the binary.
-  rm -rf "${tmpdir:?}/bin"
-  if PATH="$tmpdir/fake-bin:$PATH" DOTFILES_REQUIRE_ATTESTATION=1 \
-     "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1; then
-    printf "%sERROR: DOTFILES_REQUIRE_ATTESTATION=1 accepted an unverified binary%s\n" "${RED}" "${NC}" >&2
+  if PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1; then
+    printf "%sERROR: Default policy accepted an unverified binary%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
   if [ -e "$tmpdir/bin/dotfiles" ]; then
-    printf "%sERROR: Unverified binary was not removed in required mode%s\n" "${RED}" "${NC}" >&2
+    printf "%sERROR: Unverified binary was not removed by default%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
-  log_verbose "✓ DOTFILES_REQUIRE_ATTESTATION=1 rejects unverified downloads"
+  log_verbose "✓ Default policy rejects unverified downloads"
 
   # Skip: verification is bypassed entirely.
   rm -rf "${tmpdir:?}/bin"
   PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=1 \
-    DOTFILES_REQUIRE_ATTESTATION=1 "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1
+    "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1
   if [ ! -x "$tmpdir/bin/dotfiles" ]; then
     printf "%sERROR: DOTFILES_SKIP_ATTESTATION=1 did not bypass verification%s\n" "${RED}" "${NC}" >&2
     return 1

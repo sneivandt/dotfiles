@@ -1,8 +1,8 @@
-# Windows Guide
+# Windows guide
 
-Windows is a first-class target. The PowerShell wrapper bootstraps the Rust CLI,
-and platform tasks converge Developer Mode, packages, symlinks, registry state,
-VS Code extensions, PATH, and optional WSL configuration.
+On Windows, the PowerShell wrapper bootstraps the Rust CLI. Platform tasks manage
+Developer Mode, packages, symlinks, registry state, VS Code extensions, PATH,
+and optional WSL configuration.
 
 ## Requirements
 
@@ -73,16 +73,16 @@ actually needs it:
 
 Every other Windows task writes to user scope and never elevates.
 
-When a task does need it, the CLI names the tasks, opens one UAC prompt, and
-runs a short-lived elevated child restricted to exactly those tasks
-(`--only <selectors> --no-parallel`). The child appears in its own console
-window and writes its own run log; the parent stays unelevated and continues.
+When a task needs elevation, the CLI names the affected tasks and opens one UAC
+prompt. It runs a short-lived elevated child restricted to those tasks with
+`--only <selectors> --no-parallel`. The child gets a separate console window
+and run log. The parent remains unelevated and continues.
 
 Declining the prompt is not fatal. Those tasks are recorded as skipped and the
 rest of the run proceeds, so a converged machine never sees a prompt at all.
 
-In CI or any other non-interactive session, no prompt is raised: elevating tasks
-are skipped with a reason instead of stalling on a dialog nobody can answer.
+In CI and other non-interactive sessions, the CLI does not open a prompt. It
+skips tasks that need elevation and records the reason.
 
 To perform a skipped step later, run it directly from an elevated shell:
 
@@ -105,13 +105,13 @@ packages = [
 Only missing packages are installed. AUR and paru tasks are not applicable on
 Windows.
 
-Each package is announced before it is installed, so a long download is
-attributable to a specific ID. Installs are attempted with `--scope user` first
-and retried unscoped only when no per-user installer exists — that keeps most
-packages out of machine scope and avoids a UAC prompt. A machine-scope installer
-still raises its own consent dialog, which winget cannot suppress; declining it,
-or hitting a policy restriction, records that package as skipped rather than
-failing the run. To install those, re-run from an elevated shell:
+The CLI prints each package ID before installation, so long downloads can be
+identified. It tries `--scope user` first, then retries without a scope only when
+no per-user installer exists. This keeps most packages out of machine scope and
+avoids a UAC prompt. A machine-scope installer can still open a consent dialog
+that winget cannot suppress. Declining it, or hitting a policy restriction,
+marks that package as skipped rather than failing the run. To install those
+packages, rerun from an elevated shell:
 
 ```powershell
 dotfiles install --only packages
@@ -169,9 +169,9 @@ reports the module error.
 
 ## WSL
 
-When the Linux binary runs inside WSL, **WSL configuration files** enables systemd and
-disables Windows PATH injection in `/etc/wsl.conf` while preserving unrelated
-settings. This is separate from running the Windows executable on the host.
+When the Linux binary runs inside WSL, **WSL configuration files** enables
+systemd and disables Windows PATH injection in `/etc/wsl.conf` while preserving
+unrelated settings. The Windows executable on the host does not run this task.
 
 Because `wsl.conf` is system-level:
 
@@ -186,6 +186,5 @@ dotfiles uninstall --dry-run
 dotfiles uninstall
 ```
 
-Uninstall materializes managed links and removes the hook and wrapper
-integrations. It does not uninstall winget packages or restore registry values.
-Those boundaries prevent broad destructive rollback of shared machine state.
+Uninstall materializes managed links and removes the hook and wrapper. It does
+not uninstall winget packages or restore registry values.

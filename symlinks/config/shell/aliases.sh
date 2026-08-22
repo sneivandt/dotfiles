@@ -21,7 +21,7 @@ alias ls="ls -h --color=auto"
 alias la="ls -A"
 alias ll="ls -l"
 
-alias mkdir="mkdir -p"
+alias md="mkdir -p"
 
 alias path='echo "$PATH" | tr -s ":" "\n"'
 
@@ -50,10 +50,8 @@ elif command -v exa >/dev/null 2>&1; then
   alias la="exa -la"
 fi
 
-if command -v bat >/dev/null 2>&1; then
-  alias cat="bat"
-elif command -v batcat >/dev/null 2>&1; then
-  alias cat="batcat"
+if ! command -v bat >/dev/null 2>&1 && command -v batcat >/dev/null 2>&1; then
+  alias bat="batcat"
 fi
 
 if command -v nvim >/dev/null 2>&1; then

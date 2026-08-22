@@ -1,7 +1,7 @@
 [Unit]
 Description=Hide Waybar on fullscreen Hyprland workspaces
 
-PartOf=graphical-session.target
+PartOf=graphical-session.target waybar.service
 Wants=graphical-session.target waybar.service
 After=graphical-session.target waybar.service
 

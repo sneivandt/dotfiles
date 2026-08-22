@@ -1,8 +1,7 @@
-# Testing and Validation
+# Testing and validation
 
-The project tests domain logic, task orchestration, command behavior,
-configuration drift, wrappers, hooks, installation, and both supported host
-families.
+Tests cover domain logic, task orchestration, commands, configuration drift,
+wrappers, hooks, installation, Linux, and Windows.
 
 ## Fast local sequence
 
@@ -18,9 +17,9 @@ On Windows:
 pwsh -File .github\workflows\scripts\windows\Check.ps1
 ```
 
-This is the single source of truth for local verification. It uses the `ci`
-Cargo profile throughout, so a local pass and a CI pass mean the same thing.
-Any stage whose tool is missing reports `SKIP` instead of failing.
+These scripts define the local verification sequence. They use the same `ci`
+Cargo profile as CI. A stage reports `SKIP` instead of failing when its tool is
+missing.
 
 | Stage | Covers |
 |---|---|
@@ -43,7 +42,7 @@ sh .github/workflows/scripts/linux/check.sh --list
 sh .github/workflows/scripts/linux/check.sh --all
 ```
 
-Individual Cargo commands remain available when you want to bypass the runner:
+Run Cargo directly when you need one Rust check:
 
 ```bash
 cargo test --profile ci --manifest-path cli/Cargo.toml
@@ -102,9 +101,8 @@ dotfiles --root . --overlay C:\path\to\private-dotfiles test
 
 ## Dry-run testing
 
-Dry-run is part of the mutation contract, not merely a display feature. Preview
-the smallest affected task set and inspect both applicability and planned
-actions:
+Dry-run is part of the mutation contract. Preview the smallest affected task
+set, then inspect applicability and planned actions:
 
 ```bash
 dotfiles --root . install --only symlinks --dry-run --verbose
@@ -161,9 +159,8 @@ gate `ci-success`.
 
 ## Platform coverage parity
 
-CI is not symmetric across platforms, and the asymmetry is deliberate. Anything
-listed as Linux-only below is *not* validated on Windows, so regressions in
-those areas surface only after release.
+CI coverage differs by platform. Anything listed as Linux-only below is not
+validated on Windows.
 
 | Area | Linux | Windows | Notes |
 |---|---|---|---|
@@ -179,9 +176,9 @@ those areas surface only after release.
 | ShellCheck, PSScriptAnalyzer | yes | n/a | Both run on the Linux runner |
 | `cargo audit`, `cargo deny`, MSRV | yes | n/a | Platform-independent |
 
-Cross-target Clippy catches most compile-time Windows breakage from Linux, but
-it does not validate runtime Windows behavior. When changing Windows-specific
-code paths, rely on the Windows CI jobs rather than local Linux checks alone.
+Cross-target Clippy catches many Windows compile errors from Linux, but it
+cannot test Windows runtime behavior. Use the Windows CI jobs for changes to
+Windows-specific paths.
 
 The Windows git application test asserts the final effective configuration
 outside any repository. Installation removes the obsolete managed

@@ -136,8 +136,11 @@ function Test-GitConfig
     Invoke-OutsideRepository {
         Assert-GitConfig -Key 'init.defaultBranch' -Expected 'main'
         Assert-GitConfig -Key 'pull.rebase' -Expected 'true'
+        Assert-GitConfig -Key 'rebase.updateRefs' -Expected 'true'
         Assert-GitConfig -Key 'merge.conflictstyle' -Expected 'zdiff3'
+        Assert-GitConfig -Key 'push.default' -Expected 'simple'
         Assert-GitConfig -Key 'push.autoSetupRemote' -Expected 'true'
+        Assert-GitConfig -Key 'push.useForceIfIncludes' -Expected 'true'
         Assert-GitConfig -Key 'diff.algorithm' -Expected 'histogram'
 
         # Windows-specific override supplied by symlinks/config/git/windows,

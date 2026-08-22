@@ -1,8 +1,8 @@
-# Configuration Reference
+# Configuration reference
 
-The Rust CLI treats `conf/` as declarative desired state. Configuration is
-loaded before task construction, filtered by active categories, validated, and
-exposed to tasks through shared handles.
+The Rust CLI loads desired state from `conf/` before constructing tasks. It
+filters records by active category, validates them, and exposes them through
+shared handles.
 
 ## Files
 
@@ -19,8 +19,8 @@ exposed to tasks through shared handles.
 | `systemd-units.toml` | Category sections containing user unit names | systemd configuration |
 | `vscode-extensions.toml` | Category sections containing extension identifiers | VS Code extensions |
 
-An overlay may additionally provide `conf/scripts.toml`. The main repository
-does not load scripts from that filename.
+An overlay may also provide `conf/scripts.toml`. The main repository does not
+load scripts from that file.
 
 ## Category sections
 
@@ -39,7 +39,7 @@ symlinks = [
 symlinks = ["config/hypr/hyprland.lua"]
 ```
 
-A hyphenated section uses **AND semantics**. `[arch-desktop]` is active only
+A hyphenated section uses AND semantics. `[arch-desktop]` is active only
 when both `arch` and `desktop` are active. It does not mean either category.
 Category tags must be built in or declared by a profile; misspelled tags are
 configuration errors.
@@ -81,9 +81,9 @@ symlinks = [
 ]
 ```
 
-An entry may instead be a table with an explicit home-relative `target`, which
-replaces the dot-prefixed default. Windows paths such as `AppData/` use this
-form because they take no leading dot:
+To override the dot-prefixed default, use a table with an explicit
+home-relative `target`. Windows paths such as `AppData/` use this form because
+they have no leading dot:
 
 ```toml
 [windows]
@@ -92,10 +92,10 @@ symlinks = [
 ]
 ```
 
-The same canonical source may be listed more than once when each entry has a
-different target. This avoids forwarding files and symlink chains inside the
-repository when multiple applications share one configuration. A source that
-resolves outside its owning `symlinks/` tree is rejected as unsafe.
+The same canonical source may appear more than once if each entry has a
+different target. Multiple applications can then share one configuration
+without forwarding files or symlink chains inside the repository. The loader
+rejects a source that resolves outside its owning `symlinks/` tree.
 
 Overlay symlinks resolve from the overlay's own `symlinks/` tree, not the main
 repository.
@@ -112,7 +112,7 @@ symlinks = [
 ]
 ```
 
-Semantics:
+Rules:
 
 - `*` matches exactly **one complete path segment**. Partial-segment patterns
   such as `plugins/*.yml` or `plugins/apm-*` are rejected, as is the recursive
@@ -139,10 +139,10 @@ symlinks = [
 ]
 ```
 
-Globs expand while configuration loads, after category filtering and before
-validation, so every later stage sees only concrete paths. Expanded targets
-take part in the normal target conflict check: duplicate targets and targets
-nested beneath another managed target are configuration errors.
+Globs expand during configuration loading, after category filtering and before
+validation. Later stages see only concrete paths. Expanded targets use the
+normal conflict checks. Duplicate targets and targets nested under another
+managed target are errors.
 
 Every non-`base` symlink category must have an exact section in
 `manifest.toml`, and every manifest section must exist in `symlinks.toml`.
@@ -255,9 +255,9 @@ path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
 EnableAutoTray = 0
 ```
 
-String, decimal, and hexadecimal TOML values are supported by the loader. Keep
-values under current-user paths unless the implementation explicitly supports
-another scope.
+The loader accepts string, decimal, and hexadecimal TOML values. Keep values
+under current-user paths unless the implementation explicitly supports another
+scope.
 
 ## systemd units
 
@@ -292,7 +292,7 @@ overlay entries are **appended** to active main entries; they do not replace
 records with the same logical name. This applies to packages, symlinks, Git,
 Copilot, permissions, registry records, systemd units, and VS Code extensions.
 
-Important boundaries:
+Overlay rules:
 
 - Missing overlay configuration files are treated as empty.
 - Main configuration remains required where validation says it is required.
@@ -303,10 +303,10 @@ Important boundaries:
 When an overlay is active, its resolved path is reported as the final
 ` · overlay <path>` section of the startup header line.
 
-When `--overlay` points to a linked Git worktree, the CLI asks for confirmation
-before using and persisting that path. The `[y/N]` prompt defaults to no, and a
-non-interactive invocation rejects the new worktree path. Normal repository
-checkouts, whose `.git` entry is a directory, do not require confirmation.
+When `--overlay` points to a linked Git worktree, the CLI asks before using and
+persisting that path. The `[y/N]` prompt defaults to no. A non-interactive
+invocation rejects the new worktree path. Normal checkouts have a `.git`
+directory and do not require confirmation.
 
 Validate combined state explicitly:
 
@@ -342,11 +342,10 @@ Install and update invoke check, apply, or preview as appropriate. The resource
 supports removal, but dynamic scripts are not registered in the current
 uninstall catalog, so `dotfiles uninstall` does not invoke `--remove`.
 
-Scripts should be idempotent, return nonzero on failure, and avoid emitting
-secrets. Dry-run safety is cooperative: the engine supplies `--dryrun` but
-cannot stop an opaque script from mutating state. Every active entry becomes a
-normal dynamic task after the reload discovery boundary and can be selected by
-its name.
+Scripts must be idempotent, return nonzero on failure, and avoid printing
+secrets. Dry-run safety depends on the script. The engine supplies `--dryrun`,
+but it cannot prevent a script from changing state. After the reload discovery
+boundary, each active entry becomes a dynamic task selectable by name.
 
 ## APM configuration
 
@@ -356,7 +355,7 @@ the sparse checkout and linked configuration. See [APM](APM.md).
 
 ## Loading and reload behavior
 
-At command start, the loader:
+At startup, the loader:
 
 1. Resolves the active profile and categories.
 2. Parses main configuration.
@@ -375,9 +374,8 @@ the command began.
 ## Unknown keys are errors
 
 Every main `conf/*.toml` file listed above is required and parsed strictly,
-including files for the inactive platform. An unrecognised key — or a
-misspelled one — aborts the load with the file, line, column, and the list of
-accepted keys:
+including files for inactive platforms. An unrecognized or misspelled key
+aborts loading. The error includes the file, line, column, and accepted keys:
 
 ```text
 ERROR Invalid TOML syntax in conf/profiles.toml: TOML parse error at line 13, column 1
@@ -385,11 +383,11 @@ ERROR Invalid TOML syntax in conf/profiles.toml: TOML parse error at line 13, co
 unknown field `excludee`, expected one of `description`, `include`, `exclude`
 ```
 
-This applies to section fields (`symlink` instead of `symlinks`), to keys inside
-table entries (`targett` instead of `target`), and to profile definitions. A typo
-can no longer silently reduce to a default — for example `excludee` in
-`profiles.toml` previously produced an empty exclude list, so the `base` profile
-quietly stopped excluding desktop categories.
+This applies to section fields such as `symlink` instead of `symlinks`, keys
+inside table entries such as `targett` instead of `target`, and profile
+definitions. Typos do not fall back to defaults. For example, `excludee` in
+`profiles.toml` once produced an empty exclude list, causing the `base` profile
+to stop excluding desktop categories.
 
 Section category tags are checked too. Built-in tags are `base`, `desktop`,
 `linux`, `windows`, and `arch`; custom tags must appear in a profile's
@@ -408,6 +406,5 @@ dotfiles test
 ```
 
 The command catches syntax errors, unknown keys, missing required files,
-nonexistent symlink sources, manifest drift, and available APM/script analyzer
-failures. Tests also
-include a Rust integration test dedicated to configuration drift.
+nonexistent symlink sources, manifest drift, and failures from available APM or
+script analyzers. A separate Rust integration test checks configuration drift.

@@ -1,8 +1,7 @@
 # Docker
 
-The repository includes a multi-stage Ubuntu 24.04 image that builds the Rust
-CLI and applies the dotfiles configuration to a non-root user during image
-construction.
+The multi-stage Ubuntu 24.04 image builds the Rust CLI and applies the selected
+dotfiles profile to a non-root user.
 
 ## Build
 
@@ -39,9 +38,9 @@ The runtime stage:
 5. Runs `dotfiles install` with the selected profile as that user.
 6. Starts Zsh by default.
 
-The retained `.git` directory allows sparse-checkout and repository-update tasks
-to operate in the image. The origin is reset to the public HTTPS repository and
-credential-bearing Git headers are removed.
+The runtime image retains `.git` so sparse-checkout and repository-update tasks
+still work. Its origin points to the public HTTPS repository, and the build
+removes credential-bearing Git headers.
 
 ## Run
 
@@ -57,8 +56,8 @@ docker run --rm dotfiles:local dotfiles --version
 
 ## Version metadata
 
-The builder accepts `DOTFILES_VERSION`. When omitted, it derives the version
-from the latest matching `v*` Git tag:
+Set `DOTFILES_VERSION` to override the version. Without it, the builder uses the
+latest matching `v*` Git tag:
 
 ```bash
 docker build \
@@ -73,10 +72,8 @@ Uncommitted working-tree changes are not included because the Dockerfile uses
 
 ## CI publishing
 
-The Docker publishing workflow runs after successful CI for a
-same-repository push to `main`. It checks out the exact successful CI head SHA
-before building and pushing. This keeps the published image tied to the tested
-commit.
+After CI succeeds for a same-repository push to `main`, the Docker publishing
+workflow checks out that CI run's head SHA, then builds and pushes the image.
 
 ## Limitations
 
@@ -86,5 +83,5 @@ commit.
 - Installation occurs at image build time, so changing profile or configuration
   requires rebuilding.
 - Private overlays are not copied into the public image.
-- The image is an environment validation and shell image, not a full virtual
-  machine for every supported platform.
+- Use the image for environment validation or as a shell. It does not emulate
+  every supported platform.

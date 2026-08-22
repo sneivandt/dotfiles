@@ -4,10 +4,6 @@
 [ -n "$BASH_PROFILE_LOADED" ] && return
 BASH_PROFILE_LOADED=1
 
-# Global profile (optional)
-# shellcheck disable=SC1091
-[ -r /etc/profile ] && . /etc/profile
-
 # Profile
 # shellcheck disable=SC1090
 [ -r ~/.config/shell/profile.sh ] && . ~/.config/shell/profile.sh

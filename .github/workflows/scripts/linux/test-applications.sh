@@ -116,7 +116,7 @@ test_git_config()
 
   # Check key config values
   errors=0
-  for kv in "init.defaultBranch=main" "pull.rebase=true" "merge.conflictstyle=zdiff3" "push.autoSetupRemote=true" "diff.algorithm=histogram"; do
+  for kv in "init.defaultBranch=main" "pull.rebase=true" "rebase.updateRefs=true" "merge.conflictstyle=zdiff3" "push.default=simple" "push.autoSetupRemote=true" "push.useForceIfIncludes=true" "diff.algorithm=histogram"; do
     key="${kv%%=*}"; expected="${kv#*=}"
     actual="$(git config --get "$key" 2>/dev/null || echo "")"
     if [ "$actual" = "$expected" ]; then

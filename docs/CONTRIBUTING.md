@@ -1,7 +1,7 @@
 # Contributing
 
-Changes should preserve the separation between wrappers, declarative desired
-state, domain behavior, and application orchestration.
+Keep wrappers, declarative desired state, domain behavior, and application
+orchestration in their existing layers.
 
 ## Development setup
 
@@ -28,8 +28,8 @@ On Windows, the wrapper can build and invoke the local binary in one step:
 
 ## Before editing
 
-1. Identify the owning layer and read the nearest implementation.
-2. Treat `conf/` and the command/task catalogs as authoritative.
+1. Identify the owning layer and read the closest implementation.
+2. Use `conf/` and the command and task catalogs as the source of truth.
 3. Check whether an existing resource, provider, task, or operation can be
    reused.
 4. Preserve user-owned working-tree changes and private overlay content.
@@ -84,14 +84,14 @@ preview, and apply behavior.
 ### Platform-specific change
 
 Prefer platform capability methods and adapters over direct operating-system
-checks scattered through task logic. Ensure the other platform still compiles
-by guarding imports, types, and calls at the right boundary.
+checks scattered through task logic. Guard imports, types, and calls at the
+right boundary so the other platform still compiles.
 
 ## Code quality
 
 - Propagate failures with context; do not return success for invalid input.
 - Keep mutations idempotent.
-- Ensure `--dry-run` does not perform the mutation.
+- Keep `--dry-run` free of mutations.
 - Avoid broad exception handling or silent fallbacks.
 - Reuse typed configuration and engine helpers.
 - Add comments only where behavior is not self-explanatory.
@@ -111,9 +111,9 @@ On Windows:
 pwsh -File .github\workflows\scripts\windows\Check.ps1
 ```
 
-The runner uses the repository's `ci` Cargo profile, so a local pass and a CI
-pass mean the same thing. Stages whose tool is not installed report `SKIP`
-rather than failing. See [Testing](TESTING.md) for the stage list.
+The runner uses the same `ci` Cargo profile as CI. Stages whose tools are not
+installed report `SKIP` rather than failing. See [Testing](TESTING.md) for the
+stage list.
 
 While iterating, use the narrowest stage that covers the change:
 
@@ -135,14 +135,13 @@ to `main`. Publishing builds use release mode; ordinary CI uses the `ci`
 profile. Recurring integration logic belongs in
 `.github/workflows/scripts/`, not large inline workflow blocks.
 
-Releases are tagged `vYYYY.MM.DD-N`, where `N` starts at 1 and increments for
-each additional release published on the same day. A dedicated `version` job
-resolves the tag once and passes it to every downstream build job, so all
-artifacts in a release agree on their version. Release runs are serialized so
-two runs cannot reserve the same tag. `release.yml` also accepts
-`workflow_dispatch` for a manual publish, but requires the run ID of a completed,
-successful `CI` push run for `main`; the release always builds that run's tested
-commit.
+Releases use tags in the form `vYYYY.MM.DD-N`. `N` starts at 1 and increments
+for each additional release on the same day. The `version` job resolves the tag
+once and passes it to every build job, so all artifacts use the same version.
+Release runs are serialized to prevent duplicate tags. `release.yml` also
+accepts `workflow_dispatch` for a manual publish, but requires the run ID of a
+completed, successful `CI` push run for `main`; the release always builds that
+run's tested commit.
 
 The CLI's self-update path only recognizes this tag format. Binaries built
 before it was adopted cannot parse current release tags and will stop
@@ -154,10 +153,9 @@ Update the guide closest to the behavior. If a task is added, removed, renamed,
 changes command membership, or is rewired, update [Task reference](TASKS.md).
 Keep the root README as a landing page and place detailed guidance in `docs\`.
 
-CI checks documentation on every change, including docs-only changes: relative
-markdown links must resolve to real files, and every task selector documented in
-[Task reference](TASKS.md) must still exist in the CLI. Reproduce both locally
-with:
+CI checks documentation on every change, including documentation-only changes.
+Relative Markdown links must resolve, and every selector in
+[Task reference](TASKS.md) must exist in the CLI. Run both checks locally with:
 
 ```bash
 sh .github/workflows/scripts/linux/check.sh docs

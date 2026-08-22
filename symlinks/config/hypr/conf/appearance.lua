@@ -39,7 +39,7 @@ hl.config({
         disable_hyprland_logo = true,
         disable_splash_rendering = true,
         force_default_wallpaper = 0,
-        render_unfocused_fps = 60,
+        render_unfocused_fps = 15,
     },
 
     ecosystem = {

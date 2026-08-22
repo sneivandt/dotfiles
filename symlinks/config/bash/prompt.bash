@@ -29,16 +29,6 @@ __bash_git_prompt()
   fi
 }
 
-# Check sudo status (cached per prompt)
-# Uses `sudo -nv` (validate-only): unlike `sudo -n true`, it does not write a
-# "a password is required" entry to the auth log when no timestamp is cached.
-__bash_sudo_prompt()
-{
-  if sudo -nv 2>/dev/null; then
-    printf " \001\e[0;36m\002!\001\e[0m\002"
-  fi
-}
-
 PS1=""
 
 # host name (cached)
@@ -52,9 +42,6 @@ PS1+="\\[\\e[0;33m\\]\\w\\[\\e[0m\\]"
 
 # git prompt info (function call for dynamic content)
 PS1+="\$(__bash_git_prompt)"
-
-# sudo active (function call for dynamic content)
-PS1+="\$(__bash_sudo_prompt)"
 
 # prompt
 PS1+="\\n\\$ "

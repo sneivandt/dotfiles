@@ -3,35 +3,34 @@
 
 import json
 import os
-import signal
 import socket
 import subprocess
 import sys
 
 
-def waybar_pids() -> list[int]:
+def toggle_waybar() -> bool:
     try:
-        out = subprocess.check_output(["pidof", "waybar"], text=True).strip()
+        subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "kill",
+                "--signal=SIGUSR1",
+                "--kill-whom=main",
+                "waybar.service",
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return []
-    return [int(p) for p in out.split() if p.isdigit()]
+        return False
+    return True
 
 
 def set_hidden(hidden: bool, current: dict) -> None:
-    pids = set(waybar_pids())
-    previous_pids = current["pids"]
-    targets = {
-        pid
-        for pid in pids
-        if (current["hidden"] if pid in previous_pids else False) != hidden
-    }
-    for pid in targets:
-        try:
-            os.kill(pid, signal.SIGUSR1)
-        except ProcessLookupError:
-            pass
-    current["hidden"] = hidden
-    current["pids"] = pids
+    if current["hidden"] != hidden and toggle_waybar():
+        current["hidden"] = hidden
 
 
 def active_workspace_fullscreen() -> bool | None:
@@ -69,7 +68,7 @@ def main() -> int:
         return 1
 
     sock_path = f"{runtime}/hypr/{sig}/.socket2.sock"
-    state = {"hidden": False, "pids": set()}
+    state = {"hidden": False}
     triggers = (
         "fullscreen>>",
         "workspace>>",
@@ -84,15 +83,9 @@ def main() -> int:
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(sock_path)
-            sock.settimeout(1.0)
             buf = b""
             while True:
-                try:
-                    data = sock.recv(4096)
-                except socket.timeout:
-                    # A restarted Waybar starts visible; hide newly seen PIDs.
-                    set_hidden(state["hidden"], state)
-                    continue
+                data = sock.recv(4096)
                 if not data:
                     break
                 buf += data

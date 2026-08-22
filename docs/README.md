@@ -1,23 +1,23 @@
 # Documentation
 
-This directory documents the Rust-based dotfiles manager, its declarative
-configuration, and the workflows used to develop and operate it.
+These guides cover the Rust CLI, the desired state in `conf/`, and the
+workflows for maintaining a configured machine.
 
 ## Start here
 
 | Guide | Purpose |
 |---|---|
-| [Usage](USAGE.md) | Bootstrap the CLI and use every command and global option |
-| [Task reference](TASKS.md) | Understand every install, update, uninstall, validation, and overlay task |
-| [Configuration](CONFIGURATION.md) | Edit the TOML desired-state files safely |
-| [Profiles](PROFILES.md) | Control role and platform-specific configuration |
-| [Troubleshooting](TROUBLESHOOTING.md) | Diagnose common bootstrap, configuration, and convergence failures |
+| [Usage](USAGE.md) | Bootstrap the CLI; use its commands and global options |
+| [Task reference](TASKS.md) | Look up install, update, uninstall, validation, and overlay tasks |
+| [Configuration](CONFIGURATION.md) | Edit the TOML desired-state files |
+| [Profiles](PROFILES.md) | Select role-specific and platform-specific configuration |
+| [Troubleshooting](TROUBLESHOOTING.md) | Diagnose bootstrap, configuration, and convergence failures |
 
 ## Design and development
 
 | Guide | Purpose |
 |---|---|
-| [Architecture](ARCHITECTURE.md) | Learn the CLI layers, task engine, resource model, and execution flow |
+| [Architecture](ARCHITECTURE.md) | See the CLI layers, task engine, resource model, and execution flow |
 | [Contributing](CONTRIBUTING.md) | Build, test, and change the project |
 | [Testing](TESTING.md) | Run local checks and understand CI coverage |
 | [Hooks](HOOKS.md) | Understand installed Git hooks and sensitive-data checks |
@@ -41,4 +41,4 @@ configuration, and the workflows used to develop and operate it.
   arguments.
 - `.github/workflows/` is authoritative for CI and publishing behavior.
 
-The documentation explains those sources; it does not replace them.
+When a guide and one of these sources disagree, follow the source.

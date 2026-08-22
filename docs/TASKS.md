@@ -1,10 +1,10 @@
-# Task Reference
+# Task reference
 
-This reference covers the visible install, update, uninstall, validation, and
-dynamic overlay tasks scheduled by the CLI. Run `dotfiles tasks` for the active
-machine-readable list of selectors, labels, and command membership.
+This page describes the CLI's visible install, update, uninstall, validation,
+and dynamic overlay tasks. Run `dotfiles tasks` for the active list of
+selectors, labels, and command membership.
 
-Task metadata separates four concerns:
+Each task has separate metadata for:
 
 - scheduler identity, used for dependencies and duplicate detection
 - stable selector, used by `--only` and `--skip`
@@ -18,20 +18,19 @@ or perform substring matching.
 
 ## Scheduling model
 
-The engine validates the active tasks as a dependency graph. A task becomes
-ready after all active dependencies complete successfully. Independent ready
-tasks may run in parallel, and visible rows are printed in natural completion
-order. `--no-parallel` runs independent work sequentially but does not define a
-documented display order.
+The engine validates active tasks as a dependency graph. A task becomes ready
+after its active dependencies succeed. Independent ready tasks may run in
+parallel, so visible rows appear in completion order. `--no-parallel` runs
+independent work sequentially but does not guarantee a display order.
 
 Every ordering requirement is an explicit edge. Catalog insertion order is not
 scheduling policy. Tasks marked `update_only` are excluded from `install` and
 included by `update`; this metadata controls command membership, not ordering.
 
-Built-in mutating tasks are designed to be idempotent and dry-run safe. A task
-may report that it is already correct, skipped, or not applicable rather than
-performing work. Overlay scripts are opaque external programs, so their
-idempotency and dry-run safety depend on the script honoring its contract.
+Built-in mutating tasks are idempotent and dry-run safe. A task may report
+current, skipped, or not applicable without performing work. Overlay scripts
+are external programs, so each script must honor the idempotency and dry-run
+contract itself.
 
 ## Install and update tasks
 
@@ -71,23 +70,22 @@ or aggregate totals.
 
 #### Windows Developer Mode
 
-This Windows-only task checks the Developer Mode capability and enables it when
-missing. It runs before symlink provisioning because Windows symlink creation
-normally requires either Developer Mode or elevation. The task uses lenient
-resource processing: unsupported environments are surfaced without hiding real
-mutation failures.
+This Windows-only task checks Developer Mode and enables it when needed. It runs
+before symlink provisioning because Windows normally requires Developer Mode or
+elevation to create symlinks. Unsupported environments are reported without
+hiding mutation failures.
 
 It is the only task that always needs administrator rights, and only on the
-first run — once Developer Mode is set, no Windows task requires elevation.
-When it cannot elevate, it and every task that depends on it are skipped and
-the rest of the run proceeds.
+first run. After Developer Mode is enabled, no Windows task requires elevation.
+If elevation is unavailable, the CLI skips this task and its dependents, then
+continues the rest of the run.
 
 #### Dotfiles launcher
 
-Copies the appropriate bootstrap wrapper into `~/.local/bin` as `dotfiles`.
-The wrapper remains thin: it locates, downloads, verifies, or builds the Rust
-binary and forwards all CLI arguments. Re-running the task replaces stale
-wrapper content but does not create a second behavioral implementation.
+Copies the platform wrapper into `~/.local/bin` as `dotfiles`. The wrapper
+locates, downloads, verifies, or builds the Rust binary, then forwards all CLI
+arguments. Rerunning the task replaces stale wrapper content. Command behavior
+remains in the Rust CLI.
 
 #### Shell PATH
 
@@ -98,16 +96,16 @@ user. Platform-specific capability methods perform the actual PATH convergence.
 
 #### Excluded home files
 
-When a profile change will exclude paths from sparse checkout, a home-directory
-symlink may point at a source Git is about to remove. This task copies the
-symlink's content into a real file or directory first. It is a preservation
-step, not the uninstall task with a similar purpose.
+Before a profile change excludes paths from sparse checkout, a home symlink may
+still point to a source Git will remove. This task first replaces that link with
+a real file or directory. It preserves content during profile changes; it is
+not an uninstall task.
 
 #### Sparse checkout
 
-Runs after preservation. It converts excluded manifest categories into Git
-sparse-checkout patterns and applies them to the checkout. It only runs when Git
-and an appropriate repository are available.
+After preservation, this task converts excluded manifest categories into Git
+sparse-checkout patterns and applies them. It runs only when Git and a suitable
+repository are available.
 
 `conf/manifest.toml` is deliberately not merged from overlays; sparse checkout
 describes the main repository's tracked `symlinks/` tree.
@@ -125,16 +123,15 @@ boundary.
 
 #### Git hooks
 
-Runs after **Dotfiles repository**, ensuring the latest hook sources are used.
-Hook files are installed from `hooks/` into the checkout's Git hook directory.
-The task is not applicable outside a Git checkout or when hook sources are
-absent.
+Runs after **Dotfiles repository**, so it uses the latest hook sources. It
+installs files from `hooks/` into the checkout's Git hook directory. The task
+does not apply outside a Git checkout or when hook sources are absent.
 
 #### Shell completions
 
-Runs after **Dotfiles repository** on Linux. The application generates Zsh
-completion content from the current Clap command definition and the task
-installs it into the managed completion location.
+On Linux, the application generates Zsh completions from the current Clap
+command definition after **Dotfiles repository** runs. The task writes them to
+the managed completion location.
 
 #### Reload configuration
 
@@ -144,17 +141,17 @@ updated `profiles.toml`, reloads configuration, and updates shared configuration
 handles by publishing one immutable configuration generation. Tasks cannot
 observe a mix of sections from before and after the reload.
 
-If this boundary or one of its prerequisites fails, late dynamic tasks are not
-discovered from inconsistent state. Static tasks independent of the failed
-prefix continue, while tasks with failed blocking prerequisites remain skipped.
+If this boundary or a prerequisite fails, the CLI does not discover late
+dynamic tasks from inconsistent state. Independent static tasks continue.
+Tasks with failed blocking prerequisites remain skipped.
 
 #### Reconcile updated checkout
 
-Runs after **Reload configuration** and reapplies excluded-file preservation and
-sparse-checkout rules from the refreshed profile and manifest. Because profile,
-manifest, and overlay changes can affect later task discovery, the command
-executes this task's dependency closure first, rebuilds dynamic tasks, then runs
-the remaining static and dynamic tasks together.
+Runs after **Reload configuration** and reapplies preservation and
+sparse-checkout rules from the refreshed profile and manifest. Profile,
+manifest, and overlay changes can affect later task discovery. The command
+therefore executes this task's dependency closure first, rebuilds dynamic tasks,
+then runs the remaining static and dynamic tasks together.
 
 #### Report overlay scripts
 
@@ -186,25 +183,26 @@ uses the active platform provider:
 The task discovers installed state before applying changes and only requests
 elevation when the planned provider action needs it.
 
-On Windows the task never elevates itself. winget installs are attempted with
-`--scope user` first and retried unscoped only when no user-scope installer
-exists. A package whose installer still demands administrator rights is
-reported as skipped rather than failing the task, so the rest of the run
-continues. Re-run `dotfiles install --only packages` from an elevated terminal
-to finish those.
+On Windows, the task never elevates itself. It tries winget with `--scope user`
+first, then retries without a scope only when no user-scope installer exists. If
+an installer still requires administrator rights, the package is marked skipped
+and the rest of the run continues. Run
+`dotfiles install --only packages` from an elevated terminal to finish those
+packages.
 
 #### Paru package manager
 
-Arch-only bootstrap for the `paru` AUR helper. It queries `pacman -Q paru` and
-runs `/usr/bin/paru --version` in the current system context; under
-`install-arch`, both commands run inside the target chroot. A missing helper is
-installed and a present but unusable helper is rebuilt from AUR source against
-the current system libraries. Before cloning, the task requires `git`,
-`makepkg`, and `sudo`, then resolves Cargo and runs `cargo --version` so an
-unconfigured `rustup` proxy fails with remediation guidance instead of failing
-inside `makepkg`. The target package and executable must pass the same check
-before dependent tasks run, which invoke that exact `/usr/bin/paru` rather than
-resolving a host or stale PATH entry.
+This Arch-only task bootstraps the `paru` AUR helper. It queries
+`pacman -Q paru` and runs `/usr/bin/paru --version` in the current system
+context. Under `install-arch`, both commands run inside the target chroot. The
+task installs a missing helper. It rebuilds an installed but unusable helper
+from AUR source against the current system libraries.
+
+Before cloning, the task requires `git`, `makepkg`, and `sudo`. It then resolves
+Cargo and runs `cargo --version`. An unconfigured `rustup` proxy therefore fails
+with remediation guidance before `makepkg` starts. Both the target package and
+executable must pass the same check before dependent tasks run. Those tasks call
+the exact `/usr/bin/paru` path instead of resolving a host or stale PATH entry.
 
 #### AUR packages
 
@@ -215,8 +213,8 @@ uses the AUR helper after its bootstrap prerequisite has completed.
 
 Reads `conf/symlinks.toml`, expands supported source globs, computes
 home-relative targets, and creates or corrects links. Main and overlay entries
-retain their source repository provenance. On Windows, Developer Mode capability
-is established earlier in the graph.
+keep their source repository. On Windows, the graph establishes Developer Mode
+first.
 
 #### File permissions
 
@@ -226,12 +224,12 @@ execute bits cleared unless explicitly targeted by another entry.
 
 #### Default shell
 
-Linux-only task that converges the user's default shell. It runs after package
-installation so the desired shell executable can be present. State comes from
-the account database rather than the invoking process's `SHELL` variable. A
-root invocation uses `usermod` directly; an unprivileged non-interactive
-invocation uses passwordless or cached sudo when available, while a normal
-interactive run retains the `chsh` path.
+This Linux-only task sets the user's default shell after package installation,
+when the desired executable is available. It reads state from the account
+database instead of the invoking process's `SHELL` variable. A root invocation
+uses `usermod` directly. An unprivileged non-interactive invocation uses
+passwordless or cached sudo when available. A normal interactive run uses
+`chsh`.
 
 #### Systemd units
 
@@ -272,13 +270,12 @@ restarted.
 
 #### APM package updates
 
-This task is marked update-only and depends on **APM packages**. It runs
-only for `dotfiles update` and only after APM install state matches the active
-merged-manifest fingerprint. That guard prevents a failed or partially
-converged install from advancing the lockfile. It invokes APM's idempotent
-update directly and compares the lockfile before and after to determine whether
-dependency refs advanced. The comparison ignores APM's volatile `generated_at`
-stamp so a re-serialized-but-unchanged lockfile is not reported as a change.
+This update-only task depends on **APM packages**. It runs only during
+`dotfiles update` and only when APM install state matches the active
+merged-manifest fingerprint. The guard prevents failed or partial install state
+from advancing the lockfile. The task invokes APM's idempotent update and
+compares the lockfile before and after. It ignores APM's volatile `generated_at`
+stamp, so reserializing an unchanged lockfile does not count as a change.
 
 ## Dynamic overlay tasks
 
@@ -296,10 +293,10 @@ current configuration before a single graph is run. Each task:
 - uses its dry-run mode during `--dry-run`
 - captures and forwards non-empty output through the engine logger
 
-The engine passes `--check` and `--dryrun` as appropriate but cannot prevent a
-script from mutating state if the script violates that contract. Although the
-underlying resource supports `--remove`, dynamic script tasks are not registered
-in the current uninstall catalog.
+The engine passes `--check` and `--dryrun` as needed, but it cannot stop a
+script that ignores the contract from changing state. The underlying resource
+supports `--remove`; dynamic script tasks are not registered in the current
+uninstall catalog.
 
 Scripts are never loaded from the public repository's `conf/` directory. See
 [Overlay scripts](CONFIGURATION.md#overlay-scripts).

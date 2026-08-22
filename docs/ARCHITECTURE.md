@@ -1,7 +1,8 @@
 # Architecture
 
-The project separates bootstrap, application orchestration, domain behavior,
-infrastructure adapters, and declarative desired state.
+The wrappers handle bootstrap only. The Rust code separates application
+orchestration, domain behavior, infrastructure adapters, and declarative desired
+state.
 
 ## System view
 
@@ -42,7 +43,7 @@ dotfiles.sh / dotfiles.ps1
 
 ## Wrappers
 
-The wrappers are intentionally thin. They:
+The wrappers:
 
 1. Determine the repository root and target binary.
 2. Consume wrapper-only `--build`.
@@ -51,12 +52,12 @@ The wrappers are intentionally thin. They:
 5. Export bootstrap context.
 6. Execute the Rust CLI with all remaining arguments unchanged.
 
-Command semantics must not be added to the wrappers. Keeping one behavioral
-implementation avoids Linux/Windows drift.
+Do not add command semantics to the wrappers. The Rust CLI must remain the
+single implementation on Linux and Windows.
 
 ## Application layer
 
-The application layer owns composition:
+The application layer composes commands and configuration:
 
 - `cli.rs` defines public commands and options.
 - `catalog.rs` constructs the static install and uninstall task lists.
@@ -81,8 +82,8 @@ Every task exposes:
 - one immutable applicability/elevation assessment per execution phase
 - execution returning a structured task result
 
-These identities are independent: `TaskId` is the DAG key, `selector()` is the
-CLI interface used by `--only`, `name()` is presentation, and `visibility()`
+These identities are independent. `TaskId` is the DAG key, `selector()` is the
+CLI value used by `--only`, and `name()` is the display label. `visibility()`
 controls discovery, normal console rows, and totals.
 
 The coordinator computes each task's `TaskAssessment` once and shares it between
@@ -125,11 +126,10 @@ Resources are used for packages, symlinks, registry values, permissions, and
 similar state. Providers can batch or cache state discovery, reducing repeated
 system calls.
 
-Resource processing is dry-run aware and returns explicit outcomes such as
+Resource processing respects dry-run and returns explicit outcomes such as
 applied, already correct, skipped, invalid, or unknown. A skipped outcome
-carries whether the skip was benign or represents unmet work, so a resource
-that could not converge still fails the run. Tasks translate those outcomes
-into user-facing summaries.
+records whether the skip is harmless or leaves work unfinished. Unfinished work
+can still fail the run. Tasks turn these outcomes into user-facing summaries.
 
 ## Operations
 
@@ -182,7 +182,7 @@ than scattering direct operating-system checks. Platform guards still determine
 applicability, but concrete mutations are delegated to the relevant adapter or
 provider.
 
-This supports:
+The abstraction provides:
 
 - Linux and Windows implementations behind common contracts
 - test doubles for filesystem, command execution, and process environment
@@ -190,11 +190,11 @@ This supports:
 - elevation planning before parallel task dispatch, scoped to the tasks that
   declare it rather than the whole process
 
-Environment variables reachable from a task or resource are read through the
-context's environment adapter rather than process globals, so tests can supply
-a fixed environment without mutating shared state. Startup code that runs
-before a context exists — argument parsing, re-exec guards, log-directory
-discovery — still reads the process environment directly.
+Tasks and resources read environment variables through the context adapter, not
+process globals. Tests can provide a fixed environment without changing shared
+state. Startup code runs before a context exists, so argument parsing, re-exec
+guards, and log-directory discovery still read the process environment
+directly.
 
 ## Error handling and observability
 
@@ -205,25 +205,24 @@ variants preserve cancellation, timeout, spawn, I/O, and non-zero-exit
 failures through task and resource boundaries.
 
 The logger records stages, structured results, actions, warnings, summaries, and
-diagnostic detail. Internal orchestration remains in diagnostic/file logs but is
-excluded from normal task rows and totals.
+diagnostics. Internal orchestration remains in diagnostic and file logs but does
+not appear in normal task rows or totals.
 Engine records are keyed by scheduler identity rather than display name, so
 dynamic tasks with the same label retain separate status, detail, and duration
 records. Command success policy consumes the scheduler's `ExecutionSummary`;
 logger counters are presentation data only.
 
-Visible rows use one-cell `✓`, `~`, `⊘`, and `✗` statuses, plus verbose-only `‧`
-and `⁃`; `--no-symbols` restores ASCII words. A row carries the task's reason
-after a `·` separator, so indented lines beneath it are always actions the task
-took or planned. Normal output prints rows only for tasks that changed something
-or need attention, with all their detail and no truncation; verbose output
-accounts for every task, adds per-task elapsed time for tasks that ran, and
-replays the per-resource decisions behind each outcome. Aggregate summaries lead
-with affected-task counts and put individual applied or planned counts in
-parentheses without status glyphs, followed by current, ignored, or failed task
-counts and elapsed time; the transient progress line counts
-against the same set of tasks the summary accounts for, so non-applicable tasks
-leave its denominator once they resolve.
+Visible rows use `✓`, `~`, `⊘`, and `✗`, plus the verbose-only `‧` and `⁃`.
+`--no-symbols` uses ASCII words instead. A task's reason follows a `·`
+separator. Indented lines are actions the task took or planned.
+
+Normal output includes only tasks that changed state or need attention, with no
+detail truncation. Verbose output includes every task, elapsed time for tasks
+that ran, and each resource decision behind the result. Summaries begin with
+affected-task counts. Individual applied or planned counts appear in
+parentheses, without status glyphs, followed by current, ignored, or failed task
+counts and elapsed time. The progress line and summary count the same tasks.
+When a task proves non-applicable, it leaves the progress denominator.
 `dotfiles log` prints a retained run log for post-run investigation. Each run
 writes its own file in a platform state directory and the newest 50 are kept, so
 a failed run stays readable after later runs. `dotfiles log --list` enumerates
@@ -251,7 +250,7 @@ operation -> task metadata/dependencies -> command registration -> tests
 
 ### Add private behavior
 
-Use overlay configuration. Conventional private scripts become dynamic tasks
-without teaching the public catalog about private repositories.
+Use overlay configuration. Convention-based private scripts become dynamic
+tasks without adding private repositories to the public catalog.
 
 See [Contributing](CONTRIBUTING.md) and [Task reference](TASKS.md).

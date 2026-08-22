@@ -1,8 +1,8 @@
-# Profiles and Categories
+# Profiles and categories
 
-Profiles select the role of a machine. Categories describe the layers of
-configuration that apply. The CLI combines a selected role profile with
-automatically detected platform categories.
+A profile selects the machine's role. Categories determine which configuration
+sections apply. The CLI combines the selected profile with detected platform
+categories.
 
 ## Built-in role profiles
 
@@ -21,7 +21,7 @@ automatically detected platform categories.
 | `windows` | The CLI is running on Windows |
 | `arch` | The Linux distribution is Arch Linux |
 
-These categories are detected; users do not select them as profiles.
+The CLI detects these categories. They are not selectable profiles.
 
 Examples:
 
@@ -41,8 +41,8 @@ Section names are split on hyphens and every tag must be active:
 packages = ["waybar"]
 ```
 
-This section applies only when both `arch` and `desktop` are active. Ordering
-does not turn it into a hierarchy, and matching is not OR-based.
+This section applies only when both `arch` and `desktop` are active. Tag order
+does not create a hierarchy, and matching does not use OR semantics.
 
 ## Resolution priority
 
@@ -72,10 +72,10 @@ Profiles affect both desired state and which platform-specific files remain in
 the checkout. `conf/manifest.toml` maps category exclusions to paths under
 `symlinks/`.
 
-When switching from `desktop` to `base`, desktop paths may be removed from the
-sparse checkout. Before applying those exclusions, the CLI materializes managed
-home symlinks whose sources would disappear. This preserves usable user files
-rather than leaving broken links.
+Switching from `desktop` to `base` may remove desktop paths from the sparse
+checkout. Before applying the exclusions, the CLI replaces affected managed
+home symlinks with their file or directory content. The home paths remain
+usable after their sources disappear.
 
 Preview profile changes:
 
@@ -92,5 +92,5 @@ dotfiles install --profile base --dry-run --verbose
 4. Run `dotfiles test`.
 5. Preview both inclusion and exclusion transitions with `--dry-run`.
 
-Prefer a small vocabulary of orthogonal categories. A new profile should
-compose categories rather than duplicate large configuration lists.
+Keep categories independent and limited in number. Compose a new profile from
+categories instead of duplicating large configuration lists.

@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with a dry run and verbose output:
+Start by previewing the full run, then inspect the latest log:
 
 ```bash
 dotfiles install --dry-run --verbose
@@ -11,7 +11,7 @@ Logs are retained per run, so a failure stays readable after later runs. Use
 `dotfiles log --list` to enumerate retained runs and `dotfiles log <N>` to read
 an earlier one.
 
-Then narrow the command with `--only` using a display name from
+Then narrow the command with `--only` and a selector from
 [Task reference](TASKS.md).
 
 ## The wrapper cannot find or download the binary
@@ -73,8 +73,8 @@ installed, then run:
 cargo build --manifest-path cli/Cargo.toml
 ```
 
-If only the wrapper build fails, running Cargo directly usually exposes the
-underlying compiler or linker error without wrapper output.
+If only the wrapper build fails, run Cargo directly to see the compiler or
+linker error without wrapper output.
 
 ## Paru bootstrap reports an incomplete Rust/Cargo prerequisite
 
@@ -85,8 +85,7 @@ install the distribution-managed toolchain and AUR build prerequisites:
 sudo pacman -Syu --needed base-devel git rust sudo
 ```
 
-If `rustup` was chosen intentionally, installing the manager alone is not
-enough; install and select a default toolchain before retrying:
+If you use `rustup`, install and select a default toolchain before retrying:
 
 ```bash
 rustup default stable
@@ -98,7 +97,7 @@ Cargo inside the target system before starting dotfiles.
 ## No profile can be selected
 
 Profile priority is CLI, environment, local Git config, then an interactive
-prompt. In a non-interactive environment, provide one explicitly:
+prompt. In a non-interactive environment, set the profile explicitly:
 
 ```bash
 dotfiles install --profile base
@@ -130,8 +129,8 @@ Core required files are `profiles.toml`, `symlinks.toml`, `packages.toml`, and
 - a conditional symlink missing manifest coverage
 - an invalid package or APM reference
 
-Use the complete path from the reported diagnostic rather than editing a
-similarly named overlay file.
+Edit the complete path shown in the diagnostic. Do not assume a similarly named
+overlay file caused the error.
 
 ## An overlay appears to be ignored
 
@@ -153,7 +152,7 @@ Remember:
 
 ## A task does not run
 
-A task can be absent from execution because:
+A task may not run because:
 
 - its command membership excludes it (`install` excludes update-only tasks)
 - it is not applicable to the host
@@ -180,9 +179,9 @@ Run:
 dotfiles install --only "developer mode,symlinks" --dry-run --verbose
 ```
 
-Confirm Developer Mode is enabled, open a new terminal, and check whether an
-unrelated file already occupies the target. Avoid running the whole workflow
-elevated when only a specific capability requires it.
+Confirm Developer Mode is enabled, open a new terminal, and check whether
+another file occupies the target. Do not elevate the whole workflow for one
+capability.
 
 ## A task was skipped because elevation was unavailable
 
@@ -195,9 +194,9 @@ child run. When that cannot happen, the run continues and reports the reason:
 | `elevation unavailable in a non-interactive session` | CI or a session with no console, where no one can answer a prompt. |
 | `requires <task>` | A dependency was skipped for one of the reasons above. |
 
-Nothing is left half-applied: dependent tasks are skipped rather than run
-against a prerequisite that never happened. Re-run the specific task from an
-elevated terminal, then re-run the normal workflow:
+The CLI skips dependent tasks rather than running them without a prerequisite.
+Run the specific task from an elevated terminal, then run the normal workflow
+again:
 
 ```powershell
 dotfiles install --only developer-mode
@@ -221,7 +220,7 @@ reported source or target problem first.
 
 ## Repository update fails
 
-Repository synchronization requires a suitable Git checkout and upstream. Check:
+Repository synchronization needs a Git checkout with a usable upstream. Check:
 
 ```bash
 git status
@@ -238,8 +237,8 @@ whether the reload signal was consumed.
 
 ## Packages do not install
 
-On Arch, regular packages use pacman and AUR records use paru. On Windows,
-packages use winget.
+On Arch, regular packages use pacman and AUR records use paru. Windows packages
+use winget.
 
 Check the configured identifier and provider directly, then preview the package
 tasks:
@@ -251,12 +250,12 @@ dotfiles install --only packages --dry-run --verbose
 An AUR failure may originate in **Paru package manager** before **AUR packages**.
 Do not mark a provider failure as already installed.
 
-The bootstrap checks both the current Arch package database (`pacman -Q paru`)
-and the installed executable (`/usr/bin/paru --version`). `install-arch` runs
-dotfiles through `arch-chroot /mnt`, so these checks address the target system,
+The bootstrap checks the current Arch package database with `pacman -Q paru` and
+the installed executable with `/usr/bin/paru --version`. `install-arch` runs
+dotfiles through `arch-chroot /mnt`, so both checks inspect the target system,
 not the live ISO. A loader failure such as a missing `libalpm.so.*` triggers a
-source rebuild. A `paru` visible on PATH without a corresponding target package
-is reported as stale/broken; later AUR operations use the validated
+source rebuild. If PATH contains `paru` but the target package is absent, the
+task reports it as stale or broken. Later AUR operations call the validated
 `/usr/bin/paru` directly.
 
 ## APM update is skipped
@@ -293,7 +292,7 @@ depends on package, AUR, and symlink convergence.
 
 ## WSL settings did not change
 
-`wsl.conf` changes generally require the distribution to stop completely:
+Changes to `wsl.conf` usually require a complete distribution shutdown:
 
 ```powershell
 wsl --shutdown
@@ -304,7 +303,7 @@ the Windows host executable.
 
 ## Uninstall did not restore machine defaults
 
-This is intentional. Uninstall materializes symlinks and removes hooks and the
-wrapper. It does not remove packages or reverse registry, systemd, shell, WSL,
-editor, APM, or arbitrary script changes. See
+Uninstall materializes symlinks and removes hooks and the wrapper. It does not
+remove packages or reverse registry, systemd, shell, WSL, editor, APM, or
+arbitrary script changes. See
 [Uninstall tasks](TASKS.md#uninstall-tasks).

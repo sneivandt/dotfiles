@@ -1,7 +1,7 @@
-# Security Model
+# Security model
 
-This document describes the repository's security controls and trust
-boundaries. It is not a public vulnerability-disclosure policy.
+This guide describes the repository's trust boundaries and security controls.
+It is not a public vulnerability-disclosure policy.
 
 ## Trust boundaries
 
@@ -31,11 +31,11 @@ asset and its checksum. They:
 
 The same sequence applies to the binary's own self-update download.
 
-A checksum proves that the binary matches the published release metadata; it
-does not independently establish who produced that release. The release workflow
-therefore also publishes a build provenance attestation for every asset, which
-ties the binary to the workflow, repository, and commit that produced it.
-Repository and GitHub account security remain part of the trust chain.
+A checksum proves that the binary matches the published release metadata, but
+not who produced the release. The release workflow also publishes a provenance
+attestation for each asset. The attestation identifies the workflow, repository,
+and commit that produced the binary. Repository and GitHub account security
+remain part of the trust chain.
 
 ## Build provenance verification
 
@@ -59,8 +59,8 @@ Use wrapper `--build` when you need the binary compiled from the local checkout.
 
 ## Elevation
 
-Tasks plan elevation before applying operations that require it. The default
-should remain least privilege:
+Tasks plan elevation before applying operations that require it. Keep elevation
+to the smallest necessary scope:
 
 - Windows symlinks use Developer Mode where possible.
 - Registry settings are currently user-scoped.
@@ -79,10 +79,9 @@ unprivileged on both platforms:
   restricted to those selectors, then continues unprivileged. The child cannot
   recurse into another elevated run.
 
-Elevation is never requested in a non-interactive or CI session. When elevation
-is declined or unavailable, the run degrades instead of aborting: the elevating
-tasks are skipped, and so are the tasks that depend on them, so nothing applies
-against a prerequisite that never happened.
+The CLI never requests elevation in a non-interactive or CI session. If
+elevation is declined or unavailable, it skips the affected tasks and their
+dependents instead of aborting the whole run.
 
 ## Private overlays
 
@@ -94,10 +93,10 @@ desired state and executable scripts. The public repository:
 - executes only scripts listed in the overlay's `conf/scripts.toml`
 - does not load scripts from its own public `conf/`
 
-Review an overlay before using `--overlay`; dry-run reduces mutation risk but
-does not make an untrusted executable safe to inspect or invoke. The engine
-passes `--check` and `--dryrun` to opaque scripts but cannot prevent mutation
-when a script violates that convention.
+Review an overlay before using `--overlay`. A dry run reduces mutation risk, but
+it does not make an untrusted executable safe. The engine passes `--check` and
+`--dryrun` to scripts but cannot stop a script that ignores those flags from
+changing state.
 
 ## Secrets
 
@@ -112,8 +111,9 @@ machine-specific secret values in:
 - GitHub workflow files
 
 The pre-commit hook scans staged content using `hooks/sensitive-patterns.ini`.
-This is defense in depth, not a guarantee. Generated command output and overlay
-script output are logged, so scripts must avoid printing sensitive values.
+The scan is a backup control, not a guarantee. Generated command output and
+overlay script output enter the logs, so scripts must not print sensitive
+values.
 
 If a secret is committed, revoke or rotate it first; removing it from the latest
 commit is not sufficient.

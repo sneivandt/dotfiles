@@ -19,23 +19,15 @@ git_prompt_info()
   local current_branch
   current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return
   if [ -n "$current_branch" ]; then
-    echo -n " %F{white}${current_branch}%f"
-  fi
-}
-
-# Fast sudo check
-# Uses `sudo -nv` (validate-only): unlike `sudo -n true`, it does not write a
-# "a password is required" entry to the auth log when no timestamp is cached.
-sudo_active()
-{
-  if sudo -nv 2>/dev/null; then
-    echo -n " %F{cyan}!%f"
+    # Keep branch-name percent signs from becoming zsh prompt escapes.
+    current_branch=${current_branch//\%/%%}
+    print -rn -- " %F{white}${current_branch}%f"
   fi
 }
 
 prompt_cmd()
 {
-  echo -n "%f${_ZSH_PROMPT_HOST}${_ZSH_PROMPT_SHELL}%F{yellow}%~%f$(git_prompt_info)$(sudo_active)%f"
+  print -rn -- "%f${_ZSH_PROMPT_HOST}${_ZSH_PROMPT_SHELL}%F{yellow}%~%f$(git_prompt_info)%f"
 }
 
 PROMPT='$(prompt_cmd)

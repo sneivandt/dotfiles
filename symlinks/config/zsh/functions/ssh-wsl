@@ -5,10 +5,22 @@
 command -v wslpath >/dev/null 2>&1 || { echo "ERROR: Not in WSL Environment" 1>&2 && return 1; }
 [ -n "$WINHOME" ] || { echo "ERROR: WINHOME not set" 1>&2 && return 1; }
 
+local i source_path target_path
+
+mkdir -p -m 700 "$HOME/.ssh" || return 1
+
 for i in github github_internal ado
 do
-  if [ -d "$WINHOME"/.ssh/"$i" ] && [ "$(readlink -f "$WINHOME"/.ssh/"$i")" != "$(readlink -f "$HOME"/.ssh/"$i")" ]
-  then
-    ln -snvf "$WINHOME"/.ssh/"$i" "$HOME"/.ssh/"$i"
+  source_path="$WINHOME/.ssh/$i"
+  target_path="$HOME/.ssh/$i"
+
+  [ -d "$source_path" ] || continue
+  [ "$(readlink -f "$source_path")" = "$(readlink -f "$target_path")" ] && continue
+
+  if [ -e "$target_path" ] && [ ! -L "$target_path" ]; then
+    echo "ERROR: refusing to replace existing path: $target_path" 1>&2
+    return 1
   fi
+
+  ln -snvf -- "$source_path" "$target_path" || return 1
 done

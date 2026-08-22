@@ -1,8 +1,7 @@
 # Usage
 
-The project is operated by a Rust CLI named `dotfiles`. The repository-level
-wrappers download or build that CLI, then forward arguments without
-reimplementing its behavior.
+The `dotfiles` Rust CLI manages the repository's configured state. The
+repository wrappers download or build the CLI, then forward arguments to it.
 
 ## Bootstrap
 
@@ -20,10 +19,11 @@ reimplementing its behavior.
 .\dotfiles.ps1 install --profile desktop
 ```
 
-By default, a wrapper uses `bin/dotfiles` or `bin\dotfiles.exe`. If the binary
-is absent, it downloads the latest compatible GitHub Release asset, verifies its
-SHA-256 checksum, and verifies its build provenance attestation when the `gh`
-CLI is available. Use wrapper-only `--build` to compile the CLI with Cargo:
+A wrapper uses `bin/dotfiles` or `bin\dotfiles.exe`. If that binary is absent,
+the wrapper downloads the latest compatible GitHub Release asset and verifies
+its SHA-256 checksum and build provenance attestation. Provenance verification
+requires the `gh` CLI unless `DOTFILES_SKIP_ATTESTATION=1` explicitly bypasses
+it. Use the wrapper-only `--build` option to compile with Cargo:
 
 ```bash
 ./dotfiles.sh --build install --dry-run
@@ -66,8 +66,8 @@ Global options may be placed before or after the subcommand.
 | `--no-symbols` | Use ASCII words instead of status symbols |
 | `--version` | Print the CLI version |
 
-`--dry-run` applies to mutating commands. It is the recommended first step
-after changing profiles or configuration.
+`--dry-run` applies to mutating commands. Use it first after changing a profile
+or configuration.
 
 ## Install
 
@@ -77,7 +77,7 @@ dotfiles install --profile desktop
 dotfiles install --dry-run --verbose
 ```
 
-`install` is idempotent: each task inspects current state and only applies the
+`install` is idempotent. Each task inspects current state and applies only the
 required change. Independent ready tasks may run concurrently; explicit
 dependencies preserve ordering.
 
@@ -96,10 +96,10 @@ Only one command may operate on a repository at a time. A second run reports
 the PID, command, and start time of the owner recorded in the repository's
 common Git directory.
 
-After a failed run, use `dotfiles install --retry-failed` (or the same original
-command) to retry incomplete tasks and their prerequisite closure. Recovery
-state is structured and repository-scoped; it is not reconstructed from display
-logs. Retry mode cannot be combined with `--only` or `--skip`.
+After a failed run, add `--retry-failed` to the original command to retry
+incomplete tasks and their prerequisite closure. Recovery state is structured
+and repository-scoped, not reconstructed from display logs. Retry mode cannot
+be combined with `--only` or `--skip`.
 
 When `install-arch` runs the desktop profile inside `arch-chroot`, dotfiles
 enables user units directly on disk because no user service manager exists yet.
@@ -125,9 +125,9 @@ dotfiles install --only "packages,git-hooks"
 dotfiles install --skip "systemd,registry"
 ```
 
-Both selectors can be used together: `--only` first limits the candidate set,
-then `--skip` removes matches. Matching is not based on Rust type names,
-arbitrary substrings, action-prefix removal, or the first word of a label.
+Both options can be used together. `--only` limits the candidate set, then
+`--skip` removes matches. Matching does not use Rust type names, arbitrary
+substrings, action-prefix removal, or the first word of a label.
 For example, `repository` and `dotfiles-repository` both match **Dotfiles
 repository**, but `dotfiles` does not. Unmatched selectors produce a warning.
 Internal orchestration tasks are omitted from discovery and cannot be selected.
@@ -162,10 +162,9 @@ downstream tasks consume it.
 
 ## Console output
 
-Every run opens with a dimmed header line that names the command, resolved
-command and, for previews, immediately follows it with `dry run`. The resolved
-profile and platform come next, followed by `overlay <path>` when an overlay is
-active.
+Every run starts with a dimmed header. It shows the command, `dry run` for a
+preview, the resolved profile, and the platform. An active overlay adds
+`overlay <path>`.
 
 ```text
 Install · dry run · profile desktop · Arch Linux · overlay ~/src/dotfiles-private
@@ -197,12 +196,12 @@ Indented dimmed lines beneath a row are the individual actions the task took or
 planned, listed in full without truncation. Task rows follow these actions
 immediately, without blank lines between task outputs.
 
-Normal output only prints rows for tasks that did something or need attention.
-`--verbose` accounts for every task — including up-to-date and non-applicable
-ones — adds elapsed time to each row that ran, and replays the per-resource
-decisions behind each outcome. `⁃` rows carry no elapsed time because nothing
-ran. Internal orchestration remains available in the run log but is excluded
-from console rows and totals in both modes.
+Normal output includes only tasks that changed state or need attention.
+`--verbose` includes every task, including current and non-applicable tasks. It
+adds elapsed time to each task that ran and shows the resource decisions behind
+each outcome. `⁃` rows have no elapsed time because nothing ran. Internal
+orchestration remains in the run log but does not appear in console rows or
+totals.
 
 Before the scheduler starts, an installed binary checks for a newer release. The
 check draws a transient status line while it runs and erases it afterwards; a
@@ -225,9 +224,9 @@ accounts for. Applicability is only known once a task has run, so a task that
 turns out not to apply leaves the denominator rather than advancing the
 numerator.
 
-The final line reports task counts only. It uses no status glyphs; color
-distinguishes each outcome group: green for changed, magenta for dry run, dim
-for current, yellow for ignored, and red for failed. For example:
+The final line reports task counts without status glyphs. Color distinguishes
+each outcome group: green for changed, magenta for dry run, dim for current,
+yellow for ignored, and red for failed. For example:
 `2 changed · 14 current · 1 ignored · 2.3s`,
 `5 would change · 8 current · 3 ignored · 0.7s`, or
 `6 passed · 1 ignored · 1.4s`.
@@ -239,7 +238,7 @@ dotfiles uninstall --dry-run
 dotfiles uninstall
 ```
 
-Uninstall is intentionally conservative. It:
+Uninstall does only the following:
 
 1. Replaces managed home-directory symlinks with materialized files or
    directories.
@@ -268,10 +267,9 @@ the validation task set.
 
 ## Logs
 
-Every run writes its own log file. The most recent 50 are retained, so a failed
-run is still readable after later runs have happened. The exact file path is
-printed after each run so automation such as an installation script can retain
-or collect it. On Linux the default directory is
+Every run writes a separate log file and retains the newest 50. The CLI prints
+the exact path after each run so an installation script can retain or collect
+it. On Linux, the default directory is
 `$XDG_STATE_HOME/dotfiles/logs`, or `~/.local/state/dotfiles/logs` when
 `XDG_STATE_HOME` is unset; set `DOTFILES_LOG_DIR` to choose another directory.
 
@@ -295,8 +293,8 @@ The index argument selects from that list and is stable for the duration of a
 listing; it shifts as new runs are recorded. `--command` filters the list and
 renumbers it, so `dotfiles log -c install 1` means the second-newest install.
 
-Logs contain every event in the order it actually happened, including messages
-the console suppresses. Lines are
+Logs contain every event in execution order, including messages hidden from the
+console. Lines are
 `seq | elapsed_us | wall_utc | context | event | message`, where `context` is the
 task that produced the event, so parallel execution can be reconstructed. Each
 executed task also emits a `task_timing` event recording how long it ran, which
@@ -359,10 +357,10 @@ Ctrl-C escalates rather than repeats:
 3. Answering `y`, or pressing Ctrl-C again while the question is open, quits
    immediately with exit code 130.
 
-Force quitting skips the shutdown that normally terminates spawned commands, so
-child processes may keep running and partially applied state is possible. When
-nothing can answer the question — output is redirected or the command is running
-without a terminal — the second Ctrl-C force quits directly.
+Force quitting skips the shutdown that normally terminates spawned commands.
+Child processes may keep running, and state may be partially applied. If output
+is redirected or no terminal is attached, the second Ctrl-C force quits without
+asking.
 
 ## Exit behavior
 

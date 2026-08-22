@@ -38,25 +38,27 @@ class FullscreenWaybarTests(unittest.TestCase):
         ):
             self.assertIsNone(fullscreen_waybar.active_workspace_fullscreen())
 
-    def test_new_waybar_is_hidden_when_fullscreen_is_already_active(self) -> None:
-        state = {"hidden": True, "pids": {10}}
-        with (
-            patch.object(fullscreen_waybar, "waybar_pids", return_value=[10, 20]),
-            patch.object(fullscreen_waybar.os, "kill") as kill,
-        ):
+    def test_waybar_is_toggled_when_fullscreen_state_changes(self) -> None:
+        state = {"hidden": False}
+        with patch.object(fullscreen_waybar, "toggle_waybar", return_value=True) as toggle:
             fullscreen_waybar.set_hidden(True, state)
 
-        kill.assert_called_once_with(20, fullscreen_waybar.signal.SIGUSR1)
+        toggle.assert_called_once_with()
+        self.assertTrue(state["hidden"])
 
-    def test_new_waybar_stays_visible_when_leaving_fullscreen(self) -> None:
-        state = {"hidden": True, "pids": {10}}
-        with (
-            patch.object(fullscreen_waybar, "waybar_pids", return_value=[10, 20]),
-            patch.object(fullscreen_waybar.os, "kill") as kill,
-        ):
-            fullscreen_waybar.set_hidden(False, state)
+    def test_waybar_is_not_toggled_when_fullscreen_state_is_unchanged(self) -> None:
+        state = {"hidden": True}
+        with patch.object(fullscreen_waybar, "toggle_waybar") as toggle:
+            fullscreen_waybar.set_hidden(True, state)
 
-        kill.assert_called_once_with(10, fullscreen_waybar.signal.SIGUSR1)
+        toggle.assert_not_called()
+
+    def test_failed_toggle_does_not_change_tracked_state(self) -> None:
+        state = {"hidden": False}
+        with patch.object(fullscreen_waybar, "toggle_waybar", return_value=False):
+            fullscreen_waybar.set_hidden(True, state)
+
+        self.assertFalse(state["hidden"])
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
-# Git Hooks
+# Git hooks
 
-The repository installs a pre-commit orchestrator from `hooks/`. It protects the
-checkout from obvious secret exposure and Rust quality regressions before CI.
+The repository installs the `hooks/pre-commit` orchestrator. It catches likely
+secrets and Rust check failures before CI.
 
 ## Files
 
@@ -14,9 +14,9 @@ checkout from obvious secret exposure and Rust quality regressions before CI.
 | `check-rust.sh` | Runs staged-change-aware Rust formatting and checks |
 | `check-ci-guards.sh` | Verifies CI publishing and gate invariants |
 
-The installed hook resolves the repository root at runtime and invokes the
-source scripts from `hooks/`. This keeps hook logic versioned rather than
-duplicated inside `.git/hooks`.
+At runtime, the installed hook resolves the repository root and invokes scripts
+from `hooks/`. The implementation stays under version control instead of being
+copied into `.git/hooks`.
 
 ## Default pre-commit flow
 
@@ -27,18 +27,17 @@ check-sensitive.sh
 check-rust.sh
 ```
 
-If either script fails, Git aborts the commit.
+If either check fails, Git aborts the commit.
 
 The sensitive scan runs first so potential credential exposure is caught before
 more expensive Rust checks.
 
 ## Scan scope
 
-The staged-change scripts select files with `--diff-filter=d`, which excludes
-only deletions. Renames are therefore scanned: a rename that also introduces a
-secret would otherwise change a file's contents without ever being inspected.
-Renamed files are diffed against both their old and new paths so rename
-detection still pairs them, and only the genuinely added lines are reported.
+The staged-change scripts use `--diff-filter=d`, which excludes only deletions.
+They still scan renames because a renamed file can also add a secret. The diff
+includes the old and new paths so Git can pair the rename, while the scanner
+reports only added lines.
 
 `check-sensitive.sh` matches each pattern against the added line's own content.
 `^` and `$` therefore anchor to the start and end of that line, both for
@@ -55,8 +54,8 @@ Set `DOTFILES_HOOKS_FULL` to `1`, `true`, or `yes` to add CI guard validation:
 DOTFILES_HOOKS_FULL=1 git commit
 ```
 
-Full mode is useful before changing workflow triggers, publishing guards,
-permissions, the `ci-success` dependency list, or artifact behavior.
+Use full mode when changing workflow triggers, publishing guards, permissions,
+the `ci-success` dependency list, or artifact behavior.
 
 ## Installation and removal
 
@@ -91,9 +90,8 @@ Git supports a one-time bypass:
 git commit --no-verify
 ```
 
-Use it only when the hook itself is broken and the change is being used to fix
-it. A bypass does not skip CI and should never be used to commit known sensitive
-data.
+Use this only to fix a broken hook. The bypass does not skip CI, and it must not
+be used to commit known sensitive data.
 
 For a recurring false positive, add an allow-list entry instead of bypassing.
 A bypass disables the whole scan for that commit; an allow-list entry disables
@@ -115,9 +113,9 @@ Allow-list entries redact only the span they match, so the rest of the line is
 still scanned. A pinned action reference is ignored, but a credential appearing
 later on that same line is still reported.
 
-Entries currently cover SHA-pinned GitHub Actions (a 40-character hex SHA
-frequently contains ten consecutive digits, which the phone and SSN patterns
-match by coincidence) and the `ci@test.local` CI fixture address.
+Current entries cover SHA-pinned GitHub Actions because a 40-character hex SHA
+often contains ten consecutive digits that resemble a phone number or SSN. They
+also cover the `ci@test.local` CI fixture address.
 
 Reserved documentation domains such as `example.com` are deliberately *not*
 allow-listed, because the scanner's own PII coverage is asserted with an
@@ -139,6 +137,6 @@ ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit
 DIR=/path/to/dotfiles sh /path/to/dotfiles/.github/workflows/scripts/linux/test-git-hooks.sh
 ```
 
-Use a fresh scratch repository per run. A failed case leaves its fixture
-committed, which makes the next run's identical fixture a no-op diff and
-reports a spurious second failure.
+Use a fresh scratch repository for each run. A failed case leaves its fixture
+committed. Reusing that repository turns the same fixture into an empty diff and
+causes a second, misleading failure.

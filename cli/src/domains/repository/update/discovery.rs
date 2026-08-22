@@ -53,7 +53,7 @@ pub(super) fn update_targets(ctx: &Context) -> Vec<UpdateTarget> {
 }
 
 /// Check every update target and return the set that is ready to pull, or the
-/// first skip reason encountered.
+/// first blocked or inapplicable reason encountered.
 pub(super) fn checked_repositories(
     ctx: &Context,
     git_env: &[(&str, &str)],
@@ -63,8 +63,11 @@ pub(super) fn checked_repositories(
     for target in targets {
         match check_repository_ready(ctx, target, git_env)? {
             RepositoryReadiness::Ready(repository) => repositories.push(repository),
-            RepositoryReadiness::Skipped(reason) => {
-                return Ok(RepositorySetReadiness::Skipped(reason));
+            RepositoryReadiness::Blocked(reason) => {
+                return Ok(RepositorySetReadiness::Blocked(reason));
+            }
+            RepositoryReadiness::NotApplicable(reason) => {
+                return Ok(RepositorySetReadiness::NotApplicable(reason));
             }
         }
     }
@@ -88,13 +91,13 @@ pub(super) fn check_repository_ready(
     } else {
         let reason = target.reason("detached HEAD");
         ctx.log().info(format!("{reason}, skipping pull"));
-        return Ok(RepositoryReadiness::Skipped(reason));
+        return Ok(RepositoryReadiness::NotApplicable(reason));
     };
 
     // Refuse to pull when tracked files are dirty. Untracked files do not
     // block a fast-forward pull, so they should not prevent updates.
     if worktree_has_local_changes(ctx, &target.root, git_env)? {
-        return Ok(RepositoryReadiness::Skipped(
+        return Ok(RepositoryReadiness::Blocked(
             target.reason("local changes present"),
         ));
     }

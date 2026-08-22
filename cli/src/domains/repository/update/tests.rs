@@ -64,7 +64,7 @@ fn make_update_context(config: crate::Config, executor: impl Executor + 'static)
 }
 
 #[test]
-fn run_returns_skipped_when_detached_head() {
+fn run_returns_not_applicable_when_detached_head() {
     let config = empty_config(PathBuf::from("/tmp"));
     // First call (symbolic-ref): fails → detached HEAD
     let exec = ScriptedExecutor::new().err(git_non_zero("simulated failure"));
@@ -73,10 +73,13 @@ fn run_returns_skipped_when_detached_head() {
     let task = UpdateRepository::new(repo_updated.clone());
 
     let result = task.run(&ctx).unwrap();
-    assert!(matches!(
-        result,
-        TaskResult::Skipped { ref reason, .. } if reason.contains("detached HEAD")
-    ));
+    assert!(
+        matches!(
+            result,
+            TaskResult::NotApplicable(ref reason) if reason.contains("detached HEAD")
+        ),
+        "a detached checkout cannot update itself but must not block dependent install tasks"
+    );
     assert!(!repo_updated.was_updated());
 }
 

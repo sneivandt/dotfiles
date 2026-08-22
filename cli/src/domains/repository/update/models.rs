@@ -53,13 +53,15 @@ pub(super) struct CheckedRepository {
 #[derive(Debug)]
 pub(super) enum RepositoryReadiness {
     Ready(CheckedRepository),
-    Skipped(String),
+    Blocked(String),
+    NotApplicable(String),
 }
 
 #[derive(Debug)]
 pub(super) enum RepositorySetReadiness {
     Ready(Vec<CheckedRepository>),
-    Skipped(String),
+    Blocked(String),
+    NotApplicable(String),
 }
 
 /// Outcome of the pre-fetch divergence check.

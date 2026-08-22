@@ -82,7 +82,10 @@ impl Operation for UpdateRepositoryOperation {
                 "update repositories",
                 repositories,
             )),
-            RepositorySetReadiness::Skipped(reason) => Ok(OperationState::blocked(reason)),
+            RepositorySetReadiness::Blocked(reason) => Ok(OperationState::blocked(reason)),
+            RepositorySetReadiness::NotApplicable(reason) => {
+                Ok(OperationState::not_applicable(reason))
+            }
         }
     }
 

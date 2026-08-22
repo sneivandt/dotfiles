@@ -8,14 +8,7 @@ set -o nounset
 # Expected:     DIR (repository root)
 # -----------------------------------------------------------------------------
 
-# shellcheck disable=SC3054
-# When sourced with `.`, use BASH_SOURCE if available (bash); otherwise use pwd
-if [ -n "${BASH_SOURCE:-}" ]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-  # Fallback: assume we're already in the scripts directory or use relative path
-  SCRIPT_DIR="$(pwd)"
-fi
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=lib/test-helpers.sh
 . "$SCRIPT_DIR"/lib/test-helpers.sh
 
@@ -119,9 +112,11 @@ docs_task_selectors()
   [ "$failures" -eq 0 ] || log_error "$failures documented selector(s) no longer exist"
 )}
 
-# Execute a specific test when run directly: sh test-docs.sh <function_name>
+# Execute one or more tests when run directly: sh test-docs.sh <function_name>...
 case "$0" in
   *test-docs.sh)
-    [ $# -ge 1 ] && "$1"
+    for test_name in "$@"; do
+      "$test_name"
+    done
     ;;
 esac

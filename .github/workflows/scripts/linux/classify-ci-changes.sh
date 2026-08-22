@@ -8,13 +8,7 @@ set -o nounset
 # Expected:     DIR, GITHUB_OUTPUT, GITHUB_EVENT_NAME, BASE_SHA, HEAD_SHA
 # -----------------------------------------------------------------------------
 
-# shellcheck disable=SC3054
-# When sourced with `.`, use BASH_SOURCE if available (bash); otherwise use pwd
-if [ -n "${BASH_SOURCE:-}" ]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-fi
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=lib/test-helpers.sh
 . "$SCRIPT_DIR"/lib/test-helpers.sh
 

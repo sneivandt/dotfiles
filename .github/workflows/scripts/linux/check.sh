@@ -126,29 +126,22 @@ stage_config()
 # Mirrors the CI documentation consistency job.
 stage_docs()
 {
-  DIR="$REPO_ROOT"
-  export DIR
-  ( cd "$REPO_ROOT/.github/workflows/scripts/linux" \
-    && sh test-docs.sh docs_links \
-    && sh test-docs.sh docs_task_selectors )
+  DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-docs.sh" \
+    docs_links docs_task_selectors
 }
 
 stage_shell()
 {
   have shellcheck || { note "shellcheck not installed; skipping"; return 2; }
-  DIR="$REPO_ROOT"
-  export DIR
-  ( cd "$REPO_ROOT/.github/workflows/scripts/linux" \
-    && sh test-static-analysis.sh test_shellcheck )
+  DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-static-analysis.sh" \
+    test_shellcheck
 }
 
 stage_powershell()
 {
   have pwsh || { note "pwsh not installed; skipping"; return 2; }
-  DIR="$REPO_ROOT"
-  export DIR
-  ( cd "$REPO_ROOT/.github/workflows/scripts/linux" \
-    && sh test-static-analysis.sh test_psscriptanalyzer )
+  DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-static-analysis.sh" \
+    test_psscriptanalyzer
 }
 
 stage_audit()

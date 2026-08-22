@@ -93,10 +93,9 @@ jobs:
       - name: Install ${{ matrix.name }}
         run: ${{ matrix.setup }}
       - name: Run ${{ matrix.name }}
-        run: |
-          export DIR="$(pwd)"
-          cd .github/workflows/scripts/linux
-          sh test-static-analysis.sh ${{ matrix.test_function }}
+        env:
+          DIR: ${{ github.workspace }}
+        run: sh .github/workflows/scripts/linux/test-static-analysis.sh ${{ matrix.test_function }}
 
   # ── Documentation Consistency ─────────────────────────
   docs:
@@ -107,11 +106,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check documentation consistency
-        run: |
-          export DIR="$(pwd)"
-          cd .github/workflows/scripts/linux
-          sh test-docs.sh docs_links
-          sh test-docs.sh docs_task_selectors
+        env:
+          DIR: ${{ github.workspace }}
+        run: sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_task_selectors
 
   # ── Configuration Validation ──────────────────────────
   validate-config:
@@ -125,15 +122,18 @@ jobs:
         with:
           name: dotfiles-linux
           path: bin/
+      - name: Make binary executable
+        run: chmod +x bin/dotfiles
       - name: Run typed configuration validation
-        run: |
-          chmod +x bin/dotfiles
-          ./bin/dotfiles --root . -p desktop test --only config-warnings,symlink-sources,config-files,manifest-sync
-      - name: Run configuration-specific script tests
-        run: |
-          export DIR="${{ github.workspace }}"
-          python3 .github/workflows/scripts/linux/test-fullscreen-waybar.py
-          python3 .github/workflows/scripts/linux/test-workspaces.py
+        run: ./bin/dotfiles --root . -p desktop test --only config-warnings,symlink-sources,config-files,manifest-sync
+      - name: Test fullscreen Waybar configuration
+        env:
+          DIR: ${{ github.workspace }}
+        run: python3 .github/workflows/scripts/linux/test-fullscreen-waybar.py
+      - name: Test workspace configuration
+        env:
+          DIR: ${{ github.workspace }}
+        run: python3 .github/workflows/scripts/linux/test-workspaces.py
 
   # ── Security ──────────────────────────────────────────
   audit:
@@ -383,12 +383,13 @@ jobs:
         with:
           name: dotfiles-linux
           path: bin/
+      - name: Make binary executable
+        run: chmod +x bin/dotfiles
       - name: Run install/uninstall round-trip test
-        run: |
-          chmod +x bin/dotfiles
-          export DIR="$(pwd)" BINARY_PATH="$(pwd)/bin/dotfiles"
-          cd .github/workflows/scripts/linux
-          sh test-uninstall.sh
+        env:
+          DIR: ${{ github.workspace }}
+          BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
+        run: sh .github/workflows/scripts/linux/test-uninstall.sh
 
   test-install-uninstall-windows:
     name: "Integration: Install/Uninstall round-trip (Windows)"
@@ -403,10 +404,10 @@ jobs:
           path: bin/
       - name: Run install/uninstall round-trip test
         shell: pwsh
-        run: |
-          $env:BINARY_PATH = Join-Path $PWD "bin\dotfiles.exe"
-          $env:DIR = $PWD.Path
-          & .github/workflows/scripts/windows/Test-InstallUninstall.ps1
+        env:
+          DIR: ${{ github.workspace }}
+          BINARY_PATH: ${{ github.workspace }}/bin/dotfiles.exe
+        run: ./.github/workflows/scripts/windows/Test-InstallUninstall.ps1
 
   # ── Application Tests ─────────────────────────────────
   test-applications:
@@ -442,17 +443,16 @@ jobs:
         with:
           name: dotfiles-linux
           path: bin/
+      - name: Make binary executable
+        run: chmod +x bin/dotfiles
       - name: Install dotfiles with base profile
-        run: |
-          chmod +x bin/dotfiles
-          # Keep the full checkout available to matrix tests, including assets
-          # that are intentionally excluded from the runner's active profile.
-          ./bin/dotfiles --root . -p base install -v --skip apm,sparse-checkout
+        # Keep the full checkout available to matrix tests, including assets
+        # that are intentionally excluded from the runner's active profile.
+        run: ./bin/dotfiles --root . -p base install -v --skip apm,sparse-checkout
       - name: Test ${{ matrix.application }}
-        run: |
-          export DIR="$(pwd)"
-          cd .github/workflows/scripts/linux
-          sh test-applications.sh ${{ matrix.application }} ${{ matrix.tests }}
+        env:
+          DIR: ${{ github.workspace }}
+        run: sh .github/workflows/scripts/linux/test-applications.sh ${{ matrix.application }} ${{ matrix.tests }}
 
   # Windows counterpart. Only git is covered: zsh, vim, and nvim are excluded
   # from the Windows profile, so they have no Windows equivalent to test.
@@ -481,9 +481,9 @@ jobs:
         run: .\bin\dotfiles.exe --root . -p base install -v --skip apm,packages,vscode-extensions
       - name: Test ${{ matrix.application }}
         shell: pwsh
-        run: |
-          $env:DIR = $PWD.Path
-          & .github/workflows/scripts/windows/Test-Applications.ps1 ${{ matrix.application }} ${{ matrix.tests }}
+        env:
+          DIR: ${{ github.workspace }}
+        run: ./.github/workflows/scripts/windows/Test-Applications.ps1 ${{ matrix.application }} ${{ matrix.tests }}
 
   # ── Specialized Tests ─────────────────────────────────
   test-git-hooks:
@@ -512,12 +512,13 @@ jobs:
         with:
           name: dotfiles-linux
           path: bin/
+      - name: Make binary executable
+        run: chmod +x bin/dotfiles
       - name: Run shell wrapper tests
-        run: |
-          chmod +x bin/dotfiles
-          export DIR="$(pwd)" BINARY_PATH="$(pwd)/bin/dotfiles"
-          cd .github/workflows/scripts/linux
-          sh test-shell-wrapper.sh
+        env:
+          DIR: ${{ github.workspace }}
+          BINARY_PATH: ${{ github.workspace }}/bin/dotfiles
+        run: sh .github/workflows/scripts/linux/test-shell-wrapper.sh
 
   test-shell-wrapper-windows:
     name: "Shell Wrapper: Windows (dotfiles.ps1)"
@@ -532,9 +533,9 @@ jobs:
           path: bin/
       - name: Run PowerShell wrapper tests
         shell: pwsh
-        run: |
-          $env:BINARY_PATH = Join-Path $PWD "bin\dotfiles.exe"
-          & .github/workflows/scripts/windows/Test-ShellWrapper.ps1
+        env:
+          BINARY_PATH: ${{ github.workspace }}/bin/dotfiles.exe
+        run: ./.github/workflows/scripts/windows/Test-ShellWrapper.ps1
 
   # ── CI Gate ───────────────────────────────────────────
   ci-success:

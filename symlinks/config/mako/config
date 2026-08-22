@@ -1,5 +1,4 @@
 # Mako notification daemon configuration
-# Migrated from dunst — Wayland-native replacement
 
 # Typography
 font=Source Code Pro 11

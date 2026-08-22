@@ -29,8 +29,8 @@ render() {
     jq -nc --arg tooltip "$parts" \
       '{text:"&#xf201;", tooltip:$tooltip, class:"collapsed"}'
   else
-    jq -nc --arg text "$parts" --arg tooltip "$parts" \
-      '{text:$text, tooltip:$tooltip, class:"expanded"}'
+    jq -nc --arg text "$parts" \
+      '{text:$text, tooltip:"", class:"expanded"}'
   fi
 }
 

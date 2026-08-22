@@ -142,13 +142,10 @@ run_wrapper_guards() {
   fi
   export BINARY_PATH
   scripts_dir="$REPO_ROOT/.github/workflows/scripts/linux"
-  if ! (
-    cd "$scripts_dir"
-    sh test-shell-wrapper.sh
-  ); then
+  if ! sh "$scripts_dir/test-shell-wrapper.sh"; then
     abort_with_hint \
       "Linux shell wrapper tests failed." \
-      "cd .github/workflows/scripts/linux && DIR=\"\$(git rev-parse --show-toplevel)\" BINARY_PATH=\"\" sh test-shell-wrapper.sh"
+      "DIR=\"\$(git rev-parse --show-toplevel)\" BINARY_PATH=\"\" sh .github/workflows/scripts/linux/test-shell-wrapper.sh"
   fi
 }
 

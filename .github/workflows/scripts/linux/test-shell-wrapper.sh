@@ -8,12 +8,7 @@ set -o nounset
 # Expected:     DIR (repository root), BINARY_PATH (path to test binary)
 # -----------------------------------------------------------------------------
 
-# shellcheck disable=SC3054
-if [ -n "${BASH_SOURCE:-}" ]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-  SCRIPT_DIR="$(pwd)"
-fi
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=lib/test-helpers.sh
 . "$SCRIPT_DIR"/lib/test-helpers.sh
 

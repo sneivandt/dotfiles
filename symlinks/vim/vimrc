@@ -314,7 +314,6 @@ if has('nvim')
 
 " FZF {{{
 
-" Use fzf for fuzzy finding (replaces ctrlp)
 let g:fzf_command_prefix = 'Fzf'
 
 " Key mappings

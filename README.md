@@ -1,7 +1,7 @@
 # Dotfiles
 
-A personal dotfiles manager for Linux and Windows, powered by a **Rust CLI**
-and declarative TOML.
+A Rust CLI that manages my Linux and Windows dotfiles from declarative TOML
+configuration.
 
 ![Generated terminal output of a dotfiles install](docs/assets/terminal-screenshot.svg)
 
@@ -23,16 +23,15 @@ From a repository checkout, preview the changes before applying them:
 .\dotfiles.ps1 install --profile desktop
 ```
 
-Each wrapper downloads and verifies the latest compatible release binary when
-needed. Pass `--build` to compile from source. After installation, use the
-`dotfiles` command directly.
+The wrappers download and verify a compatible release binary when needed. Pass
+`--build` to compile from source. After installation, run `dotfiles` directly.
 
 ## Core ideas
 
-- **Cross-platform:** one Rust CLI plans and applies the desired machine state across Linux and Windows.
-- **Adaptive:** select `base` or `desktop`; platform-specific settings are added automatically.
-- **Declarative:** TOML describes packages, links, tools, and settings.
-- **Idempotent:** repeated installs apply only the changes needed to match the configuration.
+- The same CLI plans and applies changes on Linux and Windows.
+- Choose the `base` or `desktop` profile. The CLI adds settings for the current platform.
+- TOML files define packages, links, tools, and settings.
+- Repeated installs change only what no longer matches the configuration.
 
 ## What it manages
 
@@ -57,17 +56,17 @@ See the [Task Reference](docs/TASKS.md) for the tasks behind these areas.
 
 | Command | What it does |
 |---------|--------------|
-| `dotfiles install` | Brings the machine in line with the configuration |
-| `dotfiles update` | Installs and advances pinned dependency versions |
+| `dotfiles install` | Applies the configured machine state |
+| `dotfiles update` | Runs installation and advances pinned dependency versions |
 | `dotfiles uninstall` | Removes managed integrations while preserving user files |
 | `dotfiles test` | Validates configuration and runs available script analyzers |
 | `dotfiles tasks` | Lists task selectors and which commands use each task |
 | `dotfiles log` | Reads retained run logs |
 
-Use `install` for normal setup and maintenance, and `update` only when advancing
-pinned versions. `uninstall` leaves packages, services, and registry values in
-place. Commands that make changes accept `-d, --dry-run` to report changes
-without applying them.
+Use `install` for normal setup and maintenance. Use `update` only when you want
+pinned dependency versions to move forward. `uninstall` leaves packages,
+services, and registry values in place. Commands that make changes accept
+`-d, --dry-run` to report changes without applying them.
 
 ### Targeting specific tasks
 
@@ -101,7 +100,7 @@ See the [Profile System Guide](docs/PROFILES.md) for details.
 
 ## Configuration
 
-Configuration lives in `conf/*.toml`. Key files include:
+Configuration lives in `conf/*.toml`. The main files are:
 
 | File | Controls |
 |------|----------|

@@ -149,7 +149,7 @@ jobs:
         with:
           workspaces: "cli -> target"
       - name: Install cargo-audit
-        uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-audit
       - run: cargo audit --file cli/Cargo.lock
@@ -167,7 +167,7 @@ jobs:
         with:
           workspaces: "cli -> target"
       - name: Install cargo-deny
-        uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-deny
       - run: cargo deny --manifest-path cli/Cargo.toml check all
@@ -241,7 +241,7 @@ jobs:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-llvm-cov
       - name: Generate coverage report
@@ -275,7 +275,7 @@ jobs:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
         with:
           tool: cargo-mutants
       - name: Build changed-code diff

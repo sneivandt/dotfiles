@@ -1,115 +1,47 @@
 ---
 name: resource-implementation
 description: >
-  Patterns for implementing concrete Resource, IntrinsicState, and
-  ResourceStateProvider types in domain resource modules. Use when adding a new
-  resource or modifying existing resource behaviour.
+  Use when adding or changing a concrete Resource, IntrinsicState, or
+  ResourceStateProvider under cli/src/domains/*/resources/. Not for scheduler
+  policy or a whole-workflow Operation.
 ---
 
 # Resource Implementation
 
-## Use this skill when
+## Select the model
 
-- adding/modifying a concrete resource in `cli/src/domains/<domain>/resources/`
-- deciding between `IntrinsicState` and `ResourceStateProvider`
-- wiring config-backed resource tasks through orchestration helpers
-
-## Do not use this skill when
-
-- the work is mostly scheduling/dependency orchestration (use
-  `engine-orchestration`)
-- the convergence unit is whole-workflow, not per-item state (use `Operation`
-  via `engine-orchestration`)
-
-## Model selection
-
-| Requirement | Choose |
+| Requirement | Model |
 |---|---|
-| independent items with individual state | `Resource` (+ usually `IntrinsicState`) |
-| expensive shared state query | `ResourceStateProvider` |
-| idempotent multi-step workflow | `Operation` |
-| identity/command membership/eligibility/dependencies | `Task` |
-| pure parsing/transformation | plain function/module |
+| each item discovers its own state | `Resource` + `IntrinsicState` |
+| one expensive query supplies many items | `ResourceStateProvider` |
+| one multi-step workflow converges as a unit | `Operation` via `engine-orchestration` |
 
-## Invariants
+## Required behavior
 
-- `Resource::apply/remove` return `ResourceResult<ResourceChange>` for typed,
-  classifiable failures.
-- State discovery (`IntrinsicState::current_state` /
-  `ResourceStateProvider::current_state`) also returns
-  `ResourceResult<ResourceState>`, so a discovery failure carries the same
-  `ResourceError::category()` the summary uses for mutation failures.
-- State checking remains separate from mutation (`IntrinsicState` or provider).
-- Tasks own identity, command membership, eligibility, elevation prediction,
-  and dependencies; resources own item-level state and convergence.
-- Use executor abstraction for subprocesses.
-- Read environment variables through `ctx.env()` (an `infra::env::Env` handle),
-  never `std::env` inline. Construct resources with the handle so tests can
-  inject `MapEnv`.
+- State discovery is read-only and returns
+  `ResourceResult<ResourceState>`.
+- `apply()` and `remove()` return `ResourceResult<ResourceChange>`.
+- Use `Missing`, `Correct`, `Incorrect`, `Invalid`, and `Unknown` precisely;
+  never turn an unknown or unsafe state into success.
+- Use `ResourceChange::skipped(reason)` for a deliberate benign no-op and
+  `ResourceChange::unusable(reason)` for unmet work. Do not construct the
+  skipped variant directly.
+- Route subprocesses through the executor and environment reads through an
+  injected `ctx.env()` handle.
+- Keep platform-specific mutation inside the resource; the task chooses
+  applicability and process policy.
 
-Canonical references:
-- `cli/src/engine/resource/`
-- `cli/src/engine/orchestrate.rs`
-- `cli/src/engine/mode.rs` (`ProcessMode` / `ProcessOpts`)
-- `cli/src/engine/plan.rs` (`ApplyChange::from_state`, the state machine)
-- `cli/src/engine/task/macros.rs` (`task_metadata!`, `run_resource_task()`)
+## Wire the vertical slice
 
-## Implementation procedure / core patterns
+1. Implement the resource in its domain `resources/` module.
+2. Update typed config and validation when the resource is config-backed.
+3. Call `run_resource_task()` or `run_batch_resource_task()` from a `Task`.
+4. Select the narrowest `ProcessOpts`.
+5. Export modules and register static install/uninstall tasks.
+6. Add state, mutation, dry-run, and failure tests.
 
-1. Implement the resource in its owning domain's `resources/` module.
-2. Implement `Resource` and choose:
-   - `IntrinsicState` when each item can check itself
-   - `ResourceStateProvider` when one cached query should feed many resources
-3. Add/adjust the owning domain's config module and `conf/<name>.toml`.
-4. Wire the task as a hand-written `impl Task` that calls
-   `run_resource_task()` (or `run_batch_resource_task()` for cached state),
-   select `ProcessOpts`, and register static tasks in `cli/src/app/catalog.rs`.
-5. Export modules from the relevant `mod.rs` files.
-6. Add or update focused tests (resource + config/task wiring as needed).
+Canonical contracts live in `cli/src/engine/resource/`,
+`cli/src/engine/orchestrate.rs`, and `cli/src/engine/plan.rs`.
 
-### `ResourceState` use
-
-- `Missing`: not present
-- `Correct`: already desired
-- `Incorrect { current }`: present but wrong
-- `Invalid { reason }`: known unsafe/invalid to apply
-- `Unknown { reason }`: unable to determine
-
-### `ResourceChange` use
-
-- `Applied`
-- `AlreadyCorrect`
-- `ResourceChange::skipped(reason)` — a deliberate, benign no-op (unsupported
-  platform, nothing configured, a target the resource refuses to touch by
-  design). Counted as a skip.
-- `ResourceChange::unusable(reason)` — the resource could not converge and the
-  run should treat it as unmet work (missing privileges, an unavailable
-  provider). Counted as a failure in the summary and exit status.
-
-Both construct `ResourceChange::Skipped { reason, failed }`; never build that
-variant literally — pick the constructor that matches the outcome, because the
-`failed` flag is what decides whether the run reports success.
-
-## Validation
-
-- Add targeted tests for state mapping, apply/remove behavior, and task wiring.
-
-## Common mistakes / anti-patterns
-
-Resource-specific:
-
-- mutating inside `IntrinsicState`/`ResourceStateProvider` state checks instead
-  of `apply`/`remove`
-- returning untyped errors from `apply`/`remove` or from `current_state`
-  instead of `ResourceError`
-- constructing `ResourceChange::Skipped { .. }` directly instead of using
-  `ResourceChange::skipped()` / `ResourceChange::unusable()`, which silently
-  mis-reports whether the run had unmet work
-- reading `std::env` inside a resource instead of taking an
-  `Arc<dyn infra::env::Env>` from `ctx.env()`
-- hand-rolling dry-run/apply loops in the task body instead of using
-  `process_resources*`
-
-See `engine-orchestration` for the shared task/orchestration anti-patterns
-(executor abstraction, config read guards, `should_run()` mutation, catalog
-registration, manifest coverage, capability helpers).
+Use `error-handling-patterns` when result classification changes and
+`cross-platform-verification` after implementation.

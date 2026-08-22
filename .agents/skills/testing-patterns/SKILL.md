@@ -1,90 +1,43 @@
 ---
 name: testing-patterns
 description: >
-  Test construction and organization patterns for the dotfiles project.
-  Use when adding or refactoring tests, snapshots, or test utilities.
+  Use when adding or restructuring Rust tests, fixtures, mocks, snapshots, or
+  test utilities in cli/. Not for choosing CI jobs or the general validation
+  command sequence.
 ---
 
 # Testing Patterns
 
-## Use this skill when
+## Place tests
 
-- adding or restructuring unit/integration tests
-- deciding inline vs externalized `#[cfg(test)]` module layout
-- using repo test helpers, snapshots, and fixture conventions
+- Keep small cohesive tests in inline `#[cfg(test)] mod tests`.
+- Move large sibling suites to `tests.rs`.
+- For a domain-root task file, use `domains/<domain>/tests/<feature>.rs` with a
+  test-only `#[path]`; never use `#[path]` for production wiring.
+- Do not create a feature directory solely to hold tests.
 
-## Do not use this skill when
+## Reuse the harness
 
-- selecting the canonical cross-platform validation command sequence (use
-  `cross-platform-verification`)
-- editing workflow topology or release pipeline behavior (use `ci-cd-patterns`)
+- Unit context/config helpers: `cli/src/app/test_helpers/`
+- Integration helpers: `cli/tests/common/mod.rs`
+- Executor results: `ExecResult::success` / `ExecResult::failure`
+- Ordered fixed command scripts: `ScriptedExecutor`
+- Branching or unordered execution: `MockExecutor`
+- Common task assertions: `assert_task_ok`, `assert_task_changed`,
+  `task_batch`, `task_skipped`
+- APM setup: `domains/ai/apm/test_fixture.rs`
+- Environment behavior: inject `MapEnv`; never mutate process-global env
 
-## Decision guide
+Prefer named case tables for repeated input/output cases. Assertions should
+state behavior and include enough context to diagnose failure.
 
-- Small cohesive tests: inline `#[cfg(test)] mod tests { ... }`
-- Large cohesive tests: sibling `tests.rs` with `#[cfg(test)] mod tests;`
-- Several related resource suites: one sibling `tests.rs`, with nested test
-  modules when names or imports need separation.
-- Externalized tests for domain-root task entry files:
-  `domains/<domain>/tests/<feature>.rs`, wired with a test-only `#[path]`; do not
-  create `<feature>/` solely to hold tests.
-- `#[path]` is allowed for externalized test modules only; never for production
-  module wiring. Prefer standard sibling wiring for new layouts.
+## Snapshots
 
-## Implementation procedure
+Update snapshots intentionally, review them, and commit them with the behavior
+change. Do not accept broad rewrites without inspecting the diff.
 
-1. Put unit tests with the module unless they are large enough to externalize.
-2. Reuse existing helpers:
-   - `cli/src/app/test_helpers/` context/config helpers for unit tests
-   - `cli/tests/common/mod.rs` integration helpers and builders
-   - `ExecResult::success` / `ExecResult::failure` for unit-test executor
-     responses instead of repeating result struct literals
-   - `ScriptedExecutor` for fixed, ordered Git command sequences; keep
-     `MockExecutor` for branching, unordered, or open-ended behavior
-   - `assert_task_ok`, `assert_task_changed`, `task_batch`, and `task_skipped`
-     for common `TaskResult` checks
-3. Keep assertions specific and behavior-focused.
-4. Prefer named case tables when several tests differ only by inputs and
-   expected state, counters, or messages.
-5. Update snapshots intentionally (`INSTA_UPDATE=unseen cargo test`, then
-   `cargo insta review`).
-6. Commit snapshot updates with the code change.
+## Scope validation
 
-### Common module patterns
-
-- **Config parsers**: use `infra::config::test_helpers`.
-- **Resources**: construct directly for state checks; use executor-backed setup
-  where needed.
-- **Tasks**: test pure helper logic and task applicability/result behavior.
-- **APM tasks**: extend `domains/ai/apm/test_fixture.rs` instead of duplicating
-  home setup, manifest/lock writers, task constructors, or command expectations
-  between the install and autopilot suites.
-- **CLI parsing**: use `Cli::parse_from`.
-- **Task metadata**: assert selectors are unique per command catalog, hidden
-  tasks are excluded from discovery, conflicting labels cannot share a selector,
-  and exact selector/full-label filtering works.
-- **Console output**: assert explicit statuses, visibility, complete compact
-  details, action/task summary counts, and natural completion order without
-  sorting.
-- **Platform logic**: use `Platform::new(...)` test constructors.
-- **Environment reads**: build `infra::env::MapEnv` (re-exported as
-  `testing::env::MapEnv`) and inject it with `Context::with_env(...)` or the
-  resource's `env` parameter. Never mutate process-global `std::env` from a
-  test, and do not add `#[cfg(test)]` enum seams to source a value that the
-  environment already provides.
-- **Unit-test lints**: the library crate root conditionally allows the common
-  panicking-helper lints. Do not repeat those `#[allow(...)]` blocks on unit-test
-  modules; keep crate-level allowances on standalone integration test crates.
-
-## Validation
-
-Run focused tests for the changed behavior before escalating to broader suites.
-
-## Common mistakes / anti-patterns
-
-- Using `#[path]` for production modules
-- Rewriting snapshots without review
-- Skipping task/helper conventions and rebuilding test scaffolding ad hoc
-- Setting or reading process-global environment variables instead of injecting
-  `MapEnv`
-- Adding a `#[cfg(test)]`-only variant to a production enum as a test seam
+Run the narrowest existing test target that exercises the change, then use
+`cross-platform-verification` for the repository-wide sequence. CI topology
+belongs in `ci-cd-patterns`.

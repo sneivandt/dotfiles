@@ -1,73 +1,36 @@
 ---
 name: sparse-checkout-patterns
 description: >
-  Sparse-checkout manifest conventions for this dotfiles repo. Use when changing
-  conf/manifest.toml, category-based file exclusions, profile-driven checkout
-  filtering, or sparse-checkout application.
+  Use for conf/manifest.toml ownership, sparse-checkout pattern generation, or
+  profile-driven retention under cli/src/domains/repository/sparse_checkout*.
+  Not for profile selection itself.
 ---
 
 # Sparse Checkout Patterns
 
-The sparse checkout system allows a single repo to support multiple environments
-by controlling which files are checked out based on the selected profile.
+`conf/manifest.toml` maps paths relative to `symlinks/` to the category
+combinations that own them.
 
-**Key files:**
-- `conf/manifest.toml` — maps `symlinks/` paths to exclusion categories
-- `conf/profiles.toml` — defines which categories each profile excludes
-- `cli/src/domains/repository/sparse_checkout.rs` — task entry point
-- `cli/src/domains/repository/sparse_checkout/` — supporting implementation and tests
+## Ownership rules
 
-## How It Works
+- Section names use AND semantics: `[arch-desktop]` owns a path only when both
+  categories are active.
+- If multiple sections declare a path, any active owner retains it.
+- Directory entries end with `/`.
+- Base-owned paths need no manifest entry.
+- A non-base symlink source reused by `[base]` is already retained.
 
-1. Profile resolves `excluded_categories` via `conf/profiles.toml`
-2. OS auto-detection adds platform overrides (Linux always excludes `windows`; non-Arch always excludes `arch`)
-3. `get_excluded_files()` loads `manifest.toml` against `excluded_categories`
-4. Sparse checkout patterns are generated (`/*` + `!/<path>` entries) and written to `.git/info/sparse-checkout`
-5. `git read-tree -mu HEAD` updates the working directory
+The task writes cone-disabled patterns beginning with `/*` and exclusion entries,
+then runs `git read-tree -mu HEAD`. Apply checkout changes only from a clean
+working tree.
 
-## Manifest File Format
+## Add or move a managed path
 
-Paths are relative to `symlinks/`. Section names use the same AND logic as
-other config files and describe the active category combinations that own each
-path:
+1. Determine its exact category ownership.
+2. Update `conf/manifest.toml` unless base already owns the source.
+3. Keep `conf/symlinks.toml` and real `symlinks/` content aligned.
+4. Add or update config-drift coverage.
+5. Dry-run the affected profile.
 
-```toml
-[windows]
-paths = ["config/git/windows", "wslconfig"]  # excluded if windows is excluded
-
-[arch]
-paths = ["config/pacman.conf", "config/paru/"]
-
-[desktop]
-paths = ["config/Code/", "config/rofi/"]
-
-[arch-desktop]
-paths = ["config/hypr/", "config/dunst/"]    # retained only when BOTH are active
-```
-
-- A path is retained when any section declaring it is active; otherwise it is excluded
-- Directories **must** end with `/`
-- Files in the `[base]` profile are never excluded — don't list them here
-- A non-base symlink may reuse a source declared in `[base]` without adding a
-  manifest entry; the base declaration already guarantees retention
-
-## Adding a New File
-
-1. Determine which active category combination owns the file
-2. Add to the appropriate section in `conf/manifest.toml` (relative to
-   `symlinks/`), unless the source is already declared in `[base]`
-3. Run `./dotfiles.sh install -p <profile> -d` to verify the exclusion
-4. Apply sparse checkout only from a clean working tree
-
-## Relationship with Config Processing
-
-The AND-logic section name has the same ownership meaning everywhere:
-
-| File | Filtered against | Meaning of `[arch-desktop]` |
-|---|---|---|
-| `manifest.toml` | `active_categories` | retain only if **both** arch and desktop are active |
-| `packages.toml`, `symlinks.toml`, etc. | `active_categories` | include only if **both** arch and desktop are active |
-
-When multiple sections declare the same path, any active owner keeps it in the
-checkout. This supports genuinely shared paths without broadening their
-category ownership.
+Use `profile-system` for category-set computation, `symlink-management` for
+target behavior, and `config-validation` for drift invariants.

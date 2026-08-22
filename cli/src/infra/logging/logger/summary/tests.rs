@@ -274,7 +274,7 @@ fn verbose_task_line_reports_elapsed_time() {
         ..plain_opts()
     };
 
-    assert_eq!(format_task_line(&task, opts), "‧ Home symlinks \u{b7} 1.5s");
+    assert_eq!(format_task_line(&task, opts), "○ Home symlinks \u{b7} 1.5s");
 }
 
 #[test]
@@ -407,7 +407,7 @@ fn verbose_task_result_lines_account_for_unchanged_tasks() {
         ..plain_opts()
     };
 
-    assert_eq!(task_result_lines(&task, &[], opts), ["‧ unchanged-task"]);
+    assert_eq!(task_result_lines(&task, &[], opts), ["○ unchanged-task"]);
 }
 
 #[test]

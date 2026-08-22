@@ -61,6 +61,14 @@ pub trait Resource {
 /// require this bound, which makes "this resource cannot be removed" a
 /// compile error at the call site instead of a failed task.
 pub trait RemovableResource: Resource {
+    /// Whether removal must run when the managed target is already missing.
+    ///
+    /// Most resources are already removed in that state. Resources that
+    /// materialize separate source content during uninstall can override this.
+    fn remove_when_missing(&self) -> bool {
+        false
+    }
+
     /// Remove the resource, undoing a previous `apply()`.
     ///
     /// # Errors

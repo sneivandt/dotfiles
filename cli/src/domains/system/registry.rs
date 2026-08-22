@@ -35,7 +35,7 @@ impl ApplyRegistry {
             |resources, _ctx| batch_check_values(resources),
             |r, cached| {
                 let key = format!("{}\\{}", r.key_path, r.value_name);
-                let val = cached.get(&key).and_then(|v| v.as_deref());
+                let val = cached.get(&key).and_then(Option::as_ref);
                 Ok(r.state_from_cached(val))
             },
             &ProcessOpts::lenient("configure"),

@@ -67,6 +67,23 @@ test_hook_blocks() {
   fi
 }
 
+test_hook_blocks_staged_file_deleted_from_worktree() {
+  printf 'secret_%s: "%s%s%s%s"\n' \
+    'key' 'abcdef12345' '67890abcdef' '12345' '67890' > staged-only-secret.txt
+  git add staged-only-secret.txt
+  rm -f staged-only-secret.txt
+
+  if git commit -m "Test staged-only sensitive file" 2>&1 | grep -q "Potential sensitive information detected"; then
+    pass "Hook scanned a staged file deleted from the worktree"
+    git reset HEAD staged-only-secret.txt > /dev/null 2>&1 || true
+    return 0
+  fi
+
+  fail "Hook skipped a staged file deleted from the worktree"
+  git reset HEAD staged-only-secret.txt > /dev/null 2>&1 || true
+  return 1
+}
+
 # Test that hook allows clean commits
 test_hook_allows() {
   clean_content="$1"
@@ -299,6 +316,7 @@ test_hook_blocks "GitHub fine-grained PAT" "GITHUB_TOKEN=$fine_grained_pat"
 printf "\nTesting API key patterns...\n"
 test_hook_blocks "API key" 'apikey = "1234567890abcdef1234567890abcdef"'
 test_hook_blocks "Secret key" 'secret_key: "abcdef1234567890abcdef1234567890"'
+test_hook_blocks_staged_file_deleted_from_worktree
 
 # Test passwords
 printf "\nTesting password patterns...\n"

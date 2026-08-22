@@ -1,80 +1,43 @@
 ---
 name: package-management
 description: >
-  System package resource and provider conventions for pacman, AUR helpers, and
-  winget. Use when changing package config, state discovery, or installation.
+  Use for conf/packages.toml or package providers/resources under
+  cli/src/domains/packages/, including pacman, AUR helpers, and winget. Not for
+  generic subprocess or task orchestration changes.
 ---
 
 # Package Management
 
-System packages are declared in `conf/packages.toml`, parsed by
-`cli/src/domains/packages/config/packages.rs`, represented by package resources,
-and converged by the `cli/src/domains/packages/install.rs` task entry point with
-supporting implementation under `cli/src/domains/packages/install/`.
-
-## Configuration Contract
-
-Package entries support a concise name or structured metadata:
-
-```toml
-[arch]
-packages = [
-  "git",
-  { name = "powershell-bin", aur = true },
-]
-```
-
-Use exact manager identifiers. Keep AUR intent in structured metadata rather
-than inferring it from package names.
-
 ## Architecture
 
-| Responsibility | Owner |
-|---|---|
-| deserialize and validate entries | `domains/packages/config/packages.rs` |
-| manager-specific query/install behavior | `domains/packages/resources/{pacman,paru,winget}.rs` |
-| resource state and mutation | `domains/packages/resources/package.rs` |
-| applicability and orchestration | `domains/packages/install.rs` + `domains/packages/install/` |
+- Config owns exact package identifiers and explicit metadata such as `aur`.
+- `PackageManager` selects a provider.
+- Provider modules own query/install commands.
+- Package resources own state and mutation.
+- The install task/operation owns applicability and batching.
 
-`PackageManager` selects a provider. Add a provider implementation rather than
-branching manager-specific command logic through tasks.
+Add a provider rather than branching manager-specific commands through tasks.
 
-## Convergence Flow
+## Convergence
 
-1. Select applicable entries and manager from platform capabilities.
-2. Verify the manager executable is available.
-3. Query installed packages once per manager.
-4. Share the cached state with package resources.
-5. Let `PackageInstallOperation` and `process_operation()` plan and converge the
-   missing entries.
-6. Preserve provider-level batching where supported; otherwise install
-   individually.
+1. Select entries and provider from platform capabilities.
+2. Verify the executable exists.
+3. Query installed state once per provider.
+4. Plan missing entries from that cached state.
+5. Batch installs where the provider supports it.
 
-Do not run one installed-state command per package. Keep manager commands behind
-the executor abstraction and preserve idempotent manager options.
+Route every command through the executor and preserve idempotent flags. An
+unavailable manager returns an explicit skip or diagnostic, never silent
+success.
 
-## Platform Rules
+## Platform rules
 
-- Pacman handles ordinary Arch packages.
-- The AUR helper bootstrap and AUR package task remain separate from ordinary
-  package installation.
-- AUR commands must not add an extra sudo layer around tools that manage their
-  own elevation.
-- Winget uses exact package IDs and may require per-package installation. It
-  never elevates the run: prefer `--scope user`, retry unscoped only when no
-  user-scope installer exists, and report privilege failures as skipped rather
-  than failing the task.
-- Prefer platform capability methods over direct OS checks.
+- Pacman handles ordinary Arch packages; AUR bootstrap and AUR packages stay
+  separate.
+- Do not wrap AUR helpers in an extra sudo layer.
+- Winget uses exact IDs, prefers user scope, and retries unscoped only when no
+  user-scope installer exists. Privilege-only failures are explicit skips.
+- Prefer capability methods over direct OS checks.
 
-When a package manager is unavailable, return an explicit skipped result or
-capability diagnostic consistent with task result semantics; do not silently
-report success.
-
-## Change Checklist
-
-1. Update config parsing and validation for new metadata.
-2. Extend `PackageManager` and add a focused provider when adding a manager.
-3. Preserve one-query state discovery and batch behavior.
-4. Route subprocesses through `ctx.executor`.
-5. Add provider command, state mapping, missing-manager, and dry-run tests.
-6. Review Linux and Windows behavior.
+Test provider commands, state mapping, batching, missing-manager behavior, and
+dry-run planning. Use `toml-configuration` if entry syntax changes.

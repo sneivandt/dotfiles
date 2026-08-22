@@ -1,93 +1,50 @@
 ---
 name: toml-configuration
 description: >
-  TOML structure, category filtering, and loader conventions for conf/ and
-  the app/domain config modules. Use when adding or changing declarative
-  configuration.
+  Use for typed models, loaders, category sections, or overlay merging for
+  conf/*.toml. Not for validator implementation alone or non-TOML runtime
+  behavior.
 ---
 
 # TOML Configuration
 
-Configuration under `conf/` is declarative desired state and is deserialized
-with Serde. Keep parsing, validation, resource wiring, and real config changes
-in sync.
+## Parsing rules
 
-## Stable Conventions
+- Model config with typed Serde structures.
+- Add `#[serde(deny_unknown_fields)]` to every deserialized struct.
+- Do not use `#[serde(untagged)]`; use
+  `crate::infra::config::StringOrTable<T>` for string-or-table entries.
+- Structural mistakes fail deserialization. Domain-invalid values that need
+  aggregated diagnostics should deserialize to an explicit parsed/invalid form
+  and fail semantic validation instead.
+- Use `load_required_config()` unless absence intentionally means empty state.
+- Keep deterministic order where output or diagnostics expose it.
 
-- Use typed Serde models; do not add ad hoc text parsing.
-- Preserve semantic validation aggregation. When a domain validator owns an
-  invalid-value diagnostic, deserialize into a parsed wrapper or explicit
-  `Invalid` variant instead of failing the whole file at the Serde boundary.
-  Syntax errors and structural type mismatches should still fail loading.
-- Add `#[serde(deny_unknown_fields)]` to every deserialized struct. Unknown keys
-  must be errors; a misspelling that falls back to `#[serde(default)]` is a
-  silent-misconfiguration bug.
-- Never use `#[serde(untagged)]`. Untagged enums ignore `deny_unknown_fields`:
-  serde buffers the input and falls through variants, so a typo inside a table
-  matches the struct variant with the bad key dropped. For entries that accept
-  either a concise string or structured metadata, use
-  `crate::infra::config::StringOrTable<T>`, which dispatches on the
-  `toml::Value` kind and delegates tables to `T` so strictness is preserved.
-- Keep deterministic section ordering where output or diagnostics depend on it.
-- Include trailing commas in multiline arrays.
-- Prefer `config_section!` for ordinary category-filtered lists.
-- Use `load_optional_config()` only when a missing file legitimately means
-  empty configuration; otherwise use `load_required_config()`.
+## Category sections
 
-## Category Sections
-
-Most files use table names as category expressions:
+Section names are hyphen-separated category conjunctions:
 
 ```toml
 [arch-desktop]
-items = [
-  "example",
-]
+items = ["example"]
 ```
 
-Category names are lowercased and split on `-`. Matching uses AND semantics:
-every category in the section name must be present in the category set supplied
-by the caller.
+Every category must be active. Do not use dotted names; TOML interprets them as
+nested tables. Ordinary config filters against active categories; manifest
+ownership uses the same conjunction semantics.
 
-- Normal config loaders filter against `active_categories`.
-- `manifest.toml` filters against `excluded_categories`.
-- Do not use dotted table names for category expressions; dots create nested
-  TOML tables.
+Prefer `config_section!` and `SectionLoader` for ordinary category-filtered,
+overlay-aware lists. Loaders return typed desired state and contain no task
+behavior.
 
-Built-in categories are `base`, `desktop`, `linux`, `windows`, and `arch`.
-Profiles may also define custom categories. Coordinate new categories with
-profiles, manifest handling, validation, tests, and documentation.
+## Complete a config change
 
-## Loader Pattern
+1. Update the type and loader.
+2. Add or update semantic validation.
+3. Update the real `conf/*.toml`.
+4. Wire the resource/operation and task.
+5. Export and register static tasks where needed.
+6. Add parser, validator, and cross-file drift tests.
+7. Review profile, manifest, and overlay impact.
 
-Keep one clear path from file to desired state:
-
-1. Deserialize sections into typed values.
-2. Convert sections into category plus item collections.
-3. Filter with the shared category helper.
-4. Merge overlay entries through `SectionLoader` when that config surface
-   supports overlays.
-5. Return typed values without embedding task behavior in the loader.
-
-`cli/src/app/config/mod.rs` owns aggregate loading. Modules under
-`cli/src/domains/<domain>/config/` own their formats and validators; generic
-TOML/category helpers live in `cli/src/infra/config/`. Consult the
-target module and real file under `conf/` rather than duplicating an inventory
-here.
-
-## Change Checklist
-
-For a new or changed config-backed surface:
-
-1. Update the config type and loader.
-2. Add or update validation.
-3. Update the real `conf/*.toml` file.
-4. Wire the resource or operation and its task.
-5. Register static tasks and export modules where required.
-6. Add focused parser, validation, and drift coverage.
-7. Review profile, manifest, and overlay implications.
-
-## Validation
-
-- Use `config-validation` for validator and drift-test conventions.
-- Run the repository test command for real-config validation.
+Use `config-validation` for diagnostic and drift-test details.

@@ -12,9 +12,9 @@ use crate::infra::config::Diagnostic;
 use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `scripts.duplicate-identity`.
-const SCRIPTS_DUPLICATE_IDENTITY: DiagnosticCode =
-    DiagnosticCode::new("scripts", "duplicate-identity");
+/// Diagnostic code: `scripts.duplicate-selector`.
+const SCRIPTS_DUPLICATE_SELECTOR: DiagnosticCode =
+    DiagnosticCode::new("scripts", "duplicate-selector");
 /// Diagnostic code: `scripts.invalid-path`.
 const SCRIPTS_INVALID_PATH: DiagnosticCode = DiagnosticCode::new("scripts", "invalid-path");
 /// Diagnostic code: `scripts.empty-name`.
@@ -44,12 +44,12 @@ pub fn validate(entries: &[ScriptEntry]) -> Vec<Diagnostic> {
     use crate::infra::config::Severity;
     use crate::infra::config::validation::{Validator, check_error};
 
-    let mut identities = HashSet::<(&str, &str)>::new();
-    let mut duplicates = HashSet::<(&str, &str)>::new();
+    let mut selectors = HashSet::new();
+    let mut duplicates = HashSet::new();
     for entry in entries {
-        let identity = (entry.name.as_str(), entry.path.as_str());
-        if !identities.insert(identity) {
-            duplicates.insert(identity);
+        let selector = overlay_script_selector(&entry.name);
+        if !selectors.insert(selector.clone()) {
+            duplicates.insert(selector);
         }
     }
 
@@ -64,18 +64,30 @@ pub fn validate(entries: &[ScriptEntry]) -> Vec<Diagnostic> {
                         SCRIPTS_EMPTY_NAME,
                         "script name must not be empty",
                     ),
-                    validate_relative_script_path(entry).err().map(|error| {
-                        (SCRIPTS_INVALID_PATH, Severity::Error, error.to_string())
-                    }),
+                    validate_relative_script_path(entry)
+                        .err()
+                        .map(|error| (SCRIPTS_INVALID_PATH, Severity::Error, error.to_string())),
                     check_error(
-                        duplicates.contains(&(entry.name.as_str(), entry.path.as_str())),
-                        SCRIPTS_DUPLICATE_IDENTITY,
-                        "duplicate script name and path would create the same dynamic task identity",
+                        duplicates.contains(&overlay_script_selector(&entry.name)),
+                        SCRIPTS_DUPLICATE_SELECTOR,
+                        "script name normalizes to the same CLI selector as another entry",
                     ),
                 ]
             },
         )
         .finish()
+}
+
+/// Build the stable CLI selector for an overlay script name.
+#[must_use]
+pub(crate) fn overlay_script_selector(name: &str) -> String {
+    let suffix = name
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>()
+        .join("-");
+    format!("script-{suffix}")
 }
 
 /// Resolve the absolute path for a script entry relative to the overlay root.
@@ -159,7 +171,7 @@ scripts = [
     test_load_missing_returns_empty!(load);
 
     #[test]
-    fn validate_rejects_empty_names_invalid_paths_and_duplicate_identities() {
+    fn validate_rejects_empty_names_invalid_paths_and_duplicate_selectors() {
         let entries = vec![
             ScriptEntry {
                 name: " ".to_string(),
@@ -185,7 +197,33 @@ scripts = [
             .collect::<Vec<_>>();
         assert!(codes.contains(&"scripts.empty-name".to_string()));
         assert!(codes.contains(&"scripts.invalid-path".to_string()));
-        assert!(codes.contains(&"scripts.duplicate-identity".to_string()));
+        assert!(codes.contains(&"scripts.duplicate-selector".to_string()));
+    }
+
+    #[test]
+    fn validate_rejects_distinct_names_with_the_same_selector() {
+        let entries = vec![
+            ScriptEntry {
+                name: "Set up DB".to_string(),
+                path: "scripts/setup-db.sh".to_string(),
+                description: None,
+            },
+            ScriptEntry {
+                name: "Set-up DB".to_string(),
+                path: "scripts/setup-db-alt.sh".to_string(),
+                description: None,
+            },
+        ];
+
+        let diagnostics = validate(&entries);
+
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code.to_string() == "scripts.duplicate-selector"),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+        assert_eq!(diagnostics.len(), 2);
     }
 
     #[test]

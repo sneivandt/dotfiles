@@ -117,25 +117,24 @@ impl<'a> RunCoordinator<'a> {
                 .collect::<Vec<_>>();
             summary.merge(run_task_graph(&mut prefix, self.ctx, self.log, None)?);
 
-            if !self.ctx.is_cancelled() {
-                let boundary_satisfied = matches!(
-                    summary.outcome(&late.boundary),
-                    Some(crate::engine::scheduler::TaskOutcome::Satisfied)
-                );
-                let mut remaining = tasks
-                    .iter()
-                    .copied()
-                    .filter(|task| !boundary_closure.contains(&task.task_id()))
-                    .collect::<Vec<_>>();
-                let late_tasks = boundary_satisfied.then(|| (late.provider)());
-                if let Some(late_tasks) = late_tasks.as_ref() {
-                    self.log
-                        .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
-                    remaining.extend(late_tasks.iter().map(Box::as_ref));
-                }
-                let next = run_task_graph(&mut remaining, self.ctx, self.log, Some(&summary))?;
-                summary.merge(next);
+            let boundary_satisfied = matches!(
+                summary.outcome(&late.boundary),
+                Some(crate::engine::scheduler::TaskOutcome::Satisfied)
+            );
+            let mut remaining = tasks
+                .iter()
+                .copied()
+                .filter(|task| !boundary_closure.contains(&task.task_id()))
+                .collect::<Vec<_>>();
+            let late_tasks =
+                (!self.ctx.is_cancelled() && boundary_satisfied).then(|| (late.provider)());
+            if let Some(late_tasks) = late_tasks.as_ref() {
+                self.log
+                    .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
+                remaining.extend(late_tasks.iter().map(Box::as_ref));
             }
+            let next = run_task_graph(&mut remaining, self.ctx, self.log, Some(&summary))?;
+            summary.merge(next);
         }
 
         Ok(summary)
@@ -216,15 +215,23 @@ fn run_task_graph(
     log: &Arc<Logger>,
     prior: Option<&crate::engine::scheduler::ExecutionSummary>,
 ) -> Result<crate::engine::scheduler::ExecutionSummary> {
-    if ctx.is_cancelled() || tasks.is_empty() {
+    if tasks.is_empty() {
         return Ok(crate::engine::scheduler::ExecutionSummary::default());
     }
 
-    let assessments = tasks
-        .iter()
-        .map(|task| (task.task_id(), task.assess(ctx)))
-        .collect::<HashMap<_, _>>();
-    let mut summary = ElevationBroker::new(ctx, log).prepare(tasks, &assessments);
+    let assessments = if ctx.is_cancelled() {
+        HashMap::new()
+    } else {
+        tasks
+            .iter()
+            .map(|task| (task.task_id(), task.assess(ctx)))
+            .collect::<HashMap<_, _>>()
+    };
+    let mut summary = if ctx.is_cancelled() {
+        crate::engine::scheduler::ExecutionSummary::default()
+    } else {
+        ElevationBroker::new(ctx, log).prepare(tasks, &assessments)
+    };
 
     if tasks.is_empty() {
         return Ok(summary);
@@ -974,7 +981,10 @@ mod tests {
     #[test]
     fn late_tasks_are_skipped_when_cancelled_during_the_boundary_closure() {
         let trace = trace();
-        let tasks = vec![ProbeTask::new("boundary", 1, &trace)];
+        let tasks = vec![
+            ProbeTask::new("boundary", 1, &trace),
+            ProbeTask::new("remaining", 2, &trace),
+        ];
         let (ctx, log) = sequential_context();
         let provider_called = Arc::new(Mutex::new(false));
 
@@ -983,25 +993,34 @@ mod tests {
         ctx.cancellation_token().cancel();
 
         let flag = Arc::clone(&provider_called);
-        run_tasks_to_completion_with_late_tasks(
-            as_dyn(&tasks),
-            &ctx,
-            &log,
-            TaskId::Dynamic(1),
-            move || {
-                *flag
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
-                Vec::new()
-            },
-        )
-        .expect("cancellation is not itself a failure");
+        let summary = RunCoordinator::new(&ctx, &log)
+            .execute_phased(
+                as_dyn(&tasks),
+                LateTaskPlan {
+                    boundary: TaskId::Dynamic(1),
+                    provider: Box::new(move || {
+                        *flag
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
+                        Vec::new()
+                    }),
+                },
+            )
+            .expect("cancellation is not itself a failure");
 
         assert!(
             !*provider_called
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             "a cancelled run must not build late tasks"
+        );
+        assert_eq!(
+            summary.outcome(&TaskId::Dynamic(1)),
+            Some(TaskOutcome::Cancelled)
+        );
+        assert_eq!(
+            summary.outcome(&TaskId::Dynamic(2)),
+            Some(TaskOutcome::Cancelled)
         );
     }
 }

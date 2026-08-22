@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::platform::{is_link_like, remove_symlink};
 use crate::infra::exec::Executor;
-use crate::infra::fs::{rename_into_place, sibling_temp_path};
+use crate::infra::fs::{ensure_parent_dir, rename_into_place, sibling_temp_path};
 
 /// Copy `source` into `target`, replacing the symlink that currently lives at
 /// `target`. Files are staged to a sibling temp path first so that the window
@@ -12,6 +12,8 @@ use crate::infra::fs::{rename_into_place, sibling_temp_path};
 /// the source tree are recreated as symlinks rather than followed, preventing
 /// unintended traversal outside the source tree.
 pub(super) fn copy_into_place(source: &Path, target: &Path, executor: &dyn Executor) -> Result<()> {
+    ensure_parent_dir(target)?;
+
     if source.is_dir() {
         copy_dir_into_place(source, target, executor)
     } else {

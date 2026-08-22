@@ -9,7 +9,7 @@ pub(super) const fn symbol(status: TaskStatus) -> char {
         TaskStatus::DryRun => '~',
         TaskStatus::Skipped => '⊘',
         TaskStatus::Failed => '✗',
-        TaskStatus::Ok => '‧',
+        TaskStatus::Ok => '○',
         TaskStatus::NotApplicable => '⁃',
     }
 }
@@ -48,7 +48,7 @@ mod tests {
             (TaskStatus::Passed, '✓'),
             (TaskStatus::Skipped, '⊘'),
             (TaskStatus::Failed, '✗'),
-            (TaskStatus::Ok, '‧'),
+            (TaskStatus::Ok, '○'),
             (TaskStatus::NotApplicable, '⁃'),
         ] {
             assert_eq!(symbol(status), expected);

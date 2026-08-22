@@ -144,6 +144,10 @@ impl Resource for SymlinkResource {
 }
 
 impl RemovableResource for SymlinkResource {
+    fn remove_when_missing(&self) -> bool {
+        true
+    }
+
     fn remove(&self) -> ResourceResult<ResourceChange> {
         // Classify the target explicitly so that unexpected metadata errors
         // do not fall through to `copy_into_place` (which would materialize

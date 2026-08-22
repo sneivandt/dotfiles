@@ -407,6 +407,29 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&link).unwrap(), "# bash config");
     }
 
+    #[test]
+    fn uninstall_run_materializes_content_when_target_is_missing() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let home_dir = tempfile::tempdir().unwrap();
+        let symlinks_dir = repo_dir.path().join("symlinks/config/git");
+        std::fs::create_dir_all(&symlinks_dir).unwrap();
+        std::fs::write(symlinks_dir.join("config"), "# git config").unwrap();
+
+        let target = home_dir.path().join(".config/git/config");
+        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+            .with_home(home_dir.path().to_path_buf());
+
+        let result = UninstallSymlinks::new(handle(vec![sym("config/git/config", None)]))
+            .run(&ctx)
+            .unwrap();
+
+        assert!(matches!(
+            result,
+            TaskResult::Batch(stats) if stats.changed_count() == 1
+        ));
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "# git config");
+    }
+
     #[cfg(unix)]
     #[test]
     fn uninstall_run_parallel_materializes_similar_file_names() {

@@ -223,7 +223,13 @@ pub(super) fn remove_single<R: RemovableResource>(
     current: &ResourceState,
     verb: &'static str,
 ) -> Result<TaskStats> {
-    let plan = RemoveChange::from_state(resource.description(), current, verb);
+    let effective_state =
+        if matches!(current, ResourceState::Missing) && resource.remove_when_missing() {
+            ResourceState::Correct
+        } else {
+            current.clone()
+        };
+    let plan = RemoveChange::from_state(resource.description(), &effective_state, verb);
     let mut delta = TaskStats::new();
     match plan.operation() {
         RemoveOperation::Remove { verb: remove_verb } => {

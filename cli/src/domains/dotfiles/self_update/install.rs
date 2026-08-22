@@ -22,6 +22,33 @@ fn remove_stale_backup(path: &Path) -> Result<()> {
     }
 }
 
+fn install_staged_binary(path: &Path, staged: &Path) -> Result<()> {
+    let dir = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("binary path has no parent directory"))?;
+    let backup = if path.exists() {
+        let old = dir.join(old_binary_name());
+        remove_stale_backup(&old)?;
+        fs::rename(path, &old).context("backing up current binary")?;
+        Some(old)
+    } else {
+        None
+    };
+
+    if let Err(install_error) = fs::rename(staged, path) {
+        if let Some(old) = backup
+            && let Err(restore_error) = fs::rename(&old, path)
+        {
+            return Err(anyhow::anyhow!(
+                "moving new binary into place failed ({install_error}); \
+                 restoring previous binary also failed ({restore_error})"
+            ));
+        }
+        return Err(install_error).context("moving new binary into place");
+    }
+    Ok(())
+}
+
 /// Replace the binary at `path` with `data`, handling platform differences.
 ///
 /// The current binary is renamed to [`old_binary_name`] first rather than
@@ -56,15 +83,7 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
         bail!("binary path points to a directory: {}", path.display());
     }
 
-    // Move the current binary aside instead of overwriting it, so the smoke
-    // test in `download_and_install` has something to roll back to.
-    if path.exists() {
-        let old = dir.join(old_binary_name());
-        remove_stale_backup(&old)?;
-        fs::rename(path, &old).context("backing up current binary")?;
-    }
-
-    fs::rename(tmp.path(), path).context("moving new binary into place")?;
+    install_staged_binary(path, tmp.path())?;
     tmp.persist();
     Ok(())
 }
@@ -239,6 +258,23 @@ mod tests {
         fs::write(&bin, b"old").unwrap();
         replace_binary(&bin, b"new").unwrap();
         assert_eq!(fs::read(&bin).unwrap(), b"new");
+    }
+
+    #[test]
+    fn failed_staged_install_restores_existing_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("dotfiles");
+        let missing_staged = dir.path().join("missing-staged-binary");
+        fs::write(&bin, b"old").unwrap();
+
+        let error = install_staged_binary(&bin, &missing_staged).unwrap_err();
+
+        assert!(
+            error.to_string().contains("moving new binary into place"),
+            "unexpected replacement error: {error:#}"
+        );
+        assert_eq!(fs::read(&bin).unwrap(), b"old");
+        assert!(!dir.path().join(old_binary_name()).exists());
     }
 
     #[test]

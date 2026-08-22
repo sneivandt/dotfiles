@@ -188,7 +188,15 @@ impl IntrinsicState for WrapperResource {
 
         let current = crate::infra::fs::read_string(&self.target)?;
 
-        if current == self.content {
+        #[cfg(unix)]
+        let permissions_correct = {
+            use std::os::unix::fs::PermissionsExt as _;
+            metadata.permissions().mode() & 0o777 == 0o755
+        };
+        #[cfg(not(unix))]
+        let permissions_correct = true;
+
+        if current == self.content && permissions_correct {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect { current })
@@ -324,9 +332,28 @@ mod tests {
 
         std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
         std::fs::write(&r.target, &r.content).unwrap();
+        #[cfg(unix)]
+        crate::infra::fs::set_executable(&r.target).unwrap();
 
         let state = r.current_state().unwrap();
         assert_eq!(state, ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn state_incorrect_when_wrapper_is_not_executable() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let tmp = TempDir::new().unwrap();
+        let r = make_sh_resource(Path::new("/repo"), tmp.path());
+        std::fs::create_dir_all(r.target.parent().unwrap()).unwrap();
+        std::fs::write(&r.target, &r.content).unwrap();
+        std::fs::set_permissions(&r.target, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(matches!(
+            r.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
     }
 
     #[test]

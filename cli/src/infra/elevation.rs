@@ -10,7 +10,7 @@ use crate::infra::exec::windows::PowerShellCommand;
 #[cfg(test)]
 use crate::infra::exec::windows::powershell_encode_command;
 #[cfg(any(windows, test))]
-use crate::infra::exec::windows::{powershell_arg_list, powershell_single_quote};
+use crate::infra::exec::windows::{powershell_argument_line, powershell_single_quote};
 #[cfg(windows)]
 use crate::infra::logging::OutputExt as _;
 
@@ -143,7 +143,7 @@ pub(crate) fn build_elevated_child_script(exe: &str, args: &[String]) -> String 
     let start = if args.is_empty() {
         format!("Start-Process -FilePath {exe_quoted} -Verb RunAs -Wait -PassThru")
     } else {
-        let arg_list = powershell_arg_list(args);
+        let arg_list = powershell_argument_line(args);
         format!(
             "Start-Process -FilePath {exe_quoted} -ArgumentList {arg_list} -Verb RunAs -Wait -PassThru"
         )
@@ -315,8 +315,8 @@ mod escaping_tests {
             "the executable path must be single-quoted: {script}"
         );
         assert!(
-            script.contains("-ArgumentList @('install', '--only')"),
-            "arguments must be passed as a quoted PowerShell list: {script}"
+            script.contains("-ArgumentList 'install --only'"),
+            "arguments must be passed as one Windows command line: {script}"
         );
     }
 
@@ -390,69 +390,66 @@ mod escaping_tests {
         assert_eq!(powershell_single_quote("foo\r\nbar"), "'foo\r\nbar'");
     }
 
-    // --- powershell_arg_list ---
+    // --- powershell_argument_line ---
 
     #[test]
-    fn arg_list_empty_produces_empty_array() {
+    fn argument_line_empty_produces_empty_string() {
         let args: Vec<String> = vec![];
-        assert_eq!(powershell_arg_list(&args), "@()");
+        assert_eq!(powershell_argument_line(&args), "''");
     }
 
     #[test]
-    fn arg_list_single_arg() {
+    fn argument_line_single_arg() {
         let args = vec!["install".to_string()];
-        assert_eq!(powershell_arg_list(&args), "@('install')");
+        assert_eq!(powershell_argument_line(&args), "'install'");
     }
 
     #[test]
-    fn arg_list_multiple_args_with_spaces() {
+    fn argument_line_preserves_argument_with_spaces() {
         let args = vec![
             "--root".to_string(),
             "C:\\My Documents\\dotfiles".to_string(),
         ];
         assert_eq!(
-            powershell_arg_list(&args),
-            "@('--root', 'C:\\My Documents\\dotfiles')"
+            powershell_argument_line(&args),
+            "'--root \"C:\\My Documents\\dotfiles\"'"
         );
     }
 
     #[test]
-    fn arg_list_handles_commas_inside_args() {
-        // Commas inside args must not become array separators.
+    fn argument_line_handles_commas_inside_args() {
         let args = vec!["a,b".to_string(), "c,d".to_string()];
-        assert_eq!(powershell_arg_list(&args), "@('a,b', 'c,d')");
+        assert_eq!(powershell_argument_line(&args), "'a,b c,d'");
     }
 
     #[test]
-    fn arg_list_handles_single_quotes_inside_args() {
+    fn argument_line_escapes_single_quotes_for_powershell() {
         let args = vec!["O'Brien".to_string(), "it's fine".to_string()];
-        assert_eq!(powershell_arg_list(&args), "@('O''Brien', 'it''s fine')");
+        assert_eq!(powershell_argument_line(&args), "'O''Brien \"it''s fine\"'");
     }
 
     #[test]
-    fn arg_list_combines_spaces_and_single_quotes() {
-        // Covers the combination of path-with-spaces and name-with-single-quote
-        // in the same call — both quoting rules must apply simultaneously.
+    fn argument_line_combines_spaces_and_single_quotes() {
         let args = vec![
             "C:\\Temp\\Path With Space".to_string(),
             "O'Brien".to_string(),
         ];
         assert_eq!(
-            powershell_arg_list(&args),
-            "@('C:\\Temp\\Path With Space', 'O''Brien')"
+            powershell_argument_line(&args),
+            "'\"C:\\Temp\\Path With Space\" O''Brien'"
         );
     }
 
     #[test]
-    fn arg_list_handles_newline_inside_arg() {
+    fn argument_line_handles_newline_inside_arg() {
         let args = vec!["foo\nbar".to_string()];
-        assert_eq!(powershell_arg_list(&args), "@('foo\nbar')");
+        assert_eq!(powershell_argument_line(&args), "'\"foo\nbar\"'");
     }
 
     #[test]
-    fn arg_list_handles_carriage_return_inside_arg() {
+    fn argument_line_handles_carriage_return_inside_arg() {
         let args = vec!["foo\r\nbar".to_string()];
-        assert_eq!(powershell_arg_list(&args), "@('foo\r\nbar')");
+        assert_eq!(powershell_argument_line(&args), "'\"foo\r\nbar\"'");
     }
 
     // --- powershell_encode_command ---

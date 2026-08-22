@@ -1,79 +1,42 @@
 ---
 name: symlink-management
 description: >
-  Symlink configuration and resource conventions for this dotfiles repo. Use
-  when changing conf/symlinks.toml, SymlinkResource install/remove behavior,
-  target computation, or symlink/manifest alignment.
+  Use for conf/symlinks.toml, SymlinkResource target computation,
+  install/remove/materialization behavior, or symlink-to-manifest alignment.
+  Not for generic sparse-checkout logic.
 ---
 
 # Symlink Management
 
-Symlinks connect config files from `symlinks/` to `$HOME`. Config in
-`conf/symlinks.toml` is owned by `domains::files::config::symlinks` and
-installed by `domains::files::symlinks`.
+Sources are relative to `symlinks/`, have no leading dot, and cannot escape that
+tree. Explicit targets are home-relative. Reject absolute paths, `..`, missing
+sources, duplicate targets, and overlapping parent/child targets.
 
-Source files in `symlinks/` have **no leading dots**.
-Source and explicit target paths must be relative and must not contain `..`
-components; invalid paths are reported as unsafe configuration instead of being
-applied. A configured source that canonicalizes outside its owning `symlinks/`
-tree is also unsafe.
+## Target rules
 
-## Target Path
+- A string source receives the normal leading-dot target mapping.
+- Use `{ source, target }` for paths that must not receive a dot prefix.
+- One canonical source may feed multiple explicit targets.
+- Do not create links inside another managed directory link.
 
-`compute_target()` in `domains/files/symlinks.rs` prepends a dot to the source.
+## Resource behavior
 
-For paths that must **not** receive a dot prefix (Windows paths like `AppData/` or
-`Documents/`), use an explicit `target` field in `conf/symlinks.toml`:
+- The task uses strict resource processing.
+- `SymlinkResource` owns platform-specific creation.
+- Correct links are already converged; wrong links are repaired only when safe.
+- Uninstall materializes managed links into real files/directories rather than
+  deleting their content.
+- Never overwrite an existing non-link target during removal.
+- Profile changes use the same materialization path before excluding a source.
 
-```toml
-{ source = "config/Code/User/settings.json", target = "AppData/Roaming/Code/User/settings.json" }
-```
+## Add a symlink
 
-The explicit target is joined to `$HOME` directly: `home.join(target)`.
-The same canonical source may be listed multiple times with distinct explicit
-targets. Prefer this over forwarding files or symlink chains inside
-`symlinks/`.
+1. Add the real source under `symlinks/`.
+2. Add it to the correct `conf/symlinks.toml` section.
+3. For non-base ownership, update the matching manifest section unless base
+   already owns the same source.
+4. Add config-drift coverage where needed.
+5. Run `./dotfiles.sh install -d`.
 
-Configured targets must be unique and non-overlapping. A target cannot equal
-another target or be nested beneath another managed target because the parent
-link would prevent the child from being created.
-
-## Task Implementation
-
-The install task is a hand-written `impl Task` over `run_resource_task()` with
-`SymlinkResource` and strict resource processing. Keep platform-specific
-creation inside `SymlinkResource::apply()`, not the task.
-
-## Adding Symlinks
-
-1. Create source: `symlinks/config/myapp/config` (no leading dot)
-2. Add to `conf/symlinks.toml` under correct profile section:
-   - Plain string `"config/myapp/config"` → target `~/.config/myapp/config` (dot prepended automatically)
-   - `{ source = "config/myapp/config", target = "AppData/Roaming/MyApp/config" }` → target `~/AppData/Roaming/MyApp/config` (no dot prefix)
-3. For non-`base` sections, add the source path to the matching `conf/manifest.toml` section for sparse checkout validation. Skip this only when the same source is also declared in `[base]`, because base sources are always retained.
-4. Test: `./dotfiles.sh install -d`
-
-## Idempotency
-
-- Correct symlink already exists → skip
-- Wrong symlink target → fix when safe
-- Unsafe paths or missing sources → report as invalid and skip applying
-
-## Uninstall
-
-`UninstallSymlinks` uses `process_resources_remove()` to operate only on
-symlinks that still point to the configured source. Instead of deleting those
-targets outright, `SymlinkResource::remove()` materializes them: it copies the
-current source file or directory into the target path, replacing the symlink
-with a real file/directory. Existing non-symlink targets are skipped to avoid
-overwriting user data.
-
-Profile changes use the same materialization path before sparse checkout
-removes newly excluded sources, preserving the user's current configuration as
-real files/directories.
-
-## Rules
-
-- Use directory symlinks for entire config dirs, file symlinks for selective management
-- Don't create symlinks inside already-symlinked directories
-- Reuse canonical sources with explicit targets instead of adding repository-internal forwarding links
+Use `windows-specific-patterns` for capability/junction behavior and
+`sparse-checkout-patterns` for manifest semantics.

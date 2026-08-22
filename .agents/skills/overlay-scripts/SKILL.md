@@ -1,102 +1,44 @@
 ---
 name: overlay-scripts
 description: >
-  Overlay configuration and convention-based script task workflow. Use when
-  changing private overlay loading, script resources, or dynamic task injection.
+  Use for private overlay path resolution, SectionLoader overlay merging,
+  overlay script resources, or dynamic OverlayScriptTask discovery. Not for
+  ordinary repository scripts or public config alone.
 ---
 
 # Overlay Scripts
 
-An overlay repository extends the main declarative config without placing
-private state in this repository. Keep overlay discovery, config merging,
-script execution, and dynamic task injection as separate responsibilities.
-
-## Overlay Resolution
-
-Resolve the overlay once at startup in this priority order:
-
-1. `--overlay`
-2. `DOTFILES_OVERLAY`
-3. repository-local `dotfiles.overlay` git config
-
-Resolution and persistence live in
-`cli/src/domains/overlay/resolution.rs`. Do not repeatedly resolve the path
-inside loaders or tasks.
-
-An explicit `--overlay` path whose `.git` entry is a file is a linked Git
-worktree. Require interactive `[y/N]` confirmation before using or persisting
-that path; empty input and non-interactive runs decline it. Normal checkouts
-whose `.git` entry is a directory do not require confirmation.
-
-The resolved overlay path is reported as the optional final ` · ` section of the
-startup header, not on a line of its own.
-
-## Config Merging
-
-`SectionLoader` loads the main config and the matching overlay file, then
-appends overlay entries under the same category rules. Overlay files extend the
-main desired state; they do not replace it.
-
-When adding an overlay-aware config surface:
-
-- route it through `SectionLoader`
-- preserve typed deserialization and category filtering
-- keep missing overlay files optional
-- add merge-order and category tests
-
-## Script Contract
-
-Overlay scripts implement four modes:
-
-| Invocation | Meaning |
-|---|---|
-| no arguments | apply desired state |
-| `--check` | exit 0 when correct, 1 when apply is needed, other non-zero on failure |
-| `--dryrun` | preview without mutation |
-| `--remove` | undo managed state |
-
-Shell scripts must be POSIX `sh`. PowerShell scripts must support non-interactive
-execution. Every mode must return failures rather than printing an error and
-exiting successfully.
-
-Script paths are relative to the overlay root. Reject absolute paths and `..`
-components before execution.
-
-## Runtime Boundaries
-
-- `cli/src/domains/overlay/config/scripts.rs` parses script entries.
-- `cli/src/domains/overlay/resources/script.rs` owns check, preview, apply, and remove behavior.
-- `ReportOverlayScriptSnapshot` reports scripts loaded into config after reload.
-- `OverlayScriptTask` provides one dynamic task per entry.
-- The command runner reloads the script handle with the rest of configuration,
-  then builds and injects dynamic tasks after the `ReloadConfig` dependency
-  closure so newly pulled definitions run in the same command.
-
-Dynamic tasks are not registered as individual static catalog entries. Keep the
-reporting task catalog-registered with a dependency on `ReloadConfig`. Dynamic
-task creation happens at that reload discovery boundary. If filtering removes
-the boundary, discover tasks from current configuration before running one
-graph.
-
-Reload and reporting tasks are internal: they stay in diagnostic/file logs but
-do not appear in `dotfiles tasks`, normal rows, or totals. Each visible dynamic
-script task uses the stable selector `script-<normalized-script-name>`.
-Discovery appends active scripts in configuration order; do not sort them.
-
-All subprocesses go through the executor abstraction. Preserve interpreter
-selection and non-interactive PowerShell behavior when changing command
-construction.
-
-## Change Checklist
-
-1. Update the typed config contract.
-2. Preserve path validation and overlay-root containment.
-3. Keep all four script modes wired.
-4. Update dynamic task creation and reload-boundary assumptions together.
-5. Preserve internal reporting visibility and unique `script-...` selectors.
-6. Add focused tests for exit-code mapping, dry-run failures, path rejection,
-   overlay merging, and dynamic discovery.
-
-## Privacy
-
 Never copy private overlay content into this repository or its skills.
+
+## Overlay resolution
+
+Resolve once at startup:
+
+```text
+--overlay > DOTFILES_OVERLAY > repository dotfiles.overlay
+```
+
+An explicit linked worktree (`.git` is a file) requires interactive `[y/N]`
+confirmation before use or persistence. Empty input and non-interactive runs
+decline it.
+
+## Config and scripts
+
+- `SectionLoader` appends optional overlay sections to public desired state
+  under the same category rules; overlays extend rather than replace.
+- Script paths are overlay-relative. Reject absolute paths and `..`.
+- Scripts implement apply, `--check`, `--dryrun`, and `--remove`.
+- Check exits 0 when correct, 1 when apply is needed, and another non-zero on
+  failure. Every mode propagates failures.
+- Shell scripts are POSIX `sh`; PowerShell runs non-interactively.
+- All subprocesses use the executor.
+
+## Dynamic task boundary
+
+Reload config first, then rebuild one `OverlayScriptTask` per active entry.
+Dynamic tasks are not catalog entries. The catalog-registered reporting task is
+internal and depends on reload. Preserve config order and stable
+`script-<normalized-name>` selectors.
+
+Test merge order, categories, path rejection, all exit mappings, dry-run
+failure, and discovery after reload.

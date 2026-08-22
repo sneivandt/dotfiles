@@ -1,5 +1,5 @@
 //! Task: configure sparse checkout.
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -86,17 +86,130 @@ fn read_existing_patterns(sparse_file: &Path) -> Result<Option<String>> {
 /// the worktree config, which overrides the repository scope; writing plain
 /// `git config` there would be silently shadowed and sparse checkout would
 /// never re-enable.
+#[cfg(test)]
 pub(super) fn enable_sparse_checkout_config(ctx: &Context, root: &Path) -> Result<()> {
     ctx.log()
         .debug("enabling sparse checkout (non-cone mode via git config)");
-    let scope: &[&str] = if worktree_config_enabled(ctx, root) {
-        &["--worktree"]
-    } else {
-        &[]
-    };
-    set_git_config(ctx, root, scope, "core.sparseCheckout", "true")?;
-    set_git_config(ctx, root, scope, "core.sparseCheckoutCone", "false")?;
+    let scope = sparse_checkout_config_scope(ctx, root);
+    enable_sparse_checkout_config_in_scope(ctx, root, scope)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SparseCheckoutConfigScope {
+    Repository,
+    Worktree,
+}
+
+impl SparseCheckoutConfigScope {
+    const fn args(self) -> &'static [&'static str] {
+        match self {
+            Self::Repository => &["--local"],
+            Self::Worktree => &["--worktree"],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SparseCheckoutConfigSnapshot {
+    scope: SparseCheckoutConfigScope,
+    enabled: Option<String>,
+    cone: Option<String>,
+}
+
+fn sparse_checkout_config_scope(ctx: &Context, root: &Path) -> SparseCheckoutConfigScope {
+    if worktree_config_enabled(ctx, root) {
+        SparseCheckoutConfigScope::Worktree
+    } else {
+        SparseCheckoutConfigScope::Repository
+    }
+}
+
+fn enable_sparse_checkout_config_in_scope(
+    ctx: &Context,
+    root: &Path,
+    scope: SparseCheckoutConfigScope,
+) -> Result<()> {
+    set_git_config(ctx, root, scope.args(), "core.sparseCheckout", "true")?;
+    set_git_config(ctx, root, scope.args(), "core.sparseCheckoutCone", "false")
+}
+
+fn read_git_config_value(
+    ctx: &Context,
+    root: &Path,
+    scope: SparseCheckoutConfigScope,
+    key: &str,
+) -> Result<Option<String>> {
+    let mut args = vec!["config"];
+    args.extend_from_slice(scope.args());
+    args.extend(["--get", key]);
+    let result = ctx
+        .executor()
+        .execute(git_command(root, &args).unchecked())
+        .with_context(|| format!("reading git config {key}"))?;
+    if result.success {
+        return Ok(Some(result.stdout.trim().to_string()));
+    }
+    if result.code == Some(1) {
+        return Ok(None);
+    }
+    bail!(
+        "reading git config {key} failed with exit {:?}: {}",
+        result.code,
+        result.stderr.trim()
+    )
+}
+
+fn capture_sparse_checkout_config(
+    ctx: &Context,
+    root: &Path,
+) -> Result<SparseCheckoutConfigSnapshot> {
+    let scope = sparse_checkout_config_scope(ctx, root);
+    Ok(SparseCheckoutConfigSnapshot {
+        scope,
+        enabled: read_git_config_value(ctx, root, scope, "core.sparseCheckout")?,
+        cone: read_git_config_value(ctx, root, scope, "core.sparseCheckoutCone")?,
+    })
+}
+
+fn restore_git_config_value(
+    ctx: &Context,
+    root: &Path,
+    scope: SparseCheckoutConfigScope,
+    key: &str,
+    value: Option<&str>,
+) -> Result<()> {
+    if let Some(value) = value {
+        return set_git_config(ctx, root, scope.args(), key, value);
+    }
+
+    let mut args = vec!["config"];
+    args.extend_from_slice(scope.args());
+    args.extend(["--unset", key]);
+    ctx.executor().execute(git_command(root, &args))?;
+    Ok(())
+}
+
+fn restore_sparse_checkout_config(
+    ctx: &Context,
+    root: &Path,
+    snapshot: &SparseCheckoutConfigSnapshot,
+) -> Result<()> {
+    let enabled = restore_git_config_value(
+        ctx,
+        root,
+        snapshot.scope,
+        "core.sparseCheckout",
+        snapshot.enabled.as_deref(),
+    );
+    let cone = restore_git_config_value(
+        ctx,
+        root,
+        snapshot.scope,
+        "core.sparseCheckoutCone",
+        snapshot.cone.as_deref(),
+    );
+    enabled.and(cone)
 }
 
 /// Write a single git config key/value in the repository at `root`, using the
@@ -175,6 +288,7 @@ fn apply_read_tree_with_restore(
     root: &Path,
     sparse_file: &Path,
     previous_patterns: Option<&str>,
+    previous_config: &SparseCheckoutConfigSnapshot,
 ) -> Result<()> {
     ctx.log()
         .debug("wrote sparse-checkout file, running read-tree");
@@ -184,11 +298,21 @@ fn apply_read_tree_with_restore(
     {
         ctx.log()
             .warn("git read-tree failed; restoring previous sparse-checkout configuration");
-        restore_sparse_checkout_file(sparse_file, previous_patterns)?;
-        ctx.executor()
+        let patterns_restore = restore_sparse_checkout_file(sparse_file, previous_patterns);
+        let config_restore = restore_sparse_checkout_config(ctx, root, previous_config);
+        let worktree_restore = ctx
+            .executor()
             .execute(git_command(root, &["read-tree", "-mu", "HEAD"]))
-            .context("restoring worktree after failed sparse-checkout update")?;
-        return Err(anyhow::Error::from(err).context("applying sparse-checkout patterns"));
+            .context("restoring worktree after failed sparse-checkout update")
+            .map(drop);
+        let rollback = patterns_restore.and(config_restore).and(worktree_restore);
+        let apply_error = anyhow::Error::from(err).context("applying sparse-checkout patterns");
+        return match rollback {
+            Ok(()) => Err(apply_error),
+            Err(rollback_error) => {
+                Err(apply_error.context(format!("rollback also failed: {rollback_error:#}")))
+            }
+        };
     }
     Ok(())
 }
@@ -403,10 +527,19 @@ impl Operation for SparseCheckoutOperation {
         remove_broken_git_symlinks(ctx, &*self.fs_ops);
 
         let previous_patterns = read_existing_patterns(&sparse_file)?;
+        let previous_config = capture_sparse_checkout_config(ctx, ctx.root())?;
 
         let root = ctx.root();
 
-        enable_sparse_checkout_config(ctx, root)?;
+        if let Err(error) = enable_sparse_checkout_config_in_scope(ctx, root, previous_config.scope)
+        {
+            return match restore_sparse_checkout_config(ctx, root, &previous_config) {
+                Ok(()) => Err(error),
+                Err(rollback_error) => {
+                    Err(error.context(format!("restoring git config failed: {rollback_error:#}")))
+                }
+            };
+        }
 
         ctx.debug_fmt(|| {
             format!(
@@ -415,9 +548,25 @@ impl Operation for SparseCheckoutOperation {
             )
         });
 
-        write_sparse_patterns(&sparse_file, &patterns_str)?;
+        if let Err(error) = write_sparse_patterns(&sparse_file, &patterns_str) {
+            let patterns_restore =
+                restore_sparse_checkout_file(&sparse_file, previous_patterns.as_deref());
+            let config_restore = restore_sparse_checkout_config(ctx, root, &previous_config);
+            return match patterns_restore.and(config_restore) {
+                Ok(()) => Err(error),
+                Err(rollback_error) => Err(error.context(format!(
+                    "restoring sparse checkout failed: {rollback_error:#}"
+                ))),
+            };
+        }
         reset_excluded_to_head(ctx, root, excluded_files);
-        apply_read_tree_with_restore(ctx, root, &sparse_file, previous_patterns.as_deref())?;
+        apply_read_tree_with_restore(
+            ctx,
+            root,
+            &sparse_file,
+            previous_patterns.as_deref(),
+            &previous_config,
+        )?;
 
         ctx.log().info(format!(
             "excluded {} files from checkout",

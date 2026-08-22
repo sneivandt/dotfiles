@@ -130,19 +130,53 @@ pub(crate) fn powershell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-/// Build a `PowerShell` array literal from individually quoted arguments.
-pub(crate) fn powershell_arg_list(args: &[String]) -> String {
-    if args.is_empty() {
-        "@()".to_string()
-    } else {
-        format!(
-            "@({})",
-            args.iter()
-                .map(|arg| powershell_single_quote(arg))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
+/// Build one Windows command-line string for `Start-Process -ArgumentList`.
+///
+/// `Start-Process` joins array elements before launching the child, which loses
+/// argument boundaries for values containing spaces. Passing one pre-quoted
+/// command line preserves the boundaries expected by the Windows argv parser.
+pub(crate) fn powershell_argument_line(args: &[String]) -> String {
+    let command_line = args
+        .iter()
+        .map(|arg| quote_windows_argument(arg))
+        .collect::<Vec<_>>()
+        .join(" ");
+    powershell_single_quote(&command_line)
+}
+
+fn quote_windows_argument(value: &str) -> String {
+    if value.is_empty() {
+        return "\"\"".to_string();
     }
+    if !value
+        .chars()
+        .any(|character| character.is_ascii_whitespace() || matches!(character, '"' | '\\'))
+    {
+        return value.to_string();
+    }
+
+    let mut quoted = String::with_capacity(value.len().saturating_add(2));
+    quoted.push('"');
+    let mut backslashes = 0_usize;
+    for character in value.chars() {
+        match character {
+            '\\' => backslashes = backslashes.saturating_add(1),
+            '"' => {
+                quoted.extend(std::iter::repeat_n('\\', backslashes.saturating_mul(2)));
+                quoted.push('\\');
+                quoted.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                quoted.extend(std::iter::repeat_n('\\', backslashes));
+                backslashes = 0;
+                quoted.push(character);
+            }
+        }
+    }
+    quoted.extend(std::iter::repeat_n('\\', backslashes.saturating_mul(2)));
+    quoted.push('"');
+    quoted
 }
 
 /// Encode a `PowerShell` script string as Base64 UTF-16LE.

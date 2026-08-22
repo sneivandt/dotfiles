@@ -219,22 +219,24 @@ function Get-Binary
     {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
+    $stagedBinary = "$Binary.download-$PID"
+    if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
 
     Write-Output "Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')"
     try
     {
-        Invoke-WebRequest -Uri $url -Method Get -OutFile $Binary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
+        Invoke-WebRequest -Uri $url -Method Get -OutFile $stagedBinary -UseBasicParsing -TimeoutSec $TransferTimeout | Out-Null
     }
     catch
     {
-        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
         Write-Error "Failed to download dotfiles binary. Check your internet connection or use --build to build from source."
         exit 1
     }
 
-    if (-not (Test-Path $Binary))
+    if (-not (Test-Path $stagedBinary))
     {
-        Write-Error "Download did not produce a binary at '$Binary'. Check your internet connection or use --build to build from source."
+        Write-Error "Download did not produce a binary at '$stagedBinary'. Check your internet connection or use --build to build from source."
         exit 1
     }
 
@@ -254,28 +256,28 @@ function Get-Binary
     }
     catch
     {
-        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
         Write-Error "Failed to download checksum file: $($_.Exception.Message)"
         exit 1
     }
     $expected = Get-ChecksumForAsset -ChecksumContent $checksumContent -AssetName $assetName
     if ([string]::IsNullOrWhiteSpace($expected))
     {
-        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
         Write-Error "Checksum not found in checksum file for $assetName."
         exit 1
     }
-    $actual = (Get-FileHash -Path $Binary -Algorithm SHA256).Hash.ToLower()
+    $actual = (Get-FileHash -Path $stagedBinary -Algorithm SHA256).Hash.ToLower()
     if ($expected -ne $actual)
     {
-        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
         Write-Error "Checksum verification failed!"
         exit 1
     }
 
-    if (-not (Test-Attestation -Path $Binary))
+    if (-not (Test-Attestation -Path $stagedBinary))
     {
-        if (Test-Path $Binary) { Remove-Item $Binary -Force }
+        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
         Write-Error "Build provenance verification failed for $assetName."
         exit 1
     }
@@ -283,12 +285,24 @@ function Get-Binary
     # Make binary executable on Linux
     if ($IsLinux -or $IsMacOS)
     {
-        chmod +x $Binary
+        chmod +x $stagedBinary
         if ($LASTEXITCODE -ne 0)
         {
+            if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
             Write-Error "Failed to make binary executable"
             exit 1
         }
+    }
+
+    try
+    {
+        Move-Item -LiteralPath $stagedBinary -Destination $Binary -Force
+    }
+    catch
+    {
+        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+        Write-Error "Failed to install downloaded binary: $($_.Exception.Message)"
+        exit 1
     }
 
     Write-Output "Downloaded · checksum verified · $Binary"

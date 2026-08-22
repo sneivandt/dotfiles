@@ -277,13 +277,27 @@ fn run_reconfigures_when_file_matches_but_config_disabled() {
             &["config", "--get", "extensions.worktreeConfig"],
             Ok(ExecResult::failure("", "", Some(1))),
         )
+        .git_unchecked_result(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckout"],
+            Ok(ExecResult::failure("", "", Some(1))),
+        )
+        .git_unchecked_result(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckoutCone"],
+            Ok(ExecResult::failure("", "", Some(1))),
+        )
         // config core.sparseCheckout true, config core.sparseCheckoutCone
         // false, then read-tree (the excluded "symlinks" path is absent, so
         // no checkout).
-        .git(dir.path(), &["config", "core.sparseCheckout", "true"], "")
         .git(
             dir.path(),
-            &["config", "core.sparseCheckoutCone", "false"],
+            &["config", "--local", "core.sparseCheckout", "true"],
+            "",
+        )
+        .git(
+            dir.path(),
+            &["config", "--local", "core.sparseCheckoutCone", "false"],
             "",
         )
         .git(dir.path(), &["read-tree", "-mu", "HEAD"], "");
@@ -438,10 +452,24 @@ fn run_removes_broken_git_symlinks_before_applying_sparse_checkout() {
             &["config", "--get", "extensions.worktreeConfig"],
             Ok(ExecResult::failure("", "", Some(1))),
         )
-        .git(dir.path(), &["config", "core.sparseCheckout", "true"], "")
+        .git_unchecked_result(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckout"],
+            Ok(ExecResult::failure("", "", Some(1))),
+        )
+        .git_unchecked_result(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckoutCone"],
+            Ok(ExecResult::failure("", "", Some(1))),
+        )
         .git(
             dir.path(),
-            &["config", "core.sparseCheckoutCone", "false"],
+            &["config", "--local", "core.sparseCheckout", "true"],
+            "",
+        )
+        .git(
+            dir.path(),
+            &["config", "--local", "core.sparseCheckoutCone", "false"],
             "",
         )
         .git(dir.path(), &["read-tree", "-mu", "HEAD"], "");
@@ -529,8 +557,16 @@ fn enable_sparse_checkout_uses_repo_scope_when_extension_disabled() {
             &["config", "--get", "extensions.worktreeConfig"],
             Ok(ExecResult::failure("", "", Some(1))),
         )
-        .git("/repo", &["config", "core.sparseCheckout", "true"], "")
-        .git("/repo", &["config", "core.sparseCheckoutCone", "false"], "");
+        .git(
+            "/repo",
+            &["config", "--local", "core.sparseCheckout", "true"],
+            "",
+        )
+        .git(
+            "/repo",
+            &["config", "--local", "core.sparseCheckoutCone", "false"],
+            "",
+        );
     let config = empty_config(PathBuf::from("/repo"));
     let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
     enable_sparse_checkout_config(&ctx, Path::new("/repo")).unwrap();
@@ -562,10 +598,24 @@ fn run_writes_sparse_checkout_patterns_and_calls_git() {
             &["config", "--get", "extensions.worktreeConfig"],
             Ok(ExecResult::failure("", "", Some(1))),
         )
-        .git(dir.path(), &["config", "core.sparseCheckout", "true"], "")
+        .git_unchecked_result(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckout"],
+            Ok(ExecResult::failure("", "", Some(1))),
+        )
+        .git_unchecked_result(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckoutCone"],
+            Ok(ExecResult::failure("", "", Some(1))),
+        )
         .git(
             dir.path(),
-            &["config", "core.sparseCheckoutCone", "false"],
+            &["config", "--local", "core.sparseCheckout", "true"],
+            "",
+        )
+        .git(
+            dir.path(),
+            &["config", "--local", "core.sparseCheckoutCone", "false"],
             "",
         )
         .git(dir.path(), &["read-tree", "-mu", "HEAD"], "");
@@ -621,10 +671,24 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
             &["config", "--get", "extensions.worktreeConfig"],
             Ok(ExecResult::failure("", "", Some(1))),
         )
-        .git(dir.path(), &["config", "core.sparseCheckout", "true"], "")
+        .git_unchecked(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckout"],
+            "false\n",
+        )
+        .git_unchecked(
+            dir.path(),
+            &["config", "--local", "--get", "core.sparseCheckoutCone"],
+            "true\n",
+        )
         .git(
             dir.path(),
-            &["config", "core.sparseCheckoutCone", "false"],
+            &["config", "--local", "core.sparseCheckout", "true"],
+            "",
+        )
+        .git(
+            dir.path(),
+            &["config", "--local", "core.sparseCheckoutCone", "false"],
             "",
         )
         .git_result(
@@ -634,6 +698,16 @@ fn run_restores_previous_sparse_checkout_file_when_read_tree_fails() {
                 "git",
                 std::io::Error::other("mock read-tree failed"),
             )),
+        )
+        .git(
+            dir.path(),
+            &["config", "--local", "core.sparseCheckout", "false"],
+            "",
+        )
+        .git(
+            dir.path(),
+            &["config", "--local", "core.sparseCheckoutCone", "true"],
+            "",
         )
         .git(dir.path(), &["read-tree", "-mu", "HEAD"], "");
     let manifest = ConfigHandle::new(config.manifest.clone());

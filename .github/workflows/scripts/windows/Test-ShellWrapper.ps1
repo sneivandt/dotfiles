@@ -332,7 +332,7 @@ function Test-AttestationVerification {
 
     $lines = $content -split '\r?\n'
     $checksumLine = ($lines | Select-String -SimpleMatch 'Write-Error "Checksum verification failed!"' | Select-Object -First 1).LineNumber
-    $attestLine = ($lines | Select-String -SimpleMatch 'Test-Attestation -Path $Binary' | Select-Object -First 1).LineNumber
+    $attestLine = ($lines | Select-String -SimpleMatch 'Test-Attestation -Path $stagedBinary' | Select-Object -First 1).LineNumber
 
     if (-not $checksumLine -or -not $attestLine) {
         Write-TestFail "Could not locate checksum and attestation verification in wrapper"

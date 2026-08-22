@@ -1,20 +1,14 @@
 ---
 name: status-update
-description: Use when the user asks for a status update, progress check, or "where are you / keep going" during an active task. Summarize progress so far and what remains, then keep working without waiting for further input.
+description: >
+  Use only when the user interrupts an active task to ask for progress or says
+  "keep going." Do not use for normal task completion or a new work request.
 ---
 
 # Status Update
 
-Use this skill when the user asks for a status update, a progress check, or
-says something like "what's the status", "where are you", or "keep going" while
-you are actively working on a task.
+Briefly state what is complete, what is happening now, and what remains. Then
+continue the active task without waiting.
 
-## Behavior
-
-- Give a brief status update first: what is done, what is in progress, and what
-  is left.
-- Keep it short — a few bullet points, not a full report.
-- Then immediately continue working on the current task. Do not stop and wait
-  for confirmation; the request is an instruction to report and keep going.
-- If you are genuinely blocked or need a decision to proceed, say so explicitly
-  instead of continuing.
+If progress is blocked on a user decision, state the blocker and ask only for
+that decision.

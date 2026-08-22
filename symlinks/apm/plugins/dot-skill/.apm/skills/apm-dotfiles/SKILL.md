@@ -1,115 +1,49 @@
 ---
 name: apm-dotfiles
-description: Use when changing, reviewing, or designing Stuart's personal APM setup through dotfiles, including per-agent skills/plugins, APM config fragments, MCP/hooks/instructions delivered by APM, and private overlay APM content.
+description: >
+  Use when deciding where Stuart's reusable agent customization belongs:
+  public dotfiles vs private overlay, dot-agent vs dot-skill, APM target
+  compatibility, or plugin/config-fragment structure. Not for repo Rust details.
 ---
 
 # APM Dotfiles
 
-Use this skill for Stuart's personal agent customization system: public dotfiles
-declare the reusable baseline, and optional private overlays can add private APM
-fragments, local plugins, skills, hooks, MCP servers, and instructions.
+## Place the change
 
-## Mental Model
+| Content | Owner |
+|---|---|
+| reusable interaction or coding workflow | `dot-agent` |
+| skill/plugin authoring and maintenance | `dot-skill` |
+| repository-specific guidance | that repository's `.agents/skills/` |
+| work, host, employer, or private guidance | private overlay plugin |
+| model/reasoning/UI defaults | public `conf/agent-settings.toml` |
+| skills, hooks, prompts, instructions, MCP | APM plugin or fragment |
 
-- Public dotfiles link `symlinks/apm/config/*.yml` and
-  `symlinks/apm/plugins/*` into `~/.apm/` through `conf/symlinks.toml`.
-- Public `conf/agent-settings.toml` separately converges stable preferences into
-  Copilot's JSON settings and Codex's TOML settings; APM does not own those
-  per-harness values.
-- The Rust dotfiles engine installs APM during the AI tooling task:
-  `install` runs `apm install`; `update` runs `apm outdated` and `apm update`
-  only after a successful installed state exists.
-- APM merges every `~/.apm/config/*.yml` fragment, so the baseline public
-  fragment and private overlay fragments compose into one user-level agent
-  environment.
-- Local APM plugins are the preferred way to distribute reusable personal
-  primitives. Keep plugin names short and scoped, such as `dot-agent` and
-  `dot-skill`.
-- Codex reads `~/.codex/config.toml` across its CLI, IDE extension, and agent
-  inside the ChatGPT desktop app. ChatGPT Work and app-only appearance,
-  notification, and keyboard settings remain outside dotfiles agent settings.
+Prefer one narrow skill per recurring behavior. Update an existing skill instead
+of adding a near-duplicate.
 
-## Per-Agent Organization
+## Plugin rules
 
-- Put agent interaction behavior, coding/review workflow preferences,
-  status-update style, chat workflows, and user-experience preferences in
-  `dot-agent`.
-- Put skill/plugin authoring, curation, maintenance, and APM workflow guidance
-  in `dot-skill`.
-- Prefer one small composable skill per recurring behavior. Do not bury
-  project-specific rules in global APM skills when `.agents/skills/` or
-  repository instructions would be more precise.
+- Use native layout: `apm.yml`, `includes: auto`, and `.apm/<primitive>/`.
+- Keep local package names short and `dot-*`.
+- Reference local packages with forward slashes.
+- Public files contain no secrets, private URLs, or employer-confidential data.
+- Private overlays add fragments/plugins through overlay symlink config and
+  reference credentials through environment variables.
+- Keep self-defined MCP servers direct unless transitive trust is intentional.
 
-## Private Overlay APM
+## Target compatibility
 
-Private overlay repos may add APM content without publishing it in the public
-dotfiles repo:
+- Top-level `targets` selects default harnesses.
+- A dependency-level `targets` list narrows the entire package.
+- Split packages when primitives need different target sets.
+- Cowork receives skills only. A Cowork-targeted package's skills must work
+  without its MCP servers, hooks, prompts, agents, commands, or instructions.
+- Windows Cowork reconciliation follows lockfile target subsets, so dependency
+  filters are authoritative.
 
-- Add overlay symlink config that links private `apm/config/*.yml` fragments
-  into `~/.apm/config/`.
-- Add overlay symlink config that links private `apm/plugins/*` directories
-  into `~/.apm/plugins/`.
-- Keep work, employer, host-specific, or private skills in overlay plugins.
-  Public dotfiles should only contain reusable, non-sensitive defaults.
-- Overlay APM fragments can add private plugin dependencies, private MCP server
-  declarations, hooks, and instructions. Use environment variable references
-  for credentials; never hard-code secrets in fragments, hooks, skills, or
-  plugin manifests.
-- Prefer direct MCP declarations in the private fragment unless explicitly
-  choosing to trust transitive MCP servers.
+## Verify
 
-## Target Compatibility
-
-- Use object-form dependencies with dependency-level `targets:` when a plugin
-  should deploy only to selected harnesses:
-  ```yaml
-  dependencies:
-    apm:
-      - path: ~/.apm/plugins/dot-reference
-        targets: [agent-skills, copilot-cowork]
-      - path: ~/.apm/plugins/dot-mcp-required
-        targets: [agent-skills]
-      - path: ~/.apm/plugins/dot-workflow
-        targets: [copilot-app]
-  ```
-- A dependency filter applies to the whole plugin, not individual skills.
-  Split primitives into separate plugins when their target compatibility
-  differs; do not rely on a per-skill target override.
-- Treat `copilot-cowork` as skill-only deployment. Cowork does not receive the
-  plugin's MCP declarations, hooks, prompts, agents, commands, or instructions.
-  Only include a plugin when its skills remain truthful and useful without
-  those primitives. Keep workflows requiring live MCP tools on
-  `agent-skills`.
-- On Windows, dotfiles avoids APM's direct Cowork target because Cowork's
-  OneDrive ACL blocks directory replacement. It uses locked dependency
-  `target_subset` values to reconcile allowed shared skills file-by-file, so
-  those package filters are authoritative.
-- Do not confuse dependency-level filters with the manifest's top-level
-  `targets:` setting: the top-level list controls the default deployment
-  harnesses, while each dependency's `targets:` narrows where that package is
-  installed.
-
-## Editing Rules
-
-- Use APM native plugin layout: `apm.yml` at plugin root and primitives under
-  `.apm/`, for example `.apm/skills/<skill>/SKILL.md`.
-- Keep `includes: auto` unless a plugin needs a deliberate include allow-list.
-- Reference local plugins with forward slashes, even for Windows-compatible
-  config, because APM and dotfiles validation expect that form.
-- When adding an external APM dependency, update the relevant
-  `symlinks/apm/config/*.yml` fragment. Do not hard-code lock SHAs there; APM
-  records exact refs in the user lockfile.
-- When adding a local personal skill, choose the existing `dot-*` plugin that
-  matches the audience before creating a new plugin.
-- Put stable model, reasoning effort, personality, and harness UI defaults in
-  `conf/agent-settings.toml`; keep skills, hooks, instructions, and MCP
-  declarations in APM.
-
-## Validation
-
-- After public APM config or local plugin changes, run `./dotfiles.sh install -d`
-  to verify symlinks, manifest merging, and install planning.
-- For Rust changes under `cli/src/domains/ai/apm/`, also run the repo's Rust and
-  cross-platform checks.
-- If the change is private-overlay-only, validate from a checkout where the
-  overlay is configured so the merged `~/.apm/config/*.yml` view is exercised.
+For public APM config or plugin changes run `./dotfiles.sh install -d`. Validate
+private-overlay changes from a checkout where that overlay is configured. Use
+the repository's `ai-tooling-apm` skill for Rust implementation details.

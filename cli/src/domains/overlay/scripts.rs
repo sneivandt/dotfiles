@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::domains::overlay::config::scripts::ScriptEntry;
+use crate::domains::overlay::config::scripts::{ScriptEntry, overlay_script_selector};
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, TaskVisibility,
@@ -160,16 +160,6 @@ impl OverlayScriptTask {
             selector,
         }
     }
-}
-
-fn overlay_script_selector(name: &str) -> String {
-    let suffix = name
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|token| !token.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect::<Vec<_>>()
-        .join("-");
-    format!("script-{suffix}")
 }
 
 impl Task for OverlayScriptTask {

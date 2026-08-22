@@ -20,6 +20,9 @@ enum ElevationPlan {
     Delegated,
     /// Privilege could not be arranged; skip the tasks and continue.
     Unavailable { reason: &'static str },
+    /// The elevated child ran but failed; fail its tasks and block dependents.
+    #[cfg(any(windows, test))]
+    Failed { reason: &'static str },
 }
 
 /// Application-level broker for platform-specific elevation.
@@ -73,11 +76,7 @@ impl<'a> ElevationBroker<'a> {
         // Delegation is not degradation: the tasks really ran, just in the
         // elevated child, so their dependents must still run here. Only an
         // unavailable plan leaves prerequisites unmet.
-        let (reason, cascade) = match plan {
-            ElevationPlan::Ready => (None, false),
-            ElevationPlan::Delegated => (Some("ran in elevated session"), false),
-            ElevationPlan::Unavailable { reason } => (Some(reason), true),
-        };
+        let (reason, cascade, failed) = elevation_plan_disposition(plan);
 
         let Some(reason) = reason else {
             return summary;
@@ -86,7 +85,7 @@ impl<'a> ElevationBroker<'a> {
             .iter()
             .map(|task| (task.task_id(), task.name()))
             .collect();
-        if cascade && self.ctx.require_complete() {
+        if failed || (cascade && self.ctx.require_complete()) {
             summary.add_failures(roots.len());
         }
         let blocked = if cascade {
@@ -110,7 +109,9 @@ impl<'a> ElevationBroker<'a> {
             let _enter = span.enter();
             self.log.debug(message.as_str());
             let task_id = id.record_key();
-            let status = if roots.contains_key(&id) && self.ctx.require_complete() && cascade {
+            let status = if roots.contains_key(&id)
+                && (failed || (self.ctx.require_complete() && cascade))
+            {
                 TaskStatus::Failed
             } else {
                 TaskStatus::Skipped
@@ -142,6 +143,16 @@ impl<'a> ElevationBroker<'a> {
             false
         });
         summary
+    }
+}
+
+const fn elevation_plan_disposition(plan: ElevationPlan) -> (Option<&'static str>, bool, bool) {
+    match plan {
+        ElevationPlan::Ready => (None, false, false),
+        ElevationPlan::Delegated => (Some("ran in elevated session"), false, false),
+        ElevationPlan::Unavailable { reason } => (Some(reason), true, false),
+        #[cfg(any(windows, test))]
+        ElevationPlan::Failed { reason } => (Some(reason), true, true),
     }
 }
 
@@ -274,7 +285,7 @@ fn prepare_elevation(
         Ok(ElevationOutcome::Failed(code)) => {
             log.separate_from_startup();
             log.error(format!("elevated step failed (exit code {code})"));
-            ElevationPlan::Unavailable {
+            ElevationPlan::Failed {
                 reason: "elevated step failed",
             }
         }
@@ -363,6 +374,7 @@ pub(super) fn blocked_dependents<'task>(
             if roots.contains_key(&id) || blocked.contains_key(&id) {
                 continue;
             }
+
             let cause = task
                 .dependencies()
                 .iter()
@@ -375,5 +387,21 @@ pub(super) fn blocked_dependents<'task>(
         if !discovered {
             return blocked;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_elevated_run_is_not_treated_as_optional_unavailability() {
+        let (reason, cascade, failed) = elevation_plan_disposition(ElevationPlan::Failed {
+            reason: "elevated step failed",
+        });
+
+        assert_eq!(reason, Some("elevated step failed"));
+        assert!(cascade);
+        assert!(failed);
     }
 }

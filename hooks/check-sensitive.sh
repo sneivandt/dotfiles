@@ -80,10 +80,6 @@ git diff --cached --name-status --diff-filter=d -z "$against" | awk '
 while IFS="$(printf '\t')" read -r file old; do
   [ -z "$file" ] && continue
 
-  if [ ! -f "$file" ]; then
-    continue
-  fi
-
   if [ -n "$old" ]; then
     diff_output=$(git diff --cached --unified=0 "$against" -- "$old" "$file" || true)
   else

@@ -10,6 +10,20 @@ use anyhow::bail;
 use crate::domains::system::config::registry::RegistryValueType;
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 
+/// Current registry value data and its native value type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CurrentRegistryValue {
+    data: String,
+    value_type: Option<RegistryValueType>,
+}
+
+impl CurrentRegistryValue {
+    #[cfg(any(windows, test))]
+    const fn new(data: String, value_type: Option<RegistryValueType>) -> Self {
+        Self { data, value_type }
+    }
+}
+
 /// Native Windows registry access via the `winreg` crate.
 #[cfg(windows)]
 mod native {
@@ -22,7 +36,7 @@ mod native {
         REG_RESOURCE_REQUIREMENTS_LIST, REG_SZ,
     };
 
-    use super::parse_hkcu_subkey;
+    use super::{CurrentRegistryValue, parse_hkcu_subkey};
     use crate::domains::system::config::registry::RegistryValueType;
 
     /// Parse a `PowerShell`-style registry path into a root key and subkey.
@@ -31,8 +45,11 @@ mod native {
         Ok((RegKey::predef(HKEY_CURRENT_USER), subkey))
     }
 
-    /// Read a registry value and return it as a string.
-    pub(super) fn read_value(key_path: &str, value_name: &str) -> Result<Option<String>> {
+    /// Read a registry value and preserve both its data and native type.
+    pub(super) fn read_value(
+        key_path: &str,
+        value_name: &str,
+    ) -> Result<Option<CurrentRegistryValue>> {
         let (root, subkey) = parse_path(key_path)?;
         let key = match root.open_subkey(subkey) {
             Ok(k) => k,
@@ -40,7 +57,10 @@ mod native {
             Err(e) => return Err(anyhow::Error::from(e).context(format!("opening {key_path}"))),
         };
         match key.get_raw_value(value_name) {
-            Ok(val) => Ok(Some(raw_value_to_string(&val))),
+            Ok(val) => Ok(Some(CurrentRegistryValue::new(
+                raw_value_to_string(&val),
+                raw_value_type(&val),
+            ))),
             Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => {
                 Err(anyhow::Error::from(e).context(format!("reading {key_path}\\{value_name}")))
@@ -134,6 +154,23 @@ mod native {
             | REG_QWORD => format!("{:?}", val.bytes),
         }
     }
+
+    const fn raw_value_type(val: &winreg::RegValue) -> Option<RegistryValueType> {
+        match val.vtype {
+            REG_DWORD => Some(RegistryValueType::Dword),
+            REG_SZ => Some(RegistryValueType::String),
+            REG_NONE
+            | REG_BINARY
+            | REG_DWORD_BIG_ENDIAN
+            | REG_EXPAND_SZ
+            | REG_LINK
+            | REG_MULTI_SZ
+            | REG_RESOURCE_LIST
+            | REG_FULL_RESOURCE_DESCRIPTOR
+            | REG_RESOURCE_REQUIREMENTS_LIST
+            | REG_QWORD => None,
+        }
+    }
 }
 
 #[cfg(any(windows, test))]
@@ -196,13 +233,13 @@ impl RegistryResource {
     /// This avoids spawning a `PowerShell` process per resource when used
     /// with [`batch_check_values`].
     #[must_use]
-    pub fn state_from_cached(&self, current_value: Option<&str>) -> ResourceState {
+    pub fn state_from_cached(&self, current_value: Option<&CurrentRegistryValue>) -> ResourceState {
         current_value.map_or(ResourceState::Missing, |current| {
-            if value_matches(current, &self.value_data) {
+            if value_matches(current, &self.value_data, self.value_type) {
                 ResourceState::Correct
             } else {
                 ResourceState::Incorrect {
-                    current: current.to_string(),
+                    current: current.data.clone(),
                 }
             }
         })
@@ -212,8 +249,8 @@ impl RegistryResource {
 /// Batch-check all registry values.
 ///
 /// On Windows, reads each value directly via the `winreg` crate. Returns a map
-/// from `"key_path\value_name"` to the current value string (`None` when the
-/// key or value does not exist).
+/// from `"key_path\value_name"` to the current typed value (`None` when the key
+/// or value does not exist).
 ///
 /// # Errors
 ///
@@ -221,7 +258,7 @@ impl RegistryResource {
 #[cfg(windows)]
 pub fn batch_check_values(
     resources: &[RegistryResource],
-) -> Result<HashMap<String, Option<String>>> {
+) -> Result<HashMap<String, Option<CurrentRegistryValue>>> {
     let mut map = HashMap::with_capacity(resources.len());
     for res in resources {
         let key = format!("{}\\{}", res.key_path, res.value_name);
@@ -243,7 +280,7 @@ pub fn batch_check_values(
 )]
 pub fn batch_check_values(
     _resources: &[RegistryResource],
-) -> Result<HashMap<String, Option<String>>> {
+) -> Result<HashMap<String, Option<CurrentRegistryValue>>> {
     Ok(HashMap::new())
 }
 
@@ -278,21 +315,25 @@ impl Resource for RegistryResource {
     }
 }
 
-/// Compare registry values, handling numeric values specially.
+/// Compare registry values without losing the native registry type.
 #[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
-fn value_matches(current: &str, expected_data: &str) -> bool {
-    // Compare as DWORD bit-patterns when both sides parse that way.  This
-    // ensures that a stored `4294967295` matches a desired `-1` or
-    // `0xFFFFFFFF` (all three are the same `u32` bit pattern).
-    if let (Some(c), Some(e)) = (
-        parse_dword_for_compare(current),
-        parse_dword_for_compare(expected_data),
-    ) {
-        return c == e;
+fn value_matches(
+    current: &CurrentRegistryValue,
+    expected_data: &str,
+    expected_type: RegistryValueType,
+) -> bool {
+    if current.value_type != Some(expected_type) {
+        return false;
     }
 
-    // Fall back to string comparison for non-numeric values.
-    current == expected_data
+    match expected_type {
+        RegistryValueType::Dword => {
+            let current = parse_dword_for_compare(&current.data);
+            let expected = parse_dword_for_compare(expected_data);
+            current.is_some() && current == expected
+        }
+        RegistryValueType::String => current.data == expected_data,
+    }
 }
 
 /// Parse a value as a 32-bit register word for comparison.
@@ -351,15 +392,24 @@ mod tests {
 
     #[test]
     fn value_matches_numeric() {
-        assert!(value_matches("14", "14"));
-        assert!(value_matches("14", "0x0E")); // 0x0E = 14 decimal
-        assert!(!value_matches("14", "15"));
+        let current = CurrentRegistryValue::new("14".to_string(), Some(RegistryValueType::Dword));
+        assert!(value_matches(&current, "14", RegistryValueType::Dword));
+        assert!(value_matches(&current, "0x0E", RegistryValueType::Dword));
+        assert!(!value_matches(&current, "15", RegistryValueType::Dword));
     }
 
     #[test]
     fn value_matches_string() {
-        assert!(value_matches("test", "test"));
-        assert!(!value_matches("test", "other"));
+        let current =
+            CurrentRegistryValue::new("test".to_string(), Some(RegistryValueType::String));
+        assert!(value_matches(&current, "test", RegistryValueType::String));
+        assert!(!value_matches(&current, "other", RegistryValueType::String));
+    }
+
+    #[test]
+    fn value_type_must_match_even_when_data_is_numeric() {
+        let current = CurrentRegistryValue::new("1".to_string(), Some(RegistryValueType::String));
+        assert!(!value_matches(&current, "1", RegistryValueType::Dword));
     }
 
     #[test]
@@ -386,7 +436,8 @@ mod tests {
             "14".to_string(),
             RegistryValueType::Dword,
         );
-        let state = resource.state_from_cached(Some("14"));
+        let current = CurrentRegistryValue::new("14".to_string(), Some(RegistryValueType::Dword));
+        let state = resource.state_from_cached(Some(&current));
         assert_eq!(state, ResourceState::Correct);
     }
 
@@ -398,7 +449,8 @@ mod tests {
             "14".to_string(),
             RegistryValueType::Dword,
         );
-        let state = resource.state_from_cached(Some("20"));
+        let current = CurrentRegistryValue::new("20".to_string(), Some(RegistryValueType::Dword));
+        let state = resource.state_from_cached(Some(&current));
         assert!(matches!(state, ResourceState::Incorrect { .. }));
     }
 
@@ -423,7 +475,8 @@ mod tests {
             RegistryValueType::Dword,
         );
         // 0x0E = 14 decimal
-        let state = resource.state_from_cached(Some("14"));
+        let current = CurrentRegistryValue::new("14".to_string(), Some(RegistryValueType::Dword));
+        let state = resource.state_from_cached(Some(&current));
         assert_eq!(state, ResourceState::Correct);
     }
 

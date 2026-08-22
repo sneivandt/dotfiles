@@ -114,6 +114,7 @@ symlinks = [
   "config/Code/User/settings.json",
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
+  "local/share/applications/GitHub Copilot.desktop",
 ]
 
 [windows]

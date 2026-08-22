@@ -13,7 +13,7 @@ BTC-USD|&#xf15a;|$
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/waybar-stocks"
 cache_file="$cache_dir/quotes.json"
 lock_dir="$cache_dir/quotes-prices.lock"
-expanded_file="$cache_dir/expanded"
+collapsed_file="$cache_dir/collapsed"
 cache_ttl=300
 tmp_file=""
 
@@ -25,12 +25,12 @@ render() {
   parts="$1"
   if [ -z "$parts" ]; then
     empty_output
-  elif [ -f "$expanded_file" ]; then
-    jq -nc --arg text "$parts" --arg tooltip "$parts" \
-      '{text:$text, tooltip:$tooltip, class:"expanded"}'
-  else
+  elif [ -f "$collapsed_file" ]; then
     jq -nc --arg tooltip "$parts" \
       '{text:"&#xf201;", tooltip:$tooltip, class:"collapsed"}'
+  else
+    jq -nc --arg text "$parts" --arg tooltip "$parts" \
+      '{text:$text, tooltip:$tooltip, class:"expanded"}'
   fi
 }
 
@@ -54,10 +54,10 @@ cleanup() {
 mkdir -p "$cache_dir"
 
 if [ "${1:-}" = "--toggle" ]; then
-  if [ -f "$expanded_file" ]; then
-    rm -f "$expanded_file"
+  if [ -f "$collapsed_file" ]; then
+    rm -f "$collapsed_file"
   else
-    : > "$expanded_file"
+    : > "$collapsed_file"
   fi
   systemctl --user kill --signal=SIGRTMIN+2 --kill-whom=main \
     waybar.service >/dev/null 2>&1 || true

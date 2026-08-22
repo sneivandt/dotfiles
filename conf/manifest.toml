@@ -93,6 +93,7 @@ paths = [
 paths = [
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
+  "local/share/applications/",
 ]
 
 # Windows-specific files

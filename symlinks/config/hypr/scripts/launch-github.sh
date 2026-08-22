@@ -9,6 +9,9 @@ if [ ! -x "$app" ]; then
   exit 1
 fi
 
+export GDK_BACKEND=x11
+export GTK_CSD=0
+
 has_window()
 {
   hyprctl -j clients 2>/dev/null |

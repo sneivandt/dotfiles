@@ -177,6 +177,23 @@ run_release_workflow_guards() {
   require_workflow_pattern '^[[:space:]]+ci_run_id:[[:space:]]*$' "the manual CI run input"
   require_workflow_pattern '\.github/workflows/ci\.yml' "canonical CI workflow validation"
   require_workflow_pattern 'needs\.check-ci\.outputs\.sha' "the validated CI commit handoff"
+  require_workflow_pattern '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "OIDC permission for provenance signing"
+  require_workflow_pattern '^[[:space:]]+attestations:[[:space:]]+write[[:space:]]*$' "attestation upload permission"
+  require_workflow_pattern 'actions/attest-build-provenance@' "the build provenance action"
+  require_workflow_pattern '^[[:space:]]+dotfiles-linux-x86_64[[:space:]]*$' "the Linux x86_64 attestation subject"
+  require_workflow_pattern '^[[:space:]]+dotfiles-linux-aarch64[[:space:]]*$' "the Linux aarch64 attestation subject"
+  require_workflow_pattern '^[[:space:]]+dotfiles-windows-x86_64\.exe[[:space:]]*$' "the Windows attestation subject"
+  require_workflow_pattern 'gh attestation verify "\$artifact" --repo "\$GITHUB_REPOSITORY"' "the attestation discoverability check"
+
+  attest_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Attest build provenance' | head -n 1 | cut -d: -f1)
+  verify_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Verify attestation discoverability' | head -n 1 | cut -d: -f1)
+  release_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Create release' | head -n 1 | cut -d: -f1)
+  if [ -z "$attest_line" ] || [ -z "$verify_line" ] || [ -z "$release_line" ] ||
+    [ "$attest_line" -ge "$verify_line" ] || [ "$verify_line" -ge "$release_line" ]; then
+    abort_with_hint \
+      "release provenance is not verified before publication." \
+      "keep the attest, discoverability verification, and release steps in that order"
+  fi
 
   if printf '%s\n' "$workflow_contents" | grep -Fq 'github.event.workflow_run.head_sha || github.sha'; then
     abort_with_hint \

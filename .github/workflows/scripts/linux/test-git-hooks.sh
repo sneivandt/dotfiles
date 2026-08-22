@@ -190,6 +190,19 @@ test_release_workflow_guards() {
     fail "Release workflow guards rejected the hardened workflow"
   fi
 
+  sed '/^[[:space:]]*- name: Verify attestation discoverability[[:space:]]*$/,/^[[:space:]]*- name: Create release[[:space:]]*$/{ /^[[:space:]]*- name: Create release[[:space:]]*$/!d; }' \
+    "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
+  git -C "$repo" add .github/workflows/release.yml
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Release workflow guards accepted publication without proving attestation discoverability"
+  else
+    pass "Release workflow guards require attestation verification before publication"
+  fi
+
   sed '/^[[:space:]]*group:[[:space:]]*release[[:space:]]*$/d' \
     "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
   git -C "$repo" add .github/workflows/release.yml

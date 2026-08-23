@@ -51,6 +51,7 @@ paths = [
 [arch-desktop]
 paths = [
   "config/alacritty/",
+  "config/autostart/nm-applet.desktop",
   "config/chromium-flags.conf",
   "config/fuzzel/",
   "config/gammastep/",

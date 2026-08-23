@@ -66,6 +66,7 @@ symlinks = [
 [arch-desktop]
 symlinks = [
   "config/alacritty/alacritty.toml",
+  "config/autostart/nm-applet.desktop",
   "config/chromium-flags.conf",
   "config/fuzzel/fuzzel.ini",
   "config/gammastep/config.ini",

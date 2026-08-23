@@ -56,8 +56,8 @@ docker run --rm dotfiles:local dotfiles --version
 
 ## Version metadata
 
-Set `DOTFILES_VERSION` to override the version. Without it, the builder uses the
-latest matching `v*` Git tag:
+Set `DOTFILES_VERSION` to override the version. Without it, the builder uses
+`git describe` to select the nearest reachable tag matching `v[0-9]*`:
 
 ```bash
 docker build \

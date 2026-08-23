@@ -16,7 +16,7 @@ shared handles.
 | `agent-settings.toml` | Targeted dot-path JSON/TOML settings | Agent harness configuration |
 | `chmod.toml` | Category sections containing mode/path records | Unix permissions |
 | `registry.toml` | Named registry records with `path` and `values` | Windows registry |
-| `systemd-units.toml` | Category sections containing user unit names | systemd configuration |
+| `systemd-units.toml` | Category sections containing user or system unit records | systemd configuration |
 | `vscode-extensions.toml` | Category sections containing extension identifiers | VS Code extensions |
 
 An overlay may also provide `conf/scripts.toml`. The main repository does not
@@ -266,11 +266,17 @@ scope.
 units = ["clean-home-tmp.timer"]
 
 [arch-desktop]
-units = ["waybar.service"]
+units = [
+  { name = "NetworkManager.service", scope = "system" },
+  { name = "dhcpcd.service", scope = "system", enabled = false },
+  "waybar.service",
+]
 ```
 
-These are user units. Their unit files are normally delivered through managed
-symlinks before the systemd task enables and starts them.
+A bare string uses `user` scope and defaults to `enabled = true`. Use a table
+to select `user` or `system` scope or to keep a conflicting unit disabled.
+User unit files are normally delivered through managed symlinks before the task
+enables and starts them. Changing a system unit uses `sudo`.
 
 ## VS Code extensions
 

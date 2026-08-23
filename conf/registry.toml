@@ -1,5 +1,5 @@
 # Windows registry configuration
-# Each section is a registry path with key-value pairs
+# Each named section has a `path` and a nested `values` table
 # Values support hex (0x...) and decimal formats
 
 # Console window settings (applies to cmd.exe, PowerShell console, etc.)

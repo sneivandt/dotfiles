@@ -280,11 +280,18 @@ test.
 
 ## systemd changes are not visible
 
-The task manages user units. Check the user manager:
+Bare unit names use user scope. Check the user manager:
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user status <unit>
+```
+
+For an entry configured with `scope = "system"`, inspect the system manager
+instead:
+
+```bash
+systemctl status <unit>
 ```
 
 Confirm the unit source was linked and its packages were installed. The task

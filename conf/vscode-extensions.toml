@@ -1,6 +1,6 @@
 # VS Code extensions to install
 # Format: <publisher>.<extension-name>
-# Each section represents a profile or combination of profiles
+# Each section is a category conjunction
 
 [desktop]
 extensions = [

@@ -45,7 +45,7 @@ The selected profile and detected platform determine which entries apply.
 | Git | Global settings and repository hooks |
 | Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
 | Linux desktop | Hyprland, Waybar, mako, fuzzel, gammastep, and GTK configuration |
-| Services | systemd user units and maintenance timers |
+| Services | systemd user and system units, including maintenance timers |
 | SSH and GnuPG | Configuration files with enforced Unix file modes |
 | AI tooling | APM packages and plugins, plus Copilot and Codex settings |
 | Windows | Current-user registry values, Developer Mode, and WSL configuration |

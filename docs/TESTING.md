@@ -5,7 +5,7 @@ wrappers, hooks, installation, Linux, and Windows.
 
 ## Fast local sequence
 
-From the repository root, run every check CI runs:
+From the repository root, run the default Linux verification stages:
 
 ```bash
 sh .github/workflows/scripts/linux/check.sh
@@ -17,9 +17,10 @@ On Windows:
 pwsh -File .github\workflows\scripts\windows\Check.ps1
 ```
 
-These scripts define the local verification sequence. They use the same `ci`
+These scripts define the local verification sequence and use the same `ci`
 Cargo profile as CI. A stage reports `SKIP` instead of failing when its tool is
-missing.
+missing. The default stages do not include the opt-in MSRV check, integration
+jobs, coverage, or mutation testing.
 
 | Stage | Covers |
 |---|---|
@@ -27,7 +28,7 @@ missing.
 | `clippy` | `cargo clippy --all-targets -D warnings` |
 | `test` | `cargo test` |
 | `config` | `dotfiles --root . test` (repository validator) |
-| `docs` | Relative markdown links resolve; documented task selectors exist |
+| `docs` | Relative markdown links resolve; documented task selectors exist (Linux script only) |
 | `shell` | ShellCheck over wrappers, hooks, and CI scripts |
 | `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
 | `audit` | `cargo audit` |
@@ -41,6 +42,9 @@ sh .github/workflows/scripts/linux/check.sh fmt clippy
 sh .github/workflows/scripts/linux/check.sh --list
 sh .github/workflows/scripts/linux/check.sh --all
 ```
+
+The Windows script has no `docs` stage. CI runs documentation consistency on
+Linux.
 
 Run Cargo directly when you need one Rust check:
 

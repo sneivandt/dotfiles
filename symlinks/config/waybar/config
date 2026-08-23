@@ -5,7 +5,7 @@
     "height": 30,
     "modules-left": ["group/workspaces", "custom/window"],
     "modules-center": [],
-    "modules-right": ["custom/playing", "custom/stocks", "tray", "pulseaudio", "battery", "clock"],
+    "modules-right": ["custom/playing", "custom/stocks", "tray", "network", "pulseaudio", "battery", "clock"],
 
     "group/workspaces": {
         "orientation": "horizontal",
@@ -99,14 +99,25 @@
         "spacing": 8
     },
 
+    "network": {
+        "format-wifi": "\uf1eb",
+        "format-ethernet": "\uf796",
+        "format-linked": "\uf796",
+        "format-disconnected": "\uf127",
+        "tooltip-format-wifi": "{essid} ({signalStrength}%)\n{ifname}: {ipaddr}/{cidr}",
+        "tooltip-format-ethernet": "Ethernet\n{ifname}: {ipaddr}/{cidr}",
+        "tooltip-format-disconnected": "Disconnected",
+        "on-click": "nm-connection-editor"
+    },
+
     "pulseaudio": {
-        "format": "\uf028 {volume}%",
-        "format-muted": "\uf028 0%",
+        "format": "\uf028",
+        "format-muted": "\uf6a9",
+        "tooltip-format": "{volume}%",
         "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
         "on-click-middle": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
         "on-scroll-up": "pactl set-sink-volume @DEFAULT_SINK@ +5%",
-        "on-scroll-down": "pactl set-sink-volume @DEFAULT_SINK@ -5%",
-        "tooltip": false
+        "on-scroll-down": "pactl set-sink-volume @DEFAULT_SINK@ -5%"
     },
 
     "battery": {

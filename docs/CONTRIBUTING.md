@@ -99,7 +99,7 @@ right boundary so the other platform still compiles.
 
 ## Targeted checks
 
-Run every check CI runs, in one command:
+Run the default local verification stages:
 
 ```bash
 sh .github/workflows/scripts/linux/check.sh
@@ -112,8 +112,9 @@ pwsh -File .github\workflows\scripts\windows\Check.ps1
 ```
 
 The runner uses the same `ci` Cargo profile as CI. Stages whose tools are not
-installed report `SKIP` rather than failing. See [Testing](TESTING.md) for the
-stage list.
+installed report `SKIP` rather than failing. MSRV is opt-in, and CI also has
+integration, coverage, and mutation jobs outside this runner. See
+[Testing](TESTING.md) for the stage list.
 
 While iterating, use the narrowest stage that covers the change:
 
@@ -151,7 +152,7 @@ self-updating; replace them by deleting the binary and re-running a wrapper.
 
 Update the guide closest to the behavior. If a task is added, removed, renamed,
 changes command membership, or is rewired, update [Task reference](TASKS.md).
-Keep the root README as a landing page and place detailed guidance in `docs\`.
+Keep the root README as a landing page and place detailed guidance in `docs/`.
 
 CI checks documentation on every change, including documentation-only changes.
 Relative Markdown links must resolve, and every selector in

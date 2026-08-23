@@ -169,9 +169,10 @@ dotfiles install --overlay C:\Code\private-dotfiles --only apm --dry-run
 
 ## Validation
 
-`dotfiles test` includes **Validate APM plugins**. When APM is available, the
-check validates active plugin and package references. If APM is not installed,
-the check is reported as unavailable rather than silently treated as executed.
+**Validate config warnings** parses main and overlay fragments and checks local
+plugin references, Git dependency fields, and MCP entries. **Validate APM
+plugins** runs `apm pack --dry-run --verbose` for every local plugin directory.
+If APM is not installed, only the pack check is reported as unavailable.
 
 When changing APM configuration, check:
 

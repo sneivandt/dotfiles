@@ -56,6 +56,7 @@ window#waybar #custom-window.empty {
 }
 
 #clock,
+#network,
 #tray,
 #pulseaudio,
 #battery,
@@ -109,6 +110,14 @@ window#waybar #custom-window.empty {
 
 #custom-stocks {
     color: #c0caf5;
+}
+
+#network.linked {
+    color: #e0af68;
+}
+
+#network.disconnected {
+    color: #565f89;
 }
 
 #pulseaudio.muted {

@@ -75,10 +75,12 @@ before symlink provisioning because Windows normally requires Developer Mode or
 elevation to create symlinks. Unsupported environments are reported without
 hiding mutation failures.
 
-It is the only task that always needs administrator rights, and only on the
-first run. After Developer Mode is enabled, no Windows task requires elevation.
-If elevation is unavailable, the CLI skips this task and its dependents, then
-continues the rest of the run.
+Enabling Developer Mode is the only Windows catalog mutation that inherently
+needs administrator rights. Pending file symlinks can also require elevation
+while Developer Mode is off; directory links can fall back to junctions. After
+Developer Mode is enabled, no Windows task requires brokered elevation. If
+elevation is unavailable, the CLI skips the affected tasks and their dependents,
+then continues the rest of the run.
 
 #### Dotfiles launcher
 
@@ -129,9 +131,10 @@ does not apply outside a Git checkout or when hook sources are absent.
 
 #### Shell completions
 
-On Linux, the application generates Zsh completions from the current Clap
-command definition after **Dotfiles repository** runs. The task writes them to
-the managed completion location.
+The application generates completions from the current Clap command definition
+after **Dotfiles repository** runs. Linux writes Zsh completions beneath the
+managed `symlinks/config/zsh/completions` tree. Windows writes PowerShell
+completions to `~/.config/powershell/profile.d`.
 
 #### Reload configuration
 
@@ -233,11 +236,13 @@ passwordless or cached sudo when available. A normal interactive run uses
 
 #### Systemd units
 
-Reads `conf/systemd-units.toml` and enables/starts selected user units. It runs
-after package, AUR, and symlink tasks because a unit may depend on installed
-binaries and linked unit definitions. When the user manager is unavailable in
-a fresh-install chroot, it creates the per-user enablement links declared by
-the units' `[Install]` sections and leaves startup to the first real login.
+Reads `conf/systemd-units.toml` and enables/starts selected units. Bare strings
+use user scope; table entries can select `user` or `system` scope. System units
+use `sudo` when they need enablement. The task runs after package, AUR, and
+symlink tasks because a unit may depend on installed binaries and linked unit
+definitions. When the user manager is unavailable in a fresh-install chroot, it
+creates per-user enablement links for user units and leaves startup to the first
+real login.
 
 #### Windows registry
 
@@ -322,20 +327,26 @@ scheduler:
 
 | Selector | Task label | What it checks |
 |---|---|---|
-| `config-warnings` | Validate config warnings | Emits non-fatal diagnostics collected while loading configuration |
+| `config-warnings` | Validate config warnings | Reports loader diagnostics, including APM fragment, local plugin, dependency-field, and MCP validation |
 | `symlink-sources` | Validate symlink sources | Confirms configured symlink and file-permission sources exist and globs resolve |
-| `config-files` | Validate config files | Requires and parses core TOML files; warns when `hooks/` is absent |
+| `config-files` | Validate config files | Confirms all required main TOML files exist; warns when `hooks/` is absent |
 | `manifest-sync` | Validate manifest sync | Checks exact category-section synchronization between symlinks and sparse-checkout manifest |
-| `apm-plugins` | Validate APM plugins | Validates active APM plugin and package references when APM is available |
+| `apm-plugins` | Validate APM plugins | Runs `apm pack --dry-run --verbose` for each local plugin when APM is available |
 | `shellcheck` | Shellcheck | Runs ShellCheck on repository shell scripts when installed |
 | `psscriptanalyzer` | PSScriptAnalyzer | Runs PowerShell Script Analyzer whenever `pwsh` is available |
 
-The required core files are:
+The required main files are:
 
-- `conf/profiles.toml`
-- `conf/symlinks.toml`
-- `conf/packages.toml`
+- `conf/agent-settings.toml`
+- `conf/chmod.toml`
+- `conf/git-config.toml`
 - `conf/manifest.toml`
+- `conf/packages.toml`
+- `conf/profiles.toml`
+- `conf/registry.toml`
+- `conf/symlinks.toml`
+- `conf/systemd-units.toml`
+- `conf/vscode-extensions.toml`
 
 ShellCheck and APM validation are not applicable when their executables are
 missing. PSScriptAnalyzer is different: the task is selected when `pwsh` is

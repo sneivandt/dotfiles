@@ -212,17 +212,18 @@ dynamic tasks with the same label retain separate status, detail, and duration
 records. Command success policy consumes the scheduler's `ExecutionSummary`;
 logger counters are presentation data only.
 
-Visible rows use `✓`, `~`, `⊘`, and `✗`, plus the verbose-only `‧` and `⁃`.
+Visible rows use `✓`, `~`, `⊘`, and `✗`, plus the verbose-only `○` and `⁃`.
 `--no-symbols` uses ASCII words instead. A task's reason follows a `·`
 separator. Indented lines are actions the task took or planned.
 
 Normal output includes only tasks that changed state or need attention, with no
 detail truncation. Verbose output includes every task, elapsed time for tasks
-that ran, and each resource decision behind the result. Summaries begin with
-affected-task counts. Individual applied or planned counts appear in
-parentheses, without status glyphs, followed by current, ignored, or failed task
-counts and elapsed time. The progress line and summary count the same tasks.
-When a task proves non-applicable, it leaves the progress denominator.
+that ran, and each resource decision behind the result. Standard summaries
+report changed or would-change tasks, then current, ignored, and failed tasks as
+applicable. Test summaries report passed, ignored, and failed tasks. Both omit
+status glyphs and finish with elapsed time. The progress line and summary count
+the same tasks. When a task proves non-applicable, it leaves the progress
+denominator.
 `dotfiles log` prints a retained run log for post-run investigation. Each run
 writes its own file in a platform state directory and the newest 50 are kept, so
 a failed run stays readable after later runs. `dotfiles log --list` enumerates

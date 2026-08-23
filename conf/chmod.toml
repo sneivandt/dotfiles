@@ -1,5 +1,5 @@
 # File permissions to apply
-# Each section represents a profile
+# Each section is a category conjunction
 # Format: mode and path (relative to home directory)
 #
 # Note: When applying mode to a directory, directories keep the requested

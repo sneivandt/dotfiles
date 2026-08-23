@@ -17,13 +17,15 @@ const SYSTEMD_INVALID_SCOPE: DiagnosticCode = DiagnosticCode::new("systemd", "in
 const SYSTEMD_PLATFORM_UNSUPPORTED: DiagnosticCode =
     DiagnosticCode::new("systemd", "platform-unsupported");
 
-/// A systemd unit to enable.
+/// A systemd unit and its desired enablement state.
 #[derive(Debug, Clone)]
 pub struct SystemdUnit {
     /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
     pub name: String,
     /// Systemd scope.
     pub scope: UnitScope,
+    /// Whether the unit should be enabled and started.
+    pub enabled: bool,
 }
 
 /// Scope in which a systemd unit is managed.
@@ -52,19 +54,26 @@ impl<'de> Deserialize<'de> for UnitScope {
     }
 }
 
-/// The explicit table form of a unit entry: `{ name, scope }`.
+/// The explicit table form of a unit entry: `{ name, scope, enabled }`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UnitWithScope {
+struct UnitOptions {
     /// Unit name including extension.
     name: String,
     /// Systemd scope for the unit.
     scope: UnitScope,
+    /// Desired enablement state.
+    #[serde(default = "default_enabled")]
+    enabled: bool,
 }
 
-/// A single entry in a units section — either a plain name string or a
-/// structured `{ name, scope }` pair for an explicit scope override.
-type UnitEntry = StringOrTable<UnitWithScope>;
+const fn default_enabled() -> bool {
+    true
+}
+
+/// A single entry in a units section, either a plain name string or a
+/// structured entry with explicit options.
+type UnitEntry = StringOrTable<UnitOptions>;
 
 config_section! {
     field: "units",
@@ -74,8 +83,17 @@ config_section! {
         StringOrTable::Bare(name) => SystemdUnit {
             name,
             scope: UnitScope::User,
+            enabled: true,
         },
-        StringOrTable::Table(UnitWithScope { name, scope }) => SystemdUnit { name, scope },
+        StringOrTable::Table(UnitOptions {
+            name,
+            scope,
+            enabled,
+        }) => SystemdUnit {
+            name,
+            scope,
+            enabled,
+        },
     },
 }
 
@@ -160,6 +178,7 @@ units = ["dunst.service"]
         assert_eq!(units.len(), 1);
         assert_eq!(units[0].name, "clean-home-tmp.timer");
         assert_eq!(units[0].scope, UnitScope::User);
+        assert!(units[0].enabled);
     }
 
     #[test]
@@ -171,6 +190,7 @@ units = ["clean-home-tmp.timer"]
         );
         let units = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units[0].scope, UnitScope::User);
+        assert!(units[0].enabled);
     }
 
     #[test]
@@ -183,6 +203,20 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         let units = load(&path, &[Category::Base]).unwrap();
         assert_eq!(units[0].name, "some-daemon.service");
         assert_eq!(units[0].scope, UnitScope::System);
+        assert!(units[0].enabled);
+    }
+
+    #[test]
+    fn load_disabled_unit() {
+        let (_dir, path) = write_temp_toml(
+            r#"[base]
+units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
+"#,
+        );
+        let units = load(&path, &[Category::Base]).unwrap();
+        assert_eq!(units[0].name, "dhcpcd.service");
+        assert_eq!(units[0].scope, UnitScope::System);
+        assert!(!units[0].enabled);
     }
 
     test_load_missing_returns_empty!(load);
@@ -194,6 +228,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         let units = vec![SystemdUnit {
             name: "myunit".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         }];
         let warnings = validate(&units, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
@@ -224,6 +259,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         let units = vec![SystemdUnit {
             name: "  ".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         }];
         let warnings = validate(&units, Platform::new(Os::Linux, false));
         assert!(
@@ -239,6 +275,7 @@ units = [{ name = "some-daemon.service", scope = "system" }]
         let units = vec![SystemdUnit {
             name: "test.service".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         }];
         let warnings = validate(&units, Platform::new(Os::Windows, false));
         assert!(

@@ -64,7 +64,8 @@ to the smallest necessary scope:
 
 - Windows symlinks use Developer Mode where possible.
 - Registry settings are currently user-scoped.
-- systemd configuration uses user units.
+- systemd configuration defaults to user units; explicitly scoped system units
+  may require elevation.
 - system-level WSL configuration may require elevation.
 - package managers elevate only for provider actions that need it.
 

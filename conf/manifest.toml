@@ -13,9 +13,8 @@
 # as other config files. A path is retained when at least one section declaring
 # it is active; otherwise it is excluded.
 #
-# Note: Files in the [base] profile category do not need to be listed here
-# since base files are never excluded - they're included in all profiles.
-# Only list files that should be excluded in certain profiles.
+# Files in the [base] category do not need to be listed here because base is
+# always active. Only list files owned by categories that can be inactive.
 
 # Linux-specific files (excluded on Windows)
 [linux]

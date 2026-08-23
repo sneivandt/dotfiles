@@ -177,9 +177,9 @@ may appear in a different order between runs. Statuses distinguish the outcome:
 |---|---|
 | `✓` | The task applied one or more changes, or a validation task passed |
 | `~` | Dry-run changes were planned but not applied |
-| `⊘` | The task was intentionally ignored |
+| `⊘` | The task was skipped |
 | `✗` | The task failed |
-| `‧` | The task was already up to date (verbose only) |
+| `○` | The task was already up to date (verbose only) |
 | `⁃` | The task does not apply to this platform or configuration (verbose only) |
 
 Use `--no-symbols` to restore the ASCII status words for terminals or pipelines
@@ -193,7 +193,7 @@ reason after a `·` separator:
 ```
 
 Indented dimmed lines beneath a row are the individual actions the task took or
-planned, listed in full without truncation. Task rows follow these actions
+planned, listed in full without truncation. They follow their task row
 immediately, without blank lines between task outputs.
 
 Normal output includes only tasks that changed state or need attention.
@@ -258,9 +258,11 @@ dotfiles test --only config-warnings,manifest-sync
 dotfiles test --overlay C:\path\to\private-dotfiles
 ```
 
-The command validates TOML, sources, manifest section synchronization, and APM
-plugin references. ShellCheck and APM checks are skipped when their executables
-are unavailable. The PowerShell check runs whenever `pwsh` is available; if the
+The command validates TOML, sources, manifest section synchronization, APM
+fragments, local plugin references, and MCP entries. When APM is available, a
+separate task runs `apm pack --dry-run --verbose` for each local plugin.
+ShellCheck and that APM pack check are skipped when their executables are
+unavailable. The PowerShell check runs whenever `pwsh` is available; if the
 PSScriptAnalyzer module is missing, that check fails and reports the PowerShell
 error. Use `--only` or `--skip` with selectors from `dotfiles tasks` to narrow
 the validation task set.

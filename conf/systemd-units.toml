@@ -1,5 +1,5 @@
-# Systemd user units to enable and start
-# Each section represents a profile
+# Systemd user and system units to enable and start
+# Each section is a category conjunction
 
 [linux]
 units = [
@@ -9,6 +9,7 @@ units = [
 [arch-desktop]
 units = [
   { name = "NetworkManager.service", scope = "system" },
+  { name = "dhcpcd.service", scope = "system", enabled = false },
   "clean-screenshots.timer",
   "dotfiles-first-login.service",
   "fullscreen-waybar.service",
@@ -17,7 +18,7 @@ units = [
   "hypridle.service",
   "hyprpaper.service",
   "mako.service",
-  "network-manager-applet.service",
+  { name = "network-manager-applet.service", scope = "user", enabled = false },
   "volume.service",
   "waybar.service",
   "waybar-workspaces.service",

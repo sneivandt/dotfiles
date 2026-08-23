@@ -7,13 +7,15 @@ use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::exec::{CommandSpec, Executor};
 
-/// A systemd unit resource that can be checked and enabled.
+/// A systemd unit resource that converges its configured enablement state.
 #[derive(Debug)]
 pub struct SystemdUnitResource {
     /// Unit name (e.g. "clean-home-tmp.timer").
     pub name: String,
     /// Systemd scope.
     pub scope: UnitScope,
+    /// Whether the unit should be enabled and started.
+    pub enabled: bool,
     /// Executor for running systemctl commands.
     executor: Arc<dyn Executor>,
     /// Home directory containing user unit files.
@@ -29,6 +31,7 @@ impl SystemdUnitResource {
         Self {
             name: name.into(),
             scope,
+            enabled: true,
             executor,
             home: None,
             user_manager_available: true,
@@ -44,6 +47,7 @@ impl SystemdUnitResource {
         user_manager_available: bool,
     ) -> Self {
         let mut resource = Self::new(entry.name.clone(), entry.scope.clone(), executor);
+        resource.enabled = entry.enabled;
         resource.home = Some(home.to_path_buf());
         resource.user_manager_available = user_manager_available;
         resource
@@ -60,9 +64,10 @@ impl SystemdUnitResource {
     }
 
     fn apply_invocation(&self) -> ResourceResult<(&'static str, Vec<&str>)> {
+        let action = if self.enabled { "enable" } else { "disable" };
         match self.scope {
-            UnitScope::User => Ok(("systemctl", vec!["--user", "enable", "--now", &self.name])),
-            UnitScope::System => Ok(("sudo", vec!["systemctl", "enable", "--now", &self.name])),
+            UnitScope::User => Ok(("systemctl", vec!["--user", action, "--now", &self.name])),
+            UnitScope::System => Ok(("sudo", vec!["systemctl", action, "--now", &self.name])),
             UnitScope::Invalid(ref value) => Err(ResourceError::not_supported(format!(
                 "unsupported systemd scope '{value}'"
             ))),
@@ -70,17 +75,34 @@ impl SystemdUnitResource {
     }
 
     fn state_from_is_enabled(&self, result: &crate::infra::exec::ExecResult) -> ResourceState {
+        let output = command_output(result);
         if result.success {
-            return ResourceState::Correct;
+            return if self.enabled {
+                ResourceState::Correct
+            } else {
+                ResourceState::Incorrect {
+                    current: output_if_present(&output).to_string(),
+                }
+            };
         }
 
-        let output = command_output(result);
-        if output
-            .lines()
-            .map(str::trim)
-            .any(|state| matches!(state, "disabled" | "linked" | "linked-runtime"))
+        let disabled = output.lines().map(str::trim).any(|state| {
+            matches!(
+                state,
+                "disabled" | "linked" | "linked-runtime" | "masked" | "masked-runtime"
+            )
+        });
+        if disabled {
+            return if self.enabled {
+                ResourceState::Missing
+            } else {
+                ResourceState::Correct
+            };
+        }
+
+        if !self.enabled && (output.contains("not-found") || output.contains("could not be found"))
         {
-            return ResourceState::Missing;
+            return ResourceState::Correct;
         }
 
         ResourceState::Unknown {
@@ -134,16 +156,44 @@ impl SystemdUnitResource {
             // This is expected during a fresh dry run: the preceding symlink
             // task reports the unit definition it would install but does not
             // create it. The enablement link would therefore also be missing.
-            return Ok(ResourceState::Missing);
+            return Ok(if self.enabled {
+                ResourceState::Missing
+            } else {
+                ResourceState::Correct
+            });
         }
         let links = self.offline_enablement_links()?;
-        if links
-            .iter()
-            .all(|(link, source)| symlink_points_to(link, source))
-        {
-            Ok(ResourceState::Correct)
+        let mut all_enabled = true;
+        let mut any_enabled = false;
+        for (link, source) in &links {
+            match std::fs::symlink_metadata(link) {
+                Ok(_) if symlink_points_to(link, source) => any_enabled = true,
+                Ok(_) => {
+                    return Ok(ResourceState::Invalid {
+                        reason: format!(
+                            "{} conflicts with the expected systemd enablement link",
+                            link.display()
+                        ),
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    all_enabled = false;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        if self.enabled {
+            Ok(if all_enabled {
+                ResourceState::Correct
+            } else {
+                ResourceState::Missing
+            })
+        } else if any_enabled {
+            Ok(ResourceState::Incorrect {
+                current: "enabled".to_string(),
+            })
         } else {
-            Ok(ResourceState::Missing)
+            Ok(ResourceState::Correct)
         }
     }
 
@@ -167,6 +217,24 @@ impl SystemdUnitResource {
                 Err(error) => return Err(error.into()),
             }
             create_symlink(&source, &link)?;
+        }
+        Ok(ResourceChange::Applied)
+    }
+
+    fn disable_offline(&self) -> ResourceResult<ResourceChange> {
+        for (link, source) in self.offline_enablement_links()? {
+            match std::fs::symlink_metadata(&link) {
+                Ok(_) if symlink_points_to(&link, &source) => std::fs::remove_file(&link)?,
+                Ok(_) => {
+                    return Err(ResourceError::conflicting_state(
+                        link.display().to_string(),
+                        "systemd enablement symlink",
+                        "unexpected filesystem entry",
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
         }
         Ok(ResourceChange::Applied)
     }
@@ -260,9 +328,10 @@ const fn output_if_present(output: &str) -> &str {
 
 impl Resource for SystemdUnitResource {
     fn description(&self) -> String {
+        let desired = if self.enabled { "" } else { " disabled" };
         match self.scope {
-            UnitScope::User => self.name.clone(),
-            UnitScope::System => format!("{} (system scope)", self.name),
+            UnitScope::User => format!("{}{desired}", self.name),
+            UnitScope::System => format!("{}{desired} (system scope)", self.name),
             UnitScope::Invalid(ref value) => {
                 format!("{} (invalid '{value}' scope)", self.name)
             }
@@ -271,9 +340,14 @@ impl Resource for SystemdUnitResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         if self.scope == UnitScope::User && !self.user_manager_available {
-            return self.enable_offline();
+            return if self.enabled {
+                self.enable_offline()
+            } else {
+                self.disable_offline()
+            };
         }
         let (program, args) = self.apply_invocation()?;
+        let action = if self.enabled { "enable" } else { "disable" };
         let result = self
             .executor
             .execute(CommandSpec::new(program).args(&args).unchecked())?;
@@ -281,7 +355,7 @@ impl Resource for SystemdUnitResource {
             Ok(ResourceChange::Applied)
         } else {
             Ok(ResourceChange::unusable(format!(
-                "{program} failed to enable {} ({}); stdout: {}; stderr: {}",
+                "{program} failed to {action} {} ({}); stdout: {}; stderr: {}",
                 self.name,
                 exit_status(&result),
                 output_if_present(result.stdout.trim()),
@@ -335,11 +409,26 @@ mod tests {
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "dunst.service".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         };
         let resource =
             SystemdUnitResource::from_entry(&entry, executor, Path::new("/home/test"), true);
         assert_eq!(resource.name, "dunst.service");
         assert_eq!(resource.scope, UnitScope::User);
+        assert!(resource.enabled);
+    }
+
+    #[test]
+    fn from_entry_copies_disabled_state() {
+        let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: "dhcpcd.service".to_string(),
+            scope: UnitScope::System,
+            enabled: false,
+        };
+        let resource =
+            SystemdUnitResource::from_entry(&entry, executor, Path::new("/home/test"), true);
+        assert!(!resource.enabled);
     }
 
     // ------------------------------------------------------------------
@@ -366,6 +455,51 @@ mod tests {
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+    }
+
+    #[test]
+    fn current_state_correct_when_disabled_unit_is_disabled() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::failure("disabled\n", "", Some(1))));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
+        resource.enabled = false;
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn current_state_incorrect_when_disabled_unit_is_enabled() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .returning(|_| Ok(ExecResult::success("enabled\n")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
+        resource.enabled = false;
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect {
+                current: "enabled".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn current_state_correct_when_disabled_unit_is_not_installed() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().once().returning(|_| {
+            Ok(ExecResult::failure(
+                "not-found\n",
+                "Unit dhcpcd.service could not be found.",
+                Some(4),
+            ))
+        });
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
+        resource.enabled = false;
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[test]
@@ -481,6 +615,23 @@ mod tests {
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     }
 
+    #[test]
+    fn apply_disables_system_scope_unit_with_sudo() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "sudo"
+                    && spec.arguments() == ["systemctl", "disable", "--now", "dhcpcd.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
+        resource.enabled = false;
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
     #[cfg(unix)]
     #[test]
     fn offline_user_unit_is_enabled_without_contacting_the_bus() {
@@ -495,6 +646,7 @@ mod tests {
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "clean-home-tmp.timer".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         };
         let resource = SystemdUnitResource::from_entry(
             &entry,
@@ -520,6 +672,7 @@ mod tests {
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "not-linked-yet.timer".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         };
         let resource = SystemdUnitResource::from_entry(
             &entry,
@@ -545,6 +698,7 @@ mod tests {
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "session.service".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         };
         let resource = SystemdUnitResource::from_entry(
             &entry,
@@ -563,6 +717,48 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn offline_user_unit_can_be_disabled() {
+        let home = tempfile::tempdir().unwrap();
+        let unit_dir = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(&unit_dir).unwrap();
+        std::fs::write(
+            unit_dir.join("session.service"),
+            "[Install]\nWantedBy=graphical-session.target\n",
+        )
+        .unwrap();
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: "session.service".to_string(),
+            scope: UnitScope::User,
+            enabled: true,
+        };
+        let resource = SystemdUnitResource::from_entry(
+            &entry,
+            Arc::new(MockExecutor::new()),
+            home.path(),
+            false,
+        );
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+
+        let disabled_entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            enabled: false,
+            ..entry
+        };
+        let disabled = SystemdUnitResource::from_entry(
+            &disabled_entry,
+            Arc::new(MockExecutor::new()),
+            home.path(),
+            false,
+        );
+        assert!(matches!(
+            disabled.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(disabled.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(disabled.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn offline_user_unit_rejects_install_targets_that_escape_the_user_directory() {
         let home = tempfile::tempdir().unwrap();
         let unit_dir = home.path().join(".config/systemd/user");
@@ -575,6 +771,7 @@ mod tests {
         let entry = crate::domains::system::config::systemd_units::SystemdUnit {
             name: "unsafe.service".to_string(),
             scope: UnitScope::User,
+            enabled: true,
         };
         let resource = SystemdUnitResource::from_entry(
             &entry,

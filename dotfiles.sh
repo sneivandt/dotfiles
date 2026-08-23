@@ -122,8 +122,8 @@ _verify_attestation() {
   fi
 
   if ! command -v gh >/dev/null 2>&1; then
-    echo "ERROR: gh not found. Cannot verify build provenance." >&2
-    return 1
+    echo "WARNING: gh not found. Skipping build provenance verification." >&2
+    return 0
   fi
 
   if gh attestation verify "$_va_binary" --repo "$REPO" >/dev/null 2>&1; then

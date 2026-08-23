@@ -146,10 +146,9 @@ while IFS="$(printf '\t')" read -r file old; do
         fi
 
         printf '%sIn file: %s%s\n' "$YELLOW" "$file" "$NC"
-        printf '%sPattern matched: %s%s\n' "$YELLOW" "$pattern" "$NC"
-        echo "$matches" | while IFS=: read -r index text; do
+        echo "$matches" | while IFS=: read -r index _text; do
           lineno=$(sed -n "${index}p" "$linenos")
-          printf '%s  Line %s: %s%s\n' "$YELLOW" "$lineno" "$text" "$NC"
+          printf '%s  Line %s: <redacted>%s\n' "$YELLOW" "$lineno" "$NC"
         done
         printf '\n'
     fi

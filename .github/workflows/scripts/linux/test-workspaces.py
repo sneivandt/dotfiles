@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 # exec_module() on a source path writes __pycache__ next to the script, which
@@ -108,6 +108,28 @@ class WorkspacesTests(unittest.TestCase):
             for argv in ([], ["0"], ["10"], ["one"], ["1", "2"]):
                 self.assertEqual(workspaces.main(argv), 2, argv)
 
+    def test_closed_ipc_requests_service_restart(self) -> None:
+        connection = MagicMock()
+        connection.recv.return_value = b""
+        socket = MagicMock()
+        socket.return_value.__enter__.return_value = connection
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "HYPRLAND_INSTANCE_SIGNATURE": "test",
+                    "XDG_RUNTIME_DIR": "/run/user/test",
+                },
+            ),
+            patch.object(workspaces.socket, "socket", socket),
+            patch.object(workspaces, "refresh_state", return_value=False),
+            patch.object(sys, "stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(workspaces.watch(), 1)
+
+        self.assertIn("IPC stream closed", stderr.getvalue())
+
 
 class WaybarConfigTests(unittest.TestCase):
     """The dots are only clickable while every workspace has its own module."""
@@ -144,16 +166,17 @@ class WaybarConfigTests(unittest.TestCase):
                 "custom/playing",
                 "custom/stocks",
                 "tray",
+                "network",
                 "pulseaudio",
                 "battery",
                 "clock",
             ],
         )
 
-    def test_volume_is_unpadded_and_scrollable(self) -> None:
+    def test_volume_is_icon_only_and_scrollable(self) -> None:
         volume = self.config["pulseaudio"]
-        self.assertEqual(volume["format"], "\uf028 {volume}%")
-        self.assertEqual(volume["format-muted"], "\uf028 0%")
+        self.assertEqual(volume["format"], "\uf028")
+        self.assertEqual(volume["format-muted"], "\uf6a9")
         self.assertIn("on-scroll-up", volume)
         self.assertIn("on-scroll-down", volume)
         self.assertIn("on-click-middle", volume)

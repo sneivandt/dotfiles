@@ -130,10 +130,12 @@ jobs:
         env:
           DIR: ${{ github.workspace }}
         run: python3 .github/workflows/scripts/linux/test-fullscreen-waybar.py
-      - name: Test workspace configuration
+      - name: Test workspace and status scripts
         env:
           DIR: ${{ github.workspace }}
-        run: python3 .github/workflows/scripts/linux/test-workspaces.py
+        run: |
+          python3 .github/workflows/scripts/linux/test-workspaces.py
+          sh .github/workflows/scripts/linux/test-stocks.sh
 
   # ── Security ──────────────────────────────────────────
   audit:
@@ -200,22 +202,34 @@ jobs:
 
   # ── MSRV (Minimum Supported Rust Version) ─────────────
   msrv:
-    name: "Rust: MSRV (1.91)"
+    name: "Rust: MSRV"
     runs-on: ubuntu-latest
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install MSRV toolchain
+      - name: Resolve MSRV
+        id: msrv
+        shell: bash
         run: |
-          rustup toolchain install 1.91 --profile minimal
-          rustup override set 1.91
+          msrv="$(sed -n 's/^rust-version *= *"\([^"]*\)".*/\1/p' cli/Cargo.toml | head -n 1)"
+          if [[ -z "$msrv" ]]; then
+            echo "cli/Cargo.toml does not declare rust-version." >&2
+            exit 1
+          fi
+          echo "version=$msrv" >> "$GITHUB_OUTPUT"
+      - name: Install MSRV toolchain
+        env:
+          MSRV: ${{ steps.msrv.outputs.version }}
+        run: rustup toolchain install "$MSRV" --profile minimal
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Check against MSRV
-        run: cargo +1.91 check --manifest-path cli/Cargo.toml --all-targets
+        env:
+          MSRV: ${{ steps.msrv.outputs.version }}
+        run: cargo "+$MSRV" check --manifest-path cli/Cargo.toml --all-targets
 
   # ── Coverage (informational, non-gating) ──────────────
   coverage:

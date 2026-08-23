@@ -188,8 +188,8 @@ function Test-Attestation
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue))
     {
-        Write-Warning "gh not found. Cannot verify build provenance."
-        return $false
+        Write-Warning "gh not found. Skipping build provenance verification."
+        return $true
     }
 
     & gh attestation verify $Path --repo $Repo 2>&1 | Out-Null

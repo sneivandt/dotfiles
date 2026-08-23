@@ -21,9 +21,10 @@ repository wrappers download or build the CLI, then forward arguments to it.
 
 A wrapper uses `bin/dotfiles` or `bin\dotfiles.exe`. If that binary is absent,
 the wrapper downloads the latest compatible GitHub Release asset and verifies
-its SHA-256 checksum and build provenance attestation. Provenance verification
-requires the `gh` CLI unless `DOTFILES_SKIP_ATTESTATION=1` explicitly bypasses
-it. Use the wrapper-only `--build` option to compile with Cargo:
+its SHA-256 checksum. It verifies build provenance when `gh` is available and
+warns without blocking initial bootstrap when `gh` is absent.
+`DOTFILES_SKIP_ATTESTATION=1` explicitly bypasses the check even when `gh` is
+installed. Use the wrapper-only `--build` option to compile with Cargo:
 
 ```bash
 ./dotfiles.sh --build install --dry-run

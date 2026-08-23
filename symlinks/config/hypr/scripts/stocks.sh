@@ -13,9 +13,11 @@ BTC-USD|&#xf15a;|$
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/waybar-stocks"
 cache_file="$cache_dir/quotes.json"
 lock_dir="$cache_dir/quotes-prices.lock"
+reap_dir="$lock_dir.reap"
 collapsed_file="$cache_dir/collapsed"
 cache_ttl=300
 tmp_file=""
+lock_owned=0
 
 empty_output() {
   printf '{"text":"","tooltip":""}'
@@ -46,9 +48,78 @@ cleanup() {
   if [ -n "$tmp_file" ] && [ -f "$tmp_file" ]; then
     rm -f "$tmp_file"
   fi
-  if [ -d "$lock_dir" ]; then
+  lock_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
+  if [ "$lock_owned" -eq 1 ] && [ "$lock_pid" = "$$" ]; then
+    rm -f "$lock_dir/pid"
     rmdir "$lock_dir" 2>/dev/null || true
   fi
+}
+
+write_lock_pid() {
+  if printf '%s\n' "$$" > "$lock_dir/pid"; then
+    lock_owned=1
+    return 0
+  fi
+
+  rmdir "$lock_dir" 2>/dev/null || true
+  return 1
+}
+
+release_reap_lock() {
+  rmdir "$reap_dir" 2>/dev/null || true
+}
+
+acquire_lock() {
+  if mkdir "$lock_dir" 2>/dev/null; then
+    write_lock_pid
+    return
+  fi
+
+  # Only one process may inspect and replace a stale lock at a time.
+  if ! mkdir "$reap_dir" 2>/dev/null; then
+    return 1
+  fi
+
+  # The previous owner may have released the lock before the reaper was acquired.
+  if mkdir "$lock_dir" 2>/dev/null; then
+    result=1
+    if write_lock_pid; then
+      result=0
+    fi
+    release_reap_lock
+    return "$result"
+  fi
+
+  lock_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
+  case "$lock_pid" in
+    ''|*[!0-9]*)
+      lock_mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || echo "$now")
+      if [ "$((now - lock_mtime))" -lt "$cache_ttl" ]; then
+        release_reap_lock
+        return 1
+      fi
+      ;;
+    *)
+      if kill -0 "$lock_pid" 2>/dev/null; then
+        release_reap_lock
+        return 1
+      fi
+      ;;
+  esac
+
+  if ! rm -f "$lock_dir/pid" 2>/dev/null ||
+     ! rmdir "$lock_dir" 2>/dev/null ||
+     ! mkdir "$lock_dir" 2>/dev/null; then
+    release_reap_lock
+    return 1
+  fi
+
+  result=1
+  if write_lock_pid; then
+    result=0
+  fi
+  release_reap_lock
+  return "$result"
 }
 
 mkdir -p "$cache_dir"
@@ -82,7 +153,7 @@ if [ "$((now - mtime))" -lt "$cache_ttl" ] && [ -s "$cache_file" ]; then
   exit 0
 fi
 
-if ! mkdir "$lock_dir" 2>/dev/null; then
+if ! acquire_lock; then
   cached_or_empty
   exit 0
 fi

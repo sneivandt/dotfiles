@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import importlib.util
+import io
 import os
 from pathlib import Path
 import subprocess
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 # exec_module() on a source path writes __pycache__ next to the script, which
@@ -59,6 +60,30 @@ class FullscreenWaybarTests(unittest.TestCase):
             fullscreen_waybar.set_hidden(True, state)
 
         self.assertFalse(state["hidden"])
+
+    def test_closed_ipc_restores_waybar_and_requests_restart(self) -> None:
+        connection = MagicMock()
+        connection.recv.return_value = b""
+        socket = MagicMock()
+        socket.return_value.__enter__.return_value = connection
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "HYPRLAND_INSTANCE_SIGNATURE": "test",
+                    "XDG_RUNTIME_DIR": "/run/user/test",
+                },
+            ),
+            patch.object(fullscreen_waybar.socket, "socket", socket),
+            patch.object(fullscreen_waybar, "update"),
+            patch.object(fullscreen_waybar, "set_hidden") as set_hidden,
+            patch.object(sys, "stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(fullscreen_waybar.main(), 1)
+
+        set_hidden.assert_called_once_with(False, {"hidden": False})
+        self.assertIn("IPC stream closed", stderr.getvalue())
 
 
 if __name__ == "__main__":

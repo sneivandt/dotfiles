@@ -324,9 +324,15 @@ function Test-AttestationVerification {
     if (
         -not $content.Contains('function Test-Attestation') -or
         -not $content.Contains('gh attestation verify') -or
-        -not $content.Contains('DOTFILES_SKIP_ATTESTATION')
+        -not $content.Contains('DOTFILES_SKIP_ATTESTATION') -or
+        -not $content.Contains('Write-Warning "gh not found. Skipping build provenance verification."')
     ) {
         Write-TestFail "Wrapper does not verify build provenance for downloaded binaries"
+        return $false
+    }
+
+    if ($content -notmatch '(?s)if \(-not \(Get-Command gh.*?\)\).*?Write-Warning "gh not found.*?return \$true') {
+        Write-TestFail "Wrapper does not allow bootstrap to continue when gh is unavailable"
         return $false
     }
 
@@ -344,7 +350,7 @@ function Test-AttestationVerification {
         return $false
     }
 
-    Write-TestPass "Wrapper verifies build provenance after checksum verification"
+    Write-TestPass "Wrapper verifies provenance when available and tolerates missing gh"
     return $true
 }
 

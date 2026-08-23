@@ -41,8 +41,9 @@ Actions:
 
 Do not bypass checksum verification.
 
-Build provenance verification is required by default. An unverifiable
-self-update leaves the installed binary unchanged; see
+Initial bootstrap warns and continues when `gh` is not installed. If `gh` is
+available, an unverifiable download still fails. An unverifiable self-update
+leaves the installed binary unchanged; see
 [Security model](SECURITY.md#build-provenance-verification). Do not set
 `DOTFILES_SKIP_ATTESTATION=1` unless you explicitly accept bypassing provenance
 verification.

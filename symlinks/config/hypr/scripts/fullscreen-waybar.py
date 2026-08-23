@@ -87,7 +87,11 @@ def main() -> int:
             while True:
                 data = sock.recv(4096)
                 if not data:
-                    break
+                    print(
+                        "fullscreen-waybar: Hyprland IPC stream closed",
+                        file=sys.stderr,
+                    )
+                    return 1
                 buf += data
                 while b"\n" in buf:
                     raw, buf = buf.split(b"\n", 1)
@@ -97,7 +101,8 @@ def main() -> int:
     except OSError as error:
         print(f"fullscreen-waybar: Hyprland IPC failed: {error}", file=sys.stderr)
         return 1
-    return 0
+    finally:
+        set_hidden(False, state)
 
 
 if __name__ == "__main__":

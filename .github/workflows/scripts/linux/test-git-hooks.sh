@@ -53,18 +53,22 @@ test_hook_blocks() {
   echo "$sensitive_content" > test-file.txt
   git add test-file.txt
 
-  # Try to commit (should fail)
-  if git commit -m "Test commit with $pattern_type" 2>&1 | grep -q "Potential sensitive information detected"; then
-    pass "Hook blocked commit with $pattern_type"
-    git reset HEAD test-file.txt > /dev/null 2>&1 || true
-    rm -f test-file.txt
-    return 0
+  # Try to commit (should fail) without echoing the detected value.
+  result=1
+  if commit_output=$(git commit -m "Test commit with $pattern_type" 2>&1); then
+    fail "Hook allowed commit with $pattern_type"
+  elif ! printf '%s\n' "$commit_output" | grep -q "Potential sensitive information detected"; then
+    fail "Hook failed to report $pattern_type"
+  elif printf '%s\n' "$commit_output" | grep -Fq -- "$sensitive_content"; then
+    fail "Hook printed detected $pattern_type content"
   else
-    fail "Hook failed to block commit with $pattern_type"
-    git reset HEAD test-file.txt > /dev/null 2>&1 || true
-    rm -f test-file.txt
-    return 1
+    pass "Hook blocked commit with $pattern_type"
+    result=0
   fi
+
+  git reset HEAD test-file.txt > /dev/null 2>&1 || true
+  rm -f test-file.txt
+  return "$result"
 }
 
 test_hook_blocks_staged_file_deleted_from_worktree() {

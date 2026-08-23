@@ -606,6 +606,24 @@ EOF
     return 1
   fi
   log_verbose "✓ DOTFILES_SKIP_ATTESTATION=1 bypasses provenance verification"
+
+  # Missing gh: warn and continue so a fresh bootstrap can install it.
+  rm -rf "${tmpdir:?}/bin"
+  rm -f "$tmpdir/fake-bin/gh"
+  for command_name in awk chmod dirname mkdir mktemp readlink rm sha256sum uname; do
+    ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
+  done
+  output=$(PATH="$tmpdir/fake-bin" "$tmpdir/dotfiles.sh" --version 2>&1)
+  if [ ! -x "$tmpdir/bin/dotfiles" ]; then
+    printf "%sERROR: Missing gh prevented bootstrap%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  if ! printf '%s\n' "$output" | grep -q \
+    "WARNING: gh not found. Skipping build provenance verification."; then
+    printf "%sERROR: Missing gh did not produce the expected warning%s\n" "${RED}" "${NC}" >&2
+    return 1
+  fi
+  log_verbose "✓ Missing gh warns without blocking bootstrap"
 )}
 
 test_wrapper_release_pinned_urls()

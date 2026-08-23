@@ -27,7 +27,8 @@ asset and its checksum. They:
 2. Use HTTPS for GitHub release access.
 3. Download the corresponding SHA-256 checksum.
 4. Verify the binary before executing it.
-5. Verify the binary's GitHub build provenance attestation.
+5. Verify the binary's GitHub build provenance attestation when `gh` is
+   available.
 
 The same sequence applies to the binary's own self-update download.
 
@@ -39,17 +40,19 @@ remain part of the trust chain.
 
 ## Build provenance verification
 
-Provenance verification uses the `gh` CLI (`gh attestation verify`), which is
-required for release binary bootstrap and self-update by default:
+Provenance verification uses the `gh` CLI (`gh attestation verify`). During
+initial wrapper bootstrap, a missing `gh` command produces a warning and skips
+the attestation check so the CLI can install its configured packages. A present
+`gh` command that cannot verify the attestation still fails the bootstrap.
+Self-update keeps its existing verification policy.
 
 | Environment variable | Effect |
 |---|---|
-| unset | Fail the download when provenance cannot be verified |
+| unset | Verify when `gh` is available; warn and continue when it is absent during wrapper bootstrap |
 | `DOTFILES_SKIP_ATTESTATION=1` | Skip provenance verification entirely |
 
 An unverifiable self-update leaves the currently installed binary unchanged.
-During initial bootstrap, install `gh`, use wrapper `--build`, or set the
-explicit bypass. Verification can be performed manually at any time:
+Verification can be performed manually after bootstrap:
 
 ```sh
 gh attestation verify bin/dotfiles --repo sneivandt/dotfiles

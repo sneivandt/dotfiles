@@ -125,11 +125,11 @@
             "warning": 30,
             "critical": 15
         },
-        "format": "{icon} {capacity}%",
-        "format-charging": "\uf0e7 {capacity}%",
-        "format-plugged": "\uf1e6 {capacity}%",
+        "format": "{icon}",
+        "format-charging": "\uf0e7",
+        "format-plugged": "\uf1e6",
         "format-icons": ["\uf244", "\uf243", "\uf242", "\uf241", "\uf240"],
-        "tooltip-format": "{time}"
+        "tooltip-format": "{capacity}%"
     },
 
     "clock": {

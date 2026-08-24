@@ -181,6 +181,7 @@ run_release_workflow_guards() {
   require_workflow_pattern '^[[:space:]]+dotfiles-linux-aarch64[[:space:]]*$' "the Linux aarch64 attestation subject"
   require_workflow_pattern '^[[:space:]]+dotfiles-windows-x86_64\.exe[[:space:]]*$' "the Windows attestation subject"
   require_workflow_pattern 'gh attestation verify "\$artifact" --repo "\$GITHUB_REPOSITORY"' "the attestation discoverability check"
+  require_workflow_pattern 'target_commitish:[[:space:]]+\$\{\{ needs\.version\.outputs\.sha \}\}' "the exact tested release tag target"
 
   attest_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Attest build provenance' | head -n 1 | cut -d: -f1)
   verify_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Verify attestation discoverability' | head -n 1 | cut -d: -f1)
@@ -196,6 +197,52 @@ run_release_workflow_guards() {
     abort_with_hint \
       "manual releases can fall back to an unverified workflow commit." \
       "use needs.check-ci.outputs.sha for every release checkout and build"
+  fi
+}
+
+require_docker_workflow_pattern() {
+  pattern="$1"
+  description="$2"
+  if ! printf '%s\n' "$docker_workflow_contents" | grep -Eq "$pattern"; then
+    abort_with_hint \
+      "Docker workflow is missing $description." \
+      "restore the publishing invariant in .github/workflows/docker.yml"
+  fi
+}
+
+require_docker_workflow_literal() {
+  literal="$1"
+  description="$2"
+  if ! printf '%s\n' "$docker_workflow_contents" | grep -Fq "$literal"; then
+    abort_with_hint \
+      "Docker workflow is missing $description." \
+      "restore the publishing invariant in .github/workflows/docker.yml"
+  fi
+}
+
+run_docker_publish_guards() {
+  printf "Running Docker publishing guards...\n"
+
+  if ! docker_workflow_contents=$(git show ":.github/workflows/docker.yml"); then
+    abort_with_hint \
+      "staged Docker workflow cannot be read." \
+      "stage .github/workflows/docker.yml before running the publishing guards"
+  fi
+  if ! dockerfile_contents=$(git show ":Dockerfile"); then
+    abort_with_hint \
+      "staged Dockerfile cannot be read." \
+      "stage Dockerfile before running the publishing guards"
+  fi
+
+  require_docker_workflow_pattern '^[[:space:]]+group:[[:space:]]+docker-main[[:space:]]*$' "serialized main publishing"
+  require_docker_workflow_pattern '^[[:space:]]+cancel-in-progress:[[:space:]]+true[[:space:]]*$' "superseded-run cancellation"
+  require_docker_workflow_literal 'ref: ${{ github.event.workflow_run.head_sha }}' "the tested commit checkout"
+  require_docker_workflow_literal 'sneivandt/dotfiles:sha-${{ github.event.workflow_run.head_sha }}' "the immutable commit tag"
+
+  if ! printf '%s\n' "$dockerfile_contents" | grep -Eq '^[[:space:]]*RUN[[:space:]]+DOTFILES_SKIP_SELF_UPDATE=1'; then
+    abort_with_hint \
+      "Docker image construction can replace its exact-source binary through self-update." \
+      "set DOTFILES_SKIP_SELF_UPDATE=1 only on the Dockerfile install RUN instruction"
   fi
 }
 
@@ -219,6 +266,10 @@ fi
 
 if has_staged_match '^\.github/workflows/release\.yml$'; then
   run_release_workflow_guards
+fi
+
+if has_staged_match '^(\.github/workflows/docker\.yml|Dockerfile)$'; then
+  run_docker_publish_guards
 fi
 
 exit 0

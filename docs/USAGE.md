@@ -35,6 +35,10 @@ installed. Use the wrapper-only `--build` option to compile with Cargo:
 ```
 
 After installation, `~/.local/bin/dotfiles` is the normal entry point.
+Installed binaries check for a newer release before running a command. Set
+`DOTFILES_SKIP_SELF_UPDATE=1` for a single invocation that must use the current
+binary, such as image construction from an exact source commit. This skips the
+download rather than bypassing checksum or provenance verification.
 
 ## Command summary
 

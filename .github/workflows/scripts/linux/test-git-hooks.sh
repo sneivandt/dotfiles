@@ -207,6 +207,19 @@ test_release_workflow_guards() {
     pass "Release workflow guards require attestation verification before publication"
   fi
 
+  sed '/^[[:space:]]*target_commitish:[[:space:]]*/d' \
+    "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
+  git -C "$repo" add .github/workflows/release.yml
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Release workflow guards accepted a tag without the tested commit target"
+  else
+    pass "Release workflow guards require tags to target the tested commit"
+  fi
+
   sed '/^[[:space:]]*group:[[:space:]]*release[[:space:]]*$/d' \
     "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
   git -C "$repo" add .github/workflows/release.yml
@@ -219,6 +232,42 @@ test_release_workflow_guards() {
     fail "Release workflow guards read the safe working tree instead of the unsafe index"
   else
     pass "Release workflow guards validate the staged workflow"
+  fi
+
+  rm -rf "$repo"
+}
+
+test_docker_publish_guards() {
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  repo="$(mktemp -d)"
+
+  git init -q "$repo"
+  mkdir -p "$repo/hooks" "$repo/.github/workflows"
+  cp "$repo_root/hooks/check-ci-guards.sh" "$repo/hooks/check-ci-guards.sh"
+  cp "$repo_root/.github/workflows/docker.yml" "$repo/.github/workflows/docker.yml"
+  cp "$repo_root/Dockerfile" "$repo/Dockerfile"
+  git -C "$repo" add .github/workflows/docker.yml Dockerfile
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    pass "Docker publishing guards accept the hardened workflow"
+  else
+    fail "Docker publishing guards rejected the hardened workflow"
+  fi
+
+  sed '/^[[:space:]]*RUN[[:space:]]*DOTFILES_SKIP_SELF_UPDATE=1/d' \
+    "$repo_root/Dockerfile" > "$repo/Dockerfile"
+  git -C "$repo" add Dockerfile
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Docker publishing guards accepted build-time self-update"
+  else
+    pass "Docker publishing guards reject build-time self-update"
   fi
 
   rm -rf "$repo"
@@ -310,6 +359,9 @@ test_hook_modes
 
 printf "Testing release workflow guards...\n"
 test_release_workflow_guards
+
+printf "Testing Docker publishing guards...\n"
+test_docker_publish_guards
 
 printf "Testing hook portability...\n"
 test_sensitive_scan_without_paste

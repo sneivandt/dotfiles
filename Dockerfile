@@ -80,5 +80,6 @@ COPY --from=builder --chown=sneivandt:sneivandt /build/source/ /home/sneivandt/d
 COPY --from=builder --chown=sneivandt:sneivandt /build/.git /home/sneivandt/dotfiles/.git
 COPY --from=builder --chown=sneivandt:sneivandt /build/source/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
-RUN /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p "$PROFILE" install
+RUN DOTFILES_SKIP_SELF_UPDATE=1 \
+    /home/sneivandt/dotfiles/bin/dotfiles --root /home/sneivandt/dotfiles -p "$PROFILE" install
 CMD ["/usr/bin/zsh"]

@@ -35,7 +35,9 @@ The runtime stage:
 2. Configures `en_US.UTF-8`.
 3. Creates the non-root `sneivandt` user with Zsh.
 4. Copies source, sanitized Git metadata, and the binary.
-5. Runs `dotfiles install` with the selected profile as that user.
+5. Runs `dotfiles install` with the selected profile as that user. This build
+   step sets `DOTFILES_SKIP_SELF_UPDATE=1` so it uses the binary compiled from
+   the checked-out commit instead of consulting the latest release.
 6. Starts Zsh by default.
 
 The runtime image retains `.git` so sparse-checkout and repository-update tasks
@@ -73,7 +75,9 @@ Uncommitted working-tree changes are not included because the Dockerfile uses
 ## CI publishing
 
 After CI succeeds for a same-repository push to `main`, the Docker publishing
-workflow checks out that CI run's head SHA, then builds and pushes the image.
+workflow checks out that CI run's head SHA, then builds and pushes `latest` and
+an immutable `sha-<commit>` tag. A newer publish cancels an older in-progress
+publish so an obsolete build cannot overwrite `latest` later.
 
 ## Limitations
 

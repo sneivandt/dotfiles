@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: docker-main
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -48,7 +52,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: sneivandt/dotfiles:latest
+          tags: |
+            sneivandt/dotfiles:latest
+            sneivandt/dotfiles:sha-${{ github.event.workflow_run.head_sha }}
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Update Docker Hub description

@@ -61,16 +61,23 @@ fn nibble_to_upper(n: u8) -> char {
 
 use anyhow::Result;
 
+use crate::infra::env::{Env, SystemEnv};
 use crate::infra::logging::Output;
 use crate::infra::logging::OutputExt as _;
 /// GitHub repository used for release lookups.
 pub(super) const REPO: &str = "sneivandt/dotfiles";
+/// Environment variable that disables the self-update preflight.
+const SKIP_SELF_UPDATE_ENV: &str = "DOTFILES_SKIP_SELF_UPDATE";
 
 use cache::{read_fresh_cache, write_cache};
 use http::{HttpClient, default_http_client, fetch_latest_tag};
 use install::download_and_install;
 use paths::is_running_from_bin;
 use version::{is_newer, is_release_version};
+
+fn self_update_skipped(env: &dyn Env) -> bool {
+    env.var(SKIP_SELF_UPDATE_ENV).as_deref() == Some("1")
+}
 
 /// Result of checking for an available update.
 enum UpdateCheck {
@@ -186,13 +193,19 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 /// actually happened prints a durable, dimmed line.
 ///
 /// Returns `Ok(false)` when no update is needed or when running from a
-/// cargo build directory.
+/// cargo build directory. Setting `DOTFILES_SKIP_SELF_UPDATE=1` also skips the
+/// check without weakening verification for downloads performed by other
+/// processes.
 ///
 /// # Errors
 ///
 /// Returns an error if the GitHub API call, download, or checksum
 /// verification fails.
 pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Result<bool> {
+    if self_update_skipped(&SystemEnv) {
+        tracing::debug!("self-update skipped by {SKIP_SELF_UPDATE_ENV}");
+        return Ok(false);
+    }
     if !is_running_from_bin(root) {
         return Ok(false);
     }
@@ -235,6 +248,18 @@ mod tests {
     use super::cache::{cache_path, write_cache};
     use super::http::test_support::MockHttpClient;
     use super::*;
+    use crate::infra::env::MapEnv;
+
+    #[test]
+    fn self_update_skip_requires_explicit_one() {
+        assert!(self_update_skipped(
+            &MapEnv::new().with(SKIP_SELF_UPDATE_ENV, "1")
+        ));
+        assert!(!self_update_skipped(&MapEnv::new()));
+        assert!(!self_update_skipped(
+            &MapEnv::new().with(SKIP_SELF_UPDATE_ENV, "0")
+        ));
+    }
 
     #[test]
     fn fresh_cache_newer_than_current_returns_update_available() {

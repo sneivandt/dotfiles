@@ -142,7 +142,10 @@ password include system-auth
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn elevation_is_requested_only_while_configuration_differs() {
+        // Off Windows the process is never considered elevated, so this test
+        // exercises the resource-state branch without depending on host state.
         let temp = TempDir::new().unwrap();
         let login = temp.path().join("login");
         let passwd = temp.path().join("passwd");

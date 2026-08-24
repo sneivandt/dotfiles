@@ -52,6 +52,7 @@ contract itself.
 | `symlinks` | Home symlinks | install, update, uninstall | Converges or materializes managed home links |
 | `file-permissions` | File permissions | install, update | Applies declared Unix modes |
 | `shell` | Default shell | install, update | Converges the configured login shell |
+| `pam-keyring` | GNOME Keyring PAM integration | install, update | Unlocks the login keyring at Arch console login and synchronizes password changes |
 | `systemd` | Systemd units | install, update | Enables and starts configured units, or enables user units offline during target provisioning |
 | `registry` | Windows registry | install, update | Converges declared current-user values |
 | `vscode-extensions` | VS Code extensions | install, update | Installs missing declared extensions, or schedules them for first login during target provisioning |
@@ -233,6 +234,24 @@ database instead of the invoking process's `SHELL` variable. A root invocation
 uses `usermod` directly. An unprivileged non-interactive invocation uses
 passwordless or cached sudo when available. A normal interactive run uses
 `chsh`.
+
+#### GNOME Keyring PAM integration
+
+This Arch-only task runs when the active package profile includes
+`gnome-keyring`, after package installation makes `pam_gnome_keyring.so`
+available. It adds the keyring authentication and session directives to
+`/etc/pam.d/login`, then adds password synchronization to
+`/etc/pam.d/passwd`.
+
+The resource preserves unrelated vendor configuration, removes duplicate
+keyring directives, and places each managed directive at the end of its PAM
+facility stack. It refuses to create a missing PAM service file or synthesize a
+missing stack. Applying changes uses `sudo`; dry runs only report the two files
+that would change.
+
+Automatic unlocking requires an interactive login password and a login keyring
+with the same password. It does not unlock a keyring during passwordless
+autologin.
 
 #### Systemd units
 

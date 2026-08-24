@@ -184,6 +184,30 @@ Confirm Developer Mode is enabled, open a new terminal, and check whether
 another file occupies the target. Do not elevate the whole workflow for one
 capability.
 
+## GNOME Keyring does not unlock at login
+
+The `pam-keyring` task applies only on Arch when `gnome-keyring` belongs to the
+active package profile. Preview or reapply it directly:
+
+```bash
+dotfiles install --only pam-keyring --dry-run --verbose
+dotfiles install --only pam-keyring
+```
+
+Fully log out of the TTY session and log back in; restarting Hyprland alone does
+not run the PAM login stack. Then check the login collection:
+
+```bash
+busctl --user get-property \
+  org.freedesktop.secrets \
+  /org/freedesktop/secrets/collection/login \
+  org.freedesktop.Secret.Collection Locked
+```
+
+`b false` means the collection is unlocked. If it remains locked, the login
+keyring password must be changed to match the Unix login password. PAM cannot
+derive a password during passwordless autologin.
+
 ## A task was skipped because elevation was unavailable
 
 Tasks that need administrator rights are delegated to one short-lived elevated

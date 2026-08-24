@@ -32,6 +32,7 @@ use crate::domains::repository::update::UpdateRepository;
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
 use crate::domains::system::developer_mode::EnableDeveloperMode;
+use crate::domains::system::pam_keyring::ConfigurePamKeyring;
 use crate::domains::system::registry::ApplyRegistry;
 use crate::domains::system::systemd_units::ConfigureSystemd;
 use crate::domains::system::wsl_conf::InstallWslConf;
@@ -151,6 +152,10 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         Box::new(ApplyFilePermissions::new(store.chmod.clone())),
         with_ordering_deps(ConfigureShell, &[id::<InstallPackages>()]),
         with_deps(
+            ConfigurePamKeyring::new(store.pam_keyring_enabled.clone()),
+            &[id::<InstallPackages>()],
+        ),
+        with_deps(
             ConfigureSystemd::new(store.units.clone()),
             &[
                 id::<InstallPackages>(),
@@ -238,6 +243,7 @@ mod tests {
             id::<InstallSymlinks>(),
             id::<ApplyFilePermissions>(),
             id::<ConfigureShell>(),
+            id::<ConfigurePamKeyring>(),
             id::<ConfigureSystemd>(),
             id::<ApplyRegistry>(),
             id::<InstallVsCodeExtensions>(),

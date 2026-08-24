@@ -69,6 +69,8 @@ to the smallest necessary scope:
 - Registry settings are currently user-scoped.
 - systemd configuration defaults to user units; explicitly scoped system units
   may require elevation.
+- GNOME Keyring integration uses elevation only to install merged directives in
+  the existing `/etc/pam.d/login` and `/etc/pam.d/passwd` files.
 - system-level WSL configuration may require elevation.
 - package managers elevate only for provider actions that need it.
 

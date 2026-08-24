@@ -29,6 +29,8 @@ macro_rules! define_config_store {
             pub aggregate: ConfigHandle<Config>,
             /// Resolved APM fragment sources derived from managed symlinks.
             pub(crate) apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+            /// Whether the active package profile enables GNOME Keyring PAM integration.
+            pub(crate) pam_keyring_enabled: ConfigHandle<bool>,
             $(
                 #[doc = concat!("Configuration handle for `", stringify!($field), "`.")]
                 pub $field: ConfigHandle<$ty>,
@@ -43,6 +45,7 @@ macro_rules! define_config_store {
                 Self {
                     $($field: source.project(|snapshot| snapshot.config.$field.clone()),)+
                     apm_fragments: source.project(|snapshot| snapshot.apm_fragments.clone()),
+                    pam_keyring_enabled: source.project(|snapshot| snapshot.pam_keyring_enabled),
                     aggregate: source.project(|snapshot| snapshot.config.clone()),
                     source,
                 }
@@ -65,14 +68,20 @@ config_section_inventory!(define_config_store);
 struct PublishedConfig {
     config: Config,
     apm_fragments: Vec<ApmFragmentSource>,
+    pam_keyring_enabled: bool,
 }
 
 impl PublishedConfig {
     fn new(config: Config) -> Self {
         let apm_fragments = apm_fragment_sources(&config);
+        let pam_keyring_enabled = config
+            .packages
+            .iter()
+            .any(|package| package.name == "gnome-keyring");
         Self {
             config,
             apm_fragments,
+            pam_keyring_enabled,
         }
     }
 }
@@ -122,6 +131,7 @@ mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
     use crate::domains::overlay::config::scripts::ScriptEntry;
+    use crate::domains::packages::config::packages::Package;
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
 
@@ -173,5 +183,21 @@ mod tests {
 
         assert_eq!(store.scripts.read()[0].name, "reloaded");
         assert_eq!(store.aggregate.read().scripts[0].name, "reloaded");
+    }
+
+    #[test]
+    fn reload_updates_derived_pam_keyring_enablement() {
+        let initial = empty_config(PathBuf::from("/tmp"));
+        let store = ConfigStore::from_config(initial);
+        assert!(!*store.pam_keyring_enabled.read());
+
+        let mut reloaded = empty_config(PathBuf::from("/tmp"));
+        reloaded.packages.push(Package {
+            name: "gnome-keyring".to_string(),
+            is_aur: false,
+        });
+        store.reload(reloaded);
+
+        assert!(*store.pam_keyring_enabled.read());
     }
 }

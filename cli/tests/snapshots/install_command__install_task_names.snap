@@ -17,6 +17,7 @@ AUR packages
 Home symlinks
 File permissions
 Default shell
+GNOME Keyring PAM integration
 Systemd units
 Windows registry
 VS Code extensions

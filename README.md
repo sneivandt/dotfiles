@@ -56,9 +56,6 @@ Desired state lives in `conf/*.toml`. See the
 | `dotfiles install` | Applies the configured machine state |
 | `dotfiles update` | Runs installation and advances pinned dependency versions |
 | `dotfiles uninstall` | Removes managed integrations while preserving user files |
-| `dotfiles test` | Validates configuration and runs available script analyzers |
-| `dotfiles tasks` | Lists task selectors and which commands use each task |
-| `dotfiles log` | Reads retained run logs |
 
 Use `install` for normal setup and maintenance. Use `update` only when you want
 pinned dependency versions to move forward. `uninstall` leaves packages,
@@ -69,21 +66,14 @@ See the [Usage Guide](docs/USAGE.md) for the full command reference.
 
 ## Profiles
 
-Each machine uses one profile. The CLI adds the detected `linux`, `windows`, and
-`arch` categories automatically.
+Each machine uses one profile:
 
-```bash
-dotfiles install -p desktop
-```
+| Profile | Use it for |
+|---------|------------|
+| `base` | Core setup for servers, WSL, and command-line environments |
+| `desktop` | Core setup plus desktop apps and services |
 
-If no profile is set, `install` prompts for one and saves the choice.
-
-| Profile | Best for |
-|---------|----------|
-| `base` | Servers, WSL, minimal shell environments |
-| `desktop` | Workstations with GUI tools |
+Pass `--profile` or `-p` to choose one. Otherwise, `install` prompts and saves
+the selection. The CLI adds settings for the detected platform automatically.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
-
-For platform guides, troubleshooting, architecture, and development workflows,
-see the [documentation index](docs/README.md).

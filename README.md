@@ -55,7 +55,7 @@ Desired state lives in `conf/*.toml`. See the
 |---------|--------------|
 | `dotfiles install` | Applies the configured machine state |
 | `dotfiles update` | Runs installation and advances pinned dependency versions |
-| `dotfiles uninstall` | Removes managed integrations while preserving user files |
+| `dotfiles uninstall` | Materializes managed symlinks and removes hooks and the launcher |
 
 Use `install` for normal setup and maintenance. Use `update` only when you want
 pinned dependency versions to move forward. `uninstall` leaves packages,
@@ -74,6 +74,7 @@ Each machine uses one profile:
 | `desktop` | Core setup plus desktop apps and services |
 
 Pass `--profile` or `-p` to choose one. Otherwise, `install` prompts and saves
-the selection. The CLI adds settings for the detected platform automatically.
+the selection. The CLI automatically activates the `linux`, `windows`, and
+`arch` categories that match the machine.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.

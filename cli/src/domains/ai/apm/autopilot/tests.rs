@@ -1,13 +1,13 @@
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::engine::{Task, TaskResult};
+use crate::engine::Task;
 use crate::infra::exec::{ExecResult, MockExecutor};
-use crate::test_helpers::assert_task_changed;
+use crate::test_helpers::{assert_task_changed, assert_task_ok};
 
 use super::super::test_fixture::{
-    expect_apm_install, expect_apm_outdated_in_sequence, expect_apm_update,
-    expect_copilot_app_enable, expect_copilot_app_workflow_install, expect_which_apm, install_task,
+    expect_apm_install, expect_apm_update, expect_copilot_app_enable,
+    expect_copilot_app_workflow_install, expect_which_apm, install_task,
     make_home_context_with_executor, update_task, write_copilot_app_db,
     write_current_manifest_lock_and_marker, write_home_fragment,
 };
@@ -422,7 +422,7 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
 }
 
 #[test]
-fn current_install_repairs_autopilot_drift_without_rerunning_apm() {
+fn current_install_delegates_to_apm_and_repairs_autopilot_drift() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
     write_workflow_lock(dir.path(), &["apm--a"]);
@@ -451,6 +451,7 @@ fn current_install_repairs_autopilot_drift_without_rerunning_apm() {
             );
             Ok(ExecResult::success(""))
         });
+    expect_apm_install(&mut mock, &mut seq, dir.path());
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -474,21 +475,9 @@ fn current_install_previews_autopilot_drift_without_repairing_it() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_lock_and_marker(dir.path());
     write_workflow_lock(dir.path(), &["apm--a"]);
-    let db_path = write_copilot_app_db(dir.path());
-    let db_str = db_path.to_str().expect("db path utf-8").to_string();
+    write_copilot_app_db(dir.path());
 
-    let mut mock = MockExecutor::new();
-    expect_python3(&mut mock, 1, true);
-    mock.expect_execute().once().returning(move |spec| {
-        assert!(!spec.is_checked());
-        assert_eq!(
-            spec.arguments(),
-            ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, db_str.as_str(), "apm--a"]
-        );
-        Ok(ExecResult::success(""))
-    });
-
-    let ctx = make_home_context_with_executor(dir.path(), mock).with_dry_run(true);
+    let ctx = make_home_context_with_executor(dir.path(), MockExecutor::new()).with_dry_run(true);
     let result = install_task().run(&ctx).expect("run should not error");
 
     assert_task_changed(&result);
@@ -504,14 +493,16 @@ fn update_re_arms_apm_workflows_cases() {
             "apm update advances the lock: workflow not desired pre-update",
             "",
             "updated\n",
+            true,
         ),
         (
             "apm update reports no changes: workflow already desired pre-update",
             "apm--a\n",
             "  [+] github.com/example/plugin (cached)\n",
+            false,
         ),
     ];
-    for (case, pre_stdout, update_stdout) in cases {
+    for (_case, pre_stdout, update_stdout, expected_changed) in cases {
         let dir = tempfile::tempdir().expect("create temp dir");
         write_current_manifest_lock_and_marker(dir.path());
         // Overwrite the plain lock with one that records a dotfiles-managed
@@ -525,13 +516,6 @@ fn update_re_arms_apm_workflows_cases() {
         let mut mock = MockExecutor::new();
         expect_which_apm(&mut mock, true);
         expect_python3(&mut mock, 2, true);
-        expect_apm_outdated_in_sequence(
-            &mut mock,
-            &mut seq,
-            dir.path(),
-            "[!] 1 outdated dependency found\n",
-        );
-
         let pre_db = db_str.clone();
         mock.expect_execute()
             .once()
@@ -565,10 +549,11 @@ fn update_re_arms_apm_workflows_cases() {
         let ctx = make_home_context_with_executor(dir.path(), mock);
 
         let result = update_task().run(&ctx).expect("run should not error");
-        assert!(
-            matches!(result, TaskResult::Ok),
-            "expected Ok after re-arming workflows ({case}), got {result:?}"
-        );
+        if expected_changed {
+            assert_task_changed(&result);
+        } else {
+            assert_task_ok(&result);
+        }
     }
 }
 

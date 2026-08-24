@@ -281,7 +281,11 @@ Builds the active APM desired state from repository-managed fragments under
 generated manifest, lock state, plugins, and skills. It runs after package,
 AUR, and symlink tasks so the APM executable and inputs are available.
 
-See [APM](APM.md) for manifest ownership and update safeguards.
+The task always delegates user-scope convergence and stale-content cleanup to
+`apm install -g`. Copilot App uses its native experimental target. Cowork
+remains experimental and uses an ACL-safe file reconciliation after its APM
+feature flag and path configuration are honored. See [APM](APM.md) for the
+ownership boundary.
 
 #### WSL configuration files
 
@@ -295,11 +299,11 @@ restarted.
 #### APM package updates
 
 This update-only task depends on **APM packages**. It runs only during
-`dotfiles update` and only when APM install state matches the active
-merged-manifest fingerprint. The guard prevents failed or partial install state
-from advancing the lockfile. The task invokes APM's idempotent update and
-compares the lockfile before and after. It ignores APM's volatile `generated_at`
-stamp, so reserializing an unchanged lockfile does not count as a change.
+`dotfiles update`. Apply invokes `apm update -g --yes` directly and dry-run uses
+`apm update -g --dry-run`. The task compares the exact lockfile before and after
+because current APM preserves unchanged serialization. The install dependency
+ensures the generated manifest is converged before update advances matching
+refs.
 
 ## Dynamic overlay tasks
 
@@ -346,7 +350,7 @@ scheduler:
 
 | Selector | Task label | What it checks |
 |---|---|---|
-| `config-warnings` | Validate config warnings | Reports loader diagnostics, including APM fragment, local plugin, dependency-field, and MCP validation |
+| `config-warnings` | Validate config warnings | Reports loader diagnostics, including missing source directories for local `dot-*` APM plugin references |
 | `symlink-sources` | Validate symlink sources | Confirms configured symlink and file-permission sources exist and globs resolve |
 | `config-files` | Validate config files | Confirms all required main TOML files exist; warns when `hooks/` is absent |
 | `manifest-sync` | Validate manifest sync | Checks exact category-section synchronization between symlinks and sparse-checkout manifest |

@@ -283,17 +283,19 @@ source rebuild. If PATH contains `paru` but the target package is absent, the
 task reports it as stale or broken. Later AUR operations call the validated
 `/usr/bin/paru` directly.
 
-## APM update is skipped
+## APM update does not run or fails
 
-APM updates require a successful install fingerprint for the current merged
-manifest. First converge install state:
+**APM package updates** is update-only and depends on the regular APM install
+task. Run both selectors with the update command:
 
 ```bash
-dotfiles install --only apm --verbose
 dotfiles update --only apm,apm-update --dry-run --verbose
+dotfiles update --only apm,apm-update --verbose
 ```
 
-Also confirm active main and overlay fragments are valid and APM is available.
+The preview delegates planning to `apm update -g --dry-run`; apply delegates to
+`apm update -g --yes`. Confirm active main and overlay fragments pass native APM
+validation, `apm` is available on PATH, and GitHub authentication is usable.
 
 ## Optional analyzers are not running
 

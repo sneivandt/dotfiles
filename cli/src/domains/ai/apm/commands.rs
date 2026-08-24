@@ -57,71 +57,6 @@ pub(super) enum ApmCommandResult {
     AuthSkipped(String),
 }
 
-#[derive(Debug)]
-pub(super) enum ApmOutdatedResult {
-    Outdated,
-    Current,
-    Unknown,
-    AuthSkipped(String),
-}
-
-/// Check locked user-scope dependencies for remote updates without mutating
-/// the manifest, lockfile, or deployed primitives.
-pub(super) fn check_apm_outdated(ctx: &Context) -> Result<ApmOutdatedResult> {
-    let system = ctx.system();
-    let cwd = system.home();
-    let args = ["outdated", "-g"];
-    ctx.debug_fmt(|| {
-        format!(
-            "running `apm {}` in {} (interactive credential prompts disabled)",
-            args.join(" "),
-            cwd.display()
-        )
-    });
-
-    match system.executor().execute(
-        CommandSpec::new("apm")
-            .args(&args)
-            .current_dir(cwd)
-            .envs(APM_NONINTERACTIVE_ENV)
-            .timeout(Duration::from_mins(2)),
-    ) {
-        Ok(result) => {
-            report_apm_output(ctx, &result.stdout, &result.stderr);
-            let output = format!("{}\n{}", result.stdout, result.stderr);
-            if output.lines().any(line_reports_outdated_dependencies) {
-                Ok(ApmOutdatedResult::Outdated)
-            } else if output.lines().any(line_reports_current_dependencies) {
-                Ok(ApmOutdatedResult::Current)
-            } else {
-                Ok(ApmOutdatedResult::Unknown)
-            }
-        }
-        Err(err) => {
-            let msg = format!("{err:#}");
-            if looks_like_auth_failure(&msg) {
-                let reason = ApmCommand::Update.auth_reason();
-                ctx.log()
-                    .warn(format!("skipping: {reason} (details: {})", msg.trim()));
-                return Ok(ApmOutdatedResult::AuthSkipped(reason));
-            }
-            Err(err).context("checking for outdated APM dependencies")
-        }
-    }
-}
-
-fn line_reports_outdated_dependencies(line: &str) -> bool {
-    let line = line.to_ascii_lowercase();
-    line.contains(" outdated dependency found") || line.contains(" outdated dependencies found")
-}
-
-fn line_reports_current_dependencies(line: &str) -> bool {
-    let line = line.to_ascii_lowercase();
-    line.contains("all dependencies are up-to-date")
-        || line.contains("no locked dependencies to check")
-        || line.contains("no remote dependencies to check")
-}
-
 pub(super) fn run_apm_invocation(
     ctx: &Context,
     command: ApmCommand,
@@ -236,28 +171,6 @@ pub(super) fn install_task_result(result: ApmCommandResult) -> TaskResult {
         ApmCommandResult::Success => TaskResult::Ok,
         ApmCommandResult::AuthSkipped(reason) => TaskResult::unmet(reason),
     }
-}
-
-/// Remove user-scope deployments that are no longer owned by the manifest.
-///
-/// `apm prune` has no global flag; running it from `~/.apm` selects the
-/// user-scope manifest and lockfile.
-pub(super) fn prune_user_scope(ctx: &Context) -> Result<()> {
-    let cwd = ctx.system().home().join(".apm");
-    ctx.debug_fmt(|| format!("running `apm prune` in {}", cwd.display()));
-    let result = ctx
-        .system()
-        .executor()
-        .execute(
-            CommandSpec::new("apm")
-                .arg("prune")
-                .current_dir(&cwd)
-                .envs(APM_NONINTERACTIVE_ENV)
-                .timeout(Duration::from_mins(2)),
-        )
-        .context("pruning unowned user-scope APM deployments")?;
-    report_apm_output(ctx, &result.stdout, &result.stderr);
-    Ok(())
 }
 
 /// Relay raw APM command output to the diagnostic log file and the verbose

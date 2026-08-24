@@ -27,10 +27,12 @@ audience decisions.
   harnesses.
 - Use dependency-level `targets` to narrow one package. Filters apply to the
   whole package, so split packages when primitive compatibility differs.
-- `copilot-cowork` receives skills only. A Cowork-targeted skill must remain
-  useful without MCP, hooks, prompts, agents, commands, or instructions.
-- On Windows, Cowork reconciliation trusts lockfile `target_subset` values;
-  target filters are deployment policy.
+- `copilot-cowork` remains experimental and receives skills only. A
+  Cowork-targeted skill must remain useful without MCP, hooks, prompts, agents,
+  commands, or instructions.
+- Keep Cowork's APM feature enablement and path precedence, but use the custom
+  file-level reconciliation while upstream replaces destination directories.
+  Lockfile `target_subset` values remain authoritative deployment policy.
 - Keep self-defined MCP servers direct unless transitive MCP trust is deliberate.
 - Local plugins use `apm.yml`, `includes: auto`, and `.apm/<primitive>/`.
 - Reference local plugins with forward-slash paths such as
@@ -40,10 +42,12 @@ audience decisions.
 
 ## Engine rules
 
-`InstallApmPackages` creates one immutable install plan from the merged
-manifest, lockfile, success marker, local-source fingerprint, and targets.
-Preview and apply consume that same plan. Keep update-only scheduling in the
-command pipeline.
+Dotfiles owns fragment merging, generated-manifest persistence, conditional
+target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot
+fixup. Native APM owns install/update planning, local-source integrity,
+deployment convergence, and stale/orphan cleanup. Do not reintroduce
+fingerprints, success markers, `apm outdated` parsing, or a separate
+`apm prune`. Keep update-only scheduling in the command pipeline.
 
 ## Verify
 

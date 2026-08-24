@@ -10,11 +10,8 @@
 //! - [`install`] converges the generated manifest and runs `apm install`.
 //! - [`update`] advances locked dependency refs for the `update` command.
 //! - [`commands`] centralizes APM process invocation and common error handling.
-//! - [`cowork`] reconciles Cowork's OneDrive-backed skill tree after APM runs.
-//! - [`managed_targets`] owns drift repair and lifecycle hooks for managed
-//!   Copilot App and Cowork targets.
-//! - [`sources`] fingerprints the manifest, local plugin content, and target
-//!   set so a converged tree can skip `apm install` entirely.
+//! - [`managed_targets`] delegates Copilot App to APM, preserves Cowork's
+//!   protected directories, and retains the Copilot App autopilot policy.
 //! - [`targets`] detects managed Copilot target availability.
 //! - [`autopilot`] re-arms dotfiles-managed Copilot App workflows.
 
@@ -25,7 +22,6 @@ mod fragments;
 mod install;
 mod managed_targets;
 mod manifest;
-mod sources;
 mod targets;
 mod update;
 mod validation;
@@ -54,10 +50,6 @@ fn skip(reason: impl Into<String>) -> TaskResult {
 use crate::engine::Task;
 #[cfg(test)]
 use commands::looks_like_auth_failure;
-#[cfg(test)]
-use std::path::Path;
-#[cfg(test)]
-use targets::missing_apm_reason;
 
 #[cfg(test)]
 mod test_fixture;

@@ -1,64 +1,19 @@
-//! Marker files, merged-manifest writes, and the shared digest encoder.
+//! Generated-manifest persistence and dependency descriptions.
 
 use anyhow::{Context as _, Result};
-use sha2::{Digest as _, Sha256};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-/// Render a completed SHA-256 hasher as a lowercase hexadecimal string.
+/// Read the authoritative APM lockfile for before/after change detection.
 ///
-/// Shared so every fingerprint written to the install marker has one encoding.
-/// See [`super::sources::install_fingerprint`] for what goes into that hash.
-pub(super) fn hex_digest(hasher: Sha256) -> String {
-    let mut hash = String::with_capacity(64);
-    for byte in hasher.finalize() {
-        hash.push(hex_nibble(byte >> 4));
-        hash.push(hex_nibble(byte & 0x0f));
+/// APM 0.27+ preserves unchanged target mappings and timestamps, so exact bytes
+/// now represent meaningful convergence state without custom normalization.
+pub(super) fn read_lock_snapshot(path: &Path) -> Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).with_context(|| format!("reading APM lockfile {}", path.display())),
     }
-    hash
-}
-
-/// Convert a 4-bit value to a lowercase hexadecimal character.
-const fn hex_nibble(nibble: u8) -> char {
-    match nibble {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'a',
-        11 => 'b',
-        12 => 'c',
-        13 => 'd',
-        14 => 'e',
-        15 => 'f',
-        _ => '?',
-    }
-}
-
-/// Return whether the marker records a successful install for this manifest.
-pub(super) fn manifest_marker_matches(marker: &Path, manifest_hash: &str) -> Result<bool> {
-    match std::fs::read_to_string(marker) {
-        Ok(existing) => Ok(existing.trim() == manifest_hash),
-        Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
-        Err(err) => Err(err)
-            .with_context(|| format!("reading APM manifest install marker {}", marker.display())),
-    }
-}
-
-/// Record that APM successfully installed the current generated manifest.
-pub(super) fn write_manifest_marker(marker: &Path, manifest_hash: &str) -> Result<()> {
-    if let Some(parent) = marker.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("creating directory {}", parent.display()))?;
-    }
-    std::fs::write(marker, format!("{manifest_hash}\n"))
-        .with_context(|| format!("writing APM manifest install marker {}", marker.display()))
 }
 
 /// Build a human-facing phrase describing the dependencies in the merged

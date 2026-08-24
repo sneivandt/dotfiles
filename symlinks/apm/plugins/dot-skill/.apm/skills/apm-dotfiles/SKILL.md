@@ -37,10 +37,12 @@ of adding a near-duplicate.
 - Top-level `targets` selects default harnesses.
 - A dependency-level `targets` list narrows the entire package.
 - Split packages when primitives need different target sets.
-- Cowork receives skills only. A Cowork-targeted package's skills must work
-  without its MCP servers, hooks, prompts, agents, commands, or instructions.
-- Windows Cowork reconciliation follows lockfile target subsets, so dependency
-  filters are authoritative.
+- Cowork remains an experimental, skills-only target. A Cowork-targeted
+  package's skills must work without its MCP servers, hooks, prompts, agents,
+  commands, or instructions.
+- Dotfiles enables Cowork's APM feature and honors APM's configured path, then
+  follows lockfile target subsets during ACL-safe file reconciliation.
+  Dependency filters are authoritative.
 
 ## Verify
 

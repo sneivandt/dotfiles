@@ -119,26 +119,6 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
     }
 }
 
-/// Detect whether any dotfiles-managed Copilot App workflow is not currently
-/// configured for autopilot and enabled.
-///
-/// Returns the pre-fixup workflow snapshot when repair is needed so apply can
-/// report the exact number of workflows changed without probing the database a
-/// second time. Probe failures remain best-effort and return `None`; a later
-/// APM install or update will retry the existing post-deployment fixup.
-pub(super) fn detect_workflow_autopilot_drift(ctx: &Context) -> Option<DesiredApmWorkflows> {
-    let deployed = read_deployed_workflow_ids(ctx)?;
-    if deployed.is_empty() {
-        return None;
-    }
-    let current = snapshot_desired_apm_workflow_ids(ctx);
-    match &current {
-        DesiredApmWorkflows::Known(desired) if desired.len() == deployed.len() => None,
-        DesiredApmWorkflows::Known(_) | DesiredApmWorkflows::FirstInstall => Some(current),
-        DesiredApmWorkflows::Unavailable => None,
-    }
-}
-
 /// Read the exact workflow IDs this dotfiles-managed APM install deployed.
 fn fixup_workflow_ids(ctx: &Context) -> Option<Vec<String>> {
     match read_deployed_workflow_ids(ctx) {

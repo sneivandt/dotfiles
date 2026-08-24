@@ -13,9 +13,9 @@ their content.
 | `symlinks/apm/config/*.yml` | Profile-specific APM source fragments |
 | `conf/symlinks.toml` | Selects and links applicable fragments and local plugins |
 | `conf/manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
-| APM packages task | Merges fragments and converges installed state |
-| APM package updates task | Advances eligible pinned versions during `dotfiles update` |
-| APM itself | Resolves packages and distributes their content |
+| APM packages task | Merges fragments, persists the generated manifest, and invokes native APM convergence |
+| APM package updates task | Invokes native APM update during `dotfiles update` |
+| APM itself | Resolves packages, verifies local sources, converges deployments, and removes stale content |
 
 Use APM to place APM-managed content in agent directories. Do not maintain
 separate copies.
@@ -77,25 +77,36 @@ merged manifest in control. Copilot App is the exception because APM does not
 accept its experimental target in `apm.yml`. When the App database exists, the
 task idempotently enables `copilot-app` and runs a separate
 `apm install -g --target copilot-app` to deploy workflows. If the APM manifest
-is already current, the task still checks dotfiles-managed workflow rows. It
-restores `autopilot` mode and enabled state for any workflow that drifted,
-without rerunning APM.
+is already current, the primary native install still runs. After APM finishes,
+the task restores `autopilot` mode and enabled state for any dotfiles-managed
+workflow that drifted.
 
-Cowork stores skills under OneDrive and prevents deletion of existing skill
-directories. APM replaces colliding directories as a unit, so repeated direct
-`copilot-cowork` installs fail with access denied after Cowork creates those
-directories. On Windows, the task uses a file-level process instead. After the
-primary install, it reads each locked dependency's `target_subset`, selects
-packages with no filter or a filter containing `copilot-cowork`, and copies
-their resolved skills from `~/.agents/skills`. It removes `SKILL.md` from
-excluded or removed skills but preserves Cowork-owned placeholders,
-directories, and ACLs.
+Cowork remains an experimental APM target and is disabled by default. When a
+Cowork skills path is available, dotfiles re-asserts the feature with:
 
-Reconciliation also removes legacy `cowork://` deployment records from older
-direct installs. Otherwise, unrelated APM commands would retry directory
-deletion that OneDrive blocks. Dry-run compares files and ledger state, so it
-reports missing, changed, or incorrectly included Cowork skills before apply
-uses the same reconciliation.
+```bash
+apm experimental enable copilot-cowork
+```
+
+Dotfiles follows APM's Cowork path precedence: the
+`APM_COPILOT_COWORK_SKILLS_DIR` environment variable, the persisted
+`copilot_cowork_skills_dir` value in `~/.apm/config.json`, then the
+`ONEDRIVECOMMERCIAL` or `ONEDRIVE` Windows fallback. A configured path also
+enables Cowork reconciliation on Linux.
+
+Current APM still replaces a colliding skill directory with directory removal
+followed by a full tree copy. Cowork stores skills under OneDrive and protects
+those directories, so dotfiles must not invoke the native `copilot-cowork`
+target yet. Instead, after the primary install, it reads each locked
+dependency's `target_subset`, selects packages with no filter or a filter
+containing `copilot-cowork`, and copies their resolved skills from
+`~/.agents/skills` file-by-file. It removes `SKILL.md` from excluded or removed
+skills but preserves Cowork-owned placeholders, directories, and ACLs.
+
+Reconciliation removes legacy `cowork://` deployment records before native APM
+convergence. Otherwise, unrelated APM commands can retry directory deletion
+that OneDrive blocks. Dry-run reports the planned file-level reconciliation
+without modifying Cowork or the lockfile.
 
 Fragments merge their `targets:` lists by union with deduplication, so a private
 overlay fragment can add a runtime without restating the base list.
@@ -114,17 +125,19 @@ before convergence. The task:
 1. Discovers active main and overlay fragments from their configured symlink
    sources, while preserving unmanaged home fragments.
 2. Produces the merged manifest in deterministic order.
-3. Computes a fingerprint of the merged desired state.
-4. Runs APM's idempotent convergence.
-5. Records the successful fingerprint for update safety.
-6. Prunes user-scope deployments no longer owned by the generated manifest.
+3. Writes the generated manifest only when its content changed.
+4. Runs `apm install -g` on every applicable install pass.
+5. Lets APM verify local sources, converge deployments, and remove stale or
+   orphaned user-scope content.
+6. Compares the exact lockfile before and after to report whether APM changed
+   resolved state.
 
 Re-running `dotfiles install` should not advance pinned dependency versions.
-Install previews derive the same post-symlink merged manifest, lockfile, and
-success-marker state as apply mode. A missing managed fragment link can
-therefore be previewed and restored by **Home symlinks** without incorrectly
-previewing an APM reinstall. **APM packages** emits `~` only when convergence is
-needed. A current install stays quiet.
+Native APM owns idempotency through its lockfile. **APM packages** can therefore
+invoke APM every time while still reporting a current task when the generated
+manifest, lockfile, and retained autopilot policy are unchanged. Dry-run
+previews the delegated install and target work without writing the generated
+manifest.
 
 ```bash
 dotfiles install --only apm --dry-run --verbose
@@ -137,17 +150,14 @@ dotfiles install --only apm
 `dotfiles update` but not `dotfiles install`. It depends on
 **APM packages**.
 
-Before advancing versions, the task verifies that installed state matches the
-current merged-manifest fingerprint. It skips the update if install convergence
-failed or desired state changed afterward. This avoids changing an unrelated or
-partial lockfile.
+The install dependency first converges the generated manifest. Apply then runs
+`apm update -g --yes` directly; dry-run uses APM's native
+`apm update -g --dry-run` plan. No separate `apm outdated` parser or dotfiles
+success marker is involved.
 
-Preview and apply both run the non-mutating `apm outdated -g` command. Current
-dependencies stay quiet. An unrecognized result appears in the preview instead
-of being treated as current. When updates exist, apply invokes APM's native
-update and compares dependency-resolution state before and after. Volatile
-timestamps and deployment or MCP ledgers rewritten during convergence do not
-count as version changes.
+The task compares the exact lockfile bytes before and after update. Current APM
+preserves unchanged target mappings and timestamps, so an identical lockfile
+reports current while any native lock-state change is reported as changed.
 
 ```bash
 dotfiles update --only apm,apm-update
@@ -169,18 +179,20 @@ dotfiles install --overlay C:\Code\private-dotfiles --only apm --dry-run
 
 ## Validation
 
-**Validate config warnings** parses main and overlay fragments and checks local
-plugin references, Git dependency fields, and MCP entries. **Validate APM
+**Validate config warnings** checks the dotfiles-specific cross-file invariant
+that each local `~/.apm/plugins/dot-*` reference has a matching source directory
+in the same repository or overlay. Native APM owns YAML syntax, dependency
+fields, MCP declarations, and package-layout validation. **Validate APM
 plugins** runs `apm pack --dry-run --verbose` for every local plugin directory.
-If APM is not installed, only the pack check is reported as unavailable.
+If APM is not installed, the pack check is reported as unavailable.
 
 When changing APM configuration, check:
 
-- valid YAML fragments
+- native APM validation succeeds for the fragments and packages
 - deterministic merged ordering
 - symlink and sparse-manifest alignment
 - local plugin paths that exist in the selected checkout
-- install-before-update fingerprint safety
+- native install/update dry-run behavior
 
 ## Adding an APM package
 

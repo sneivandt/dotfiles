@@ -263,9 +263,12 @@ dotfiles test --only config-warnings,manifest-sync
 dotfiles test --overlay C:\path\to\private-dotfiles
 ```
 
-The command validates TOML, sources, manifest section synchronization, APM
-fragments, local plugin references, and MCP entries. When APM is available, a
-separate task runs `apm pack --dry-run --verbose` for each local plugin.
+The command validates TOML, sources, manifest section synchronization, and the
+relationship between local `dot-*` APM references and their source directories.
+When APM is available, a separate task runs
+`apm pack --dry-run --verbose` for each local plugin so APM validates package
+layout and declarations. Fragment schemas and dependency declarations are
+validated by native APM during install/update.
 ShellCheck and that APM pack check are skipped when their executables are
 unavailable. The PowerShell check runs whenever `pwsh` is available; if the
 PSScriptAnalyzer module is missing, that check fails and reports the PowerShell

@@ -221,7 +221,10 @@ mod tests {
             dir.path(),
             Platform::new(Os::Windows, false),
             MockExecutor::new(),
-        );
+        )
+        .with_env(Arc::new(
+            MapEnv::new().with(ONEDRIVE_COMMERCIAL, dir.path().join("OneDrive")),
+        ));
 
         let targets = ApmTargets::detect(&ctx).expect("detect targets");
 

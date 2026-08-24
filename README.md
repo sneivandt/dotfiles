@@ -1,7 +1,8 @@
 # Dotfiles
 
 A Rust CLI that manages my Linux and Windows dotfiles from declarative TOML
-configuration.
+configuration. Each run compares the machine with the configured state and
+applies only the changes it needs.
 
 ![Generated terminal output of a dotfiles install](docs/assets/terminal-screenshot.svg)
 
@@ -26,13 +27,6 @@ From a repository checkout, preview the changes before applying them:
 The wrappers download and verify a compatible release binary when needed. Pass
 `--build` to compile from source. After installation, run `dotfiles` directly.
 
-## Core ideas
-
-- The same CLI plans and applies changes on Linux and Windows.
-- Choose the `base` or `desktop` profile. The CLI adds settings for the current platform.
-- TOML files define packages, links, tools, and settings.
-- Repeated installs change only what no longer matches the configuration.
-
 ## What it manages
 
 The selected profile and detected platform determine which entries apply.
@@ -52,6 +46,9 @@ The selected profile and detected platform determine which entries apply.
 
 See the [Task Reference](docs/TASKS.md) for the tasks behind these areas.
 
+Desired state lives in `conf/*.toml`. See the
+[Configuration Reference](docs/CONFIGURATION.md) for the file formats.
+
 ## Commands
 
 | Command | What it does |
@@ -67,16 +64,6 @@ Use `install` for normal setup and maintenance. Use `update` only when you want
 pinned dependency versions to move forward. `uninstall` leaves packages,
 services, and registry values in place. Commands that make changes accept
 `-d, --dry-run` to report changes without applying them.
-
-### Targeting specific tasks
-
-Use `--only` and `--skip` with selectors reported by `dotfiles tasks`:
-
-```bash
-dotfiles tasks
-dotfiles install --only symlinks,git --dry-run
-dotfiles install --skip packages
-```
 
 See the [Usage Guide](docs/USAGE.md) for the full command reference.
 
@@ -98,49 +85,5 @@ If no profile is set, `install` prompts for one and saves the choice.
 
 See the [Profile System Guide](docs/PROFILES.md) for details.
 
-## Configuration
-
-Configuration lives in `conf/*.toml`. The main files are:
-
-| File | Controls |
-|------|----------|
-| `profiles.toml` | Profile definitions |
-| `manifest.toml` | Files included for each profile/platform |
-| `symlinks.toml` | Files linked into `$HOME` |
-| `packages.toml` | Packages for pacman, AUR, or winget |
-| `git-config.toml` | Git settings |
-| `agent-settings.toml` | Copilot and Codex user settings |
-| `registry.toml` | Windows registry keys |
-
-See the [Configuration Reference](docs/CONFIGURATION.md) for every file and its
-TOML format.
-
-## Development
-
-Run Rust commands from `cli/`:
-
-```bash
-cargo build
-cargo test
-cargo clippy -- -D warnings
-cargo fmt
-```
-
-From the repository root:
-
-```bash
-./dotfiles.sh --build install --dry-run
-```
-
-See the [Contributing Guide](docs/CONTRIBUTING.md) for development workflows.
-
-## Documentation
-
-| Guide | What's in it |
-|-------|--------------|
-| [Documentation index](docs/README.md) | All user, platform, and development guides |
-| [Usage Guide](docs/USAGE.md) | All commands and flags |
-| [Task Reference](docs/TASKS.md) | Every install, update, uninstall, validation, and overlay task |
-| [Configuration Reference](docs/CONFIGURATION.md) | TOML format details |
-| [Architecture](docs/ARCHITECTURE.md) | Rust CLI design |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common setup and configuration failures |
+For platform guides, troubleshooting, architecture, and development workflows,
+see the [documentation index](docs/README.md).

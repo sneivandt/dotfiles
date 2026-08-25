@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="190" viewBox="0 0 960 190" role="img" aria-labelledby="title desc">
   <title id="title">How dotfiles applies configuration</title>
-  <desc id="desc">Four steps show TOML configuration flowing through profile and platform selection, inspection of the current machine, and application of required changes.</desc>
+  <desc id="desc">Four steps show desired TOML configuration being resolved for the selected profile and platform, compared with the current machine, and converged by applying only the required changes.</desc>
   <style>
     .card {
       fill: #f6f8fa;
@@ -9,25 +9,32 @@
       stroke-width: 1.5;
     }
 
-    .step {
-      fill: #ddf4ff;
+    .card-final {
+      fill: #f0fff4;
+      stroke: #1a7f37;
     }
 
-    .step-number {
-      fill: #0969da;
-      font: 600 13px system-ui, sans-serif;
+    .eyebrow {
+      fill: #6e7781;
+      font: 600 10px system-ui, sans-serif;
+      letter-spacing: 1.2px;
       text-anchor: middle;
     }
 
     .heading {
       fill: #1f2328;
-      font: 600 16px system-ui, sans-serif;
+      font: 600 17px system-ui, sans-serif;
       text-anchor: middle;
+    }
+
+    .pill {
+      fill: #ffffff;
+      stroke: #d8dee4;
     }
 
     .detail {
       fill: #59636e;
-      font: 14px system-ui, sans-serif;
+      font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
       text-anchor: middle;
     }
 
@@ -45,12 +52,9 @@
         stroke: #30363d;
       }
 
-      .step {
-        fill: #0d2d4d;
-      }
-
-      .step-number {
-        fill: #58a6ff;
+      .card-final {
+        fill: #12261a;
+        stroke: #3fb950;
       }
 
       .arrow {
@@ -61,8 +65,17 @@
         fill: #f0f6fc;
       }
 
-      .detail {
+      .eyebrow {
         fill: #9198a1;
+      }
+
+      .pill {
+        fill: #0d1117;
+        stroke: #30363d;
+      }
+
+      .detail {
+        fill: #c9d1d9;
       }
     }
   </style>
@@ -77,35 +90,35 @@
   <path d="M462 95h22" class="arrow" marker-end="url(#arrowhead)"/>
   <path d="M702 95h22" class="arrow" marker-end="url(#arrowhead)"/>
 
-  <g transform="translate(12 20)">
-    <rect width="210" height="150" rx="12" class="card"/>
-    <circle cx="105" cy="35" r="17" class="step"/>
-    <text x="105" y="40" class="step-number">1</text>
-    <text x="105" y="82" class="heading">Declare</text>
-    <text x="105" y="108" class="detail">conf/*.toml</text>
+  <g transform="translate(12 18)">
+    <rect width="210" height="154" rx="14" class="card"/>
+    <text x="105" y="39" class="eyebrow">DESIRED STATE</text>
+    <text x="105" y="69" class="heading">Declare</text>
+    <rect x="25" y="92" width="160" height="38" rx="7" class="pill"/>
+    <text x="105" y="116" class="detail">conf/*.toml</text>
   </g>
 
-  <g transform="translate(252 20)">
-    <rect width="210" height="150" rx="12" class="card"/>
-    <circle cx="105" cy="35" r="17" class="step"/>
-    <text x="105" y="40" class="step-number">2</text>
-    <text x="105" y="82" class="heading">Resolve</text>
-    <text x="105" y="108" class="detail">profile + platform</text>
+  <g transform="translate(252 18)">
+    <rect width="210" height="154" rx="14" class="card"/>
+    <text x="105" y="39" class="eyebrow">ACTIVE CONFIG</text>
+    <text x="105" y="69" class="heading">Resolve</text>
+    <rect x="25" y="92" width="160" height="38" rx="7" class="pill"/>
+    <text x="105" y="116" class="detail">profile + platform</text>
   </g>
 
-  <g transform="translate(492 20)">
-    <rect width="210" height="150" rx="12" class="card"/>
-    <circle cx="105" cy="35" r="17" class="step"/>
-    <text x="105" y="40" class="step-number">3</text>
-    <text x="105" y="82" class="heading">Inspect</text>
-    <text x="105" y="108" class="detail">current machine</text>
+  <g transform="translate(492 18)">
+    <rect width="210" height="154" rx="14" class="card"/>
+    <text x="105" y="39" class="eyebrow">OBSERVED STATE</text>
+    <text x="105" y="69" class="heading">Inspect</text>
+    <rect x="25" y="92" width="160" height="38" rx="7" class="pill"/>
+    <text x="105" y="116" class="detail">current machine</text>
   </g>
 
-  <g transform="translate(732 20)">
-    <rect width="216" height="150" rx="12" class="card"/>
-    <circle cx="108" cy="35" r="17" class="step"/>
-    <text x="108" y="40" class="step-number">4</text>
-    <text x="108" y="82" class="heading">Apply</text>
-    <text x="108" y="108" class="detail">required changes</text>
+  <g transform="translate(732 18)">
+    <rect width="216" height="154" rx="14" class="card card-final"/>
+    <text x="108" y="39" class="eyebrow">CONVERGED STATE</text>
+    <text x="108" y="69" class="heading">Apply</text>
+    <rect x="25" y="92" width="166" height="38" rx="7" class="pill"/>
+    <text x="108" y="116" class="detail">only the delta</text>
   </g>
 </svg>

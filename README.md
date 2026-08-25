@@ -1,7 +1,7 @@
 <h1 align="center">Dotfiles</h1>
 
 <p align="center">
-  <strong>Keep Linux and Windows machines configured with a Rust CLI and declarative TOML.</strong>
+  <strong>Keep Linux and Windows machines configured with a Rust CLI and declarative config.</strong>
 </p>
 
 <p align="center">
@@ -11,8 +11,6 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Start</a>
-  &nbsp;&middot;&nbsp;
   <a href="docs/USAGE.md">CLI</a>
   &nbsp;&middot;&nbsp;
   <a href="docs/CONFIGURATION.md">Config</a>
@@ -32,22 +30,36 @@
 
 ## Quick start
 
-From a repository checkout, preview the changes before applying them:
+From a repository checkout, run the appropriate wrapper:
 
 | Linux | Windows |
 |:------|:--------|
 | `./dotfiles.sh install --profile base --dry-run` | `.\dotfiles.ps1 install --profile desktop --dry-run` |
 | `./dotfiles.sh install --profile base` | `.\dotfiles.ps1 install --profile desktop` |
 
-Profiles describe machine roles, not operating systems. Use `base` for a
-minimal command-line setup or `desktop` for a workstation on either platform.
+Profiles describe machine roles rather than operating systems. See
+[Profiles](#profiles) for details.
 
 The wrappers download and verify a compatible release binary when needed. Pass
 `--build` to compile from source. After installation, run `dotfiles` directly.
 
-> [!TIP]
-> Commands that make changes accept `-d, --dry-run`, so the same workflow can
-> be inspected before it is applied.
+## What it manages
+
+| Area | Managed state |
+|------|---------------|
+| Shell | Zsh and Bash configuration, `PATH`, and completions |
+| Editors | Neovim, VS Code and extensions |
+| Terminal | Alacritty and Windows Terminal settings |
+| Git | Global settings and hooks |
+| Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
+| Linux desktop | Hyprland, Waybar, mako, fuzzel, and GTK configuration |
+| Services | systemd user and system units |
+| AI tooling | APM packages and plugins, plus Copilot and Codex settings |
+| Windows | Current-user registry values, Developer Mode, and WSL configuration |
+
+Desired state lives in `conf/*.toml`. See the
+[Configuration Reference](docs/CONFIGURATION.md) for the file formats and the
+[Task Reference](docs/TASKS.md) for the tasks behind these areas.
 
 ## How it works
 
@@ -58,24 +70,6 @@ The wrappers download and verify a compatible release binary when needed. Pass
 The selected profile and detected platform determine the active configuration.
 Resources inspect the current machine, compare it with the desired state, and
 make only the changes required to converge.
-
-## What it manages
-
-| Area | Managed state |
-|------|---------------|
-| Shell | Zsh and Bash configuration, login shell, `PATH`, and completions |
-| Editors | Neovim, Vim, VS Code, and VS Code extensions |
-| Terminal | Alacritty and Windows Terminal settings |
-| Git | Global settings and repository hooks |
-| Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
-| Linux desktop | Hyprland, Waybar, mako, fuzzel, gammastep, and GTK configuration |
-| Services | systemd user and system units, including maintenance timers |
-| AI tooling | APM packages and plugins, plus Copilot and Codex settings |
-| Windows | Current-user registry values, Developer Mode, and WSL configuration |
-
-Desired state lives in `conf/*.toml`. See the
-[Configuration Reference](docs/CONFIGURATION.md) for the file formats and the
-[Task Reference](docs/TASKS.md) for the tasks behind these areas.
 
 ## CLI at a glance
 

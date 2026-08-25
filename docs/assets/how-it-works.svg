@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="190" viewBox="0 0 960 190" role="img" aria-labelledby="title desc">
+  <title id="title">How dotfiles applies configuration</title>
+  <desc id="desc">Four steps show TOML configuration flowing through profile and platform selection, inspection of the current machine, and application of required changes.</desc>
+  <style>
+    .card {
+      fill: #f6f8fa;
+      stroke: #d0d7de;
+      stroke-width: 1.5;
+    }
+
+    .step {
+      fill: #ddf4ff;
+    }
+
+    .step-number {
+      fill: #0969da;
+      font: 600 13px system-ui, sans-serif;
+      text-anchor: middle;
+    }
+
+    .heading {
+      fill: #1f2328;
+      font: 600 16px system-ui, sans-serif;
+      text-anchor: middle;
+    }
+
+    .detail {
+      fill: #59636e;
+      font: 14px system-ui, sans-serif;
+      text-anchor: middle;
+    }
+
+    .arrow {
+      fill: none;
+      stroke: #0969da;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 2;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .card {
+        fill: #161b22;
+        stroke: #30363d;
+      }
+
+      .step {
+        fill: #0d2d4d;
+      }
+
+      .step-number {
+        fill: #58a6ff;
+      }
+
+      .arrow {
+        stroke: #58a6ff;
+      }
+
+      .heading {
+        fill: #f0f6fc;
+      }
+
+      .detail {
+        fill: #9198a1;
+      }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M1 1l5 3-5 3" class="arrow"/>
+    </marker>
+  </defs>
+
+  <path d="M222 95h22" class="arrow" marker-end="url(#arrowhead)"/>
+  <path d="M462 95h22" class="arrow" marker-end="url(#arrowhead)"/>
+  <path d="M702 95h22" class="arrow" marker-end="url(#arrowhead)"/>
+
+  <g transform="translate(12 20)">
+    <rect width="210" height="150" rx="12" class="card"/>
+    <circle cx="105" cy="35" r="17" class="step"/>
+    <text x="105" y="40" class="step-number">1</text>
+    <text x="105" y="82" class="heading">Declare</text>
+    <text x="105" y="108" class="detail">conf/*.toml</text>
+  </g>
+
+  <g transform="translate(252 20)">
+    <rect width="210" height="150" rx="12" class="card"/>
+    <circle cx="105" cy="35" r="17" class="step"/>
+    <text x="105" y="40" class="step-number">2</text>
+    <text x="105" y="82" class="heading">Resolve</text>
+    <text x="105" y="108" class="detail">profile + platform</text>
+  </g>
+
+  <g transform="translate(492 20)">
+    <rect width="210" height="150" rx="12" class="card"/>
+    <circle cx="105" cy="35" r="17" class="step"/>
+    <text x="105" y="40" class="step-number">3</text>
+    <text x="105" y="82" class="heading">Inspect</text>
+    <text x="105" y="108" class="detail">current machine</text>
+  </g>
+
+  <g transform="translate(732 20)">
+    <rect width="216" height="150" rx="12" class="card"/>
+    <circle cx="108" cy="35" r="17" class="step"/>
+    <text x="108" y="40" class="step-number">4</text>
+    <text x="108" y="82" class="heading">Apply</text>
+    <text x="108" y="108" class="detail">required changes</text>
+  </g>
+</svg>

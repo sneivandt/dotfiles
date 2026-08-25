@@ -8,19 +8,18 @@
   <a href="https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/sneivandt/dotfiles/ci.yml?branch=main&style=flat-square&label=CI"></a>
   <a href="https://github.com/sneivandt/dotfiles/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sneivandt/dotfiles?style=flat-square&label=release"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
-  <img alt="Linux and Windows" src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows-7aa2f7?style=flat-square">
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a>
+  <a href="#quick-start">Start</a>
   &nbsp;&middot;&nbsp;
-  <a href="docs/USAGE.md">Usage</a>
+  <a href="docs/USAGE.md">CLI</a>
   &nbsp;&middot;&nbsp;
-  <a href="docs/CONFIGURATION.md">Configuration</a>
+  <a href="docs/CONFIGURATION.md">Config</a>
   &nbsp;&middot;&nbsp;
-  <a href="docs/ARCHITECTURE.md">Architecture</a>
+  <a href="docs/ARCHITECTURE.md">Arch</a>
   &nbsp;&middot;&nbsp;
-  <a href="docs/CONTRIBUTING.md">Contributing</a>
+  <a href="docs/CONTRIBUTING.md">Contribute</a>
 </p>
 
 <p align="center">
@@ -40,6 +39,9 @@ From a repository checkout, preview the changes before applying them:
 | `./dotfiles.sh install --profile base --dry-run` | `.\dotfiles.ps1 install --profile desktop --dry-run` |
 | `./dotfiles.sh install --profile base` | `.\dotfiles.ps1 install --profile desktop` |
 
+Profiles describe machine roles, not operating systems. Use `base` for a
+minimal command-line setup or `desktop` for a workstation on either platform.
+
 The wrappers download and verify a compatible release binary when needed. Pass
 `--build` to compile from source. After installation, run `dotfiles` directly.
 
@@ -49,15 +51,9 @@ The wrappers download and verify a compatible release binary when needed. Pass
 
 ## How it works
 
-```mermaid
-flowchart LR
-    config["Declare<br/>conf/*.toml"]
-    context["Select<br/>profile + platform"]
-    inspect["Inspect<br/>current machine"]
-    converge["Converge<br/>apply required changes"]
-
-    config --> context --> inspect --> converge
-```
+<p align="center">
+  <img src="docs/assets/how-it-works.svg" alt="Configuration flows through profile and platform selection, machine inspection, and application of required changes">
+</p>
 
 The selected profile and detected platform determine the active configuration.
 Resources inspect the current machine, compare it with the desired state, and
@@ -69,12 +65,11 @@ make only the changes required to converge.
 |------|---------------|
 | Shell | Zsh and Bash configuration, login shell, `PATH`, and completions |
 | Editors | Neovim, Vim, VS Code, and VS Code extensions |
-| Terminal | Alacritty, tmux, and readline configuration |
+| Terminal | Alacritty and Windows Terminal settings |
 | Git | Global settings and repository hooks |
 | Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
 | Linux desktop | Hyprland, Waybar, mako, fuzzel, gammastep, and GTK configuration |
 | Services | systemd user and system units, including maintenance timers |
-| SSH and GnuPG | Configuration files with enforced Unix file modes |
 | AI tooling | APM packages and plugins, plus Copilot and Codex settings |
 | Windows | Current-user registry values, Developer Mode, and WSL configuration |
 

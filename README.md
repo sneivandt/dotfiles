@@ -30,15 +30,26 @@
 
 ## Quick start
 
-From a repository checkout, run the appropriate wrapper:
+From a repository checkout, preview the changes first, then run the install
+without `--dry-run`.
 
-| Linux | Windows |
-|:------|:--------|
-| `./dotfiles.sh install --profile base --dry-run` | `.\dotfiles.ps1 install --profile desktop --dry-run` |
-| `./dotfiles.sh install --profile base` | `.\dotfiles.ps1 install --profile desktop` |
+### Linux
 
-Profiles describe machine roles rather than operating systems. See
-[Profiles](#profiles) for details.
+```bash
+./dotfiles.sh install --profile base --dry-run
+./dotfiles.sh install --profile base
+```
+
+### Windows
+
+```powershell
+.\dotfiles.ps1 install --profile desktop --dry-run
+.\dotfiles.ps1 install --profile desktop
+```
+
+The examples use `base` for a command-line environment and `desktop` for a
+workstation. Profiles describe machine roles, not operating systems, so either
+profile works on Linux or Windows. See [Profiles](#profiles) for details.
 
 The wrappers download and verify a compatible release binary when needed. Pass
 `--build` to compile from source. After installation, run `dotfiles` directly.

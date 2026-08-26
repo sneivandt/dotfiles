@@ -231,8 +231,16 @@ mod tests {
             true
         }
 
-        fn verify(&self, _path: &Path, _repo: &str) -> Result<bool> {
-            Ok(self.verified)
+        fn verify(
+            &self,
+            _path: &Path,
+            _repo: &str,
+        ) -> Result<super::super::attestation::Verification> {
+            Ok(if self.verified {
+                super::super::attestation::Verification::Verified
+            } else {
+                super::super::attestation::Verification::Unverified
+            })
         }
     }
 

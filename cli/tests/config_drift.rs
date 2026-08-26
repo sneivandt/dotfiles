@@ -310,6 +310,30 @@ fn vscode_shared_sources_are_retained_for_every_desktop_platform() {
     }
 }
 
+#[test]
+fn vscode_insiders_desktop_launchers_use_gnome_libsecret() {
+    let applications = repo_root().join("symlinks/local/share/applications");
+
+    for file in ["code-insiders.desktop", "code-insiders-url-handler.desktop"] {
+        let content =
+            std::fs::read_to_string(applications.join(file)).expect("read VS Code launcher");
+        let commands: Vec<&str> = content
+            .lines()
+            .filter_map(|line| line.strip_prefix("Exec="))
+            .collect();
+
+        assert!(!commands.is_empty(), "{file} has no Exec entries");
+        for command in commands {
+            assert!(
+                command
+                    .split_ascii_whitespace()
+                    .any(|arg| arg == "--password-store=gnome-libsecret"),
+                "{file} Exec entry does not select gnome-libsecret: {command}"
+            );
+        }
+    }
+}
+
 /// Returns paths excluded by sparse checkout (relative to `symlinks/`).
 ///
 /// Reads `info/sparse-checkout` from the git directory and collects negated

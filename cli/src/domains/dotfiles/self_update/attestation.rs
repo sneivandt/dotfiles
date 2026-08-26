@@ -28,6 +28,13 @@ pub(super) enum Policy {
     Required,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Verification {
+    Verified,
+    AuthenticationRequired,
+    Unverified,
+}
+
 /// Resolve the policy from the supported flag value.
 fn policy_from_flag(skip: Option<&str>) -> Policy {
     if skip == Some("1") {
@@ -49,12 +56,12 @@ pub(super) trait GhCli: std::fmt::Debug + Send + Sync {
 
     /// Verify the build provenance of the file at `path` for `repo`.
     ///
-    /// Returns `Ok(true)` when `gh` reports a verified attestation.
+    /// Returns the verification outcome reported by `gh`.
     ///
     /// # Errors
     ///
     /// Returns an error only when `gh` cannot be executed at all.
-    fn verify(&self, path: &Path, repo: &str) -> Result<bool>;
+    fn verify(&self, path: &Path, repo: &str) -> Result<Verification>;
 }
 
 /// Production [`GhCli`] backed by the `gh` executable on `PATH`.
@@ -66,7 +73,7 @@ impl GhCli for SystemGh {
         which::which("gh").is_ok()
     }
 
-    fn verify(&self, path: &Path, repo: &str) -> Result<bool> {
+    fn verify(&self, path: &Path, repo: &str) -> Result<Verification> {
         let path_arg = path.display().to_string();
         let result = crate::infra::exec::run_tool_unchecked(
             "gh",
@@ -79,7 +86,17 @@ impl GhCli for SystemGh {
                 result.stderr.trim()
             );
         }
-        Ok(result.success)
+        Ok(classify_result(&result))
+    }
+}
+
+fn classify_result(result: &crate::infra::exec::ExecResult) -> Verification {
+    if result.success {
+        Verification::Verified
+    } else if result.code == Some(4) {
+        Verification::AuthenticationRequired
+    } else {
+        Verification::Unverified
     }
 }
 
@@ -108,19 +125,24 @@ pub(super) fn verify_provenance(
     }
 
     let staged = stage_for_verification(asset, data)?;
-    let verified = match gh.verify(staged.path(), REPO) {
-        Ok(verified) => verified,
+    let verification = match gh.verify(staged.path(), REPO) {
+        Ok(verification) => verification,
         Err(error) => {
             return unverified(asset, &format!("gh could not be executed: {error:#}"));
         }
     };
 
-    if verified {
-        tracing::debug!("verified build provenance for {asset}");
-        return Ok(());
+    match verification {
+        Verification::Verified => {
+            tracing::debug!("verified build provenance for {asset}");
+            Ok(())
+        }
+        Verification::AuthenticationRequired => unverified(
+            asset,
+            "gh authentication required; run `gh auth login` or set GH_TOKEN/GITHUB_TOKEN and re-run",
+        ),
+        Verification::Unverified => unverified(asset, "gh reported no verified attestation"),
     }
-
-    unverified(asset, "gh reported no verified attestation")
 }
 
 /// Reject an asset whose provenance could not be verified.
@@ -148,7 +170,7 @@ mod tests {
     #[derive(Debug)]
     struct StubGh {
         available: bool,
-        result: bool,
+        result: Verification,
         fails_to_run: bool,
     }
 
@@ -157,7 +179,7 @@ mod tests {
             self.available
         }
 
-        fn verify(&self, _path: &Path, _repo: &str) -> Result<bool> {
+        fn verify(&self, _path: &Path, _repo: &str) -> Result<Verification> {
             if self.fails_to_run {
                 bail!("gh exploded");
             }
@@ -168,7 +190,11 @@ mod tests {
     const fn stub(available: bool, result: bool) -> StubGh {
         StubGh {
             available,
-            result,
+            result: if result {
+                Verification::Verified
+            } else {
+                Verification::Unverified
+            },
             fails_to_run: false,
         }
     }
@@ -215,6 +241,35 @@ mod tests {
     }
 
     #[test]
+    fn required_policy_explains_when_gh_authentication_is_required() {
+        let gh = StubGh {
+            available: true,
+            result: Verification::AuthenticationRequired,
+            fails_to_run: false,
+        };
+        let error = verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("run `gh auth login`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn gh_exit_code_four_is_classified_as_authentication_required() {
+        let result = crate::infra::exec::ExecResult::failure(
+            "",
+            "To get started with GitHub CLI, please run: gh auth login",
+            Some(4),
+        );
+        assert_eq!(
+            classify_result(&result),
+            Verification::AuthenticationRequired
+        );
+    }
+
+    #[test]
     fn required_policy_succeeds_when_verified() {
         let gh = stub(true, true);
         verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data").unwrap();
@@ -224,7 +279,7 @@ mod tests {
     fn required_policy_fails_on_gh_execution_failure() {
         let gh = StubGh {
             available: true,
-            result: false,
+            result: Verification::Unverified,
             fails_to_run: true,
         };
         let error = verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data")

@@ -115,6 +115,8 @@ symlinks = [
   "config/Code/User/settings.json",
   "config/shell/aliases-desktop.sh",
   "config/shell/profile-desktop.sh",
+  "local/share/applications/code-insiders-url-handler.desktop",
+  "local/share/applications/code-insiders.desktop",
   "local/share/applications/GitHub Copilot.desktop",
 ]
 

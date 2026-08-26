@@ -100,6 +100,7 @@ symlinks = [
   "config/wallpaper",
   "config/waybar/config",
   "config/waybar/style.css",
+  "local/bin/code-insiders",
 ]
 
 [desktop]

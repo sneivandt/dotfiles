@@ -79,6 +79,7 @@ paths = [
   "config/volume/",
   "config/wallpaper/",
   "config/waybar/",
+  "local/bin/code-insiders",
 ]
 
 # Desktop-specific files (excluded on non-desktop)

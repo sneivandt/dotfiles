@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+
+REAL_BINARY = "/usr/bin/code-insiders"
+PASSWORD_STORE = "--password-store=gnome-libsecret"
+
+
+def normalized_args(arguments: list[str]) -> list[str]:
+    forwarded: list[str] = []
+    index = 0
+
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == "--":
+            forwarded.extend(arguments[index:])
+            break
+        if argument == "--password-store":
+            index += 1
+            if index < len(arguments) and not arguments[index].startswith("-"):
+                index += 1
+            continue
+        if argument.startswith("--password-store="):
+            index += 1
+            continue
+
+        forwarded.append(argument)
+        index += 1
+
+    return [PASSWORD_STORE, *forwarded]
+
+
+def main() -> None:
+    os.execv(REAL_BINARY, [REAL_BINARY, *normalized_args(sys.argv[1:])])
+
+
+if __name__ == "__main__":
+    main()

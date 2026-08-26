@@ -334,6 +334,132 @@ fn vscode_insiders_desktop_launchers_use_gnome_libsecret() {
     }
 }
 
+#[test]
+fn hypr_vscode_launcher_resolves_managed_code_insiders_shim() {
+    let hypr = repo_root().join("symlinks/config/hypr");
+    let binds = std::fs::read_to_string(hypr.join("conf/binds.lua")).expect("read Hypr bindings");
+    let chooser = std::fs::read_to_string(hypr.join("scripts/choose-editor.sh"))
+        .expect("read editor chooser");
+    let path = std::fs::read_to_string(repo_root().join("symlinks/config/shell/path.sh"))
+        .expect("read PATH");
+    let symlinks = load_symlink_sections(&repo_root().join("conf/symlinks.toml"));
+
+    assert!(
+        binds.contains(
+            r#"hl.bind(mod .. " + v", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-editor.sh"))"#
+        ),
+        "Super+V does not invoke the managed editor chooser"
+    );
+    assert!(
+        chooser.contains("for editor in code-insiders code gvim")
+            && chooser.contains("exec \"$editor\""),
+        "editor chooser does not resolve code-insiders through PATH before its fallbacks"
+    );
+    assert!(
+        path.contains(r#"_path_prepend "$HOME/.local/bin""#),
+        "managed user bin is not configured on PATH"
+    );
+    assert!(
+        symlinks.get("arch-desktop").is_some_and(|sources| sources
+            .iter()
+            .any(|source| source == "local/bin/code-insiders")),
+        "Arch desktop does not install the code-insiders shim"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn code_insiders_shim_normalizes_password_store_and_forwards_arguments() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let source_path = repo_root().join("symlinks/local/bin/code-insiders");
+    let source = std::fs::read_to_string(&source_path).expect("read code-insiders shim");
+    let temp = tempfile::tempdir().expect("create shim test directory");
+    let fake_binary = temp.path().join("code-insiders-real");
+    let test_shim = temp.path().join("code-insiders");
+    let captured = temp.path().join("arguments");
+
+    std::fs::write(
+        &fake_binary,
+        "#!/bin/sh\n: > \"$CAPTURE_ARGS\"\nfor argument do\n  printf '%s\\n' \"$argument\" >> \"$CAPTURE_ARGS\"\ndone\n",
+    )
+    .expect("write fake code-insiders binary");
+    let patched = source.replace(
+        r#"REAL_BINARY = "/usr/bin/code-insiders""#,
+        &format!("REAL_BINARY = {:?}", fake_binary.to_string_lossy()),
+    );
+    assert_ne!(
+        patched, source,
+        "shim real binary constant was not replaced"
+    );
+    std::fs::write(&test_shim, patched).expect("write test code-insiders shim");
+
+    for executable in [&fake_binary, &test_shim] {
+        let mut permissions = std::fs::metadata(executable)
+            .expect("read executable metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(executable, permissions).expect("make test file executable");
+    }
+
+    let cases = [
+        (
+            vec![
+                "--new-window",
+                "project with spaces",
+                "--password-store=kwallet6",
+                "--verbose",
+            ],
+            vec![
+                "--password-store=gnome-libsecret",
+                "--new-window",
+                "project with spaces",
+                "--verbose",
+            ],
+        ),
+        (
+            vec![
+                "--password-store",
+                "basic",
+                "--reuse-window",
+                "workspace.code-workspace",
+            ],
+            vec![
+                "--password-store=gnome-libsecret",
+                "--reuse-window",
+                "workspace.code-workspace",
+            ],
+        ),
+        (
+            vec![
+                "--password-store=gnome-libsecret",
+                "--",
+                "--password-store=literal-file-name",
+            ],
+            vec![
+                "--password-store=gnome-libsecret",
+                "--",
+                "--password-store=literal-file-name",
+            ],
+        ),
+    ];
+
+    for (arguments, expected) in cases {
+        let status = std::process::Command::new(&test_shim)
+            .args(arguments)
+            .env("CAPTURE_ARGS", &captured)
+            .status()
+            .expect("run code-insiders shim");
+        assert!(status.success(), "code-insiders shim failed");
+        let actual: Vec<String> = std::fs::read_to_string(&captured)
+            .expect("read captured arguments")
+            .lines()
+            .map(String::from)
+            .collect();
+        assert_eq!(actual, expected);
+    }
+}
+
 /// Returns paths excluded by sparse checkout (relative to `symlinks/`).
 ///
 /// Reads `info/sparse-checkout` from the git directory and collects negated

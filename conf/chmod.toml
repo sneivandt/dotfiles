@@ -26,4 +26,5 @@ permissions = [
   { mode = "755", path = "config/hypr/scripts/window-title.py" },
   { mode = "755", path = "config/hypr/scripts/workspaces.py" },
   { mode = "755", path = "config/volume/init-volume.sh" },
+  { mode = "755", path = "local/bin/code-insiders" },
 ]

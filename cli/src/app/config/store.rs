@@ -3,28 +3,23 @@
 //! The application layer loads the aggregate [`Config`] and then splits it into
 //! one typed [`ConfigHandle`] per domain slice.  Each concrete task holds a
 //! clone of exactly the handle it needs, so no task depends on the aggregate
-//! configuration type. During an app-owned reload the store swaps each
-//! reloadable handle in place, and because tasks share those handles the update
-//! is visible without rebuilding static tasks. Dynamic overlay script tasks are
-//! rebuilt after the reload discovery boundary from their freshly swapped
-//! handle.
+//! configuration type. Handles remain immutable for the life of the process;
+//! repository updates restart the command to publish a fresh snapshot.
 
 use crate::app::config::Config;
 use crate::domains::ai::apm::ApmFragmentSource;
 use crate::domains::files::config::symlinks::{Symlink, resolve_symlinks_dir};
 use crate::infra::ConfigHandle;
-use crate::infra::config::ConfigSource;
 use std::path::Path;
 
 macro_rules! define_config_store {
     ($($field:ident: $ty:ty => $count:expr;)+) => {
-        /// Shared, atomically-swappable configuration split into per-domain handles.
+        /// Shared immutable configuration split into per-domain handles.
         ///
         /// Cloning is cheap (each field is an `Arc`-backed [`ConfigHandle`]) and
-        /// all clones observe the same slots.
+        /// all clones observe the same startup snapshots.
         #[derive(Debug, Clone)]
         pub struct ConfigStore {
-            source: ConfigSource<PublishedConfig>,
             /// Whole configuration, for app-owned validation tasks.
             pub aggregate: ConfigHandle<Config>,
             /// Resolved APM fragment sources derived from managed symlinks.
@@ -41,50 +36,23 @@ macro_rules! define_config_store {
             /// Split an aggregate [`Config`] into per-domain handles.
             #[must_use]
             pub fn from_config(config: Config) -> Self {
-                let source = ConfigSource::new(PublishedConfig::new(config));
+                let apm_fragments = apm_fragment_sources(&config);
+                let pam_keyring_enabled = config
+                    .packages
+                    .iter()
+                    .any(|package| package.name == "gnome-keyring");
                 Self {
-                    $($field: source.project(|snapshot| snapshot.config.$field.clone()),)+
-                    apm_fragments: source.project(|snapshot| snapshot.apm_fragments.clone()),
-                    pam_keyring_enabled: source.project(|snapshot| snapshot.pam_keyring_enabled),
-                    aggregate: source.project(|snapshot| snapshot.config.clone()),
-                    source,
+                    $($field: ConfigHandle::new(config.$field.clone()),)+
+                    apm_fragments: ConfigHandle::new(apm_fragments),
+                    pam_keyring_enabled: ConfigHandle::new(pam_keyring_enabled),
+                    aggregate: ConfigHandle::new(config),
                 }
-            }
-
-            /// Replace reloadable handles from a freshly-loaded [`Config`].
-            ///
-            /// All projected handles switch to the new immutable generation in
-            /// one publication step.
-            pub fn reload(&self, config: Config) {
-                self.source.swap(PublishedConfig::new(config));
             }
         }
     };
 }
 
 config_section_inventory!(define_config_store);
-
-#[derive(Debug)]
-struct PublishedConfig {
-    config: Config,
-    apm_fragments: Vec<ApmFragmentSource>,
-    pam_keyring_enabled: bool,
-}
-
-impl PublishedConfig {
-    fn new(config: Config) -> Self {
-        let apm_fragments = apm_fragment_sources(&config);
-        let pam_keyring_enabled = config
-            .packages
-            .iter()
-            .any(|package| package.name == "gnome-keyring");
-        Self {
-            config,
-            apm_fragments,
-            pam_keyring_enabled,
-        }
-    }
-}
 
 fn apm_fragment_sources(config: &Config) -> Vec<ApmFragmentSource> {
     config
@@ -131,7 +99,6 @@ mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
     use crate::domains::overlay::config::scripts::ScriptEntry;
-    use crate::domains::packages::config::packages::Package;
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
 
@@ -172,32 +139,12 @@ mod tests {
     }
 
     #[test]
-    fn reload_swaps_script_configuration_in_both_handles() {
+    fn publishes_consistent_immutable_snapshots() {
         let mut initial = empty_config(PathBuf::from("/tmp"));
         initial.scripts = vec![script("initial")];
         let store = ConfigStore::from_config(initial);
 
-        let mut reloaded = empty_config(PathBuf::from("/tmp"));
-        reloaded.scripts = vec![script("reloaded")];
-        store.reload(reloaded);
-
-        assert_eq!(store.scripts.read()[0].name, "reloaded");
-        assert_eq!(store.aggregate.read().scripts[0].name, "reloaded");
-    }
-
-    #[test]
-    fn reload_updates_derived_pam_keyring_enablement() {
-        let initial = empty_config(PathBuf::from("/tmp"));
-        let store = ConfigStore::from_config(initial);
-        assert!(!*store.pam_keyring_enabled.read());
-
-        let mut reloaded = empty_config(PathBuf::from("/tmp"));
-        reloaded.packages.push(Package {
-            name: "gnome-keyring".to_string(),
-            is_aur: false,
-        });
-        store.reload(reloaded);
-
-        assert!(*store.pam_keyring_enabled.read());
+        assert_eq!(store.scripts.read()[0].name, "initial");
+        assert_eq!(store.aggregate.read().scripts[0].name, "initial");
     }
 }

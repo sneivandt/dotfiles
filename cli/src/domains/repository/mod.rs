@@ -1,4 +1,4 @@
-//! Repository domain: manifest, sparse checkout, config reload, and updates.
+//! Repository domain: manifest, sparse checkout, and updates.
 
 pub mod config;
 pub mod sparse_checkout;

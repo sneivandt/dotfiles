@@ -15,22 +15,23 @@ use elevation::ElevationBroker;
 #[cfg(test)]
 use elevation::{blocked_dependents, build_elevated_child_args};
 
-type LateTaskProvider<'a> = Box<dyn FnOnce() -> Vec<Box<dyn Task>> + 'a>;
+type RestartCondition<'a> = Box<dyn FnOnce() -> bool + 'a>;
+type RestartAction<'a> = Box<dyn FnOnce() + 'a>;
 
 /// A complete application execution plan.
 ///
-/// The plan separates task-set discovery from execution policy. A simple plan
-/// runs one graph; a phased plan runs the dependency closure ending at a
-/// discovery boundary, obtains late tasks from refreshed state, then schedules
-/// them with the remaining static tasks.
+/// The plan separates task discovery from execution policy. A simple plan runs
+/// one graph; a restart plan runs the dependency closure ending at a boundary
+/// before deciding whether the current process can continue.
 pub(crate) struct ExecutionPlan<'a> {
     tasks: Vec<&'a dyn Task>,
-    late: Option<LateTaskPlan<'a>>,
+    restart: Option<RestartPlan<'a>>,
 }
 
-struct LateTaskPlan<'a> {
+struct RestartPlan<'a> {
     boundary: TaskId,
-    provider: LateTaskProvider<'a>,
+    requested: RestartCondition<'a>,
+    action: RestartAction<'a>,
 }
 
 impl<'a> ExecutionPlan<'a> {
@@ -38,21 +39,23 @@ impl<'a> ExecutionPlan<'a> {
     pub(crate) fn single(tasks: impl IntoIterator<Item = &'a dyn Task>) -> Self {
         Self {
             tasks: tasks.into_iter().collect(),
-            late: None,
+            restart: None,
         }
     }
 
-    /// Build a plan that discovers additional tasks after `boundary`.
-    pub(crate) fn with_late_tasks(
+    /// Build a plan that may restart after `boundary` completes.
+    pub(crate) fn with_restart(
         tasks: impl IntoIterator<Item = &'a dyn Task>,
         boundary: TaskId,
-        provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
+        requested: impl FnOnce() -> bool + 'a,
+        action: impl FnOnce() + 'a,
     ) -> Self {
         Self {
             tasks: tasks.into_iter().collect(),
-            late: Some(LateTaskPlan {
+            restart: Some(RestartPlan {
                 boundary,
-                provider: Box::new(provider),
+                requested: Box::new(requested),
+                action: Box::new(action),
             }),
         }
     }
@@ -61,9 +64,8 @@ impl<'a> ExecutionPlan<'a> {
 /// Coordinates application execution phases around the generic task engine.
 ///
 /// The engine owns graph validation and scheduling. This coordinator owns
-/// application policy that spans graphs: visible progress totals, configuration
-/// reload boundaries, late task discovery, elevation preparation, and final
-/// run status.
+/// application policy that spans graphs: visible progress totals, restart
+/// boundaries, elevation preparation, and final run status.
 #[derive(Debug)]
 pub(crate) struct RunCoordinator<'a> {
     ctx: &'a Context,
@@ -85,29 +87,25 @@ impl<'a> RunCoordinator<'a> {
         self.log
             .add_task_total(visible_count(plan.tasks.iter().copied()));
 
-        let summary = if let Some(late) = plan.late.take() {
-            self.execute_phased(plan.tasks, late)?
+        let summary = if let Some(restart) = plan.restart.take() {
+            self.execute_with_restart(plan.tasks, restart)?
         } else {
-            run_task_graph(&mut plan.tasks, self.ctx, self.log, None)?
+            Some(run_task_graph(&mut plan.tasks, self.ctx, self.log, None)?)
         };
 
-        finish_run(self.ctx, self.log, &summary)
+        summary.map_or(Ok(()), |summary| finish_run(self.ctx, self.log, &summary))
     }
 
-    fn execute_phased(
+    fn execute_with_restart(
         &self,
         tasks: Vec<&dyn Task>,
-        late: LateTaskPlan<'_>,
-    ) -> Result<crate::engine::scheduler::ExecutionSummary> {
-        let boundary_closure = dependency_closure(&tasks, late.boundary.clone());
+        restart: RestartPlan<'_>,
+    ) -> Result<Option<crate::engine::scheduler::ExecutionSummary>> {
+        let boundary_closure = dependency_closure(&tasks, restart.boundary.clone());
         let mut summary = crate::engine::scheduler::ExecutionSummary::default();
 
         if boundary_closure.is_empty() {
-            let late_tasks = (late.provider)();
-            self.log
-                .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
             let mut all_tasks = tasks;
-            all_tasks.extend(late_tasks.iter().map(Box::as_ref));
             summary.merge(run_task_graph(&mut all_tasks, self.ctx, self.log, None)?);
         } else {
             let mut prefix = tasks
@@ -118,26 +116,23 @@ impl<'a> RunCoordinator<'a> {
             summary.merge(run_task_graph(&mut prefix, self.ctx, self.log, None)?);
 
             let boundary_satisfied = matches!(
-                summary.outcome(&late.boundary),
+                summary.outcome(&restart.boundary),
                 Some(crate::engine::scheduler::TaskOutcome::Satisfied)
             );
+            if !self.ctx.is_cancelled() && boundary_satisfied && (restart.requested)() {
+                (restart.action)();
+                return Ok(None);
+            }
             let mut remaining = tasks
                 .iter()
                 .copied()
                 .filter(|task| !boundary_closure.contains(&task.task_id()))
                 .collect::<Vec<_>>();
-            let late_tasks =
-                (!self.ctx.is_cancelled() && boundary_satisfied).then(|| (late.provider)());
-            if let Some(late_tasks) = late_tasks.as_ref() {
-                self.log
-                    .add_task_total(visible_count(late_tasks.iter().map(Box::as_ref)));
-                remaining.extend(late_tasks.iter().map(Box::as_ref));
-            }
             let next = run_task_graph(&mut remaining, self.ctx, self.log, Some(&summary))?;
             summary.merge(next);
         }
 
-        Ok(summary)
+        Ok(Some(summary))
     }
 }
 
@@ -155,25 +150,23 @@ pub(crate) fn run_tasks_to_completion<'a>(
     RunCoordinator::new(ctx, log).execute(ExecutionPlan::single(tasks))
 }
 
-/// Execute tasks and inject additional tasks after a dependency boundary.
-///
-/// When `boundary` is present, its complete dependency closure runs first. The
-/// provider then observes any state refreshed by that closure, and its tasks
-/// join the remaining static tasks in a second dependency graph. If the
-/// boundary was filtered out, the provider runs before the single graph.
+/// Execute tasks and invoke a restart action after a dependency boundary.
 ///
 /// # Errors
 ///
 /// Returns an error if graph validation fails or one or more tasks fail.
 #[cfg(test)]
-pub(crate) fn run_tasks_to_completion_with_late_tasks<'a>(
+pub(crate) fn run_tasks_to_completion_with_restart<'a>(
     tasks: impl IntoIterator<Item = &'a dyn Task>,
     ctx: &Context,
     log: &Arc<Logger>,
     boundary: TaskId,
-    provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
+    requested: impl FnOnce() -> bool + 'a,
+    action: impl FnOnce() + 'a,
 ) -> Result<()> {
-    RunCoordinator::new(ctx, log).execute(ExecutionPlan::with_late_tasks(tasks, boundary, provider))
+    RunCoordinator::new(ctx, log).execute(ExecutionPlan::with_restart(
+        tasks, boundary, requested, action,
+    ))
 }
 
 /// Count the visible tasks scheduled for progress reporting.
@@ -841,10 +834,10 @@ mod tests {
             .expect("an empty graph is a successful no-op");
     }
 
-    // ── run_tasks_to_completion_with_late_tasks ───────────
+    // ── run_tasks_to_completion_with_restart ──────────────
 
     #[test]
-    fn late_tasks_run_after_the_boundary_closure() {
+    fn restart_runs_after_the_boundary_closure_and_stops_the_parent() {
         let trace = trace();
         let tasks = vec![
             ProbeTask::new("before-boundary", 1, &trace),
@@ -852,175 +845,111 @@ mod tests {
             ProbeTask::new("after-boundary", 3, &trace).depends_on(&[2]),
         ];
         let (ctx, log) = sequential_context();
-        let late_trace = Arc::clone(&trace);
+        let restarted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let action_flag = Arc::clone(&restarted);
 
-        run_tasks_to_completion_with_late_tasks(
+        run_tasks_to_completion_with_restart(
             as_dyn(&tasks),
             &ctx,
             &log,
             TaskId::Dynamic(2),
-            move || -> Vec<Box<dyn Task>> {
-                vec![Box::new(ProbeTask::new("late", 9, &late_trace))]
-            },
+            || true,
+            move || action_flag.store(true, std::sync::atomic::Ordering::SeqCst),
         )
-        .expect("run should succeed");
+        .expect("restart handoff should succeed");
 
-        let order = entries(&trace);
-        let boundary = order.iter().position(|n| n == "boundary").unwrap();
-        let late = order.iter().position(|n| n == "late").unwrap();
-        assert!(
-            boundary < late,
-            "late tasks must be built only after the boundary closure completes: {order:?}"
-        );
-        assert!(
-            order.contains(&"after-boundary".to_string()),
-            "tasks outside the closure must still run: {order:?}"
+        assert!(restarted.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            entries(&trace),
+            vec!["before-boundary".to_string(), "boundary".to_string()],
+            "the parent must not execute work after handing off to the child"
         );
     }
 
     #[test]
-    fn late_task_provider_observes_boundary_side_effects() {
-        // This is the whole point of the boundary: the provider must be able to
-        // read state that the closure refreshed (config reload rebuilding
-        // dynamic overlay tasks).
+    fn unsatisfied_restart_condition_runs_the_remaining_graph() {
         let trace = trace();
-        let tasks = vec![ProbeTask::new("boundary", 1, &trace)];
+        let tasks = vec![
+            ProbeTask::new("boundary", 1, &trace),
+            ProbeTask::new("remaining", 2, &trace).depends_on(&[1]),
+        ];
         let (ctx, log) = sequential_context();
-        let observed = Arc::new(Mutex::new(Vec::<String>::new()));
 
-        let provider_trace = Arc::clone(&trace);
-        let provider_observed = Arc::clone(&observed);
-        run_tasks_to_completion_with_late_tasks(
+        run_tasks_to_completion_with_restart(
             as_dyn(&tasks),
             &ctx,
             &log,
             TaskId::Dynamic(1),
-            move || {
-                *provider_observed
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = entries(&provider_trace);
-                Vec::new()
-            },
+            || false,
+            || panic!("restart action must not run"),
         )
-        .expect("run should succeed");
+        .expect("run should continue without a restart");
 
         assert_eq!(
-            *observed
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-            vec!["boundary".to_string()],
-            "the provider must see the boundary's effects"
+            entries(&trace),
+            vec!["boundary".to_string(), "remaining".to_string()]
         );
     }
 
     #[test]
-    fn late_tasks_run_before_the_graph_when_boundary_is_filtered_out() {
+    fn missing_boundary_falls_back_to_one_graph_without_restart() {
         let trace = trace();
         let tasks = vec![ProbeTask::new("static", 1, &trace)];
         let (ctx, log) = sequential_context();
-        let late_trace = Arc::clone(&trace);
 
-        run_tasks_to_completion_with_late_tasks(
+        run_tasks_to_completion_with_restart(
             as_dyn(&tasks),
             &ctx,
             &log,
             TaskId::Dynamic(404),
-            move || -> Vec<Box<dyn Task>> {
-                vec![Box::new(ProbeTask::new("late", 9, &late_trace))]
-            },
+            || true,
+            || panic!("a filtered boundary must not trigger restart"),
         )
-        .expect("run should succeed");
+        .expect("missing boundary should use a single graph");
 
-        let order = entries(&trace);
-        assert!(
-            order.contains(&"late".to_string()) && order.contains(&"static".to_string()),
-            "a missing boundary should still run both static and late tasks: {order:?}"
-        );
+        assert_eq!(entries(&trace), vec!["static".to_string()]);
     }
 
     #[test]
-    fn late_tasks_are_skipped_when_the_boundary_closure_fails() {
+    fn failed_boundary_suppresses_restart() {
         let trace = trace();
         let tasks = vec![
             ProbeTask::new("boundary", 1, &trace).failing(),
-            ProbeTask::new("after-boundary", 2, &trace).depends_on(&[1]),
-            ProbeTask::new("independent", 3, &trace),
+            ProbeTask::new("remaining", 2, &trace).depends_on(&[1]),
         ];
         let (ctx, log) = sequential_context();
-        let provider_called = Arc::new(Mutex::new(false));
 
-        let flag = Arc::clone(&provider_called);
-        let error = run_tasks_to_completion_with_late_tasks(
+        let error = run_tasks_to_completion_with_restart(
             as_dyn(&tasks),
             &ctx,
             &log,
             TaskId::Dynamic(1),
-            move || {
-                *flag
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
-                Vec::new()
-            },
+            || true,
+            || panic!("a failed boundary must not trigger restart"),
         )
-        .expect_err("a failed boundary must fail the run");
+        .expect_err("boundary failure must fail the run");
 
         assert!(error.downcast_ref::<TaskFailures>().is_some());
-        assert!(
-            !*provider_called
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-            "late tasks must not be built from state a failed boundary left behind"
-        );
-        assert_eq!(
-            entries(&trace),
-            vec!["boundary".to_string(), "independent".to_string()],
-            "independent static tasks should continue while failed dependents remain blocked"
-        );
+        assert_eq!(entries(&trace), vec!["boundary".to_string()]);
     }
 
     #[test]
-    fn late_tasks_are_skipped_when_cancelled_during_the_boundary_closure() {
+    fn cancellation_suppresses_restart() {
         let trace = trace();
-        let tasks = vec![
-            ProbeTask::new("boundary", 1, &trace),
-            ProbeTask::new("remaining", 2, &trace),
-        ];
+        let tasks = vec![ProbeTask::new("boundary", 1, &trace)];
         let (ctx, log) = sequential_context();
-        let provider_called = Arc::new(Mutex::new(false));
-
-        // Cancel after the closure has been scheduled but before the provider
-        // would be consulted.
         ctx.cancellation_token().cancel();
 
-        let flag = Arc::clone(&provider_called);
-        let summary = RunCoordinator::new(&ctx, &log)
-            .execute_phased(
-                as_dyn(&tasks),
-                LateTaskPlan {
-                    boundary: TaskId::Dynamic(1),
-                    provider: Box::new(move || {
-                        *flag
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
-                        Vec::new()
-                    }),
-                },
-            )
-            .expect("cancellation is not itself a failure");
+        run_tasks_to_completion_with_restart(
+            as_dyn(&tasks),
+            &ctx,
+            &log,
+            TaskId::Dynamic(1),
+            || true,
+            || panic!("a cancelled run must not trigger restart"),
+        )
+        .expect("cancellation is not itself a failure");
 
-        assert!(
-            !*provider_called
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-            "a cancelled run must not build late tasks"
-        );
-        assert_eq!(
-            summary.outcome(&TaskId::Dynamic(1)),
-            Some(TaskOutcome::Cancelled)
-        );
-        assert_eq!(
-            summary.outcome(&TaskId::Dynamic(2)),
-            Some(TaskOutcome::Cancelled)
-        );
+        assert!(entries(&trace).is_empty());
     }
 }

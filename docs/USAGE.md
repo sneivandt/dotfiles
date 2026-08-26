@@ -90,7 +90,7 @@ dependencies preserve ordering.
 
 Use `--offline` when network access is unavailable or the current checkout must
 remain pinned. The normal preservation and sparse-checkout tasks converge the
-current checkout without running the post-update reload boundary.
+current checkout without repository synchronization or process restart.
 
 CI automatically enables `--require-complete` and `--non-interactive`.
 Non-interactive mode is also enabled when stdin is not a terminal; select a

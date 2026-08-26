@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use crate::app::cli::{GlobalOpts, InstallOpts};
 use crate::app::filter::{apply_task_filters, task_passes_filters};
+use crate::domains::repository::sparse_checkout::ConfigureSparseCheckout;
+use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
 use crate::infra::logging::OutputExt as _;
@@ -58,27 +60,27 @@ pub(crate) fn run_pipeline(
     let run_lock = super::prepare_self_update(global, log)?;
     let runner = super::CommandRunner::new_with_lock(global, log, token, run_lock)?;
 
-    // Build the static task list. Dynamic overlay scripts are rebuilt after
-    // configuration reload so they observe changes pulled in this run.
-    let mut all_tasks = runner.install_tasks();
+    let repository_child = super::repository_reexec_active(runner.env());
+    let repository_update = RepositoryUpdateSignal::new();
+    let mut all_tasks = runner.install_tasks_for_run(&repository_update, repository_child);
 
     // Version-advancing tasks are only scheduled by `update`. Filter command
     // membership before user filters so warnings reflect eligible tasks.
     all_tasks.retain(|task| mode.includes_task(task.as_ref()));
     if global.offline {
-        let repository_task = TaskId::Type(std::any::TypeId::of::<
-            crate::domains::repository::update::UpdateRepository,
-        >());
+        let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
         all_tasks.retain(|task| task.task_id() != repository_task);
         log.debug("offline mode — using the current repository checkout");
     }
 
     let startup_overlay_tasks = runner.overlay_script_tasks();
-    let boundary = TaskId::Type(std::any::TypeId::of::<
-        crate::app::reconcile::ReconcileUpdatedCheckout,
-    >());
+    let boundary = if repository_child {
+        TaskId::Type(std::any::TypeId::of::<ConfigureSparseCheckout>())
+    } else {
+        TaskId::Type(std::any::TypeId::of::<UpdateRepository>())
+    };
     let recovery_selectors = runner.recovery_selectors().cloned();
-    let filtered = if let Some(selectors) = recovery_selectors.as_ref() {
+    let mut filtered = if let Some(selectors) = recovery_selectors.as_ref() {
         if !opts.only.is_empty() || !opts.skip.is_empty() {
             anyhow::bail!("--retry-failed cannot be combined with --only or --skip");
         }
@@ -101,20 +103,32 @@ pub(crate) fn run_pipeline(
         )
     };
 
-    runner.run_with_late_tasks(filtered, boundary, || {
-        let tasks = runner.overlay_script_tasks();
-        if let Some(selectors) = recovery_selectors.as_ref() {
-            tasks
-                .into_iter()
-                .filter(|task| crate::app::recovery::task_selected(task.as_ref(), selectors))
-                .collect()
-        } else {
-            tasks
-                .into_iter()
-                .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
-                .collect()
-        }
-    })
+    omit_repository_task(&mut filtered, repository_child);
+    filtered.extend(
+        startup_overlay_tasks
+            .iter()
+            .filter(|task| {
+                recovery_selectors.as_ref().map_or_else(
+                    || task_passes_filters(task.as_ref(), &opts.only, &opts.skip),
+                    |selectors| crate::app::recovery::task_selected(task.as_ref(), selectors),
+                )
+            })
+            .map(Box::as_ref),
+    );
+
+    runner.run_with_restart(
+        filtered,
+        boundary,
+        move || repository_update.was_updated() && !crate::infra::elevation::is_elevated_child(),
+        || super::re_exec_after_repository_update(&**log),
+    )
+}
+
+fn omit_repository_task(tasks: &mut Vec<&dyn Task>, repository_child: bool) {
+    if repository_child {
+        let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
+        tasks.retain(|task| task.task_id() != repository_task);
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +145,7 @@ mod tests {
             fn meta(&self) -> TaskMeta<'_> {
                 TaskMeta::new("update only").with_update_only(true)
             }
+
             fn run(&self, _ctx: &crate::engine::Context) -> Result<crate::engine::TaskResult> {
                 Ok(crate::engine::TaskResult::Ok)
             }
@@ -140,12 +155,35 @@ mod tests {
         assert!(RunMode::Update.includes_task(&UpdateOnly));
     }
 
+    #[test]
+    fn repository_retry_selector_is_resolved_before_child_omits_update_task() {
+        let tasks = sample_install_tasks();
+        let selectors = std::collections::HashSet::from(["repository".to_string()]);
+        let mut selected =
+            crate::app::recovery::select_tasks(&tasks, &[], &selectors, &[]).unwrap();
+
+        omit_repository_task(&mut selected, true);
+
+        assert!(
+            selected
+                .iter()
+                .all(|task| task.task_id()
+                    != TaskId::Type(std::any::TypeId::of::<UpdateRepository>())),
+            "the guarded child must not synchronize the repository again"
+        );
+        assert!(
+            selected.iter().any(|task| task.task_id()
+                == TaskId::Type(std::any::TypeId::of::<ConfigureSparseCheckout>())),
+            "repository prerequisites must remain selected for terminal recovery"
+        );
+    }
+
     fn sample_install_tasks() -> Vec<Box<dyn Task>> {
         use crate::app::catalog::all_install_tasks;
         use crate::app::config::store::ConfigStore;
         use crate::test_helpers::empty_config;
         let config = empty_config(std::path::PathBuf::from("/tmp"));
-        all_install_tasks(ConfigStore::from_config(config))
+        all_install_tasks(&ConfigStore::from_config(config))
     }
 
     // ------------------------------------------------------------------

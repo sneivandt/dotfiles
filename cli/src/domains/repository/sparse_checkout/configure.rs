@@ -385,6 +385,7 @@ pub(super) fn is_broken_symlink_into(fs: &dyn FileSystemOps, path: &Path, dir: &
 pub struct ConfigureSparseCheckout {
     fs_ops: Arc<dyn FileSystemOps>,
     config: ConfigHandle<Manifest>,
+    fail_if_skipped: bool,
 }
 
 impl ConfigureSparseCheckout {
@@ -394,13 +395,25 @@ impl ConfigureSparseCheckout {
         Self {
             fs_ops: Arc::new(SystemFileSystemOps),
             config,
+            fail_if_skipped: false,
         }
+    }
+
+    /// Require reconciliation to complete after a repository-triggered restart.
+    #[must_use]
+    pub const fn fail_if_skipped(mut self, fail_if_skipped: bool) -> Self {
+        self.fail_if_skipped = fail_if_skipped;
+        self
     }
 
     /// Create with a custom [`FileSystemOps`] implementation (for testing).
     #[cfg(test)]
     pub fn with_fs_ops(fs_ops: Arc<dyn FileSystemOps>, config: ConfigHandle<Manifest>) -> Self {
-        Self { fs_ops, config }
+        Self {
+            fs_ops,
+            config,
+            fail_if_skipped: false,
+        }
     }
 }
 
@@ -416,13 +429,21 @@ impl Task for ConfigureSparseCheckout {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_operation(
+        let result = process_operation(
             ctx,
             &SparseCheckoutOperation {
                 fs_ops: Arc::clone(&self.fs_ops),
                 config: self.config.clone(),
             },
-        )
+        )?;
+        if self.fail_if_skipped
+            && let TaskResult::Skipped { reason, .. } = &result
+        {
+            return Ok(TaskResult::Failed(format!(
+                "post-update sparse checkout reconciliation skipped: {reason}"
+            )));
+        }
+        Ok(result)
     }
 }
 

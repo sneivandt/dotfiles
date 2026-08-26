@@ -3,9 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use crate::engine::{Context, TaskResult, UpdateSignal};
+use crate::engine::{Context, TaskResult};
 use crate::infra::exec::{CommandSpec, ExecError};
 
+use super::RepositoryUpdateSignal;
 use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{log_thread_name, set_log_thread_name};
@@ -44,7 +45,7 @@ pub(super) fn apply_repository_updates(
     ctx: &Context,
     repositories: &[CheckedRepository],
     git_env: &[(&str, &str)],
-    repo_updated: &UpdateSignal,
+    repo_updated: &RepositoryUpdateSignal,
 ) -> Result<TaskResult> {
     // Fetch first so divergence can be evaluated without invoking `git pull`,
     // which fails noisily when the local branch has diverged from upstream.
@@ -97,8 +98,8 @@ pub(super) fn apply_repository_updates(
 ///
 /// Fetches are network-bound and mutually independent, so with more than one
 /// repository they run concurrently: the overlay fetch no longer waits on the
-/// main repository's round trip.  This task gates the post-pull config reload,
-/// so the saving is on the run's critical path.
+/// main repository's round trip. This task gates the post-update process
+/// restart, so the saving is on the run's critical path.
 fn fetch_all(
     ctx: &Context,
     repositories: &[CheckedRepository],

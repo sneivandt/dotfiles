@@ -1,11 +1,11 @@
 //! Task: load and run custom scripts from the overlay repository.
 //!
 //! [`ReportOverlayScriptSnapshot`] is a lightweight static task that reports
-//! how many script tasks were discovered after configuration reload.
+//! how many script tasks were discovered at startup.
 //!
-//! Each individual script gets its own [`OverlayScriptTask`] created
-//! dynamically after [`crate::app::reload::ReloadConfig`]. These tasks appear in
-//! the output identically to any other task.
+//! Each individual script gets its own [`OverlayScriptTask`] when the command
+//! builds its task set. These tasks appear in the output identically to any
+//! other task.
 
 use std::path::PathBuf;
 
@@ -25,10 +25,10 @@ use crate::infra::logging::OutputExt as _;
 // Static task: report discovered scripts
 // ---------------------------------------------------------------------------
 
-/// Report overlay script definitions discovered after configuration reload.
+/// Report overlay script definitions discovered at startup.
 ///
 /// The actual execution of each script is handled by individual
-/// [`OverlayScriptTask`] instances injected after configuration reload.
+/// [`OverlayScriptTask`] instances created from the same configuration snapshot.
 #[derive(Debug)]
 pub struct ReportOverlayScriptSnapshot {
     config: ConfigHandle<Vec<ScriptEntry>>,
@@ -218,8 +218,8 @@ fn emit_script_lines(ctx: &Context, output: &str, dry_run: bool) {
 
 /// Create [`OverlayScriptTask`] instances for every script in the config.
 ///
-/// Called from `install.rs` after the configuration-reload boundary to inject
-/// dynamic tasks alongside the remaining static tasks.
+/// Called from `install.rs` during startup to create dynamic tasks alongside
+/// the static catalog.
 #[must_use]
 pub fn overlay_script_tasks(
     scripts: &[ScriptEntry],

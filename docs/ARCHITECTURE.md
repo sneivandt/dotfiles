@@ -135,8 +135,8 @@ can still fail the run. Tasks turn these outcomes into user-facing summaries.
 
 An `Operation` models a whole workflow that converges as a unit rather than a
 collection of independent records. It has current-state, preview, and apply
-steps. Configuration reload and convention-based overlay scripts use this model
-because their correctness depends on completing a coherent workflow.
+steps. Repository synchronization and convention-based overlay scripts use this
+model because their correctness depends on completing a coherent workflow.
 
 ## Configuration flow
 
@@ -162,18 +162,23 @@ Each domain owns its parser and typed records. The app-level loader guarantees
 that supported overlay sections are merged consistently. The sparse-checkout
 manifest is the exception: it describes the main repository and is not merged.
 
-Shared configuration handles enable mid-run reload. Dynamic overlay tasks make
-the active task set configuration-dependent, so `ReloadConfig` is a discovery
-boundary:
+`ConfigStore` publishes immutable, `Arc`-backed handles. Static catalog tasks and
+dynamic overlay tasks are built once from that startup snapshot.
 
-1. Run the dependency closure ending at `ReloadConfig`.
-2. Stop if it fails or execution is cancelled.
-3. Rebuild dynamic tasks from the refreshed handles.
-4. Run remaining static and dynamic tasks in one dependency graph.
+Repository synchronization is a guarded process boundary:
 
-If the boundary is filtered out, dynamic tasks are built from current
-configuration before one graph is run. This split controls discovery only;
-normal ordering still comes from dependency edges.
+1. Run the dependency closure ending at `UpdateRepository`.
+2. Continue normally when the checkout did not change, the boundary was
+   filtered out, execution failed, or execution was cancelled.
+3. When content changed, spawn the current binary with the original arguments
+   and repository re-exec guard, then wait for it while retaining the run lock.
+4. The child reloads configuration and rebuilds all tasks from the updated
+   checkout. It omits repository synchronization and runs preservation plus
+   sparse checkout as a strict first phase before remaining work.
+
+The guard also suppresses self-update and run-lock reacquisition in the child.
+`--only`, `--skip`, `--retry-failed`, `--offline`, dry-run, and elevation retain
+their normal selection semantics. A filtered boundary falls back to one graph.
 
 ## Platform abstraction
 

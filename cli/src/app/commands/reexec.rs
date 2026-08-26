@@ -10,6 +10,8 @@ use crate::infra::logging::OutputExt as _;
 
 /// Environment variable set before re-exec to prevent infinite self-update loops.
 pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
+/// Environment variable set when a repository refresh caused the re-exec.
+pub(super) const REPOSITORY_REEXEC_GUARD_VAR: &str = "DOTFILES_REPOSITORY_REEXEC_GUARD";
 
 /// Replace the current process with a fresh invocation of the same binary.
 ///
@@ -19,8 +21,11 @@ pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
 pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let exe = re_exec_path(root);
-    let mut command = build_reexec_command(&exe, &args);
+    let command = build_reexec_command(&exe, &args);
+    run_reexec(command, log)
+}
 
+fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
     match command.status() {
         Ok(status) => {
             if status.code().is_none() {
@@ -43,6 +48,38 @@ pub(super) fn build_reexec_command(
     let mut command = std::process::Command::new(exe);
     command.args(args).env(REEXEC_GUARD_VAR, "1");
     command
+}
+
+/// Restart the current binary after the repository checkout changed.
+pub(crate) fn re_exec_after_repository_update(log: &dyn Output) -> ! {
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(error) => {
+            log.error(format!(
+                "failed to determine executable for repository restart: {error}"
+            ));
+            std::process::exit(1);
+        }
+    };
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let command = build_repository_reexec_command(&exe, &args);
+    log.startup("Repository updated · restarting with refreshed configuration");
+    run_reexec(command, log)
+}
+
+pub(super) fn build_repository_reexec_command(
+    exe: &std::path::Path,
+    args: &[String],
+) -> std::process::Command {
+    let mut command = build_reexec_command(exe, args);
+    command.env(REPOSITORY_REEXEC_GUARD_VAR, "1");
+    command
+}
+
+/// Return whether this process is the refreshed child of a repository update.
+#[must_use]
+pub(crate) fn repository_reexec_active(env: &dyn crate::infra::env::Env) -> bool {
+    env.var_os(REPOSITORY_REEXEC_GUARD_VAR).is_some()
 }
 
 /// Run the shared self-update preflight and re-exec if the binary changed.

@@ -62,10 +62,9 @@ contract itself.
 | `launcher` | Dotfiles launcher | install, update, uninstall | Installs or removes the platform wrapper |
 | `path` | Shell PATH | install, update | Ensures the launcher directory is on user PATH |
 
-`Reload configuration`, `Reconcile updated checkout`, and `Report overlay
-scripts` are internal orchestration tasks. They keep their scheduler identities
-and run-log entries, but do not appear in `dotfiles tasks`, normal console rows,
-or aggregate totals.
+`Report overlay scripts` is an internal orchestration task. It keeps its
+scheduler identity and run-log entry, but does not appear in `dotfiles tasks`,
+normal console rows, or aggregate totals.
 
 ### Host capability and wrapper tasks
 
@@ -116,13 +115,17 @@ describes the main repository's tracked `symlinks/` tree.
 #### Dotfiles repository
 
 Runs after sparse checkout and updates the current repository when supported.
-Successful content changes set an update signal consumed by **Reload
-configuration**. Install and update both synchronize the repository; only tasks
-explicitly marked update-only are exclusive to the update command.
+Successful content changes restart the current command with the same arguments.
+The guarded child loads a fresh immutable configuration snapshot, rebuilds
+static and overlay tasks, omits repository synchronization, and runs
+preservation plus sparse checkout before remaining work. The parent retains the
+run lock until the child exits.
+
+Install and update both synchronize the repository; only tasks explicitly
+marked update-only are exclusive to the update command.
 With `--offline`, repository synchronization is omitted and the current
 checkout is treated as the desired source; the normal preservation and sparse
-checkout tasks still converge it without activating the post-update reload
-boundary.
+checkout tasks still converge it without activating the restart boundary.
 
 #### Git hooks
 
@@ -137,31 +140,11 @@ after **Dotfiles repository** runs. Linux writes Zsh completions beneath the
 managed `symlinks/config/zsh/completions` tree. Windows writes PowerShell
 completions to `~/.config/powershell/profile.d`.
 
-#### Reload configuration
-
-Runs after **Dotfiles repository** only when the repository update signal
-indicates that content changed. It re-resolves the selected profile from the
-updated `profiles.toml`, reloads configuration, and updates shared configuration
-handles by publishing one immutable configuration generation. Tasks cannot
-observe a mix of sections from before and after the reload.
-
-If this boundary or a prerequisite fails, the CLI does not discover late
-dynamic tasks from inconsistent state. Independent static tasks continue.
-Tasks with failed blocking prerequisites remain skipped.
-
-#### Reconcile updated checkout
-
-Runs after **Reload configuration** and reapplies preservation and
-sparse-checkout rules from the refreshed profile and manifest. Profile,
-manifest, and overlay changes can affect later task discovery. The command
-therefore executes this task's dependency closure first, rebuilds dynamic tasks,
-then runs the remaining static and dynamic tasks together.
-
 #### Report overlay scripts
 
-Runs after **Reconcile updated checkout** when an overlay was supplied and
+Runs after **Sparse checkout** when an overlay was supplied and
 `conf/scripts.toml` produced at least one active script. It only reports the
-discovered count. Actual execution is handled by dynamically injected tasks.
+startup count. Actual execution is handled by dynamically created tasks.
 
 ### System convergence tasks
 
@@ -307,10 +290,10 @@ refs.
 
 ## Dynamic overlay tasks
 
-After the internal **Reload configuration** dependency closure completes, the
-command rereads the active overlay script configuration and creates one task
-per script. If that boundary is absent after filtering, tasks are created from
-current configuration before a single graph is run. Each task:
+At startup, the command reads active overlay script configuration and creates
+one task per script. If repository synchronization changes the checkout, the
+guarded child process reloads configuration and performs discovery again. Each
+task:
 
 - uses the configured script `name` as its task display name
 - uses `script-<normalized-name>` as its stable selector

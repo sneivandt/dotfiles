@@ -161,118 +161,55 @@ pub fn requires_elevation(task: &dyn Task, ctx: &Context) -> bool {
     assessment.is_applicable() && assessment.requires_elevation()
 }
 
-/// A [`Task`] decorator that appends extra dependency [`TaskId`]s to an inner
-/// task without changing any other behaviour.
+/// A [`Task`] decorator that appends application-owned dependency [`TaskId`]s
+/// to an inner task without changing any other behaviour.
 ///
 /// The generic task machinery lets a task declare *same-layer* dependencies via
 /// [`Task::dependencies`].  Cross-layer wiring — where one domain's task must
 /// run after another domain's task — is deliberately kept out of the domains
-/// and applied by the application layer, which is the only layer allowed to
-/// name tasks across domains.  Wrapping a task in `TaskWithExtraDeps` forwards
-/// its identity and behaviour unchanged while merging additional dependency
-/// edges declared by the application's catalog.
+/// and applied by the application layer, which is the only layer allowed to name
+/// tasks across domains. This decorator carries both failure-blocking and
+/// ordering-only edges so a task needs at most one application wrapper.
 ///
 /// Because [`task_id`](Task::task_id) is forwarded to the inner task, other
 /// tasks that depend on the wrapped task by type continue to resolve correctly.
 pub struct TaskWithExtraDeps {
     inner: Box<dyn Task>,
     deps: Vec<TaskId>,
-}
-
-/// A [`Task`] decorator that appends cross-domain ordering-only dependencies.
-///
-/// Unlike [`TaskWithExtraDeps`], failures in these dependencies do not block
-/// the inner task. Use this when the inner task rechecks the required runtime
-/// capability and can still converge after an attempted prerequisite fails.
-pub struct TaskWithExtraOrderingDeps {
-    inner: Box<dyn Task>,
-    deps: Vec<TaskId>,
-}
-
-impl TaskWithExtraOrderingDeps {
-    /// Wrap `inner`, merging `extra` ordering ids with its existing ordering.
-    #[must_use]
-    pub fn new(inner: Box<dyn Task>, extra: &[TaskId]) -> Self {
-        let mut deps = Vec::new();
-        for id in inner.ordering_dependencies().iter().chain(extra) {
-            if !deps.contains(id) {
-                deps.push(id.clone());
-            }
-        }
-        Self { inner, deps }
-    }
-
-    /// Wrap `inner` and box the decorator as a `dyn Task`.
-    #[must_use]
-    pub fn boxed(inner: Box<dyn Task>, extra: &[TaskId]) -> Box<dyn Task> {
-        Box::new(Self::new(inner, extra))
-    }
-}
-
-impl std::fmt::Debug for TaskWithExtraOrderingDeps {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TaskWithExtraOrderingDeps")
-            .field("name", &self.inner.name())
-            .field("deps", &self.deps)
-            .finish()
-    }
-}
-
-impl Task for TaskWithExtraOrderingDeps {
-    fn meta(&self) -> TaskMeta<'_> {
-        self.inner.meta()
-    }
-
-    fn task_id(&self) -> TaskId {
-        self.inner.task_id()
-    }
-
-    fn dependencies(&self) -> &[TaskId] {
-        self.inner.dependencies()
-    }
-
-    fn ordering_dependencies(&self) -> &[TaskId] {
-        &self.deps
-    }
-
-    fn should_run(&self, ctx: &Context) -> bool {
-        self.inner.should_run(ctx)
-    }
-
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        self.inner.run_configured(ctx)
-    }
-
-    fn needs_elevation(&self, ctx: &Context) -> bool {
-        self.inner.needs_elevation(ctx)
-    }
-
-    fn assess(&self, ctx: &Context) -> TaskAssessment {
-        self.inner.assess(ctx)
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.inner.run(ctx)
-    }
+    ordering_deps: Vec<TaskId>,
 }
 
 impl TaskWithExtraDeps {
-    /// Wrap `inner`, merging `extra` dependency ids with the inner task's own.
+    /// Wrap `inner`, merging application-owned dependency ids with its own.
     #[must_use]
-    pub fn new(inner: Box<dyn Task>, extra: &[TaskId]) -> Self {
+    pub fn new(inner: Box<dyn Task>, extra: &[TaskId], extra_ordering: &[TaskId]) -> Self {
         let mut deps = Vec::new();
         for id in inner.dependencies().iter().chain(extra) {
             if !deps.contains(id) {
                 deps.push(id.clone());
             }
         }
-        Self { inner, deps }
+        let mut ordering_deps = Vec::new();
+        for id in inner.ordering_dependencies().iter().chain(extra_ordering) {
+            if !ordering_deps.contains(id) {
+                ordering_deps.push(id.clone());
+            }
+        }
+        Self {
+            inner,
+            deps,
+            ordering_deps,
+        }
     }
 
     /// Wrap `inner` and box the decorator as a `dyn Task`.
     #[must_use]
-    pub fn boxed(inner: Box<dyn Task>, extra: &[TaskId]) -> Box<dyn Task> {
-        Box::new(Self::new(inner, extra))
+    pub fn boxed(
+        inner: Box<dyn Task>,
+        extra: &[TaskId],
+        extra_ordering: &[TaskId],
+    ) -> Box<dyn Task> {
+        Box::new(Self::new(inner, extra, extra_ordering))
     }
 }
 
@@ -281,6 +218,7 @@ impl std::fmt::Debug for TaskWithExtraDeps {
         f.debug_struct("TaskWithExtraDeps")
             .field("name", &self.inner.name())
             .field("deps", &self.deps)
+            .field("ordering_deps", &self.ordering_deps)
             .finish()
     }
 }
@@ -299,7 +237,7 @@ impl Task for TaskWithExtraDeps {
     }
 
     fn ordering_dependencies(&self) -> &[TaskId] {
-        self.inner.ordering_dependencies()
+        &self.ordering_deps
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

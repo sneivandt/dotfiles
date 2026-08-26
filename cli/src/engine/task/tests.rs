@@ -302,6 +302,7 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
             ordering_deps: Vec::new(),
         }),
         &[existing.clone(), additional.clone(), additional.clone()],
+        &[],
     );
 
     assert_eq!(task.name(), "delegated-task");
@@ -329,17 +330,18 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
 }
 
 #[test]
-fn task_with_extra_ordering_deps_preserves_blocking_edges_and_deduplicates_ordering() {
+fn task_with_extra_deps_merges_both_edge_kinds() {
     let calls = Arc::new(DelegationCalls::default());
     let blocking = TaskId::Type(TypeId::of::<u8>());
     let existing = TaskId::Type(TypeId::of::<u16>());
     let additional = TaskId::Type(TypeId::of::<u32>());
-    let task = TaskWithExtraOrderingDeps::new(
+    let task = TaskWithExtraDeps::new(
         Box::new(DelegatedTask {
             calls,
             deps: vec![blocking.clone()],
             ordering_deps: vec![existing.clone(), existing.clone()],
         }),
+        &[],
         &[existing.clone(), additional.clone(), additional.clone()],
     );
 

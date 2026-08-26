@@ -9,7 +9,7 @@
 /// # Examples
 ///
 /// ```ignore
-/// task_deps![super::reload_config::ReloadConfig, super::symlinks::InstallSymlinks]
+/// task_deps![super::repository::UpdateRepository, super::symlinks::InstallSymlinks]
 /// ```
 macro_rules! task_deps {
     [$($dep:ty),+ $(,)?] => {

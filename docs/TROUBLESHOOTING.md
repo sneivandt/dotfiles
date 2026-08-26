@@ -257,9 +257,10 @@ git branch -vv
 Resolve authentication, upstream, or conflicting local changes without
 discarding user work. `--root` must identify the intended checkout.
 
-If update changes configuration, the CLI reloads it at the dynamic-task
-discovery boundary before rebuilding overlay script tasks. Verbose logs show
-whether the reload signal was consumed.
+If repository content changes, the CLI starts a guarded child with the original
+arguments. The child reloads configuration, rebuilds overlay script tasks, and
+strictly reconciles sparse checkout before continuing. A reconciliation skip is
+reported as a failure rather than continuing from a mixed checkout.
 
 ## Packages do not install
 

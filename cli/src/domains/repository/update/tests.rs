@@ -1,6 +1,6 @@
 //! Unit tests for the repository update task.
+use super::RepositoryUpdateSignal as UpdateSignal;
 use super::*;
-use crate::engine::UpdateSignal;
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{ScriptedExecutor, empty_config, make_context, make_linux_context};
@@ -485,6 +485,45 @@ fn parallel_fetch_failure_reports_the_first_declared_repository() {
     assert!(
         matches!(result, TaskResult::Failed(ref s) if s == "git fetch failed"),
         "expected the main repository's failure reason, got {result:?}"
+    );
+}
+
+#[test]
+fn partial_multi_repository_merge_failure_does_not_request_restart() {
+    use super::models::{CheckedRepository, UpdateTarget, UpdateTargetKind};
+
+    let main_root = PathBuf::from("/tmp/main");
+    let overlay_root = PathBuf::from("/tmp/overlay");
+    let repositories = vec![
+        CheckedRepository {
+            target: UpdateTarget::new(UpdateTargetKind::Main, main_root),
+            head_ref: "refs/heads/main".to_string(),
+        },
+        CheckedRepository {
+            target: UpdateTarget::new(UpdateTargetKind::Overlay, overlay_root),
+            head_ref: "refs/heads/main".to_string(),
+        },
+    ];
+    let executor = ScriptedExecutor::new()
+        .ok("")
+        .ok("")
+        .ok("main-old")
+        .ok("main-new")
+        .ok("0")
+        .ok("overlay-old")
+        .ok("overlay-new")
+        .ok("0")
+        .ok("updated")
+        .err(git_error("second merge failed"));
+    let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), executor);
+    let signal = UpdateSignal::new();
+
+    let result = apply_repository_updates(&ctx, &repositories, &[], &signal).unwrap();
+
+    assert!(matches!(result, TaskResult::Failed(_)));
+    assert!(
+        !signal.was_updated(),
+        "a partially updated repository set must not restart into mixed state"
     );
 }
 

@@ -2,7 +2,7 @@
 name: engine-orchestration
 description: >
   Use for task graph and execution changes in cli/src/engine/, command task
-  membership, dependencies, dynamic task discovery, Operation plans,
+  membership, dependencies, startup task discovery, restart boundaries, Operation plans,
   ProcessMode, or task/resource parallelism. Not for a standalone Resource.
 ---
 
@@ -27,8 +27,13 @@ scheduling.
 - Dependencies are the only ordering policy; catalog order is irrelevant.
 - `dependencies()` block on predecessor failure.
   `ordering_dependencies()` wait without propagating failure.
-- Dynamic instances use `TaskId::dynamic::<Self>(stable_key)` and are created at
-  the owning discovery boundary, after any prerequisite config reload.
+- Dynamic instances use `TaskId::dynamic::<Self>(stable_key)` and are created
+  once from the immutable startup configuration.
+- A repository update that changes task/config inputs must use the guarded
+  process restart boundary. Do not mutate config handles or discover tasks late.
+- In the restarted child, remove repository synchronization only after target
+  selection so retry selectors remain valid. Run preservation and sparse
+  checkout as the strict first phase before remaining tasks.
 - `should_run()` and `needs_elevation()` must be cheap and side-effect free.
   State produced by a prerequisite is checked in `run_configured()`.
 - Removing unmet work before graph execution must also skip its transitive
@@ -55,6 +60,6 @@ scheduling.
 
 Use the matching `ProcessOpts` constructor and an existing canonical verb.
 
-For focused graph, filtering, discovery, and operation-plan coverage, use the
+For focused graph, filtering, restart, discovery, and operation-plan coverage, use the
 `task_execution` and affected command suites listed under
 [Integration test suites](../../../docs/TESTING.md#integration-test-suites).

@@ -5,8 +5,7 @@
 use anyhow::Result;
 
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskResult, UpdateSignal, process_operation,
-    task_metadata,
+    Context, Operation, OperationState, Task, TaskResult, process_operation, task_metadata,
 };
 
 mod apply;
@@ -20,20 +19,42 @@ use models::{CheckedRepository, RepositorySetReadiness};
 #[cfg(test)]
 use self::discovery::worktree_has_local_changes;
 
+/// Shared indication that the checkout changed and the command must restart.
+#[derive(Debug, Clone, Default)]
+pub struct RepositoryUpdateSignal {
+    flag: crate::infra::atomic_flag::AtomicFlag,
+}
+
+impl RepositoryUpdateSignal {
+    /// Create an unset repository update signal.
+    #[must_use]
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    fn mark_updated(&self) {
+        self.flag.set();
+    }
+
+    /// Return whether a repository was updated during this command.
+    #[must_use]
+    pub(crate) fn was_updated(&self) -> bool {
+        self.flag.get()
+    }
+}
+
 /// Pull latest changes from the remote repository.
 #[derive(Debug)]
 pub struct UpdateRepository {
-    /// Set to `true` when the repository is actually updated by this task.
-    ///
-    /// Shared with [`super::reload_config::ReloadConfig`] so that the task can
-    /// skip the reload when the repository was already up to date.
-    pub(super) repo_updated: UpdateSignal,
+    /// Set when the repository changes so the application can restart from the
+    /// freshly loaded checkout.
+    pub(super) repo_updated: RepositoryUpdateSignal,
 }
 
 impl UpdateRepository {
-    /// Create a new task, sharing `repo_updated` with `ReloadConfig`.
+    /// Create a new task sharing the application's restart signal.
     #[must_use]
-    pub const fn new(repo_updated: UpdateSignal) -> Self {
+    pub const fn new(repo_updated: RepositoryUpdateSignal) -> Self {
         Self { repo_updated }
     }
 }
@@ -59,11 +80,11 @@ impl Task for UpdateRepository {
 
 #[derive(Debug)]
 struct UpdateRepositoryOperation {
-    repo_updated: UpdateSignal,
+    repo_updated: RepositoryUpdateSignal,
 }
 
 impl UpdateRepositoryOperation {
-    const fn new(repo_updated: UpdateSignal) -> Self {
+    const fn new(repo_updated: RepositoryUpdateSignal) -> Self {
         Self { repo_updated }
     }
 }

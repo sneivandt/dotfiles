@@ -129,7 +129,21 @@ impl CommandRunner {
     /// Build the full set of install tasks, wired to the shared config store.
     #[must_use]
     pub fn install_tasks(&self) -> Vec<Box<dyn Task>> {
-        crate::app::catalog::all_install_tasks(self.store.clone())
+        crate::app::catalog::all_install_tasks(&self.store)
+    }
+
+    /// Build install tasks with repository restart state.
+    #[must_use]
+    pub(crate) fn install_tasks_for_run(
+        &self,
+        repository_update: &crate::domains::repository::update::RepositoryUpdateSignal,
+        strict_sparse_checkout: bool,
+    ) -> Vec<Box<dyn Task>> {
+        crate::app::catalog::install_tasks_for_run(
+            &self.store,
+            repository_update,
+            strict_sparse_checkout,
+        )
     }
 
     /// Build the full set of uninstall tasks, wired to the shared config store.
@@ -159,6 +173,12 @@ impl CommandRunner {
         self.recovery_selectors.as_ref()
     }
 
+    /// Read-only process environment used by command orchestration.
+    #[must_use]
+    pub(crate) fn env(&self) -> &dyn crate::infra::env::Env {
+        self.ctx.env().as_ref()
+    }
+
     /// Execute the given tasks to completion using the stored context.
     ///
     /// # Errors
@@ -168,19 +188,21 @@ impl CommandRunner {
         RunCoordinator::new(&self.ctx, &self.log).execute(ExecutionPlan::single(tasks))
     }
 
-    /// Execute tasks and inject additional tasks after a dependency boundary.
+    /// Execute tasks and restart after a dependency boundary when requested.
     ///
     /// # Errors
     ///
     /// Returns an error if graph validation fails or one or more tasks fail.
-    pub fn run_with_late_tasks<'a>(
+    pub fn run_with_restart<'a>(
         &'a self,
         tasks: impl IntoIterator<Item = &'a dyn Task>,
         boundary: TaskId,
-        provider: impl FnOnce() -> Vec<Box<dyn Task>> + 'a,
+        requested: impl FnOnce() -> bool + 'a,
+        action: impl FnOnce() + 'a,
     ) -> Result<()> {
-        RunCoordinator::new(&self.ctx, &self.log)
-            .execute(ExecutionPlan::with_late_tasks(tasks, boundary, provider))
+        RunCoordinator::new(&self.ctx, &self.log).execute(ExecutionPlan::with_restart(
+            tasks, boundary, requested, action,
+        ))
     }
 }
 

@@ -10,7 +10,6 @@
 //! - [`parallel`] — Rayon-based parallel processing helpers
 //! - [`plan`] — pure resource plan/diff construction
 //! - [`stats`] — result and statistics types
-//! - [`update_signal`] — cross-task signalling for config reload
 //! - [`scheduler`] — dependency-driven parallel task scheduling
 
 /// Single-resource processing: check state, apply or remove one resource.
@@ -24,12 +23,9 @@ mod operation;
 mod orchestrate;
 mod parallel;
 pub(crate) mod plan;
-mod stats;
-/// Cross-task signalling for config reload.
-pub mod update_signal;
-
 /// Dependency-driven parallel task scheduling.
 pub(crate) mod scheduler;
+mod stats;
 
 /// Generic resource contract shared by all concrete domain resources.
 pub mod resource;
@@ -51,13 +47,11 @@ pub use stats::{TaskResult, TaskStats};
 #[cfg(test)]
 pub use task::requires_elevation;
 pub use task::{
-    Task, TaskAssessment, TaskId, TaskMeta, TaskVisibility, TaskWithExtraDeps,
-    TaskWithExtraOrderingDeps, execute,
+    Task, TaskAssessment, TaskId, TaskMeta, TaskVisibility, TaskWithExtraDeps, execute,
 };
 pub(crate) use task::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
-pub use update_signal::UpdateSignal;
 
 #[cfg(test)]
 mod tests;

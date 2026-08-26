@@ -33,12 +33,16 @@ decline it.
 - Shell scripts are POSIX `sh`; PowerShell runs non-interactively.
 - All subprocesses use the executor.
 
-## Dynamic task boundary
+## Dynamic task discovery
 
-Reload config first, then rebuild one `OverlayScriptTask` per active entry.
-Dynamic tasks are not catalog entries. The catalog-registered reporting task is
-internal and depends on reload. Preserve config order and stable
-`script-<normalized-name>` selectors.
+Build one `OverlayScriptTask` per active entry from the immutable startup
+configuration. Dynamic tasks are not catalog entries. The catalog-registered
+reporting task is internal and depends on sparse checkout. Preserve config order
+and stable `script-<normalized-name>` selectors.
+
+When repository synchronization changes the checkout, the guarded child process
+reloads configuration and rebuilds the entire task set. Do not add mid-run
+configuration reload or late task discovery.
 
 Test merge order, categories, path rejection, all exit mappings, dry-run
-failure, and discovery after reload.
+failure, startup discovery, and restart selection.

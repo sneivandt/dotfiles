@@ -39,6 +39,38 @@ mod reexec_tests {
             .and_then(|(_, value)| value);
         assert_eq!(guard, Some(std::ffi::OsStr::new("1")));
     }
+
+    #[test]
+    fn repository_re_exec_sets_both_loop_guards() {
+        let args = vec![
+            "update".to_string(),
+            "--only".to_string(),
+            "repository".to_string(),
+        ];
+        let command = build_repository_reexec_command(Path::new("/repo/bin/dotfiles"), &args);
+        let env = command
+            .get_envs()
+            .map(|(key, value)| (key.to_owned(), value.map(std::ffi::OsStr::to_owned)))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        assert_eq!(
+            env.get(std::ffi::OsStr::new(REEXEC_GUARD_VAR)),
+            Some(&Some(std::ffi::OsString::from("1")))
+        );
+        assert_eq!(
+            env.get(std::ffi::OsStr::new(REPOSITORY_REEXEC_GUARD_VAR)),
+            Some(&Some(std::ffi::OsString::from("1")))
+        );
+    }
+
+    #[test]
+    fn repository_re_exec_guard_is_read_from_injected_environment() {
+        let unset = crate::infra::env::MapEnv::new();
+        let set = crate::infra::env::MapEnv::new().with(REPOSITORY_REEXEC_GUARD_VAR, "1");
+
+        assert!(!repository_reexec_active(&unset));
+        assert!(repository_reexec_active(&set));
+    }
 }
 
 #[cfg(test)]
@@ -93,7 +125,7 @@ mod startup_log_tests {
 
 #[cfg(test)]
 mod task_graph_tests {
-    use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_late_tasks};
+    use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_restart};
     use crate::engine::{Context, Task, TaskId, TaskMeta, TaskResult, task_deps};
     use crate::test_helpers::{empty_config, make_static_context};
     use anyhow::Result;
@@ -306,33 +338,12 @@ mod task_graph_tests {
         }
     }
 
-    struct LateDiscoveredTask {
-        boundary_completed: Arc<AtomicBool>,
-        ran: Arc<AtomicBool>,
-    }
-
-    impl Task for LateDiscoveredTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("late-discovered")
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            if !self.boundary_completed.load(Ordering::SeqCst) {
-                return Ok(TaskResult::Failed(
-                    "late task ran before the discovery boundary completed".to_string(),
-                ));
-            }
-            self.ran.store(true, Ordering::SeqCst);
-            Ok(TaskResult::Ok)
-        }
-    }
-
     #[test]
-    fn late_tasks_are_built_after_dependency_boundary() {
+    fn restart_action_runs_after_dependency_boundary() {
         let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
         let prerequisite_completed = Arc::new(AtomicBool::new(false));
         let boundary_completed = Arc::new(AtomicBool::new(false));
-        let late_ran = Arc::new(AtomicBool::new(false));
+        let restart_called = Arc::new(AtomicBool::new(false));
         let remaining_ran = Arc::new(AtomicBool::new(false));
         let prerequisite = BoundaryPrerequisiteTask {
             completed: Arc::clone(&prerequisite_completed),
@@ -345,36 +356,36 @@ mod task_graph_tests {
             boundary_completed: Arc::clone(&boundary_completed),
             ran: Arc::clone(&remaining_ran),
         };
-        let provider_prerequisite_completed = Arc::clone(&prerequisite_completed);
-        let provider_boundary_completed = Arc::clone(&boundary_completed);
-        let task_boundary_completed = Arc::clone(&boundary_completed);
-        let task_late_ran = Arc::clone(&late_ran);
+        let action_prerequisite_completed = Arc::clone(&prerequisite_completed);
+        let action_boundary_completed = Arc::clone(&boundary_completed);
+        let action_called = Arc::clone(&restart_called);
         let tasks: [&dyn Task; 3] = [&remaining, &boundary, &prerequisite];
 
-        run_tasks_to_completion_with_late_tasks(
+        run_tasks_to_completion_with_restart(
             tasks,
             &ctx,
             &log,
             TaskId::Type(std::any::TypeId::of::<DiscoveryBoundaryTask>()),
+            || true,
             move || {
                 assert!(
-                    provider_prerequisite_completed.load(Ordering::SeqCst),
-                    "boundary dependency closure must complete before late discovery"
+                    action_prerequisite_completed.load(Ordering::SeqCst),
+                    "boundary dependency closure must complete before restart"
                 );
                 assert!(
-                    provider_boundary_completed.load(Ordering::SeqCst),
-                    "late task provider must run after the boundary completes"
+                    action_boundary_completed.load(Ordering::SeqCst),
+                    "restart action must run after the boundary completes"
                 );
-                vec![Box::new(LateDiscoveredTask {
-                    boundary_completed: task_boundary_completed,
-                    ran: task_late_ran,
-                })]
+                action_called.store(true, Ordering::SeqCst);
             },
         )
-        .expect("late task should execute in the same pipeline");
+        .expect("restart handoff should succeed");
 
-        assert!(late_ran.load(Ordering::SeqCst));
-        assert!(remaining_ran.load(Ordering::SeqCst));
+        assert!(restart_called.load(Ordering::SeqCst));
+        assert!(
+            !remaining_ran.load(Ordering::SeqCst),
+            "the parent must stop after restart handoff"
+        );
     }
 
     struct FailingBoundaryTask;
@@ -390,74 +401,48 @@ mod task_graph_tests {
     }
 
     #[test]
-    fn boundary_failure_suppresses_late_task_discovery() {
+    fn boundary_failure_suppresses_restart() {
         let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
-        let provider_called = Arc::new(AtomicBool::new(false));
-        let provider_called_by_closure = Arc::clone(&provider_called);
+        let restart_called = Arc::new(AtomicBool::new(false));
+        let action_called = Arc::clone(&restart_called);
         let boundary = FailingBoundaryTask;
         let tasks: [&dyn Task; 1] = [&boundary];
 
-        let result = run_tasks_to_completion_with_late_tasks(
+        let result = run_tasks_to_completion_with_restart(
             tasks,
             &ctx,
             &log,
             TaskId::Type(std::any::TypeId::of::<FailingBoundaryTask>()),
+            || true,
             move || {
-                provider_called_by_closure.store(true, Ordering::SeqCst);
-                Vec::new()
+                action_called.store(true, Ordering::SeqCst);
             },
         );
 
         assert!(result.is_err());
-        assert!(!provider_called.load(Ordering::SeqCst));
-    }
-
-    struct StaticAfterProviderTask {
-        provider_called: Arc<AtomicBool>,
-        ran: Arc<AtomicBool>,
-    }
-
-    impl Task for StaticAfterProviderTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("static-after-provider")
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            if !self.provider_called.load(Ordering::SeqCst) {
-                return Ok(TaskResult::Failed(
-                    "static task ran before provider".to_string(),
-                ));
-            }
-            self.ran.store(true, Ordering::SeqCst);
-            Ok(TaskResult::Ok)
-        }
+        assert!(!restart_called.load(Ordering::SeqCst));
     }
 
     #[test]
-    fn missing_boundary_discovers_late_tasks_before_single_graph() {
+    fn missing_boundary_runs_one_graph_without_restart() {
         let (ctx, log) = make_static_context(empty_config(PathBuf::from("/repo")));
-        let provider_called = Arc::new(AtomicBool::new(false));
-        let static_ran = Arc::new(AtomicBool::new(false));
-        let static_task = StaticAfterProviderTask {
-            provider_called: Arc::clone(&provider_called),
-            ran: Arc::clone(&static_ran),
+        let task_ran = Arc::new(AtomicUsize::new(0));
+        let task = PrerequisiteTask {
+            name: "static",
+            completed: Arc::clone(&task_ran),
         };
-        let provider_called_by_closure = Arc::clone(&provider_called);
-        let tasks: [&dyn Task; 1] = [&static_task];
+        let tasks: [&dyn Task; 1] = [&task];
 
-        run_tasks_to_completion_with_late_tasks(
+        run_tasks_to_completion_with_restart(
             tasks,
             &ctx,
             &log,
             TaskId::Dynamic(42),
-            move || {
-                provider_called_by_closure.store(true, Ordering::SeqCst);
-                Vec::new()
-            },
+            || true,
+            || panic!("a filtered boundary must not trigger restart"),
         )
-        .expect("tasks should run when the discovery boundary is filtered out");
+        .expect("tasks should run when the restart boundary is filtered out");
 
-        assert!(provider_called.load(Ordering::SeqCst));
-        assert!(static_ran.load(Ordering::SeqCst));
+        assert_eq!(task_ran.load(Ordering::SeqCst), 1);
     }
 }

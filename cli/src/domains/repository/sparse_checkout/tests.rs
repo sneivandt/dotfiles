@@ -363,6 +363,36 @@ fn run_skips_when_worktree_has_local_changes() {
 }
 
 #[test]
+fn post_update_reconciliation_fails_when_local_changes_block_sparse_checkout() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
+
+    let mut config = empty_config(dir.path().to_path_buf());
+    config.manifest.excluded_files.push("symlinks".to_string());
+    let executor = ScriptedExecutor::new().git(
+        dir.path(),
+        &["status", "--porcelain", "--untracked-files=no"],
+        "M  cli/src/tasks/packages.rs\n",
+    );
+    let manifest = ConfigHandle::new(config.manifest.clone());
+    let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+
+    let result = ConfigureSparseCheckout::new(manifest)
+        .fail_if_skipped(true)
+        .run(&ctx)
+        .unwrap();
+
+    assert!(
+        matches!(
+            result,
+            TaskResult::Failed(ref reason)
+                if reason.contains("post-update sparse checkout reconciliation skipped")
+        ),
+        "post-update reconciliation must fail rather than continue from an inconsistent checkout"
+    );
+}
+
+#[test]
 fn dry_run_skips_when_worktree_has_local_changes() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join(".git")).unwrap();

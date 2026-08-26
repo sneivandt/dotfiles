@@ -1,8 +1,8 @@
 //! Shared one-shot boolean flag backing cross-thread signalling primitives.
 //!
 //! [`AtomicFlag`] wraps an `Arc<AtomicBool>` and is the common implementation
-//! behind the cancellation and update-signal primitives.  It is cheaply
-//! clonable; all clones share the same underlying flag.
+//! behind cancellation and command-restart signals. It is cheaply clonable;
+//! all clones share the same underlying flag.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

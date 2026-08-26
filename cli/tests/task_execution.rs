@@ -597,7 +597,7 @@ fn dry_run_pipeline_produces_no_failures() {
 
     let ec = test.make_dry_run_context("base");
 
-    for task in tasks::all_install_tasks(ec.store.clone()) {
+    for task in tasks::all_install_tasks(&ec.store) {
         if FILESYSTEM_TASKS.contains(&task.name()) && task.should_run(&ec.ctx) {
             tasks::execute(task.as_ref(), &ec.ctx);
         }

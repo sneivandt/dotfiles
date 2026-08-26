@@ -17,11 +17,9 @@ use crate::infra::platform::Platform;
 use crate::engine::{Context, TaskResult, TaskStats};
 
 mod failure;
-mod recording;
 mod scripted;
 
 pub use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
-pub use recording::recording_log;
 pub use scripted::ScriptedExecutor;
 
 /// Build a [`Config`] with all lists empty and `root` set to `root`.

@@ -40,7 +40,7 @@ fn stage_header_present_when_info_logged_in_run() {
 
 /// Regression test: stage header must be present for multiple parallel tasks
 /// that all produce stats output.  Simulates the scenario where 6 dependent
-/// tasks start after `ReloadConfig` and all complete with `"0 changed, X
+/// tasks start after a restart boundary and all complete with `"0 changed, X
 /// already ok"` output, none of which should be missing their stage header.
 #[test]
 fn stage_headers_present_for_multiple_concurrent_stats_tasks() {

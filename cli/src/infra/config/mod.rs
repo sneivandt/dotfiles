@@ -15,7 +15,6 @@ pub(crate) mod validation;
 
 pub(crate) use diagnostics::{Diagnostic, DiagnosticCode, Severity};
 pub use handle::ConfigHandle;
-pub(crate) use handle::ConfigSource;
 pub(crate) use section_macro::config_section;
 pub(crate) use string_or_table::StringOrTable;
 

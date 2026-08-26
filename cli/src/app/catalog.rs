@@ -4,8 +4,7 @@
 //! domains, so all cross-domain wiring lives here: each domain task is
 //! constructed with a handle to its configuration slice (from the shared
 //! [`ConfigStore`]), and cross-domain ordering constraints are applied by
-//! wrapping tasks in [`TaskWithExtraDeps`] or
-//! [`TaskWithExtraOrderingDeps`](crate::engine::TaskWithExtraOrderingDeps).
+//! wrapping tasks in [`TaskWithExtraDeps`].
 
 use std::any::TypeId;
 
@@ -14,8 +13,6 @@ use clap::CommandFactory as _;
 use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::app::preserve::MaterializeExcludedSymlinks;
-use crate::app::reconcile::ReconcileUpdatedCheckout;
-use crate::app::reload::ReloadConfig;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
 use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
 use crate::domains::dotfiles::path::ConfigurePath;
@@ -28,7 +25,7 @@ use crate::domains::git::hooks::{InstallGitHooks, UninstallGitHooks};
 use crate::domains::overlay::scripts::ReportOverlayScriptSnapshot;
 use crate::domains::packages::install::{InstallAurPackages, InstallPackages, InstallParu};
 use crate::domains::repository::sparse_checkout::ConfigureSparseCheckout;
-use crate::domains::repository::update::UpdateRepository;
+use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
 use crate::domains::system::developer_mode::EnableDeveloperMode;
@@ -36,8 +33,7 @@ use crate::domains::system::pam_keyring::ConfigurePamKeyring;
 use crate::domains::system::registry::ApplyRegistry;
 use crate::domains::system::systemd_units::ConfigureSystemd;
 use crate::domains::system::wsl_conf::InstallWslConf;
-use crate::engine::update_signal::UpdateSignal;
-use crate::engine::{Task, TaskId, TaskWithExtraDeps, TaskWithExtraOrderingDeps};
+use crate::engine::{Task, TaskId, TaskWithExtraDeps};
 
 const POWERSHELL_DOT_COMPLETER: &str = r"
 Register-ArgumentCompleter -CommandName 'dot' -ParameterName 'Arguments' -ScriptBlock {
@@ -60,12 +56,17 @@ const fn id<T: 'static>() -> TaskId {
 
 /// Wrap a task, adding cross-domain dependency edges declared by the app.
 fn with_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
-    TaskWithExtraDeps::boxed(Box::new(inner), extra)
+    TaskWithExtraDeps::boxed(Box::new(inner), extra, &[])
 }
 
 /// Wrap a task, adding cross-domain ordering-only edges declared by the app.
 fn with_ordering_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
-    TaskWithExtraOrderingDeps::boxed(Box::new(inner), extra)
+    TaskWithExtraDeps::boxed(Box::new(inner), &[], extra)
+}
+
+/// Wrap a task with both kinds of cross-domain dependency edge.
+fn with_dependencies(inner: impl Task, blocking: &[TaskId], ordering: &[TaskId]) -> Box<dyn Task> {
+    TaskWithExtraDeps::boxed(Box::new(inner), blocking, ordering)
 }
 
 /// Generate the zsh completion script for the CLI.
@@ -116,8 +117,17 @@ pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
 /// from each task's [`Task::dependencies`] declaration merged with the
 /// app-level dependency edges applied here.
 #[must_use]
-pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
-    let repo_updated = UpdateSignal::new();
+pub fn all_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
+    let repo_updated = RepositoryUpdateSignal::new();
+    install_tasks_for_run(store, &repo_updated, false)
+}
+
+#[must_use]
+pub(crate) fn install_tasks_for_run(
+    store: &ConfigStore,
+    repo_updated: &RepositoryUpdateSignal,
+    strict_sparse_checkout: bool,
+) -> Vec<Box<dyn Task>> {
     let zsh_completions = generate_zsh_completions();
     let powershell_completions = generate_powershell_completions();
 
@@ -128,7 +138,8 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
             store.manifest.clone(),
         )),
         with_deps(
-            ConfigureSparseCheckout::new(store.manifest.clone()),
+            ConfigureSparseCheckout::new(store.manifest.clone())
+                .fail_if_skipped(strict_sparse_checkout),
             &[id::<MaterializeExcludedSymlinks>()],
         ),
         Box::new(UpdateRepository::new(repo_updated.clone())),
@@ -168,11 +179,9 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
             InstallVsCodeExtensions::new(store.vscode_extensions.clone()),
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
-        TaskWithExtraOrderingDeps::boxed(
-            TaskWithExtraDeps::boxed(
-                Box::new(InstallApmPackages::new(store.apm_fragments.clone())),
-                &[id::<InstallSymlinks>()],
-            ),
+        with_dependencies(
+            InstallApmPackages::new(store.apm_fragments.clone()),
+            &[id::<InstallSymlinks>()],
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
         with_deps(
@@ -182,12 +191,10 @@ pub fn all_install_tasks(store: ConfigStore) -> Vec<Box<dyn Task>> {
         Box::new(InstallWslConf),
         with_deps(
             ReportOverlayScriptSnapshot::new(store.scripts.clone()),
-            &[id::<ReconcileUpdatedCheckout>()],
+            &[id::<ConfigureSparseCheckout>()],
         ),
         Box::new(InstallWrapper),
         Box::new(ConfigurePath),
-        Box::new(ReloadConfig::new(repo_updated.clone(), store.clone())),
-        Box::new(ReconcileUpdatedCheckout::new(repo_updated, store)),
     ]
 }
 
@@ -223,7 +230,7 @@ mod tests {
 
     #[test]
     fn all_install_tasks_have_the_expected_membership() {
-        let tasks = all_install_tasks(test_params());
+        let tasks = all_install_tasks(&test_params());
         let actual = tasks
             .iter()
             .map(|task| task.task_id())
@@ -253,8 +260,6 @@ mod tests {
             id::<ReportOverlayScriptSnapshot>(),
             id::<InstallWrapper>(),
             id::<ConfigurePath>(),
-            id::<ReloadConfig>(),
-            id::<ReconcileUpdatedCheckout>(),
         ]
         .into_iter()
         .collect::<HashSet<_>>();
@@ -294,7 +299,7 @@ mod tests {
     #[test]
     fn install_tasks_have_resolvable_dependencies() {
         use std::collections::HashSet;
-        let tasks = all_install_tasks(test_params());
+        let tasks = all_install_tasks(&test_params());
         let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         let unique: HashSet<TaskId> = ids.iter().cloned().collect();
         assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
@@ -316,7 +321,7 @@ mod tests {
 
     #[test]
     fn install_tasks_have_no_cycles() {
-        let tasks = all_install_tasks(test_params());
+        let tasks = all_install_tasks(&test_params());
         let task_refs: Vec<&dyn Task> = tasks.iter().map(Box::as_ref).collect();
         assert!(
             crate::engine::graph::ResolvedTaskGraph::resolve(&task_refs).is_ok(),
@@ -326,7 +331,7 @@ mod tests {
 
     #[test]
     fn cross_domain_dependencies_are_applied() {
-        let tasks = all_install_tasks(test_params());
+        let tasks = all_install_tasks(&test_params());
         let find = |name: &str| {
             tasks
                 .iter()
@@ -360,8 +365,8 @@ mod tests {
         assert!(
             find("Report overlay scripts")
                 .dependencies()
-                .contains(&id::<ReconcileUpdatedCheckout>()),
-            "overlay script report must depend on checkout reconciliation (app-injected)"
+                .contains(&id::<ConfigureSparseCheckout>()),
+            "overlay script report must wait for sparse checkout (app-injected)"
         );
         assert!(
             find("Git hooks")

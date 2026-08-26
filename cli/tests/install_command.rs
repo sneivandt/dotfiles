@@ -26,7 +26,7 @@ use test_api::tasks::filter::task_matches_filter;
 fn install_tasks() -> Vec<Box<dyn tasks::Task>> {
     let ctx = common::IntegrationTestContext::new();
     let store = ConfigStore::from_config(ctx.load_config("base"));
-    tasks::all_install_tasks(store)
+    tasks::all_install_tasks(&store)
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ fn install_task_names() {
 /// The install task list must contain exactly the expected number of tasks.
 #[test]
 fn install_task_count() {
-    assert_eq!(install_tasks().len(), 26);
+    assert_eq!(install_tasks().len(), 24);
 }
 
 /// Every task name must be non-empty.
@@ -217,11 +217,11 @@ fn only_filter_disambiguates_update_tasks() {
 
 /// Internal task labels do not create heuristic selectors.
 #[test]
-fn only_filter_does_not_match_reload_task_by_keyword() {
+fn only_filter_does_not_match_internal_report_task_by_keyword() {
     let all_tasks = install_tasks();
     let no_match = !all_tasks
         .iter()
-        .any(|t| task_matches_filter(t.as_ref(), "reload"));
+        .any(|t| task_matches_filter(t.as_ref(), "report"));
 
     assert!(no_match);
 }

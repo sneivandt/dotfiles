@@ -36,7 +36,7 @@ sources, duplicate targets, and overlapping parent/child targets.
 3. For non-base ownership, update the matching manifest section unless base
    already owns the same source.
 4. Add config-drift coverage where needed.
-5. Run `./dotfiles.sh install -d`.
 
 Use `windows-specific-patterns` for capability/junction behavior and
-`sparse-checkout-patterns` for manifest semantics.
+`sparse-checkout-patterns` for manifest semantics. Use the TOML and dry-run
+coverage in [Testing](../../../docs/TESTING.md#choosing-coverage).

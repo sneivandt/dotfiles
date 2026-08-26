@@ -41,4 +41,5 @@ action-version inventories in guidance.
 3. Reuse artifacts and platform scripts.
 4. Add the narrowest local guard for a recurring CI-only failure.
 
-Use `cross-platform-verification` for normal local Rust/wrapper checks.
+Use [Testing](../../../docs/TESTING.md) for canonical commands and the current CI
+coverage matrix.

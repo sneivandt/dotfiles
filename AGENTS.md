@@ -1,63 +1,26 @@
 # Dotfiles Agent Instructions
 
-Load the narrowest relevant skill from `.agents/skills/` and only the
-conditional companions needed for the subsystem being changed; do not recurse.
+Load the narrowest relevant skill from `.agents/skills/`. Load a companion only
+when the change crosses into its subsystem; do not recurse through related
+skills.
 
 ## Repository invariants
 
-- Wrappers (`dotfiles.sh`, `dotfiles.ps1`) bootstrap/forward only.
+- Wrappers (`dotfiles.sh`, `dotfiles.ps1`) bootstrap and forward only.
 - Declarative desired state lives in `conf/`.
 - Independent config-backed state generally uses `Resource`.
 - Whole-workflow convergence generally uses `Operation`.
 - Tasks own metadata, policies, dependencies, and orchestration boundaries.
 - Mutations must be idempotent and dry-run safe.
-- Prefer capability methods over direct OS checks where available.
-- Static install/uninstall tasks must be registered in
-  `cli/src/app/catalog.rs`; command-specific tasks belong in their command's
-  task list.
-- Conditional symlink behavior and manifest coverage must stay synchronized.
+- Prefer capability methods over direct operating-system checks.
+- Static install/uninstall tasks belong in `cli/src/app/catalog.rs`;
+  command-specific tasks belong in that command's task list.
+- Conditional symlink behavior and `conf/manifest.toml` coverage must stay
+  synchronized.
 
-## Standard change workflow
+## Guidance ownership
 
-1. Identify the primary layer and routing skill.
-2. Load only conditional companions whose subsystem is touched; do not recurse.
-3. Find the closest existing implementation before editing.
-4. Make the smallest complete vertical change (not a partial wiring).
-5. Add/update focused tests.
-6. Run targeted checks.
-7. Review cross-platform and config-drift impact.
-8. Explicitly report checks not run.
-
-## Validation ownership
-
-- Canonical general Rust/cross-platform sequence:
-  `cross-platform-verification`
-- Test construction/organization: `testing-patterns`
-- CI workflow/publishing and CI-only reproduction: `ci-cd-patterns`
-- Domain-specific checks remain in their owning skills (for example APM dry
-  runs, config drift/validators, wrapper linting).
-
-## Definition of done
-
-- Full vertical slice wired (implementation and applicable config,
-  registration/export).
-- Tests added/updated where behavior changed.
-- User-facing docs updated when behavior/workflow changed.
-- Targeted validation run and passing.
-- Checks not run are called out explicitly.
-- No unrelated changes, unreviewed generated artifacts, private files, or
-  secret-bearing changes.
-
-## Vertical-slice checklists
-
-### New config-backed resource
-
-`config type -> loader -> validator -> conf file -> resource -> task -> command registration (catalog for install/uninstall) -> module exports -> tests -> cross-platform checks`
-
-### New symlink
-
-`source file -> conf/symlinks.toml -> conf/manifest.toml (if conditional) -> config drift coverage -> dry-run verification`
-
-### New task
-
-`task implementation -> metadata/domain/phase/policies -> dependencies -> command registration (catalog for install/uninstall) -> command/test coverage -> targeted validation`
+- [Contributing](docs/CONTRIBUTING.md) owns the human change workflow.
+- [Architecture](docs/ARCHITECTURE.md) describes layers and runtime contracts.
+- [Testing](docs/TESTING.md) owns validation commands and CI coverage.
+- Skills contain only task-specific procedures and subsystem gotchas.

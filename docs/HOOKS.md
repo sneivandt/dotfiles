@@ -72,12 +72,8 @@ treating the whole configuration as invalid.
 
 ## Running checks manually
 
-```bash
-sh hooks/check-sensitive.sh
-sh hooks/check-rust.sh
-sh hooks/check-ci-guards.sh
-sh hooks/pre-commit
-```
+Manual commands and the full integration procedure live under
+[Wrapper and hook tests](TESTING.md#wrapper-and-hook-tests).
 
 The scripts are POSIX shell scripts and should remain portable. Do not add
 Bash-only syntax unless the supported interpreter contract changes.
@@ -128,15 +124,7 @@ current repository to prove the hook blocks them. If a detection case ever
 fails to block, the test's commit captures whatever else is staged. The script
 therefore refuses to run against a checkout with uncommitted changes.
 
-Run it on a clean checkout, or in a scratch repository:
-
-```bash
-mkdir -p /tmp/hooktest/hooks && cp -a hooks/. /tmp/hooktest/hooks/
-cd /tmp/hooktest && git init -q
-ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit
-DIR=/path/to/dotfiles sh /path/to/dotfiles/.github/workflows/scripts/linux/test-git-hooks.sh
-```
-
-Use a fresh scratch repository for each run. A failed case leaves its fixture
-committed. Reusing that repository turns the same fixture into an empty diff and
-causes a second, misleading failure.
+Use the clean scratch procedure in
+[Testing](TESTING.md#wrapper-and-hook-tests). A failed case leaves its fixture
+committed; reusing that repository can turn the same fixture into an empty diff
+and cause a second, misleading failure.

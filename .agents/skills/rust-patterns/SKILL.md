@@ -25,24 +25,7 @@ Use this as a routing map, not as a second source of subsystem rules.
 
 Load only the rows touched by the task.
 
-## Engine-wide invariants
-
-- The Rust binary owns behavior; wrappers only bootstrap and forward.
-- Keep domain code under `cli/src/domains/<domain>/`; generic contracts belong
-  under `engine/` or `infra/`.
-- Tasks own metadata, eligibility, dependencies, and orchestration boundaries.
-  Resources own item-level convergence; operations own workflow convergence.
-- Register static install/uninstall tasks in `cli/src/app/catalog.rs`.
-- Read runtime environment through `ctx.env()` and run subprocesses through the
-  context executor.
-- Prefer platform capability methods over direct OS checks.
-- Public fallible APIs document `# Errors`; every lint allowance includes a
-  site-specific reason.
-
-## Complete the slice
-
-Trace the closest implementation before editing, then update every applicable
-layer: config, loader, validation, resource or operation, task, exports,
-registration, tests, and user documentation.
-
-Use `cross-platform-verification` for the final command sequence.
+Repository-wide invariants live in
+[AGENTS.md](../../../AGENTS.md), architecture in
+[Architecture](../../../docs/ARCHITECTURE.md), and the change workflow in
+[Contributing](../../../docs/CONTRIBUTING.md).

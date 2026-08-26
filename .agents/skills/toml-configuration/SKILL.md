@@ -37,14 +37,7 @@ Prefer `config_section!` and `SectionLoader` for ordinary category-filtered,
 overlay-aware lists. Loaders return typed desired state and contain no task
 behavior.
 
-## Complete a config change
-
-1. Update the type and loader.
-2. Add or update semantic validation.
-3. Update the real `conf/*.toml`.
-4. Wire the resource/operation and task.
-5. Export and register static tasks where needed.
-6. Add parser, validator, and cross-file drift tests.
-7. Review profile, manifest, and overlay impact.
-
-Use `config-validation` for diagnostic and drift-test details.
+Use `config-validation` for diagnostic and drift-test details. Profile,
+manifest, and overlay semantics belong to their respective skills; the complete
+contributor checklist lives in
+[Contributing](../../../docs/CONTRIBUTING.md#change-checklists).

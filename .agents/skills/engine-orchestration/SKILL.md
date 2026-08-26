@@ -27,7 +27,6 @@ scheduling.
 - Dependencies are the only ordering policy; catalog order is irrelevant.
 - `dependencies()` block on predecessor failure.
   `ordering_dependencies()` wait without propagating failure.
-- Static install/uninstall tasks belong in `cli/src/app/catalog.rs`.
 - Dynamic instances use `TaskId::dynamic::<Self>(stable_key)` and are created at
   the owning discovery boundary, after any prerequisite config reload.
 - `should_run()` and `needs_elevation()` must be cheap and side-effect free.
@@ -56,7 +55,6 @@ scheduling.
 
 Use the matching `ProcessOpts` constructor and an existing canonical verb.
 
-## Verify
-
-Add focused graph, filtering, discovery, or operation-plan tests. Then use
-`cross-platform-verification`.
+For focused graph, filtering, discovery, and operation-plan coverage, use the
+`task_execution` and affected command suites listed under
+[Integration test suites](../../../docs/TESTING.md#integration-test-suites).

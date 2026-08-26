@@ -170,12 +170,9 @@ The merged configuration appends overlay content rather than replacing the main
 repository's declarations. Keep private package locations and agent-specific
 configuration out of the public repository.
 
-Validate the combined setup:
-
-```bash
-dotfiles test --overlay C:\Code\private-dotfiles
-dotfiles install --overlay C:\Code\private-dotfiles --only apm --dry-run
-```
+Validate combined public and overlay state using
+[CLI validation](TESTING.md#cli-validation), then preview APM reconciliation as
+described in [Dry-run testing](TESTING.md#dry-run-testing).
 
 ## Validation
 
@@ -199,9 +196,8 @@ When changing APM configuration, check:
 1. Choose the narrowest applicable fragment in `symlinks/apm/config/`.
 2. Add a pinned or policy-compliant package declaration.
 3. If the fragment is conditional, confirm its symlink and manifest categories.
-4. Run `dotfiles test`.
-5. Preview with `dotfiles install --only apm --dry-run`.
-6. Run install before using `dotfiles update` to advance versions.
+4. Follow the APM coverage in [Testing](TESTING.md).
+5. Run install before using `dotfiles update` to advance versions.
 
 Represent changes in a source fragment. Do not edit generated merged state or
 lock data by hand.

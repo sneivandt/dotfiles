@@ -49,7 +49,10 @@ deployment convergence, and stale/orphan cleanup. Do not reintroduce
 fingerprints, success markers, `apm outdated` parsing, or a separate
 `apm prune`. Keep update-only scheduling in the command pipeline.
 
-## Verify
+## Validation
 
-After APM config or plugin changes run `./dotfiles.sh install -d`. For Rust or
-agent-settings changes, also use `cross-platform-verification`.
+Use the APM checks under [CLI validation](../../../docs/TESTING.md#cli-validation)
+and preview reconciliation as described in
+[Dry-run testing](../../../docs/TESTING.md#dry-run-testing). For Rust or
+agent-settings changes, select additional coverage from
+[Choosing coverage](../../../docs/TESTING.md#choosing-coverage).

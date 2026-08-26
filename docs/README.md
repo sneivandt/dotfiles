@@ -33,12 +33,20 @@ workflows for maintaining a configured machine.
 
 ## Source-of-truth boundaries
 
+- `AGENTS.md` contains repository-wide agent invariants and skill routing.
+- `CONTRIBUTING.md` contains the human development and contribution workflow.
+- `ARCHITECTURE.md` describes the system's layers and runtime contracts.
+- `TESTING.md` is the canonical reference for validation commands and CI
+  coverage.
+- `.agents/skills/*/SKILL.md` contains narrow agent procedures and subsystem
+  gotchas.
 - `conf/` contains declarative desired state.
 - `cli/src/app/catalog.rs` contains the static install and uninstall task
   catalogs.
 - `cli/src/app/commands/test.rs` contains the validation task list.
 - `dotfiles.sh` and `dotfiles.ps1` only bootstrap a binary and forward CLI
   arguments.
-- `.github/workflows/` is authoritative for CI and publishing behavior.
+- `.github/workflows/` is the executable source for CI and publishing behavior;
+  `TESTING.md` explains its coverage.
 
 When a guide and one of these sources disagree, follow the source.

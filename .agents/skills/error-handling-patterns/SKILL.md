@@ -48,5 +48,6 @@ Prefer `process_resources*()` or `process_operation()` over hand-written loops.
 Choosing benign skip for unmet work is a correctness bug because it produces a
 successful exit.
 
-Add focused already-correct, dry-run, mutation, and failure tests. Use
-`logging-patterns` only when user-visible rendering changes.
+Cover already-correct, dry-run, mutation, and failure outcomes. Use
+`logging-patterns` only when user-visible rendering changes and
+[Testing](../../../docs/TESTING.md) for commands.

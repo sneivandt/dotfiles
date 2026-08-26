@@ -30,7 +30,7 @@ working tree.
 2. Update `conf/manifest.toml` unless base already owns the source.
 3. Keep `conf/symlinks.toml` and real `symlinks/` content aligned.
 4. Add or update config-drift coverage.
-5. Dry-run the affected profile.
 
 Use `profile-system` for category-set computation, `symlink-management` for
-target behavior, and `config-validation` for drift invariants.
+target behavior, and `config-validation` for drift invariants. Validation
+coverage is listed under [Choosing coverage](../../../docs/TESTING.md#choosing-coverage).

@@ -230,28 +230,10 @@ a failed run stays readable after later runs. `dotfiles log --list` enumerates
 them and an index selects one. Without `--verbose` the command hides `debug`
 events so its output matches what the console showed during the run.
 
-## Extension points
+## Extending the system
 
-### Add declarative state
-
-For independent config-backed state, the normal vertical slice is:
-
-```text
-typed config -> loader -> validation -> conf file -> resource/provider
--> task -> catalog registration -> tests
-```
-
-### Add a workflow
-
-For whole-workflow convergence:
-
-```text
-operation -> task metadata/dependencies -> command registration -> tests
-```
-
-### Add private behavior
-
-Use overlay configuration. Convention-based private scripts become dynamic
-tasks without adding private repositories to the public catalog.
-
-See [Contributing](CONTRIBUTING.md) and [Task reference](TASKS.md).
+Contributor checklists for adding declarative state, tasks, workflows, and
+platform-specific behavior live in [Contributing](CONTRIBUTING.md). Private
+behavior extends public desired state through overlay configuration;
+convention-based overlay scripts become dynamic tasks without adding private
+repositories to the public catalog.

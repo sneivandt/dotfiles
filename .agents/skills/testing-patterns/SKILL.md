@@ -38,6 +38,5 @@ change. Do not accept broad rewrites without inspecting the diff.
 
 ## Scope validation
 
-Run the narrowest existing test target that exercises the change, then use
-`cross-platform-verification` for the repository-wide sequence. CI topology
-belongs in `ci-cd-patterns`.
+Test target selection and commands live in
+[Testing](../../../docs/TESTING.md). CI topology belongs in `ci-cd-patterns`.

@@ -136,8 +136,23 @@ The pre-commit checks can also be run directly:
 ```bash
 sh hooks/check-sensitive.sh
 sh hooks/check-rust.sh
+sh hooks/check-ci-guards.sh
+sh hooks/pre-commit
 DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
 ```
+
+The full hook integration script creates real commits and refuses to run in a
+dirty checkout. Run it in a fresh scratch repository:
+
+```bash
+mkdir -p /tmp/hooktest/hooks && cp -a hooks/. /tmp/hooktest/hooks/
+cd /tmp/hooktest && git init -q
+ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit
+DIR=/path/to/dotfiles sh /path/to/dotfiles/.github/workflows/scripts/linux/test-git-hooks.sh
+```
+
+A failed case can leave its fixture committed, so do not reuse the scratch
+repository for another run.
 
 ## CI gates
 
@@ -181,8 +196,15 @@ validated on Windows.
 | `cargo audit`, `cargo deny`, MSRV | yes | n/a | Platform-independent |
 
 Cross-target Clippy catches many Windows compile errors from Linux, but it
-cannot test Windows runtime behavior. Use the Windows CI jobs for changes to
-Windows-specific paths.
+cannot test Windows runtime behavior. For Rust changes that can break Windows
+compilation, run:
+
+```bash
+cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+```
+
+If the target or toolchain is unavailable, record the omitted check. Use the
+Windows CI jobs for changes to Windows-specific paths.
 
 The Windows git application test asserts the final effective configuration
 outside any repository. Installation removes the obsolete managed

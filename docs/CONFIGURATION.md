@@ -314,12 +314,9 @@ persisting that path. The `[y/N]` prompt defaults to no. A non-interactive
 invocation rejects the new worktree path. Normal checkouts have a `.git`
 directory and do not require confirmation.
 
-Validate combined state explicitly:
-
-```bash
-dotfiles test --overlay C:\path\to\private-dotfiles
-dotfiles install --overlay C:\path\to\private-dotfiles --dry-run
-```
+Validate combined state using the overlay examples in
+[CLI validation](TESTING.md#cli-validation) and
+[Dry-run testing](TESTING.md#dry-run-testing).
 
 ## Overlay scripts
 
@@ -405,12 +402,8 @@ nor a table is rejected by kind.
 
 ## Validation
 
-Run:
-
-```bash
-dotfiles test
-```
-
-The command catches syntax errors, unknown keys, missing required files,
-nonexistent symlink sources, manifest drift, and failures from available APM or
-script analyzers. A separate Rust integration test checks configuration drift.
+The validation workflow catches syntax errors, unknown keys, missing required
+files, nonexistent symlink sources, manifest drift, and failures from available
+APM or script analyzers. A separate Rust integration test checks configuration
+drift. Commands and focused coverage are documented in
+[Testing](TESTING.md#cli-validation).

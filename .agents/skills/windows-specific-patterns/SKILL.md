@@ -45,5 +45,6 @@ inherently Windows-specific and has no narrower capability.
 argument forwarding only. Use `$ErrorActionPreference = 'Stop'` and `Join-Path`.
 Task behavior belongs in Rust.
 
-Use `cross-platform-verification` after any Windows-sensitive Rust or wrapper
-change.
+Use the native-runtime caveats and checks under
+[Platform coverage parity](../../../docs/TESTING.md#platform-coverage-parity)
+after Windows-sensitive changes.

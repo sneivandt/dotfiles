@@ -256,13 +256,6 @@ units, undo shell selection, or reverse arbitrary overlay scripts. See
 
 ## Test
 
-```bash
-dotfiles test
-dotfiles test --verbose
-dotfiles test --only config-warnings,manifest-sync
-dotfiles test --overlay C:\path\to\private-dotfiles
-```
-
 The command validates TOML, sources, manifest section synchronization, and the
 relationship between local `dot-*` APM references and their source directories.
 When APM is available, a separate task runs
@@ -273,7 +266,8 @@ ShellCheck and that APM pack check are skipped when their executables are
 unavailable. The PowerShell check runs whenever `pwsh` is available; if the
 PSScriptAnalyzer module is missing, that check fails and reports the PowerShell
 error. Use `--only` or `--skip` with selectors from `dotfiles tasks` to narrow
-the validation task set.
+the validation task set. Command examples and tool behavior are documented under
+[CLI validation](TESTING.md#cli-validation).
 
 ## Logs
 

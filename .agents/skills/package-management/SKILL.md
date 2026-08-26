@@ -26,9 +26,9 @@ Add a provider rather than branching manager-specific commands through tasks.
 4. Plan missing entries from that cached state.
 5. Batch installs where the provider supports it.
 
-Route every command through the executor and preserve idempotent flags. An
-unavailable manager returns an explicit skip or diagnostic, never silent
-success.
+Route every command through the executor and preserve provider-specific exact,
+noninteractive, and already-present behavior. An unavailable manager returns an
+explicit skip or diagnostic, never silent success.
 
 ## Platform rules
 
@@ -37,7 +37,7 @@ success.
 - Do not wrap AUR helpers in an extra sudo layer.
 - Winget uses exact IDs, prefers user scope, and retries unscoped only when no
   user-scope installer exists. Privilege-only failures are explicit skips.
-- Prefer capability methods over direct OS checks.
 
 Test provider commands, state mapping, batching, missing-manager behavior, and
-dry-run planning. Use `toml-configuration` if entry syntax changes.
+dry-run planning. Use `toml-configuration` if entry syntax changes and
+[Testing](../../../docs/TESTING.md) for commands.

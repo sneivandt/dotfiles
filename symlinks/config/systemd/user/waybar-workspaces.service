@@ -1,14 +1,16 @@
 [Unit]
 Description=Refresh Waybar workspace state from Hyprland
 
-PartOf=graphical-session.target
+PartOf=graphical-session.target waybar.service
 Wants=graphical-session.target waybar.service
-After=graphical-session.target waybar.service
+After=graphical-session.target
+Before=waybar.service
 
 ConditionFileIsExecutable=%h/.config/hypr/scripts/workspaces.py
 
 [Service]
 Type=simple
+ExecStartPre=%h/.config/hypr/scripts/workspaces.py --refresh
 ExecStart=%h/.config/hypr/scripts/workspaces.py --watch
 Restart=on-failure
 RestartSec=2

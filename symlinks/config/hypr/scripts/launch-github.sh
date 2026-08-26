@@ -15,7 +15,10 @@ export GTK_CSD=0
 has_window()
 {
   hyprctl -j clients 2>/dev/null |
-    jq -e 'any(.[]; (.class // "") == "github" or (.initialClass // "") == "github")' \
+    jq -e 'any(.[];
+      ((.class // "") | ascii_downcase) == "github" or
+      ((.initialClass // "") | ascii_downcase) == "github"
+    )' \
       >/dev/null
 }
 

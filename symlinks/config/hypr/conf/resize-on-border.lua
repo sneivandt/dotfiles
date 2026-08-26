@@ -28,7 +28,7 @@ local function workspaceFills()
         end
     end
 
-    return tiled <= 1
+    return tiled == 1
 end
 
 -- Exported so binds that change floating state can re-evaluate; Hyprland emits

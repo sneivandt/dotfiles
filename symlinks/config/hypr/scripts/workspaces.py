@@ -10,6 +10,8 @@ Lua equivalent from its own on-click instead.
 
 Usage:
   workspaces.py <n>   Emit waybar JSON for workspace n.
+  workspaces.py --refresh
+                      Cache the current workspace state once.
   workspaces.py --watch
                       Signal waybar (SIGRTMIN+1) whenever workspaces change.
 """
@@ -162,9 +164,6 @@ def watch() -> int:
         "movewindowv2>>",
     )
 
-    if refresh_state():
-        notify_waybar()
-
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(sock_path)
@@ -192,6 +191,8 @@ def main(argv: list[str]) -> int:
     if len(argv) != 1:
         print(__doc__, file=sys.stderr)
         return 2
+    if argv[0] == "--refresh":
+        return 0 if refresh_state() else 1
     if argv[0] == "--watch":
         return watch()
     if argv[0].isdigit() and 1 <= int(argv[0]) <= LAST_WORKSPACE:

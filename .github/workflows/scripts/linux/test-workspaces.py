@@ -103,6 +103,20 @@ class WorkspacesTests(unittest.TestCase):
         ):
             workspaces.notify_waybar()
 
+    def test_refresh_mode_caches_state_without_signalling_waybar(self) -> None:
+        with (
+            patch.object(workspaces, "refresh_state", return_value=True) as refresh,
+            patch.object(workspaces, "notify_waybar") as notify,
+        ):
+            self.assertEqual(workspaces.main(["--refresh"]), 0)
+
+        refresh.assert_called_once_with()
+        notify.assert_not_called()
+
+    def test_refresh_mode_reports_query_failure(self) -> None:
+        with patch.object(workspaces, "refresh_state", return_value=False):
+            self.assertEqual(workspaces.main(["--refresh"]), 1)
+
     def test_invalid_arguments_are_rejected(self) -> None:
         with patch.object(sys, "stderr", io.StringIO()):
             for argv in ([], ["0"], ["10"], ["one"], ["1", "2"]):
@@ -123,11 +137,14 @@ class WorkspacesTests(unittest.TestCase):
                 },
             ),
             patch.object(workspaces.socket, "socket", socket),
-            patch.object(workspaces, "refresh_state", return_value=False),
+            patch.object(workspaces, "refresh_state") as refresh,
+            patch.object(workspaces, "notify_waybar") as notify,
             patch.object(sys, "stderr", new_callable=io.StringIO) as stderr,
         ):
             self.assertEqual(workspaces.watch(), 1)
 
+        refresh.assert_not_called()
+        notify.assert_not_called()
         self.assertIn("IPC stream closed", stderr.getvalue())
 
 
@@ -191,6 +208,21 @@ class WaybarConfigTests(unittest.TestCase):
         stocks = self.config["custom/stocks"]
         self.assertEqual(stocks["signal"], 2)
         self.assertIn("--toggle", stocks["on-click"])
+
+
+class WaybarWorkspacesServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.unit = (
+            ROOT
+            / "symlinks/config/systemd/user/waybar-workspaces.service"
+        ).read_text()
+
+    def test_workspace_state_is_cached_before_waybar_starts(self) -> None:
+        self.assertIn("Before=waybar.service", self.unit)
+        self.assertIn(
+            "ExecStartPre=%h/.config/hypr/scripts/workspaces.py --refresh",
+            self.unit,
+        )
 
 
 if __name__ == "__main__":

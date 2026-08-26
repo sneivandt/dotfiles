@@ -313,10 +313,11 @@ impl IntegrationTestContext {
 
 /// Run the `install` command in dry-run mode against a fresh minimal repository.
 ///
-/// Builds an isolated repository (with a `.git/` directory so the profile can be
-/// persisted), then invokes [`commands::install::run`](test_api::commands::install::run)
-/// offline with the given `skip`/`only` selectors and `parallel` flag. The
-/// temporary repository lives only for the duration of the call.
+/// Builds an isolated Git repository so the profile and repository-scoped run
+/// state stay inside the fixture, then invokes
+/// [`commands::install::run`](test_api::commands::install::run) offline with the
+/// given `skip`/`only` selectors and `parallel` flag. The temporary repository
+/// lives only for the duration of the call.
 ///
 /// Returns the command result so callers can assert success or inspect errors.
 pub(crate) fn run_install_dry_run(
@@ -327,9 +328,7 @@ pub(crate) fn run_install_dry_run(
     let ctx = TestContextBuilder::new().build();
     let root_path = ctx.root_path().to_path_buf();
 
-    // `resolve_from_args` calls `persist()` which writes to `.git/config`;
-    // create the directory so the write succeeds.
-    std::fs::create_dir_all(root_path.join(".git")).expect("create .git dir");
+    git2::Repository::init(&root_path).expect("initialize test repository");
 
     let global = test_api::cli::GlobalOpts {
         root: Some(root_path),

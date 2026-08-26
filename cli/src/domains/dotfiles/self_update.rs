@@ -195,13 +195,19 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 /// Returns `Ok(false)` when no update is needed or when running from a
 /// cargo build directory. Setting `DOTFILES_SKIP_SELF_UPDATE=1` also skips the
 /// check without weakening verification for downloads performed by other
-/// processes.
+/// processes. `skip_attestation` bypasses provenance verification for the
+/// downloaded update while preserving checksum verification.
 ///
 /// # Errors
 ///
 /// Returns an error if the GitHub API call, download, or checksum
 /// verification fails.
-pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Result<bool> {
+pub fn pre_update(
+    root: &std::path::Path,
+    log: &dyn Output,
+    dry_run: bool,
+    skip_attestation: bool,
+) -> Result<bool> {
     if self_update_skipped(&SystemEnv) {
         tracing::debug!("self-update skipped by {SKIP_SELF_UPDATE_ENV}");
         return Ok(false);
@@ -223,7 +229,7 @@ pub fn pre_update(root: &std::path::Path, log: &dyn Output, dry_run: bool) -> Re
             log.stage("Self update");
             log.debug(format!("updating: {current} \u{2192} {latest}"));
             with_status(log, &format!("Updating to {latest}"), || {
-                download_and_install(root, &latest, &client)
+                download_and_install(root, &latest, &client, skip_attestation)
             })?;
 
             log.startup(format!("Self update \u{00b7} {current} \u{2192} {latest}"));

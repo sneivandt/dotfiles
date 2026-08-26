@@ -54,6 +54,7 @@ fn test_command_fails_on_config_warnings() {
         non_interactive: false,
         retry_failed: false,
         no_symbols: false,
+        skip_attestation: false,
         elevated_child: false,
     };
     let opts = test_api::cli::TestOpts {

@@ -31,6 +31,7 @@ packages = [
   "shellcheck",
   "sudo",
   "tmux",
+  "tree-sitter-cli",
   "vim",
   "wget",
   "xdg-user-dirs",

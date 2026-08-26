@@ -166,36 +166,37 @@ lazy.setup({
   {
     "nvim-treesitter/nvim-treesitter",
     cond = function() return vim.fn.has("nvim") == 1 end,
+    lazy = false,
     build = ":TSUpdate",
     config = function()
-      local ok, treesitter = pcall(require, "nvim-treesitter.configs")
-      if ok then
-        treesitter.setup({
-          ensure_installed = {
-            "python", "javascript", "typescript", "lua", "vim", "vimdoc",
-            "rust", "go", "c", "cpp", "java", "haskell", "bash",
-            "json", "yaml", "toml", "markdown", "markdown_inline"
-          },
-          highlight = {
-            enable = true,
-            additional_vim_regex_highlighting = false,
-          },
-          indent = {
-            enable = true,
-          },
-          incremental_selection = {
-            enable = true,
-            keymaps = {
-              -- Use g-prefixed keys to avoid clobbering <CR> (vim-easy-align)
-              -- and <TAB> (mapped to % in vimrc)
-              init_selection = "gnn",
-              scope_incremental = "grc",
-              node_incremental = "grn",
-              node_decremental = "grm",
-            },
-          },
-        })
-      end
+      local treesitter = require("nvim-treesitter")
+      local parsers = {
+        "python", "javascript", "typescript", "lua", "vim", "vimdoc",
+        "rust", "go", "c", "cpp", "java", "haskell", "bash",
+        "json", "yaml", "toml", "markdown", "markdown_inline",
+      }
+      treesitter.install(parsers):wait(300000)
+
+      local group = vim.api.nvim_create_augroup("TreesitterConfig", { clear = true })
+      vim.api.nvim_create_autocmd("FileType", {
+        group = group,
+        pattern = {
+          "python", "javascript", "typescript", "lua", "vim", "vimdoc",
+          "rust", "go", "c", "cpp", "java", "haskell", "sh",
+          "json", "yaml", "toml", "markdown",
+        },
+        callback = function(args)
+          local started, message = pcall(vim.treesitter.start, args.buf)
+          if not started then
+            vim.notify(
+              "Tree-sitter failed for " .. vim.bo[args.buf].filetype .. ": " .. message,
+              vim.log.levels.WARN
+            )
+            return
+          end
+          vim.bo[args.buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+        end,
+      })
     end,
   },
 

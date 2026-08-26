@@ -6,8 +6,9 @@
 //! `gh` CLI.
 //!
 //! Verification is required by default. The policy can be relaxed explicitly
-//! with one environment variable:
+//! with a CLI flag or environment variable:
 //!
+//! - `--skip-attestation` — skip the check for this CLI invocation.
 //! - `DOTFILES_SKIP_ATTESTATION=1` — skip the check entirely.
 
 use std::path::Path;
@@ -16,6 +17,8 @@ use anyhow::{Context as _, Result, bail};
 
 use super::REPO;
 
+/// Number of verification attempts before an unverifiable asset is rejected.
+const MAX_VERIFY_ATTEMPTS: u32 = 3;
 /// Environment variable that disables provenance verification.
 const SKIP_ENV: &str = "DOTFILES_SKIP_ATTESTATION";
 
@@ -28,25 +31,25 @@ pub(super) enum Policy {
     Required,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Verification {
     Verified,
     AuthenticationRequired,
-    Unverified,
+    Unverified(String),
 }
 
-/// Resolve the policy from the supported flag value.
-fn policy_from_flag(skip: Option<&str>) -> Policy {
-    if skip == Some("1") {
+/// Resolve the policy from the CLI flag and environment variable.
+fn policy_from_inputs(skip_flag: bool, skip_env: Option<&str>) -> Policy {
+    if skip_flag || skip_env == Some("1") {
         return Policy::Skip;
     }
     Policy::Required
 }
 
-/// Resolve the policy from the process environment.
-pub(super) fn policy_from_env() -> Policy {
+/// Resolve the policy for this invocation.
+pub(super) fn policy(skip_flag: bool) -> Policy {
     let skip = std::env::var(SKIP_ENV).ok();
-    policy_from_flag(skip.as_deref())
+    policy_from_inputs(skip_flag, skip.as_deref())
 }
 
 /// Abstraction over the `gh` CLI, enabling test injection.
@@ -79,13 +82,6 @@ impl GhCli for SystemGh {
             "gh",
             &["attestation", "verify", &path_arg, "--repo", repo],
         )?;
-        if !result.success {
-            tracing::debug!(
-                "gh attestation verify failed (exit {:?}): {}",
-                result.code,
-                result.stderr.trim()
-            );
-        }
         Ok(classify_result(&result))
     }
 }
@@ -96,8 +92,60 @@ fn classify_result(result: &crate::infra::exec::ExecResult) -> Verification {
     } else if result.code == Some(4) {
         Verification::AuthenticationRequired
     } else {
-        Verification::Unverified
+        let output = if result.stderr.trim().is_empty() {
+            result.stdout.trim()
+        } else {
+            result.stderr.trim()
+        };
+        let status = result
+            .code
+            .map_or_else(|| "no exit code".to_string(), |code| format!("exit {code}"));
+        let detail = if output.is_empty() {
+            format!("gh attestation verify failed with {status}")
+        } else {
+            format!("gh attestation verify failed with {status}: {output}")
+        };
+        Verification::Unverified(detail)
     }
+}
+
+/// Retry verification because `gh` depends on several remote GitHub and
+/// Sigstore endpoints that can fail independently.
+fn verify_with_retry(gh: &dyn GhCli, path: &Path, repo: &str) -> Result<Verification> {
+    let mut attempt = 1_u32;
+    loop {
+        match gh.verify(path, repo) {
+            Ok(Verification::Verified) => return Ok(Verification::Verified),
+            Ok(Verification::AuthenticationRequired) => {
+                return Ok(Verification::AuthenticationRequired);
+            }
+            Ok(Verification::Unverified(reason)) if attempt < MAX_VERIFY_ATTEMPTS => {
+                tracing::debug!(
+                    "attestation verification attempt {attempt}/{MAX_VERIFY_ATTEMPTS} failed; retrying: {reason}"
+                );
+            }
+            Ok(verification) => return Ok(verification),
+            Err(error) if attempt < MAX_VERIFY_ATTEMPTS => {
+                tracing::debug!(
+                    "attestation verification attempt {attempt}/{MAX_VERIFY_ATTEMPTS} could not run; retrying: {error:#}"
+                );
+            }
+            Err(error) => return Err(error),
+        }
+
+        std::thread::sleep(retry_delay(attempt));
+        attempt = attempt.saturating_add(1);
+    }
+}
+
+#[cfg(not(test))]
+fn retry_delay(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_secs(u64::from(attempt))
+}
+
+#[cfg(test)]
+const fn retry_delay(_attempt: u32) -> std::time::Duration {
+    std::time::Duration::ZERO
 }
 
 /// Verify the provenance of downloaded release bytes.
@@ -116,7 +164,7 @@ pub(super) fn verify_provenance(
     data: &[u8],
 ) -> Result<()> {
     if policy == Policy::Skip {
-        tracing::debug!("provenance verification skipped by {SKIP_ENV}");
+        tracing::debug!("provenance verification skipped by --skip-attestation or {SKIP_ENV}");
         return Ok(());
     }
 
@@ -125,10 +173,15 @@ pub(super) fn verify_provenance(
     }
 
     let staged = stage_for_verification(asset, data)?;
-    let verification = match gh.verify(staged.path(), REPO) {
+    let verification = match verify_with_retry(gh, staged.path(), REPO) {
         Ok(verification) => verification,
         Err(error) => {
-            return unverified(asset, &format!("gh could not be executed: {error:#}"));
+            return unverified(
+                asset,
+                &format!(
+                    "gh could not be executed after {MAX_VERIFY_ATTEMPTS} attempts: {error:#}"
+                ),
+            );
         }
     };
 
@@ -141,7 +194,12 @@ pub(super) fn verify_provenance(
             asset,
             "gh authentication required; run `gh auth login` or set GH_TOKEN/GITHUB_TOKEN and re-run",
         ),
-        Verification::Unverified => unverified(asset, "gh reported no verified attestation"),
+        Verification::Unverified(reason) => unverified(
+            asset,
+            &format!(
+                "gh could not verify the attestation after {MAX_VERIFY_ATTEMPTS} attempts: {reason}"
+            ),
+        ),
     }
 }
 
@@ -165,6 +223,8 @@ fn stage_for_verification(asset: &str, data: &[u8]) -> Result<crate::infra::fs::
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
 
     #[derive(Debug)]
@@ -183,31 +243,32 @@ mod tests {
             if self.fails_to_run {
                 bail!("gh exploded");
             }
-            Ok(self.result)
+            Ok(self.result.clone())
         }
     }
 
-    const fn stub(available: bool, result: bool) -> StubGh {
+    fn stub(available: bool, result: bool) -> StubGh {
         StubGh {
             available,
             result: if result {
                 Verification::Verified
             } else {
-                Verification::Unverified
+                Verification::Unverified("gh reported no verified attestation".to_string())
             },
             fails_to_run: false,
         }
     }
 
     #[test]
-    fn skip_flag_selects_skip_policy() {
-        assert_eq!(policy_from_flag(Some("1")), Policy::Skip);
+    fn cli_flag_or_environment_selects_skip_policy() {
+        assert_eq!(policy_from_inputs(true, None), Policy::Skip);
+        assert_eq!(policy_from_inputs(false, Some("1")), Policy::Skip);
     }
 
     #[test]
-    fn unset_or_disabled_skip_flag_selects_required_policy() {
-        assert_eq!(policy_from_flag(None), Policy::Required);
-        assert_eq!(policy_from_flag(Some("0")), Policy::Required);
+    fn unset_or_disabled_bypasses_select_required_policy() {
+        assert_eq!(policy_from_inputs(false, None), Policy::Required);
+        assert_eq!(policy_from_inputs(false, Some("0")), Policy::Required);
     }
 
     #[test]
@@ -270,6 +331,53 @@ mod tests {
     }
 
     #[test]
+    fn gh_failure_detail_is_preserved() {
+        let result = crate::infra::exec::ExecResult::failure(
+            "",
+            "HTTP 503 from the attestation API",
+            Some(1),
+        );
+        assert_eq!(
+            classify_result(&result),
+            Verification::Unverified(
+                "gh attestation verify failed with exit 1: HTTP 503 from the attestation API"
+                    .to_string()
+            )
+        );
+    }
+
+    #[derive(Debug)]
+    struct FlakyGh {
+        attempts: AtomicUsize,
+    }
+
+    impl GhCli for FlakyGh {
+        fn available(&self) -> bool {
+            true
+        }
+
+        fn verify(&self, _path: &Path, _repo: &str) -> Result<Verification> {
+            let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+            if attempt == 0 {
+                Ok(Verification::Unverified(
+                    "temporary API failure".to_string(),
+                ))
+            } else {
+                Ok(Verification::Verified)
+            }
+        }
+    }
+
+    #[test]
+    fn transient_verification_failure_is_retried() {
+        let gh = FlakyGh {
+            attempts: AtomicUsize::new(0),
+        };
+        verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data").unwrap();
+        assert_eq!(gh.attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
     fn required_policy_succeeds_when_verified() {
         let gh = stub(true, true);
         verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data").unwrap();
@@ -279,7 +387,7 @@ mod tests {
     fn required_policy_fails_on_gh_execution_failure() {
         let gh = StubGh {
             available: true,
-            result: Verification::Unverified,
+            result: Verification::Unverified("not verified".to_string()),
             fails_to_run: true,
         };
         let error = verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data")

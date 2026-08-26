@@ -46,7 +46,8 @@ available, an unverifiable download still fails. An unverifiable self-update
 leaves the installed binary unchanged; see
 [Security model](SECURITY.md#build-provenance-verification). Do not set
 `DOTFILES_SKIP_ATTESTATION=1` unless you explicitly accept bypassing provenance
-verification.
+verification. For a one-off CLI self-update, `--skip-attestation` provides the
+same explicit bypass without changing the process environment.
 
 ## The binary never self-updates
 

@@ -333,6 +333,7 @@ mod root_tests {
             non_interactive: false,
             retry_failed: false,
             no_symbols: false,
+            skip_attestation: false,
             elevated_child: false,
         }
     }

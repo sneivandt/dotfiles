@@ -24,4 +24,10 @@ summary=$(printf '%s\n' "$summary" | awk -v len=72 \
   '{ if (length($0) > len) print substr($0, 1, len-3) "..."; else print; }')
 class=$(printf '%s' "$status" | tr '[:upper:]' '[:lower:]')
 jq -nc --arg text "$summary" --arg tooltip "$details" --arg class "$class" \
-  '{text:("&#xf001; " + $text), tooltip:$tooltip, class:$class}'
+  'def pango_escape:
+     gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;");
+   {
+     text:("&#xf001; " + ($text | pango_escape)),
+     tooltip:($tooltip | pango_escape),
+     class:$class
+   }'

@@ -46,12 +46,15 @@ the attestation check so the CLI can install its configured packages. A present
 `gh` command that cannot verify the attestation still fails the bootstrap.
 Self-update keeps its existing verification policy.
 
-| Environment variable | Effect |
+| Setting | Effect |
 |---|---|
 | unset | Verify when `gh` is available; warn and continue when it is absent during wrapper bootstrap |
+| `--skip-attestation` | Skip provenance verification for this CLI self-update |
 | `DOTFILES_SKIP_ATTESTATION=1` | Skip provenance verification entirely |
 
 An unverifiable self-update leaves the currently installed binary unchanged.
+The CLI retries verification three times before rejecting an asset. The final
+error includes the underlying `gh` output.
 Verification can be performed manually after bootstrap:
 
 ```sh

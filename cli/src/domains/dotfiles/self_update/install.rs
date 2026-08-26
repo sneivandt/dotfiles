@@ -7,7 +7,7 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result, bail};
 
-use super::attestation::{GhCli, Policy, SystemGh, policy_from_env, verify_provenance};
+use super::attestation::{GhCli, Policy, SystemGh, policy, verify_provenance};
 use super::cache::write_cache;
 use super::http::{HttpClient, download_bytes, verify_checksum};
 use super::paths::{asset_name, binary_path, old_binary_name, old_binary_path};
@@ -174,8 +174,13 @@ pub(super) fn smoke_test_binary(path: &Path) -> Result<()> {
 /// verification, binary replacement, or smoke test fails.  On a smoke-test
 /// failure the previous binary is restored from the backup written by
 /// [`replace_binary`].
-pub(super) fn download_and_install(root: &Path, tag: &str, client: &dyn HttpClient) -> Result<()> {
-    download_and_install_with_gh(root, tag, client, &SystemGh, policy_from_env())
+pub(super) fn download_and_install(
+    root: &Path,
+    tag: &str,
+    client: &dyn HttpClient,
+    skip_attestation: bool,
+) -> Result<()> {
+    download_and_install_with_gh(root, tag, client, &SystemGh, policy(skip_attestation))
 }
 
 fn download_and_install_with_gh(
@@ -239,7 +244,7 @@ mod tests {
             Ok(if self.verified {
                 super::super::attestation::Verification::Verified
             } else {
-                super::super::attestation::Verification::Unverified
+                super::super::attestation::Verification::Unverified("not verified".to_string())
             })
         }
     }

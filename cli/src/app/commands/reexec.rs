@@ -62,7 +62,12 @@ pub(crate) fn prepare_self_update(
     }
 
     let root = runner::resolve_root(global)?;
-    if crate::domains::dotfiles::self_update::pre_update(&root, &**log, global.dry_run)? {
+    if crate::domains::dotfiles::self_update::pre_update(
+        &root,
+        &**log,
+        global.dry_run,
+        global.skip_attestation,
+    )? {
         re_exec(&root, &**log);
     }
     Ok(run_lock)

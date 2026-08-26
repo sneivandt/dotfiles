@@ -87,6 +87,10 @@ pub struct GlobalOpts {
     #[arg(long, global = true)]
     pub no_symbols: bool,
 
+    /// Skip self-update build provenance verification
+    #[arg(long, global = true)]
+    pub skip_attestation: bool,
+
     /// Internal: marks a run spawned by a parent run to perform elevated tasks
     ///
     /// Hidden because it is an implementation detail of the elevation broker,
@@ -421,6 +425,13 @@ mod tests {
         let cli = Cli::parse_from(["dotfiles", "install", "--offline"]);
         assert!(cli.global.offline);
         assert!(matches!(cli.command, Command::Install(_)));
+    }
+
+    #[test]
+    fn parse_update_skip_attestation() {
+        let cli = Cli::parse_from(["dotfiles", "update", "--skip-attestation"]);
+        assert!(cli.global.skip_attestation);
+        assert!(matches!(cli.command, Command::Update(_)));
     }
 
     #[test]

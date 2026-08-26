@@ -135,6 +135,7 @@ jobs:
           DIR: ${{ github.workspace }}
         run: |
           python3 .github/workflows/scripts/linux/test-workspaces.py
+          sh .github/workflows/scripts/linux/test-playing.sh
           sh .github/workflows/scripts/linux/test-stocks.sh
 
   # ── Security ──────────────────────────────────────────

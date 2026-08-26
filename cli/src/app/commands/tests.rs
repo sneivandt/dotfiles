@@ -75,9 +75,58 @@ mod reexec_tests {
 
 #[cfg(test)]
 mod startup_log_tests {
-    use super::runner::startup_context_line;
+    use super::runner::{emit_startup_context, startup_context_line};
+    use crate::infra::logging::{MsgKind, Output};
     use crate::infra::platform::{Os, Platform};
+    use std::borrow::Cow;
     use std::path::Path;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct CapturingOutput {
+        messages: Mutex<Vec<(MsgKind, String)>>,
+    }
+
+    impl Output for CapturingOutput {
+        fn emit(&self, kind: MsgKind, message: Cow<'_, str>) {
+            self.messages
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((kind, message.into_owned()));
+        }
+    }
+
+    #[test]
+    fn repository_restart_does_not_repeat_startup_context() {
+        let output = CapturingOutput::default();
+
+        emit_startup_context(&output, "Update · profile desktop · Arch Linux", true);
+
+        assert!(
+            output
+                .messages
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty(),
+            "the restarted child must keep context in the run log without repeating it on the console"
+        );
+    }
+
+    #[test]
+    fn initial_process_emits_startup_context() {
+        let output = CapturingOutput::default();
+        let context = "Update · profile desktop · Arch Linux";
+
+        emit_startup_context(&output, context, false);
+
+        assert_eq!(
+            *output
+                .messages
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            vec![(MsgKind::Startup, context.to_string())]
+        );
+    }
 
     #[test]
     fn startup_context_uses_command_profile_platform_and_dry_run() {

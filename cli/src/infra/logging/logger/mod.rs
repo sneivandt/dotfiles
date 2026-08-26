@@ -490,9 +490,9 @@ impl Logger {
 
     /// Emit the single blank line that separates startup metadata from details.
     ///
-    /// The startup header calls this immediately, so the header always stands
-    /// apart even when the run produces no task output. The remaining callers
-    /// are idempotent guards for paths that emit before — or without — a header.
+    /// Callers defer this until the first task block or final totals so
+    /// consecutive startup lines remain a compact header. The guard is
+    /// idempotent for paths that emit before — or without — a header.
     pub fn separate_from_startup(&self) {
         if !self.startup_separator_emitted.swap(true, Ordering::Relaxed) {
             self.always("");
@@ -590,6 +590,32 @@ mod tests {
     fn logger_new() {
         let (log, _tmp, _guard) = isolated_logger();
         assert!(log.task_entries().is_empty(), "expected empty task list");
+    }
+
+    #[test]
+    fn consecutive_startup_lines_defer_the_separator() {
+        let (log, _tmp, _guard) = isolated_logger();
+
+        log.startup("Self update · old → new");
+        log.startup("Update · profile desktop · Arch Linux");
+
+        assert!(
+            !log.startup_separator_emitted.load(Ordering::Relaxed),
+            "startup lines should remain contiguous until details begin"
+        );
+    }
+
+    #[test]
+    fn summary_separates_startup_context_before_totals() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.startup("Update · profile desktop · Arch Linux");
+
+        log.print_summary();
+
+        assert!(
+            log.startup_separator_emitted.load(Ordering::Relaxed),
+            "a run without visible task rows still needs one separator before totals"
+        );
     }
 
     #[test]

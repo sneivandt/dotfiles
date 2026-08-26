@@ -85,6 +85,7 @@ fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: b
     };
 
     if let Err(e) = result {
+        log.separate_from_startup();
         report_failure(&e, &*log);
         elevation::wait_if_elevated();
         return ExitCode::FAILURE;

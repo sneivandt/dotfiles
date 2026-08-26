@@ -20,6 +20,7 @@ impl Logger {
     pub fn print_summary(&self) {
         let tasks = self.lock_tasks().clone();
         self.clear_status();
+        self.separate_from_startup();
 
         let elapsed = self.start.elapsed();
         let elapsed_str = format_elapsed(elapsed);

@@ -81,7 +81,15 @@ impl CommandRunner {
             &root,
             env.as_ref(),
         )?;
-        let profile = resolve_profile(global, &root, platform, overlay.as_deref(), log)?;
+        let repository_child = super::repository_reexec_active(env.as_ref());
+        let profile = resolve_profile(
+            global,
+            &root,
+            platform,
+            overlay.as_deref(),
+            repository_child,
+            log,
+        )?;
         let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
         let store = ConfigStore::from_config(config);
 
@@ -254,6 +262,7 @@ fn resolve_profile(
     root: &std::path::Path,
     platform: Platform,
     overlay: Option<&std::path::Path>,
+    repository_child: bool,
     log: &Logger,
 ) -> Result<profiles::Profile> {
     // Run-log only: the startup header must be the first console line.
@@ -268,18 +277,28 @@ fn resolve_profile(
         &crate::infra::env::SystemEnv,
         non_interactive,
     )?;
-    log.startup(startup_context_line(
+    let context = startup_context_line(
         &log.command_title(),
         &profile.name,
         platform,
         global.dry_run,
         overlay,
-    ));
-    // The header is metadata about the run, not part of it, so it always stands
-    // apart from whatever follows — including a run where nothing had work to do
-    // and the totals line is the only thing that follows.
-    log.separate_from_startup();
+    );
+    emit_startup_context(log, &context, repository_child);
     Ok(profile)
+}
+
+/// Emit startup context once across a repository-update restart.
+pub(super) fn emit_startup_context(
+    log: &dyn crate::infra::logging::Output,
+    context: &str,
+    repository_child: bool,
+) {
+    if repository_child {
+        log.run_event(LogEvent::Info, context);
+    } else {
+        log.startup(context);
+    }
 }
 
 /// Build the single startup header line.

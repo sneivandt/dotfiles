@@ -146,7 +146,7 @@ managed target are errors.
 
 Every non-`base` symlink category must have an exact section in
 `manifest.toml`, and every manifest section must exist in `symlinks.toml`.
-`dotfiles test` verifies this section synchronization. The `config_drift`
+`dotfiles check` verifies this section synchronization. The `config_drift`
 integration test separately verifies source-path coverage, compatible subset
 sections, and that manifest paths exist.
 
@@ -341,7 +341,7 @@ The script resource supports four execution intents:
 - preview through `--dryrun`
 - removal through `--remove`
 
-Install and update invoke check, apply, or preview as appropriate. The resource
+Install invokes check, apply, or preview as appropriate. The resource
 supports removal, but dynamic scripts are not registered in the current
 uninstall catalog, so `dotfiles uninstall` does not invoke `--remove`.
 

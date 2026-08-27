@@ -212,6 +212,7 @@ mod tests {
             run: None,
             list: false,
             command: None,
+            verbose: false,
         }
     }
 

@@ -25,10 +25,6 @@ pub fn run() -> ExitCode {
     drop(enable_ansi_support::enable_ansi_support()); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
 
-    if args.global.elevated_child {
-        elevation::mark_elevated_child();
-    }
-
     // Meta commands run standalone and exit before the logging subsystem,
     // elevation, and task engine are initialised. Narrowing to `EngineCommand`
     // here keeps the engine dispatch in `run_engine` total.
@@ -46,7 +42,7 @@ pub fn run() -> ExitCode {
         // Log viewing is read-only: do not initialize the tracing subscriber or
         // create a new log file just to display an existing log.
         cli::Command::Log(opts) => {
-            return match commands::log::run(&opts, args.verbose) {
+            return match commands::log::run(&opts, opts.verbose) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => {
                     drop(writeln!(std::io::stderr().lock(), "{e:#}"));
@@ -54,19 +50,62 @@ pub fn run() -> ExitCode {
                 }
             };
         }
-        cli::Command::Install(opts) => cli::EngineCommand::Install(opts),
-        cli::Command::Update(opts) => cli::EngineCommand::Update(opts),
-        cli::Command::Uninstall(opts) => cli::EngineCommand::Uninstall(opts),
-        cli::Command::Test(opts) => cli::EngineCommand::Test(opts),
-        cli::Command::Tasks => cli::EngineCommand::Tasks,
+        cli::Command::Tasks(opts) => {
+            return standalone(commands::tasks::run(&opts));
+        }
+        cli::Command::Profiles(opts) => {
+            return standalone(commands::profiles::run(&opts));
+        }
+        cli::Command::Install(opts) => install_command(opts, false),
+        cli::Command::Update(opts) => install_command(opts, true),
+        cli::Command::Uninstall(opts) => {
+            let (global, opts, verbose) = opts.into_engine_parts();
+            cli::EngineCommand::Uninstall {
+                global,
+                opts,
+                verbose,
+            }
+        }
+        cli::Command::Check(opts) | cli::Command::Test(opts) => {
+            let (global, opts, verbose) = opts.into_engine_parts();
+            cli::EngineCommand::Check {
+                global,
+                opts,
+                verbose,
+            }
+        }
     };
 
-    run_engine(&command, &args.global, args.verbose)
+    run_engine(&command)
+}
+
+fn install_command(opts: cli::InstallCommandOpts, force_update_pins: bool) -> cli::EngineCommand {
+    let (global, opts, update_pins, verbose) = opts.into_engine_parts(force_update_pins);
+    cli::EngineCommand::Install {
+        global,
+        opts,
+        update_pins,
+        verbose,
+    }
+}
+
+fn standalone(result: anyhow::Result<()>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            drop(writeln!(std::io::stderr().lock(), "{error:#}"));
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// Initialise the runtime and dispatch a command through the task engine.
-fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: bool) -> ExitCode {
-    let mut raw_log = logging::init(verbose, !global.no_symbols, command.name());
+fn run_engine(command: &cli::EngineCommand) -> ExitCode {
+    let global = command.global();
+    if global.elevated_child {
+        elevation::mark_elevated_child();
+    }
+    let mut raw_log = logging::init(command.verbose(), !global.no_symbols, command.name());
     raw_log.set_dry_run(global.dry_run);
     let log = std::sync::Arc::new(raw_log);
 
@@ -77,11 +116,13 @@ fn run_engine(command: &cli::EngineCommand, global: &cli::GlobalOpts, verbose: b
     interrupt::install(&token, &log);
 
     let result = match command {
-        cli::EngineCommand::Install(opts) => commands::install::run(global, opts, &log, &token),
-        cli::EngineCommand::Update(opts) => commands::update::run(global, opts, &log, &token),
-        cli::EngineCommand::Uninstall(opts) => commands::uninstall::run(global, opts, &log, &token),
-        cli::EngineCommand::Test(opts) => commands::test::run(global, opts, &log, &token),
-        cli::EngineCommand::Tasks => commands::tasks::run(global, &log, &token),
+        cli::EngineCommand::Install {
+            opts, update_pins, ..
+        } => commands::install::run(global, opts, *update_pins, &log, &token),
+        cli::EngineCommand::Uninstall { opts, .. } => {
+            commands::uninstall::run(global, opts, &log, &token)
+        }
+        cli::EngineCommand::Check { opts, .. } => commands::check::run(global, opts, &log, &token),
     };
 
     if let Err(e) = result {

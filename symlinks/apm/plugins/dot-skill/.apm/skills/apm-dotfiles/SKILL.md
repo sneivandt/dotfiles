@@ -46,6 +46,6 @@ of adding a near-duplicate.
 
 ## Verify
 
-For public APM config or plugin changes run `./dotfiles.sh install -d`. Validate
+For public APM config or plugin changes run `./dotfiles.sh install -n`. Validate
 private-overlay changes from a checkout where that overlay is configured. Use
 the repository's `ai-tooling-apm` skill for Rust implementation details.

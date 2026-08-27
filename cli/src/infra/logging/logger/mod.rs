@@ -597,7 +597,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
 
         log.startup("Self update · old → new");
-        log.startup("Update · profile desktop · Arch Linux");
+        log.startup("Install · profile desktop · Arch Linux");
 
         assert!(
             !log.startup_separator_emitted.load(Ordering::Relaxed),
@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn summary_separates_startup_context_before_totals() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.startup("Update · profile desktop · Arch Linux");
+        log.startup("Install · profile desktop · Arch Linux");
 
         log.print_summary();
 
@@ -623,9 +623,8 @@ mod tests {
         let cache = tempfile::tempdir().expect("temporary cache should be created");
         for (command, expected) in [
             ("install", "Install"),
-            ("update", "Update"),
             ("uninstall", "Uninstall"),
-            ("test", "Test"),
+            ("check", "Check"),
         ] {
             let log = Logger::new_in(command, cache.path());
             assert_eq!(log.command_title(), expected);

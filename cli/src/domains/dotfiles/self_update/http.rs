@@ -99,7 +99,7 @@ pub(super) fn default_http_client() -> UreqClient {
 
 /// Perform a GET, retrying transient network and server failures.
 ///
-/// Self-update runs unattended at the end of `dotfiles update`, so a single
+/// Self-update runs unattended before mutating commands, so a single
 /// dropped connection should not fail the run when a retry would succeed.
 /// Permanent failures (404, checksum host misconfiguration, TLS errors) are
 /// returned on the first attempt so genuine problems stay fast and visible.

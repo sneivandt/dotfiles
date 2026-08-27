@@ -30,7 +30,7 @@ before execution.
 To build from the current checkout:
 
 ```powershell
-.\dotfiles.ps1 --build test
+.\dotfiles.ps1 --build check
 ```
 
 The CLI replaces its own binary in place during a self update. Windows allows a
@@ -163,7 +163,7 @@ PowerShell profile files are delivered from the repository's `symlinks/` tree.
 The active Windows category selects them, and normal symlink convergence keeps
 the home targets pointed at the checkout.
 
-`dotfiles test` attempts PSScriptAnalyzer whenever `pwsh` is available. If the
+`dotfiles check` attempts PSScriptAnalyzer whenever `pwsh` is available. If the
 PSScriptAnalyzer module is missing, the PowerShell validation task fails and
 reports the module error.
 

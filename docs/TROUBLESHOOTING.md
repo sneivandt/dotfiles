@@ -119,7 +119,7 @@ An unknown explicit profile is an error; use a name declared in
 Run:
 
 ```bash
-dotfiles --root . test --verbose
+dotfiles check --root . --verbose
 ```
 
 Core required files are `profiles.toml`, `symlinks.toml`, `packages.toml`, and
@@ -140,8 +140,8 @@ Confirm the path points to the overlay repository root and pass it to both
 validation and install:
 
 ```bash
-dotfiles --root . --overlay C:\path\to\overlay test --verbose
-dotfiles --root . --overlay C:\path\to\overlay install --dry-run --verbose
+dotfiles check --root . --overlay C:\path\to\overlay --verbose
+dotfiles install --root . --overlay C:\path\to\overlay --dry-run --verbose
 ```
 
 Remember:
@@ -164,14 +164,14 @@ A task may not run because:
 - a dependency failed
 - current state already matches desired state
 
-Run `dotfiles tasks` to discover stable selectors, then retry with one exact
+Run `dotfiles tasks --profile <profile>` to discover stable selectors, then retry with one exact
 selector and verbose output:
 
 ```bash
 dotfiles install --only systemd --dry-run --verbose
 ```
 
-Use `dotfiles update` for **APM package updates**.
+Use `dotfiles install --update-pins` for **APM package updates**.
 
 ## A symlink cannot be created on Windows
 
@@ -288,11 +288,11 @@ task reports it as stale or broken. Later AUR operations call the validated
 ## APM update does not run or fails
 
 **APM package updates** is update-only and depends on the regular APM install
-task. Run both selectors with the update command:
+task. Run both selectors with pin updates enabled:
 
 ```bash
-dotfiles update --only apm,apm-update --dry-run --verbose
-dotfiles update --only apm,apm-update --verbose
+dotfiles install --update-pins --only apm,apm-update --dry-run --verbose
+dotfiles install --update-pins --only apm,apm-update --verbose
 ```
 
 The preview delegates planning to `apm update -g --dry-run`; apply delegates to

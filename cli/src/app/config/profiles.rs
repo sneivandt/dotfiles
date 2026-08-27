@@ -23,6 +23,33 @@ pub use prompt::prompt_interactive;
 pub use resolution::Profile;
 pub use resolution::resolve;
 
+/// One configured role profile shown by `dotfiles profiles`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileInfo {
+    /// Profile name used with `--profile`.
+    pub name: String,
+    /// Optional user-facing description from `profiles.toml`.
+    pub description: Option<String>,
+}
+
+/// Load configured role profiles in stable name order.
+///
+/// # Errors
+///
+/// Returns an error when `profiles.toml` cannot be read or parsed.
+pub fn available(conf_dir: &Path) -> Result<Vec<ProfileInfo>, ConfigError> {
+    let definitions = load_definitions(&conf_dir.join("profiles.toml"))?;
+    let mut profiles = definitions
+        .into_iter()
+        .map(|(name, definition)| ProfileInfo {
+            name,
+            description: definition.description,
+        })
+        .collect::<Vec<_>>();
+    profiles.sort_unstable_by(|left, right| left.name.cmp(&right.name));
+    Ok(profiles)
+}
+
 pub(super) fn configured_categories(conf_dir: &Path) -> Result<Vec<Category>, ConfigError> {
     let definitions = load_definitions(&conf_dir.join("profiles.toml"))?;
     let mut categories = vec![
@@ -92,6 +119,34 @@ pub fn resolve_from_args(
     resolve_with_defs(&name, &defs, platform).map_err(Into::into)
 }
 
+/// Resolve a profile for a read-only discovery command without prompting or
+/// persisting a selection.
+///
+/// Selection keeps the normal CLI, environment, and repository precedence.
+///
+/// # Errors
+///
+/// Returns an error if no profile has already been selected or the selected
+/// profile is invalid.
+pub fn resolve_read_only(
+    cli_profile: Option<&str>,
+    root: &Path,
+    platform: Platform,
+    env: &dyn crate::infra::env::Env,
+) -> Result<Profile> {
+    let definitions = load_definitions(&root.join("conf/profiles.toml"))?;
+    let name = cli_profile
+        .map(str::to_owned)
+        .or_else(|| read_from_env(env))
+        .or_else(|| read_persisted(root))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "profile selection is required; pass --profile or run 'dotfiles profiles'"
+            )
+        })?;
+    resolve_with_defs(&name, &definitions, platform).map_err(Into::into)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +189,53 @@ mod tests {
             error.to_string().contains("profile selection is required"),
             "unexpected error: {error:#}"
         );
+    }
+
+    #[test]
+    fn available_profiles_are_sorted_with_descriptions() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let conf = root.path().join("conf");
+        std::fs::create_dir(&conf).expect("create conf");
+        std::fs::write(
+            conf.join("profiles.toml"),
+            "[desktop]\ndescription = 'GUI'\n[base]\ndescription = 'CLI'\n",
+        )
+        .expect("write profiles");
+
+        assert_eq!(
+            available(&conf).expect("available profiles"),
+            vec![
+                ProfileInfo {
+                    name: "base".to_string(),
+                    description: Some("CLI".to_string()),
+                },
+                ProfileInfo {
+                    name: "desktop".to_string(),
+                    description: Some("GUI".to_string()),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn read_only_resolution_requires_an_existing_selection() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let conf = root.path().join("conf");
+        std::fs::create_dir(&conf).expect("create conf");
+        std::fs::write(
+            conf.join("profiles.toml"),
+            "[base]\ninclude = []\nexclude = []\n",
+        )
+        .expect("write profiles");
+
+        let error = resolve_read_only(
+            None,
+            root.path(),
+            linux_platform(),
+            &crate::infra::env::MapEnv::new(),
+        )
+        .expect_err("discovery should not prompt");
+        assert!(error.to_string().contains("pass --profile"));
     }
 
     fn resolve_default(

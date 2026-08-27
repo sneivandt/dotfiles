@@ -145,7 +145,7 @@ $StageActions = @{
     config   = {
         Invoke-CargoStage @(
             'run', '--profile', $CargoProfile, '--manifest-path', $Manifest,
-            '--', '--root', $RepoRoot, 'test'
+            '--', 'check', '--root', $RepoRoot
         )
     }
 

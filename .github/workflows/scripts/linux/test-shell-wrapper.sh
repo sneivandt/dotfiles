@@ -317,13 +317,13 @@ EOF
   chmod +x "$tmpdir/fake-bin/curl"
 
   PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=1 \
-    "$tmpdir/dotfiles.sh" install -p desktop -d
+    "$tmpdir/dotfiles.sh" install -p desktop -n
 
   expected=$(cat <<'EOF'
 install
 -p
 desktop
--d
+-n
 EOF
 )
   actual=$(cat "$tmpdir/args.txt")
@@ -372,13 +372,13 @@ printf '%s\n' "$@" > "$DOTFILES_ROOT/forwarded-args.txt"
 EOF
   chmod +x "$tmpdir/cli/target/dev-opt/dotfiles"
 
-  PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --build install -p desktop -d -v
+  PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --build install -p desktop -n -v
 
   expected=$(cat <<EOF
 install
 -p
 desktop
--d
+-n
 -v
 EOF
 )

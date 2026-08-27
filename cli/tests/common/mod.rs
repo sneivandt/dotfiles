@@ -336,7 +336,7 @@ pub(crate) fn run_install_dry_run(
         dry_run: true,
         overlay: None,
         parallel,
-        offline: true,
+        no_repo_update: true,
         require_complete: false,
         non_interactive: false,
         retry_failed: false,
@@ -344,12 +344,17 @@ pub(crate) fn run_install_dry_run(
         skip_attestation: false,
         elevated_child: false,
     };
-    let opts = test_api::cli::InstallOpts { skip, only };
+    let opts = test_api::cli::InstallOpts {
+        skip,
+        only,
+        with_deps: false,
+    };
     let log: Arc<Logger> = Arc::new(Logger::new("test-install-dry-run"));
 
     test_api::commands::install::run(
         &global,
         &opts,
+        false,
         &log,
         &test_api::engine::CancellationToken::new(),
     )

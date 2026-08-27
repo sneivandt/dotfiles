@@ -1,7 +1,7 @@
 # Task reference
 
-This page describes the CLI's visible install, update, uninstall, validation,
-and dynamic overlay tasks. Run `dotfiles tasks` for the active list of
+This page describes the CLI's visible install, pin-update, uninstall, validation,
+and dynamic overlay tasks. Run `dotfiles tasks --profile <profile>` for the active list of
 selectors, labels, and command membership.
 
 Each task has separate metadata for:
@@ -14,7 +14,8 @@ Each task has separate metadata for:
 Selectors are case-insensitive after punctuation and whitespace are normalized
 to hyphens. Matching is exact against either the stable selector or the full
 normalized display label; it does not remove action words, use the first word,
-or perform substring matching.
+or perform substring matching. Unknown selectors fail before execution. Add
+`--with-deps` to include the dependency closure selected by `--only`.
 
 ## Scheduling model
 
@@ -25,42 +26,43 @@ independent work sequentially but does not guarantee a display order.
 
 Every ordering requirement is an explicit edge. Catalog insertion order is not
 scheduling policy. Tasks marked `update_only` are excluded from `install` and
-included by `update`; this metadata controls command membership, not ordering.
+included by `install --update-pins`; this metadata controls command membership,
+not ordering.
 
 Built-in mutating tasks are idempotent and dry-run safe. A task may report
 current, skipped, or not applicable without performing work. Overlay scripts
 are external programs, so each script must honor the idempotency and dry-run
 contract itself.
 
-## Install and update tasks
+## Installation tasks
 
 ### Catalog overview
 
 | Selector | Task label | Commands | Purpose |
 |---|---|---|---|
-| `developer-mode` | Windows Developer Mode | install, update | Enables unprivileged symlink creation |
-| `excluded-symlinks` | Excluded home files | install, update | Preserves managed files before sparse checkout removes their sources |
-| `sparse-checkout` | Sparse checkout | install, update | Writes profile-derived sparse-checkout rules |
-| `repository` | Dotfiles repository | install, update | Synchronizes repository content |
-| `git` | Git settings | install, update | Applies declared global Git settings |
-| `agent-settings` | Agent settings | install, update | Converges selected harness settings |
-| `git-hooks` | Git hooks | install, update, uninstall | Installs or removes repository-maintained hooks |
-| `completions` | Shell completions | install, update | Installs generated shell completions |
-| `packages` | System packages | install, update | Installs non-AUR packages through pacman or winget |
-| `paru` | Paru package manager | install, update | Bootstraps the `paru` AUR helper |
-| `aur-packages` | AUR packages | install, update | Installs package entries marked `aur = true` |
-| `symlinks` | Home symlinks | install, update, uninstall | Converges or materializes managed home links |
-| `file-permissions` | File permissions | install, update | Applies declared Unix modes |
-| `shell` | Default shell | install, update | Converges the configured login shell |
-| `pam-keyring` | GNOME Keyring PAM integration | install, update | Unlocks the login keyring at Arch console login and synchronizes password changes |
-| `systemd` | Systemd units | install, update | Enables and starts configured units, or enables user units offline during target provisioning |
-| `registry` | Windows registry | install, update | Converges declared current-user values |
-| `vscode-extensions` | VS Code extensions | install, update | Installs missing declared extensions, or schedules them for first login during target provisioning |
-| `apm` | APM packages | install, update | Converges merged APM manifests and AI tooling |
-| `apm-update` | APM package updates | update | Advances eligible pinned APM dependencies |
-| `wsl-config` | WSL configuration files | install, update | Converges required `/etc/wsl.conf` settings |
-| `launcher` | Dotfiles launcher | install, update, uninstall | Installs or removes the platform wrapper |
-| `path` | Shell PATH | install, update | Ensures the launcher directory is on user PATH |
+| `developer-mode` | Windows Developer Mode | install | Enables unprivileged symlink creation |
+| `excluded-symlinks` | Excluded home files | install | Preserves managed files before sparse checkout removes their sources |
+| `sparse-checkout` | Sparse checkout | install | Writes profile-derived sparse-checkout rules |
+| `repository` | Dotfiles repository | install | Synchronizes repository content |
+| `git` | Git settings | install | Applies declared global Git settings |
+| `agent-settings` | Agent settings | install | Converges selected harness settings |
+| `git-hooks` | Git hooks | install, uninstall | Installs or removes repository-maintained hooks |
+| `completions` | Shell completions | install | Installs generated shell completions |
+| `packages` | System packages | install | Installs non-AUR packages through pacman or winget |
+| `paru` | Paru package manager | install | Bootstraps the `paru` AUR helper |
+| `aur-packages` | AUR packages | install | Installs package entries marked `aur = true` |
+| `symlinks` | Home symlinks | install, uninstall | Converges or materializes managed home links |
+| `file-permissions` | File permissions | install | Applies declared Unix modes |
+| `shell` | Default shell | install | Converges the configured login shell |
+| `pam-keyring` | GNOME Keyring PAM integration | install | Unlocks the login keyring at Arch console login and synchronizes password changes |
+| `systemd` | Systemd units | install | Enables and starts configured units, or enables user units offline during target provisioning |
+| `registry` | Windows registry | install | Converges declared current-user values |
+| `vscode-extensions` | VS Code extensions | install | Installs missing declared extensions, or schedules them for first login during target provisioning |
+| `apm` | APM packages | install | Converges merged APM manifests and AI tooling |
+| `apm-update` | APM package updates | install --update-pins | Advances eligible pinned APM dependencies |
+| `wsl-config` | WSL configuration files | install | Converges required `/etc/wsl.conf` settings |
+| `launcher` | Dotfiles launcher | install, uninstall | Installs or removes the platform wrapper |
+| `path` | Shell PATH | install | Ensures the launcher directory is on user PATH |
 
 `Report overlay scripts` is an internal orchestration task. It keeps its
 scheduler identity and run-log entry, but does not appear in `dotfiles tasks`,
@@ -121,9 +123,9 @@ static and overlay tasks, omits repository synchronization, and runs
 preservation plus sparse checkout before remaining work. The parent retains the
 run lock until the child exits.
 
-Install and update both synchronize the repository; only tasks explicitly
-marked update-only are exclusive to the update command.
-With `--offline`, repository synchronization is omitted and the current
+Installation synchronizes the repository whether or not `--update-pins` is
+present. Only tasks explicitly marked update-only require that option.
+With `--no-repo-update`, repository synchronization is omitted and the current
 checkout is treated as the desired source; the normal preservation and sparse
 checkout tasks still converge it without activating the restart boundary.
 
@@ -282,7 +284,8 @@ restarted.
 #### APM package updates
 
 This update-only task depends on **APM packages**. It runs only during
-`dotfiles update`. Apply invokes `apm update -g --yes` directly and dry-run uses
+`dotfiles install --update-pins`. Apply invokes `apm update -g --yes` directly;
+dry-run uses
 `apm update -g --dry-run`. The task compares the exact lockfile before and after
 because current APM preserves unchanged serialization. The install dependency
 ensures the generated manifest is converged before update advances matching
@@ -328,7 +331,7 @@ registry, shell, WSL, APM, editor, or overlay-script changes.
 
 ## Validation tasks
 
-`dotfiles test` executes these seven validation tasks through the dependency
+`dotfiles check` executes these seven validation tasks through the dependency
 scheduler:
 
 | Selector | Task label | What it checks |
@@ -368,7 +371,7 @@ coverage, compatible subset sections, and the existence of manifest paths.
 dotfiles install --only symlinks --dry-run
 
 # Run package and APM-related update tasks, except AUR tasks
-dotfiles update --only "packages,apm,apm-update" --skip aur-packages
+dotfiles install --update-pins --only "packages,apm,apm-update" --skip aur-packages
 
 # Run a dynamic overlay task by its generated stable selector
 dotfiles install --overlay C:\private-dotfiles --only script-private-tools

@@ -27,7 +27,7 @@ jobs, coverage, or mutation testing.
 | `fmt` | `cargo fmt --check` |
 | `clippy` | `cargo clippy --all-targets -D warnings` |
 | `test` | `cargo test` |
-| `config` | `dotfiles --root . test` (repository validator) |
+| `config` | `dotfiles check --root .` (repository validator) |
 | `docs` | Relative markdown links resolve; documented task selectors exist (Linux script only) |
 | `shell` | ShellCheck over wrappers, hooks, and CI scripts |
 | `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
@@ -82,7 +82,7 @@ cargo test --manifest-path cli/Cargo.toml --test install_command test_name
 
 ## CLI validation
 
-`dotfiles test` is the user-facing repository validator. It checks:
+`dotfiles check` is the user-facing repository validator. It checks:
 
 - loader warnings
 - symlink source existence
@@ -94,13 +94,13 @@ cargo test --manifest-path cli/Cargo.toml --test install_command test_name
   must also be installed or the check fails
 
 ```bash
-dotfiles --root . test --verbose
+dotfiles check --root . --verbose
 ```
 
 When an overlay is involved, always validate the combined configuration:
 
 ```bash
-dotfiles --root . --overlay C:\path\to\private-dotfiles test
+dotfiles check --root . --overlay C:\path\to\private-dotfiles
 ```
 
 ## Dry-run testing
@@ -109,9 +109,9 @@ Dry-run is part of the mutation contract. Preview the smallest affected task
 set, then inspect applicability and planned actions:
 
 ```bash
-dotfiles --root . install --only symlinks --dry-run --verbose
-dotfiles --root . update --only apm,apm-update --dry-run --verbose
-dotfiles --root . uninstall --dry-run --verbose
+dotfiles install --root . --only symlinks --dry-run --verbose
+dotfiles install --root . --update-pins --only apm,apm-update --dry-run --verbose
+dotfiles uninstall --root . --dry-run --verbose
 ```
 
 A dry run must not change files, package state, registry values, unit state, or
@@ -185,7 +185,7 @@ validated on Windows.
 |---|---|---|---|
 | Build, Clippy, tests | yes | yes | |
 | All-target coverage report | yes | yes | Informational HTML artifact |
-| Profile dry-run and `dotfiles test` | yes | yes | `base` and `desktop` |
+| Profile dry-run and `dotfiles check` | yes | yes | `base` and `desktop` |
 | Install/uninstall round-trip | yes | yes | |
 | Wrapper | yes | yes | `dotfiles.sh` / `dotfiles.ps1` |
 | Application: git | yes | yes | Windows also asserts the `core.autocrlf` override |
@@ -215,7 +215,7 @@ outside any repository. Installation removes the obsolete managed
 
 | Change | Minimum focused validation |
 |---|---|
-| TOML data | `config_drift` plus `dotfiles test` |
+| TOML data | `config_drift` plus `dotfiles check` |
 | Task metadata or dependencies | relevant command suite plus `task_execution` |
 | Resource behavior | domain unit tests plus affected command/e2e suite |
 | Environment-dependent behavior | unit tests injecting a fixed environment, not process-global variables |

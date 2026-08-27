@@ -63,6 +63,32 @@ pub fn resolve_from_args(
     resolve_from_args_with_confirmation(cli_overlay, root, env, confirm_linked_worktree)
 }
 
+/// Resolve an overlay for a read-only discovery command without persisting an
+/// explicit path.
+///
+/// Explicit linked worktrees retain the normal confirmation requirement.
+///
+/// # Errors
+///
+/// Returns an error if a linked worktree is declined or its confirmation
+/// prompt cannot be read.
+pub fn resolve_read_only(
+    cli_overlay: Option<&Path>,
+    root: &Path,
+    env: &dyn crate::infra::env::Env,
+) -> Result<Option<PathBuf>> {
+    if let Some(path) = cli_overlay {
+        if is_linked_worktree(path) && !confirm_linked_worktree(path)? {
+            bail!(
+                "overlay path {} is a linked Git worktree; selection cancelled",
+                path.display()
+            );
+        }
+        return Ok(Some(path.to_path_buf()));
+    }
+    Ok(read_from_env(env).or_else(|| read_persisted(root)))
+}
+
 #[allow(
     clippy::print_stderr,
     reason = "overlay persistence failures are intentionally surfaced before logger setup completes"
@@ -211,6 +237,19 @@ mod tests {
         let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new())
             .expect("missing overlay should resolve");
         assert_eq!(result, None);
+        drop(dir);
+    }
+
+    #[test]
+    fn read_only_resolution_does_not_persist_an_explicit_overlay() {
+        let (dir, root) = init_test_repo();
+        let overlay = PathBuf::from("/temporary/overlay");
+
+        let result = resolve_read_only(Some(&overlay), &root, &crate::infra::env::MapEnv::new())
+            .expect("read-only overlay resolution");
+
+        assert_eq!(result, Some(overlay));
+        assert_eq!(read_persisted(&root), None);
         drop(dir);
     }
 

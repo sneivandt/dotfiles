@@ -2,18 +2,21 @@
 
 use std::collections::{HashMap, HashSet};
 
+use anyhow::{Result, bail};
+
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{Logger, Output};
 
-/// Warn about filters that match no task, then return the tasks that survive them.
+/// Validate task selectors, then return the tasks that survive them.
 pub(crate) fn apply_task_filters<'a>(
     all_tasks: &'a [Box<dyn Task>],
     additional_known_tasks: &[Box<dyn Task>],
     only: &[String],
     skip: &[String],
+    with_dependencies: bool,
     log: &Logger,
-) -> Vec<&'a dyn Task> {
+) -> Result<Vec<&'a dyn Task>> {
     let known_task_refs: Vec<&dyn Task> = all_tasks
         .iter()
         .chain(additional_known_tasks)
@@ -21,22 +24,38 @@ pub(crate) fn apply_task_filters<'a>(
         .collect();
     let unmatched_only = unmatched_filters(&known_task_refs, only);
     let unmatched_skip = unmatched_filters(&known_task_refs, skip);
+    reject_unmatched_filters(&known_task_refs, &unmatched_only, "--only")?;
+    reject_unmatched_filters(&known_task_refs, &unmatched_skip, "--skip")?;
+
+    let mut selected = all_tasks
+        .iter()
+        .chain(additional_known_tasks)
+        .filter(|task| {
+            only.is_empty()
+                || only
+                    .iter()
+                    .any(|filter| task_matches_filter(task.as_ref(), filter))
+        })
+        .map(|task| task.task_id())
+        .collect::<HashSet<_>>();
+    if with_dependencies {
+        include_dependency_closure(&known_task_refs, &mut selected);
+    }
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
-        .filter(|task| task_passes_filters(task.as_ref(), only, skip))
+        .filter(|task| {
+            selected.contains(&task.task_id())
+                && !skip
+                    .iter()
+                    .any(|filter| task_matches_filter(task.as_ref(), filter))
+        })
         .map(Box::as_ref)
         .collect();
     let omitted_dependencies = omitted_dependencies(all_tasks, &filtered);
 
-    if !log.is_verbose()
-        && (!unmatched_only.is_empty()
-            || !unmatched_skip.is_empty()
-            || !omitted_dependencies.is_empty())
-    {
+    if !log.is_verbose() && !omitted_dependencies.is_empty() {
         log.separate_from_startup();
     }
-    warn_unmatched_filters(&unmatched_only, "--only", log);
-    warn_unmatched_filters(&unmatched_skip, "--skip", log);
     warn_omitted_dependencies(&omitted_dependencies, log);
 
     if !only.is_empty() || !skip.is_empty() {
@@ -48,7 +67,29 @@ pub(crate) fn apply_task_filters<'a>(
         ));
     }
 
-    filtered
+    Ok(filtered)
+}
+
+fn include_dependency_closure(tasks: &[&dyn Task], selected: &mut HashSet<TaskId>) {
+    let by_id = tasks
+        .iter()
+        .map(|task| (task.task_id(), *task))
+        .collect::<HashMap<_, _>>();
+    let mut pending = selected.iter().cloned().collect::<Vec<_>>();
+    while let Some(task_id) = pending.pop() {
+        let Some(task) = by_id.get(&task_id) else {
+            continue;
+        };
+        for dependency in task
+            .dependencies()
+            .iter()
+            .chain(task.ordering_dependencies())
+        {
+            if by_id.contains_key(dependency) && selected.insert(dependency.clone()) {
+                pending.push(dependency.clone());
+            }
+        }
+    }
 }
 
 /// Return filters that do not match any known task.
@@ -60,11 +101,38 @@ pub(crate) fn unmatched_filters<'a>(tasks: &[&dyn Task], filters: &'a [String]) 
         .collect()
 }
 
-/// Warn for each previously identified unmatched filter.
-pub(crate) fn warn_unmatched_filters(filters: &[&str], flag: &str, log: &dyn Output) {
-    for filter in filters {
-        log.warn(format!("{flag} '{filter}' did not match any task"));
+fn reject_unmatched_filters(tasks: &[&dyn Task], filters: &[&str], flag: &str) -> Result<()> {
+    if filters.is_empty() {
+        return Ok(());
     }
+    let messages = filters
+        .iter()
+        .map(|filter| {
+            closest_selector(tasks, filter).map_or_else(
+                || format!("'{filter}'"),
+                |selector| format!("'{filter}' (did you mean '{selector}'?)"),
+            )
+        })
+        .collect::<Vec<_>>();
+    bail!(
+        "{flag} did not match a task selector: {}. Run 'dotfiles tasks' to list selectors",
+        messages.join(", ")
+    )
+}
+
+fn closest_selector<'a>(tasks: &[&'a dyn Task], filter: &str) -> Option<&'a str> {
+    let normalized = normalize_task_filter(filter);
+    tasks
+        .iter()
+        .map(|task| {
+            (
+                task.selector(),
+                strsim::jaro_winkler(&normalized, &normalize_task_filter(task.selector())),
+            )
+        })
+        .filter(|(_, score)| *score >= 0.75)
+        .max_by(|left, right| left.1.total_cmp(&right.1))
+        .map(|(selector, _)| selector)
 }
 
 /// Return whether a task passes both the inclusion and exclusion filters.
@@ -325,26 +393,14 @@ mod tests {
     }
 
     #[test]
-    fn warn_unmatched_filters_reports_each_unknown_filter_once() {
+    fn unmatched_filters_fail_with_a_selector_suggestion() {
         let tasks: [&dyn Task; 2] = [&SampleTask, &OtherTask];
-        let log = RecordingOutput::default();
-
-        let filters = [
-            "symlinks".to_string(),
-            "typo".to_string(),
-            "nope".to_string(),
-        ];
+        let filters = ["symlink".to_string()];
         let unmatched = unmatched_filters(&tasks, &filters);
-        warn_unmatched_filters(&unmatched, "--only", &log);
+        let error = reject_unmatched_filters(&tasks, &unmatched, "--only")
+            .expect_err("unknown selector should fail");
 
-        assert_eq!(
-            log.warnings(),
-            vec![
-                "--only 'typo' did not match any task".to_string(),
-                "--only 'nope' did not match any task".to_string(),
-            ],
-            "only unmatched filters should warn, preserving user order"
-        );
+        assert!(error.to_string().contains("did you mean 'symlinks'?"));
     }
 
     #[test]
@@ -357,8 +413,10 @@ mod tests {
             &[],
             &["dependent".to_string()],
             &[],
+            false,
             &Logger::new("test"),
-        );
+        )
+        .expect("valid filter");
         assert_eq!(
             filtered.iter().map(|task| task.name()).collect::<Vec<_>>(),
             vec!["Dependent"],
@@ -373,6 +431,25 @@ mod tests {
                 "task 'Dependent' will run without filtered prerequisite 'Home symlinks'; assuming it is already satisfied"
                     .to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn with_dependencies_adds_the_transitive_closure() {
+        let all: Vec<Box<dyn Task>> = vec![Box::new(SampleTask), Box::new(DependentTask)];
+        let filtered = apply_task_filters(
+            &all,
+            &[],
+            &["dependent".to_string()],
+            &[],
+            true,
+            &Logger::new("test"),
+        )
+        .expect("valid filter");
+
+        assert_eq!(
+            filtered.iter().map(|task| task.name()).collect::<Vec<_>>(),
+            vec!["Home symlinks", "Dependent"]
         );
     }
 }

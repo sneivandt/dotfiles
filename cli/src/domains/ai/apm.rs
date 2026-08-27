@@ -8,7 +8,7 @@
 //!
 //! The APM flow is split into focused modules:
 //! - [`install`] converges the generated manifest and runs `apm install`.
-//! - [`update`] advances locked dependency refs for the `update` command.
+//! - [`update`] advances locked dependency refs for `install --update-pins`.
 //! - [`commands`] centralizes APM process invocation and common error handling.
 //! - [`managed_targets`] delegates Copilot App to APM, preserves Cowork's
 //!   protected directories, and retains the Copilot App autopilot policy.

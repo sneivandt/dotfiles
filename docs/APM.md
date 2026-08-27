@@ -14,7 +14,7 @@ their content.
 | `conf/symlinks.toml` | Selects and links applicable fragments and local plugins |
 | `conf/manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
 | APM packages task | Merges fragments, persists the generated manifest, and invokes native APM convergence |
-| APM package updates task | Invokes native APM update during `dotfiles update` |
+| APM package updates task | Invokes native APM update during `dotfiles install --update-pins` |
 | APM itself | Resolves packages, verifies local sources, converges deployments, and removes stale content |
 
 Use APM to place APM-managed content in agent directories. Do not maintain
@@ -144,10 +144,10 @@ dotfiles install --only apm --dry-run --verbose
 dotfiles install --only apm
 ```
 
-## Update behavior
+## Pin-update behavior
 
 **APM package updates** is marked update-only, so it runs with
-`dotfiles update` but not `dotfiles install`. It depends on
+`dotfiles install --update-pins` but not ordinary `dotfiles install`. It depends on
 **APM packages**.
 
 The install dependency first converges the generated manifest. Apply then runs
@@ -160,7 +160,7 @@ preserves unchanged target mappings and timestamps, so an identical lockfile
 reports current while any native lock-state change is reported as changed.
 
 ```bash
-dotfiles update --only apm,apm-update
+dotfiles install --update-pins --only apm,apm-update
 ```
 
 ## Overlays
@@ -197,7 +197,7 @@ When changing APM configuration, check:
 2. Add a pinned or policy-compliant package declaration.
 3. If the fragment is conditional, confirm its symlink and manifest categories.
 4. Follow the APM coverage in [Testing](TESTING.md).
-5. Run install before using `dotfiles update` to advance versions.
+5. Run install before using `dotfiles install --update-pins` to advance versions.
 
 Represent changes in a source fragment. Do not edit generated merged state or
 lock data by hand.

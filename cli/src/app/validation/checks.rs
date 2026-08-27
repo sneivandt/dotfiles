@@ -1,7 +1,7 @@
-//! Validation tasks for the `test` command.
+//! Validation tasks for the `check` command.
 //!
 //! These tasks verify configuration integrity and run linters on shell and
-//! `PowerShell` scripts.  They are used by [`crate::app::commands::test::run`] but
+//! `PowerShell` scripts.  They are used by [`crate::app::commands::check::run`] but
 //! live in the `tasks` module so they follow the same `Task` trait pattern
 //! as all other tasks and are independently testable.
 use anyhow::{Context as _, Result};
@@ -75,7 +75,7 @@ fn glob_prefix_matches(pattern: &Path, candidate: &Path) -> bool {
             .all(|(expected, actual)| expected.as_os_str() == "*" || expected == &actual)
 }
 
-/// Fail the test command when config validation emits warnings.
+/// Fail the check command when config validation emits warnings.
 #[derive(Debug)]
 pub struct ValidateConfigWarnings {
     config: ConfigHandle<Config>,

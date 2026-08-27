@@ -9,7 +9,7 @@
 //! drops it from the release binary.
 
 pub mod cli {
-    pub use crate::app::cli::{GlobalOpts, InstallOpts, TestOpts, UpdateOpts};
+    pub use crate::app::cli::{CheckOpts, GlobalOpts, InstallOpts};
 }
 
 pub mod commands {
@@ -21,16 +21,12 @@ pub mod commands {
         pub use crate::app::commands::log::run;
     }
 
-    pub mod test {
-        pub use crate::app::commands::test::run;
+    pub mod check {
+        pub use crate::app::commands::check::run;
     }
 
     pub mod uninstall {
         pub use crate::app::commands::uninstall::run;
-    }
-
-    pub mod update {
-        pub use crate::app::commands::update::run;
     }
 }
 

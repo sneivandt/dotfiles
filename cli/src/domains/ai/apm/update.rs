@@ -13,7 +13,7 @@ use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 
-/// Advance pinned APM dependency versions under the `update` command.
+/// Advance pinned APM dependency versions under `install --update-pins`.
 ///
 /// The catalog dependency on [`super::InstallApmPackages`] ensures the generated
 /// manifest is converged before APM advances matching refs.

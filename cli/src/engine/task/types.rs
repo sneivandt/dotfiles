@@ -189,7 +189,7 @@ pub struct TaskMeta<'a> {
     pub selector: Option<&'a str>,
     /// Whether the task is shown in user-facing discovery and results.
     pub visibility: TaskVisibility,
-    /// Whether the task is included only by the `update` command.
+    /// Whether the task is included only by `install --update-pins`.
     pub update_only: bool,
 }
 
@@ -219,7 +219,7 @@ impl<'a> TaskMeta<'a> {
         self
     }
 
-    /// Mark the task as included only by the `update` command.
+    /// Mark the task as included only by `install --update-pins`.
     #[must_use]
     pub const fn with_update_only(mut self, update_only: bool) -> Self {
         self.update_only = update_only;

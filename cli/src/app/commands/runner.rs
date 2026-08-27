@@ -134,12 +134,6 @@ impl CommandRunner {
         })
     }
 
-    /// Build the full set of install tasks, wired to the shared config store.
-    #[must_use]
-    pub fn install_tasks(&self) -> Vec<Box<dyn Task>> {
-        crate::app::catalog::all_install_tasks(&self.store)
-    }
-
     /// Build install tasks with repository restart state.
     #[must_use]
     pub(crate) fn install_tasks_for_run(
@@ -220,15 +214,22 @@ impl CommandRunner {
 ///
 /// Returns an error if the root directory cannot be determined or doesn't exist.
 pub(super) fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
+    resolve_root_path(global.root.as_deref())
+}
+
+/// Resolve a repository root for standalone discovery commands.
+pub(crate) fn resolve_root_path(
+    explicit_root: Option<&std::path::Path>,
+) -> Result<std::path::PathBuf> {
     let cwd = std::env::current_dir().ok();
-    resolve_root_from_dir(global, cwd.as_deref())
+    resolve_root_from_dir(explicit_root, cwd.as_deref())
 }
 
 fn resolve_root_from_dir(
-    global: &GlobalOpts,
+    explicit_root: Option<&std::path::Path>,
     cwd: Option<&std::path::Path>,
 ) -> Result<std::path::PathBuf> {
-    if let Some(ref root) = global.root {
+    if let Some(root) = explicit_root {
         return crate::infra::fs::canonicalize(root);
     }
 
@@ -369,7 +370,7 @@ mod root_tests {
             dry_run: false,
             overlay: None,
             parallel: true,
-            offline: false,
+            no_repo_update: false,
             require_complete: false,
             non_interactive: false,
             retry_failed: false,
@@ -403,7 +404,7 @@ mod root_tests {
     fn resolve_root_errors_when_not_in_repo() {
         let temp_dir = tempfile::tempdir().unwrap();
         if std::env::var("DOTFILES_ROOT").is_err() {
-            let error = resolve_root_from_dir(&global(None), Some(temp_dir.path())).unwrap_err();
+            let error = resolve_root_from_dir(None, Some(temp_dir.path())).unwrap_err();
             assert!(error.to_string().contains("cannot determine dotfiles root"));
         }
     }

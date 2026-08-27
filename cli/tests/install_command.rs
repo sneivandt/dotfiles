@@ -601,15 +601,15 @@ fn install_run_dry_run_with_skip_filter_returns_ok() {
     );
 }
 
-/// Calling `install::run` with `--only` matching no task name must return
-/// `Ok(())` (empty task list is not an error).
+/// Calling `install::run` with `--only` matching no selector must explain how
+/// to discover valid selectors.
 #[test]
-fn install_run_dry_run_with_only_no_match_returns_ok() {
+fn install_run_dry_run_with_only_no_match_returns_an_actionable_error() {
     let result = common::run_install_dry_run(vec![], vec!["zzznomatch".to_string()], false);
-    assert!(
-        result.is_ok(),
-        "dry-run install with --only no-match should return Ok: {result:?}"
-    );
+    let error = result.expect_err("an unknown selector should fail");
+    let message = error.to_string();
+    assert!(message.contains("--only did not match a task selector"));
+    assert!(message.contains("dotfiles tasks"));
 }
 
 /// Calling `install::run` with `--only symlinks` in parallel dry-run mode

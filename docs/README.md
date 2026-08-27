@@ -7,8 +7,8 @@ workflows for maintaining a configured machine.
 
 | Guide | Purpose |
 |---|---|
-| [Usage](USAGE.md) | Bootstrap the CLI; use its commands and global options |
-| [Task reference](TASKS.md) | Look up install, update, uninstall, validation, and overlay tasks |
+| [Usage](USAGE.md) | Bootstrap the CLI; use its commands and scoped options |
+| [Task reference](TASKS.md) | Look up install, pin-update, uninstall, validation, and overlay tasks |
 | [Configuration](CONFIGURATION.md) | Edit the TOML desired-state files |
 | [Profiles](PROFILES.md) | Select role-specific and platform-specific configuration |
 | [Troubleshooting](TROUBLESHOOTING.md) | Diagnose bootstrap, configuration, and convergence failures |

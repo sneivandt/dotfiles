@@ -32,7 +32,7 @@ pub(super) fn report_fixup_execution(ctx: &Context, execution: FixupExecution) {
         FixupExecution::Failed(FixupFailure::DatabaseLocked) => {
             ctx.log().warn(
                 "autopilot fixup: ~/.copilot/data.db is locked -- close the Copilot App and \
-                 re-run `dotfiles install` or `dotfiles update`, or enable the apm workflows \
+                 re-run `dotfiles install` or `dotfiles install --update-pins`, or enable the apm workflows \
                  manually from the Workflows tab",
             );
         }
@@ -40,7 +40,7 @@ pub(super) fn report_fixup_execution(ctx: &Context, execution: FixupExecution) {
             ctx.log().warn(
                 "autopilot fixup: the workflows table is missing from ~/.copilot/data.db; open \
                  the Copilot App once to initialize it, then re-run `dotfiles install` or \
-                 `dotfiles update`",
+                 `dotfiles install --update-pins`",
             );
         }
         FixupExecution::Failed(FixupFailure::SchemaDrift(stderr)) => {

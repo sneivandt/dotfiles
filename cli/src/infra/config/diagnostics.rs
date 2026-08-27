@@ -6,7 +6,7 @@ use std::fmt;
 /// Severity level of a configuration diagnostic.
 ///
 /// Severity affects rendering and metadata only — both variants cause
-/// `dotfiles test` to fail when any diagnostic is present.
+/// `dotfiles check` to fail when any diagnostic is present.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     /// A suspicious or suboptimal configuration value.
@@ -29,7 +29,7 @@ impl Severity {
 
 /// A stable machine-readable rule code, rendered as `domain.rule`.
 ///
-/// Diagnostic codes appear in `dotfiles test` output and are therefore a
+/// Diagnostic codes appear in `dotfiles check` output and are therefore a
 /// de-facto public contract: they must stay stable across releases so that
 /// users can grep for or suppress a specific finding.
 ///

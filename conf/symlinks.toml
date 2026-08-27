@@ -7,7 +7,7 @@
 # symlinks to a specific platform.
 #
 # IMPORTANT: Every category section here (except [base]) must also appear in
-# manifest.toml. The validation task ('dotfiles test') checks this.
+# manifest.toml. The validation task ('dotfiles check') checks this.
 
 [base]
 symlinks = [

@@ -112,7 +112,7 @@ function Test-InstallUninstallBaseProfile {
     $psProfileSnapshot = [System.IO.Path]::GetTempFileName()
     try {
         Write-Information "Running install..." -InformationAction Continue
-        & $env:BINARY_PATH --root $env:DIR -p base install --skip packages,apm,vscode-extensions
+        & $env:BINARY_PATH install --root $env:DIR -p base --skip packages,apm,vscode-extensions
         if ($LASTEXITCODE -ne 0) {
             throw "Install command failed with exit code $LASTEXITCODE"
         }
@@ -130,7 +130,7 @@ function Test-InstallUninstallBaseProfile {
         )
 
         Write-Information "Running uninstall..." -InformationAction Continue
-        & $env:BINARY_PATH --root $env:DIR -p base uninstall
+        & $env:BINARY_PATH uninstall --root $env:DIR -p base
         if ($LASTEXITCODE -ne 0) {
             throw "Uninstall command failed with exit code $LASTEXITCODE"
         }

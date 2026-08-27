@@ -94,7 +94,7 @@ fn test_dispatch_guard(dispatch: &tracing::Dispatch) -> TestDispatchGuard {
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "test code uses panicking helpers")]
 pub(crate) fn isolated_logger() -> (Logger, tempfile::TempDir, TestDispatchGuard) {
-    isolated_logger_for("test")
+    isolated_logger_for("check")
 }
 
 /// Like [`isolated_logger`] but for an explicit command name, so tests can

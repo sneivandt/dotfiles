@@ -204,7 +204,7 @@ fn standard_summary_omits_actions_when_all_action_counts_are_zero() {
 }
 
 #[test]
-fn test_summary_uses_check_vocabulary_and_omits_not_run() {
+fn check_summary_uses_check_vocabulary_and_omits_not_run() {
     let lines = format_summary_lines(
         SummaryCounts {
             changed: 0,
@@ -215,7 +215,7 @@ fn test_summary_uses_check_vocabulary_and_omits_not_run() {
             failed: 1,
             actions: ActionCounts::default(),
         },
-        SummaryMode::Test,
+        SummaryMode::Check,
         false,
         "3.4s",
         StyleChoice::plain(),
@@ -226,14 +226,14 @@ fn test_summary_uses_check_vocabulary_and_omits_not_run() {
 
 #[test]
 fn no_op_standard_commands_skip_extra_blank() {
-    for command in ["install", "update", "uninstall"] {
+    for command in ["install", "uninstall"] {
         assert!(
             !should_space_before_totals(command, false),
             "{command} no-op runs should not add an extra separator"
         );
     }
     assert!(should_space_before_totals("install", true));
-    assert!(should_space_before_totals("test", false));
+    assert!(should_space_before_totals("check", false));
 }
 
 #[test]
@@ -414,7 +414,7 @@ fn verbose_task_result_lines_account_for_unchanged_tasks() {
 fn validation_task_line_uses_passed_status() {
     let task = task_entry("Validate config", TaskStatus::Passed, None);
     let opts = RowOpts {
-        mode: SummaryMode::Test,
+        mode: SummaryMode::Check,
         ..plain_opts()
     };
 
@@ -523,8 +523,8 @@ fn print_summary_clears_visible_progress() {
 }
 
 #[test]
-fn no_op_update_summary_needs_no_totals_separator() {
-    let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("update");
+fn no_op_install_summary_needs_no_totals_separator() {
+    let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("install");
     log.set_verbose(false);
     for index in 0..3 {
         log.record_task(&format!("task-{index}"), TaskStatus::Ok, None);
@@ -537,8 +537,8 @@ fn no_op_update_summary_needs_no_totals_separator() {
 }
 
 #[test]
-fn update_summary_needs_totals_separator_after_task_output() {
-    let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("update");
+fn install_summary_needs_totals_separator_after_task_output() {
+    let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("install");
     log.set_verbose(false);
     log.record_task("task-changed", TaskStatus::Changed, None);
     log.mark_task_console_output();

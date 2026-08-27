@@ -1,8 +1,8 @@
-//! Test command implementation (validates configuration).
+//! Check command implementation.
 use anyhow::Result;
 use std::sync::Arc;
 
-use crate::app::cli::{GlobalOpts, TestOpts};
+use crate::app::cli::{CheckOpts, GlobalOpts};
 use crate::app::filter::apply_task_filters;
 use crate::app::validation::{
     RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
@@ -11,14 +11,14 @@ use crate::app::validation::{
 use crate::engine::Task;
 use crate::infra::logging::Logger;
 
-/// Run the test/validation command.
+/// Run repository validation checks.
 ///
 /// # Errors
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(
     global: &GlobalOpts,
-    opts: &TestOpts,
+    opts: &CheckOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
@@ -30,12 +30,12 @@ pub fn run(
         }
         crate::app::recovery::select_tasks(&tasks, &[], selectors, &[])?
     } else {
-        apply_task_filters(&tasks, &[], &opts.only, &opts.skip, log)
+        apply_task_filters(&tasks, &[], &opts.only, &opts.skip, opts.with_deps, log)?
     };
     runner.run(filtered)
 }
 
-/// Build the complete task set used by the `test` command.
+/// Build the complete task set used by the `check` command.
 #[must_use]
 pub(crate) fn validation_tasks(
     handle: crate::infra::ConfigHandle<crate::app::config::Config>,

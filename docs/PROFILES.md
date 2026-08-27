@@ -57,6 +57,12 @@ An explicitly supplied unknown profile is an error. During interactive
 selection, the chosen profile is persisted to repository-local Git config for
 future runs.
 
+List configured profiles without selecting or persisting one:
+
+```bash
+dotfiles profiles
+```
+
 ```bash
 dotfiles install --profile desktop
 ```
@@ -89,7 +95,7 @@ dotfiles install --profile base --dry-run --verbose
 2. Add category sections to relevant configuration files.
 3. Add matching sparse-checkout coverage to `conf/manifest.toml` for every
    non-`base` symlink section.
-4. Run `dotfiles test`.
+4. Run `dotfiles check`.
 5. Preview both inclusion and exclusion transitions with `--dry-run`.
 
 Keep categories independent and limited in number. Compose a new profile from

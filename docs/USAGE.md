@@ -31,7 +31,7 @@ installed. Use the wrapper-only `--build` option to compile with Cargo:
 ```
 
 ```powershell
-.\dotfiles.ps1 --build test
+.\dotfiles.ps1 --build check
 ```
 
 After installation, `~/.local/bin/dotfiles` is the normal entry point.
@@ -47,31 +47,41 @@ explicitly bypassing GitHub provenance verification for that invocation.
 | Command | Behavior |
 |---|---|
 | `install` | Converges the configured machine state without advancing pinned dependency versions |
-| `update` | Runs the install graph and includes version-advancing update tasks |
+| `install --update-pins` | Runs normal convergence and advances pinned dependency versions |
 | `uninstall` | Removes managed integrations while preserving user files and broader machine state |
-| `test` | Validates configuration and runs available script analyzers |
+| `check` | Validates configuration and runs available script analyzers |
 | `tasks` | Lists visible task selectors, labels, and command membership |
+| `profiles` | Lists role profiles configured in `conf/profiles.toml` |
 | `log` | Lists retained run logs or prints one of them |
 | `completions <shell>` | Hidden support command that emits shell completion definitions |
 
-## Global options
+`update` remains a hidden compatibility alias for `install --update-pins`, and
+`test` remains an alias for `check`.
 
-Global options may be placed before or after the subcommand.
+## Command options
+
+Options belong to the commands that use them and appear after the command.
+Passing an install option to `log`, `tasks`, or another unrelated command is a
+usage error.
 
 | Option | Meaning |
 |---|---|
 | `-v`, `--verbose` | Show additional diagnostic task output, and diagnostic lines in `dotfiles log` |
 | `-p`, `--profile <PROFILE>` | Select a role profile for this run |
-| `-d`, `--dry-run` | Plan and report changes without applying them |
+| `-n`, `--dry-run` | Plan and report changes without applying them; `install` and `uninstall` only |
 | `--root <PATH>` | Treat another path as the dotfiles repository |
 | `--overlay <PATH>` | Append configuration from a private overlay repository |
 | `--no-parallel` | Run independent tasks sequentially |
-| `--offline` | Converge the current checkout without synchronizing the repository |
-| `--require-complete` | Fail when applicable work cannot be completed |
+| `--no-repo-update` | Use the current checkout without synchronizing its repository; `install` only |
+| `--fail-on-skip` | Fail when applicable work cannot be completed |
 | `--non-interactive` | Disable prompts and fail when input is required |
 | `--retry-failed` | Retry failed, incomplete, and dependency-blocked tasks from the previous run |
 | `--no-symbols` | Use ASCII words instead of status symbols |
-| `--version` | Print the CLI version |
+| `--update-pins` | Advance pinned dependencies after normal convergence; `install` only |
+| `--skip-attestation` | Skip provenance verification for self-updates; `install` and `uninstall` only |
+
+`--version` is the sole top-level option. It prints the CLI version, has no
+short alias, and appears before any command.
 
 `--dry-run` applies to mutating commands. Use it first after changing a profile
 or configuration.
@@ -88,11 +98,12 @@ dotfiles install --dry-run --verbose
 required change. Independent ready tasks may run concurrently; explicit
 dependencies preserve ordering.
 
-Use `--offline` when network access is unavailable or the current checkout must
-remain pinned. The normal preservation and sparse-checkout tasks converge the
-current checkout without repository synchronization or process restart.
+Use `--no-repo-update` when the current checkout must remain pinned. The normal
+preservation and sparse-checkout tasks still converge it without repository
+synchronization or process restart. This option does not promise a network-free
+run. Package, APM, self-update, and overlay tasks may still use the network.
 
-CI automatically enables `--require-complete` and `--non-interactive`.
+CI automatically enables `--fail-on-skip` and `--non-interactive`.
 Non-interactive mode is also enabled when stdin is not a terminal; select a
 profile explicitly or through `DOTFILES_PROFILE` in unattended environments.
 Strict completion turns missing capabilities such as package managers, VS Code,
@@ -124,11 +135,13 @@ journalctl --user -u dotfiles-first-login.service
 `--only` and `--skip` accept comma-separated, case-insensitive task selectors.
 Punctuation and whitespace are normalized to hyphens. Each value must exactly
 match either a task's stable selector or its full normalized display label.
-Use `dotfiles tasks` to discover the supported selectors.
+Unknown selectors fail before task execution and may include a closest-match
+suggestion. Use `dotfiles tasks --profile <profile>` to discover selectors.
 
 ```bash
 dotfiles install --only symlinks
 dotfiles install --only "packages,git-hooks"
+dotfiles install --only systemd --with-deps
 dotfiles install --skip "systemd,registry"
 ```
 
@@ -136,36 +149,50 @@ Both options can be used together. `--only` limits the candidate set, then
 `--skip` removes matches. Matching does not use Rust type names, arbitrary
 substrings, action-prefix removal, or the first word of a label.
 For example, `repository` and `dotfiles-repository` both match **Dotfiles
-repository**, but `dotfiles` does not. Unmatched selectors produce a warning.
+repository**, but `dotfiles` does not.
 Internal orchestration tasks are omitted from discovery and cannot be selected.
-When filtering removes a declared prerequisite, the CLI warns and preserves the
-targeted-run behavior by assuming that prerequisite is already satisfied.
+By default, filtering out a prerequisite warns and assumes it is already
+satisfied. Add `--with-deps` to include the dependency closure of `--only`
+selectors. A subsequent `--skip` can still remove a dependency and produce the
+warning.
 
 ## Discover tasks
 
 ```bash
-dotfiles tasks
+dotfiles tasks --profile desktop
+dotfiles tasks --profile desktop --format plain
+dotfiles tasks --profile desktop --format json
 ```
 
 The output contains `SELECTOR`, `TASK`, and `COMMANDS` columns. It combines
-install, update, uninstall, test, and active overlay-script tasks, while hiding
-internal orchestration. Rows retain catalog/discovery order; the command does
-not sort them. A selector is rejected if it maps to conflicting display labels.
+install, pin-update, uninstall, check, and active overlay-script tasks, while
+hiding internal orchestration. Rows retain catalog/discovery order; the command
+does not sort them. A selector is rejected if it maps to conflicting display
+labels.
 
-## Update
+Task discovery is read-only. It does not create a run log, acquire the run lock,
+or persist a profile or overlay selection. If no profile was passed, set through
+`DOTFILES_PROFILE`, or previously persisted, the command asks for `--profile`
+instead of opening the interactive profile prompt.
+
+List the available role profiles without selecting one:
 
 ```bash
-dotfiles update
-dotfiles update --only apm,apm-update
+dotfiles profiles
 ```
 
-`update` uses the same dependency scheduler and selectors as `install`. The
-difference is that it includes update-only tasks, which may advance pinned
-dependency versions. Normal repeatable convergence should use `install`.
+## Pin updates
 
-Repository synchronization occurs during both commands when the checkout can be
-updated. If the repository changes, the CLI reloads configuration before
-downstream tasks consume it.
+```bash
+dotfiles install --update-pins
+dotfiles install --update-pins --only apm,apm-update
+```
+
+`--update-pins` includes update-only tasks, which may advance pinned dependency
+versions. Normal repeatable convergence should omit the option.
+Repository synchronization occurs during installation unless
+`--no-repo-update` was passed. If the repository changes, the CLI reloads
+configuration before downstream tasks consume it.
 
 ## Console output
 
@@ -256,14 +283,14 @@ It does **not** uninstall packages, revert registry values, disable systemd
 units, undo shell selection, or reverse arbitrary overlay scripts. See
 [Uninstall tasks](TASKS.md#uninstall-tasks).
 
-## Test
+## Check
 
 The command validates TOML, sources, manifest section synchronization, and the
 relationship between local `dot-*` APM references and their source directories.
 When APM is available, a separate task runs
 `apm pack --dry-run --verbose` for each local plugin so APM validates package
 layout and declarations. Fragment schemas and dependency declarations are
-validated by native APM during install/update.
+validated by native APM during install and pin updates.
 ShellCheck and that APM pack check are skipped when their executables are
 unavailable. The PowerShell check runs whenever `pwsh` is available; if the
 PSScriptAnalyzer module is missing, that check fails and reports the PowerShell
@@ -292,7 +319,7 @@ dotfiles log --verbose  # include diagnostic lines
 ```text
   #  WHEN                  COMMAND    SIZE
   0  2026-07-31 15:42:10Z  install  112.4 KB
-  1  2026-07-31 15:39:02Z  test       8.1 KB
+  1  2026-07-31 15:39:02Z  check      8.1 KB
 ```
 
 The index argument selects from that list and is stable for the duration of a
@@ -329,7 +356,7 @@ discovers it from the installed wrapper environment; use `--root` when running
 against a different checkout:
 
 ```bash
-dotfiles --root C:\Code\sneivandt\dotfiles test
+dotfiles check --root C:\Code\sneivandt\dotfiles
 ```
 
 An overlay is an additional repository whose matching configuration is appended

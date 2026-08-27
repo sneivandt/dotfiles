@@ -2,7 +2,7 @@
 # Lists which files belong to exclusion categories: linux, windows, arch, desktop
 #
 # IMPORTANT: Every non-[base] category section in symlinks.toml must have a
-# corresponding section here. The validation task ('dotfiles test') checks this.
+# corresponding section here. The validation task ('dotfiles check') checks this.
 #
 # Format: paths relative to symlinks/ directory (prefix not included in paths)
 # These paths are prefixed with symlinks/ when generating sparse checkout patterns

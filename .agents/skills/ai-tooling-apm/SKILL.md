@@ -16,7 +16,7 @@ description: >
 | reusable personal skill, hook, prompt, or instruction | `symlinks/apm/plugins/dot-*` |
 | external plugin or MCP dependency | `symlinks/apm/config/*.yml` |
 | stable Copilot/Codex preference | `conf/agent-settings.toml` |
-| install/update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
+| install and pin-update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
 
 Use the global `apm-dotfiles` skill for public-vs-private placement and plugin
 audience decisions.
@@ -47,7 +47,8 @@ target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot
 fixup. Native APM owns install/update planning, local-source integrity,
 deployment convergence, and stale/orphan cleanup. Do not reintroduce
 fingerprints, success markers, `apm outdated` parsing, or a separate
-`apm prune`. Keep update-only scheduling in the command pipeline.
+`apm prune`. Keep update-only scheduling behind `dotfiles install --update-pins`
+in the command pipeline.
 
 ## Validation
 

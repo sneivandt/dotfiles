@@ -125,7 +125,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Run typed configuration validation
-        run: ./bin/dotfiles --root . -p desktop test --only config-warnings,symlink-sources,config-files,manifest-sync
+        run: ./bin/dotfiles check --root . -p desktop --only config-warnings,symlink-sources,config-files,manifest-sync
       - name: Test fullscreen Waybar configuration
         env:
           DIR: ${{ github.workspace }}
@@ -361,9 +361,9 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Dry-run install
-        run: ./bin/dotfiles --root . -p ${{ matrix.profile }} -d install --skip vscode-extensions
+        run: ./bin/dotfiles install --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
       - name: Run validation
-        run: ./bin/dotfiles --root . -p ${{ matrix.profile }} test
+        run: ./bin/dotfiles check --root . -p ${{ matrix.profile }}
 
   integration-windows:
     name: "Integration: ${{ matrix.profile }} on Windows"
@@ -382,10 +382,10 @@ jobs:
           path: bin/
       - name: Dry-run install
         shell: bash
-        run: ./bin/dotfiles.exe --root . -p ${{ matrix.profile }} -d install --skip vscode-extensions
+        run: ./bin/dotfiles.exe install --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
       - name: Run validation
         shell: bash
-        run: ./bin/dotfiles.exe --root . -p ${{ matrix.profile }} test
+        run: ./bin/dotfiles.exe check --root . -p ${{ matrix.profile }}
 
   test-install-uninstall:
     name: "Integration: Install/Uninstall round-trip"
@@ -463,7 +463,7 @@ jobs:
       - name: Install dotfiles with base profile
         # Keep the full checkout available to matrix tests, including assets
         # that are intentionally excluded from the runner's active profile.
-        run: ./bin/dotfiles --root . -p base install -v --skip apm,sparse-checkout
+        run: ./bin/dotfiles install --root . -p base -v --skip apm,sparse-checkout
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}
@@ -493,7 +493,7 @@ jobs:
         # Skip unavailable external installers: winget installs fail inside CI
         # and windows-latest does not provide a VS Code CLI launcher. This job
         # validates the git symlink and config chain instead.
-        run: .\bin\dotfiles.exe --root . -p base install -v --skip apm,packages,vscode-extensions
+        run: .\bin\dotfiles.exe install --root . -p base -v --skip apm,packages,vscode-extensions
       - name: Test ${{ matrix.application }}
         shell: pwsh
         env:

@@ -151,7 +151,7 @@ fn check_for_update_with_current(
             tracing::debug!("latest release carried no tag_name, treating as offline");
             return Ok(UpdateCheck::Offline);
         }
-        // Self-update runs unattended at the end of `dotfiles update`, so a
+        // Self-update runs unattended before mutating commands, so a
         // failed lookup must not fail the run. It must not vanish silently
         // either: without the cause, a persistently broken update (expired
         // proxy, rate limit, DNS) looks identical to being up to date.

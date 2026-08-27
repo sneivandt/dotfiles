@@ -99,11 +99,12 @@ make only the changes required to converge.
 | Command | What it does |
 |---------|--------------|
 | `dotfiles install` | Applies the configured machine state |
-| `dotfiles update` | Runs installation and advances pinned dependency versions |
+| `dotfiles install --update-pins` | Applies the configured state and advances pinned dependency versions |
 | `dotfiles uninstall` | Materializes managed symlinks and removes hooks and the launcher |
+| `dotfiles check` | Validates configuration and repository scripts |
 
-Use `install` for normal setup and maintenance. Use `update` only when you want
-pinned dependency versions to move forward. `uninstall` leaves packages,
+Use `install` for normal setup and maintenance. Add `--update-pins` only when
+you want pinned dependency versions to move forward. `uninstall` leaves packages,
 services, and registry values in place.
 
 ### Profiles
@@ -121,7 +122,7 @@ the selection. The CLI automatically activates the `linux`, `windows`, and
 
 | Guide | Purpose |
 |-------|---------|
-| [Usage](docs/USAGE.md) | Bootstrap the CLI and use its commands and global options |
+| [Usage](docs/USAGE.md) | Bootstrap the CLI and use its commands and options |
 | [Configuration](docs/CONFIGURATION.md) | Edit the declarative TOML desired state |
 | [Profiles](docs/PROFILES.md) | Configure role-specific and platform-specific behavior |
 | [Architecture](docs/ARCHITECTURE.md) | Understand the CLI layers, task engine, and resource model |

@@ -100,18 +100,20 @@ identities or closed cycle path. Visible rows retain natural completion order;
 completed work is not sorted or grouped afterward.
 
 `Task::update_only()` is command membership metadata, not an ordering class.
-`install` excludes update-only tasks, while `update` includes them in the same
-graph as ordinary install tasks.
+`install` excludes update-only tasks unless `--update-pins` includes them in
+the same graph as ordinary install tasks.
 
 Dynamic overlay tasks use structured identities containing their concrete task
 type and complete stable instance key, avoiding hash collisions when multiple
 configured scripts share one Rust task type. They use
 `script-<normalized-script-name>` selectors.
 
-`dotfiles tasks` merges visible metadata across command catalogs by selector and
-prints selector, label, and command membership in discovery order. `--only`
-performs exact normalized selector matching; exact full-label matching remains
-available for compatibility. Internal tasks are not discoverable or selectable.
+`dotfiles tasks` loads a read-only configuration snapshot, merges visible
+metadata across command catalogs by selector, and prints selector, label, and
+command membership in discovery order. It does not create a log, acquire the
+run lock, or persist profile and overlay selections. `--only` performs exact
+normalized selector matching; exact full-label matching remains available for
+compatibility. Internal tasks are not discoverable or selectable.
 
 ## Resources
 
@@ -177,7 +179,7 @@ Repository synchronization is a guarded process boundary:
    sparse checkout as a strict first phase before remaining work.
 
 The guard also suppresses self-update and run-lock reacquisition in the child.
-`--only`, `--skip`, `--retry-failed`, `--offline`, dry-run, and elevation retain
+`--only`, `--skip`, `--retry-failed`, `--no-repo-update`, dry-run, and elevation retain
 their normal selection semantics. A filtered boundary falls back to one graph.
 
 ## Platform abstraction

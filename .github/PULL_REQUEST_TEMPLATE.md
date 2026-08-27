@@ -36,9 +36,9 @@
 
 ### Configuration, wrappers, hooks, and behavior
 - [ ] Ran config validation from source for the affected platform/profile
-      (`./dotfiles.sh --build -p base test` or `.\dotfiles.ps1 --build -p base test`)
+      (`./dotfiles.sh --build check -p base` or `.\dotfiles.ps1 --build check -p base`)
 - [ ] Ran a source-built dry-run for each affected profile
-      (`./dotfiles.sh --build install -p <profile> -d` or Windows equivalent)
+      (`./dotfiles.sh --build install -p <profile> -n` or Windows equivalent)
 - [ ] Verified idempotency when the change mutates machine state
 
 **Test environment**

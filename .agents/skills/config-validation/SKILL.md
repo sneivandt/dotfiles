@@ -14,7 +14,7 @@ description: >
 - Domain `validate()` functions return semantic `Vec<Diagnostic>`.
 - Startup and reload both validate before publishing config and display
   diagnostics consistently.
-- Warning and error diagnostics both fail `dotfiles test`; severity communicates
+- Warning and error diagnostics both fail `dotfiles check`; severity communicates
   meaning and rendering.
 
 Each diagnostic has a source, item, stable dotted code, severity, and actionable
@@ -29,7 +29,7 @@ message. Reuse `Validator` and its `check_each`, `warn`, `warn_if`, `check`, and
 4. Wire the validator into `ConfigValidator::validate_all()`.
 5. Test valid, invalid, and boundary cases.
 
-Validation tasks live under `cli/src/app/validation/`; the `test` command owns
+Validation tasks live under `cli/src/app/validation/`; the `check` command owns
 their inventory. Missing required tools must follow existing task policy, not
 silently pass.
 

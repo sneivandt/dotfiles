@@ -80,7 +80,7 @@ pub(super) const fn should_emit_task_result(status: TaskStatus, verbose: bool) -
 fn status_text(status: TaskStatus, mode: SummaryMode, symbols: bool) -> String {
     if symbols {
         status::symbol(status).to_string()
-    } else if matches!((status, mode), (TaskStatus::Changed, SummaryMode::Test)) {
+    } else if matches!((status, mode), (TaskStatus::Changed, SummaryMode::Check)) {
         "PASSED".to_string()
     } else {
         status::word(status).to_string()

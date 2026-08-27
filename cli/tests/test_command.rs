@@ -33,7 +33,7 @@ use test_api::logging::Logger;
 
 /// The `test` command should fail when config validation emits warnings.
 #[test]
-fn test_command_fails_on_config_warnings() {
+fn check_command_fails_on_config_warnings() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
             "vscode-extensions.toml",
@@ -49,7 +49,7 @@ fn test_command_fails_on_config_warnings() {
         dry_run: true,
         overlay: None,
         parallel: false,
-        offline: false,
+        no_repo_update: false,
         require_complete: false,
         non_interactive: false,
         retry_failed: false,
@@ -57,13 +57,14 @@ fn test_command_fails_on_config_warnings() {
         skip_attestation: false,
         elevated_child: false,
     };
-    let opts = test_api::cli::TestOpts {
+    let opts = test_api::cli::CheckOpts {
         skip: vec![],
         only: vec![],
+        with_deps: false,
     };
     let log = Arc::new(Logger::new("test-command"));
 
-    let result = test_api::commands::test::run(
+    let result = test_api::commands::check::run(
         &global,
         &opts,
         &log,

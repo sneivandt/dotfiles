@@ -9,13 +9,13 @@ use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SummaryMode {
     Standard,
-    Test,
+    Check,
 }
 
 impl SummaryMode {
     pub(super) fn for_command(command: &str) -> Self {
-        if command == "test" {
-            Self::Test
+        if command == "check" {
+            Self::Check
         } else {
             Self::Standard
         }
@@ -64,7 +64,7 @@ pub(super) fn format_summary_lines(
 ) -> Vec<String> {
     let mut parts = match mode {
         SummaryMode::Standard => format_standard_totals(counts, dry_run, style),
-        SummaryMode::Test => format_test_totals(counts, style),
+        SummaryMode::Check => format_check_totals(counts, style),
     };
     parts.push(style.paint(TextStyle::Dim, elapsed));
     vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
@@ -111,7 +111,7 @@ pub(super) fn push_count(
     }
 }
 
-pub(super) fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> {
+pub(super) fn format_check_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> {
     let mut parts = Vec::new();
     push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
     push_count(&mut parts, counts.passed, TextStyle::Green, "passed", style);
@@ -135,5 +135,5 @@ pub(super) fn format_test_totals(counts: SummaryCounts, style: StyleChoice) -> V
 /// in verbose mode too: verbose emits a row per task, which sets
 /// `task_output_emitted`, so it needs no separate carve-out.
 pub(super) fn should_space_before_totals(command: &str, task_output_emitted: bool) -> bool {
-    task_output_emitted || !matches!(command, "install" | "update" | "uninstall")
+    task_output_emitted || !matches!(command, "install" | "uninstall")
 }

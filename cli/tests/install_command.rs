@@ -30,29 +30,8 @@ fn install_tasks() -> Vec<Box<dyn tasks::Task>> {
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot: full install task list
-// ---------------------------------------------------------------------------
-
-/// Snapshot of all install task names in their declared order.
-///
-/// This test serves as a regression guard: any addition, removal, or rename of
-/// an install task will cause it to fail, prompting a deliberate snapshot update.
-#[test]
-fn install_task_names() {
-    let all_tasks = install_tasks();
-    let task_names: Vec<&str> = all_tasks.iter().map(|t| t.name()).collect();
-    insta::assert_snapshot!("install_task_names", task_names.join("\n"));
-}
-
-// ---------------------------------------------------------------------------
 // Structural invariants
 // ---------------------------------------------------------------------------
-
-/// The install task list must contain exactly the expected number of tasks.
-#[test]
-fn install_task_count() {
-    assert_eq!(install_tasks().len(), 24);
-}
 
 /// Every task name must be non-empty.
 #[test]

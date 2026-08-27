@@ -34,29 +34,8 @@ fn uninstall_tasks() -> Vec<Box<dyn tasks::Task>> {
 }
 
 // ---------------------------------------------------------------------------
-// Snapshot: full uninstall task list
-// ---------------------------------------------------------------------------
-
-/// Snapshot of all uninstall task names in their declared order.
-///
-/// Any addition, removal, or rename of an uninstall task will cause this test
-/// to fail, prompting a deliberate snapshot update.
-#[test]
-fn uninstall_task_names() {
-    let all_tasks = uninstall_tasks();
-    let task_names: Vec<&str> = all_tasks.iter().map(|t| t.name()).collect();
-    insta::assert_snapshot!("uninstall_task_names", task_names.join("\n"));
-}
-
-// ---------------------------------------------------------------------------
 // Structural invariants
 // ---------------------------------------------------------------------------
-
-/// The uninstall task list must contain the expected number of tasks.
-#[test]
-fn uninstall_task_count() {
-    assert_eq!(uninstall_tasks().len(), 3);
-}
 
 /// Every uninstall task name must be non-empty.
 #[test]

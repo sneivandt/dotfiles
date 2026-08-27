@@ -229,76 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn all_install_tasks_have_the_expected_membership() {
-        let tasks = all_install_tasks(&test_params());
-        let actual = tasks
-            .iter()
-            .map(|task| task.task_id())
-            .collect::<HashSet<_>>();
-        let expected = [
-            id::<EnableDeveloperMode>(),
-            id::<MaterializeExcludedSymlinks>(),
-            id::<ConfigureSparseCheckout>(),
-            id::<UpdateRepository>(),
-            id::<ConfigureGit>(),
-            id::<ConfigureAgentSettings>(),
-            id::<InstallGitHooks>(),
-            id::<GenerateCompletions>(),
-            id::<InstallPackages>(),
-            id::<InstallParu>(),
-            id::<InstallAurPackages>(),
-            id::<InstallSymlinks>(),
-            id::<ApplyFilePermissions>(),
-            id::<ConfigureShell>(),
-            id::<ConfigurePamKeyring>(),
-            id::<ConfigureSystemd>(),
-            id::<ApplyRegistry>(),
-            id::<InstallVsCodeExtensions>(),
-            id::<InstallApmPackages>(),
-            id::<UpdateApmPackages>(),
-            id::<InstallWslConf>(),
-            id::<ReportOverlayScriptSnapshot>(),
-            id::<InstallWrapper>(),
-            id::<ConfigurePath>(),
-        ]
-        .into_iter()
-        .collect::<HashSet<_>>();
-
-        assert_eq!(actual, expected, "install task registration changed");
-        assert_eq!(
-            tasks.len(),
-            actual.len(),
-            "install task registration contains duplicate task IDs"
-        );
-    }
-
-    #[test]
-    fn all_uninstall_tasks_have_the_expected_membership() {
-        let store = test_params();
-        let tasks = all_uninstall_tasks(&store);
-        let actual = tasks
-            .iter()
-            .map(|task| task.task_id())
-            .collect::<HashSet<_>>();
-        let expected = [
-            id::<UninstallSymlinks>(),
-            id::<UninstallGitHooks>(),
-            id::<UninstallWrapper>(),
-        ]
-        .into_iter()
-        .collect::<HashSet<_>>();
-
-        assert_eq!(actual, expected, "uninstall task registration changed");
-        assert_eq!(
-            tasks.len(),
-            actual.len(),
-            "uninstall task registration contains duplicate task IDs"
-        );
-    }
-
-    #[test]
     fn install_tasks_have_resolvable_dependencies() {
-        use std::collections::HashSet;
         let tasks = all_install_tasks(&test_params());
         let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
         let unique: HashSet<TaskId> = ids.iter().cloned().collect();

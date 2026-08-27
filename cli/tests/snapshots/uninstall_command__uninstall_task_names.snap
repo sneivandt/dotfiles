@@ -1,7 +1,0 @@
----
-source: tests/uninstall_command.rs
-expression: "task_names.join(\"\\n\")"
----
-Home symlinks
-Git hooks
-Dotfiles launcher

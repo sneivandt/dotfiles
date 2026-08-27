@@ -28,6 +28,18 @@
   <img src="docs/assets/terminal-screenshot.svg" alt="Generated terminal output of a dotfiles install">
 </p>
 
+## Scope
+
+This is an opinionated personal system built for the author's Arch Linux,
+Windows, and WSL machines. It is public so others can borrow or adapt the
+engine and configuration, but it does not aim to be a general-purpose,
+distribution-neutral configuration manager. The supplied profiles, packages,
+desktop setup, and application choices reflect those machines and preferences.
+
+Adapting the project for another setup normally starts with `conf/`, the files
+under `symlinks/`, and the profile definitions. Platform or package-manager
+support outside the current targets requires code changes.
+
 ## Quick start
 
 From a repository checkout, preview the changes first, then run the install

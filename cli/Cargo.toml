@@ -39,7 +39,6 @@ serde_yaml_ng = "0.10.0"
 unicode-width = "0.2"
 
 [dev-dependencies]
-insta = { version = "1", features = ["yaml"] }
 mockall = "0.15"
 proptest = "1"
 tempfile = "3"

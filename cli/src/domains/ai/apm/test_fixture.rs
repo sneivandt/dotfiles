@@ -149,7 +149,7 @@ pub fn expect_copilot_app_workflow_install(mock: &mut MockExecutor, seq: &mut mo
             assert_eq!(spec.program(), "apm");
             assert_eq!(
                 spec.arguments(),
-                ["install", "-g", "--target", "copilot-app"]
+                ["install", "-g", "--target", "copilot-app", "--only", "apm"]
             );
             Ok(ExecResult::success("installed workflows\n"))
         });

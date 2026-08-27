@@ -76,10 +76,12 @@ The APM packages task omits `--target` from its primary invocation, leaving the
 merged manifest in control. Copilot App is the exception because APM does not
 accept its experimental target in `apm.yml`. When the App database exists, the
 task idempotently enables `copilot-app` and runs a separate
-`apm install -g --target copilot-app` to deploy workflows. If the APM manifest
-is already current, the primary native install still runs. After APM finishes,
-the task restores `autopilot` mode and enabled state for any dotfiles-managed
-workflow that drifted.
+`apm install -g --target copilot-app --only apm` to deploy workflows without
+asking the MCP-incapable target to process manifest-wide MCP dependencies. The
+primary invocation still deploys those MCP dependencies to supported targets.
+If the APM manifest is already current, the primary native install still runs.
+After APM finishes, the task restores `autopilot` mode and enabled state for any
+dotfiles-managed workflow that drifted.
 
 Cowork remains an experimental APM target and is disabled by default. When a
 Cowork skills path is available, dotfiles re-asserts the feature with:

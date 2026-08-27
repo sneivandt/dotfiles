@@ -41,7 +41,7 @@ impl CopilotTarget {
         match self {
             Self::CopilotApp => CopilotDeployment::NativeApm {
                 config_key: "copilot_app",
-                args: &["install", "-g", "--target", "copilot-app"],
+                args: &["install", "-g", "--target", "copilot-app", "--only", "apm"],
             },
             Self::Cowork => CopilotDeployment::CoworkFileReconcile {
                 config_key: "copilot_cowork",

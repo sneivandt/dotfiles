@@ -267,10 +267,11 @@ generated manifest, lock state, plugins, and skills. It runs after package,
 AUR, and symlink tasks so the APM executable and inputs are available.
 
 The task always delegates user-scope convergence and stale-content cleanup to
-`apm install -g`. Copilot App uses its native experimental target. Cowork
-remains experimental and uses an ACL-safe file reconciliation after its APM
-feature flag and path configuration are honored. See [APM](APM.md) for the
-ownership boundary.
+`apm install -g`. Copilot App uses an APM-only pass through its native
+experimental target so manifest-wide MCP dependencies remain with supported
+targets. Cowork remains experimental and uses an ACL-safe file reconciliation
+after its APM feature flag and path configuration are honored. See
+[APM](APM.md) for the ownership boundary.
 
 #### WSL configuration files
 

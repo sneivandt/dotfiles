@@ -30,15 +30,13 @@
 
 ## Scope
 
-This is an opinionated personal system built for the author's Arch Linux,
-Windows, and WSL machines. It is public so others can borrow or adapt the
-engine and configuration, but it does not aim to be a general-purpose,
-distribution-neutral configuration manager. The supplied profiles, packages,
-desktop setup, and application choices reflect those machines and preferences.
+This is my opinionated system for Arch Linux, Windows, and WSL. I keep it public
+so others can borrow the engine or adapt the configuration, but it is not a
+general-purpose, distribution-neutral configuration manager. Its profiles,
+packages, desktop setup, and app choices match my machines and preferences.
 
-Adapting the project for another setup normally starts with `conf/`, the files
-under `symlinks/`, and the profile definitions. Platform or package-manager
-support outside the current targets requires code changes.
+To adapt it, start with `conf/`, `symlinks/`, and the profile definitions. Other
+platforms or package managers require code changes.
 
 ## Quick start
 

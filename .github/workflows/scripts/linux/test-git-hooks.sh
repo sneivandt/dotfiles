@@ -246,7 +246,8 @@ test_docker_publish_guards() {
   cp "$repo_root/hooks/check-ci-guards.sh" "$repo/hooks/check-ci-guards.sh"
   cp "$repo_root/.github/workflows/docker.yml" "$repo/.github/workflows/docker.yml"
   cp "$repo_root/Dockerfile" "$repo/Dockerfile"
-  git -C "$repo" add .github/workflows/docker.yml Dockerfile
+  cp "$repo_root/rust-toolchain.toml" "$repo/rust-toolchain.toml"
+  git -C "$repo" add .github/workflows/docker.yml Dockerfile rust-toolchain.toml
 
   if (
     cd "$repo"
@@ -271,9 +272,24 @@ test_docker_publish_guards() {
   fi
 
   cp "$repo_root/Dockerfile" "$repo/Dockerfile"
+  sed 's/channel = "[0-9][0-9.]*"/channel = "1.94.0"/' \
+    "$repo_root/rust-toolchain.toml" > "$repo/rust-toolchain.toml"
+  git -C "$repo" add Dockerfile rust-toolchain.toml
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Docker publishing guards accepted a mismatched Rust toolchain"
+  else
+    pass "Docker publishing guards require the builder to match rust-toolchain.toml"
+  fi
+
+  cp "$repo_root/Dockerfile" "$repo/Dockerfile"
+  cp "$repo_root/rust-toolchain.toml" "$repo/rust-toolchain.toml"
   sed '/DOTFILES_VERSION=sha-/d' \
     "$repo_root/.github/workflows/docker.yml" > "$repo/.github/workflows/docker.yml"
-  git -C "$repo" add .github/workflows/docker.yml Dockerfile
+  git -C "$repo" add .github/workflows/docker.yml Dockerfile rust-toolchain.toml
 
   if (
     cd "$repo"

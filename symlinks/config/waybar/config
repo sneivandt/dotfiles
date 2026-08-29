@@ -5,7 +5,7 @@
     "height": 30,
     "modules-left": ["group/workspaces", "custom/window"],
     "modules-center": [],
-    "modules-right": ["custom/playing", "custom/stocks", "tray", "network", "pulseaudio", "battery", "clock"],
+    "modules-right": ["custom/playing", "custom/stocks", "tray", "network", "pulseaudio", "battery", "custom/power", "clock"],
 
     "group/workspaces": {
         "orientation": "horizontal",
@@ -147,6 +147,12 @@
                 "today": "<span color='#f7768e'><b><u>{}</u></b></span>"
             }
         }
+    },
+
+    "custom/power": {
+        "format": "\uf011",
+        "tooltip-format": "Power menu",
+        "on-click": "~/.config/hypr/scripts/power-menu.sh"
     },
 
     "custom/playing": {

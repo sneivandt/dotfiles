@@ -61,7 +61,8 @@ window#waybar #custom-window.empty {
 #pulseaudio,
 #battery,
 #custom-playing,
-#custom-stocks {
+#custom-stocks,
+#custom-power {
     padding: 2px 12px;
     margin: 4px 2px;
     border-radius: 6px;

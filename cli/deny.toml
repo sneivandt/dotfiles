@@ -9,12 +9,9 @@ yanked = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
-    "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
-    "Unicode-DFS-2016",
-    "OpenSSL",
     "Zlib",
     "BSL-1.0",
     "CC0-1.0",
@@ -33,7 +30,6 @@ skip = [
     { crate = "getrandom@0.2.17", reason = "ring still pins getrandom 0.2" },
     { crate = "getrandom@0.3.4", reason = "jobserver still pins getrandom 0.3" },
     { crate = "windows-sys@0.52.0", reason = "ring still pins windows-sys 0.52" },
-    { crate = "base64", reason = "dotfiles-cli uses 0.23 while ureq/ureq-proto still resolve 0.22" },
     { crate = "syn", reason = "derive ecosystem currently spans syn 2 and syn 3" },
 ]
 

@@ -8,6 +8,7 @@
 #![allow(dead_code, reason = "used conditionally via cfg")]
 
 use dotfiles_cli::testing as test_api;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -17,10 +18,61 @@ use test_api::config::profiles;
 use test_api::exec::{CommandSpec, ExecError, ExecResult, Executor, ProcessExecutor};
 use test_api::logging::{Log, Logger};
 use test_api::platform::Platform;
-use test_api::tasks::{Context, ContextOpts};
+use test_api::tasks::{Context, ContextOpts, Task, TaskId};
 
 fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
     Arc::<Logger>::clone(log)
+}
+
+/// Assert the structural invariants shared by every static task catalog.
+pub(crate) fn assert_task_catalog_contract(catalog: &str, tasks: &[Box<dyn Task>]) {
+    let mut names = HashSet::new();
+    let mut selectors = HashSet::new();
+    let mut ids = HashSet::new();
+
+    for task in tasks {
+        assert!(
+            !task.name().is_empty(),
+            "{catalog} task has an empty display name"
+        );
+        assert!(
+            names.insert(task.name()),
+            "{catalog} task catalog contains duplicate display name '{}'",
+            task.name()
+        );
+        assert!(
+            selectors.insert(task.selector()),
+            "{catalog} task catalog contains duplicate selector '{}'",
+            task.selector()
+        );
+        assert!(
+            ids.insert(task.task_id()),
+            "{catalog} task catalog contains a duplicate TaskId for '{}'",
+            task.name()
+        );
+    }
+
+    let present: HashSet<TaskId> = tasks.iter().map(|task| task.task_id()).collect();
+    for task in tasks {
+        for dependency in task
+            .dependencies()
+            .iter()
+            .chain(task.ordering_dependencies())
+        {
+            assert!(
+                present.contains(dependency),
+                "{catalog} task '{}' depends on a task outside its catalog",
+                task.name()
+            );
+        }
+    }
+
+    let task_refs: Vec<&dyn Task> = tasks.iter().map(Box::as_ref).collect();
+    assert_eq!(
+        test_api::engine::graph::validate(&task_refs),
+        Ok(()),
+        "{catalog} task catalog must form a valid DAG"
+    );
 }
 
 /// Write the minimal set of TOML config files required by the dotfiles engine

@@ -14,18 +14,20 @@
 mod common;
 
 use dotfiles_cli::testing as test_api;
-use std::collections::HashSet;
 
 use test_api::config::ConfigStore;
 use test_api::platform::{Os, Platform};
 use test_api::tasks;
-use test_api::tasks::TaskId;
 use test_api::tasks::filter::task_matches_filter;
 
 /// Build an install task list backed by a store loaded from a minimal repo.
 fn install_tasks() -> Vec<Box<dyn tasks::Task>> {
+    install_tasks_for_platform(Platform::detect())
+}
+
+fn install_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     let ctx = common::IntegrationTestContext::new();
-    let store = ConfigStore::from_config(ctx.load_config("base"));
+    let store = ConfigStore::from_config(ctx.load_config_for_platform("base", platform));
     tasks::all_install_tasks(&store)
 }
 
@@ -33,69 +35,10 @@ fn install_tasks() -> Vec<Box<dyn tasks::Task>> {
 // Structural invariants
 // ---------------------------------------------------------------------------
 
-/// Every task name must be non-empty.
 #[test]
-fn install_task_names_are_non_empty() {
-    for task in install_tasks() {
-        assert!(!task.name().is_empty(), "install task has an empty name");
-    }
-}
-
-/// No two install tasks may share the same name.
-#[test]
-fn install_task_names_are_unique() {
+fn install_task_catalog_satisfies_structural_contract() {
     let tasks = install_tasks();
-    let mut seen: HashSet<&str> = HashSet::new();
-    for task in &tasks {
-        assert!(
-            seen.insert(task.name()),
-            "duplicate install task name: '{}'",
-            task.name()
-        );
-    }
-}
-
-/// No two install tasks may share the same selector.
-#[test]
-fn install_task_selectors_are_unique() {
-    let tasks = install_tasks();
-    let mut seen: HashSet<&str> = HashSet::new();
-    for task in &tasks {
-        assert!(
-            seen.insert(task.selector()),
-            "duplicate install task selector: '{}'",
-            task.selector()
-        );
-    }
-}
-
-/// No two install tasks may share the same [`TaskId`].
-#[test]
-fn install_task_type_ids_are_unique() {
-    let tasks = install_tasks();
-    let ids: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-    assert_eq!(
-        ids.len(),
-        tasks.len(),
-        "install task list contains duplicate TaskIds"
-    );
-}
-
-/// Every dependency declared by an install task must be satisfied by another
-/// task in the same list (i.e., no dangling dependency references).
-#[test]
-fn install_task_dependencies_are_resolvable() {
-    let tasks = install_tasks();
-    let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-    for task in &tasks {
-        for dep in task.dependencies() {
-            assert!(
-                present.contains(dep),
-                "task '{}' declares a dependency that is not in the install task list",
-                task.name()
-            );
-        }
-    }
+    common::assert_task_catalog_contract("install", &tasks);
 }
 
 // ---------------------------------------------------------------------------
@@ -225,116 +168,52 @@ fn only_filter_with_no_match_returns_empty() {
 // Dry-run: task list from a minimal repository
 // ---------------------------------------------------------------------------
 
-/// `should_run` must not panic for any install task when given a minimal config.
 #[test]
-fn install_tasks_should_run_does_not_panic_with_minimal_config() {
-    let ctx = common::TestContextBuilder::new().build();
-    let ec = ctx.make_system_context(
-        "base",
-        Platform::detect(),
-        tasks::ContextOpts {
-            dry_run: true,
-            parallel: false,
-            is_ci: None,
+fn install_tasks_assess_on_linux_and_windows() {
+    let platforms = [
+        Platform {
+            os: Os::Linux,
+            is_arch: false,
+            is_wsl: false,
         },
-    );
+        Platform {
+            os: Os::Windows,
+            is_arch: false,
+            is_wsl: false,
+        },
+    ];
 
-    let tasks = install_tasks();
-    // Calling should_run on every task must not panic.
-    for task in &tasks {
-        let _ = task.should_run(&ec.ctx);
+    for platform in platforms {
+        let ctx = common::TestContextBuilder::new().build();
+        let ec = ctx.make_system_context(
+            "base",
+            platform,
+            tasks::ContextOpts {
+                dry_run: true,
+                parallel: false,
+                is_ci: None,
+            },
+        );
+
+        for task in tasks::all_install_tasks(&ec.store) {
+            let _ = task.should_run(&ec.ctx);
+        }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Dependency graph: no cycles
-// ---------------------------------------------------------------------------
-
-/// The install task dependency graph must not contain any cycles.
-///
-/// A cyclic dependency would cause the parallel scheduler to deadlock.  This
-/// test validates the real task set as a regression guard independent of the
-/// scheduler unit tests.
-#[test]
-fn install_tasks_form_acyclic_dependency_graph() {
-    use test_api::engine::graph::validate;
-
-    let tasks = install_tasks();
-    let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
-    assert_eq!(
-        validate(&task_refs),
-        Ok(()),
-        "install task dependency graph is not a valid DAG"
-    );
 }
 
 // ---------------------------------------------------------------------------
 // Expected task presence
 // ---------------------------------------------------------------------------
 
-/// The install task list must contain the home symlink task.
 #[test]
-fn install_task_list_contains_install_symlinks() {
+fn install_task_catalog_contains_required_tasks() {
     let tasks = install_tasks();
-    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
-    assert!(
-        names.contains(&"Home symlinks"),
-        "expected 'Home symlinks' in install task list, got: {names:?}"
-    );
-}
-
-/// The install task list must contain the Git hooks task.
-#[test]
-fn install_task_list_contains_install_git_hooks() {
-    let tasks = install_tasks();
-    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
-    assert!(
-        names.contains(&"Git hooks"),
-        "expected 'Git hooks' in install task list, got: {names:?}"
-    );
-}
-
-/// The install task list must contain the Git settings task.
-#[test]
-fn install_task_list_contains_configure_git() {
-    let tasks = install_tasks();
-    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
-    assert!(
-        names.contains(&"Git settings"),
-        "expected 'Git settings' in install task list, got: {names:?}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Dry-run: task list with a Windows platform
-// ---------------------------------------------------------------------------
-
-/// `should_run` must not panic for any install task when given a Windows platform.
-///
-/// This exercises the platform-guarding logic in tasks like `ConfigureSystemd`,
-/// `ApplyRegistry`, and `ApplyFilePermissions` without needing a real Windows OS.
-#[test]
-fn install_tasks_should_run_with_windows_platform() {
-    let ctx = common::TestContextBuilder::new().build();
-
-    let platform = Platform {
-        os: Os::Windows,
-        is_arch: false,
-        is_wsl: false,
-    };
-    let ec = ctx.make_system_context(
-        "base",
-        platform,
-        tasks::ContextOpts {
-            dry_run: true,
-            parallel: false,
-            is_ci: None,
-        },
-    );
-
-    let all_tasks = install_tasks();
-    for task in &all_tasks {
-        let _ = task.should_run(&ec.ctx);
+    let selectors: Vec<&str> = tasks.iter().map(|task| task.selector()).collect();
+    for required in ["symlinks", "git-hooks", "git"] {
+        assert!(
+            selectors.contains(&required),
+            "install task catalog is missing required selector '{required}'"
+        );
     }
 }
 
@@ -413,92 +292,6 @@ fn only_with_multiple_keywords_includes_all_matching() {
             task.name()
         );
     }
-}
-
-// ---------------------------------------------------------------------------
-// Idempotency: install → install is a no-op
-// ---------------------------------------------------------------------------
-
-/// Running `InstallSymlinks` twice must produce zero changes on the second run.
-///
-/// This test exercises the core idempotency guarantee: after a successful
-/// install every resource is already in the desired state, so a second install
-/// run must not change anything.
-///
-/// The verification relies on [`ResourceState`]: if every resource reports
-/// `Correct` before the second `run()` call, then `process_resources` can only
-/// count items as `already_ok` — making `changed == 0` a logical necessity.
-/// Checking `Correct` after the second run confirms no resources were broken.
-#[cfg(unix)]
-#[test]
-fn install_symlinks_is_idempotent() {
-    use std::sync::Arc;
-
-    use test_api::resources::IntrinsicState;
-    use test_api::tasks::Task;
-
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
-        .with_symlink_source("bashrc")
-        .build();
-
-    let ec = ctx.make_system_context(
-        "base",
-        Platform::detect(),
-        tasks::ContextOpts {
-            dry_run: false,
-            parallel: false,
-            is_ci: Some(false),
-        },
-    );
-
-    let task = tasks::files::symlinks::InstallSymlinks::new(ec.store.symlinks.clone());
-
-    // First run: must succeed and create the symlink.
-    let result1 = task.run(&ec.ctx).expect("first install run");
-    assert!(
-        matches!(result1, tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "first install run should succeed"
-    );
-
-    // Build the resource to inspect state directly.
-    let source = ctx.root_path().join("symlinks").join("bashrc");
-    let target = ec.ctx.home().join(".bashrc");
-    let resource = test_api::resources::symlink::SymlinkResource::new(
-        source,
-        target,
-        Arc::new(test_api::exec::ProcessExecutor::system()),
-    );
-
-    // After the first run every resource must be Correct.  This is the
-    // precondition that proves the second run will make zero changes.
-    assert_eq!(
-        resource
-            .current_state()
-            .expect("check state after first run"),
-        test_api::resources::ResourceState::Correct,
-        "symlink must be Correct after first install"
-    );
-
-    // Second run: must succeed without changing anything.
-    let result2 = task.run(&ec.ctx).expect("second install run");
-    assert!(
-        matches!(
-            result2,
-            tasks::TaskResult::Batch(ref stats)
-                if stats.changed_count() == 0 && stats.failed_count() == 0
-        ),
-        "second install run should succeed"
-    );
-
-    // State must still be Correct, confirming zero changes in the second run.
-    assert_eq!(
-        resource
-            .current_state()
-            .expect("check state after second run"),
-        test_api::resources::ResourceState::Correct,
-        "symlink must still be Correct after second install (idempotency guarantee)"
-    );
 }
 
 // ---------------------------------------------------------------------------

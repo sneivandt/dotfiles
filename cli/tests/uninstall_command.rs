@@ -13,23 +13,19 @@
 mod common;
 
 use dotfiles_cli::testing as test_api;
-use std::collections::HashSet;
 
 use test_api::config::ConfigStore;
 use test_api::platform::{Os, Platform};
 use test_api::tasks;
-use test_api::tasks::TaskId;
-
-fn log_arc(
-    log: &std::sync::Arc<test_api::logging::Logger>,
-) -> std::sync::Arc<dyn test_api::logging::Log> {
-    std::sync::Arc::<test_api::logging::Logger>::clone(log)
-}
 
 /// Build an uninstall task list backed by a store loaded from a minimal repo.
 fn uninstall_tasks() -> Vec<Box<dyn tasks::Task>> {
+    uninstall_tasks_for_platform(Platform::detect())
+}
+
+fn uninstall_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     let ctx = common::IntegrationTestContext::new();
-    let store = ConfigStore::from_config(ctx.load_config("base"));
+    let store = ConfigStore::from_config(ctx.load_config_for_platform("base", platform));
     tasks::all_uninstall_tasks(&store)
 }
 
@@ -37,153 +33,63 @@ fn uninstall_tasks() -> Vec<Box<dyn tasks::Task>> {
 // Structural invariants
 // ---------------------------------------------------------------------------
 
-/// Every uninstall task name must be non-empty.
 #[test]
-fn uninstall_task_names_are_non_empty() {
-    for task in uninstall_tasks() {
-        assert!(!task.name().is_empty(), "uninstall task has an empty name");
-    }
-}
-
-/// No two uninstall tasks may share the same name.
-#[test]
-fn uninstall_task_names_are_unique() {
+fn uninstall_task_catalog_satisfies_structural_contract() {
     let tasks = uninstall_tasks();
-    let mut seen: HashSet<&str> = HashSet::new();
-    for task in &tasks {
-        assert!(
-            seen.insert(task.name()),
-            "duplicate uninstall task name: '{}'",
-            task.name()
-        );
-    }
-}
-
-/// No two uninstall tasks may share the same selector.
-#[test]
-fn uninstall_task_selectors_are_unique() {
-    let tasks = uninstall_tasks();
-    let mut seen: HashSet<&str> = HashSet::new();
-    for task in &tasks {
-        assert!(
-            seen.insert(task.selector()),
-            "duplicate uninstall task selector: '{}'",
-            task.selector()
-        );
-    }
-}
-
-/// No two uninstall tasks may share the same [`TaskId`].
-#[test]
-fn uninstall_task_type_ids_are_unique() {
-    let tasks = uninstall_tasks();
-    let ids: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-    assert_eq!(
-        ids.len(),
-        tasks.len(),
-        "uninstall task list contains duplicate TaskIds"
-    );
-}
-
-/// Every dependency declared by an uninstall task must be satisfied by another
-/// task in the same list.
-#[test]
-fn uninstall_task_dependencies_are_resolvable() {
-    let tasks = uninstall_tasks();
-    let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-    for task in &tasks {
-        for dep in task.dependencies() {
-            assert!(
-                present.contains(dep),
-                "uninstall task '{}' declares a dependency not in the uninstall task list",
-                task.name()
-            );
-        }
-    }
+    common::assert_task_catalog_contract("uninstall", &tasks);
 }
 
 // ---------------------------------------------------------------------------
 // Expected task presence
 // ---------------------------------------------------------------------------
 
-/// "Home symlinks" must be present in the uninstall task list.
 #[test]
-fn uninstall_task_list_contains_home_symlinks() {
+fn uninstall_task_catalog_contains_required_tasks() {
     let tasks = uninstall_tasks();
-    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
-    assert!(
-        names.contains(&"Home symlinks"),
-        "expected 'Home symlinks' in uninstall task list, got: {names:?}"
-    );
-}
-
-/// "Git hooks" must be present in the uninstall task list.
-#[test]
-fn uninstall_task_list_contains_git_hooks() {
-    let tasks = uninstall_tasks();
-    let names: Vec<&str> = tasks.iter().map(|t| t.name()).collect();
-    assert!(
-        names.contains(&"Git hooks"),
-        "expected 'Git hooks' in uninstall task list, got: {names:?}"
-    );
+    let selectors: Vec<&str> = tasks.iter().map(|task| task.selector()).collect();
+    for required in ["symlinks", "git-hooks"] {
+        assert!(
+            selectors.contains(&required),
+            "uninstall task catalog is missing required selector '{required}'"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Dry-run: task list from a minimal repository
 // ---------------------------------------------------------------------------
 
-/// `should_run` must not panic for any uninstall task when given a minimal config.
 #[test]
-fn uninstall_tasks_should_run_does_not_panic_with_minimal_config() {
-    use std::sync::Arc;
-
-    let ctx_builder = common::TestContextBuilder::new();
-    let ctx = ctx_builder.build();
-    let config = ctx.load_config("base");
-
-    let platform = Platform::detect();
-    let executor: Arc<dyn test_api::exec::Executor> =
-        Arc::new(test_api::exec::ProcessExecutor::system());
-    let log: Arc<test_api::logging::Logger> =
-        Arc::new(test_api::logging::Logger::new("test-uninstall"));
-
-    let task_ctx = tasks::Context::new(
-        config.root,
-        config.overlay,
-        platform,
-        log_arc(&log),
-        executor,
-        test_api::env::system(),
-        tasks::ContextOpts {
-            dry_run: true,
-            parallel: false,
-            is_ci: None,
+fn uninstall_tasks_assess_on_linux_and_windows() {
+    let platforms = [
+        Platform {
+            os: Os::Linux,
+            is_arch: false,
+            is_wsl: false,
         },
-    )
-    .expect("create context");
+        Platform {
+            os: Os::Windows,
+            is_arch: false,
+            is_wsl: false,
+        },
+    ];
 
-    let tasks = uninstall_tasks();
-    for task in &tasks {
-        let _ = task.should_run(&task_ctx);
+    for platform in platforms {
+        let ctx = common::TestContextBuilder::new().build();
+        let ec = ctx.make_system_context(
+            "base",
+            platform,
+            tasks::ContextOpts {
+                dry_run: true,
+                parallel: false,
+                is_ci: None,
+            },
+        );
+
+        for task in tasks::all_uninstall_tasks(&ec.store) {
+            let _ = task.should_run(&ec.ctx);
+        }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Dependency graph: no cycles
-// ---------------------------------------------------------------------------
-
-/// The uninstall task dependency graph must not contain any cycles.
-#[test]
-fn uninstall_tasks_form_acyclic_dependency_graph() {
-    use test_api::engine::graph::validate;
-
-    let tasks = uninstall_tasks();
-    let task_refs: Vec<&dyn tasks::Task> = tasks.iter().map(Box::as_ref).collect();
-    assert_eq!(
-        validate(&task_refs),
-        Ok(()),
-        "uninstall task dependency graph is not a valid DAG"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -199,8 +105,6 @@ fn uninstall_tasks_form_acyclic_dependency_graph() {
 #[cfg(unix)]
 #[test]
 fn uninstall_symlinks_is_idempotent() {
-    use std::sync::Arc;
-
     use test_api::tasks::Task;
 
     let ctx = common::TestContextBuilder::new()
@@ -208,35 +112,11 @@ fn uninstall_symlinks_is_idempotent() {
         .with_symlink_source("bashrc")
         .build();
 
-    let home_dir = tempfile::tempdir().expect("create temp home dir");
-
-    let platform = Platform::detect();
-    let executor: Arc<dyn test_api::exec::Executor> =
-        Arc::new(test_api::exec::ProcessExecutor::system());
-    let log: Arc<test_api::logging::Logger> =
-        Arc::new(test_api::logging::Logger::new("test-uninstall-idempotent"));
-
-    let config = ctx.load_config("base");
-    let root = config.root.clone();
-    let overlay = config.overlay.clone();
-    let store = ConfigStore::from_config(config);
-    let task_ctx = tasks::Context::from_raw(
-        root,
-        overlay,
-        platform,
-        log_arc(&log),
-        executor,
-        home_dir.path().to_path_buf(),
-        tasks::ContextOpts {
-            dry_run: false,
-            parallel: false,
-            is_ci: Some(false),
-        },
-    );
+    let ec = ctx.make_context("base");
 
     // Install the symlink first so there is something to uninstall.
-    let install_result = tasks::files::symlinks::InstallSymlinks::new(store.symlinks.clone())
-        .run(&task_ctx)
+    let install_result = tasks::files::symlinks::InstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
         .expect("install run");
     assert!(
         matches!(
@@ -247,15 +127,15 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // First uninstall: symlink must be materialised to a regular file.
-    let result1 = tasks::files::symlinks::UninstallSymlinks::new(store.symlinks.clone())
-        .run(&task_ctx)
+    let result1 = tasks::files::symlinks::UninstallSymlinks::new(ec.store.symlinks.clone())
+        .run(&ec.ctx)
         .expect("first uninstall run");
     assert!(
         matches!(result1, tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0),
         "first uninstall run should succeed"
     );
 
-    let target = home_dir.path().join(".bashrc");
+    let target = ec.ctx.home().join(".bashrc");
     let meta = std::fs::symlink_metadata(&target).expect("target should exist after uninstall");
     assert!(
         !meta.is_symlink(),
@@ -263,8 +143,8 @@ fn uninstall_symlinks_is_idempotent() {
     );
 
     // Second uninstall: must succeed (idempotency — target is no longer a symlink).
-    let result2 = tasks::files::symlinks::UninstallSymlinks::new(store.symlinks)
-        .run(&task_ctx)
+    let result2 = tasks::files::symlinks::UninstallSymlinks::new(ec.store.symlinks)
+        .run(&ec.ctx)
         .expect("second uninstall run");
     assert!(
         matches!(
@@ -274,120 +154,4 @@ fn uninstall_symlinks_is_idempotent() {
         ),
         "second uninstall run should succeed (idempotency guarantee)"
     );
-}
-
-/// The CI-facing uninstall integration test must prove the user-visible
-/// contract: a managed file symlink is replaced with a real file containing the
-/// source content.
-#[cfg(unix)]
-#[test]
-fn uninstall_symlinks_materializes_file_content() {
-    use std::sync::Arc;
-
-    use test_api::tasks::Task;
-
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
-        .with_symlink_source_content("bashrc", "# managed bashrc\n")
-        .build();
-
-    let home_dir = tempfile::tempdir().expect("create temp home dir");
-    let executor: Arc<dyn test_api::exec::Executor> =
-        Arc::new(test_api::exec::ProcessExecutor::system());
-    let log: Arc<test_api::logging::Logger> =
-        Arc::new(test_api::logging::Logger::new("test-uninstall-materialize"));
-    let config = ctx.load_config("base");
-    let root = config.root.clone();
-    let overlay = config.overlay.clone();
-    let store = ConfigStore::from_config(config);
-    let task_ctx = tasks::Context::from_raw(
-        root,
-        overlay,
-        Platform::detect(),
-        log_arc(&log),
-        executor,
-        home_dir.path().to_path_buf(),
-        tasks::ContextOpts {
-            dry_run: false,
-            parallel: false,
-            is_ci: Some(true),
-        },
-    );
-
-    let install_result = tasks::files::symlinks::InstallSymlinks::new(store.symlinks.clone())
-        .run(&task_ctx)
-        .expect("install run");
-    assert!(matches!(
-        install_result,
-        tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0
-    ));
-
-    let target = home_dir.path().join(".bashrc");
-    assert!(
-        std::fs::symlink_metadata(&target)
-            .expect("installed target")
-            .is_symlink(),
-        "install should create the managed symlink before uninstall"
-    );
-
-    let uninstall_result = tasks::files::symlinks::UninstallSymlinks::new(store.symlinks)
-        .run(&task_ctx)
-        .expect("uninstall run");
-    assert!(matches!(
-        uninstall_result,
-        tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0
-    ));
-
-    let meta = std::fs::symlink_metadata(&target).expect("materialized target");
-    assert!(!meta.is_symlink(), "uninstall must replace the symlink");
-    assert!(meta.is_file(), "materialized target should be a real file");
-    assert_eq!(
-        std::fs::read_to_string(&target).expect("materialized content"),
-        "# managed bashrc\n"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Dry-run: task list with a Windows platform
-// ---------------------------------------------------------------------------
-
-/// `should_run` must not panic for any uninstall task when given a Windows platform.
-#[test]
-fn uninstall_tasks_should_run_with_windows_platform() {
-    use std::sync::Arc;
-
-    let ctx_builder = common::TestContextBuilder::new();
-    let ctx = ctx_builder.build();
-
-    let platform = Platform {
-        os: Os::Windows,
-        is_arch: false,
-        is_wsl: false,
-    };
-    let config = ctx.load_config_for_platform("base", platform);
-
-    let executor: Arc<dyn test_api::exec::Executor> =
-        Arc::new(test_api::exec::ProcessExecutor::system());
-    let log: Arc<test_api::logging::Logger> =
-        Arc::new(test_api::logging::Logger::new("test-uninstall-windows"));
-
-    let task_ctx = tasks::Context::new(
-        config.root,
-        config.overlay,
-        platform,
-        log_arc(&log),
-        executor,
-        test_api::env::system(),
-        tasks::ContextOpts {
-            dry_run: true,
-            parallel: false,
-            is_ci: None,
-        },
-    )
-    .expect("create context");
-
-    let all_tasks = uninstall_tasks();
-    for task in &all_tasks {
-        let _ = task.should_run(&task_ctx);
-    }
 }

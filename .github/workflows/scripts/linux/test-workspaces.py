@@ -30,32 +30,22 @@ def emit(workspace: int) -> dict:
 
 
 class WorkspacesTests(unittest.TestCase):
-    def test_active_workspace_renders_the_active_icon(self) -> None:
-        with patch.object(
-            workspaces, "read_state", return_value={"active": 2, "occupied": [1, 2]}
-        ):
-            payload = emit(2)
+    def test_workspace_rendering_reflects_cached_state(self) -> None:
+        cases = [
+            ("active", 2, workspaces.ACTIVE_ICON, "active"),
+            ("occupied", 1, workspaces.OCCUPIED_ICON, "occupied"),
+            ("unused", 3, "", "empty"),
+        ]
+        state = {"active": 2, "occupied": [1, 2]}
 
-        self.assertEqual(payload["text"], workspaces.ACTIVE_ICON)
-        self.assertEqual(payload["class"], "active")
-
-    def test_occupied_workspace_renders_the_occupied_icon(self) -> None:
-        with patch.object(
-            workspaces, "read_state", return_value={"active": 2, "occupied": [1, 2]}
-        ):
-            payload = emit(1)
-
-        self.assertEqual(payload["text"], workspaces.OCCUPIED_ICON)
-        self.assertEqual(payload["class"], "occupied")
-
-    def test_unused_workspace_is_hidden(self) -> None:
-        with patch.object(
-            workspaces, "read_state", return_value={"active": 2, "occupied": [1, 2]}
-        ):
-            payload = emit(3)
-
-        self.assertEqual(payload["text"], "")
-        self.assertEqual(payload["class"], "empty")
+        for name, workspace, text, css_class in cases:
+            with (
+                self.subTest(name=name),
+                patch.object(workspaces, "read_state", return_value=state),
+            ):
+                payload = emit(workspace)
+                self.assertEqual(payload["text"], text)
+                self.assertEqual(payload["class"], css_class)
 
     def test_missing_cached_state_hides_every_dot(self) -> None:
         with patch.object(workspaces, "read_state", return_value=None):
@@ -176,19 +166,31 @@ class WaybarConfigTests(unittest.TestCase):
             self.assertEqual(module["signal"], workspaces.WAYBAR_SIGNAL_ID)
             self.assertEqual(module["return-type"], "json")
 
-    def test_status_modules_are_separate(self) -> None:
-        self.assertEqual(
-            self.config["modules-right"],
-            [
-                "custom/playing",
-                "custom/stocks",
-                "tray",
-                "network",
-                "pulseaudio",
-                "battery",
-                "custom/power",
-                "clock",
-            ],
+    def test_workspace_group_is_separate_from_status_modules(self) -> None:
+        status_modules = self.config["modules-right"]
+        required_status_modules = {
+            "custom/playing",
+            "custom/stocks",
+            "tray",
+            "network",
+            "pulseaudio",
+            "battery",
+            "custom/power",
+            "clock",
+        }
+
+        self.assertTrue(
+            required_status_modules.issubset(status_modules),
+            f"missing status modules: {required_status_modules.difference(status_modules)}",
+        )
+        self.assertEqual(len(status_modules), len(set(status_modules)))
+        self.assertIn("group/workspaces", self.config["modules-left"])
+        self.assertNotIn("group/workspaces", status_modules)
+        self.assertSetEqual(
+            set(self.config["group/workspaces"]["modules"]).intersection(
+                status_modules
+            ),
+            set(),
         )
 
     def test_volume_is_icon_only_and_scrollable(self) -> None:

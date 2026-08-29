@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM rust:1.95.0-bookworm@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1 AS builder
+FROM rust:1.98.0-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS builder
 
 ENV CARGO_TARGET_DIR=/build/target
 
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     && strip /build/target/release/dotfiles \
     && install -D -m 0755 /build/target/release/dotfiles /build/out/dotfiles
 
-FROM ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
 ARG PROFILE=base
 
 LABEL org.opencontainers.image.title="dotfiles" \

@@ -186,6 +186,7 @@ class WaybarConfigTests(unittest.TestCase):
                 "network",
                 "pulseaudio",
                 "battery",
+                "custom/power",
                 "clock",
             ],
         )

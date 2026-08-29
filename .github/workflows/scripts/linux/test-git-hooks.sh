@@ -257,9 +257,37 @@ test_docker_publish_guards() {
     fail "Docker publishing guards rejected the hardened workflow"
   fi
 
-  sed '/^[[:space:]]*RUN[[:space:]]*DOTFILES_SKIP_SELF_UPDATE=1/d' \
+  sed 's/cargo build --release --locked/cargo build --release/' \
     "$repo_root/Dockerfile" > "$repo/Dockerfile"
   git -C "$repo" add Dockerfile
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Docker publishing guards accepted an unlocked release build"
+  else
+    pass "Docker publishing guards require the Cargo lockfile"
+  fi
+
+  cp "$repo_root/Dockerfile" "$repo/Dockerfile"
+  sed '/DOTFILES_VERSION=sha-/d' \
+    "$repo_root/.github/workflows/docker.yml" > "$repo/.github/workflows/docker.yml"
+  git -C "$repo" add .github/workflows/docker.yml Dockerfile
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Docker publishing guards accepted an unversioned commit image"
+  else
+    pass "Docker publishing guards require the tested commit binary version"
+  fi
+
+  cp "$repo_root/.github/workflows/docker.yml" "$repo/.github/workflows/docker.yml"
+  sed '/^[[:space:]]*RUN[[:space:]]*DOTFILES_SKIP_SELF_UPDATE=1/d' \
+    "$repo_root/Dockerfile" > "$repo/Dockerfile"
+  git -C "$repo" add .github/workflows/docker.yml Dockerfile
 
   if (
     cd "$repo"

@@ -220,6 +220,16 @@ require_docker_workflow_literal() {
   fi
 }
 
+require_dockerfile_pattern() {
+  pattern="$1"
+  description="$2"
+  if ! printf '%s\n' "$dockerfile_contents" | grep -Eq "$pattern"; then
+    abort_with_hint \
+      "Dockerfile is missing $description." \
+      "restore the publishing invariant in Dockerfile"
+  fi
+}
+
 run_docker_publish_guards() {
   printf "Running Docker publishing guards...\n"
 
@@ -237,7 +247,17 @@ run_docker_publish_guards() {
   require_docker_workflow_pattern '^[[:space:]]+group:[[:space:]]+docker-main[[:space:]]*$' "serialized main publishing"
   require_docker_workflow_pattern '^[[:space:]]+cancel-in-progress:[[:space:]]+true[[:space:]]*$' "superseded-run cancellation"
   require_docker_workflow_literal 'ref: ${{ github.event.workflow_run.head_sha }}' "the tested commit checkout"
+  require_docker_workflow_literal 'persist-credentials: false' "non-persistent checkout credentials"
+  require_docker_workflow_literal 'DOTFILES_VERSION=sha-${{ github.event.workflow_run.head_sha }}' "the tested commit binary version"
   require_docker_workflow_literal 'sneivandt/dotfiles:sha-${{ github.event.workflow_run.head_sha }}' "the immutable commit tag"
+
+  require_dockerfile_pattern '^FROM[[:space:]]+rust:1\.95\.0-bookworm@sha256:[0-9a-f]{64}[[:space:]]+AS[[:space:]]+builder$' "the pinned Rust builder image"
+  require_dockerfile_pattern '^FROM[[:space:]]+ubuntu:24\.04@sha256:[0-9a-f]{64}$' "the pinned runtime image"
+  require_dockerfile_pattern '^ENV[[:space:]]+CARGO_TARGET_DIR=/build/target$' "the out-of-source Cargo target directory"
+  require_dockerfile_pattern 'update-ref refs/remotes/origin/main HEAD' "the tested commit upstream reference"
+  require_dockerfile_pattern 'cargo build --release --locked --manifest-path cli/Cargo\.toml' "the locked release build"
+  require_dockerfile_pattern 'PATH=/home/sneivandt/\.local/bin:\$\{PATH\}' "the installed launcher PATH"
+  require_dockerfile_pattern '^COPY --from=builder .* /build/out/dotfiles /home/sneivandt/dotfiles/bin/dotfiles$' "the staged release binary copy"
 
   if ! printf '%s\n' "$dockerfile_contents" | grep -Eq '^[[:space:]]*RUN[[:space:]]+DOTFILES_SKIP_SELF_UPDATE=1'; then
     abort_with_hint \

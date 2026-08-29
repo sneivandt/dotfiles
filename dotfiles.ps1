@@ -11,7 +11,7 @@
 .EXAMPLE
     PS> .\dotfiles.ps1 install --profile base --dry-run --only symlinks
 .EXAMPLE
-    PS> .\dotfiles.ps1 update --profile desktop
+    PS> .\dotfiles.ps1 install --profile desktop --update-pins
 .EXAMPLE
     PS> .\dotfiles.ps1 --build install --profile desktop
 #>
@@ -173,7 +173,7 @@ function Test-Attestation
     .SYNOPSIS
         Verify GitHub build provenance for a downloaded asset.
     .DESCRIPTION
-        Verification is required by default. Set
+        Verification runs by default when gh is available. Set
         DOTFILES_SKIP_ATTESTATION=1 to skip the check explicitly.
     #>
     param(

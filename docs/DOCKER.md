@@ -23,11 +23,12 @@ The `PROFILE` build argument defaults to `base`.
 
 The builder stage:
 
-1. Installs Rust and native build dependencies.
+1. Uses the pinned Rust toolchain builder image.
 2. Copies Git metadata.
 3. Exports the committed source with `git archive`.
 4. Sanitizes repository authentication metadata.
-5. Builds and strips the release binary.
+5. Builds with the lockfile and keeps Cargo output outside the exported source.
+6. Strips and stages only the release binary for the runtime image.
 
 The runtime stage:
 
@@ -71,6 +72,9 @@ docker build \
 The checkout must contain the required Git metadata and committed source.
 Uncommitted working-tree changes are not included because the Dockerfile uses
 `git archive HEAD`.
+
+Published images set the binary version to `sha-<commit>` so it identifies the
+same tested commit as the immutable image tag.
 
 ## CI publishing
 

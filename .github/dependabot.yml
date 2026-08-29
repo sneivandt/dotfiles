@@ -24,3 +24,15 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    assignees:
+      - sneivandt
+    groups:
+      docker-images:
+        patterns:
+          - "*"

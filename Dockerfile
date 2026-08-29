@@ -1,39 +1,29 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:24.04 AS builder
+FROM rust:1.95.0-bookworm@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1 AS builder
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install Rust and build dependencies
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update \
-    && apt-get install --no-install-recommends --no-install-suggests -y \
-        build-essential \
-        ca-certificates \
-        curl \
-        git \
-        libssl-dev \
-        pkg-config
-
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+ENV CARGO_TARGET_DIR=/build/target
 
 WORKDIR /build
 COPY .git .git
 RUN mkdir -p /build/source \
     && git archive --format=tar HEAD | tar -x -C /build/source \
-    && (git config --unset-all http.https://github.com/.extraheader || true) \
-    && (git remote remove origin || true) \
-    && git remote add origin https://github.com/sneivandt/dotfiles.git \
-    && git checkout -B main HEAD \
-    && (git branch --set-upstream-to=origin/main main || true)
+    && (git --git-dir=/build/.git config --unset-all http.https://github.com/.extraheader || true) \
+    && (git --git-dir=/build/.git remote remove origin || true) \
+    && git --git-dir=/build/.git remote add origin https://github.com/sneivandt/dotfiles.git \
+    && git --git-dir=/build/.git --work-tree=/build/source checkout -B main HEAD \
+    && git --git-dir=/build/.git update-ref refs/remotes/origin/main HEAD \
+    && git --git-dir=/build/.git branch --set-upstream-to=origin/main main
 WORKDIR /build/source
 ARG DOTFILES_VERSION
-RUN version="${DOTFILES_VERSION:-$(git --git-dir=/build/.git describe --tags --abbrev=0 --match 'v[0-9]*')}" \
-    && DOTFILES_VERSION="$version" cargo build --release --manifest-path cli/Cargo.toml \
-    && strip cli/target/release/dotfiles
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git/db,sharing=locked \
+    --mount=type=cache,target=/build/target,sharing=locked \
+    version="${DOTFILES_VERSION:-$(git --git-dir=/build/.git describe --tags --abbrev=0 --match 'v[0-9]*')}" \
+    && DOTFILES_VERSION="$version" cargo build --release --locked --manifest-path cli/Cargo.toml \
+    && strip /build/target/release/dotfiles \
+    && install -D -m 0755 /build/target/release/dotfiles /build/out/dotfiles
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
 ARG PROFILE=base
 
 LABEL org.opencontainers.image.title="dotfiles" \
@@ -72,13 +62,14 @@ RUN useradd -m -s /bin/zsh -U sneivandt
 WORKDIR /home/sneivandt
 ENV SHELL=/bin/zsh \
     USER=sneivandt \
-    LOGNAME=sneivandt
+    LOGNAME=sneivandt \
+    PATH=/home/sneivandt/.local/bin:${PATH}
 
 # Install a self-managing dotfiles checkout. Keep sanitized Git metadata so
 # update and sparse-checkout tasks can operate inside the image.
 COPY --from=builder --chown=sneivandt:sneivandt /build/source/ /home/sneivandt/dotfiles/
 COPY --from=builder --chown=sneivandt:sneivandt /build/.git /home/sneivandt/dotfiles/.git
-COPY --from=builder --chown=sneivandt:sneivandt /build/source/cli/target/release/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
+COPY --from=builder --chown=sneivandt:sneivandt /build/out/dotfiles /home/sneivandt/dotfiles/bin/dotfiles
 USER sneivandt
 RUN DOTFILES_SKIP_SELF_UPDATE=1 \
     /home/sneivandt/dotfiles/bin/dotfiles install --root /home/sneivandt/dotfiles -p "$PROFILE"

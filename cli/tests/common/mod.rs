@@ -82,7 +82,6 @@ pub(crate) fn assert_task_catalog_contract(catalog: &str, tasks: &[Box<dyn Task>
 /// - `conf/profiles.toml`          — base and desktop profile definitions
 /// - `conf/symlinks.toml`           — empty symlink list
 /// - `conf/packages.toml`           — empty package list
-/// - `conf/manifest.toml`           — empty manifest
 /// - `conf/chmod.toml`              — empty chmod list
 /// - `conf/systemd-units.toml`
 /// - `conf/vscode-extensions.toml`
@@ -106,7 +105,6 @@ pub(crate) fn setup_minimal_repo(root: &Path) {
     for file in &[
         "symlinks.toml",
         "packages.toml",
-        "manifest.toml",
         "chmod.toml",
         "systemd-units.toml",
         "vscode-extensions.toml",

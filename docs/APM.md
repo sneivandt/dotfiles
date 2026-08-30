@@ -12,7 +12,6 @@ their content.
 | `conf/agent-settings.toml` | Converges stable per-harness preferences in Copilot JSON and Codex TOML |
 | `symlinks/apm/config/*.yml` | Profile-specific APM source fragments |
 | `conf/symlinks.toml` | Selects and links applicable fragments and local plugins |
-| `conf/manifest.toml` | Removes inapplicable platform fragments from sparse checkout |
 | APM packages task | Merges fragments, persists the generated manifest, and invokes native APM convergence |
 | APM package updates task | Invokes native APM update during `dotfiles install --update-pins` |
 | APM itself | Resolves packages, verifies local sources, converges deployments, and removes stale content |
@@ -35,10 +34,10 @@ The source fragments are stored under:
 symlinks\apm\config\
 ```
 
-The active profile controls which fragments remain in the checkout and which
-ones are linked. The task merges main and private-overlay fragments into one
-generated desired state. Put platform-specific packages in the matching profile
-fragment, not behind runtime conditions in generated output.
+The active profile controls which fragments are linked. The task merges main
+and private-overlay fragments into one generated desired state. Put
+platform-specific packages in the matching profile fragment, not behind runtime
+conditions in generated output.
 
 Local plugin sources live under:
 
@@ -189,15 +188,15 @@ When changing APM configuration, check:
 
 - native APM validation succeeds for the fragments and packages
 - deterministic merged ordering
-- symlink and sparse-manifest alignment
-- local plugin paths that exist in the selected checkout
+- symlink category alignment
+- local plugin paths that exist in the source tree
 - native install/update dry-run behavior
 
 ## Adding an APM package
 
 1. Choose the narrowest applicable fragment in `symlinks/apm/config/`.
 2. Add a pinned or policy-compliant package declaration.
-3. If the fragment is conditional, confirm its symlink and manifest categories.
+3. If the fragment is conditional, confirm its symlink category.
 4. Follow the APM coverage in [Testing](TESTING.md).
 5. Run install before using `dotfiles install --update-pins` to advance versions.
 

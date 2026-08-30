@@ -47,14 +47,13 @@
 - Checks not run: <!-- Explain why, or write "None". -->
 
 ## User-Facing Impact
-- Configuration or manifest changes: <!-- Summarize, or write "None". -->
+- Configuration changes: <!-- Summarize, or write "None". -->
 - Breaking changes or migration steps: <!-- Summarize, or write "None". -->
 - Documentation updated: <!-- Link files, or explain why no update is needed. -->
 
 ## Final Checklist
 - [ ] The change is focused and contains no unrelated files
 - [ ] Mutations are idempotent and dry-run safe, or this is not applicable
-- [ ] Conditional symlink and manifest coverage remain synchronized, or this is not applicable
 - [ ] No private files, credentials, or other secrets are included
 - [ ] Relevant documentation and tests are updated, or no update is needed
 

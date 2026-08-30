@@ -14,7 +14,6 @@ const CATEGORY_CONFIG_FILES: &[&str] = &[
     "chmod.toml",
     "agent-settings.toml",
     "git-config.toml",
-    "manifest.toml",
     "packages.toml",
     "symlinks.toml",
     "systemd-units.toml",

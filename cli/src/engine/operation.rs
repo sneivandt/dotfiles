@@ -1,9 +1,8 @@
 //! Generic lifecycle for idempotent multi-step operations.
 //!
 //! Operations cover task bodies that are still checkable and idempotent, but do
-//! not fit the one-resource check/apply shape.  Examples include repository
-//! synchronization, sparse-checkout rewrites, generated files, and tool-driven
-//! workflows.
+//! not fit the one-resource check/apply shape. Examples include repository
+//! synchronization, generated files, and tool-driven workflows.
 
 use anyhow::Result;
 

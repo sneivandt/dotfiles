@@ -36,8 +36,7 @@ silently pass.
 ## Cross-file drift
 
 Use `cli/tests/config_drift.rs` for invariants across real `conf/` and
-`symlinks/` data, such as manifest ownership and source existence. Keep these
-tests self-contained, report every offending item, and use directory-prefix
-coverage rules consistently.
+`symlinks/` data, such as source existence and cross-file ownership. Keep these
+tests self-contained and report every offending item.
 
 Use `toml-configuration` when the schema or loader also changes.

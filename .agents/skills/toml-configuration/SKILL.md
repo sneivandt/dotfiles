@@ -30,14 +30,13 @@ items = ["example"]
 ```
 
 Every category must be active. Do not use dotted names; TOML interprets them as
-nested tables. Ordinary config filters against active categories; manifest
-ownership uses the same conjunction semantics.
+nested tables. Configuration filters against active categories.
 
 Prefer `config_section!` and `SectionLoader` for ordinary category-filtered,
 overlay-aware lists. Loaders return typed desired state and contain no task
 behavior.
 
-Use `config-validation` for diagnostic and drift-test details. Profile,
-manifest, and overlay semantics belong to their respective skills; the complete
-contributor checklist lives in
+Use `config-validation` for diagnostic and drift-test details. Profile and
+overlay semantics belong to their respective skills; the complete contributor
+checklist lives in
 [Contributing](../../../docs/CONTRIBUTING.md#change-checklists).

@@ -15,8 +15,7 @@ skills.
 - Prefer capability methods over direct operating-system checks.
 - Static install/uninstall tasks belong in `cli/src/app/catalog.rs`;
   command-specific tasks belong in that command's task list.
-- Conditional symlink behavior and `conf/manifest.toml` coverage must stay
-  synchronized.
+- Conditional symlink behavior must remain aligned with profile categories.
 
 ## Guidance ownership
 

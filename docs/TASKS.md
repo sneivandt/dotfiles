@@ -41,8 +41,6 @@ contract itself.
 | Selector | Task label | Commands | Purpose |
 |---|---|---|---|
 | `developer-mode` | Windows Developer Mode | install | Enables unprivileged symlink creation |
-| `excluded-symlinks` | Excluded home files | install | Preserves managed files before sparse checkout removes their sources |
-| `sparse-checkout` | Sparse checkout | install | Writes profile-derived sparse-checkout rules |
 | `repository` | Dotfiles repository | install | Synchronizes repository content |
 | `git` | Git settings | install | Applies declared global Git settings |
 | `agent-settings` | Agent settings | install | Converges selected harness settings |
@@ -98,36 +96,19 @@ user. Platform-specific capability methods perform the actual PATH convergence.
 
 ### Repository and source tasks
 
-#### Excluded home files
-
-Before a profile change excludes paths from sparse checkout, a home symlink may
-still point to a source Git will remove. This task first replaces that link with
-a real file or directory. It preserves content during profile changes; it is
-not an uninstall task.
-
-#### Sparse checkout
-
-After preservation, this task converts excluded manifest categories into Git
-sparse-checkout patterns and applies them. It runs only when Git and a suitable
-repository are available.
-
-`conf/manifest.toml` is deliberately not merged from overlays; sparse checkout
-describes the main repository's tracked `symlinks/` tree.
-
 #### Dotfiles repository
 
-Runs after sparse checkout and updates the current repository when supported.
-Successful content changes restart the current command with the same arguments.
-The guarded child loads a fresh immutable configuration snapshot, rebuilds
-static and overlay tasks, omits repository synchronization, and runs
-preservation plus sparse checkout before remaining work. The parent retains the
-run lock until the child exits.
+Updates the current repository when supported. Successful content changes
+restart the current command with the same arguments. The guarded child loads a
+fresh immutable configuration snapshot, rebuilds static and overlay tasks,
+omits repository synchronization, and continues with the selected work. The
+parent retains the run lock until the child exits.
 
 Installation synchronizes the repository whether or not `--update-pins` is
 present. Only tasks explicitly marked update-only require that option.
 With `--no-repo-update`, repository synchronization is omitted and the current
-checkout is treated as the desired source; the normal preservation and sparse
-checkout tasks still converge it without activating the restart boundary.
+checkout is treated as the desired source without activating the restart
+boundary.
 
 #### Git hooks
 
@@ -144,9 +125,9 @@ completions to `~/.config/powershell/profile.d`.
 
 #### Report overlay scripts
 
-Runs after **Sparse checkout** when an overlay was supplied and
-`conf/scripts.toml` produced at least one active script. It only reports the
-startup count. Actual execution is handled by dynamically created tasks.
+Runs when an overlay was supplied and `conf/scripts.toml` produced at least one
+active script. It only reports the startup count. Actual execution is handled
+by dynamically created tasks.
 
 ### System convergence tasks
 
@@ -332,7 +313,7 @@ registry, shell, WSL, APM, editor, or overlay-script changes.
 
 ## Validation tasks
 
-`dotfiles check` executes these seven validation tasks through the dependency
+`dotfiles check` executes these six validation tasks through the dependency
 scheduler:
 
 | Selector | Task label | What it checks |
@@ -340,7 +321,6 @@ scheduler:
 | `config-warnings` | Validate config warnings | Reports loader diagnostics, including missing source directories for local `dot-*` APM plugin references |
 | `symlink-sources` | Validate symlink sources | Confirms configured symlink and file-permission sources exist and globs resolve |
 | `config-files` | Validate config files | Confirms all required main TOML files exist; warns when `hooks/` is absent |
-| `manifest-sync` | Validate manifest sync | Checks exact category-section synchronization between symlinks and sparse-checkout manifest |
 | `apm-plugins` | Validate APM plugins | Runs `apm pack --dry-run --verbose` for each local plugin when APM is available |
 | `shellcheck` | Shellcheck | Runs ShellCheck on repository shell scripts when installed |
 | `psscriptanalyzer` | PSScriptAnalyzer | Runs PowerShell Script Analyzer whenever `pwsh` is available |
@@ -350,7 +330,6 @@ The required main files are:
 - `conf/agent-settings.toml`
 - `conf/chmod.toml`
 - `conf/git-config.toml`
-- `conf/manifest.toml`
 - `conf/packages.toml`
 - `conf/profiles.toml`
 - `conf/registry.toml`
@@ -362,8 +341,8 @@ ShellCheck and APM validation are not applicable when their executables are
 missing. PSScriptAnalyzer is different: the task is selected when `pwsh` is
 available, so a missing analyzer module causes that validation task to fail.
 Syntax and consistency failures in required configuration also fail the
-command. The separate `config_drift` integration test verifies source-path
-coverage, compatible subset sections, and the existence of manifest paths.
+command. The separate `config_drift` integration test verifies relationships
+across the real configuration and source tree.
 
 ## Filtering examples
 

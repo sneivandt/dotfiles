@@ -161,8 +161,7 @@ main TOML load ---- overlay TOML load
 ```
 
 Each domain owns its parser and typed records. The app-level loader guarantees
-that supported overlay sections are merged consistently. The sparse-checkout
-manifest is the exception: it describes the main repository and is not merged.
+that supported overlay sections are merged consistently.
 
 `ConfigStore` publishes immutable, `Arc`-backed handles. Static catalog tasks and
 dynamic overlay tasks are built once from that startup snapshot.
@@ -175,8 +174,8 @@ Repository synchronization is a guarded process boundary:
 3. When content changed, spawn the current binary with the original arguments
    and repository re-exec guard, then wait for it while retaining the run lock.
 4. The child reloads configuration and rebuilds all tasks from the updated
-   checkout. It omits repository synchronization and runs preservation plus
-   sparse checkout as a strict first phase before remaining work.
+   checkout. It omits repository synchronization and continues with the selected
+   work.
 
 The guard also suppresses self-update and run-lock reacquisition in the child.
 `--only`, `--skip`, `--retry-failed`, `--no-repo-update`, dry-run, and elevation retain

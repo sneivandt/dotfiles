@@ -270,29 +270,6 @@ fn remove_entry_removes_empty_directory() {
     assert!(!target.exists());
 }
 
-#[test]
-fn system_fs_ops_removes_directory() {
-    let dir = tempfile::tempdir().unwrap();
-    let target = dir.path().join("target");
-    std::fs::create_dir(&target).unwrap();
-
-    SystemFileSystemOps.remove(&target).unwrap();
-
-    assert!(!target.exists());
-}
-
-#[cfg(unix)]
-#[test]
-fn system_fs_ops_removes_broken_symlink() {
-    let dir = tempfile::tempdir().unwrap();
-    let link = dir.path().join("link");
-    std::os::unix::fs::symlink("/nonexistent/target", &link).unwrap();
-
-    SystemFileSystemOps.remove(&link).unwrap();
-
-    assert!(link.symlink_metadata().is_err());
-}
-
 // -----------------------------------------------------------------------
 // TempGuard::file
 // -----------------------------------------------------------------------

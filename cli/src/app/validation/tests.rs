@@ -33,25 +33,6 @@ fn display_diagnostics_formats_severity_and_code() {
 }
 
 #[test]
-fn manifest_sync_errors_when_manifest_file_is_missing() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-    let conf = dir.path().join("conf");
-    std::fs::create_dir_all(&conf).expect("conf dir should create");
-    std::fs::write(conf.join("symlinks.toml"), "[base]\nsymlinks = []\n")
-        .expect("symlinks config should write");
-
-    let ctx = make_linux_context(empty_config(dir.path().to_path_buf()));
-    let result = ValidateManifestSync.run(&ctx);
-
-    assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("manifest.toml"),
-        "missing manifest error should include file path: {msg}"
-    );
-}
-
-#[test]
 fn configured_source_validation_rejects_missing_chmod_source() {
     let dir = tempfile::tempdir().expect("tempdir should create");
     let root = dir.path().to_path_buf();
@@ -68,22 +49,6 @@ fn configured_source_validation_rejects_missing_chmod_source() {
         error.to_string().contains("configured source"),
         "error should identify the configured source failure: {error}"
     );
-}
-
-#[test]
-fn sparse_sources_match_files_directories_and_globs() {
-    let sparse = SparseSources {
-        paths: vec![
-            PathBuf::from("symlinks/config/windows/settings.json"),
-            PathBuf::from("symlinks/apm/plugins/example/apm.yml"),
-        ],
-    };
-
-    assert!(sparse.contains_source("config/windows"));
-    assert!(sparse.contains_source("config/windows/settings.json"));
-    assert!(sparse.contains_glob("apm/plugins/*"));
-    assert!(!sparse.contains_source("config/missing"));
-    assert!(!sparse.contains_glob("apm/other/*"));
 }
 
 #[test]

@@ -32,8 +32,8 @@ scheduling.
 - A repository update that changes task/config inputs must use the guarded
   process restart boundary. Do not mutate config handles or discover tasks late.
 - In the restarted child, remove repository synchronization only after target
-  selection so retry selectors remain valid. Run preservation and sparse
-  checkout as the strict first phase before remaining tasks.
+  selection so retry selectors remain valid, then run the remaining selected
+  tasks from the fresh configuration snapshot.
 - `should_run()` and `needs_elevation()` must be cheap and side-effect free.
   State produced by a prerequisite is checked in `run_configured()`.
 - Removing unmet work before graph execution must also skip its transitive

@@ -1,5 +1,3 @@
-//! Repository domain: manifest, sparse checkout, and updates.
+//! Repository synchronization.
 
-pub mod config;
-pub mod sparse_checkout;
 pub mod update;

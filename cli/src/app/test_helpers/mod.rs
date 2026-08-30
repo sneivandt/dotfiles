@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use crate::app::config::Config;
 use crate::app::config::profiles::Profile;
-use crate::domains::repository::config::manifest::Manifest;
 use crate::infra::config::category_matcher::Category;
 use crate::infra::exec::{Executor, MockExecutor};
 use crate::infra::logging::Logger;
@@ -39,7 +38,6 @@ pub fn empty_config(root: PathBuf) -> Config {
         },
         packages: vec![],
         symlinks: vec![],
-        all_symlinks: vec![],
         validation_symlinks: vec![],
         registry: vec![],
         units: vec![],
@@ -48,9 +46,6 @@ pub fn empty_config(root: PathBuf) -> Config {
         vscode_extensions: vec![],
         git_settings: vec![],
         agent_settings: vec![],
-        manifest: Manifest {
-            excluded_files: vec![],
-        },
         scripts: vec![],
     }
 }

@@ -90,17 +90,6 @@ impl ScriptedExecutor {
         self.git_result(cwd, args, Ok(ExecResult::success(stdout)))
     }
 
-    /// Like [`git`](Self::git), but requires an unchecked command.
-    #[must_use]
-    pub fn git_unchecked(
-        self,
-        cwd: impl Into<PathBuf>,
-        args: &[&str],
-        stdout: impl Into<String>,
-    ) -> Self {
-        self.git_unchecked_result(cwd, args, Ok(ExecResult::success(stdout)))
-    }
-
     /// Queue an exact checked Git command returning `result` as-is.
     #[must_use]
     pub fn git_result(
@@ -110,17 +99,6 @@ impl ScriptedExecutor {
         result: std::result::Result<ExecResult, ExecError>,
     ) -> Self {
         self.exact_with(true, cwd, args, result)
-    }
-
-    /// Queue an exact unchecked Git command returning `result` as-is.
-    #[must_use]
-    pub fn git_unchecked_result(
-        self,
-        cwd: impl Into<PathBuf>,
-        args: &[&str],
-        result: std::result::Result<ExecResult, ExecError>,
-    ) -> Self {
-        self.exact_with(false, cwd, args, result)
     }
 
     fn exact_with(

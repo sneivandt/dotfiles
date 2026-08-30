@@ -60,7 +60,7 @@ The Rust integration tests under `cli/tests/` cover distinct boundaries:
 | Test target | Focus |
 |---|---|
 | `behavioral_ci` | Cross-cutting behaviors that protect CI assumptions |
-| `config_drift` | Alignment among config, manifest, symlink, and catalog state |
+| `config_drift` | Alignment among real configuration, symlink, and catalog state |
 | `domain_boundaries` | Architectural dependency boundaries |
 | `e2e_apply` | End-to-end convergence against controlled state |
 | `install_command` | Install selection and command composition |
@@ -87,7 +87,6 @@ cargo test --manifest-path cli/Cargo.toml --test install_command test_name
 - loader warnings
 - symlink source existence
 - required TOML files
-- sparse manifest synchronization
 - APM plugins when APM is available
 - shell scripts when ShellCheck is available
 - PowerShell scripts whenever `pwsh` is available; the PSScriptAnalyzer module

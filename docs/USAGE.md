@@ -98,10 +98,10 @@ dotfiles install --dry-run --verbose
 required change. Independent ready tasks may run concurrently; explicit
 dependencies preserve ordering.
 
-Use `--no-repo-update` when the current checkout must remain pinned. The normal
-preservation and sparse-checkout tasks still converge it without repository
-synchronization or process restart. This option does not promise a network-free
-run. Package, APM, self-update, and overlay tasks may still use the network.
+Use `--no-repo-update` when the current checkout must remain pinned. Configured
+tasks still converge the current checkout without repository synchronization or
+process restart. This option does not promise a network-free run. Package, APM,
+self-update, and overlay tasks may still use the network.
 
 CI automatically enables `--fail-on-skip` and `--non-interactive`.
 Non-interactive mode is also enabled when stdin is not a terminal; select a
@@ -285,8 +285,8 @@ units, undo shell selection, or reverse arbitrary overlay scripts. See
 
 ## Check
 
-The command validates TOML, sources, manifest section synchronization, and the
-relationship between local `dot-*` APM references and their source directories.
+The command validates TOML, sources, and the relationship between local `dot-*`
+APM references and their source directories.
 When APM is available, a separate task runs
 `apm pack --dry-run --verbose` for each local plugin so APM validates package
 layout and declarations. Fragment schemas and dependency declarations are

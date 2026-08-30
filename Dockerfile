@@ -66,7 +66,7 @@ ENV SHELL=/bin/zsh \
     PATH=/home/sneivandt/.local/bin:${PATH}
 
 # Install a self-managing dotfiles checkout. Keep sanitized Git metadata so
-# update and sparse-checkout tasks can operate inside the image.
+# repository updates can operate inside the image.
 COPY --from=builder --chown=sneivandt:sneivandt /build/source/ /home/sneivandt/dotfiles/
 COPY --from=builder --chown=sneivandt:sneivandt /build/.git /home/sneivandt/dotfiles/.git
 COPY --from=builder --chown=sneivandt:sneivandt /build/out/dotfiles /home/sneivandt/dotfiles/bin/dotfiles

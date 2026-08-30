@@ -9,7 +9,6 @@ shared handles.
 | File | Shape | Consumer |
 |---|---|---|
 | `profiles.toml` | Named role profiles with include/exclude categories | Profile resolver |
-| `manifest.toml` | Category sections containing sparse-checkout paths | Sparse checkout |
 | `symlinks.toml` | Category sections containing home-relative source paths | Symlink tasks |
 | `packages.toml` | Category sections containing package strings or AUR records | Package tasks |
 | `git-config.toml` | Category sections containing key/value settings | Git configuration |
@@ -144,35 +143,6 @@ validation. Later stages see only concrete paths. Expanded targets use the
 normal conflict checks. Duplicate targets and targets nested under another
 managed target are errors.
 
-Every non-`base` symlink category must have an exact section in
-`manifest.toml`, and every manifest section must exist in `symlinks.toml`.
-`dotfiles check` verifies this section synchronization. The `config_drift`
-integration test separately verifies source-path coverage, compatible subset
-sections, and that manifest paths exist.
-
-## Sparse-checkout manifest
-
-`manifest.toml` lists paths relative to `symlinks/` that may be excluded:
-
-```toml
-[arch]
-paths = [
-  "apm/config/arch.yml",
-  "config/pacman.conf",
-]
-```
-
-Directory paths should end in `/`. A manifest section can cover a more specific
-symlink section when its category tags are a subset; for example, `[desktop]`
-may cover a source linked from `[windows-desktop]`. A non-base entry that reuses
-a source also declared in `[base]` needs no manifest path because that source is
-always retained.
-
-Manifest sections describe which active category combinations own each path.
-A path is retained when any section declaring it is active and excluded when
-all declaring sections are inactive. Unlike normal desired-state sections, the
-manifest is not appended from overlays.
-
 ## Packages
 
 Package entries are strings unless the package comes from the AUR:
@@ -303,7 +273,6 @@ Overlay rules:
 - Missing overlay configuration files are treated as empty.
 - Main configuration remains required where validation says it is required.
 - Symlink entries retain the repository they came from.
-- `manifest.toml` is main-repository-only.
 - `scripts.toml` is overlay-only.
 
 When an overlay is active, its resolved path is reported as the final
@@ -353,8 +322,8 @@ boundary, each active entry becomes a dynamic task selectable by name.
 ## APM configuration
 
 APM's source fragments are YAML files under `symlinks/apm/config/`, not a TOML
-file in `conf/`. The active profile determines which fragments are present in
-the sparse checkout and linked configuration. See [APM](APM.md).
+file in `conf/`. The active profile determines which fragments are linked into
+the home configuration. See [APM](APM.md).
 
 ## Loading and reload behavior
 
@@ -403,7 +372,7 @@ nor a table is rejected by kind.
 ## Validation
 
 The validation workflow catches syntax errors, unknown keys, missing required
-files, nonexistent symlink sources, manifest drift, and failures from available
-APM or script analyzers. A separate Rust integration test checks configuration
-drift. Commands and focused coverage are documented in
+files, nonexistent symlink sources, and failures from available APM or script
+analyzers. A separate Rust integration test checks configuration drift. Commands
+and focused coverage are documented in
 [Testing](TESTING.md#cli-validation).

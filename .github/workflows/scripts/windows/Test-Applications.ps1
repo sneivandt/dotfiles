@@ -2,9 +2,8 @@
 # Test-Applications.ps1 - Application-level tests for Windows.
 #
 # Windows counterpart to scripts/linux/test-applications.sh. Only applications
-# that are actually managed on Windows are covered here: zsh, vim, and nvim are
-# excluded from the Windows profile (see conf/manifest.toml) and so have no
-# Windows equivalent.
+# managed on Windows are covered here; zsh, vim, and nvim have no Windows
+# equivalent in this repository.
 #
 # Expected: $env:DIR (repo root)
 #

@@ -113,23 +113,6 @@ pub(crate) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
     target_validation::validate_unique_targets(symlinks)
 }
 
-/// Expand glob entries whose sources are currently present.
-///
-/// Unlike [`expand_glob_patterns`], unmatched globs are omitted. This is used
-/// while reconciling profile exclusions, where sources excluded by an earlier
-/// sparse checkout are expected to be absent.
-///
-/// # Errors
-///
-/// Returns an error when a configured glob is malformed or has mismatched
-/// source/target wildcard counts.
-pub(crate) fn expand_present_glob_patterns(
-    symlinks: &[Symlink],
-    fallback: &Path,
-) -> Result<Vec<Symlink>> {
-    glob_expansion::expand_present_glob_patterns(symlinks, fallback)
-}
-
 /// Load symlink entries from every category without filtering.
 ///
 /// # Errors

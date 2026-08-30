@@ -1,4 +1,4 @@
-# Profile definitions for sparse checkout
+# Profile definitions
 # Maps profile names to include/exclude categories
 #
 # Profiles control the 'desktop' role category only.

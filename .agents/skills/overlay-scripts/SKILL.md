@@ -37,8 +37,8 @@ decline it.
 
 Build one `OverlayScriptTask` per active entry from the immutable startup
 configuration. Dynamic tasks are not catalog entries. The catalog-registered
-reporting task is internal and depends on sparse checkout. Preserve config order
-and stable `script-<normalized-name>` selectors.
+reporting task is internal. Preserve config order and stable
+`script-<normalized-name>` selectors.
 
 When repository synchronization changes the checkout, the guarded child process
 reloads configuration and rebuilds the entire task set. Do not add mid-run

@@ -41,9 +41,9 @@ The runtime stage:
    the checked-out commit instead of consulting the latest release.
 6. Starts Zsh by default.
 
-The runtime image retains `.git` so sparse-checkout and repository-update tasks
-still work. Its origin points to the public HTTPS repository, and the build
-removes credential-bearing Git headers.
+The runtime image retains `.git` so repository updates still work. Its origin
+points to the public HTTPS repository, and the build removes credential-bearing
+Git headers.
 
 ## Run
 

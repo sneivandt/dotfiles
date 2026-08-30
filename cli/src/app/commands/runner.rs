@@ -139,13 +139,8 @@ impl CommandRunner {
     pub(crate) fn install_tasks_for_run(
         &self,
         repository_update: &crate::domains::repository::update::RepositoryUpdateSignal,
-        strict_sparse_checkout: bool,
     ) -> Vec<Box<dyn Task>> {
-        crate::app::catalog::install_tasks_for_run(
-            &self.store,
-            repository_update,
-            strict_sparse_checkout,
-        )
+        crate::app::catalog::install_tasks_for_run(&self.store, repository_update)
     }
 
     /// Build the full set of uninstall tasks, wired to the shared config store.

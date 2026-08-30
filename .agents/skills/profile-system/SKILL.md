@@ -3,7 +3,6 @@ name: profile-system
 description: >
   Use for profile resolution in cli/src/app/config/profiles.rs, profile
   selection precedence/persistence, or active/excluded category computation.
-  Not for manifest generation alone.
 ---
 
 # Profile System
@@ -24,7 +23,6 @@ failure is visible but does not invalidate an otherwise valid selection.
 
 `Profile` carries its name, active categories, and excluded categories.
 Configuration sections match when every hyphen-separated category is active.
-Sparse checkout uses the same category ownership model.
 
 ## Changing profiles
 
@@ -32,9 +30,8 @@ Sparse checkout uses the same category ownership model.
   loaders.
 - Keep platform category detection separate from user profile selection.
 - Preserve selection precedence and non-interactive behavior.
-- Review config sections, manifest ownership, validators, docs, and tests that
-  assume the existing profiles.
+- Review config sections, validators, docs, and tests that assume the existing
+  profiles.
 - Add resolution, persistence, and category-set tests.
 
-Use `sparse-checkout-patterns` when checkout behavior changes and
-`toml-configuration` when category parsing changes.
+Use `toml-configuration` when category parsing changes.

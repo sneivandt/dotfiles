@@ -122,13 +122,12 @@ Run:
 dotfiles check --root . --verbose
 ```
 
-Core required files are `profiles.toml`, `symlinks.toml`, `packages.toml`, and
-`manifest.toml`. Common causes include:
+Core required files include `profiles.toml`, `symlinks.toml`, and
+`packages.toml`. Common causes include:
 
 - malformed TOML
 - a value placed under the wrong section
 - a nonexistent symlink source
-- a conditional symlink missing manifest coverage
 - an invalid package or APM reference
 
 Edit the complete path shown in the diagnostic. Do not assume a similarly named
@@ -148,7 +147,6 @@ Remember:
 
 - supported records append; they do not override main entries
 - missing overlay config files are empty
-- `manifest.toml` is not loaded from overlays
 - `scripts.toml` is loaded only from the overlay
 - script paths are relative to the overlay
 
@@ -229,21 +227,6 @@ dotfiles install --only developer-mode
 dotfiles install
 ```
 
-## A profile switch would remove files
-
-Conditional sources may leave the sparse checkout. **Sparse checkout** depends
-on **Excluded home files**, which copies linked
-content into the home target before applying exclusions.
-
-Always preview profile transitions:
-
-```bash
-dotfiles install --profile base --dry-run --verbose
-```
-
-If preservation fails, do not force the sparse-checkout change; resolve the
-reported source or target problem first.
-
 ## Repository update fails
 
 Repository synchronization needs a Git checkout with a usable upstream. Check:
@@ -258,9 +241,9 @@ Resolve authentication, upstream, or conflicting local changes without
 discarding user work. `--root` must identify the intended checkout.
 
 If repository content changes, the CLI starts a guarded child with the original
-arguments. The child reloads configuration, rebuilds overlay script tasks, and
-strictly reconciles sparse checkout before continuing. A reconciliation skip is
-reported as a failure rather than continuing from a mixed checkout.
+arguments. The child reloads configuration, rebuilds all static and overlay
+tasks from the updated checkout, omits another repository update, and continues
+with the selected work.
 
 ## Packages do not install
 

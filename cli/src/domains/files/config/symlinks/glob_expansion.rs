@@ -11,29 +11,14 @@ struct GlobMatch {
 }
 
 pub(super) fn expand_glob_patterns(symlinks: &[Symlink], fallback: &Path) -> Result<Vec<Symlink>> {
-    expand_glob_patterns_inner(symlinks, fallback, true)
-}
-
-pub(super) fn expand_present_glob_patterns(
-    symlinks: &[Symlink],
-    fallback: &Path,
-) -> Result<Vec<Symlink>> {
-    expand_glob_patterns_inner(symlinks, fallback, false)
-}
-
-fn expand_glob_patterns_inner(
-    symlinks: &[Symlink],
-    fallback: &Path,
-    require_match: bool,
-) -> Result<Vec<Symlink>> {
     let mut expanded = Vec::new();
     for symlink in symlinks {
-        expanded.extend(expand_one(symlink, fallback, require_match)?);
+        expanded.extend(expand_one(symlink, fallback)?);
     }
     Ok(expanded)
 }
 
-fn expand_one(symlink: &Symlink, fallback: &Path, require_match: bool) -> Result<Vec<Symlink>> {
+fn expand_one(symlink: &Symlink, fallback: &Path) -> Result<Vec<Symlink>> {
     validate_supported_pattern("source", &symlink.source)?;
     if let Some(target) = &symlink.target {
         validate_supported_pattern("target", target)?;
@@ -77,7 +62,7 @@ fn expand_one(symlink: &Symlink, fallback: &Path, require_match: bool) -> Result
             symlinks_dir.display()
         )
     })?;
-    if require_match && matches.is_empty() {
+    if matches.is_empty() {
         bail!(
             "symlink glob '{}' matched no entries under {}",
             symlink.source,

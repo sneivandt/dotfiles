@@ -10,8 +10,6 @@ macro_rules! config_section_inventory {
                 |config: &Config| Some(SectionCount::new("package", "packages", config.packages.len()));
             symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
                 |config: &Config| Some(SectionCount::new("symlink", "symlinks", config.symlinks.len()));
-            all_symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
-                |_config: &Config| None;
             validation_symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
                 |_config: &Config| None;
             registry: Vec<crate::domains::system::config::registry::RegistryEntry> =>
@@ -28,8 +26,6 @@ macro_rules! config_section_inventory {
                 |config: &Config| Some(SectionCount::new("git setting", "git settings", config.git_settings.len()));
             agent_settings: Vec<crate::domains::ai::config::agent_settings::AgentSetting> =>
                 |config: &Config| Some(SectionCount::new("agent setting", "agent settings", config.agent_settings.len()));
-            manifest: crate::domains::repository::config::manifest::Manifest =>
-                |config: &Config| Some(SectionCount::new("manifest exclusion", "manifest exclusions", config.manifest.excluded_files.len()));
             scripts: Vec<crate::domains::overlay::config::scripts::ScriptEntry> =>
                 |config: &Config| Some(SectionCount::new("overlay script", "overlay scripts", config.scripts.len()));
         }
@@ -48,17 +44,14 @@ use crate::domains::files::config::{chmod, symlinks};
 use crate::domains::git::config::git_config;
 use crate::domains::overlay::config::scripts;
 use crate::domains::packages::config::packages;
-use crate::domains::repository::config::manifest;
 use crate::domains::system::config::{registry, systemd_units};
 use crate::infra::config::{Diagnostic, category_matcher};
 use crate::infra::platform::Platform;
 
-const MANIFEST_TOML: &str = "manifest.toml";
 pub(crate) const REQUIRED_CONFIG_FILES: &[&str] = &[
     "chmod.toml",
     "agent-settings.toml",
     "git-config.toml",
-    "manifest.toml",
     "packages.toml",
     "profiles.toml",
     "registry.toml",
@@ -235,16 +228,6 @@ impl<'a> SectionLoader<'a> {
         }
         Ok(items)
     }
-
-    /// Load a single-value section filtered by active categories.
-    /// Not merged from the overlay.
-    fn load_active<T>(
-        &self,
-        file: &str,
-        load: fn(&Path, &[category_matcher::Category]) -> Result<T>,
-    ) -> Result<T> {
-        self.main.load_filtered(file, load, self.active)
-    }
 }
 
 /// A configured section's item count, for the verbose configuration summary.
@@ -336,15 +319,8 @@ pub struct Config {
     pub packages: Vec<packages::Package>,
     /// Symlinks to create in the user's home directory.
     pub symlinks: Vec<symlinks::Symlink>,
-    /// Every main-repository symlink definition, before category filtering.
-    ///
-    /// Used to preserve managed targets before sparse checkout removes newly
-    /// excluded sources.
-    pub all_symlinks: Vec<symlinks::Symlink>,
     /// Main and overlay symlink definitions before category filtering.
-    ///
-    /// Used by repository validation without changing sparse-checkout
-    /// preservation behavior, which intentionally uses only [`Self::all_symlinks`].
+    /// Used by repository validation to inspect every declared source.
     pub validation_symlinks: Vec<symlinks::Symlink>,
     /// Windows registry entries to configure.
     pub registry: Vec<registry::RegistryEntry>,
@@ -360,8 +336,6 @@ pub struct Config {
     pub git_settings: Vec<git_config::GitSetting>,
     /// User settings to converge for supported agent harnesses.
     pub agent_settings: Vec<agent_settings::AgentSetting>,
-    /// Sparse checkout manifest for file exclusions.
-    pub manifest: manifest::Manifest,
     /// Custom scripts from the overlay repository.
     pub scripts: Vec<scripts::ScriptEntry>,
 }
@@ -386,11 +360,10 @@ impl Config {
         // Each field is loaded and overlay-merged by a single `SectionLoader`
         // call, so adding a new config section means adding one struct field
         // and one line here — never a second edit in a separate merge step.
-        let mut all_symlinks = sections
+        let mut validation_symlinks = sections
             .main
             .load(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
-        symlinks::set_origin(&mut all_symlinks, root);
-        let mut validation_symlinks = all_symlinks.clone();
+        symlinks::set_origin(&mut validation_symlinks, root);
         if let (Some(overlay_loader), Some(overlay_root)) =
             (&sections.overlay, sections.overlay_root)
         {
@@ -413,7 +386,6 @@ impl Config {
                 symlinks::load,
                 symlinks::set_origin,
             )?,
-            all_symlinks,
             validation_symlinks,
             registry: if platform.has_registry() {
                 registry
@@ -435,7 +407,6 @@ impl Config {
                 .collect_filtered(git_config::GIT_CONFIG_TOML, git_config::load)?,
             agent_settings: sections
                 .collect_filtered(agent_settings::AGENT_SETTINGS_TOML, agent_settings::load)?,
-            manifest: sections.load_active(MANIFEST_TOML, manifest::load)?,
             scripts: sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::load)?,
         };
 

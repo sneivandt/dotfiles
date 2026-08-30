@@ -125,7 +125,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Run typed configuration validation
-        run: ./bin/dotfiles check --root . -p desktop --only config-warnings,symlink-sources,config-files,manifest-sync
+        run: ./bin/dotfiles check --root . -p desktop --only config-warnings,symlink-sources,config-files
       - name: Test fullscreen Waybar configuration
         env:
           DIR: ${{ github.workspace }}
@@ -461,9 +461,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Install dotfiles with base profile
-        # Keep the full checkout available to matrix tests, including assets
-        # that are intentionally excluded from the runner's active profile.
-        run: ./bin/dotfiles install --root . -p base -v --skip apm,sparse-checkout
+        run: ./bin/dotfiles install --root . -p base -v --skip apm
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}

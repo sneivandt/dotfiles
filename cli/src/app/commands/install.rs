@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use crate::app::cli::{GlobalOpts, InstallOpts};
 use crate::app::filter::{apply_task_filters, task_passes_filters};
-use crate::domains::repository::sparse_checkout::ConfigureSparseCheckout;
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
@@ -68,7 +67,7 @@ pub(crate) fn run_pipeline(
 
     let repository_child = super::repository_reexec_active(runner.env());
     let repository_update = RepositoryUpdateSignal::new();
-    let mut all_tasks = runner.install_tasks_for_run(&repository_update, repository_child);
+    let mut all_tasks = runner.install_tasks_for_run(&repository_update);
 
     // Version-advancing tasks are scheduled only with `--update-pins`. Filter
     // membership before user filters so warnings reflect eligible tasks.
@@ -80,11 +79,7 @@ pub(crate) fn run_pipeline(
     }
 
     let startup_overlay_tasks = runner.overlay_script_tasks();
-    let boundary = if repository_child {
-        TaskId::Type(std::any::TypeId::of::<ConfigureSparseCheckout>())
-    } else {
-        TaskId::Type(std::any::TypeId::of::<UpdateRepository>())
-    };
+    let boundary = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
     let recovery_selectors = runner.recovery_selectors().cloned();
     let mut filtered = if let Some(selectors) = recovery_selectors.as_ref() {
         if !opts.only.is_empty() || !opts.skip.is_empty() {
@@ -178,9 +173,8 @@ mod tests {
             "the guarded child must not synchronize the repository again"
         );
         assert!(
-            selected.iter().any(|task| task.task_id()
-                == TaskId::Type(std::any::TypeId::of::<ConfigureSparseCheckout>())),
-            "repository prerequisites must remain selected for terminal recovery"
+            selected.is_empty(),
+            "the child already completed repository recovery"
         );
     }
 

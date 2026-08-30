@@ -37,8 +37,8 @@ Keep secrets, private files, and unreviewed generated artifacts out of commits.
 
 Update every participating layer: typed configuration, loading and semantic
 validation, real `conf/` data, resource or operation behavior, task wiring,
-exports, registration, and tests. Keep conditional symlink changes synchronized
-with `conf/manifest.toml`.
+exports, registration, and tests. Keep conditional symlink changes aligned with
+the profile categories that select them.
 
 ### Tasks and workflows
 

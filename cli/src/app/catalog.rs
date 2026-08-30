@@ -12,7 +12,6 @@ use clap::CommandFactory as _;
 
 use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
-use crate::app::preserve::MaterializeExcludedSymlinks;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
 use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
 use crate::domains::dotfiles::path::ConfigurePath;
@@ -24,7 +23,6 @@ use crate::domains::git::git_config::ConfigureGit;
 use crate::domains::git::hooks::{InstallGitHooks, UninstallGitHooks};
 use crate::domains::overlay::scripts::ReportOverlayScriptSnapshot;
 use crate::domains::packages::install::{InstallAurPackages, InstallPackages, InstallParu};
-use crate::domains::repository::sparse_checkout::ConfigureSparseCheckout;
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
@@ -119,29 +117,19 @@ pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
 #[must_use]
 pub fn all_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     let repo_updated = RepositoryUpdateSignal::new();
-    install_tasks_for_run(store, &repo_updated, false)
+    install_tasks_for_run(store, &repo_updated)
 }
 
 #[must_use]
 pub(crate) fn install_tasks_for_run(
     store: &ConfigStore,
     repo_updated: &RepositoryUpdateSignal,
-    strict_sparse_checkout: bool,
 ) -> Vec<Box<dyn Task>> {
     let zsh_completions = generate_zsh_completions();
     let powershell_completions = generate_powershell_completions();
 
     vec![
         Box::new(EnableDeveloperMode),
-        Box::new(MaterializeExcludedSymlinks::new(
-            store.all_symlinks.clone(),
-            store.manifest.clone(),
-        )),
-        with_deps(
-            ConfigureSparseCheckout::new(store.manifest.clone())
-                .fail_if_skipped(strict_sparse_checkout),
-            &[id::<MaterializeExcludedSymlinks>()],
-        ),
         Box::new(UpdateRepository::new(repo_updated.clone())),
         Box::new(ConfigureGit::new(store.git_settings.clone())),
         Box::new(ConfigureAgentSettings::new(store.agent_settings.clone())),
@@ -150,10 +138,7 @@ pub(crate) fn install_tasks_for_run(
             GenerateCompletions::new(zsh_completions, powershell_completions),
             &[id::<UpdateRepository>()],
         ),
-        with_deps(
-            InstallPackages::new(store.packages.clone()),
-            &[id::<ConfigureSparseCheckout>()],
-        ),
+        Box::new(InstallPackages::new(store.packages.clone())),
         Box::new(InstallParu),
         Box::new(InstallAurPackages::new(store.packages.clone())),
         with_deps(
@@ -189,10 +174,7 @@ pub(crate) fn install_tasks_for_run(
             &[id::<InstallApmPackages>()],
         ),
         Box::new(InstallWslConf),
-        with_deps(
-            ReportOverlayScriptSnapshot::new(store.scripts.clone()),
-            &[id::<ConfigureSparseCheckout>()],
-        ),
+        Box::new(ReportOverlayScriptSnapshot::new(store.scripts.clone())),
         Box::new(InstallWrapper),
         Box::new(ConfigurePath),
     ]
@@ -270,18 +252,6 @@ mod tests {
                 .expect("task present")
         };
         assert!(
-            find("Sparse checkout")
-                .dependencies()
-                .contains(&id::<MaterializeExcludedSymlinks>()),
-            "sparse checkout must preserve excluded managed symlinks first"
-        );
-        assert!(
-            find("System packages")
-                .dependencies()
-                .contains(&id::<ConfigureSparseCheckout>()),
-            "package installation must wait for managed pacman configuration"
-        );
-        assert!(
             find("Systemd units")
                 .dependencies()
                 .contains(&id::<InstallSymlinks>()),
@@ -292,12 +262,6 @@ mod tests {
                 .ordering_dependencies()
                 .contains(&id::<UpdateRepository>()),
             "completions should wait for repository update without being blocked by it"
-        );
-        assert!(
-            find("Report overlay scripts")
-                .dependencies()
-                .contains(&id::<ConfigureSparseCheckout>()),
-            "overlay script report must wait for sparse checkout (app-injected)"
         );
         assert!(
             find("Git hooks")

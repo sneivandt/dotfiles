@@ -6,7 +6,7 @@ use crate::app::cli::{CheckOpts, GlobalOpts};
 use crate::app::filter::apply_task_filters;
 use crate::app::validation::{
     RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
-    ValidateConfigWarnings, ValidateManifestSync, ValidateSymlinkSources,
+    ValidateConfigWarnings, ValidateSymlinkSources,
 };
 use crate::engine::Task;
 use crate::infra::logging::Logger;
@@ -44,7 +44,6 @@ pub(crate) fn validation_tasks(
         Box::new(ValidateConfigWarnings::new(handle.clone())),
         Box::new(ValidateSymlinkSources::new(handle)),
         Box::new(ValidateConfigFiles),
-        Box::new(ValidateManifestSync),
         Box::new(ValidateApmPlugins),
         Box::new(RunShellcheck),
         Box::new(RunPSScriptAnalyzer),

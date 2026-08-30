@@ -39,23 +39,6 @@ pub trait FileSystemOps: Send + Sync + std::fmt::Debug {
     ///
     /// Returns an error if `path` cannot be opened or read as a directory.
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>>;
-
-    /// Read the target of the symbolic link at `path`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `path` is not a symlink or cannot be read.
-    fn read_link(&self, path: &Path) -> std::io::Result<PathBuf>;
-
-    /// Remove the file, link, or empty directory at `path`.
-    ///
-    /// Directory-like links (Windows directory symlinks and junctions) are
-    /// removed as directories; everything else is removed as a file.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if removal fails.
-    fn remove(&self, path: &Path) -> std::io::Result<()>;
 }
 
 /// Production [`FileSystemOps`] implementation that delegates to [`std::fs`].
@@ -75,15 +58,6 @@ impl FileSystemOps for SystemFileSystemOps {
         std::fs::read_dir(path)?
             .map(|e| e.map(|entry| entry.path()).map_err(Into::into))
             .collect()
-    }
-
-    fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
-        std::fs::read_link(path)
-    }
-
-    fn remove(&self, path: &Path) -> std::io::Result<()> {
-        let meta = std::fs::symlink_metadata(path)?;
-        remove_entry(path, &meta)
     }
 }
 

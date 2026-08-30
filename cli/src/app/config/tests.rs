@@ -15,7 +15,7 @@ fn section_inventory_reports_every_user_configured_slice() {
 
     assert!(labels.contains(&"git settings"));
     assert!(labels.contains(&"agent settings"));
-    assert_eq!(labels.len(), 10);
+    assert_eq!(labels.len(), 9);
 }
 
 /// Create a temporary directory tree with the minimal conf/ files required
@@ -66,7 +66,7 @@ fn load_with_empty_config_files() {
     let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
     assert!(config.packages.is_empty());
     assert!(config.symlinks.is_empty());
-    assert!(config.all_symlinks.is_empty());
+    assert!(config.validation_symlinks.is_empty());
     assert!(config.registry.is_empty());
     assert!(config.units.is_empty());
     assert!(config.chmod.is_empty());
@@ -86,11 +86,11 @@ fn load_populates_symlinks() {
     assert_eq!(config.symlinks.len(), 2);
     assert_eq!(config.symlinks[0].source, ".bashrc");
     assert_eq!(config.symlinks[1].source, ".vimrc");
-    assert_eq!(config.all_symlinks.len(), 2);
+    assert_eq!(config.validation_symlinks.len(), 2);
 }
 
 #[test]
-fn load_keeps_profile_excluded_main_symlinks_for_materialization() {
+fn load_keeps_profile_excluded_main_symlinks_for_validation() {
     let (dir, profile, platform) = setup_load(
         linux(),
         &[(
@@ -111,7 +111,7 @@ fn load_keeps_profile_excluded_main_symlinks_for_materialization() {
     );
     assert_eq!(
         config
-            .all_symlinks
+            .validation_symlinks
             .iter()
             .map(|symlink| symlink.source.as_str())
             .collect::<Vec<_>>(),
@@ -119,7 +119,7 @@ fn load_keeps_profile_excluded_main_symlinks_for_materialization() {
     );
     assert!(
         config
-            .all_symlinks
+            .validation_symlinks
             .iter()
             .all(|symlink| symlink.origin.as_deref() == Some(dir.path()))
     );
@@ -314,13 +314,6 @@ fn load_returns_error_on_invalid_git_config_toml() {
         msg.contains(expected_path.to_str().unwrap_or("git-config.toml")),
         "error should mention the full path: {msg}"
     );
-}
-
-#[test]
-fn load_returns_error_on_invalid_manifest_toml() {
-    let (dir, profile, platform) = setup_load(linux(), &[("manifest.toml", "{{invalid}}")]);
-    let result = Config::load(dir.path(), &profile, platform, None);
-    assert!(result.is_err(), "invalid manifest.toml should return error");
 }
 
 #[test]

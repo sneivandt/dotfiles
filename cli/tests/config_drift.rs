@@ -4,22 +4,8 @@
     clippy::indexing_slicing,
     reason = "panicking allowed at this trust boundary"
 )]
-//! Integration tests that verify the manifest and symlinks configurations
-//! stay in sync.
-//!
-//! These tests read the **real** `conf/manifest.toml` and `conf/symlinks.toml`
-//! files from the repository and check that:
-//!
-//! 1. Every non-base section in `symlinks.toml` has a matching section in
-//!    `manifest.toml` so sparse checkout can exclude the right files.
-//! 2. Every symlink source path in a non-base section is retained either by
-//!    `[base]` ownership or by a manifest path in the same section **or any
-//!    manifest section whose category tags are a subset** (i.e. the manifest
-//!    section always applies whenever the symlink section applies). For
-//!    example, a symlink in `[linux-desktop]` may be covered by the `[desktop]`
-//!    manifest because the desktop manifest is always present when
-//!    linux-desktop is active.
-//! 3. Every path listed in `manifest.toml` actually exists in `symlinks/`.
+//! Integration tests for relationships among the repository's real
+//! configuration files and managed sources.
 
 use serde::{Deserialize, Deserializer, de::Error as _};
 use std::collections::{HashMap, HashSet};
@@ -80,12 +66,6 @@ impl SymlinkEntry {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ManifestSection {
-    paths: Vec<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ChmodSection {
     permissions: Vec<PermissionEntry>,
 }
@@ -121,13 +101,6 @@ fn load_symlink_sections(path: &Path) -> HashMap<String, Vec<String>> {
         .collect()
 }
 
-fn load_manifest_sections(path: &Path) -> HashMap<String, Vec<String>> {
-    let content = std::fs::read_to_string(path).expect("read manifest.toml");
-    let raw: HashMap<String, ManifestSection> =
-        toml::from_str(&content).expect("parse manifest.toml");
-    raw.into_iter().map(|(k, v)| (k, v.paths)).collect()
-}
-
 fn load_permission_sections(path: &Path) -> HashMap<String, ChmodSection> {
     let content = std::fs::read_to_string(path).expect("read chmod.toml");
     toml::from_str(&content).expect("parse chmod.toml")
@@ -148,167 +121,9 @@ fn mirrored_symlink_parser_rejects_unknown_table_fields() {
     );
 }
 
-#[test]
-fn mirrored_section_parsers_reject_unknown_fields() {
-    let typo = r#"
-        [desktop]
-        path = ["config/example"]
-    "#;
-
-    let result = toml::from_str::<HashMap<String, ManifestSection>>(typo);
-
-    assert!(
-        result.is_err(),
-        "misspelled section keys must not be ignored"
-    );
-}
-
-/// Returns `true` when `source` is covered by at least one manifest path.
-///
-/// A manifest directory entry (trailing `/`) covers any source whose path
-/// falls under that directory — either a file inside it **or** the directory
-/// itself (a directory symlink like `config/volume` is covered by the
-/// manifest entry `config/volume/`).
-/// An exact file entry must match the source exactly.
-fn is_covered_by(source: &str, manifest_paths: &[String]) -> bool {
-    manifest_paths.iter().any(|mp| {
-        mp.strip_suffix('/').map_or_else(
-            || source == mp,
-            |dir| source == dir || source.starts_with(mp.as_str()),
-        )
-    })
-}
-
-/// Parses a section name into its set of category tags.
-///
-/// Section names are hyphen-separated category tags, e.g. `linux-desktop`
-/// produces `{"linux", "desktop"}`.
-fn section_tags(section: &str) -> HashSet<&str> {
-    section.split('-').collect()
-}
-
-/// Returns `true` when `source` in `section` is covered by any manifest
-/// section that always applies whenever `section` applies.
-///
-/// A manifest section `Y` always applies when symlink section `X` applies
-/// if Y's tags are a subset of X's tags.  For example, `[desktop]` always
-/// applies when `[linux-desktop]` is active, so vscode config files whose
-/// sparse-checkout entry lives under `[desktop]` still satisfy coverage for
-/// `[linux-desktop]` symlinks.
-fn is_covered_by_any_section(
-    section: &str,
-    source: &str,
-    manifest: &HashMap<String, Vec<String>>,
-) -> bool {
-    let symlink_tags = section_tags(section);
-    manifest.iter().any(|(msection, mpaths)| {
-        let manifest_tags = section_tags(msection);
-        manifest_tags.is_subset(&symlink_tags) && is_covered_by(source, mpaths)
-    })
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
-/// Every non-base category section in `symlinks.toml` must have a
-/// corresponding section in `manifest.toml`.
-#[test]
-fn non_base_symlink_sections_have_manifest_sections() {
-    let root = repo_root();
-    let conf = root.join("conf");
-
-    let symlinks = load_symlink_sections(&conf.join("symlinks.toml"));
-    let manifest = load_manifest_sections(&conf.join("manifest.toml"));
-
-    let missing: Vec<&str> = symlinks
-        .keys()
-        .filter(|s| *s != "base")
-        .filter(|s| !manifest.contains_key(*s))
-        .map(String::as_str)
-        .collect();
-
-    assert!(
-        missing.is_empty(),
-        "non-base symlink sections missing from manifest.toml: {missing:?}"
-    );
-}
-
-/// Every section in `manifest.toml` must have a corresponding section in
-/// `symlinks.toml` so that all manifest exclusion rules have matching symlinks.
-#[test]
-fn manifest_sections_have_symlink_sections() {
-    let root = repo_root();
-    let conf = root.join("conf");
-
-    let symlinks = load_symlink_sections(&conf.join("symlinks.toml"));
-    let manifest = load_manifest_sections(&conf.join("manifest.toml"));
-
-    let missing: Vec<&str> = manifest
-        .keys()
-        .filter(|s| !symlinks.contains_key(*s))
-        .map(String::as_str)
-        .collect();
-
-    assert!(
-        missing.is_empty(),
-        "manifest.toml sections missing from symlinks.toml: {missing:?}"
-    );
-}
-
-/// Every symlink source in a non-base section must either also be base-owned or
-/// be covered by a manifest path in the same section or a compatible subset.
-#[test]
-fn non_base_symlink_sources_covered_by_manifest() {
-    let root = repo_root();
-    let conf = root.join("conf");
-
-    let symlinks = load_symlink_sections(&conf.join("symlinks.toml"));
-    let manifest = load_manifest_sections(&conf.join("manifest.toml"));
-    let base_sources = symlinks.get("base");
-
-    let mut uncovered: Vec<String> = Vec::new();
-
-    for (section, sources) in &symlinks {
-        if section == "base" {
-            continue;
-        }
-        for source in sources {
-            let retained_by_base =
-                base_sources.is_some_and(|base_entries| base_entries.contains(source));
-            if !retained_by_base && !is_covered_by_any_section(section, source, &manifest) {
-                uncovered.push(format!("[{section}] {source}"));
-            }
-        }
-    }
-
-    assert!(
-        uncovered.is_empty(),
-        "symlink sources not covered by manifest.toml:\n  {}",
-        uncovered.join("\n  ")
-    );
-}
-
-/// VS Code's platform-specific and remote links all use the shared
-/// `config/Code` sources, so every desktop ownership combination must retain
-/// that directory.
-#[test]
-fn vscode_shared_sources_are_retained_for_every_desktop_platform() {
-    let manifest = load_manifest_sections(&repo_root().join("conf").join("manifest.toml"));
-    let targets = [
-        "config/Code/User/keybindings.json",
-        "config/Code/User/settings.json",
-    ];
-
-    for section in ["desktop", "linux-desktop", "windows-desktop"] {
-        for target in targets {
-            assert!(
-                is_covered_by_any_section(section, target, &manifest),
-                "[{section}] shared VS Code source is excluded: {target}"
-            );
-        }
-    }
-}
 
 #[test]
 fn vscode_insiders_desktop_launchers_use_gnome_libsecret() {
@@ -460,91 +275,10 @@ fn code_insiders_shim_normalizes_password_store_and_forwards_arguments() {
     }
 }
 
-/// Returns paths excluded by sparse checkout (relative to `symlinks/`).
-///
-/// Reads `info/sparse-checkout` from the git directory and collects negated
-/// patterns that start with `!/symlinks/`, stripping the prefix so they match
-/// manifest paths.  Handles both normal repos (`.git/` is a directory) and
-/// worktrees (`.git` is a file containing `gitdir: <path>`).
-fn sparse_checkout_excluded_paths(root: &Path) -> Vec<String> {
-    let dot_git = root.join(".git");
-    let git_dir = if dot_git.is_file() {
-        // Worktree: .git is a file like "gitdir: /path/to/.git/worktrees/name"
-        let content = std::fs::read_to_string(&dot_git).unwrap_or_default();
-        content
-            .strip_prefix("gitdir: ")
-            .and_then(|s| s.strip_suffix('\n').or(Some(s)))
-            .map(|s| PathBuf::from(s.trim()))
-            .unwrap_or(dot_git)
-    } else {
-        dot_git
-    };
-    let sc_path = git_dir.join("info/sparse-checkout");
-    let Ok(content) = std::fs::read_to_string(sc_path) else {
-        return Vec::new();
-    };
-    content
-        .lines()
-        .filter_map(|line| line.strip_prefix("!/symlinks/"))
-        .map(String::from)
-        .collect()
-}
-
-/// Returns `true` when `path` is excluded by one of the sparse checkout
-/// negation patterns (exact match or directory prefix).
-fn is_excluded_by_sparse(path: &str, excluded: &[String]) -> bool {
-    excluded.iter().any(|ex| {
-        ex.strip_suffix('/').map_or_else(
-            || path == ex,
-            |dir| path == dir || path.starts_with(ex.as_str()),
-        )
-    })
-}
-
-/// Every path listed in `manifest.toml` must correspond to an existing
-/// file or directory inside `symlinks/`.
-///
-/// Paths excluded by sparse checkout are skipped — they are intentionally
-/// absent on this machine.
-#[test]
-fn manifest_paths_exist_in_symlinks_dir() {
-    let root = repo_root();
-    let symlinks_dir = root.join("symlinks");
-    let conf = root.join("conf");
-
-    let manifest = load_manifest_sections(&conf.join("manifest.toml"));
-    let excluded = sparse_checkout_excluded_paths(&root);
-
-    let mut missing: Vec<String> = Vec::new();
-
-    for (section, paths) in &manifest {
-        for path in paths {
-            if is_excluded_by_sparse(path, &excluded) {
-                continue;
-            }
-
-            let full = symlinks_dir.join(path);
-            if !full.exists() {
-                missing.push(format!("[{section}] {path}"));
-            }
-        }
-    }
-
-    assert!(
-        missing.is_empty(),
-        "manifest paths not found in symlinks/:\n  {}",
-        missing.join("\n  ")
-    );
-}
-
 #[test]
 fn hypr_helper_scripts_have_executable_permissions() {
     let root = repo_root();
     let scripts_dir = root.join("symlinks/config/hypr/scripts");
-    let excluded = sparse_checkout_excluded_paths(&root);
-    if is_excluded_by_sparse("config/hypr/scripts/", &excluded) {
-        return;
-    }
 
     let configured: HashSet<String> = load_permission_sections(&root.join("conf/chmod.toml"))
         .into_values()

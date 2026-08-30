@@ -70,10 +70,10 @@ run_config_validation() {
   printf "Running typed config validation...\n"
   if ! cargo run --quiet --profile ci --manifest-path "$MANIFEST" -- \
     check --root "$REPO_ROOT" -p desktop \
-    --only config-warnings,symlink-sources,config-files,manifest-sync 2>&1; then
+    --only config-warnings,symlink-sources,config-files 2>&1; then
     abort_with_hint \
       "configuration validation failed." \
-      "cargo run --profile ci --manifest-path cli/Cargo.toml -- check --root . -p desktop --only config-warnings,symlink-sources,config-files,manifest-sync"
+      "cargo run --profile ci --manifest-path cli/Cargo.toml -- check --root . -p desktop --only config-warnings,symlink-sources,config-files"
   fi
 
   if full_checks_enabled; then

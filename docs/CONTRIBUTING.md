@@ -63,7 +63,7 @@ Update the guide closest to the behavior. If a task is added, removed, renamed,
 rewired, or changes command membership, update [Task reference](TASKS.md).
 Keep the root README as a landing page and detailed guidance in `docs/`.
 
-The [documentation source-of-truth boundaries](README.md#source-of-truth-boundaries)
+The [documentation source-of-truth boundaries](./README.md#source-of-truth-boundaries)
 define where repository guidance belongs. Documentation consistency checks,
 including link and task-selector validation, are documented in
 [Testing](TESTING.md).

@@ -28,7 +28,7 @@ jobs, coverage, or mutation testing.
 | `clippy` | `cargo clippy --all-targets -D warnings` |
 | `test` | `cargo test` |
 | `config` | `dotfiles check --root .` (repository validator) |
-| `docs` | Relative markdown links resolve; documented task selectors exist (Linux script only) |
+| `docs` | Relative Markdown links and heading anchors resolve; documented task selectors exist (Linux script only) |
 | `shell` | ShellCheck over wrappers, hooks, and CI scripts |
 | `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
 | `audit` | `cargo audit` |

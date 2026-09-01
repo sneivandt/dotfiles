@@ -29,7 +29,6 @@ workflows for maintaining a configured machine.
 |---|---|
 | [Windows](WINDOWS.md) | Windows bootstrap, Developer Mode, registry, PATH, and WSL behavior |
 | [APM](APM.md) | Manage AI tooling packages, plugins, and generated configuration |
-| [Docker](DOCKER.md) | Build and use the container image |
 
 ## Source-of-truth boundaries
 

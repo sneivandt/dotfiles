@@ -1,9 +1,8 @@
 ---
 name: ci-cd-patterns
 description: >
-  Use for .github/workflows/, CI guard scripts, release tags/assets, Docker
-  publishing, action pinning, or ci-success gating. Not for ordinary local test
-  selection.
+  Use for .github/workflows/, CI guard scripts, release tags/assets, action
+  pinning, or ci-success gating. Not for ordinary local test selection.
 ---
 
 # CI/CD Patterns
@@ -32,7 +31,6 @@ action-version inventories in guidance.
 - `workflow_run` publishers must verify successful same-repository pushes to
   `main` before granting write permissions or secrets.
 - Preserve wrapper-expected asset names, checksums, and provenance attestations.
-- Docker publishing checks out the exact successful CI head SHA.
 
 ## Change checklist
 

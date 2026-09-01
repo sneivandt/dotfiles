@@ -39,7 +39,7 @@ dotfiles.sh / dotfiles.ps1
 | `conf/` | Declarative desired state |
 | `symlinks/` | Versioned files linked into the user's home directory |
 | `hooks/` | Repository-maintained Git hooks and checks |
-| `.github/workflows/` | CI, release, and container publishing |
+| `.github/workflows/` | CI and release publishing |
 
 ## Wrappers
 

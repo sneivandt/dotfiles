@@ -29,9 +29,6 @@ trim_trailing_whitespace = false
 [*.{yml,yaml}]
 indent_size = 2
 
-[Dockerfile]
-indent_size = 2
-
 [*.sh]
 indent_size = 2
 

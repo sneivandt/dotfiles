@@ -200,96 +200,6 @@ run_release_workflow_guards() {
   fi
 }
 
-require_docker_workflow_pattern() {
-  pattern="$1"
-  description="$2"
-  if ! printf '%s\n' "$docker_workflow_contents" | grep -Eq "$pattern"; then
-    abort_with_hint \
-      "Docker workflow is missing $description." \
-      "restore the publishing invariant in .github/workflows/docker.yml"
-  fi
-}
-
-require_docker_workflow_literal() {
-  literal="$1"
-  description="$2"
-  if ! printf '%s\n' "$docker_workflow_contents" | grep -Fq "$literal"; then
-    abort_with_hint \
-      "Docker workflow is missing $description." \
-      "restore the publishing invariant in .github/workflows/docker.yml"
-  fi
-}
-
-require_dockerfile_pattern() {
-  pattern="$1"
-  description="$2"
-  if ! printf '%s\n' "$dockerfile_contents" | grep -Eq "$pattern"; then
-    abort_with_hint \
-      "Dockerfile is missing $description." \
-      "restore the publishing invariant in Dockerfile"
-  fi
-}
-
-run_docker_publish_guards() {
-  printf "Running Docker publishing guards...\n"
-
-  if ! docker_workflow_contents=$(git show ":.github/workflows/docker.yml"); then
-    abort_with_hint \
-      "staged Docker workflow cannot be read." \
-      "stage .github/workflows/docker.yml before running the publishing guards"
-  fi
-  if ! dockerfile_contents=$(git show ":Dockerfile"); then
-    abort_with_hint \
-      "staged Dockerfile cannot be read." \
-      "stage Dockerfile before running the publishing guards"
-  fi
-  if ! rust_toolchain_contents=$(git show ":rust-toolchain.toml"); then
-    abort_with_hint \
-      "staged Rust toolchain cannot be read." \
-      "stage rust-toolchain.toml before running the publishing guards"
-  fi
-
-  rust_toolchain_version=$(printf '%s\n' "$rust_toolchain_contents" |
-    sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' |
-    head -n 1)
-  if ! printf '%s\n' "$rust_toolchain_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-    abort_with_hint \
-      "rust-toolchain.toml does not pin a complete Rust version." \
-      "set toolchain.channel to a version such as 1.95.0"
-  fi
-
-  require_docker_workflow_pattern '^[[:space:]]+group:[[:space:]]+docker-main[[:space:]]*$' "serialized main publishing"
-  require_docker_workflow_pattern '^[[:space:]]+cancel-in-progress:[[:space:]]+true[[:space:]]*$' "superseded-run cancellation"
-  require_docker_workflow_literal 'ref: ${{ github.event.workflow_run.head_sha }}' "the tested commit checkout"
-  require_docker_workflow_literal 'persist-credentials: false' "non-persistent checkout credentials"
-  require_docker_workflow_literal 'DOTFILES_VERSION=sha-${{ github.event.workflow_run.head_sha }}' "the tested commit binary version"
-  require_docker_workflow_literal 'sneivandt/dotfiles:sha-${{ github.event.workflow_run.head_sha }}' "the immutable commit tag"
-
-  require_dockerfile_pattern '^FROM[[:space:]]+rust:[0-9]+\.[0-9]+\.[0-9]+-bookworm@sha256:[0-9a-f]{64}[[:space:]]+AS[[:space:]]+builder$' "the pinned Rust builder image"
-  require_dockerfile_pattern '^FROM[[:space:]]+ubuntu:24\.04@sha256:[0-9a-f]{64}$' "the pinned runtime image"
-  require_dockerfile_pattern '^ENV[[:space:]]+CARGO_TARGET_DIR=/build/target$' "the out-of-source Cargo target directory"
-  require_dockerfile_pattern 'update-ref refs/remotes/origin/main HEAD' "the tested commit upstream reference"
-  require_dockerfile_pattern 'cargo build --release --locked --manifest-path cli/Cargo\.toml' "the locked release build"
-  require_dockerfile_pattern 'PATH=/home/sneivandt/\.local/bin:\$\{PATH\}' "the installed launcher PATH"
-  require_dockerfile_pattern '^COPY --from=builder .* /build/out/dotfiles /home/sneivandt/dotfiles/bin/dotfiles$' "the staged release binary copy"
-
-  builder_image=$(printf '%s\n' "$dockerfile_contents" |
-    awk '$1 == "FROM" && $2 ~ /^rust:/ && $3 == "AS" && $4 == "builder" { print $2; exit }')
-  docker_rust_version=${builder_image#rust:}
-  docker_rust_version=${docker_rust_version%-bookworm@sha256:*}
-  if [ "$docker_rust_version" != "$rust_toolchain_version" ]; then
-    abort_with_hint \
-      "Docker builder Rust $docker_rust_version does not match rust-toolchain.toml $rust_toolchain_version." \
-      "update the Docker builder and rust-toolchain.toml together"
-  fi
-
-  if ! printf '%s\n' "$dockerfile_contents" | grep -Eq '^[[:space:]]*RUN[[:space:]]+DOTFILES_SKIP_SELF_UPDATE=1'; then
-    abort_with_hint \
-      "Docker image construction can replace its exact-source binary through self-update." \
-      "set DOTFILES_SKIP_SELF_UPDATE=1 only on the Dockerfile install RUN instruction"
-  fi
-}
-
 if has_staged_match '^(conf/.*\.toml|symlinks/)'; then
   run_config_validation
 fi
@@ -310,10 +220,6 @@ fi
 
 if has_staged_match '^\.github/workflows/release\.yml$'; then
   run_release_workflow_guards
-fi
-
-if has_staged_match '^(\.github/workflows/docker\.yml|Dockerfile|rust-toolchain\.toml)$'; then
-  run_docker_publish_guards
 fi
 
 exit 0

@@ -60,8 +60,11 @@ impl Task for CountingResourceTask {
         name: "Counting resource task",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        Self::process(ctx, Some("Counting resource task"))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(Self::process(
+            ctx,
+            Some("Counting resource task"),
+        )?))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -93,8 +96,11 @@ impl Task for CountingBatchTask {
         name: "Counting batch task",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        Self::process(ctx, Some("Counting batch task"))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(Self::process(
+            ctx,
+            Some("Counting batch task"),
+        )?))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -131,8 +137,10 @@ impl Task for CountingConfigResourceTask {
         name: "Counting config resource task",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        self.process(ctx, Some("Counting config resource task"))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(
+            self.process(ctx, Some("Counting config resource task"))?,
+        ))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -171,8 +179,10 @@ impl Task for CountingConfigBatchTask {
         name: "Counting config batch task",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        self.process(ctx, Some("Counting config batch task"))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(
+            self.process(ctx, Some("Counting config batch task"))?,
+        ))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -272,9 +282,9 @@ impl Task for DelegatedTask {
         true
     }
 
-    fn run_configured(&self, _ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, _ctx: &Context) -> Result<TaskResult> {
         self.calls.run_configured.fetch_add(1, Ordering::SeqCst);
-        Ok(Some(TaskResult::skipped("configured")))
+        Ok(TaskResult::skipped("configured"))
     }
 
     fn needs_elevation(&self, _ctx: &Context) -> bool {
@@ -316,7 +326,7 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     assert!(requires_elevation(&task, &ctx));
     assert!(matches!(
         task.run_configured(&ctx).unwrap(),
-        Some(TaskResult::Skipped { reason, .. }) if reason == "configured"
+        TaskResult::Skipped { reason, .. } if reason == "configured"
     ));
     assert!(matches!(
         task.run(&ctx).unwrap(),
@@ -812,7 +822,7 @@ fn batch_task_run_configured_evaluates_items_once() {
     let (ctx, _) = make_static_context(config);
 
     let result = CountingBatchTask.run_configured(&ctx).unwrap();
-    assert!(result.is_none());
+    assert!(matches!(result, TaskResult::NotApplicable(_)));
     BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
 }
 
@@ -836,6 +846,6 @@ fn config_batch_task_run_configured_evaluates_snapshot_items_once() {
     let task = CountingConfigBatchTask::new(ConfigHandle::new(Vec::new()));
 
     let result = task.run_configured(&ctx).unwrap();
-    assert!(result.is_none());
+    assert!(matches!(result, TaskResult::NotApplicable(_)));
     CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
 }

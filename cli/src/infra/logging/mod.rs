@@ -4,12 +4,11 @@
 //!
 //! - the **run log** ([`RunLog`]), an append-only file that records every
 //!   event immediately in true chronological order;
-//! - the **console**, rendered by the tracing console layer, which buffers
-//!   per-task output so parallel runs stay readable.
+//! - the **console**, rendered directly from logger messages after per-task
+//!   buffering keeps parallel output readable.
 //!
-//! `Logger` writes to the run log directly and emits `dotfiles::ui::*` tracing
-//! events for the console. Raw `tracing` calls elsewhere in the crate reach the
-//! run log through [`subscriber::RunLogLayer`].
+//! `Logger` writes to both sinks directly. Raw `tracing` calls elsewhere in the
+//! crate reach the run log and diagnostic console through the subscriber.
 
 mod buffered;
 mod logger;

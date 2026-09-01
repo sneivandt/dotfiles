@@ -43,11 +43,11 @@ impl Task for ConfigureShell {
         system.platform().is_linux() && !system.is_ci()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
         if !ctx.system().which("zsh") {
-            return Ok(None);
+            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
-        Self::process(ctx, Some(NAME))
+        Ok(configured_task_result(Self::process(ctx, Some(NAME))?))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -77,7 +77,10 @@ mod tests {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config); // which() returns false
         assert!(ConfigureShell.should_run(&ctx));
-        assert!(ConfigureShell.run_configured(&ctx).unwrap().is_none());
+        assert!(matches!(
+            ConfigureShell.run_configured(&ctx).unwrap(),
+            TaskResult::NotApplicable(_)
+        ));
     }
 
     #[test]

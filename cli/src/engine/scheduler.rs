@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
-use crate::engine::task::{TaskDisposition, TaskExecution};
+use crate::engine::task::{TaskExecution, TaskOutcome};
 use crate::engine::{self, Context, Task, TaskAssessment, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{
@@ -28,17 +28,6 @@ enum DependencySignal {
         task: String,
         outcome: BlockingOutcome,
     },
-    Cancelled,
-}
-
-/// Execution facts returned to application policy independently of logging.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum TaskOutcome {
-    Satisfied,
-    Unmet,
-    Failed,
-    Blocked,
     Cancelled,
 }
 
@@ -151,12 +140,13 @@ impl DependencySignal {
         }
     }
 
-    fn from_task(task: &dyn Task, disposition: TaskDisposition) -> Self {
-        match disposition {
-            TaskDisposition::Satisfied => Self::Satisfied,
-            TaskDisposition::Unmet => Self::blocked(task.name(), BlockingOutcome::Incomplete),
-            TaskDisposition::Failed => Self::blocked(task.name(), BlockingOutcome::Failed),
-            TaskDisposition::Cancelled => Self::Cancelled,
+    fn from_task(task: &dyn Task, outcome: TaskOutcome) -> Self {
+        match outcome {
+            TaskOutcome::Satisfied => Self::Satisfied,
+            TaskOutcome::Unmet => Self::blocked(task.name(), BlockingOutcome::Incomplete),
+            TaskOutcome::Failed => Self::blocked(task.name(), BlockingOutcome::Failed),
+            TaskOutcome::Blocked => Self::blocked(task.name(), BlockingOutcome::Blocked),
+            TaskOutcome::Cancelled => Self::Cancelled,
         }
     }
 
@@ -171,17 +161,6 @@ impl DependencySignal {
                 Some(format!("blocked by {state}dependency: {task}"))
             }
             Self::Satisfied | Self::Cancelled => None,
-        }
-    }
-}
-
-impl From<TaskDisposition> for TaskOutcome {
-    fn from(disposition: TaskDisposition) -> Self {
-        match disposition {
-            TaskDisposition::Satisfied => Self::Satisfied,
-            TaskDisposition::Unmet => Self::Unmet,
-            TaskDisposition::Failed => Self::Failed,
-            TaskDisposition::Cancelled => Self::Cancelled,
         }
     }
 }
@@ -308,7 +287,7 @@ fn run_task_buffered(
             ));
             TaskExecution {
                 status: TaskStatus::Failed,
-                disposition: TaskDisposition::Failed,
+                outcome: TaskOutcome::Failed,
             }
         }
     };
@@ -345,9 +324,9 @@ fn dispatch_task(
     let Some((reason, signal)) = skip_reason else {
         let execution = run_task_buffered(task, assessment, ctx, log, notify_start);
         return (
-            DependencySignal::from_task(task, execution.disposition),
+            DependencySignal::from_task(task, execution.outcome),
             execution.status,
-            execution.disposition.into(),
+            execution.outcome,
         );
     };
 

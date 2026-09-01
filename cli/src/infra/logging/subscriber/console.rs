@@ -1,10 +1,12 @@
 //! Console event formatting and transient progress state.
 
 use std::io::IsTerminal as _;
+use std::io::Write as _;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 
 use super::event::MessageExtractor;
 use crate::infra::logging::style::{StyleChoice, TextStyle, stderr_style, stdout_style};
+use crate::infra::logging::types::MsgKind;
 
 /// Whether verbose console output is enabled.
 ///
@@ -57,6 +59,54 @@ fn clear_transient_console_prefix() -> String {
     progress_clear_sequence(take_transient_progress_rows())
 }
 
+pub(super) fn ui_line_with_style(
+    kind: MsgKind,
+    msg: &str,
+    style: StyleChoice,
+    verbose: bool,
+) -> Option<String> {
+    let msg = style.clean(msg);
+    match kind {
+        MsgKind::Stage | MsgKind::TaskStage => verbose.then_some(msg),
+        MsgKind::Info | MsgKind::Debug => verbose.then(|| format!("  {msg}")),
+        MsgKind::Trace => None,
+        MsgKind::Warn => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
+        MsgKind::Error => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
+        MsgKind::DryRun => Some(format!("  {msg}")),
+        MsgKind::Always => Some(msg),
+        MsgKind::Startup => Some(style.paint(TextStyle::Dim, &msg)),
+    }
+}
+
+/// Render a user-facing logger message without routing it through `tracing`.
+pub(in crate::infra::logging) fn emit_console(kind: MsgKind, msg: &str, verbose: bool) {
+    let is_error = matches!(kind, MsgKind::Warn | MsgKind::Error);
+    let style = if is_error {
+        stderr_style()
+    } else {
+        stdout_style()
+    };
+    let Some(line) = ui_line_with_style(kind, msg, style, verbose) else {
+        return;
+    };
+    let prefix = clear_transient_console_prefix();
+    if is_error {
+        let mut stream = std::io::stderr().lock();
+        drop(writeln!(stream, "{prefix}{line}"));
+    } else {
+        let mut stream = std::io::stdout().lock();
+        drop(writeln!(stream, "{prefix}{line}"));
+    }
+}
+
+/// Render a compact task result line.
+pub(in crate::infra::logging) fn emit_task_result(msg: &str) {
+    let line = stdout_style().clean(msg);
+    let prefix = clear_transient_console_prefix();
+    let mut stream = std::io::stdout().lock();
+    drop(writeln!(stream, "{prefix}{line}"));
+}
+
 fn console_style(level: tracing::Level) -> StyleChoice {
     if matches!(level, tracing::Level::ERROR | tracing::Level::WARN) {
         stderr_style()
@@ -77,7 +127,7 @@ fn console_line(level: tracing::Level, target: &str, msg: &str) -> Option<String
 
 pub(super) fn console_line_with_style(
     level: tracing::Level,
-    target: &str,
+    _target: &str,
     msg: &str,
     style: StyleChoice,
     verbose: bool,
@@ -86,23 +136,7 @@ pub(super) fn console_line_with_style(
     match level {
         tracing::Level::ERROR => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
         tracing::Level::WARN => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
-        tracing::Level::INFO if target == "dotfiles::ui::always" => Some(msg),
-        tracing::Level::INFO if target == "dotfiles::ui::startup" => {
-            Some(style.paint(TextStyle::Dim, &msg))
-        }
-        tracing::Level::INFO if target == "dotfiles::ui::task_result" => Some(msg),
-        tracing::Level::INFO if target == "dotfiles::ui::stage" => verbose.then(|| msg.clone()),
-        tracing::Level::INFO if target == "dotfiles::ui::task_stage" => {
-            verbose.then(|| msg.clone())
-        }
-        tracing::Level::INFO if target == "dotfiles::ui::dry_run" => Some(format!("  {msg}")),
         tracing::Level::INFO => verbose.then(|| format!("  {msg}")),
-        // Verbose surfaces the per-item reasoning behind an outcome — which
-        // resources were already correct, which were skipped and why. Raw
-        // `tracing::debug!` calls from elsewhere stay in the run log.
-        tracing::Level::DEBUG if target == "dotfiles::ui::debug" => {
-            verbose.then(|| format!("  {msg}"))
-        }
         tracing::Level::DEBUG | tracing::Level::TRACE => None,
     }
 }

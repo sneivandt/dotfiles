@@ -13,7 +13,7 @@ mod elevation;
 
 use elevation::ElevationBroker;
 #[cfg(test)]
-use elevation::{blocked_dependents, build_elevated_child_args};
+use elevation::build_elevated_child_args;
 
 type RestartCondition<'a> = Box<dyn FnOnce() -> bool + 'a>;
 type RestartAction<'a> = Box<dyn FnOnce() + 'a>;
@@ -101,7 +101,7 @@ impl<'a> RunCoordinator<'a> {
         tasks: Vec<&dyn Task>,
         restart: RestartPlan<'_>,
     ) -> Result<Option<crate::engine::scheduler::ExecutionSummary>> {
-        let boundary_closure = dependency_closure(&tasks, restart.boundary.clone());
+        let boundary_closure = dependency_closure(&tasks, restart.boundary.clone())?;
         let mut summary = crate::engine::scheduler::ExecutionSummary::default();
 
         if boundary_closure.is_empty() {
@@ -117,7 +117,7 @@ impl<'a> RunCoordinator<'a> {
 
             let boundary_satisfied = matches!(
                 summary.outcome(&restart.boundary),
-                Some(crate::engine::scheduler::TaskOutcome::Satisfied)
+                Some(crate::engine::TaskOutcome::Satisfied)
             );
             if !self.ctx.is_cancelled() && boundary_satisfied && (restart.requested)() {
                 (restart.action)();
@@ -179,18 +179,18 @@ fn visible_count<'a>(tasks: impl IntoIterator<Item = &'a dyn Task>) -> usize {
         .count()
 }
 
-fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> {
-    if !tasks.iter().any(|task| task.task_id() == boundary) {
-        return HashSet::new();
+fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> Result<HashSet<TaskId>> {
+    let graph = crate::engine::graph::ResolvedTaskGraph::resolve(tasks)?;
+    if !graph.contains(&boundary) {
+        return Ok(HashSet::new());
     }
 
     let mut closure = HashSet::from([boundary]);
-    crate::app::task_dependencies::extend_dependency_closure(
-        tasks,
+    graph.extend_dependency_closure(
         &mut closure,
-        crate::app::task_dependencies::DependencyEdges::Blocking,
+        crate::engine::graph::DependencyEdges::Blocking,
     );
-    closure
+    Ok(closure)
 }
 
 fn run_task_graph(
@@ -203,6 +203,9 @@ fn run_task_graph(
         return Ok(crate::engine::scheduler::ExecutionSummary::default());
     }
 
+    let task_count = tasks.len();
+    let mut graph = resolve_task_graph(tasks, log)?;
+
     let assessments = if ctx.is_cancelled() {
         HashMap::new()
     } else {
@@ -214,18 +217,16 @@ fn run_task_graph(
     let mut summary = if ctx.is_cancelled() {
         crate::engine::scheduler::ExecutionSummary::default()
     } else {
-        ElevationBroker::new(ctx, log).prepare(tasks, &assessments)
+        ElevationBroker::new(ctx, log).prepare(tasks, &assessments, &graph)
     };
 
     if tasks.is_empty() {
         return Ok(summary);
     }
 
-    let graph = crate::engine::graph::ResolvedTaskGraph::resolve(tasks).map_err(|error| {
-        let message = format!("{error} detected in task graph");
-        log.error(&message);
-        anyhow!(message)
-    })?;
+    if tasks.len() != task_count {
+        graph = resolve_task_graph(tasks, log)?;
+    }
     let mut combined_prior = prior.cloned().unwrap_or_default();
     combined_prior.merge(summary.clone());
     let scheduled = if ctx.parallel() {
@@ -251,6 +252,17 @@ fn run_task_graph(
     Ok(summary)
 }
 
+fn resolve_task_graph(
+    tasks: &[&dyn Task],
+    log: &Logger,
+) -> Result<crate::engine::graph::ResolvedTaskGraph> {
+    crate::engine::graph::ResolvedTaskGraph::resolve(tasks).map_err(|error| {
+        let message = format!("{error} detected in task graph");
+        log.error(&message);
+        anyhow!(message)
+    })
+}
+
 fn finish_run(
     ctx: &Context,
     log: &Arc<Logger>,
@@ -273,8 +285,7 @@ mod tests {
 
     use proptest::prelude::*;
 
-    use crate::engine::scheduler::TaskOutcome;
-    use crate::engine::{TaskAssessment, TaskMeta, TaskResult};
+    use crate::engine::{TaskAssessment, TaskMeta, TaskOutcome, TaskResult};
     use crate::test_helpers::{empty_config, make_static_context};
 
     use super::*;
@@ -284,6 +295,15 @@ mod tests {
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()
+    }
+
+    fn blocked_dependents<'task>(
+        tasks: &[&dyn Task],
+        roots: &HashMap<TaskId, &'task str>,
+    ) -> HashMap<TaskId, &'task str> {
+        crate::engine::graph::ResolvedTaskGraph::resolve(tasks)
+            .expect("valid task graph")
+            .blocked_dependents(roots)
     }
 
     #[test]
@@ -439,7 +459,8 @@ mod tests {
         let (ctx, log) = sequential_context();
         let ctx = ctx.with_non_interactive(true);
 
-        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments);
+        let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
+        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
 
         assert_eq!(
             tasks.iter().map(|task| task.name()).collect::<Vec<_>>(),
@@ -469,7 +490,8 @@ mod tests {
         let (ctx, log) = sequential_context();
         let ctx = ctx.with_non_interactive(true).with_require_complete(true);
 
-        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments);
+        let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
+        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
 
         assert!(tasks.is_empty());
         assert_eq!(summary.failure_count(), 1);
@@ -569,7 +591,9 @@ mod tests {
         let trace = trace();
         let tasks = vec![ProbeTask::new("a", 1, &trace)];
         assert!(
-            dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(99)).is_empty(),
+            dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(99))
+                .expect("valid graph")
+                .is_empty(),
             "a filtered-out boundary must produce an empty closure so the \
              caller falls back to a single graph"
         );
@@ -585,7 +609,7 @@ mod tests {
             ProbeTask::new("after", 4, &trace).depends_on(&[3]),
         ];
 
-        let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(3));
+        let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(3)).expect("valid graph");
 
         assert_eq!(
             closure.len(),
@@ -611,7 +635,7 @@ mod tests {
         // dependency while keeping its dependent.
         let tasks = vec![ProbeTask::new("boundary", 3, &trace).depends_on(&[42])];
 
-        let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(3));
+        let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(3)).expect("valid graph");
 
         assert_eq!(
             closure,
@@ -621,15 +645,11 @@ mod tests {
     }
 
     #[test]
-    fn closure_terminates_on_self_referential_dependencies() {
+    fn closure_rejects_self_referential_dependencies() {
         let trace = trace();
-        // Graph validation rejects cycles later; the closure walk must still
-        // terminate rather than spin.
         let tasks = vec![ProbeTask::new("boundary", 1, &trace).depends_on(&[1])];
 
-        let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(1));
-
-        assert_eq!(closure, HashSet::from([TaskId::Dynamic(1)]));
+        assert!(dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(1)).is_err());
     }
 
     proptest! {
@@ -647,7 +667,10 @@ mod tests {
                 .map(|row| {
                     let id = u64::try_from(row).expect("small graph index").saturating_add(1);
                     let dependencies = (0..size)
-                        .filter(|column| edges[row.saturating_mul(size).saturating_add(*column)])
+                        .filter(|column| {
+                            *column < row
+                                && edges[row.saturating_mul(size).saturating_add(*column)]
+                        })
                         .map(|column| {
                             u64::try_from(column)
                                 .expect("small graph index")
@@ -660,7 +683,7 @@ mod tests {
             let task_refs = as_dyn(&tasks);
 
             let mut expected_dependencies = vec![false; size];
-            expected_dependencies[0] = true;
+            expected_dependencies[size.saturating_sub(1)] = true;
             loop {
                 let mut changed = false;
                 for row in 0..size {
@@ -668,7 +691,8 @@ mod tests {
                         continue;
                     }
                     for column in 0..size {
-                        if edges[row.saturating_mul(size).saturating_add(column)]
+                        if column < row
+                            && edges[row.saturating_mul(size).saturating_add(column)]
                             && !expected_dependencies[column]
                         {
                             expected_dependencies[column] = true;
@@ -680,7 +704,9 @@ mod tests {
                     break;
                 }
             }
-            let closure = dependency_closure(&task_refs, TaskId::Dynamic(1));
+            let boundary = TaskId::Dynamic(u64::try_from(size).expect("small graph size"));
+            let closure = dependency_closure(&task_refs, boundary)
+                .expect("valid generated graph");
             for (index, expected) in expected_dependencies.iter().copied().enumerate() {
                 let id = TaskId::Dynamic(
                     u64::try_from(index)
@@ -699,7 +725,8 @@ mod tests {
                         continue;
                     }
                     let blocked = (0..size).any(|column| {
-                        edges[row.saturating_mul(size).saturating_add(column)]
+                        column < row
+                            && edges[row.saturating_mul(size).saturating_add(column)]
                             && expected_blocked[column]
                     });
                     if blocked {

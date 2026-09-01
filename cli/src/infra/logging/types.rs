@@ -271,51 +271,6 @@ impl<'a> ExecutionEvent<'a> {
     }
 }
 
-/// Emit `$msg` to the console tracing target that matches `$kind`.
-///
-/// Tracing requires a literal target, so the mapping cannot be expressed as a
-/// function; this macro keeps [`Logger`](super::logger::Logger) and buffered
-/// replay using exactly the same targets.
-macro_rules! emit_console_event {
-    ($kind:expr, $msg:expr) => {{
-        let msg = $msg;
-        match $kind {
-            $crate::infra::logging::MsgKind::Stage => {
-                tracing::info!(target: "dotfiles::ui::stage", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::TaskStage => {
-                tracing::info!(target: "dotfiles::ui::task_stage", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::Info => {
-                tracing::info!(target: "dotfiles::ui::info", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::Debug => {
-                tracing::debug!(target: "dotfiles::ui::debug", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::Trace => {
-                tracing::trace!(target: "dotfiles::ui::trace", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::Warn => {
-                tracing::warn!(target: "dotfiles::ui::warn", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::Error => {
-                tracing::error!(target: "dotfiles::ui::error", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::DryRun => {
-                tracing::info!(target: "dotfiles::ui::dry_run", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::Always => {
-                tracing::info!(target: "dotfiles::ui::always", "{msg}");
-            }
-            $crate::infra::logging::MsgKind::Startup => {
-                tracing::info!(target: "dotfiles::ui::startup", "{msg}");
-            }
-        }
-    }};
-}
-
-pub(in crate::infra::logging) use emit_console_event;
-
 /// User-facing output sink.
 ///
 /// This trait covers display-oriented logging: stage headers, informational

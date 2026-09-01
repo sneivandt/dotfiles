@@ -10,7 +10,7 @@ mod types;
 use crate::infra::logging::OutputExt as _;
 pub use crate::infra::logging::TaskVisibility;
 pub use execute::execute;
-pub(crate) use execute::{TaskDisposition, TaskExecution, execute_assessed};
+pub(crate) use execute::{TaskExecution, TaskOutcome, execute_assessed};
 pub(crate) use macros::{
     configured_task_result, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
@@ -109,18 +109,17 @@ pub trait Task: Send + Sync + 'static {
 
     /// Execute the task when it has configured work.
     ///
-    /// Returning `Ok(None)` means the task is not applicable and should be
-    /// recorded as such without treating the task as a failure. The default
-    /// implementation emits a stage header and delegates to [`Task::run`];
-    /// macros can override it to emit the stage header only when items are
-    /// present, avoiding `==>` output for tasks with nothing configured.
+    /// The default implementation emits a stage header and delegates to
+    /// [`Task::run`]. Resource-backed tasks can override it to emit the stage
+    /// header only when items are present, returning
+    /// [`TaskResult::NotApplicable`] when nothing is configured.
     ///
     /// # Errors
     ///
     /// Returns an error if the task fails to execute.
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
         ctx.log().task_stage(self.name());
-        self.run(ctx).map(Some)
+        self.run(ctx)
     }
 
     /// Whether this task will need elevated privileges based on current state.
@@ -244,7 +243,7 @@ impl Task for TaskWithExtraDeps {
         self.inner.should_run(ctx)
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
         self.inner.run_configured(ctx)
     }
 

@@ -3,8 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::engine::scheduler::{ExecutionSummary, TaskOutcome};
-use crate::engine::{Context, Task, TaskAssessment, TaskId};
+use crate::engine::graph::ResolvedTaskGraph;
+use crate::engine::scheduler::ExecutionSummary;
+use crate::engine::{Context, Task, TaskAssessment, TaskId, TaskOutcome};
 use crate::infra::logging::{ActionCounts, Logger, OutputExt as _, TaskEntry, TaskStatus};
 
 /// Outcome of arranging privilege for the tasks that declared they need it.
@@ -47,6 +48,7 @@ impl<'a> ElevationBroker<'a> {
         &self,
         tasks: &mut Vec<&dyn Task>,
         assessments: &HashMap<TaskId, TaskAssessment>,
+        graph: &ResolvedTaskGraph,
     ) -> ExecutionSummary {
         let mut summary = ExecutionSummary::default();
         let elevating: Vec<&dyn Task> = if crate::infra::elevation::is_elevated_child() {
@@ -89,7 +91,7 @@ impl<'a> ElevationBroker<'a> {
             summary.add_failures(roots.len());
         }
         let blocked = if cascade {
-            blocked_dependents(tasks, &roots)
+            graph.blocked_dependents(&roots)
         } else {
             HashMap::new()
         };
@@ -357,37 +359,6 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
     out.push("--no-parallel".to_string());
     out.push("--elevated-child".to_string());
     out
-}
-
-/// Tasks that cannot run because a prerequisite in `roots` will not run.
-///
-/// Returns each blocked task mapped to the name of the root that blocks it.
-pub(super) fn blocked_dependents<'task>(
-    tasks: &[&'task dyn Task],
-    roots: &HashMap<TaskId, &'task str>,
-) -> HashMap<TaskId, &'task str> {
-    let mut blocked: HashMap<TaskId, &str> = HashMap::new();
-    loop {
-        let mut discovered = false;
-        for task in tasks {
-            let id = task.task_id();
-            if roots.contains_key(&id) || blocked.contains_key(&id) {
-                continue;
-            }
-
-            let cause = task
-                .dependencies()
-                .iter()
-                .find_map(|dep| roots.get(dep).or_else(|| blocked.get(dep)).copied());
-            if let Some(cause) = cause {
-                blocked.insert(id, cause);
-                discovered = true;
-            }
-        }
-        if !discovered {
-            return blocked;
-        }
-    }
 }
 
 #[cfg(test)]

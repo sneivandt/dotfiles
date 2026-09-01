@@ -112,33 +112,6 @@ impl ConfigLoader {
         let path = self.path(file);
         loader(&path, categories).with_context(|| self.error_context(&path))
     }
-
-    fn load_overlay<T: Default>(
-        &self,
-        file: &str,
-        loader: impl FnOnce(&Path) -> Result<T>,
-    ) -> Result<T> {
-        let path = self.path(file);
-        if path.exists() {
-            loader(&path).with_context(|| self.error_context(&path))
-        } else {
-            Ok(T::default())
-        }
-    }
-
-    fn load_overlay_filtered<T: Default>(
-        &self,
-        file: &str,
-        loader: impl FnOnce(&Path, &[category_matcher::Category]) -> Result<T>,
-        categories: &[category_matcher::Category],
-    ) -> Result<T> {
-        let path = self.path(file);
-        if path.exists() {
-            loader(&path, categories).with_context(|| self.error_context(&path))
-        } else {
-            Ok(T::default())
-        }
-    }
 }
 
 /// Loads config sections from the main `conf/` directory and, when present,
@@ -177,7 +150,7 @@ impl<'a> SectionLoader<'a> {
     ) -> Result<Vec<T>> {
         let mut items = self.main.load_filtered(file, load, self.active)?;
         if let Some(overlay) = &self.overlay {
-            items.extend(overlay.load_overlay_filtered(file, load, self.active)?);
+            items.extend(overlay.load_filtered(file, load, self.active)?);
         }
         Ok(items)
     }
@@ -194,7 +167,7 @@ impl<'a> SectionLoader<'a> {
         let mut items = self.main.load_filtered(file, load, self.active)?;
         post(&mut items, self.root);
         if let (Some(overlay), Some(overlay_root)) = (&self.overlay, self.overlay_root) {
-            let mut extra = overlay.load_overlay_filtered(file, load, self.active)?;
+            let mut extra = overlay.load_filtered(file, load, self.active)?;
             post(&mut extra, overlay_root);
             items.extend(extra);
         }
@@ -210,7 +183,7 @@ impl<'a> SectionLoader<'a> {
     ) -> Result<Vec<T>> {
         let mut items = self.main.load(file, load)?;
         if let Some(overlay) = &self.overlay {
-            items.extend(overlay.load_overlay(file, load)?);
+            items.extend(overlay.load(file, load)?);
         }
         Ok(items)
     }
@@ -224,7 +197,7 @@ impl<'a> SectionLoader<'a> {
     ) -> Result<Vec<T>> {
         let mut items = Vec::new();
         if let Some(overlay) = &self.overlay {
-            items.extend(overlay.load_overlay_filtered(file, load, self.active)?);
+            items.extend(overlay.load_filtered(file, load, self.active)?);
         }
         Ok(items)
     }
@@ -321,7 +294,7 @@ impl Config {
             (&sections.overlay, sections.overlay_root)
         {
             let mut overlay_symlinks =
-                overlay_loader.load_overlay(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
+                overlay_loader.load(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
             symlinks::set_origin(&mut overlay_symlinks, overlay_root);
             validation_symlinks.extend(overlay_symlinks);
         }

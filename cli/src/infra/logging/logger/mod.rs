@@ -27,10 +27,16 @@ use super::runlog::RunLog;
 use super::style::{TextStyle, stdout_style};
 use super::types::{
     LogEvent, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
-    emit_console_event,
 };
 #[cfg(test)]
 use super::utils::dotfiles_log_subdir;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConsoleOutput {
+    Enabled,
+    #[cfg(test)]
+    Disabled,
+}
 
 /// Structured logger with dry-run awareness and summary collection.
 ///
@@ -74,6 +80,11 @@ pub struct Logger {
     pub(super) symbols: bool,
     /// Whether the current command is previewing changes without applying them.
     pub(super) dry_run: bool,
+    /// Whether user-facing output is written to the process console.
+    ///
+    /// Production loggers enable this. Isolated test loggers disable it so unit
+    /// tests can exercise recording without writing to the test harness streams.
+    console_output: ConsoleOutput,
     /// Whether the separator after startup metadata has been emitted.
     startup_separator_emitted: AtomicBool,
 }
@@ -99,7 +110,7 @@ impl Logger {
         if run_log.is_none() {
             super::runlog::warn_degraded("the log directory or file could not be created");
         }
-        Self::build(command, run_log, start)
+        Self::build(command, run_log, start, ConsoleOutput::Enabled)
     }
 
     /// Create a new logger using an explicit base directory.
@@ -118,10 +129,15 @@ impl Logger {
         if run_log.is_none() {
             super::runlog::warn_degraded("the log directory or file could not be created");
         }
-        Self::build(command, run_log, start)
+        Self::build(command, run_log, start, ConsoleOutput::Disabled)
     }
 
-    fn build(command: &str, run_log: Option<Arc<RunLog>>, start: Instant) -> Self {
+    fn build(
+        command: &str,
+        run_log: Option<Arc<RunLog>>,
+        start: Instant,
+        console_output: ConsoleOutput,
+    ) -> Self {
         Self {
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
@@ -138,6 +154,7 @@ impl Logger {
             verbose: true,
             symbols: true,
             dry_run: false,
+            console_output,
             startup_separator_emitted: AtomicBool::new(false),
         }
     }
@@ -277,7 +294,16 @@ impl Logger {
         if let Some(run_log) = &self.run_log {
             run_log.emit(LogEvent::Info, msg);
         }
-        tracing::info!(target: "dotfiles::ui::task_result", "{msg}");
+        if self.console_output == ConsoleOutput::Enabled {
+            super::subscriber::emit_task_result(msg);
+        }
+    }
+
+    /// Render one message directly to the console without recording it again.
+    pub(in crate::infra::logging) fn emit_console(&self, kind: MsgKind, msg: &str) {
+        if self.console_output == ConsoleOutput::Enabled {
+            super::subscriber::emit_console(kind, msg, self.verbose);
+        }
     }
 
     /// Record a task result for the summary.
@@ -394,7 +420,7 @@ impl Output for Logger {
         if let Some(run_log) = &self.run_log {
             run_log.emit(kind.log_event(), &msg);
         }
-        emit_console_event!(kind, &*msg);
+        self.emit_console(kind, &msg);
     }
 
     fn run_log(&self) -> Option<&RunLog> {

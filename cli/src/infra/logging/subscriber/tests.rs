@@ -56,19 +56,6 @@ fn run_log_layer_records_level_as_event_name() {
 }
 
 #[test]
-fn run_log_layer_skips_console_ui_events() {
-    let (path, _tmp, _guard) = isolated_run_log_layer();
-    tracing::info!(target: "dotfiles::ui::info", "already recorded");
-    tracing::warn!(target: "dotfiles::ui::warn", "also recorded");
-
-    let content = fs::read_to_string(&path).unwrap();
-    assert!(
-        !content.contains("already recorded") && !content.contains("also recorded"),
-        "Logger writes UI events itself; the bridge must not duplicate them: {content}"
-    );
-}
-
-#[test]
 fn run_log_layer_uses_thread_task_context() {
     let (path, _tmp, _guard) = isolated_run_log_layer();
     let _task = crate::infra::logging::log_task_context("example-task");
@@ -138,14 +125,14 @@ fn console_line_uses_ansi_when_style_enabled() {
 fn console_line_strips_ansi_when_style_disabled() {
     let line = console_line_with_style(
         tracing::Level::INFO,
-        "dotfiles::ui::always",
+        "dotfiles",
         "\x1b[32m3 Changed\x1b[0m",
         StyleChoice::plain(),
         true,
     )
     .unwrap();
 
-    assert_eq!(line, "3 Changed");
+    assert_eq!(line, "  3 Changed");
 }
 
 #[test]
@@ -178,17 +165,15 @@ fn console_line_never_emits_debug_events() {
 }
 
 #[test]
-fn console_startup_header_is_dim() {
-    let colored = console_line_with_style(
-        tracing::Level::INFO,
-        "dotfiles::ui::startup",
+fn ui_startup_header_is_dim() {
+    let colored = super::console::ui_line_with_style(
+        crate::infra::logging::MsgKind::Startup,
         "Install · profile desktop · Arch Linux",
         StyleChoice::colored(),
         true,
     );
-    let plain = console_line_with_style(
-        tracing::Level::INFO,
-        "dotfiles::ui::startup",
+    let plain = super::console::ui_line_with_style(
+        crate::infra::logging::MsgKind::Startup,
         "Install · profile desktop · Arch Linux",
         StyleChoice::plain(),
         true,
@@ -205,17 +190,15 @@ fn console_startup_header_is_dim() {
 }
 
 #[test]
-fn console_stage_and_task_stage_are_plain() {
-    let task = console_line_with_style(
-        tracing::Level::INFO,
-        "dotfiles::ui::task_stage",
+fn ui_stage_and_task_stage_are_plain() {
+    let task = super::console::ui_line_with_style(
+        crate::infra::logging::MsgKind::TaskStage,
         "Install packages",
         StyleChoice::colored(),
         true,
     );
-    let stage = console_line_with_style(
-        tracing::Level::INFO,
-        "dotfiles::ui::stage",
+    let stage = super::console::ui_line_with_style(
+        crate::infra::logging::MsgKind::Stage,
         "Loading configuration",
         StyleChoice::colored(),
         true,

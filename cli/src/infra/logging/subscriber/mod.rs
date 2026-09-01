@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use console::DotfilesFormatter;
 pub(in crate::infra::logging) use console::{
-    set_transient_progress, set_verbose, take_transient_progress_rows, transient_progress_rows,
+    emit_console, emit_task_result, set_transient_progress, set_verbose,
+    take_transient_progress_rows, transient_progress_rows,
 };
 pub(in crate::infra::logging) use run_log::RunLogLayer;
 
@@ -19,10 +20,9 @@ use super::runlog::RunLog;
 
 /// Initialise the global [`tracing`] subscriber.
 ///
-/// Installs the console layer that renders dotfiles-style output, plus a
-/// bridge that records raw `tracing` events from `infra` and `domains` into
-/// `run_log`.  `Logger` writes its own messages to the run log directly, so
-/// the bridge deliberately ignores `dotfiles::ui::*` events.
+/// Installs the console layer for raw `tracing` diagnostics, plus a bridge that
+/// records those events from `infra` and `domains` into `run_log`. `Logger`
+/// renders its own user-facing messages directly.
 ///
 /// Must be called once at program startup, before any logging.
 pub(in crate::infra::logging) fn init_subscriber(verbose: bool, run_log: Option<Arc<RunLog>>) {
@@ -42,8 +42,7 @@ pub(in crate::infra::logging) fn init_subscriber(verbose: bool, run_log: Option<
         .event_format(DotfilesFormatter)
         .with_writer(make_writer)
         .with_filter(if verbose {
-            // Verbose renders `dotfiles::ui::debug` events, so they have to
-            // reach the formatter in the first place.
+            // Verbose lets raw diagnostic information reach the formatter.
             LevelFilter::DEBUG
         } else {
             LevelFilter::INFO

@@ -171,27 +171,6 @@ fn buffered_log_all_variants_buffered() {
     assert!(contents.contains(&format!("all-debug-{pid}")));
 }
 
-#[derive(Clone, Debug)]
-struct TargetCaptureLayer {
-    targets: Arc<Mutex<Vec<String>>>,
-}
-
-impl<S> tracing_subscriber::Layer<S> for TargetCaptureLayer
-where
-    S: tracing::Subscriber,
-{
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        self.targets
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(event.metadata().target().to_string());
-    }
-}
-
 #[test]
 fn non_verbose_replay_only_shows_warnings_and_errors() {
     for entry in [
@@ -226,34 +205,13 @@ fn non_verbose_failed_replay_keeps_errors_off_the_console() {
 }
 
 #[test]
-fn verbose_replay_targets_console_ui() {
-    use tracing_subscriber::layer::SubscriberExt as _;
+fn verbose_replay_suppresses_stage_headers_and_renders_details() {
+    let (_buf, log, _tmp, _guard) = buffered_fixture();
 
-    let targets = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = tracing_subscriber::registry().with(TargetCaptureLayer {
-        targets: Arc::clone(&targets),
-    });
-    let dispatch = tracing::Dispatch::new(subscriber);
-    let _guard = crate::infra::logging::test_dispatch_guard(&dispatch);
-
-    for entry in [
-        entry(MsgKind::Stage, "stage"),
-        entry(MsgKind::TaskStage, "task"),
-        entry(MsgKind::Info, "info"),
-        entry(MsgKind::Warn, "warn"),
-    ] {
-        entry.replay_verbose(None);
-    }
-
-    let targets = targets
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone();
-    assert_eq!(
-        targets,
-        vec!["dotfiles::ui::info", "dotfiles::ui::warn"],
-        "verbose replay renders console targets and suppresses stage headers"
-    );
+    assert!(!entry(MsgKind::Stage, "stage").replay_verbose(&log, None));
+    assert!(!entry(MsgKind::TaskStage, "task").replay_verbose(&log, None));
+    assert!(entry(MsgKind::Info, "info").replay_verbose(&log, None));
+    assert!(entry(MsgKind::Warn, "warn").replay_verbose(&log, None));
 }
 
 #[test]

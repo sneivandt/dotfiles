@@ -53,8 +53,8 @@ impl Task for ApplyRegistry {
         ctx.platform().has_registry()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        self.process(ctx, Some(NAME))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, Some(NAME))?))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

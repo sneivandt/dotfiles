@@ -4,7 +4,8 @@
 //! replay/visibility policy (what a single entry means for the console and for
 //! summary details) separate from the buffering and flush orchestration.
 
-use crate::infra::logging::types::{MsgKind, TaskStatus, emit_console_event};
+use crate::infra::logging::logger::Logger;
+use crate::infra::logging::types::{MsgKind, TaskStatus};
 use crate::infra::logging::utils::{
     compact_detail_line, duplicates_task_message, is_stats_summary,
 };
@@ -23,9 +24,9 @@ pub(super) struct LogEntry {
 }
 
 impl LogEntry {
-    /// Replay this entry to the console via tracing.
-    pub(super) fn replay(&self) {
-        emit_console_event!(self.kind, &self.msg);
+    /// Replay this entry to the console.
+    pub(super) fn replay(&self, logger: &Logger) {
+        logger.emit_console(self.kind, &self.msg);
     }
 
     /// Replay this entry as verbose task detail, reporting whether it printed.
@@ -37,7 +38,7 @@ impl LogEntry {
     ///
     /// Action lines are compacted exactly as the summary compacts them, so a
     /// verbose run and a non-verbose run describe the same action identically.
-    pub(super) fn replay_verbose(&self, task_message: Option<&str>) -> bool {
+    pub(super) fn replay_verbose(&self, logger: &Logger, task_message: Option<&str>) -> bool {
         if matches!(
             self.kind,
             MsgKind::TaskStage | MsgKind::Stage | MsgKind::Trace
@@ -46,7 +47,7 @@ impl LogEntry {
         {
             return false;
         }
-        emit_console_event!(self.kind, &compact_detail_line(&self.msg));
+        logger.emit_console(self.kind, &compact_detail_line(&self.msg));
         true
     }
 

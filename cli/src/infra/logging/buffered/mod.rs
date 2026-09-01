@@ -46,7 +46,7 @@ impl BufferedLog {
         );
         for entry in &entries {
             if self.inner.is_verbose() || entry.is_visible_in_non_verbose(TaskStatus::Ok, None) {
-                entry.replay();
+                entry.replay(&self.inner);
             }
         }
     }
@@ -95,7 +95,7 @@ impl BufferedLog {
             // to do, and replays the per-resource decisions behind that outcome.
             self.inner.emit_recorded_task_status(task_id);
             for entry in &entries {
-                entry.replay_verbose(message);
+                entry.replay_verbose(&self.inner, message);
             }
         } else if !matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) {
             let has_visible_entries = entries
@@ -105,7 +105,7 @@ impl BufferedLog {
                 self.inner.separate_from_startup();
                 for entry in &entries {
                     if entry.is_visible_in_non_verbose(status, message) {
-                        entry.replay();
+                        entry.replay(&self.inner);
                     }
                 }
                 self.inner.mark_task_console_output();

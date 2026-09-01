@@ -84,8 +84,10 @@ impl Task for InstallSymlinks {
         selector: "symlinks",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        self.process(ctx, Some(INSTALL_NAME))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(
+            self.process(ctx, Some(INSTALL_NAME))?,
+        ))
     }
 
     /// Windows file symlinks require Developer Mode or an administrator token.

@@ -48,10 +48,21 @@ impl std::error::Error for GraphError {}
 /// scheduled relative to the tasks that are still present.
 #[derive(Debug)]
 pub(crate) struct ResolvedTaskGraph {
+    ids: Vec<TaskId>,
+    id_to_idx: HashMap<TaskId, usize>,
+    blocking_dependencies: Vec<Vec<usize>>,
     dependencies: Vec<Vec<usize>>,
     dependents: Vec<Vec<usize>>,
-    blocking_edges: HashSet<(usize, usize)>,
     execution_order: Vec<usize>,
+}
+
+/// Dependency edges followed by a graph traversal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DependencyEdges {
+    /// Follow only failure-blocking dependencies.
+    Blocking,
+    /// Follow blocking and ordering-only dependencies.
+    All,
 }
 
 impl ResolvedTaskGraph {
@@ -63,6 +74,7 @@ impl ResolvedTaskGraph {
     /// [`GraphError::Cycle`] if the graph contains at least one dependency cycle.
     pub(crate) fn resolve(tasks: &[&dyn Task]) -> Result<Self, GraphError> {
         let mut id_to_idx: HashMap<TaskId, usize> = HashMap::new();
+        let mut ids = Vec::with_capacity(tasks.len());
         for (idx, task) in tasks.iter().enumerate() {
             let id = task.task_id();
             if let Some(&first_idx) = id_to_idx.get(&id) {
@@ -74,30 +86,24 @@ impl ResolvedTaskGraph {
                     second: task.name().to_string(),
                 });
             }
-            id_to_idx.insert(id, idx);
+            id_to_idx.insert(id.clone(), idx);
+            ids.push(id);
         }
 
-        let mut blocking_edges = HashSet::new();
+        let blocking_dependencies: Vec<Vec<usize>> = tasks
+            .iter()
+            .map(|task| resolve_dependencies(task.dependencies(), &id_to_idx))
+            .collect();
         let dependencies: Vec<Vec<usize>> = tasks
             .iter()
-            .enumerate()
-            .map(|(task_idx, task)| {
-                let mut resolved = Vec::new();
-                for dependency in task.dependencies() {
-                    if let Some(&dep_idx) = id_to_idx.get(dependency) {
-                        if !resolved.contains(&dep_idx) {
-                            resolved.push(dep_idx);
-                        }
-                        blocking_edges.insert((task_idx, dep_idx));
-                    }
-                }
-                for dependency in task.ordering_dependencies() {
-                    if let Some(&dep_idx) = id_to_idx.get(dependency)
-                        && !resolved.contains(&dep_idx)
-                    {
-                        resolved.push(dep_idx);
-                    }
-                }
+            .zip(&blocking_dependencies)
+            .map(|(task, blocking)| {
+                let mut resolved = blocking.clone();
+                extend_resolved_dependencies(
+                    &mut resolved,
+                    task.ordering_dependencies(),
+                    &id_to_idx,
+                );
                 resolved
             })
             .collect();
@@ -117,17 +123,91 @@ impl ResolvedTaskGraph {
             })?;
 
         Ok(Self {
+            ids,
+            id_to_idx,
+            blocking_dependencies,
             dependencies,
             dependents,
-            blocking_edges,
             execution_order,
         })
+    }
+
+    /// Whether the active graph contains this scheduler identity.
+    #[must_use]
+    pub(crate) fn contains(&self, task_id: &TaskId) -> bool {
+        self.id_to_idx.contains_key(task_id)
+    }
+
+    /// Add every reachable dependency of the selected tasks.
+    pub(crate) fn extend_dependency_closure(
+        &self,
+        selected: &mut HashSet<TaskId>,
+        edges: DependencyEdges,
+    ) {
+        let mut pending = selected
+            .iter()
+            .filter_map(|task_id| self.id_to_idx.get(task_id).copied())
+            .collect::<Vec<_>>();
+
+        while let Some(task_idx) = pending.pop() {
+            let dependencies = match edges {
+                DependencyEdges::Blocking => self.blocking_dependencies(task_idx),
+                DependencyEdges::All => self.dependencies(task_idx),
+            };
+            for &dependency_idx in dependencies {
+                let Some(dependency_id) = self.ids.get(dependency_idx) else {
+                    continue;
+                };
+                if selected.insert(dependency_id.clone()) {
+                    pending.push(dependency_idx);
+                }
+            }
+        }
+    }
+
+    /// Tasks transitively blocked by a set of unmet prerequisite roots.
+    pub(crate) fn blocked_dependents<'task>(
+        &self,
+        roots: &HashMap<TaskId, &'task str>,
+    ) -> HashMap<TaskId, &'task str> {
+        let mut blocked = HashMap::new();
+        loop {
+            let mut discovered = false;
+            for (task_idx, task_id) in self.ids.iter().enumerate() {
+                if roots.contains_key(task_id) || blocked.contains_key(task_id) {
+                    continue;
+                }
+                let cause = self
+                    .blocking_dependencies(task_idx)
+                    .iter()
+                    .filter_map(|dependency_idx| self.ids.get(*dependency_idx))
+                    .find_map(|dependency_id| {
+                        roots
+                            .get(dependency_id)
+                            .or_else(|| blocked.get(dependency_id))
+                            .copied()
+                    });
+                if let Some(cause) = cause {
+                    blocked.insert(task_id.clone(), cause);
+                    discovered = true;
+                }
+            }
+            if !discovered {
+                return blocked;
+            }
+        }
     }
 
     /// Task indices this task depends on.
     #[must_use]
     pub(crate) fn dependencies(&self, task_idx: usize) -> &[usize] {
         self.dependencies.get(task_idx).map_or(&[], Vec::as_slice)
+    }
+
+    fn blocking_dependencies(&self, task_idx: usize) -> &[usize] {
+        self.blocking_dependencies
+            .get(task_idx)
+            .map_or(&[], Vec::as_slice)
     }
 
     /// Task indices that depend on this task.
@@ -139,12 +219,33 @@ impl ResolvedTaskGraph {
     /// Whether failure of `dependency_idx` blocks `task_idx`.
     #[must_use]
     pub(crate) fn blocks_on_failure(&self, task_idx: usize, dependency_idx: usize) -> bool {
-        self.blocking_edges.contains(&(task_idx, dependency_idx))
+        self.blocking_dependencies(task_idx)
+            .contains(&dependency_idx)
     }
 
     /// Return task indices in dependency-safe execution order.
     pub(crate) fn execution_order(&self) -> impl Iterator<Item = usize> + '_ {
         self.execution_order.iter().copied()
+    }
+}
+
+fn resolve_dependencies(dependencies: &[TaskId], id_to_idx: &HashMap<TaskId, usize>) -> Vec<usize> {
+    let mut resolved = Vec::new();
+    extend_resolved_dependencies(&mut resolved, dependencies, id_to_idx);
+    resolved
+}
+
+fn extend_resolved_dependencies(
+    resolved: &mut Vec<usize>,
+    dependencies: &[TaskId],
+    id_to_idx: &HashMap<TaskId, usize>,
+) {
+    for dependency in dependencies {
+        if let Some(&dependency_idx) = id_to_idx.get(dependency)
+            && !resolved.contains(&dependency_idx)
+        {
+            resolved.push(dependency_idx);
+        }
     }
 }
 

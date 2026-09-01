@@ -47,8 +47,8 @@ impl Task for EnableDeveloperMode {
             && !crate::infra::platform::developer_mode_enabled()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        Self::process(ctx, Some(NAME))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(Self::process(ctx, Some(NAME))?))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

@@ -14,11 +14,13 @@ use super::{Task, TaskAssessment};
 use crate::infra::logging::OutputExt as _;
 
 /// Dependency meaning of a task's recorded result.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TaskDisposition {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskOutcome {
     Satisfied,
     Unmet,
     Failed,
+    Blocked,
     Cancelled,
 }
 
@@ -26,15 +28,12 @@ pub(crate) enum TaskDisposition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TaskExecution {
     pub(crate) status: TaskStatus,
-    pub(crate) disposition: TaskDisposition,
+    pub(crate) outcome: TaskOutcome,
 }
 
 impl TaskExecution {
-    const fn new(status: TaskStatus, disposition: TaskDisposition) -> Self {
-        Self {
-            status,
-            disposition,
-        }
+    const fn new(status: TaskStatus, outcome: TaskOutcome) -> Self {
+        Self { status, outcome }
     }
 }
 
@@ -88,7 +87,7 @@ pub(crate) fn execute_assessed(
     let task_id = task.task_id().record_key();
     if !assessment.is_applicable() {
         record_not_applicable(ctx, task, &task_id, assessment.not_applicable_reason());
-        return TaskExecution::new(TaskStatus::NotApplicable, TaskDisposition::Satisfied);
+        return TaskExecution::new(TaskStatus::NotApplicable, TaskOutcome::Satisfied);
     }
 
     ctx.log()
@@ -158,43 +157,35 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
         record(task, task_id, ctx, status, msg, ActionCounts::default())
     };
     match task.run_configured(ctx) {
-        Ok(None) => {
-            ctx.log()
-                .run_task_event(LogEvent::TaskSkip, task.name(), "nothing configured");
-            TaskExecution::new(
-                rec(TaskStatus::NotApplicable, Some("nothing configured")),
-                TaskDisposition::Satisfied,
-            )
-        }
-        Ok(Some(result)) => match result {
+        Ok(result) => match result {
             TaskResult::Ok => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskDone, task.name(), "ok");
-                TaskExecution::new(rec(TaskStatus::Ok, None), TaskDisposition::Satisfied)
+                TaskExecution::new(rec(TaskStatus::Ok, None), TaskOutcome::Satisfied)
             }
             TaskResult::DryRun => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskDone, task.name(), "planned");
-                TaskExecution::new(rec(TaskStatus::DryRun, None), TaskDisposition::Satisfied)
+                TaskExecution::new(rec(TaskStatus::DryRun, None), TaskOutcome::Satisfied)
             }
             TaskResult::CheckPassed => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskDone, task.name(), "passed");
-                TaskExecution::new(rec(TaskStatus::Passed, None), TaskDisposition::Satisfied)
+                TaskExecution::new(rec(TaskStatus::Passed, None), TaskOutcome::Satisfied)
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log()
                     .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
                 TaskExecution::new(
                     rec(TaskStatus::NotApplicable, Some(&reason)),
-                    TaskDisposition::Satisfied,
+                    TaskOutcome::Satisfied,
                 )
             }
             TaskResult::Skipped { reason, kind } => {
                 if kind.is_failure() && ctx.require_complete() {
                     return TaskExecution::new(
                         record_failed_outcome(task, task_id, ctx, &reason),
-                        TaskDisposition::Unmet,
+                        TaskOutcome::Unmet,
                     );
                 }
                 ctx.log()
@@ -202,24 +193,24 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
                 TaskExecution::new(
                     rec(TaskStatus::Skipped, Some(&reason)),
                     if kind.is_failure() {
-                        TaskDisposition::Unmet
+                        TaskOutcome::Unmet
                     } else {
-                        TaskDisposition::Satisfied
+                        TaskOutcome::Satisfied
                     },
                 )
             }
             TaskResult::Failed(reason) => TaskExecution::new(
                 record_failed_outcome(task, task_id, ctx, &reason),
-                TaskDisposition::Failed,
+                TaskOutcome::Failed,
             ),
             TaskResult::Batch(stats) => {
                 let batch_status = record_batch_outcome(task, task_id, ctx, &stats);
                 TaskExecution::new(
                     batch_status,
                     if batch_status == TaskStatus::Failed {
-                        TaskDisposition::Failed
+                        TaskOutcome::Failed
                     } else {
-                        TaskDisposition::Satisfied
+                        TaskOutcome::Satisfied
                     },
                 )
             }
@@ -236,7 +227,7 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
         {
             TaskExecution::new(
                 record_interrupted(task, task_id, ctx, task.name(), ActionCounts::default()),
-                TaskDisposition::Cancelled,
+                TaskOutcome::Cancelled,
             )
         }
         Err(e) => {
@@ -244,10 +235,7 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
             ctx.log()
                 .run_task_event(LogEvent::TaskFail, task.name(), &message);
             ctx.log().error(format!("{}: {message}", task.name()));
-            TaskExecution::new(
-                rec(TaskStatus::Failed, Some(&message)),
-                TaskDisposition::Failed,
-            )
+            TaskExecution::new(rec(TaskStatus::Failed, Some(&message)), TaskOutcome::Failed)
         }
     }
 }

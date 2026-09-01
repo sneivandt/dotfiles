@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
 
-use crate::app::task_dependencies::{DependencyEdges, extend_dependency_closure};
+use crate::engine::graph::{DependencyEdges, ResolvedTaskGraph};
 use crate::engine::scheduler::ExecutionSummary;
 use crate::engine::{Context, Task, TaskId};
 
@@ -106,7 +106,8 @@ pub(crate) fn select_tasks<'a>(
         .chain(required.iter().cloned())
         .collect::<HashSet<_>>();
     let task_refs = tasks.iter().map(Box::as_ref).collect::<Vec<_>>();
-    extend_dependency_closure(&task_refs, &mut selected, DependencyEdges::All);
+    ResolvedTaskGraph::resolve(&task_refs)?
+        .extend_dependency_closure(&mut selected, DependencyEdges::All);
 
     Ok(tasks
         .iter()
@@ -123,8 +124,7 @@ pub(crate) fn task_selected(task: &dyn Task, selectors: &HashSet<String>) -> boo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::scheduler::TaskOutcome;
-    use crate::engine::{TaskMeta, TaskResult};
+    use crate::engine::{TaskMeta, TaskOutcome, TaskResult};
     use crate::test_helpers::{empty_config, make_static_context};
 
     #[derive(Debug)]

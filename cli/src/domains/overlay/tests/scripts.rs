@@ -59,10 +59,10 @@ fn snapshot_report_returns_not_applicable_when_empty() {
     let ctx = make_linux_context(config);
     let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![]));
 
-    assert!(
-        task.run_configured(&ctx).unwrap().is_none(),
-        "an empty snapshot should suppress the configured task"
-    );
+    assert!(matches!(
+        task.run_configured(&ctx).unwrap(),
+        TaskResult::NotApplicable(reason) if reason == "nothing configured"
+    ));
     assert!(
         matches!(
             task.run(&ctx).unwrap(),
@@ -83,7 +83,7 @@ fn snapshot_report_uses_the_same_result_for_both_execution_paths() {
     )]));
 
     assert!(
-        matches!(task.run_configured(&ctx).unwrap(), Some(TaskResult::Ok)),
+        matches!(task.run_configured(&ctx).unwrap(), TaskResult::Ok),
         "the configured path should report success"
     );
     assert!(

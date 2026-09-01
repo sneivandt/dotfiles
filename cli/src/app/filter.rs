@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
 
-use crate::app::task_dependencies::{DependencyEdges, extend_dependency_closure};
+use crate::engine::graph::{DependencyEdges, ResolvedTaskGraph};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{Logger, Output};
@@ -40,7 +40,8 @@ pub(crate) fn apply_task_filters<'a>(
         .map(|task| task.task_id())
         .collect::<HashSet<_>>();
     if with_dependencies {
-        extend_dependency_closure(&known_task_refs, &mut selected, DependencyEdges::All);
+        ResolvedTaskGraph::resolve(&known_task_refs)?
+            .extend_dependency_closure(&mut selected, DependencyEdges::All);
     }
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()

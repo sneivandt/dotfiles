@@ -66,8 +66,8 @@ impl Task for ReportOverlayScriptSnapshot {
         ctx.overlay().is_some()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
-        Ok(self.process(ctx, Some(REPORT_NAME)))
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+        Ok(configured_task_result(self.process(ctx, Some(REPORT_NAME))))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -184,12 +184,12 @@ impl Task for OverlayScriptTask {
         ctx.overlay().is_some()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<Option<TaskResult>> {
+    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
         ctx.log().task_stage(self.name());
         if let Some(description) = &self.entry.description {
             ctx.log().info(description);
         }
-        self.run(ctx).map(Some)
+        self.run(ctx)
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

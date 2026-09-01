@@ -20,7 +20,7 @@ fn stage_header_present_when_info_logged_in_run() {
     // Exactly mirrors what run_tasks_parallel does per task thread.
     log.notify_task_start("stats-task");
     let status = execute(&StatsTask, &task_ctx);
-    buf.flush_and_complete("stats-task", status);
+    buf.flush_and_complete(&StatsTask.task_id().record_key(), "stats-task", status);
 
     let path = log.log_path().expect("log path");
     let contents = std::fs::read_to_string(path).unwrap();
@@ -66,7 +66,7 @@ fn stage_headers_present_for_multiple_concurrent_stats_tasks() {
 
         log.notify_task_start(name);
         let status = execute(&task_named, &task_ctx);
-        buf.flush_and_complete(name, status);
+        buf.flush_and_complete(&task_named.task_id().record_key(), name, status);
     }
 
     let path = log.log_path().expect("log path");
@@ -169,7 +169,11 @@ fn task_status_not_lost_after_debug_fmt_call() {
 
     log.notify_task_start("debug-fmt-task");
     let status = execute(&DebugFmtTask, &task_ctx);
-    buf.flush_and_complete("debug-fmt-task", status);
+    buf.flush_and_complete(
+        &DebugFmtTask.task_id().record_key(),
+        "debug-fmt-task",
+        status,
+    );
 
     let targets = captured
         .lock()

@@ -51,9 +51,8 @@ impl TaskVisibility {
 /// Task execution result for summary reporting.
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
-    /// Scheduler identity key. Legacy callers that have no task identity leave
-    /// this unset and retain name-based lookup behavior.
-    pub task_id: Option<String>,
+    /// Scheduler identity key.
+    pub task_id: String,
     /// Human-readable task name.
     pub name: String,
     /// Final status of the task.
@@ -69,6 +68,29 @@ pub struct TaskEntry {
     /// Recorded separately from the outcome because the duration is only known
     /// after the task body returns. Surfaced on verbose status rows.
     pub duration: Option<std::time::Duration>,
+}
+
+impl TaskEntry {
+    /// Create a task result before its duration is known.
+    #[must_use]
+    pub fn new(
+        task_id: impl Into<String>,
+        name: impl Into<String>,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        visibility: TaskVisibility,
+    ) -> Self {
+        Self {
+            task_id: task_id.into(),
+            name: name.into(),
+            status,
+            message: message.map(str::to_string),
+            actions,
+            visibility,
+            duration: None,
+        }
+    }
 }
 
 /// Status of a completed task.
@@ -425,63 +447,10 @@ impl<T: Output + ?Sized> OutputExt for T {}
 /// independently.
 pub trait TaskRecorder: Send + Sync {
     /// Record a task result for the summary.
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>);
-
-    /// Record a task result and its structured action totals.
-    ///
-    /// The default preserves compatibility with recorders that only collect
-    /// task-level outcomes.
-    fn record_task_with_actions(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        _actions: ActionCounts,
-    ) {
-        self.record_task(name, status, message);
-    }
-
-    /// Record a task result with presentation metadata.
-    fn record_task_with_metadata(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        _visibility: TaskVisibility,
-    ) {
-        self.record_task_with_actions(name, status, message, actions);
-    }
-
-    /// Record an engine task using its scheduler identity.
-    fn record_task_with_identity(
-        &self,
-        _task_id: &str,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        visibility: TaskVisibility,
-    ) {
-        self.record_task_with_metadata(name, status, message, actions, visibility);
-    }
+    fn record_task(&self, task: TaskEntry);
 
     /// Attach a measured run duration to an already-recorded task.
-    ///
-    /// Called after the task body returns, so it cannot be folded into the
-    /// outcome-recording calls above. Recorders that do not display timing
-    /// ignore it.
-    fn record_task_duration(&self, _name: &str, _duration: std::time::Duration) {}
-
-    /// Attach timing using scheduler identity, falling back to the display name.
-    fn record_task_duration_by_id(
-        &self,
-        _task_id: &str,
-        name: &str,
-        duration: std::time::Duration,
-    ) {
-        self.record_task_duration(name, duration);
-    }
+    fn record_task_duration(&self, _task_id: &str, _duration: std::time::Duration) {}
 }
 
 /// Combined logging interface: user-facing output plus task recording.
@@ -515,15 +484,14 @@ mod tests {
 
     #[test]
     fn task_entry_clone() {
-        let entry = TaskEntry {
-            task_id: None,
-            name: "test-task".to_string(),
-            status: TaskStatus::Ok,
-            message: Some("all good".to_string()),
-            actions: ActionCounts::default(),
-            visibility: TaskVisibility::Visible,
-            duration: None,
-        };
+        let entry = TaskEntry::new(
+            "test-task",
+            "test-task",
+            TaskStatus::Ok,
+            Some("all good"),
+            ActionCounts::default(),
+            TaskVisibility::Visible,
+        );
         let cloned = entry.clone();
         assert_eq!(cloned.name, entry.name);
         assert_eq!(cloned.status, entry.status);

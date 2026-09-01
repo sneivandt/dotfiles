@@ -1,7 +1,7 @@
 use crate::engine::apply;
 use crate::engine::mode::ProcessOpts;
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
+use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
 use crate::test_helpers::empty_config;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -24,7 +24,7 @@ impl Output for OrderedEventLog {
 }
 
 impl TaskRecorder for OrderedEventLog {
-    fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+    fn record_task(&self, _task: TaskEntry) {}
 }
 
 #[derive(Debug)]

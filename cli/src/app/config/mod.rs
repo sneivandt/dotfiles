@@ -259,53 +259,6 @@ impl SectionCount {
     }
 }
 
-#[derive(Debug)]
-struct ConfigValidator<'a> {
-    config: &'a Config,
-    platform: Platform,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl<'a> ConfigValidator<'a> {
-    const fn new(config: &'a Config, platform: Platform) -> Self {
-        Self {
-            config,
-            platform,
-            diagnostics: Vec::new(),
-        }
-    }
-
-    fn validate_all(self) -> Self {
-        self.validate_with(|config, _platform| symlinks::validate(&config.symlinks, &config.root))
-            .validate_with(|config, _platform| {
-                apm::validate(&config.root, config.overlay.as_deref())
-            })
-            .validate_with(|config, platform| packages::validate(&config.packages, platform))
-            .validate_with(|config, platform| registry::validate(&config.registry, platform))
-            .validate_with(|config, platform| chmod::validate(&config.chmod, platform))
-            .validate_with(|config, platform| systemd_units::validate(&config.units, platform))
-            .validate_with(|config, _platform| {
-                vscode_extensions::validate(&config.vscode_extensions)
-            })
-            .validate_with(|config, _platform| git_config::validate(&config.git_settings))
-            .validate_with(|config, _platform| agent_settings::validate(&config.agent_settings))
-            .validate_with(|config, _platform| scripts::validate(&config.scripts))
-    }
-
-    fn validate_with(
-        mut self,
-        validate: impl FnOnce(&Config, Platform) -> Vec<Diagnostic>,
-    ) -> Self {
-        self.diagnostics
-            .extend(validate(self.config, self.platform));
-        self
-    }
-
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
-    }
-}
-
 /// All loaded configuration for a resolved profile.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -426,7 +379,17 @@ impl Config {
     /// - Platform incompatibilities
     #[must_use]
     pub fn validate(&self, platform: Platform) -> Vec<Diagnostic> {
-        ConfigValidator::new(self, platform).validate_all().finish()
+        let mut diagnostics = symlinks::validate(&self.symlinks, &self.root);
+        diagnostics.extend(apm::validate(&self.root, self.overlay.as_deref()));
+        diagnostics.extend(packages::validate(&self.packages, platform));
+        diagnostics.extend(registry::validate(&self.registry, platform));
+        diagnostics.extend(chmod::validate(&self.chmod, platform));
+        diagnostics.extend(systemd_units::validate(&self.units, platform));
+        diagnostics.extend(vscode_extensions::validate(&self.vscode_extensions));
+        diagnostics.extend(git_config::validate(&self.git_settings));
+        diagnostics.extend(agent_settings::validate(&self.agent_settings));
+        diagnostics.extend(scripts::validate(&self.scripts));
+        diagnostics
     }
 
     /// Return configured item counts for debug logging.

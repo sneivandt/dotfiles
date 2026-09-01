@@ -6,7 +6,9 @@
 
 use crate::engine::{Context, TaskResult};
 use crate::infra::exec::ExecError;
-use crate::infra::logging::{ActionCounts, LogEvent, TaskStatus, format_elapsed, log_task_context};
+use crate::infra::logging::{
+    ActionCounts, LogEvent, TaskEntry, TaskStatus, format_elapsed, log_task_context,
+};
 
 use super::{Task, TaskAssessment};
 use crate::infra::logging::OutputExt as _;
@@ -45,14 +47,14 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: 
     let event_detail = reason.unwrap_or("not applicable");
     ctx.log()
         .run_task_event(LogEvent::TaskSkip, task.name(), event_detail);
-    ctx.log().record_task_with_identity(
+    ctx.log().record_task(TaskEntry::new(
         task_id,
         task.name(),
         TaskStatus::NotApplicable,
         reason,
         ActionCounts::default(),
         task.visibility(),
-    );
+    ));
 }
 
 /// Execute a task, recording the result in the logger.
@@ -94,8 +96,7 @@ pub(crate) fn execute_assessed(
     let started = std::time::Instant::now();
     let execution = record_run_outcome(task, &task_id, ctx);
     let elapsed = started.elapsed();
-    ctx.log()
-        .record_task_duration_by_id(&task_id, task.name(), elapsed);
+    ctx.log().record_task_duration(&task_id, elapsed);
     ctx.log().run_task_event(
         LogEvent::TaskTiming,
         task.name(),
@@ -113,14 +114,14 @@ fn record(
     message: Option<&str>,
     actions: ActionCounts,
 ) -> TaskStatus {
-    ctx.log().record_task_with_identity(
+    ctx.log().record_task(TaskEntry::new(
         task_id,
         task.name(),
         status,
         message,
         actions,
         task.visibility(),
-    );
+    ));
     status
 }
 

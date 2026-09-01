@@ -53,13 +53,13 @@ impl Logger {
     }
 
     /// Emit a completed task result selected by scheduler identity.
-    pub(crate) fn emit_task_result_and_redraw_by_id(&self, task_id: &str) {
+    pub(crate) fn emit_task_result_and_redraw(&self, task_id: &str) {
         let show_progress = stdout_supports_progress();
         let _guard = self.lock_flush();
         if show_progress {
             self.clear_progress();
         }
-        self.emit_recorded_task_result_by_id(task_id);
+        self.emit_recorded_task_result(task_id);
         self.redraw_active_status_locked(show_progress);
     }
 
@@ -140,7 +140,18 @@ impl Logger {
 #[cfg(test)]
 mod tests {
     use crate::infra::logging::isolated_logger;
-    use crate::infra::logging::types::{TaskStatus, TaskVisibility};
+    use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
+
+    fn task_entry(name: &str, status: TaskStatus, visibility: TaskVisibility) -> TaskEntry {
+        TaskEntry::new(
+            name,
+            name,
+            status,
+            None,
+            ActionCounts::default(),
+            visibility,
+        )
+    }
 
     #[test]
     #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
@@ -158,7 +169,7 @@ mod tests {
     fn task_totals_accumulate_across_scheduled_graphs() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(20);
-        log.record_task("task", TaskStatus::Ok, None);
+        log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
         for _ in 0..20 {
             log.mark_task_completed("task");
         }
@@ -175,7 +186,7 @@ mod tests {
     fn task_progress_never_exceeds_the_total() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(2);
-        log.record_task("task", TaskStatus::Ok, None);
+        log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
         for _ in 0..5 {
             log.mark_task_completed("task");
         }
@@ -185,17 +196,13 @@ mod tests {
 
     #[test]
     fn internal_tasks_are_left_out_of_the_progress_counter() {
-        use crate::infra::logging::types::{ActionCounts, TaskStatus};
-
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(2);
-        log.record_task_with_metadata(
+        log.record_task(task_entry(
             "internal-task",
             TaskStatus::Ok,
-            None,
-            ActionCounts::default(),
             TaskVisibility::Internal,
-        );
+        ));
         log.mark_task_completed("internal-task");
 
         assert_eq!(
@@ -207,13 +214,19 @@ mod tests {
 
     #[test]
     fn non_applicable_tasks_complete_without_changing_the_denominator() {
-        use crate::infra::logging::types::TaskStatus;
-
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(3);
-        log.record_task("applied-task", TaskStatus::Changed, None);
+        log.record_task(task_entry(
+            "applied-task",
+            TaskStatus::Changed,
+            TaskVisibility::Visible,
+        ));
         log.mark_task_completed("applied-task");
-        log.record_task("elsewhere-task", TaskStatus::NotApplicable, None);
+        log.record_task(task_entry(
+            "elsewhere-task",
+            TaskStatus::NotApplicable,
+            TaskVisibility::Visible,
+        ));
         log.mark_task_completed("elsewhere-task");
 
         assert_eq!(
@@ -235,7 +248,7 @@ mod tests {
     fn status_line_labels_the_counter_as_completed_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(16);
-        log.record_task("task", TaskStatus::Ok, None);
+        log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
         for _ in 0..12 {
             log.mark_task_completed("task");
         }

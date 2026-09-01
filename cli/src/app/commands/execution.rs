@@ -180,25 +180,16 @@ fn visible_count<'a>(tasks: impl IntoIterator<Item = &'a dyn Task>) -> usize {
 }
 
 fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> HashSet<TaskId> {
-    let by_id = tasks
-        .iter()
-        .map(|task| (task.task_id(), *task))
-        .collect::<HashMap<_, _>>();
-    if !by_id.contains_key(&boundary) {
+    if !tasks.iter().any(|task| task.task_id() == boundary) {
         return HashSet::new();
     }
 
-    let mut closure = HashSet::from([boundary.clone()]);
-    let mut pending = vec![boundary];
-    while let Some(id) = pending.pop() {
-        if let Some(task) = by_id.get(&id) {
-            for dependency in task.dependencies() {
-                if by_id.contains_key(dependency) && closure.insert(dependency.clone()) {
-                    pending.push(dependency.clone());
-                }
-            }
-        }
-    }
+    let mut closure = HashSet::from([boundary]);
+    crate::app::task_dependencies::extend_dependency_closure(
+        tasks,
+        &mut closure,
+        crate::app::task_dependencies::DependencyEdges::Blocking,
+    );
     closure
 }
 

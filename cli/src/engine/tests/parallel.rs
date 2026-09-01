@@ -17,7 +17,7 @@ use crate::engine::{
     TaskResult, process_resources, process_resources_remove,
 };
 use crate::infra::cancellation::CancellationToken;
-use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
+use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
 use crate::test_helpers::{FailAt, FailingResource, empty_config};
 
 use super::{bail_opts, parallel_context};
@@ -75,7 +75,7 @@ impl Output for RecordingLog {
 }
 
 impl TaskRecorder for RecordingLog {
-    fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+    fn record_task(&self, _task: TaskEntry) {}
 }
 
 /// Resource that counts concurrent `apply()` calls and records the peak.

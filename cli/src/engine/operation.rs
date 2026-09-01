@@ -112,7 +112,7 @@ mod tests {
 
     use super::*;
     use crate::engine::TaskStats;
-    use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
+    use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
     use crate::test_helpers::{empty_config, make_linux_context};
 
     #[derive(Default)]
@@ -132,7 +132,7 @@ mod tests {
     }
 
     impl TaskRecorder for CapturingLog {
-        fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+        fn record_task(&self, _task: TaskEntry) {}
     }
 
     #[derive(Debug, Clone)]

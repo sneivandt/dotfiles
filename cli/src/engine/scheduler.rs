@@ -11,7 +11,7 @@ use crate::engine::task::{TaskDisposition, TaskExecution};
 use crate::engine::{self, Context, Task, TaskAssessment, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{
-    self, ActionCounts, BufferedLog, Log, LogEvent, Logger, Output as _, TaskStatus,
+    self, ActionCounts, BufferedLog, Log, LogEvent, Logger, Output as _, TaskEntry, TaskStatus,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -45,9 +45,14 @@ pub(crate) enum TaskOutcome {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ExecutionSummary {
     failed_tasks: usize,
-    outcomes: HashMap<TaskId, TaskOutcome>,
-    selectors: HashMap<TaskId, String>,
-    names: HashMap<TaskId, String>,
+    tasks: HashMap<TaskId, TaskRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskRecord {
+    selector: String,
+    name: String,
+    outcome: TaskOutcome,
 }
 
 impl ExecutionSummary {
@@ -60,9 +65,7 @@ impl ExecutionSummary {
     /// Merge another execution phase into this summary.
     pub(crate) fn merge(&mut self, other: Self) {
         self.failed_tasks = self.failed_tasks.saturating_add(other.failed_tasks);
-        self.outcomes.extend(other.outcomes);
-        self.selectors.extend(other.selectors);
-        self.names.extend(other.names);
+        self.tasks.extend(other.tasks);
     }
 
     /// Include failures detected before scheduler dispatch.
@@ -78,37 +81,40 @@ impl ExecutionSummary {
         name: impl Into<String>,
         outcome: TaskOutcome,
     ) {
-        self.selectors.insert(task_id.clone(), selector.into());
-        self.names.insert(task_id.clone(), name.into());
-        self.outcomes.insert(task_id, outcome);
+        self.tasks.insert(
+            task_id,
+            TaskRecord {
+                selector: selector.into(),
+                name: name.into(),
+                outcome,
+            },
+        );
     }
 
     /// Look up an outcome recorded by this or an earlier phase.
     #[must_use]
     pub(crate) fn outcome(&self, task_id: &TaskId) -> Option<TaskOutcome> {
-        self.outcomes.get(task_id).copied()
+        self.tasks.get(task_id).map(|task| task.outcome)
     }
 
     fn task_name(&self, task_id: &TaskId) -> String {
-        self.names
+        self.tasks
             .get(task_id)
-            .or_else(|| self.selectors.get(task_id))
-            .cloned()
-            .unwrap_or_else(|| "earlier task".to_string())
+            .map_or_else(|| "earlier task".to_string(), |task| task.name.clone())
     }
 
     /// Selectors that should be retried after this run.
     #[must_use]
     pub(crate) fn incomplete_selectors(&self) -> HashSet<String> {
-        self.outcomes
-            .iter()
-            .filter(|(_, outcome)| {
+        self.tasks
+            .values()
+            .filter(|task| {
                 matches!(
-                    outcome,
+                    task.outcome,
                     TaskOutcome::Unmet | TaskOutcome::Failed | TaskOutcome::Blocked
                 )
             })
-            .filter_map(|(task_id, _)| self.selectors.get(task_id).cloned())
+            .map(|task| task.selector.clone())
             .collect()
     }
 }
@@ -245,14 +251,14 @@ fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str) {
     let _enter = span.enter();
     log.run_task_event(LogEvent::TaskSkip, task.name(), reason);
     log.debug(reason);
-    log.record_task_with_identity(
-        &task.task_id().record_key(),
+    log.record_task(TaskEntry::new(
+        task.task_id().record_key(),
         task.name(),
         TaskStatus::Skipped,
         Some(reason),
         ActionCounts::default(),
         task.visibility(),
-    );
+    ));
 }
 
 /// Execute a single task, catching any panic.
@@ -292,14 +298,14 @@ fn run_task_buffered(
                 .unwrap_or_else(|| "task panicked".to_string());
             log.run_task_event(LogEvent::TaskFail, task.name(), &msg);
             buf.error(format!("{}: {msg}", task.name()));
-            log.record_task_with_identity(
-                &task.task_id().record_key(),
+            log.record_task(TaskEntry::new(
+                task.task_id().record_key(),
                 task.name(),
                 TaskStatus::Failed,
                 Some(&msg),
                 ActionCounts::default(),
                 task.visibility(),
-            );
+            ));
             TaskExecution {
                 status: TaskStatus::Failed,
                 disposition: TaskDisposition::Failed,
@@ -307,7 +313,7 @@ fn run_task_buffered(
         }
     };
 
-    buf.flush_and_complete_by_id(&task.task_id().record_key(), task.name(), execution.status);
+    buf.flush_and_complete(&task.task_id().record_key(), task.name(), execution.status);
     execution
 }
 
@@ -347,8 +353,8 @@ fn dispatch_task(
 
     let task_id = task.task_id().record_key();
     record_scheduler_skip(task, &**log, &reason);
-    log.mark_task_completed_by_id(&task_id);
-    log.emit_task_result_and_redraw_by_id(&task_id);
+    log.mark_task_completed(&task_id);
+    log.emit_task_result_and_redraw(&task_id);
     let outcome = if signal == DependencySignal::Cancelled {
         TaskOutcome::Cancelled
     } else {
@@ -482,19 +488,20 @@ pub(crate) fn run_tasks_parallel_with_prior(
     let recorded = recorded_outcomes
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut outcomes = HashMap::with_capacity(recorded.len());
-    let mut selectors = HashMap::with_capacity(recorded.len());
-    let mut names = HashMap::with_capacity(recorded.len());
+    let mut task_records = HashMap::with_capacity(recorded.len());
     for (task_id, (selector, name, outcome)) in recorded {
-        selectors.insert(task_id.clone(), selector);
-        names.insert(task_id.clone(), name);
-        outcomes.insert(task_id, outcome);
+        task_records.insert(
+            task_id,
+            TaskRecord {
+                selector,
+                name,
+                outcome,
+            },
+        );
     }
     ExecutionSummary {
         failed_tasks: failed_count,
-        outcomes,
-        selectors,
-        names,
+        tasks: task_records,
     }
 }
 

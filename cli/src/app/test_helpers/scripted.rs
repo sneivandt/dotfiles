@@ -75,46 +75,16 @@ impl ScriptedExecutor {
         self.push(None, Err(error))
     }
 
-    /// Queue `count` unconditional steps, each failing with an error from `make_error`.
-    #[must_use]
-    pub fn err_times(mut self, count: usize, make_error: impl Fn() -> ExecError) -> Self {
-        for _ in 0..count {
-            self = self.err(make_error());
-        }
-        self
-    }
-
     /// Queue a step requiring an exact checked `git`/`args`/`cwd` match.
     #[must_use]
     pub fn git(self, cwd: impl Into<PathBuf>, args: &[&str], stdout: impl Into<String>) -> Self {
-        self.git_result(cwd, args, Ok(ExecResult::success(stdout)))
-    }
-
-    /// Queue an exact checked Git command returning `result` as-is.
-    #[must_use]
-    pub fn git_result(
-        self,
-        cwd: impl Into<PathBuf>,
-        args: &[&str],
-        result: std::result::Result<ExecResult, ExecError>,
-    ) -> Self {
-        self.exact_with(true, cwd, args, result)
-    }
-
-    fn exact_with(
-        self,
-        checked: bool,
-        cwd: impl Into<PathBuf>,
-        args: &[&str],
-        result: std::result::Result<ExecResult, ExecError>,
-    ) -> Self {
         self.push(
             Some(Expect {
                 args: args.iter().map(|arg| (*arg).to_string()).collect(),
                 cwd: cwd.into(),
-                checked,
+                checked: true,
             }),
-            result,
+            Ok(ExecResult::success(stdout)),
         )
     }
 

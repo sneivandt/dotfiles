@@ -22,6 +22,7 @@ mod utils;
 pub use buffered::BufferedLog;
 pub use logger::Logger;
 pub use runlog::{log_task_context, log_thread_name, set_log_thread_name};
+pub(crate) use types::TaskEntry;
 pub use types::{
     ActionCounts, Log, LogEvent, MsgKind, Output, OutputExt, TaskStatus, TaskVisibility,
 };

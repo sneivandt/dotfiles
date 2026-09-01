@@ -23,6 +23,23 @@ pub use prompt::prompt_interactive;
 pub use resolution::Profile;
 pub use resolution::resolve;
 
+fn definitions(
+    conf_dir: &Path,
+) -> Result<std::collections::HashMap<String, definitions::ProfileDef>, ConfigError> {
+    load_definitions(&conf_dir.join("profiles.toml"))
+}
+
+fn selected_profile_name(
+    cli_profile: Option<&str>,
+    root: &Path,
+    env: &dyn crate::infra::env::Env,
+) -> Option<String> {
+    cli_profile
+        .map(str::to_owned)
+        .or_else(|| read_from_env(env))
+        .or_else(|| read_persisted(root))
+}
+
 /// One configured role profile shown by `dotfiles profiles`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileInfo {
@@ -38,7 +55,7 @@ pub struct ProfileInfo {
 ///
 /// Returns an error when `profiles.toml` cannot be read or parsed.
 pub fn available(conf_dir: &Path) -> Result<Vec<ProfileInfo>, ConfigError> {
-    let definitions = load_definitions(&conf_dir.join("profiles.toml"))?;
+    let definitions = definitions(conf_dir)?;
     let mut profiles = definitions
         .into_iter()
         .map(|(name, definition)| ProfileInfo {
@@ -51,7 +68,7 @@ pub fn available(conf_dir: &Path) -> Result<Vec<ProfileInfo>, ConfigError> {
 }
 
 pub(super) fn configured_categories(conf_dir: &Path) -> Result<Vec<Category>, ConfigError> {
-    let definitions = load_definitions(&conf_dir.join("profiles.toml"))?;
+    let definitions = definitions(conf_dir)?;
     let mut categories = vec![
         Category::Base,
         Category::Desktop,
@@ -94,13 +111,9 @@ pub fn resolve_from_args(
     non_interactive: bool,
 ) -> Result<Profile> {
     let conf_dir = root.join("conf");
-    let defs = load_definitions(&conf_dir.join("profiles.toml"))?;
+    let defs = definitions(&conf_dir)?;
 
-    let name = if let Some(name) = cli_profile
-        .map(str::to_owned)
-        .or_else(|| read_from_env(env))
-        .or_else(|| read_persisted(root))
-    {
+    let name = if let Some(name) = selected_profile_name(cli_profile, root, env) {
         name
     } else {
         if non_interactive {
@@ -134,16 +147,10 @@ pub fn resolve_read_only(
     platform: Platform,
     env: &dyn crate::infra::env::Env,
 ) -> Result<Profile> {
-    let definitions = load_definitions(&root.join("conf/profiles.toml"))?;
-    let name = cli_profile
-        .map(str::to_owned)
-        .or_else(|| read_from_env(env))
-        .or_else(|| read_persisted(root))
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "profile selection is required; pass --profile or run 'dotfiles profiles'"
-            )
-        })?;
+    let definitions = definitions(&root.join("conf"))?;
+    let name = selected_profile_name(cli_profile, root, env).ok_or_else(|| {
+        anyhow::anyhow!("profile selection is required; pass --profile or run 'dotfiles profiles'")
+    })?;
     resolve_with_defs(&name, &definitions, platform).map_err(Into::into)
 }
 

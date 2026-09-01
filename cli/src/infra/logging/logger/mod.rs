@@ -26,12 +26,11 @@ use std::time::Instant;
 use super::runlog::RunLog;
 use super::style::{TextStyle, stdout_style};
 use super::types::{
-    ActionCounts, LogEvent, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
+    LogEvent, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
     emit_console_event,
 };
 #[cfg(test)]
 use super::utils::dotfiles_log_subdir;
-use crate::infra::logging::TaskVisibility;
 
 /// Structured logger with dry-run awareness and summary collection.
 ///
@@ -82,10 +81,8 @@ pub struct Logger {
 /// Buffered user-facing detail lines emitted by a completed task.
 #[derive(Debug, Clone)]
 pub(in crate::infra::logging) struct TaskDetailEntry {
-    /// Scheduler identity key for the owning task, when available.
-    pub(super) task_id: Option<String>,
-    /// Human-readable task name.
-    pub(super) name: String,
+    /// Scheduler identity key for the owning task.
+    pub(super) task_id: String,
     /// Detail lines emitted by the task while it ran.
     pub(super) lines: Vec<String>,
 }
@@ -284,82 +281,17 @@ impl Logger {
     }
 
     /// Record a task result for the summary.
-    pub fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        self.record_task_with_actions(name, status, message, ActionCounts::default());
-    }
-
-    /// Record a task result and its structured action totals for the summary.
-    pub fn record_task_with_actions(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-    ) {
-        self.record_task_with_metadata(name, status, message, actions, TaskVisibility::Visible);
-    }
-
-    /// Record a task result with structured action totals and presentation metadata.
-    pub fn record_task_with_metadata(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        visibility: TaskVisibility,
-    ) {
-        self.lock_tasks().push(TaskEntry {
-            task_id: None,
-            name: name.to_string(),
-            status,
-            message: message.map(String::from),
-            actions,
-            visibility,
-            duration: None,
-        });
-    }
-
-    /// Record an engine task by scheduler identity.
-    pub fn record_task_with_identity(
-        &self,
-        task_id: &str,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        visibility: TaskVisibility,
-    ) {
-        self.lock_tasks().push(TaskEntry {
-            task_id: Some(task_id.to_string()),
-            name: name.to_string(),
-            status,
-            message: message.map(String::from),
-            actions,
-            visibility,
-            duration: None,
-        });
-    }
-
-    /// Attach a measured run duration to the most recent entry for `name`.
-    pub fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
-        self.record_task_duration_by(|task| task.name == name, duration);
+    pub fn record_task(&self, task: TaskEntry) {
+        self.lock_tasks().push(task);
     }
 
     /// Attach a measured duration to the entry for a scheduler identity.
-    pub fn record_task_duration_by_id(&self, task_id: &str, duration: std::time::Duration) {
-        self.record_task_duration_by(|task| task.task_id.as_deref() == Some(task_id), duration);
-    }
-
-    fn record_task_duration_by(
-        &self,
-        matches: impl Fn(&TaskEntry) -> bool,
-        duration: std::time::Duration,
-    ) {
+    pub fn record_task_duration(&self, task_id: &str, duration: std::time::Duration) {
         if let Some(task) = self
             .lock_tasks()
             .iter_mut()
             .rev()
-            .find(|task| matches(task))
+            .find(|task| task.task_id == task_id)
         {
             task.duration = Some(duration);
         }
@@ -380,21 +312,12 @@ impl Logger {
     /// Internal tasks were never added to the total, so they are ignored.
     /// Every visible scheduled task advances the numerator, including tasks
     /// that turn out not to apply, so the denominator remains stable.
-    pub fn mark_task_completed(&self, task_name: &str) {
-        self.mark_task_completed_by(|task| task.name == task_name);
-    }
-
-    /// Record completion using the task's scheduler identity.
-    pub fn mark_task_completed_by_id(&self, task_id: &str) {
-        self.mark_task_completed_by(|task| task.task_id.as_deref() == Some(task_id));
-    }
-
-    fn mark_task_completed_by(&self, matches: impl Fn(&TaskEntry) -> bool) {
+    pub fn mark_task_completed(&self, task_id: &str) {
         let task = self
             .lock_tasks()
             .iter()
             .rev()
-            .find(|task| matches(task))
+            .find(|task| task.task_id == task_id)
             .cloned();
         let Some(task) = task else {
             return;
@@ -417,64 +340,30 @@ impl Logger {
         })
     }
 
-    pub(in crate::infra::logging) fn task_is_visible(&self, name: &str) -> bool {
-        self.task_is_visible_by(|task| task.name == name)
-    }
-
-    pub(in crate::infra::logging) fn task_is_visible_by_id(&self, task_id: &str) -> bool {
-        self.task_is_visible_by(|task| task.task_id.as_deref() == Some(task_id))
-    }
-
-    fn task_is_visible_by(&self, matches: impl Fn(&TaskEntry) -> bool) -> bool {
+    pub(in crate::infra::logging) fn task_is_visible(&self, task_id: &str) -> bool {
         self.lock_tasks()
             .iter()
             .rev()
-            .find(|task| matches(task))
+            .find(|task| task.task_id == task_id)
             .is_none_or(|task| task.visibility.is_visible())
     }
 
-    /// Return the recorded outcome message for the most recent entry named `name`.
-    pub(in crate::infra::logging) fn recorded_task_message(&self, name: &str) -> Option<String> {
-        self.recorded_task_message_by(|task| task.name == name)
-    }
-
-    pub(in crate::infra::logging) fn recorded_task_message_by_id(
-        &self,
-        task_id: &str,
-    ) -> Option<String> {
-        self.recorded_task_message_by(|task| task.task_id.as_deref() == Some(task_id))
-    }
-
-    fn recorded_task_message_by(&self, matches: impl Fn(&TaskEntry) -> bool) -> Option<String> {
+    /// Return the recorded outcome message for a scheduler identity.
+    pub(in crate::infra::logging) fn recorded_task_message(&self, task_id: &str) -> Option<String> {
         self.lock_tasks()
             .iter()
             .rev()
-            .find(|task| matches(task))
+            .find(|task| task.task_id == task_id)
             .and_then(|task| task.message.clone())
     }
 
     /// Record buffered user-facing detail lines for a completed task.
-    pub(in crate::infra::logging) fn record_task_details(&self, name: &str, lines: Vec<String>) {
-        self.record_task_details_for(None, name, lines);
-    }
-
-    /// Record buffered detail lines for an engine task identity.
-    pub(in crate::infra::logging) fn record_task_details_by_id(
-        &self,
-        task_id: &str,
-        name: &str,
-        lines: Vec<String>,
-    ) {
-        self.record_task_details_for(Some(task_id), name, lines);
-    }
-
-    fn record_task_details_for(&self, task_id: Option<&str>, name: &str, lines: Vec<String>) {
+    pub(in crate::infra::logging) fn record_task_details(&self, task_id: &str, lines: Vec<String>) {
         if lines.is_empty() {
             return;
         }
         self.lock_task_details().push(TaskDetailEntry {
-            task_id: task_id.map(str::to_string),
-            name: name.to_string(),
+            task_id: task_id.to_string(),
             lines,
         });
     }
@@ -528,54 +417,12 @@ impl Output for Logger {
 }
 
 impl TaskRecorder for Logger {
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        self.record_task(name, status, message);
+    fn record_task(&self, task: TaskEntry) {
+        Self::record_task(self, task);
     }
 
-    fn record_task_with_actions(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-    ) {
-        self.record_task_with_actions(name, status, message, actions);
-    }
-
-    fn record_task_with_metadata(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        visibility: TaskVisibility,
-    ) {
-        self.record_task_with_metadata(name, status, message, actions, visibility);
-    }
-
-    fn record_task_with_identity(
-        &self,
-        task_id: &str,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        visibility: TaskVisibility,
-    ) {
-        self.record_task_with_identity(task_id, name, status, message, actions, visibility);
-    }
-
-    fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
-        self.record_task_duration(name, duration);
-    }
-
-    fn record_task_duration_by_id(
-        &self,
-        task_id: &str,
-        _name: &str,
-        duration: std::time::Duration,
-    ) {
-        self.record_task_duration_by_id(task_id, duration);
+    fn record_task_duration(&self, task_id: &str, duration: std::time::Duration) {
+        Self::record_task_duration(self, task_id, duration);
     }
 }
 
@@ -583,8 +430,24 @@ impl TaskRecorder for Logger {
 mod tests {
     use super::*;
     use crate::infra::logging::isolated_logger;
-    use crate::infra::logging::types::Log;
+    use crate::infra::logging::types::{ActionCounts, Log, TaskVisibility};
     use std::fs;
+
+    fn task_entry(
+        name: &str,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+    ) -> TaskEntry {
+        TaskEntry::new(
+            name,
+            name,
+            status,
+            message,
+            actions,
+            TaskVisibility::Visible,
+        )
+    }
 
     #[test]
     fn logger_new() {
@@ -634,7 +497,12 @@ mod tests {
     #[test]
     fn record_task_ok() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("symlinks", TaskStatus::Ok, None);
+        log.record_task(task_entry(
+            "symlinks",
+            TaskStatus::Ok,
+            None,
+            ActionCounts::default(),
+        ));
         let tasks = log.task_entries();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].name, "symlinks");
@@ -652,7 +520,7 @@ mod tests {
             failed: 0,
         };
 
-        log.record_task_with_actions("symlinks", TaskStatus::Changed, None, actions);
+        log.record_task(task_entry("symlinks", TaskStatus::Changed, None, actions));
 
         assert_eq!(log.task_entries()[0].actions, actions);
     }
@@ -660,7 +528,12 @@ mod tests {
     #[test]
     fn record_task_with_message() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("packages", TaskStatus::Skipped, Some("not on arch"));
+        log.record_task(task_entry(
+            "packages",
+            TaskStatus::Skipped,
+            Some("not on arch"),
+            ActionCounts::default(),
+        ));
         assert_eq!(
             log.task_entries()[0].message,
             Some("not on arch".to_string())
@@ -670,9 +543,24 @@ mod tests {
     #[test]
     fn record_multiple_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("a", TaskStatus::Ok, None);
-        log.record_task("b", TaskStatus::Failed, Some("error"));
-        log.record_task("c", TaskStatus::DryRun, None);
+        log.record_task(task_entry(
+            "a",
+            TaskStatus::Ok,
+            None,
+            ActionCounts::default(),
+        ));
+        log.record_task(task_entry(
+            "b",
+            TaskStatus::Failed,
+            Some("error"),
+            ActionCounts::default(),
+        ));
+        log.record_task(task_entry(
+            "c",
+            TaskStatus::DryRun,
+            None,
+            ActionCounts::default(),
+        ));
         assert_eq!(log.task_entries().len(), 3);
     }
 
@@ -700,10 +588,30 @@ mod tests {
     fn failure_count_returns_correct_count() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
-        log.record_task("a", TaskStatus::Ok, None);
-        log.record_task("b", TaskStatus::Failed, Some("error 1"));
-        log.record_task("c", TaskStatus::Failed, Some("error 2"));
-        log.record_task("d", TaskStatus::Skipped, None);
+        log.record_task(task_entry(
+            "a",
+            TaskStatus::Ok,
+            None,
+            ActionCounts::default(),
+        ));
+        log.record_task(task_entry(
+            "b",
+            TaskStatus::Failed,
+            Some("error 1"),
+            ActionCounts::default(),
+        ));
+        log.record_task(task_entry(
+            "c",
+            TaskStatus::Failed,
+            Some("error 2"),
+            ActionCounts::default(),
+        ));
+        log.record_task(task_entry(
+            "d",
+            TaskStatus::Skipped,
+            None,
+            ActionCounts::default(),
+        ));
         assert_eq!(log.failure_count(), 2);
     }
 
@@ -711,7 +619,12 @@ mod tests {
     fn log_trait_delegates_to_logger() {
         let (log, _tmp, _guard) = isolated_logger();
         let log_ref: &dyn Log = &log;
-        log_ref.record_task("via-trait", TaskStatus::Ok, None);
+        log_ref.record_task(task_entry(
+            "via-trait",
+            TaskStatus::Ok,
+            None,
+            ActionCounts::default(),
+        ));
         assert_eq!(log.task_entries().len(), 1);
     }
 
@@ -801,7 +714,12 @@ mod tests {
     #[test]
     fn summary_does_not_report_the_persistent_log_path() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task("summary-test", TaskStatus::Ok, None);
+        log.record_task(task_entry(
+            "summary-test",
+            TaskStatus::Ok,
+            None,
+            ActionCounts::default(),
+        ));
         log.print_summary();
         let path = log.log_path().expect("log path");
         let contents = fs::read_to_string(path).unwrap();

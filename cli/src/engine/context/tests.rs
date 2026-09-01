@@ -1,6 +1,6 @@
 use super::*;
 use crate::infra::logging::Logger;
-use crate::infra::logging::{MsgKind, Output, TaskRecorder, TaskStatus};
+use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
 use crate::test_helpers::{empty_config, make_linux_context};
 use std::path::PathBuf;
 
@@ -15,7 +15,7 @@ impl Output for SilentLog {
 }
 
 impl TaskRecorder for SilentLog {
-    fn record_task(&self, _name: &str, _status: TaskStatus, _message: Option<&str>) {}
+    fn record_task(&self, _task: TaskEntry) {}
 }
 
 #[test]

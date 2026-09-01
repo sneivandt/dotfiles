@@ -299,7 +299,9 @@ fn run_stops_after_transient_fetch_retries_are_exhausted() {
     let exec = ScriptedExecutor::new()
         .ok("refs/heads/main")
         .ok("")
-        .err_times(3, || git_error("connection reset by peer"));
+        .err(git_error("connection reset by peer"))
+        .err(git_error("connection reset by peer"))
+        .err(git_error("connection reset by peer"));
     let ctx = make_update_context(config, exec);
     let task = UpdateRepository::new(UpdateSignal::new());
 

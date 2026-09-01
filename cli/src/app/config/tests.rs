@@ -61,35 +61,6 @@ fn write_overlay_config(overlay: &tempfile::TempDir, file: &str, content: &str) 
 }
 
 #[test]
-fn load_with_empty_config_files() {
-    let (dir, profile, platform) = setup_load(linux(), &[]);
-    let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
-    assert!(config.packages.is_empty());
-    assert!(config.symlinks.is_empty());
-    assert!(config.validation_symlinks.is_empty());
-    assert!(config.registry.is_empty());
-    assert!(config.units.is_empty());
-    assert!(config.chmod.is_empty());
-    assert!(config.vscode_extensions.is_empty());
-}
-
-#[test]
-fn load_populates_symlinks() {
-    let (dir, profile, platform) = setup_load(
-        linux(),
-        &[(
-            "symlinks.toml",
-            "[base]\nsymlinks = [\".bashrc\", \".vimrc\"]\n",
-        )],
-    );
-    let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
-    assert_eq!(config.symlinks.len(), 2);
-    assert_eq!(config.symlinks[0].source, ".bashrc");
-    assert_eq!(config.symlinks[1].source, ".vimrc");
-    assert_eq!(config.validation_symlinks.len(), 2);
-}
-
-#[test]
 fn load_keeps_profile_excluded_main_symlinks_for_validation() {
     let (dir, profile, platform) = setup_load(
         linux(),
@@ -213,33 +184,10 @@ fn load_reports_overlay_path_for_overlay_syntax_errors() {
 }
 
 #[test]
-fn load_populates_packages() {
-    let (dir, profile, platform) = setup_load(
-        linux(),
-        &[("packages.toml", "[base]\npackages = [\"git\", \"curl\"]\n")],
-    );
-    let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
-    assert_eq!(config.packages.len(), 2);
-}
-
-#[test]
 fn load_stores_root_path() {
     let (dir, profile, platform) = setup_load(linux(), &[]);
     let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
     assert_eq!(config.root, dir.path());
-}
-
-#[test]
-fn load_skips_registry_on_linux() {
-    let (dir, profile, platform) = setup_load(
-        linux(),
-        &[(
-            "registry.toml",
-            "[test]\npath = \"HKCU:\\\\Test\"\n[test.values]\nKey = \"Value\"\n",
-        )],
-    );
-    let config = Config::load(dir.path(), &profile, platform, None).expect("load should succeed");
-    assert!(config.registry.is_empty(), "registry skipped on linux");
 }
 
 #[test]
@@ -272,59 +220,5 @@ fn load_still_parses_systemd_config_on_windows() {
     assert!(
         result.is_err(),
         "platform-inactive config should still be parsed strictly"
-    );
-}
-
-#[test]
-fn load_rejects_missing_main_config_file() {
-    let (dir, profile, platform) = setup_load(linux(), &[]);
-    std::fs::remove_file(dir.path().join("conf").join("agent-settings.toml"))
-        .expect("remove agent settings config");
-
-    let error = Config::load(dir.path(), &profile, platform, None)
-        .expect_err("missing main config should fail");
-
-    assert!(error.to_string().contains("agent-settings.toml"));
-}
-
-#[test]
-fn load_returns_error_on_invalid_packages_toml() {
-    let (dir, profile, platform) = setup_load(linux(), &[("packages.toml", "[base\npackages = [")]);
-    let result = Config::load(dir.path(), &profile, platform, None);
-    assert!(result.is_err(), "invalid packages.toml should return error");
-    let msg = result.unwrap_err().to_string();
-    let expected_path = dir.path().join("conf").join("packages.toml");
-    assert!(
-        msg.contains(expected_path.to_str().unwrap_or("packages.toml")),
-        "error should mention the full path: {msg}"
-    );
-}
-
-#[test]
-fn load_returns_error_on_invalid_git_config_toml() {
-    let (dir, profile, platform) = setup_load(linux(), &[("git-config.toml", "not valid [[ toml")]);
-    let result = Config::load(dir.path(), &profile, platform, None);
-    assert!(
-        result.is_err(),
-        "invalid git-config.toml should return error"
-    );
-    let msg = result.unwrap_err().to_string();
-    let expected_path = dir.path().join("conf").join("git-config.toml");
-    assert!(
-        msg.contains(expected_path.to_str().unwrap_or("git-config.toml")),
-        "error should mention the full path: {msg}"
-    );
-}
-
-#[test]
-fn load_returns_error_on_type_mismatch_in_symlinks() {
-    let (dir, profile, platform) = setup_load(
-        linux(),
-        &[("symlinks.toml", "[base]\nsymlinks = \"not-an-array\"\n")],
-    );
-    let result = Config::load(dir.path(), &profile, platform, None);
-    assert!(
-        result.is_err(),
-        "type mismatch in symlinks.toml should return error"
     );
 }

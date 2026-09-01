@@ -121,11 +121,11 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
     }
 
     impl TaskRecorder for RecordingLog {
-        fn record_task(&self, _name: &str, status: TaskStatus, _message: Option<&str>) {
+        fn record_task(&self, task: TaskEntry) {
             self.records
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push(status);
+                .push(task.status);
         }
     }
 

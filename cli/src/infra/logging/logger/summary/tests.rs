@@ -4,6 +4,7 @@ use super::render::{
     RowOpts, format_task_line, should_emit_task_result, task_detail_lines, task_result_lines,
 };
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
+use crate::infra::logging::Logger;
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::StyleChoice;
 use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
@@ -11,15 +12,18 @@ use crate::infra::logging::utils::format_elapsed;
 
 /// Build a task entry with the fields a row-rendering test cares about.
 fn task_entry(name: &str, status: TaskStatus, message: Option<&str>) -> TaskEntry {
-    TaskEntry {
-        task_id: None,
-        name: name.to_string(),
+    TaskEntry::new(
+        name,
+        name,
         status,
-        message: message.map(str::to_string),
-        visibility: TaskVisibility::Visible,
-        actions: ActionCounts::default(),
-        duration: None,
-    }
+        message,
+        ActionCounts::default(),
+        TaskVisibility::Visible,
+    )
+}
+
+fn record_task(log: &Logger, name: &str, status: TaskStatus, message: Option<&str>) {
+    log.record_task(task_entry(name, status, message));
 }
 
 /// Standard-mode, non-verbose row options.
@@ -285,8 +289,7 @@ fn task_detail_lines_filters_generic_stats_summary() {
         Some("2 changed, 1 already ok"),
     );
     let details = vec![TaskDetailEntry {
-        task_id: None,
-        name: "symlinks".to_string(),
+        task_id: "symlinks".to_string(),
         lines: vec![
             "linked: ~/.bashrc".to_string(),
             "2 changed, 1 already ok".to_string(),
@@ -303,8 +306,7 @@ fn task_detail_lines_filters_generic_stats_summary() {
 fn task_detail_lines_drops_lines_restating_the_row_reason() {
     let task = task_entry("skip-task", TaskStatus::Skipped, Some("dependency failed"));
     let details = vec![TaskDetailEntry {
-        task_id: None,
-        name: "skip-task".to_string(),
+        task_id: "skip-task".to_string(),
         lines: vec![
             "skipped: dependency failed".to_string(),
             "dependency failed".to_string(),
@@ -329,8 +331,7 @@ fn task_detail_lines_are_empty_when_the_task_only_has_a_message() {
 fn task_result_lines_are_flat_with_reduced_indent() {
     let task = task_entry("changed-task", TaskStatus::Changed, None);
     let details = vec![TaskDetailEntry {
-        task_id: None,
-        name: "changed-task".to_string(),
+        task_id: "changed-task".to_string(),
         lines: vec!["linked: ~/.example".to_string()],
     }];
 
@@ -351,8 +352,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
         ..ActionCounts::default()
     };
     let details = vec![TaskDetailEntry {
-        task_id: None,
-        name: task.name.clone(),
+        task_id: task.task_id.clone(),
         lines: vec!["would link: ~/.bashrc \u{2192} symlinks/bashrc".to_string()],
     }];
 
@@ -369,8 +369,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
 fn task_result_lines_include_all_details() {
     let task = task_entry("large-plan", TaskStatus::DryRun, None);
     let details = vec![TaskDetailEntry {
-        task_id: None,
-        name: "large-plan".to_string(),
+        task_id: "large-plan".to_string(),
         lines: vec![
             (1..=11)
                 .map(|index| format!("item {index}"))
@@ -510,7 +509,7 @@ fn colored_summary_styles_each_outcome_group() {
 #[test]
 fn print_summary_clears_visible_progress() {
     let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
-    log.record_task("changed-task", TaskStatus::Changed, None);
+    record_task(&log, "changed-task", TaskStatus::Changed, None);
     log.notify_task_start_with_progress("active-task", true);
 
     assert!(log.has_transient_rows());
@@ -527,7 +526,7 @@ fn no_op_install_summary_needs_no_totals_separator() {
     let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("install");
     log.set_verbose(false);
     for index in 0..3 {
-        log.record_task(&format!("task-{index}"), TaskStatus::Ok, None);
+        record_task(&log, &format!("task-{index}"), TaskStatus::Ok, None);
     }
 
     assert!(
@@ -540,7 +539,7 @@ fn no_op_install_summary_needs_no_totals_separator() {
 fn install_summary_needs_totals_separator_after_task_output() {
     let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("install");
     log.set_verbose(false);
-    log.record_task("task-changed", TaskStatus::Changed, None);
+    record_task(&log, "task-changed", TaskStatus::Changed, None);
     log.mark_task_console_output();
 
     assert!(log.needs_totals_separator());

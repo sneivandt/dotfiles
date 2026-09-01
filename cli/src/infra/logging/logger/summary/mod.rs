@@ -52,8 +52,8 @@ impl Logger {
         }
     }
 
-    pub(in crate::infra::logging) fn emit_recorded_task_result(&self, task_name: &str) {
-        let task = self.recorded_task(task_name);
+    pub(in crate::infra::logging) fn emit_recorded_task_result(&self, task_id: &str) {
+        let task = self.recorded_task(task_id);
         let Some(task) = task else {
             return;
         };
@@ -72,38 +72,8 @@ impl Logger {
         self.end_task_block();
     }
 
-    pub(in crate::infra::logging) fn emit_recorded_task_result_by_id(&self, task_id: &str) {
-        let task = self.recorded_task_by_id(task_id);
-        let Some(task) = task else {
-            return;
-        };
-        let details = self.lock_task_details().clone();
-        let lines = task_result_lines(&task, &details, self.row_opts());
-        let Some((status_row, detail_rows)) = lines.split_first() else {
-            return;
-        };
-        self.begin_task_block();
-        self.task_result(status_row);
-        for line in detail_rows {
-            self.task_result(line);
-        }
-        self.end_task_block();
-    }
-
-    pub(in crate::infra::logging) fn emit_recorded_task_status(&self, task_name: &str) {
-        let Some(task) = self.recorded_task(task_name) else {
-            return;
-        };
-        if !task.visibility.is_visible() || !should_emit_task_result(task.status, self.verbose) {
-            return;
-        }
-        self.begin_task_block();
-        self.task_result(&format_task_line(&task, self.row_opts()));
-        self.mark_task_console_output();
-    }
-
-    pub(in crate::infra::logging) fn emit_recorded_task_status_by_id(&self, task_id: &str) {
-        let Some(task) = self.recorded_task_by_id(task_id) else {
+    pub(in crate::infra::logging) fn emit_recorded_task_status(&self, task_id: &str) {
+        let Some(task) = self.recorded_task(task_id) else {
             return;
         };
         if !task.visibility.is_visible() || !should_emit_task_result(task.status, self.verbose) {
@@ -124,19 +94,11 @@ impl Logger {
         self.mark_task_console_output();
     }
 
-    fn recorded_task(&self, task_name: &str) -> Option<TaskEntry> {
+    fn recorded_task(&self, task_id: &str) -> Option<TaskEntry> {
         self.lock_tasks()
             .iter()
             .rev()
-            .find(|task| task.name == task_name)
-            .cloned()
-    }
-
-    fn recorded_task_by_id(&self, task_id: &str) -> Option<TaskEntry> {
-        self.lock_tasks()
-            .iter()
-            .rev()
-            .find(|task| task.task_id.as_deref() == Some(task_id))
+            .find(|task| task.task_id == task_id)
             .cloned()
     }
 }

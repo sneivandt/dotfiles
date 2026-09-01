@@ -1,7 +1,7 @@
 ---
 name: config-validation
 description: >
-  Use for ConfigValidator aggregation, domain validate() functions, diagnostic
+  Use for Config::validate aggregation, domain validate() functions, diagnostic
   codes/severity, test-command validation tasks, or cli/tests/config_drift.rs.
   Not for ordinary TOML parsing alone.
 ---
@@ -26,7 +26,7 @@ message. Reuse `Validator` and its `check_each`, `warn`, `warn_if`, `check`, and
 1. Add or extend the domain's `validate()` function.
 2. Choose a stable dotted code.
 3. Use error severity for structurally unsafe or unusable values.
-4. Wire the validator into `ConfigValidator::validate_all()`.
+4. Wire the validator into `Config::validate()`.
 5. Test valid, invalid, and boundary cases.
 
 Validation tasks live under `cli/src/app/validation/`; the `check` command owns

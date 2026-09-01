@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
 
+use crate::app::task_dependencies::{DependencyEdges, extend_dependency_closure};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{Logger, Output};
@@ -39,7 +40,7 @@ pub(crate) fn apply_task_filters<'a>(
         .map(|task| task.task_id())
         .collect::<HashSet<_>>();
     if with_dependencies {
-        include_dependency_closure(&known_task_refs, &mut selected);
+        extend_dependency_closure(&known_task_refs, &mut selected, DependencyEdges::All);
     }
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
@@ -68,28 +69,6 @@ pub(crate) fn apply_task_filters<'a>(
     }
 
     Ok(filtered)
-}
-
-fn include_dependency_closure(tasks: &[&dyn Task], selected: &mut HashSet<TaskId>) {
-    let by_id = tasks
-        .iter()
-        .map(|task| (task.task_id(), *task))
-        .collect::<HashMap<_, _>>();
-    let mut pending = selected.iter().cloned().collect::<Vec<_>>();
-    while let Some(task_id) = pending.pop() {
-        let Some(task) = by_id.get(&task_id) else {
-            continue;
-        };
-        for dependency in task
-            .dependencies()
-            .iter()
-            .chain(task.ordering_dependencies())
-        {
-            if by_id.contains_key(dependency) && selected.insert(dependency.clone()) {
-                pending.push(dependency.clone());
-            }
-        }
-    }
 }
 
 /// Return filters that do not match any known task.

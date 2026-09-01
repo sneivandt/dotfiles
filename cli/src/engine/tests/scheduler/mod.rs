@@ -15,7 +15,7 @@ use super::*;
 
 use crate::engine::{TaskId, TaskMeta, TaskResult, TaskStats, execute, task_deps};
 
-use crate::infra::logging::{MsgKind, Output, TaskRecorder};
+use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
 
 use crate::test_helpers::{ContextBuilder, empty_config, make_static_context};
 

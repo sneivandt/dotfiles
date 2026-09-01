@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use super::logger::{Logger, stdout_supports_progress};
 use super::runlog::RunLog;
-use super::types::{ActionCounts, MsgKind, Output, TaskRecorder, TaskStatus, TaskVisibility};
+use super::types::{MsgKind, Output, TaskRecorder, TaskStatus};
 use super::utils::sort_action_runs;
 
 mod entry;
@@ -17,8 +17,8 @@ use entry::{LogEntry, should_record_task_details};
 /// parallel tasks do not interleave their console output.  The captured
 /// entries are replayed in order when `flush_and_complete` is called.
 ///
-/// [`record_task`](crate::infra::logging::TaskRecorder::record_task) is forwarded directly to the underlying
-/// [`Logger`] because the summary collection is already thread-safe.
+/// Task results are forwarded directly to the underlying [`Logger`] because
+/// summary collection is already thread-safe.
 #[derive(Debug)]
 pub struct BufferedLog {
     inner: Arc<Logger>,
@@ -60,17 +60,7 @@ impl BufferedLog {
     ///
     /// Entries are already present in the run log, so anything not replayed
     /// here is simply not shown on the console.
-    #[cfg(test)]
-    pub fn flush_and_complete(&self, task_name: &str, status: TaskStatus) {
-        self.flush_and_complete_inner(None, task_name, status);
-    }
-
-    /// Flush an engine task selected by scheduler identity.
-    pub fn flush_and_complete_by_id(&self, task_id: &str, task_name: &str, status: TaskStatus) {
-        self.flush_and_complete_inner(Some(task_id), task_name, status);
-    }
-
-    fn flush_and_complete_inner(&self, task_id: Option<&str>, task_name: &str, status: TaskStatus) {
+    pub fn flush_and_complete(&self, task_id: &str, task_name: &str, status: TaskStatus) {
         let mut entries = {
             let mut guard = self
                 .entries
@@ -87,12 +77,7 @@ impl BufferedLog {
                 .filter_map(|entry| entry.detail_line(status))
                 .map(ToString::to_string)
                 .collect();
-            if let Some(task_id) = task_id {
-                self.inner
-                    .record_task_details_by_id(task_id, task_name, detail_lines);
-            } else {
-                self.inner.record_task_details(task_name, detail_lines);
-            }
+            self.inner.record_task_details(task_id, detail_lines);
         }
 
         let show_progress = stdout_supports_progress();
@@ -100,25 +85,15 @@ impl BufferedLog {
         if show_progress {
             self.inner.clear_progress();
         }
-        let visible = task_id.map_or_else(
-            || self.inner.task_is_visible(task_name),
-            |task_id| self.inner.task_is_visible_by_id(task_id),
-        );
-        let task_message = task_id.map_or_else(
-            || self.inner.recorded_task_message(task_name),
-            |task_id| self.inner.recorded_task_message_by_id(task_id),
-        );
+        let visible = self.inner.task_is_visible(task_id);
+        let task_message = self.inner.recorded_task_message(task_id);
         let message = task_message.as_deref();
         if !visible {
             // Internal task: the entries live in the run log only.
         } else if self.inner.is_verbose() {
             // Verbose accounts for every task, including the ones with nothing
             // to do, and replays the per-resource decisions behind that outcome.
-            if let Some(task_id) = task_id {
-                self.inner.emit_recorded_task_status_by_id(task_id);
-            } else {
-                self.inner.emit_recorded_task_status(task_name);
-            }
+            self.inner.emit_recorded_task_status(task_id);
             for entry in &entries {
                 entry.replay_verbose(message);
             }
@@ -137,17 +112,9 @@ impl BufferedLog {
             }
         }
         self.inner.remove_active_task_locked(task_name);
-        if let Some(task_id) = task_id {
-            self.inner.mark_task_completed_by_id(task_id);
-        } else {
-            self.inner.mark_task_completed(task_name);
-        }
+        self.inner.mark_task_completed(task_id);
         if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
-            if let Some(task_id) = task_id {
-                self.inner.emit_recorded_task_result_by_id(task_id);
-            } else {
-                self.inner.emit_recorded_task_result(task_name);
-            }
+            self.inner.emit_recorded_task_result(task_id);
         }
         self.inner.redraw_active_status_locked(show_progress);
     }
@@ -181,57 +148,12 @@ impl Output for BufferedLog {
 }
 
 impl TaskRecorder for BufferedLog {
-    fn record_task(&self, name: &str, status: TaskStatus, message: Option<&str>) {
-        self.inner.record_task(name, status, message);
+    fn record_task(&self, task: super::TaskEntry) {
+        self.inner.record_task(task);
     }
 
-    fn record_task_with_actions(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-    ) {
-        self.inner
-            .record_task_with_actions(name, status, message, actions);
-    }
-
-    fn record_task_with_metadata(
-        &self,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        visibility: TaskVisibility,
-    ) {
-        self.inner
-            .record_task_with_metadata(name, status, message, actions, visibility);
-    }
-
-    fn record_task_with_identity(
-        &self,
-        task_id: &str,
-        name: &str,
-        status: TaskStatus,
-        message: Option<&str>,
-        actions: ActionCounts,
-        visibility: TaskVisibility,
-    ) {
-        self.inner
-            .record_task_with_identity(task_id, name, status, message, actions, visibility);
-    }
-
-    fn record_task_duration(&self, name: &str, duration: std::time::Duration) {
-        self.inner.record_task_duration(name, duration);
-    }
-
-    fn record_task_duration_by_id(
-        &self,
-        task_id: &str,
-        _name: &str,
-        duration: std::time::Duration,
-    ) {
-        self.inner.record_task_duration_by_id(task_id, duration);
+    fn record_task_duration(&self, task_id: &str, duration: std::time::Duration) {
+        self.inner.record_task_duration(task_id, duration);
     }
 }
 

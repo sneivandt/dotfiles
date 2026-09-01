@@ -13,6 +13,7 @@ pub mod filter;
 pub mod interrupt;
 pub(crate) mod recovery;
 pub mod run;
+pub(crate) mod task_dependencies;
 pub mod validation;
 
 #[cfg(test)]

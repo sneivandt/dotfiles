@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::engine::scheduler::{ExecutionSummary, TaskOutcome};
 use crate::engine::{Context, Task, TaskAssessment, TaskId};
-use crate::infra::logging::{ActionCounts, Logger, OutputExt as _, TaskStatus};
+use crate::infra::logging::{ActionCounts, Logger, OutputExt as _, TaskEntry, TaskStatus};
 
 /// Outcome of arranging privilege for the tasks that declared they need it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,16 +116,16 @@ impl<'a> ElevationBroker<'a> {
             } else {
                 TaskStatus::Skipped
             };
-            self.log.record_task_with_identity(
+            self.log.record_task(TaskEntry::new(
                 &task_id,
                 task.name(),
                 status,
                 Some(message.as_str()),
                 ActionCounts::default(),
                 task.visibility(),
-            );
-            self.log.mark_task_completed_by_id(&task_id);
-            self.log.emit_task_result_and_redraw_by_id(&task_id);
+            ));
+            self.log.mark_task_completed(&task_id);
+            self.log.emit_task_result_and_redraw(&task_id);
             summary.record(
                 id,
                 task.selector(),

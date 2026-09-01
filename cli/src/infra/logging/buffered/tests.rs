@@ -1,6 +1,7 @@
 use super::super::types::OutputExt as _;
 use super::*;
 use crate::infra::logging::isolated_logger;
+use crate::infra::logging::{ActionCounts, TaskEntry, TaskVisibility};
 
 /// A [`BufferedLog`] wired to a [`Logger`] that writes to a temporary run
 /// log, plus the temp dir and dispatch guard that must outlive the test.
@@ -22,13 +23,21 @@ fn entry(kind: MsgKind, msg: &str) -> LogEntry {
         msg: msg.to_string(),
     }
 }
+
+fn task_entry(name: &str, status: TaskStatus, actions: ActionCounts) -> TaskEntry {
+    TaskEntry::new(name, name, status, None, actions, TaskVisibility::Visible)
+}
 use std::fs;
 use std::sync::Arc;
 
 #[test]
 fn buffered_log_record_task_forwards_to_logger() {
     let (buf, log, _tmp, _guard) = buffered_fixture();
-    buf.record_task("task-a", TaskStatus::Ok, None);
+    buf.record_task(task_entry(
+        "task-a",
+        TaskStatus::Ok,
+        ActionCounts::default(),
+    ));
     assert_eq!(log.task_entries().len(), 1);
     assert_eq!(log.task_entries()[0].name, "task-a");
 }
@@ -41,7 +50,7 @@ fn buffered_log_record_task_with_actions_forwards_counts() {
         ..ActionCounts::default()
     };
 
-    buf.record_task_with_actions("task-a", TaskStatus::Changed, None, actions);
+    buf.record_task(task_entry("task-a", TaskStatus::Changed, actions));
 
     assert_eq!(log.task_entries()[0].actions, actions);
 }
@@ -101,7 +110,7 @@ fn flush_and_complete_clears_progress_rows() {
     let log = Arc::new(log);
     log.notify_task_start("update");
     let buf = BufferedLog::new(Arc::clone(&log));
-    buf.flush_and_complete("update", TaskStatus::Ok);
+    buf.flush_and_complete("update", "update", TaskStatus::Ok);
     assert_eq!(
         log.progress_rows_count(),
         0,
@@ -282,7 +291,7 @@ fn buffered_flush_and_complete_with_remaining_task() {
     log.notify_task_start("task-a");
     log.notify_task_start("task-b");
     let buf = BufferedLog::new(Arc::clone(&log));
-    buf.flush_and_complete("task-a", TaskStatus::Ok);
+    buf.flush_and_complete("task-a", "task-a", TaskStatus::Ok);
     let active = log.active_tasks.lock().unwrap();
     assert!(
         active.contains(&"task-b".to_string()),
@@ -307,7 +316,7 @@ fn flush_and_complete_replays_stage_before_info() {
     buf.stage("install-task");
     buf.info("0 changed, 37 already ok");
 
-    buf.flush_and_complete("install-task", TaskStatus::Ok);
+    buf.flush_and_complete("install-task", "install-task", TaskStatus::Ok);
 
     let path = log.log_path().expect("log path");
     let contents = fs::read_to_string(path).unwrap();
@@ -340,7 +349,7 @@ fn flush_and_complete_replays_stage_after_progress_clear() {
     buf.stage("parallel-task");
     buf.info("0 changed, 1 already ok");
 
-    buf.flush_and_complete("parallel-task", TaskStatus::Ok);
+    buf.flush_and_complete("parallel-task", "parallel-task", TaskStatus::Ok);
 
     let path = log.log_path().expect("log path");
     let contents = fs::read_to_string(path).unwrap();
@@ -361,7 +370,11 @@ fn verbose_flush_keeps_not_applicable_task_output_off_console() {
     buf.task_stage("windows-only-task");
     buf.debug("not applicable: requires Windows");
 
-    buf.flush_and_complete("windows-only-task", TaskStatus::NotApplicable);
+    buf.flush_and_complete(
+        "windows-only-task",
+        "windows-only-task",
+        TaskStatus::NotApplicable,
+    );
 
     assert!(!log.task_console_output_emitted());
     let path = log.log_path().expect("log path");
@@ -376,7 +389,7 @@ fn verbose_flush_keeps_unchanged_task_output_off_console() {
     buf.task_stage("current-task");
     buf.info("0 changed, 1 already ok");
 
-    buf.flush_and_complete("current-task", TaskStatus::Ok);
+    buf.flush_and_complete("current-task", "current-task", TaskStatus::Ok);
 
     assert!(!log.task_console_output_emitted());
     let path = log.log_path().expect("log path");
@@ -393,7 +406,7 @@ fn non_verbose_dry_run_flush_keeps_detail_in_persistent_log() {
     let buf = BufferedLog::new(Arc::clone(&log));
 
     buf.dry_run("would configure beep = true");
-    buf.flush_and_complete("Configure Copilot", TaskStatus::DryRun);
+    buf.flush_and_complete("Configure Copilot", "Configure Copilot", TaskStatus::DryRun);
 
     let details = log
         .task_details
@@ -401,7 +414,7 @@ fn non_verbose_dry_run_flush_keeps_detail_in_persistent_log() {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
     assert_eq!(details.len(), 1);
-    assert_eq!(details[0].name, "Configure Copilot");
+    assert_eq!(details[0].task_id, "Configure Copilot");
     assert_eq!(details[0].lines, ["would configure beep = true"]);
 
     let path = log.log_path().expect("log path");

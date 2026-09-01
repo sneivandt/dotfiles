@@ -1,10 +1,11 @@
 //! Structured run outcomes and dependency-safe retry selection.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use crate::app::task_dependencies::{DependencyEdges, extend_dependency_closure};
 use crate::engine::scheduler::ExecutionSummary;
 use crate::engine::{Context, Task, TaskId};
 
@@ -98,30 +99,14 @@ pub(crate) fn select_tasks<'a>(
         );
     }
 
-    let by_id = tasks
-        .iter()
-        .map(|task| (task.task_id(), task.as_ref()))
-        .collect::<HashMap<_, _>>();
     let mut selected = tasks
         .iter()
         .filter(|task| selectors.contains(task.selector()))
         .map(|task| task.task_id())
         .chain(required.iter().cloned())
         .collect::<HashSet<_>>();
-    let mut pending = selected.iter().cloned().collect::<Vec<_>>();
-    while let Some(task_id) = pending.pop() {
-        if let Some(task) = by_id.get(&task_id) {
-            for dependency in task
-                .dependencies()
-                .iter()
-                .chain(task.ordering_dependencies())
-            {
-                if by_id.contains_key(dependency) && selected.insert(dependency.clone()) {
-                    pending.push(dependency.clone());
-                }
-            }
-        }
-    }
+    let task_refs = tasks.iter().map(Box::as_ref).collect::<Vec<_>>();
+    extend_dependency_closure(&task_refs, &mut selected, DependencyEdges::All);
 
     Ok(tasks
         .iter()

@@ -29,6 +29,10 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
 
+run_cargo() {
+  (cd "$REPO_ROOT/cli" && cargo "$@")
+}
+
 full_checks_enabled() {
   case "${DOTFILES_HOOKS_FULL:-0}" in
     1 | true | yes) return 0 ;;
@@ -68,20 +72,20 @@ run_config_validation() {
   fi
 
   printf "Running typed config validation...\n"
-  if ! cargo run --quiet --profile ci --manifest-path "$MANIFEST" -- \
+  if ! run_cargo run --quiet --profile ci --manifest-path "$MANIFEST" -- \
     check --root "$REPO_ROOT" -p desktop \
     --only config-warnings,symlink-sources,config-files 2>&1; then
     abort_with_hint \
       "configuration validation failed." \
-      "cargo run --profile ci --manifest-path cli/Cargo.toml -- check --root . -p desktop --only config-warnings,symlink-sources,config-files"
+      "cd cli && cargo run --profile ci -- check --root .. -p desktop --only config-warnings,symlink-sources,config-files"
   fi
 
   if full_checks_enabled; then
     printf "Running config drift integration test...\n"
-    if ! cargo test --profile ci --manifest-path "$MANIFEST" --test config_drift 2>&1; then
+    if ! run_cargo test --profile ci --manifest-path "$MANIFEST" --test config_drift 2>&1; then
       abort_with_hint \
         "config drift tests failed." \
-        "cargo test --profile ci --manifest-path cli/Cargo.toml --test config_drift"
+        "cd cli && cargo test --profile ci --test config_drift"
     fi
   else
     printf '%sSkipping config drift integration test: set DOTFILES_HOOKS_FULL=1 to run it.%s\n' "$DIM" "$NC"
@@ -95,12 +99,12 @@ run_dependency_guards() {
       "replace wildcard dependency versions in cli/Cargo.toml"
   fi
 
-  if full_checks_enabled && cargo deny --version >/dev/null 2>&1; then
+  if full_checks_enabled && run_cargo deny --version >/dev/null 2>&1; then
     printf "Running cargo-deny bans/licenses/sources checks...\n"
-    if ! cargo deny --manifest-path "$MANIFEST" check bans licenses sources 2>&1; then
+    if ! run_cargo deny --manifest-path "$MANIFEST" check bans licenses sources 2>&1; then
       abort_with_hint \
         "cargo-deny reported dependency policy violations." \
-        "cargo deny --manifest-path cli/Cargo.toml check bans licenses sources"
+        "cd cli && cargo deny check bans licenses sources"
     fi
   elif full_checks_enabled; then
     printf '%sSkipping cargo-deny: cargo-deny not installed.%s\n' "$DIM" "$NC"

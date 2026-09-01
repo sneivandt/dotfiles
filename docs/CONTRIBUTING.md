@@ -12,7 +12,8 @@ Install:
 Build the CLI from the repository root:
 
 ```bash
-cargo build --manifest-path cli/Cargo.toml
+cd cli
+cargo build
 ```
 
 See [Usage](USAGE.md) for wrapper and command examples. See

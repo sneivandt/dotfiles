@@ -263,7 +263,7 @@ impl Task for RunShellcheck {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let scripts = discover_linter_inputs(
             ctx.root(),
-            &["dotfiles.sh", "install.sh"],
+            &["dotfiles.sh"],
             &["symlinks", "hooks", ".github"],
             discover_shell_scripts,
         );

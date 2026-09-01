@@ -88,7 +88,7 @@ while IFS= read -r changed_file || [ -n "$changed_file" ]; do
       docs_only=0
       run_full=1
       ;;
-    cli/*|rust-toolchain.toml)
+    cli/*)
       docs_only=0
       rust_related=1
       ;;
@@ -100,7 +100,7 @@ while IFS= read -r changed_file || [ -n "$changed_file" ]; do
       docs_only=0
       hook_related=1
       ;;
-    dotfiles.sh|install.sh)
+    dotfiles.sh)
       docs_only=0
       wrapper_linux_related=1
       ;;

@@ -135,9 +135,11 @@ jobs:
 
       - name: Install Rust toolchain
         run: rustup show
+        working-directory: cli
 
       - name: Build release binary
-        run: cargo build --release --locked --manifest-path cli/Cargo.toml
+        run: cargo build --release --locked
+        working-directory: cli
         env:
           DOTFILES_VERSION: ${{ needs.version.outputs.version }}
 
@@ -163,9 +165,11 @@ jobs:
 
       - name: Install Rust toolchain
         run: rustup show
+        working-directory: cli
 
       - name: Build release binary
-        run: cargo build --release --locked --manifest-path cli/Cargo.toml
+        run: cargo build --release --locked
+        working-directory: cli
         env:
           DOTFILES_VERSION: ${{ needs.version.outputs.version }}
 

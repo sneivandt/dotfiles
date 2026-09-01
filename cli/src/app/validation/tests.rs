@@ -348,7 +348,7 @@ fn linter_inputs_include_root_files_then_discovered_scripts() {
 
     let found = discover_linter_inputs(
         root,
-        &["dotfiles.sh", "install.sh"],
+        &["dotfiles.sh"],
         &["hooks", "missing-dir"],
         discover_shell_scripts,
     );

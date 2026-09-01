@@ -32,6 +32,14 @@ full_checks_enabled() {
   esac
 }
 
+run_cargo() {
+  (cd "$CLI_ROOT" && cargo "$@")
+}
+
+run_rustc() {
+  (cd "$CLI_ROOT" && rustc "$@")
+}
+
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
   against=HEAD
 else
@@ -44,21 +52,22 @@ STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
 
 # ── Rust checks ────────────────────────────────────────
 if printf '%s\n' "$STAGED" | grep -q '\.rs$'; then
-  MANIFEST=$(git rev-parse --show-toplevel)/cli/Cargo.toml
+  CLI_ROOT=$(git rev-parse --show-toplevel)/cli
+  MANIFEST="$CLI_ROOT/Cargo.toml"
 
   printf "Running cargo fmt --check...\n"
-  if ! cargo fmt --manifest-path "$MANIFEST" --check 2>&1; then
+  if ! run_cargo fmt --manifest-path "$MANIFEST" --check 2>&1; then
     printf '\n%s======================================================%s\n' "$RED" "$NC"
     printf '%sCommit aborted: Rust files are not formatted.%s\n' "$RED" "$NC"
     printf '%sRun the following to fix:%s\n' "$YELLOW" "$NC"
-    printf "  cargo fmt --manifest-path cli/Cargo.toml\n"
+    printf "  cd cli && cargo fmt\n"
     printf '%sor bypass with:%s\n' "$YELLOW" "$NC"
     printf "  git commit --no-verify\n\n"
     exit 1
   fi
 
   printf "Running cargo clippy (host)...\n"
-  if ! cargo clippy --profile ci --manifest-path "$MANIFEST" --all-targets -- -D warnings 2>&1; then
+  if ! run_cargo clippy --profile ci --manifest-path "$MANIFEST" --all-targets -- -D warnings 2>&1; then
     printf '\n%s======================================================%s\n' "$RED" "$NC"
     printf '%sCommit aborted: cargo clippy reported warnings.%s\n' "$RED" "$NC"
     printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
@@ -69,10 +78,10 @@ if printf '%s\n' "$STAGED" | grep -q '\.rs$'; then
   if full_checks_enabled; then
     # Cross-target clippy: catches Windows-only cfg arms, missing imports under
     # #[cfg(windows)], winreg type errors, etc. Skipped when toolchain absent.
-    if rustc --print target-list 2>/dev/null | grep -qx "$WIN_TARGET" \
-       && rustc --print sysroot 2>/dev/null | xargs -I{} test -d "{}/lib/rustlib/$WIN_TARGET"; then
+    if run_rustc --print target-list 2>/dev/null | grep -qx "$WIN_TARGET" \
+       && run_rustc --print sysroot 2>/dev/null | xargs -I{} test -d "{}/lib/rustlib/$WIN_TARGET"; then
       printf "Running cargo clippy (%s)...\n" "$WIN_TARGET"
-      if ! cargo clippy --profile ci --manifest-path "$MANIFEST" --target "$WIN_TARGET" --all-targets -- -D warnings 2>&1; then
+      if ! run_cargo clippy --profile ci --manifest-path "$MANIFEST" --target "$WIN_TARGET" --all-targets -- -D warnings 2>&1; then
         printf '\n%s======================================================%s\n' "$RED" "$NC"
         printf '%sCommit aborted: cargo clippy reported warnings on %s.%s\n' "$RED" "$WIN_TARGET" "$NC"
         printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
@@ -81,11 +90,11 @@ if printf '%s\n' "$STAGED" | grep -q '\.rs$'; then
       fi
     else
       printf '%sSkipping cross-target clippy (%s): toolchain not installed.%s\n' "$DIM" "$WIN_TARGET" "$NC"
-      printf '%s  Install: rustup target add %s && pacman -S mingw-w64-gcc%s\n' "$DIM" "$WIN_TARGET" "$NC"
+      printf '%s  Install: cd cli && rustup target add %s && pacman -S mingw-w64-gcc%s\n' "$DIM" "$WIN_TARGET" "$NC"
     fi
 
     printf "Running cargo test...\n"
-    if ! cargo test --profile ci --manifest-path "$MANIFEST" 2>&1; then
+    if ! run_cargo test --profile ci --manifest-path "$MANIFEST" 2>&1; then
       printf '\n%s======================================================%s\n' "$RED" "$NC"
       printf '%sCommit aborted: cargo test failed.%s\n' "$RED" "$NC"
       printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"

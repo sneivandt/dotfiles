@@ -21,6 +21,7 @@ set -o nounset
 
 REPO_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../../../.." && pwd)
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
+cd "$REPO_ROOT/cli" || exit 1
 
 # Match the profile CI builds with so local failures reproduce CI failures.
 CARGO_PROFILE=ci

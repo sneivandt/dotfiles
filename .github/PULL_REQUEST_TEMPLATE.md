@@ -29,10 +29,10 @@
 <!-- Check only commands or behaviors you verified. Explain omitted relevant checks below. -->
 
 ### Rust changes
-- [ ] `cargo fmt --check --manifest-path cli/Cargo.toml`
-- [ ] `cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings`
-- [ ] `cargo clippy --profile ci --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings`
-- [ ] `cargo test --profile ci --manifest-path cli/Cargo.toml`
+- [ ] `cd cli && cargo fmt --check`
+- [ ] `cd cli && cargo clippy --profile ci --all-targets -- -D warnings`
+- [ ] `cd cli && cargo clippy --profile ci --target x86_64-pc-windows-gnu --all-targets -- -D warnings`
+- [ ] `cd cli && cargo test --profile ci`
 
 ### Configuration, wrappers, hooks, and behavior
 - [ ] Ran config validation from source for the affected platform/profile

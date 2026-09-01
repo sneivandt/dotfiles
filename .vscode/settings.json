@@ -15,7 +15,6 @@
     // File associations
     "files.associations": {
         "dotfiles.sh": "shellscript",
-        "install.sh": "shellscript",
         "bash_profile": "shellscript",
         "bashrc": "shellscript",
         "zprofile": "shellscript",
@@ -30,6 +29,7 @@
     "editor.renderWhitespace": "boundary",
     "editor.detectIndentation": false,
     // Rust settings
+    "rust-analyzer.linkedProjects": ["cli/Cargo.toml"],
     "rust-analyzer.cargo.features": "all",
     "rust-analyzer.check.command": "clippy",
     "[rust]": {

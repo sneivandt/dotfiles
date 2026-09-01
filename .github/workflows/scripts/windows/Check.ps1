@@ -45,6 +45,7 @@ $ErrorActionPreference = 'Continue'
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 $Manifest = Join-Path $RepoRoot 'cli' 'Cargo.toml'
+Set-Location (Join-Path $RepoRoot 'cli') -ErrorAction Stop
 
 # Match the profile CI builds with so local failures reproduce CI failures.
 $CargoProfile = 'ci'

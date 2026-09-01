@@ -72,7 +72,8 @@ Confirm the repository's required Rust toolchain and native dependencies are
 installed, then run:
 
 ```bash
-cargo build --manifest-path cli/Cargo.toml
+cd cli
+cargo build
 ```
 
 If only the wrapper build fails, run Cargo directly to see the compiler or

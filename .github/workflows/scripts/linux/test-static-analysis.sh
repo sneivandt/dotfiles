@@ -46,7 +46,7 @@ test_shellcheck()
   fi
   log_stage "Running shellcheck"
 
-  scripts="$DIR/dotfiles.sh $DIR/install.sh"
+  scripts="$DIR/dotfiles.sh"
 
   # Collect .sh files from key directories
   for search_dir in "$DIR"/.github "$DIR"/hooks; do

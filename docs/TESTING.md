@@ -49,8 +49,9 @@ Linux.
 Run Cargo directly when you need one Rust check:
 
 ```bash
-cargo test --profile ci --manifest-path cli/Cargo.toml
-cargo clippy --profile ci --manifest-path cli/Cargo.toml --all-targets -- -D warnings
+cd cli
+cargo test --profile ci
+cargo clippy --profile ci --all-targets -- -D warnings
 ```
 
 ## Integration test suites
@@ -71,13 +72,15 @@ The Rust integration tests under `cli/tests/` cover distinct boundaries:
 Run one suite:
 
 ```bash
-cargo test --manifest-path cli/Cargo.toml --test config_drift
+cd cli
+cargo test --test config_drift
 ```
 
 Run one named test:
 
 ```bash
-cargo test --manifest-path cli/Cargo.toml --test install_command test_name
+cd cli
+cargo test --test install_command test_name
 ```
 
 ## CLI validation
@@ -199,7 +202,8 @@ cannot test Windows runtime behavior. For Rust changes that can break Windows
 compilation, run:
 
 ```bash
-cargo clippy --manifest-path cli/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+cd cli
+cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
 ```
 
 If the target or toolchain is unavailable, record the omitted check. Use the

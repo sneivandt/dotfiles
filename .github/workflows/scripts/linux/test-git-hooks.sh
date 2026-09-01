@@ -194,6 +194,20 @@ test_release_workflow_guards() {
     fail "Release workflow guards rejected the hardened workflow"
   fi
 
+  sed '/^[[:space:]]*workflow_run:/i\
+  workflow_dispatch:' \
+    "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
+  git -C "$repo" add .github/workflows/release.yml
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Release workflow guards accepted a manually dispatched privileged workflow"
+  else
+    pass "Release workflow guards reject manually dispatched privileged workflows"
+  fi
+
   sed '/^[[:space:]]*- name: Verify attestation discoverability[[:space:]]*$/,/^[[:space:]]*- name: Create release[[:space:]]*$/{ /^[[:space:]]*- name: Create release[[:space:]]*$/!d; }' \
     "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
   git -C "$repo" add .github/workflows/release.yml

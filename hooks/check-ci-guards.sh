@@ -174,9 +174,10 @@ run_release_workflow_guards() {
 
   require_workflow_pattern '^[[:space:]]+group:[[:space:]]+release[[:space:]]*$' "serialized release concurrency"
   require_workflow_pattern '^[[:space:]]+cancel-in-progress:[[:space:]]+false[[:space:]]*$' "non-cancelling release concurrency"
-  require_workflow_pattern '^[[:space:]]+actions:[[:space:]]+read[[:space:]]*$' "read access to CI run metadata"
-  require_workflow_pattern '^[[:space:]]+ci_run_id:[[:space:]]*$' "the manual CI run input"
-  require_workflow_pattern '\.github/workflows/ci\.yml' "canonical CI workflow validation"
+  require_workflow_pattern "github\.event\.workflow_run\.conclusion[[:space:]]*==[[:space:]]*'success'" "successful CI conclusion validation"
+  require_workflow_pattern "github\.event\.workflow_run\.event[[:space:]]*==[[:space:]]*'push'" "CI push-event validation"
+  require_workflow_pattern "github\.event\.workflow_run\.head_branch[[:space:]]*==[[:space:]]*'main'" "main-branch validation"
+  require_workflow_pattern 'github\.event\.workflow_run\.head_repository\.full_name[[:space:]]*==[[:space:]]*github\.repository' "same-repository validation"
   require_workflow_pattern 'needs\.check-ci\.outputs\.sha' "the validated CI commit handoff"
   require_workflow_pattern '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "OIDC permission for provenance signing"
   require_workflow_pattern '^[[:space:]]+attestations:[[:space:]]+write[[:space:]]*$' "attestation upload permission"
@@ -199,8 +200,14 @@ run_release_workflow_guards() {
 
   if printf '%s\n' "$workflow_contents" | grep -Fq 'github.event.workflow_run.head_sha || github.sha'; then
     abort_with_hint \
-      "manual releases can fall back to an unverified workflow commit." \
+      "releases can fall back to an unverified workflow commit." \
       "use needs.check-ci.outputs.sha for every release checkout and build"
+  fi
+
+  if printf '%s\n' "$workflow_contents" | grep -Eq '^[[:space:]]+workflow_dispatch:'; then
+    abort_with_hint \
+      "release workflow permits cache-poisonable manual dispatches." \
+      "keep privileged release execution limited to validated workflow_run events"
   fi
 }
 

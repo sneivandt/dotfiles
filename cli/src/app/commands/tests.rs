@@ -17,7 +17,7 @@ mod reexec_tests {
     }
 
     #[test]
-    fn re_exec_command_preserves_arguments_and_sets_loop_guard() {
+    fn self_update_re_exec_preserves_arguments_and_sets_both_guards() {
         let args = vec![
             "install".to_string(),
             "--profile".to_string(),
@@ -33,15 +33,21 @@ mod reexec_tests {
                 .collect::<Vec<_>>(),
             args
         );
-        let guard = command
+        let env = command
             .get_envs()
-            .find(|(key, _)| *key == REEXEC_GUARD_VAR)
-            .and_then(|(_, value)| value);
-        assert_eq!(guard, Some(std::ffi::OsStr::new("1")));
+            .map(|(key, value)| (key.to_owned(), value.map(std::ffi::OsStr::to_owned)))
+            .collect::<std::collections::HashMap<_, _>>();
+        for guard in [REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR] {
+            assert_eq!(
+                env.get(std::ffi::OsStr::new(guard)),
+                Some(&Some(std::ffi::OsString::from("1"))),
+                "self-update re-exec should set {guard}"
+            );
+        }
     }
 
     #[test]
-    fn repository_re_exec_sets_both_loop_guards() {
+    fn repository_re_exec_sets_shared_and_repository_guards() {
         let args = vec![
             "update".to_string(),
             "--only".to_string(),
@@ -61,6 +67,10 @@ mod reexec_tests {
             env.get(std::ffi::OsStr::new(REPOSITORY_REEXEC_GUARD_VAR)),
             Some(&Some(std::ffi::OsString::from("1")))
         );
+        assert!(
+            !env.contains_key(std::ffi::OsStr::new(SELF_UPDATE_REEXEC_GUARD_VAR)),
+            "repository re-exec must remain eligible for one self-update check"
+        );
     }
 
     #[test]
@@ -70,6 +80,36 @@ mod reexec_tests {
 
         assert!(!repository_reexec_active(&unset));
         assert!(repository_reexec_active(&set));
+    }
+
+    #[test]
+    fn repository_child_forces_a_fresh_self_update_check() {
+        let env = crate::infra::env::MapEnv::new()
+            .with(REEXEC_GUARD_VAR, "1")
+            .with(REPOSITORY_REEXEC_GUARD_VAR, "1");
+
+        assert_eq!(
+            self_update_check_policy(&env, false),
+            Some(crate::domains::dotfiles::self_update::CachePolicy::Refresh)
+        );
+    }
+
+    #[test]
+    fn self_update_child_does_not_check_again() {
+        let env = crate::infra::env::MapEnv::new()
+            .with(REEXEC_GUARD_VAR, "1")
+            .with(REPOSITORY_REEXEC_GUARD_VAR, "1")
+            .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1");
+
+        assert_eq!(self_update_check_policy(&env, false), None);
+    }
+
+    #[test]
+    fn initial_process_uses_the_release_cache() {
+        assert_eq!(
+            self_update_check_policy(&crate::infra::env::MapEnv::new(), false),
+            Some(crate::domains::dotfiles::self_update::CachePolicy::Use)
+        );
     }
 }
 

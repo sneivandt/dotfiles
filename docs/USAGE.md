@@ -39,6 +39,9 @@ Installed binaries check for a newer release before running a command. Set
 `DOTFILES_SKIP_SELF_UPDATE=1` for a single invocation that must use the current
 binary, such as image construction from an exact source commit. This skips the
 download rather than bypassing checksum or provenance verification.
+Release results are cached for up to one hour. On Linux the cache is valid only
+for the boot that created it, and a repository refresh always forces a new
+release check.
 Pass `--skip-attestation` to retain self-update and checksum verification while
 explicitly bypassing GitHub provenance verification for that invocation.
 

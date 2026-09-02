@@ -8,8 +8,10 @@ use crate::infra::logging::Output;
 use super::runner;
 use crate::infra::logging::OutputExt as _;
 
-/// Environment variable set before re-exec to prevent infinite self-update loops.
+/// Environment variable set before re-exec so the child does not reacquire the run lock.
 pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
+/// Environment variable set when self-update replaced the running binary.
+pub(super) const SELF_UPDATE_REEXEC_GUARD_VAR: &str = "DOTFILES_SELF_UPDATE_REEXEC_GUARD";
 /// Environment variable set when a repository refresh caused the re-exec.
 pub(super) const REPOSITORY_REEXEC_GUARD_VAR: &str = "DOTFILES_REPOSITORY_REEXEC_GUARD";
 
@@ -45,6 +47,12 @@ pub(super) fn build_reexec_command(
     exe: &std::path::Path,
     args: &[String],
 ) -> std::process::Command {
+    let mut command = build_guarded_reexec_command(exe, args);
+    command.env(SELF_UPDATE_REEXEC_GUARD_VAR, "1");
+    command
+}
+
+fn build_guarded_reexec_command(exe: &std::path::Path, args: &[String]) -> std::process::Command {
     let mut command = std::process::Command::new(exe);
     command.args(args).env(REEXEC_GUARD_VAR, "1");
     command
@@ -71,7 +79,7 @@ pub(super) fn build_repository_reexec_command(
     exe: &std::path::Path,
     args: &[String],
 ) -> std::process::Command {
-    let mut command = build_reexec_command(exe, args);
+    let mut command = build_guarded_reexec_command(exe, args);
     command.env(REPOSITORY_REEXEC_GUARD_VAR, "1");
     command
 }
@@ -80,6 +88,26 @@ pub(super) fn build_repository_reexec_command(
 #[must_use]
 pub(crate) fn repository_reexec_active(env: &dyn crate::infra::env::Env) -> bool {
     env.var_os(REPOSITORY_REEXEC_GUARD_VAR).is_some()
+}
+
+pub(super) fn self_update_check_policy(
+    env: &dyn crate::infra::env::Env,
+    elevated: bool,
+) -> Option<crate::domains::dotfiles::self_update::CachePolicy> {
+    let repository_child = repository_reexec_active(env);
+    let guarded_non_repository_child = env.var_os(REEXEC_GUARD_VAR).is_some() && !repository_child;
+    if elevated
+        || env.var_os(SELF_UPDATE_REEXEC_GUARD_VAR).is_some()
+        || guarded_non_repository_child
+    {
+        return None;
+    }
+
+    Some(if repository_child {
+        crate::domains::dotfiles::self_update::CachePolicy::Refresh
+    } else {
+        crate::domains::dotfiles::self_update::CachePolicy::Use
+    })
 }
 
 /// Run the shared self-update preflight and re-exec if the binary changed.
@@ -93,10 +121,12 @@ pub(crate) fn prepare_self_update(
     log: &std::sync::Arc<crate::infra::logging::Logger>,
 ) -> Result<Option<crate::infra::run_lock::RunLock>> {
     let run_lock = runner::CommandRunner::acquire_run_lock(global, log)?;
-    if crate::infra::elevation::is_elevated_child() || std::env::var_os(REEXEC_GUARD_VAR).is_some()
-    {
+    let env = crate::infra::env::system();
+    let Some(cache_policy) =
+        self_update_check_policy(env.as_ref(), crate::infra::elevation::is_elevated_child())
+    else {
         return Ok(run_lock);
-    }
+    };
 
     let root = runner::resolve_root(global)?;
     if crate::domains::dotfiles::self_update::pre_update(
@@ -104,6 +134,7 @@ pub(crate) fn prepare_self_update(
         &**log,
         global.dry_run,
         global.skip_attestation,
+        cache_policy,
     )? {
         re_exec(&root, &**log);
     }

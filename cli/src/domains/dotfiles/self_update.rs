@@ -79,6 +79,15 @@ fn self_update_skipped(env: &dyn Env) -> bool {
     env.var(SKIP_SELF_UPDATE_ENV).as_deref() == Some("1")
 }
 
+/// Whether the release lookup may use the persistent version cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CachePolicy {
+    /// Use a fresh cache entry when one is available.
+    Use,
+    /// Query the release service even when the cache is fresh.
+    Refresh,
+}
+
 /// Result of checking for an available update.
 enum UpdateCheck {
     /// Could not reach GitHub.
@@ -124,23 +133,29 @@ fn update_check_failure_message(error: &anyhow::Error) -> String {
 ///
 /// Only triggers an update when the latest release is strictly newer than the
 /// running version (date-based tag comparison), preventing silent downgrades.
-fn check_for_update(root: &std::path::Path, client: &dyn HttpClient) -> Result<UpdateCheck> {
+fn check_for_update(
+    root: &std::path::Path,
+    client: &dyn HttpClient,
+    cache_policy: CachePolicy,
+) -> Result<UpdateCheck> {
     let raw_version =
         option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
-    check_for_update_with_current(root, client, raw_version)
+    check_for_update_with_current(root, client, raw_version, cache_policy)
 }
 
 fn check_for_update_with_current(
     root: &std::path::Path,
     client: &dyn HttpClient,
     raw_version: &str,
+    cache_policy: CachePolicy,
 ) -> Result<UpdateCheck> {
     let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if !is_release_version(&current) {
         tracing::debug!("dev build ({current}), skipping update check");
         return Ok(UpdateCheck::DevBuild);
     }
-    if let Some(latest) = read_fresh_cache(root)
+    if matches!(cache_policy, CachePolicy::Use)
+        && let Some(latest) = read_fresh_cache(root)
         && is_release_version(&latest)
     {
         return Ok(classify_update(&current, latest));
@@ -207,6 +222,7 @@ pub fn pre_update(
     log: &dyn Output,
     dry_run: bool,
     skip_attestation: bool,
+    cache_policy: CachePolicy,
 ) -> Result<bool> {
     if self_update_skipped(&SystemEnv) {
         tracing::debug!("self-update skipped by {SKIP_SELF_UPDATE_ENV}");
@@ -217,7 +233,7 @@ pub fn pre_update(
     }
     let client = default_http_client();
     let check = with_status(log, "Checking for updates", || {
-        check_for_update(root, &client)
+        check_for_update(root, &client, cache_policy)
     })?;
     match check {
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
@@ -274,7 +290,9 @@ mod tests {
         write_cache(dir.path(), "v9999.12.31-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1").unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", CachePolicy::Use)
+                .unwrap();
 
         match result {
             UpdateCheck::UpdateAvailable { latest, .. } => {
@@ -292,7 +310,9 @@ mod tests {
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1").unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", CachePolicy::Use)
+                .unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
         assert!(
@@ -308,7 +328,9 @@ mod tests {
         // GitHub reports an older release than the running binary.
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-9").unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-9", CachePolicy::Use)
+                .unwrap();
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
@@ -334,9 +356,32 @@ mod tests {
         .unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1").unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", CachePolicy::Use)
+                .unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
+    }
+
+    #[test]
+    fn refresh_policy_ignores_a_fresh_cache_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        write_cache(dir.path(), "v2026.07.25-1").unwrap();
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
+
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            CachePolicy::Refresh,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            result,
+            UpdateCheck::UpdateAvailable { ref latest, .. } if latest == "v9999.12.31-1"
+        ));
     }
 
     #[test]

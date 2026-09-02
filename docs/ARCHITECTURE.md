@@ -174,12 +174,16 @@ Repository synchronization is a guarded process boundary:
 3. When content changed, spawn the current binary with the original arguments
    and repository re-exec guard, then wait for it while retaining the run lock.
 4. The child reloads configuration and rebuilds all tasks from the updated
-   checkout. It omits repository synchronization and continues with the selected
-   work.
+   checkout. It omits repository synchronization and performs one uncached
+   self-update check before continuing with the selected work.
 
-The guard also suppresses self-update and run-lock reacquisition in the child.
-`--only`, `--skip`, `--retry-failed`, `--no-repo-update`, dry-run, and elevation retain
-their normal selection semantics. A filtered boundary falls back to one graph.
+The shared re-exec guard suppresses run-lock reacquisition. A separate
+self-update guard prevents update loops without suppressing the repository
+child's fresh release check. If that check replaces the binary, the next child
+inherits the repository guard and does not synchronize the checkout again.
+`--only`, `--skip`, `--retry-failed`, `--no-repo-update`, dry-run, and elevation
+retain their normal selection semantics. A filtered boundary falls back to one
+graph.
 
 ## Platform abstraction
 

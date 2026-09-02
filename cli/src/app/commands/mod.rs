@@ -18,8 +18,8 @@ pub use runner::CommandRunner;
 
 #[cfg(test)]
 use reexec::{
-    REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR, build_reexec_command,
-    build_repository_reexec_command, re_exec_path,
+    REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR,
+    build_reexec_command, build_repository_reexec_command, re_exec_path, self_update_check_policy,
 };
 
 #[cfg(test)]

@@ -68,7 +68,7 @@ fn current_boot_id() -> Option<String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn current_boot_id() -> Option<String> {
+const fn current_boot_id() -> Option<String> {
     None
 }
 

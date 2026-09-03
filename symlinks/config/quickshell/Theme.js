@@ -1,5 +1,3 @@
-.pragma library
-
 var background = "#f01a1b26"
 var backgroundSolid = "#1a1b26"
 var raised = "#24283b"

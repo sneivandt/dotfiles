@@ -1,16 +1,34 @@
 var background = "#f01a1b26"
 var backgroundSolid = "#1a1b26"
-var raised = "#24283b"
-var hover = "#343a55"
-var border = "#3b4261"
+var menuBackground = "#f51f2335"
+var raised = "#252a40"
+var hover = "#30364f"
+var pressed = "#393f5c"
+var selected = "#293d60"
+var borderSubtle = "#30364f"
+var border = "#414868"
+var highlight = "#243f4663"
 var foreground = "#c0caf5"
 var muted = "#565f89"
+var mutedStrong = "#7a82aa"
 var blue = "#7aa2f7"
+var blueSoft = "#267aa2f7"
 var purple = "#bb9af7"
+var purpleSoft = "#26bb9af7"
 var green = "#9ece6a"
+var greenSoft = "#269ece6a"
 var yellow = "#e0af68"
+var yellowSoft = "#26e0af68"
 var red = "#f7768e"
+var redSoft = "#26f7768e"
 var cyan = "#7dcfff"
+var cyanSoft = "#267dcfff"
+
+var menuRadius = 14
+var itemRadius = 10
+var controlRadius = 9
+var animationFast = 90
+var animationNormal = 150
 
 var font = "Source Code Pro"
 var iconFont = "Font Awesome 7 Free Solid"

@@ -25,8 +25,8 @@ PopupWindow {
         }
     }
 
-    implicitWidth: 292
-    implicitHeight: 239
+    implicitWidth: 324
+    implicitHeight: 300
     color: "transparent"
     grabFocus: true
     onVisibleChanged: {
@@ -41,7 +41,7 @@ PopupWindow {
         gravity: Edges.Bottom | Edges.Right
         onAnchoring: {
             const content = root.anchorItem.QsWindow.contentItem;
-            const point = content.mapFromItem(root.anchorItem, root.anchorItem.width - root.width, root.anchorItem.height + 6);
+            const point = content.mapFromItem(root.anchorItem, root.anchorItem.width - root.width, root.anchorItem.height + 8);
             anchor.rect.x = point.x;
             anchor.rect.y = point.y;
         }
@@ -58,31 +58,24 @@ PopupWindow {
         onTriggered: root.confirmation = ""
     }
 
-    Rectangle {
+    MenuPanel {
         anchors.fill: parent
-        radius: 10
-        color: Theme.backgroundSolid
-        border.width: 1
-        border.color: Theme.border
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 12
-            spacing: 3
+            anchors.margins: 14
+            spacing: 6
 
-            RowLayout {
+            MenuHeader {
                 Layout.fillWidth: true
-                Layout.leftMargin: 5
-                Layout.rightMargin: 5
-                Layout.bottomMargin: 5
-
-                Text {
-                    text: "Power"
-                    color: Theme.foreground
-                    font.family: Theme.font
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                }
+                Layout.leftMargin: 2
+                Layout.rightMargin: 2
+                Layout.bottomMargin: 4
+                icon: "\uf011"
+                title: "Power"
+                subtitle: "Session and system controls"
+                accentColor: Theme.purple
+                accentBackground: Theme.purpleSoft
             }
 
             MenuButton {
@@ -90,6 +83,7 @@ PopupWindow {
                 icon: "\uf023"
                 label: "Lock"
                 detail: "Keep the session running"
+                showChevron: false
                 onTriggered: root.run([Quickshell.env("HOME") + "/.config/hypr/scripts/lock-screen.sh"])
             }
 
@@ -97,8 +91,10 @@ PopupWindow {
                 Layout.fillWidth: true
                 icon: "\uf2f5"
                 label: root.confirmation === "logout" ? "Click again to log out" : "Log out"
-                detail: "End this Hyprland session"
+                detail: root.confirmation === "logout" ? "Confirm within 3 seconds" : "End this Hyprland session"
                 danger: root.confirmation === "logout"
+                selected: root.confirmation === "logout"
+                showChevron: false
                 onTriggered: root.request("logout", ["hyprctl", "dispatch", "hl.dsp.exit()"])
             }
 
@@ -106,8 +102,10 @@ PopupWindow {
                 Layout.fillWidth: true
                 icon: "\uf2f1"
                 label: root.confirmation === "reboot" ? "Click again to restart" : "Restart"
-                detail: "Reboot the computer"
+                detail: root.confirmation === "reboot" ? "Confirm within 3 seconds" : "Reboot the computer"
                 danger: root.confirmation === "reboot"
+                selected: root.confirmation === "reboot"
+                showChevron: false
                 onTriggered: root.request("reboot", ["systemctl", "reboot"])
             }
 
@@ -115,8 +113,10 @@ PopupWindow {
                 Layout.fillWidth: true
                 icon: "\uf011"
                 label: root.confirmation === "shutdown" ? "Click again to shut down" : "Shut down"
-                detail: "Power off the computer"
+                detail: root.confirmation === "shutdown" ? "Confirm within 3 seconds" : "Power off the computer"
                 danger: true
+                selected: root.confirmation === "shutdown"
+                showChevron: false
                 onTriggered: root.request("shutdown", ["systemctl", "poweroff"])
             }
         }

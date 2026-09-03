@@ -28,6 +28,10 @@ PanelWindow {
     property var stockQuotes: []
     property int stocksUpdated: 0
     property string networkIcon: "\uf127"
+    property bool networkConnected: false
+    property string networkName: ""
+    property string networkType: ""
+    property string networkDevice: ""
 
     function closeMenus(except) {
         if (except !== "volume")
@@ -41,6 +45,9 @@ PanelWindow {
 
         if (except !== "stocks")
             stocksMenu.visible = false;
+
+        if (except !== "network")
+            networkMenu.visible = false;
 
     }
 
@@ -237,10 +244,17 @@ PanelWindow {
             }
 
             BarBlock {
+                id: networkButton
+
                 text: bar.networkIcon
                 fontFamily: Theme.iconFont
                 textColor: bar.networkIcon === "\uf127" ? Theme.muted : Theme.foreground
-                onActivated: networkEditor.startDetached()
+                onActivated: (button) => {
+                    if (button === Qt.RightButton)
+                        networkEditor.startDetached();
+                    else
+                        bar.toggleMenu("network", networkMenu);
+                }
             }
 
             BarBlock {
@@ -332,6 +346,20 @@ PanelWindow {
         updated: bar.stocksUpdated
     }
 
+    NetworkMenu {
+        id: networkMenu
+
+        anchorItem: networkButton
+        visible: false
+        connected: bar.networkConnected
+        connectionName: bar.networkName
+        connectionType: bar.networkType
+        deviceName: bar.networkDevice
+        statusIcon: bar.networkIcon
+        onOpenEditorRequested: networkEditor.startDetached()
+        onRefreshRequested: network.running = true
+    }
+
     PowerMenu {
         id: powerMenu
 
@@ -381,24 +409,36 @@ PanelWindow {
     Process {
         id: network
 
-        command: ["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device"]
+        command: ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device"]
         running: true
         onExited: {
             const lines = networkOutput.text.trim().split("\n");
             let connected = null;
+            let priority = 0;
             for (let i = 0; i < lines.length; ++i) {
                 const fields = lines[i].split(":");
-                if (fields.length >= 3 && fields[1] === "connected") {
-                    connected = fields;
-                    if (fields[0] === "wifi")
-                        break;
+                if (fields.length < 4 || fields[2] !== "connected")
+                    continue;
 
+                const candidatePriority = fields[1] === "wifi" ? 3 : (fields[1] === "ethernet" ? 2 : 1);
+                if (candidatePriority > priority) {
+                    connected = fields;
+                    priority = candidatePriority;
                 }
             }
-            if (!connected)
+            if (!connected) {
                 bar.networkIcon = "\uf127";
-            else
-                bar.networkIcon = connected[0] === "wifi" ? "\uf1eb" : "\uf796";
+                bar.networkConnected = false;
+                bar.networkName = "";
+                bar.networkType = "";
+                bar.networkDevice = "";
+            } else {
+                bar.networkConnected = true;
+                bar.networkDevice = connected[0];
+                bar.networkType = connected[1];
+                bar.networkName = connected.slice(3).join(":");
+                bar.networkIcon = connected[1] === "wifi" ? "\uf1eb" : "\uf796";
+            }
         }
 
         stdout: StdioCollector {

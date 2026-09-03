@@ -1,0 +1,18 @@
+.pragma library
+
+var background = "#f01a1b26"
+var backgroundSolid = "#1a1b26"
+var raised = "#24283b"
+var hover = "#343a55"
+var border = "#3b4261"
+var foreground = "#c0caf5"
+var muted = "#565f89"
+var blue = "#7aa2f7"
+var purple = "#bb9af7"
+var green = "#9ece6a"
+var yellow = "#e0af68"
+var red = "#f7768e"
+var cyan = "#7dcfff"
+
+var font = "Source Code Pro"
+var iconFont = "Font Awesome 7 Free Solid"

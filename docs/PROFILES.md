@@ -38,7 +38,7 @@ Section names are split on hyphens and every tag must be active:
 
 ```toml
 [arch-desktop]
-packages = ["waybar"]
+packages = ["quickshell"]
 ```
 
 This section applies only when both `arch` and `desktop` are active. Tag order

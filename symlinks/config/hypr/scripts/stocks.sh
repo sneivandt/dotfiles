@@ -2,43 +2,33 @@
 set -o errexit
 set -o nounset
 
-# Stock/crypto ticker for waybar.
+# Stock/crypto ticker for the desktop bar.
 # Fetches quotes from Yahoo Finance and caches them to limit API calls.
-# Outputs Waybar JSON with Pango markup (price plus red/green % change).
+# Outputs structured JSON for Quickshell.
 
 quotes='
-MSFT|&#xf3ca;|$
-BTC-USD|&#xf15a;|$
+MSFT|MSFT|Microsoft|$
+TSLA|TSLA|Tesla|$
+GOOG|GOOG|Alphabet|$
+SPCX|SPCX|Procure Space ETF|$
+BTC-USD|BTC|Bitcoin|$
 '
-cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/waybar-stocks"
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/quickshell-stocks"
 cache_file="$cache_dir/quotes.json"
 lock_dir="$cache_dir/quotes-prices.lock"
 reap_dir="$lock_dir.reap"
-collapsed_file="$cache_dir/collapsed"
 cache_ttl=300
 tmp_file=""
 lock_owned=0
 
 empty_output() {
-  printf '{"text":"","tooltip":""}'
-}
-
-render() {
-  parts="$1"
-  if [ -z "$parts" ]; then
-    empty_output
-  elif [ -f "$collapsed_file" ]; then
-    jq -nc --arg tooltip "$parts" \
-      '{text:"&#xf201;", tooltip:$tooltip, class:"collapsed"}'
-  else
-    jq -nc --arg text "$parts" \
-      '{text:$text, tooltip:"", class:"expanded"}'
-  fi
+  printf '{"quotes":[],"updated":0}'
 }
 
 cached_or_empty() {
   if [ -s "$cache_file" ]; then
-    render "$(jq -r '.quotes // empty' "$cache_file" 2>/dev/null || true)"
+    jq -c '{quotes:(.quotes // []),updated:(.updated // 0)}' \
+      "$cache_file" 2>/dev/null || empty_output
   else
     empty_output
   fi
@@ -124,17 +114,6 @@ acquire_lock() {
 
 mkdir -p "$cache_dir"
 
-if [ "${1:-}" = "--toggle" ]; then
-  if [ -f "$collapsed_file" ]; then
-    rm -f "$collapsed_file"
-  else
-    : > "$collapsed_file"
-  fi
-  systemctl --user kill --signal=SIGRTMIN+2 --kill-whom=main \
-    waybar.service >/dev/null 2>&1 || true
-  exit 0
-fi
-
 for cmd in curl jq awk stat mktemp; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     cached_or_empty
@@ -159,14 +138,14 @@ if ! acquire_lock; then
 fi
 trap cleanup EXIT HUP INT TERM
 
-parts=""
-while IFS='|' read -r sym label price_prefix; do
-  if [ -z "$sym" ]; then
+quotes_json='[]'
+while IFS='|' read -r query symbol name price_prefix; do
+  if [ -z "$query" ]; then
     continue
   fi
 
   json=$(curl -fsS --max-time 4 -H "User-Agent: Mozilla/5.0" \
-    "https://query1.finance.yahoo.com/v8/finance/chart/$sym?interval=1d&range=1d" 2>/dev/null || true)
+    "https://query1.finance.yahoo.com/v8/finance/chart/$query?interval=1d&range=1d" 2>/dev/null || true)
   if [ -z "$json" ]; then
     continue
   fi
@@ -176,31 +155,39 @@ while IFS='|' read -r sym label price_prefix; do
     continue
   fi
 
-  formatted=$(awk -v p="$price" -v c="$prev" -v l="$label" -v prefix="$price_prefix" '
+  change=$(awk -v p="$price" -v c="$prev" '
     BEGIN {
       pct = (p - c) / c * 100;
-      color = (pct >= 0) ? "#9ece6a" : "#f7768e";
-      sign  = (pct >= 0) ? "+" : "";
-      printf "%s %s%.2f <span color=\"%s\">%s%.2f%%</span>", l, prefix, p, color, sign, pct;
+      printf "%.4f", pct;
     }')
 
-  if [ -z "$parts" ]; then
-    parts="$formatted"
-  else
-    parts="$parts  $formatted"
-  fi
+  quotes_json=$(jq -cn \
+    --argjson current "$quotes_json" \
+    --arg symbol "$symbol" \
+    --arg name "$name" \
+    --arg prefix "$price_prefix" \
+    --argjson price "$price" \
+    --argjson change "$change" \
+    '$current + [{
+      symbol:$symbol,
+      name:$name,
+      prefix:$prefix,
+      price:$price,
+      change:$change
+    }]')
 done <<EOF
 $quotes
 EOF
 
-if [ -z "$parts" ]; then
+if [ "$quotes_json" = '[]' ]; then
   cached_or_empty
   exit 0
 fi
 
-out=$(jq -nc --arg quotes "$parts" '{quotes:$quotes}')
+out=$(jq -nc --argjson quotes "$quotes_json" --argjson updated "$now" \
+  '{quotes:$quotes,updated:$updated}')
 tmp_file=$(mktemp "$cache_dir/.quotes-prices.XXXXXX")
 printf '%s' "$out" > "$tmp_file"
 mv -f "$tmp_file" "$cache_file"
 tmp_file=""
-render "$parts"
+printf '%s' "$out"

@@ -1,2 +1,2 @@
--- Long-running session daemons and Waybar helpers are managed as systemd
+-- Long-running session daemons and the desktop shell are managed as systemd
 -- user services under ~/.config/systemd/user/.

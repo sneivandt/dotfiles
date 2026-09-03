@@ -77,7 +77,7 @@ packages = [
   "qt6-wayland",
   "slurp",
   "uwsm",
-  "waybar",
+  "quickshell",
   "wl-clipboard",
   "xorg-xwayland",
   { name = "chatgpt-desktop", aur = true },

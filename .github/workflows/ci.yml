@@ -129,17 +129,10 @@ jobs:
         run: chmod +x bin/dotfiles
       - name: Run typed configuration validation
         run: ./bin/dotfiles check --root . -p desktop --only config-warnings,symlink-sources,config-files
-      - name: Test fullscreen Waybar configuration
+      - name: Test stock ticker
         env:
           DIR: ${{ github.workspace }}
-        run: python3 .github/workflows/scripts/linux/test-fullscreen-waybar.py
-      - name: Test workspace and status scripts
-        env:
-          DIR: ${{ github.workspace }}
-        run: |
-          python3 .github/workflows/scripts/linux/test-workspaces.py
-          sh .github/workflows/scripts/linux/test-playing.sh
-          sh .github/workflows/scripts/linux/test-stocks.sh
+        run: sh .github/workflows/scripts/linux/test-stocks.sh
 
   # ── Security ──────────────────────────────────────────
   audit:

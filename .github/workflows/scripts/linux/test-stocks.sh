@@ -9,9 +9,9 @@ trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 
 mkdir -p \
   "$TEST_ROOT/bin" \
-  "$TEST_ROOT/home/.cache/waybar-stocks/quotes-prices.lock"
+  "$TEST_ROOT/home/.cache/quickshell-stocks/quotes-prices.lock"
 printf '%s\n' 99999999 > \
-  "$TEST_ROOT/home/.cache/waybar-stocks/quotes-prices.lock/pid"
+  "$TEST_ROOT/home/.cache/quickshell-stocks/quotes-prices.lock/pid"
 
 cat > "$TEST_ROOT/bin/curl" <<EOF
 #!/bin/sh
@@ -59,7 +59,7 @@ for pid in $pids; do
 done
 
 calls=$(wc -c < "$TEST_ROOT/curl-calls")
-if [ "$calls" -ne 2 ]; then
+if [ "$calls" -ne 5 ]; then
   printf 'ERROR: expected one stock refresh, observed %s curl calls\n' "$calls" >&2
   exit 1
 fi

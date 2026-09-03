@@ -239,7 +239,7 @@ units = ["clean-home-tmp.timer"]
 units = [
   { name = "NetworkManager.service", scope = "system" },
   { name = "dhcpcd.service", scope = "system", enabled = false },
-  "waybar.service",
+  "quickshell.service",
 ]
 ```
 

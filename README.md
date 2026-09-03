@@ -73,7 +73,7 @@ The wrappers download and verify a compatible release binary when needed. Pass
 | Terminal | Alacritty and Windows Terminal settings |
 | Git | Global settings and hooks |
 | Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
-| Linux desktop | Hyprland, Waybar, mako, fuzzel, and GTK configuration |
+| Linux desktop | Hyprland, Quickshell, mako, fuzzel, and GTK configuration |
 | Services | systemd user and system units |
 | AI tooling | APM packages and plugins, plus Copilot and Codex settings |
 | Windows | Current-user registry values, Developer Mode, and WSL configuration |

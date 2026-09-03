@@ -63,3 +63,49 @@ if [ "$calls" -ne 5 ]; then
   printf 'ERROR: expected one stock refresh, observed %s curl calls\n' "$calls" >&2
   exit 1
 fi
+
+rm -rf "$TEST_ROOT/home/.cache/quickshell-stocks"
+mkdir -p "$TEST_ROOT/data-bin"
+
+cat > "$TEST_ROOT/data-bin/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' '{
+  "chart": {
+    "result": [{
+      "meta": {
+        "regularMarketPrice": 110,
+        "regularMarketChangePercent": 5.5,
+        "chartPreviousClose": 80,
+        "fiftyTwoWeekLow": 70,
+        "fiftyTwoWeekHigh": 120,
+        "shortName": "Test Instrument "
+      },
+      "timestamp": [1000, 2000, 3000, 4000],
+      "indicators": {
+        "quote": [{"close": [80, null, 100, 110]}]
+      }
+    }]
+  }
+}'
+EOF
+chmod +x "$TEST_ROOT/data-bin/curl"
+
+output=$(PATH="$TEST_ROOT/data-bin:/usr/bin:/bin" \
+  HOME="$TEST_ROOT/home" \
+  XDG_CACHE_HOME="$TEST_ROOT/home/.cache" \
+  sh "$SCRIPT")
+
+printf '%s' "$output" | jq -e '
+  .version == 3 and
+  .updated > 0 and
+  (.quotes | length == 5) and
+  (.quotes[] |
+    .price == 110 and
+    .name == "Test Instrument" and
+    .change == 5.5 and
+    .history == [80, 100, 110] and
+    .historyStart == 1000 and
+    .yearChange == 37.5 and
+    .yearLow == 70 and
+    .yearHigh == 120)
+' >/dev/null

@@ -10,20 +10,22 @@ PopupWindow {
     property int monthOffset: 0
     property date shownMonth: new Date(clock.date.getFullYear(), clock.date.getMonth() + monthOffset, 1)
     readonly property int firstWeekday: (shownMonth.getDay() + 6) % 7
-    readonly property int daysInMonth: new Date(shownMonth.getFullYear(), shownMonth.getMonth() + 1, 0).getDate()
 
-    function isToday(day) {
-        return day === clock.date.getDate() && shownMonth.getMonth() === clock.date.getMonth() && shownMonth.getFullYear() === clock.date.getFullYear();
+    function dateForCell(index) {
+        return new Date(shownMonth.getFullYear(), shownMonth.getMonth(), index - firstWeekday + 1);
     }
 
-    implicitWidth: 346
-    implicitHeight: 384
+    function isToday(date) {
+        return date.getDate() === clock.date.getDate() && date.getMonth() === clock.date.getMonth() && date.getFullYear() === clock.date.getFullYear();
+    }
+
+    implicitWidth: 376
+    implicitHeight: 430
     color: "transparent"
     grabFocus: true
     onVisibleChanged: {
         if (!visible)
             monthOffset = 0;
-
     }
 
     anchor {
@@ -50,111 +52,274 @@ PopupWindow {
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: 14
-            spacing: 10
+            spacing: 8
 
-            MenuHeader {
+            Item {
                 Layout.fillWidth: true
-                Layout.leftMargin: 2
-                Layout.rightMargin: 2
-                icon: "\uf133"
-                title: Qt.formatDate(root.shownMonth, "MMMM yyyy")
-                subtitle: root.monthOffset === 0 ? Qt.formatDate(clock.date, "dddd, MMMM d") : "Browsing calendar"
-                accentColor: Theme.cyan
-                accentBackground: Theme.cyanSoft
-                trailingItem: Row {
-                    spacing: 4
+                Layout.preferredHeight: 54
 
-                    MenuIconButton {
-                        icon: "\uf104"
-                        accentColor: Theme.cyan
-                        accentBackground: Theme.cyanSoft
-                        onTriggered: root.monthOffset--
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 2
+                    anchors.rightMargin: 2
+                    spacing: 10
+
+                    Rectangle {
+                        implicitWidth: 34
+                        implicitHeight: 34
+                        radius: Theme.controlRadius
+                        color: Theme.cyanSoft
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "\uf017"
+                            color: Theme.cyan
+                            font.family: Theme.iconFont
+                            font.pixelSize: 14
+                        }
                     }
 
-                    MenuIconButton {
-                        icon: "\uf105"
-                        accentColor: Theme.cyan
-                        accentBackground: Theme.cyanSoft
-                        onTriggered: root.monthOffset++
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+
+                        Text {
+                            text: Qt.formatTime(clock.date, "HH:mm")
+                            color: Theme.foreground
+                            font.family: Theme.font
+                            font.pixelSize: 25
+                            font.weight: Font.DemiBold
+                        }
+
+                        Text {
+                            text: Qt.formatDate(clock.date, "dddd, MMMM d")
+                            color: Theme.mutedStrong
+                            font.family: Theme.font
+                            font.pixelSize: 10
+                        }
+                    }
+
+                    ColumnLayout {
+                        spacing: 1
+
+                        Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: "LOCAL"
+                            color: Theme.cyan
+                            font.family: Theme.font
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                        }
+
+                        Text {
+                            Layout.alignment: Qt.AlignRight
+                            text: Qt.formatDateTime(clock.date, "t")
+                            color: Theme.mutedStrong
+                            font.family: Theme.font
+                            font.pixelSize: 9
+                        }
                     }
                 }
             }
 
-            GridLayout {
-                columns: 7
-                columnSpacing: 3
-                rowSpacing: 3
+            Rectangle {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 294
+                radius: Theme.itemRadius
+                color: Theme.raised
+                border.width: 1
+                border.color: Theme.borderSubtle
 
-                Repeater {
-                    model: ["M", "T", "W", "T", "F", "S", "S"]
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    spacing: 6
 
-                    Text {
-                        required property string modelData
-                        required property int index
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 2
+                        Layout.rightMargin: 2
+                        Layout.preferredHeight: 34
 
-                        text: modelData
-                        color: index >= 5 ? Theme.mutedStrong : Theme.cyan
-                        font.family: Theme.font
-                        font.pixelSize: 9
-                        font.weight: Font.DemiBold
-                        horizontalAlignment: Text.AlignHCenter
-                        Layout.preferredWidth: 42
-                        Layout.preferredHeight: 22
-                    }
-                }
-
-                Repeater {
-                    model: 42
-
-                    Rectangle {
-                        required property int index
-                        readonly property int day: index - root.firstWeekday + 1
-                        readonly property bool valid: day >= 1 && day <= root.daysInMonth
-                        readonly property bool today: valid && root.isToday(day)
-
-                        Layout.preferredWidth: 42
-                        Layout.preferredHeight: 36
-                        radius: Theme.controlRadius
-                        color: today ? Theme.blue : (dayMouse.pressed && valid ? Theme.pressed : (dayMouse.containsMouse && valid ? Theme.hover : "transparent"))
-                        border.width: valid && (today || dayMouse.containsMouse) ? 1 : 0
-                        border.color: today ? Theme.blue : Theme.borderSubtle
+                        MenuIconButton {
+                            icon: "\uf104"
+                            accentColor: Theme.cyan
+                            accentBackground: Theme.cyanSoft
+                            onTriggered: root.monthOffset--
+                        }
 
                         Text {
-                            anchors.centerIn: parent
-                            text: parent.valid ? parent.day : ""
-                            color: parent.today ? Theme.backgroundSolid : Theme.foreground
+                            Layout.fillWidth: true
+                            text: Qt.formatDate(root.shownMonth, "MMMM yyyy")
+                            color: Theme.foreground
                             font.family: Theme.font
-                            font.pixelSize: 12
-                            font.weight: parent.today ? Font.DemiBold : Font.Normal
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
                         }
 
-                        MouseArea {
-                            id: dayMouse
+                        MenuIconButton {
+                            icon: "\uf105"
+                            accentColor: Theme.cyan
+                            accentBackground: Theme.cyanSoft
+                            onTriggered: root.monthOffset++
+                        }
+                    }
 
-                            anchors.fill: parent
-                            enabled: parent.valid
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
+                    GridLayout {
+                        columns: 7
+                        columnSpacing: 3
+                        rowSpacing: 3
+                        Layout.fillWidth: true
+
+                        Repeater {
+                            model: ["M", "T", "W", "T", "F", "S", "S"]
+
+                            Text {
+                                required property string modelData
+                                required property int index
+
+                                text: modelData
+                                color: index >= 5 ? Theme.muted : Theme.mutedStrong
+                                font.family: Theme.font
+                                font.pixelSize: 9
+                                font.weight: Font.DemiBold
+                                horizontalAlignment: Text.AlignHCenter
+                                Layout.preferredWidth: 45
+                                Layout.preferredHeight: 20
+                            }
                         }
 
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: Theme.animationFast
+                        Repeater {
+                            model: 42
+
+                            Rectangle {
+                                required property int index
+                                readonly property date cellDate: root.dateForCell(index)
+                                readonly property bool inMonth: cellDate.getMonth() === root.shownMonth.getMonth()
+                                readonly property bool today: root.isToday(cellDate)
+                                readonly property bool adjacentMonth: !inMonth
+
+                                Layout.preferredWidth: 45
+                                Layout.preferredHeight: 34
+                                radius: Theme.controlRadius
+                                color: today ? Theme.blue : (dayMouse.pressed ? Theme.pressed : (dayMouse.containsMouse ? Theme.hover : "transparent"))
+                                border.width: today || dayMouse.containsMouse ? 1 : 0
+                                border.color: today ? Theme.blue : Theme.borderSubtle
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: parent.cellDate.getDate()
+                                    color: parent.today ? Theme.backgroundSolid : (parent.adjacentMonth ? Theme.muted : Theme.foreground)
+                                    font.family: Theme.font
+                                    font.pixelSize: 12
+                                    font.weight: parent.today ? Font.DemiBold : Font.Normal
+                                }
+
+                                MouseArea {
+                                    id: dayMouse
+
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: parent.adjacentMonth ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                    onClicked: {
+                                        if (parent.cellDate < root.shownMonth)
+                                            root.monthOffset--;
+                                        else if (!parent.inMonth)
+                                            root.monthOffset++;
+                                    }
+                                    onWheel: (event) => {
+                                        if (event.angleDelta.y > 0)
+                                            root.monthOffset--;
+                                        else if (event.angleDelta.y < 0)
+                                            root.monthOffset++;
+                                    }
+                                }
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: Theme.animationFast
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            MenuButton {
+            Rectangle {
+                id: todayFooter
+
                 Layout.fillWidth: true
-                Layout.preferredHeight: 44
-                icon: "\uf073"
-                label: root.monthOffset === 0 ? "Today" : "Back to today"
-                trailing: Qt.formatDate(clock.date, "MMM d")
-                showChevron: false
-                onTriggered: root.monthOffset = 0
+                Layout.preferredHeight: 38
+                radius: Theme.controlRadius
+                color: footerMouse.pressed ? Theme.pressed : (footerMouse.containsMouse ? Theme.hover : "transparent")
+                border.width: 1
+                border.color: footerMouse.containsMouse ? Theme.cyanSoft : Theme.borderSubtle
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 8
+                    spacing: 8
+
+                    Text {
+                        text: "\uf133"
+                        color: Theme.cyan
+                        font.family: Theme.iconFont
+                        font.pixelSize: 12
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.monthOffset === 0 ? "Today" : "Back to today"
+                        color: Theme.foreground
+                        font.family: Theme.font
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
+
+                    Rectangle {
+                        implicitWidth: footerDate.implicitWidth + 14
+                        implicitHeight: 24
+                        radius: 7
+                        color: Theme.cyanSoft
+
+                        Text {
+                            id: footerDate
+
+                            anchors.centerIn: parent
+                            text: Qt.formatDate(clock.date, "MMM d")
+                            color: Theme.cyan
+                            font.family: Theme.font
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                        }
+                    }
+
+                }
+
+                MouseArea {
+                    id: footerMouse
+
+                    anchors.fill: parent
+                    enabled: root.monthOffset !== 0
+                    hoverEnabled: true
+                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: root.monthOffset = 0
+                }
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: Theme.animationFast
+                    }
+                }
+
+                Behavior on border.color {
+                    ColorAnimation {
+                        duration: Theme.animationFast
+                    }
+                }
             }
         }
     }

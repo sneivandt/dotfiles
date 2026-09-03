@@ -9,15 +9,36 @@ PopupWindow {
     required property Item anchorItem
     property var quotes: []
     property int updated: 0
+    property string expandedSymbol: ""
+    property bool windowExpanded: false
+    readonly property int collapsedHeight: 28 + headerContainer.height + (quotes.length === 0 ? 68 : quotes.length * 68)
 
-    function price(value) {
-        return Number(value).toLocaleString(Qt.locale("en_US"), "f", 2);
-    }
-
-    implicitWidth: 390
-    implicitHeight: 70 + Math.max(1, quotes.length) * 59
+    implicitWidth: 420
+    implicitHeight: collapsedHeight + (windowExpanded ? 134 : 0)
     color: "transparent"
     grabFocus: true
+    onExpandedSymbolChanged: {
+        if (expandedSymbol.length > 0) {
+            collapseTimer.stop();
+            windowExpanded = true;
+        } else if (visible) {
+            collapseTimer.restart();
+        }
+    }
+    onVisibleChanged: {
+        if (!visible) {
+            collapseTimer.stop();
+            expandedSymbol = "";
+            windowExpanded = false;
+        }
+    }
+
+    Timer {
+        id: collapseTimer
+
+        interval: 180
+        onTriggered: root.windowExpanded = false
+    }
 
     anchor {
         window: root.anchorItem.QsWindow.window
@@ -33,28 +54,44 @@ PopupWindow {
 
     MenuPanel {
         anchors.fill: parent
+        clip: true
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 5
+        Column {
+            id: contentColumn
 
-            MenuHeader {
-                Layout.fillWidth: true
-                Layout.leftMargin: 2
-                Layout.rightMargin: 2
-                Layout.bottomMargin: 5
-                icon: "\uf201"
-                title: "Markets"
-                subtitle: root.updated > 0 ? "Updated " + Qt.formatTime(new Date(root.updated * 1000), "HH:mm") : "Loading quotes"
-                accentColor: Theme.green
-                accentBackground: Theme.greenSoft
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.leftMargin: 14
+            anchors.rightMargin: 14
+            anchors.topMargin: 14
+            spacing: 6
+
+            Item {
+                id: headerContainer
+
+                width: parent.width
+                height: marketHeader.implicitHeight + 4
+
+                MenuHeader {
+                    id: marketHeader
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: 2
+                    anchors.rightMargin: 2
+                    icon: "\uf201"
+                    title: "Markets"
+                    subtitle: root.updated > 0 ? "Updated " + Qt.formatTime(new Date(root.updated * 1000), "HH:mm") : "Loading quotes"
+                    accentColor: Theme.green
+                    accentBackground: Theme.greenSoft
+                }
             }
 
             Text {
                 visible: root.quotes.length === 0
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                width: parent.width
+                height: visible ? 62 : 0
                 text: "No quote data available"
                 color: Theme.mutedStrong
                 font.family: Theme.font
@@ -66,19 +103,13 @@ PopupWindow {
             Repeater {
                 model: root.quotes
 
-                MenuButton {
+                StockCard {
                     required property var modelData
 
-                    Layout.fillWidth: true
-                    icon: modelData.change >= 0 ? "\uf062" : "\uf063"
-                    label: modelData.symbol
-                    detail: modelData.name
-                    trailing: modelData.prefix + root.price(modelData.price)
-                    trailingDetail: (modelData.change >= 0 ? "+" : "") + Number(modelData.change).toFixed(2) + "%"
-                    trailingDetailColor: modelData.change >= 0 ? Theme.green : Theme.red
-                    danger: modelData.change < 0
-                    clickable: false
-                    showChevron: false
+                    width: contentColumn.width
+                    quote: modelData
+                    expanded: root.expandedSymbol === modelData.symbol
+                    onTriggered: root.expandedSymbol = expanded ? "" : modelData.symbol
                 }
             }
         }

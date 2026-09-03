@@ -71,23 +71,7 @@ if command -v xclip >/dev/null 2>&1; then
   alias pbpaste="xclip -selection clipboard -out"
 fi
 
-# AI / GitHub Copilot CLI aliases
-if command -v copilot >/dev/null 2>&1; then
-  # Chat mode: interactive if no args, prompt mode if args provided
-  ai() {
-    if [ $# -eq 0 ]; then
-      copilot --yolo
-    else
-      copilot --yolo -p "$*"
-    fi
-  }
-
-  # Suggest mode: start interactively with a command-focused prompt
-  aic() {
-    if [ $# -eq 0 ]; then
-      copilot -i "Suggest a shell command"
-    else
-      copilot -i "Suggest a shell command for: $*"
-    fi
-  }
+# AI CLI aliases
+if command -v codex >/dev/null 2>&1; then
+  alias ai="codex --approve-for-me"
 fi

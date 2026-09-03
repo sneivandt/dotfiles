@@ -109,35 +109,15 @@ function Prompt
     return "$promptLine`n$promptSuffix"
 }
 
-# AI / GitHub Copilot CLI aliases
-if (Get-Command "copilot" -ErrorAction SilentlyContinue)
+# AI CLI aliases
+if (Get-Command "codex" -ErrorAction SilentlyContinue)
 {
-    function Invoke-CopilotChat
+    function Invoke-CodexChat
     {
-        if ($args.Count -eq 0)
-        {
-            copilot --yolo
-        }
-        else
-        {
-            copilot --yolo -p ($args -join ' ')
-        }
+        codex --approve-for-me @args
     }
 
-    function Invoke-CopilotSuggest
-    {
-        if ($args.Count -eq 0)
-        {
-            copilot -i "Suggest a shell command"
-        }
-        else
-        {
-            copilot -i "Suggest a shell command for: $($args -join ' ')"
-        }
-    }
-
-    Set-Alias -Name ai -Value Invoke-CopilotChat
-    Set-Alias -Name aic -Value Invoke-CopilotSuggest
+    Set-Alias -Name ai -Value Invoke-CodexChat
 }
 
 function Add-PathEntry

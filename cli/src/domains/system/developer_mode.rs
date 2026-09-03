@@ -3,10 +3,7 @@
 use anyhow::Result;
 
 use crate::domains::system::resources::developer_mode::DeveloperModeResource;
-use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
-    task_metadata,
-};
+use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
 
 /// Enable Windows Developer Mode (allows symlink creation without admin).
 #[derive(Debug)]
@@ -15,7 +12,7 @@ pub struct EnableDeveloperMode;
 const NAME: &str = "Windows Developer Mode";
 
 impl EnableDeveloperMode {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         run_resource_task(
             ctx,
             announce,
@@ -43,16 +40,16 @@ impl Task for EnableDeveloperMode {
     /// machine ever plans elevation.
     fn needs_elevation(&self, ctx: &Context) -> bool {
         ctx.platform().is_windows()
-            && !ctx.system().is_elevated()
+            && !ctx.is_elevated()
             && !crate::infra::platform::developer_mode_enabled()
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(Self::process(ctx, Some(NAME))?))
+        Self::process(ctx, Some(NAME))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(Self::process(ctx, None)?))
+        Self::process(ctx, None)
     }
 }
 

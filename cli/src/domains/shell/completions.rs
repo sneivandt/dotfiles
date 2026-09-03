@@ -41,13 +41,10 @@ impl Operation for CompletionOperation<'_> {
             return Ok(OperationState::Complete);
         }
 
-        Ok(OperationState::needs_run(
-            format!("write {}", dest.display()),
-            CompletionPlan {
-                destination: dest,
-                content,
-            },
-        ))
+        Ok(OperationState::needs_run(CompletionPlan {
+            destination: dest,
+            content,
+        }))
     }
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
@@ -96,15 +93,14 @@ impl Task for GenerateCompletions {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.system().platform().is_linux() || ctx.system().platform().is_windows()
+        ctx.platform().is_linux() || ctx.platform().is_windows()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let operation = if ctx.system().platform().is_windows() {
+        let operation = if ctx.platform().is_windows() {
             CompletionOperation {
                 content: &self.powershell_content,
                 destination: ctx
-                    .paths()
                     .home()
                     .join(".config")
                     .join("powershell")
@@ -116,7 +112,6 @@ impl Task for GenerateCompletions {
             CompletionOperation {
                 content: &self.zsh_content,
                 destination: ctx
-                    .paths()
                     .symlinks_dir()
                     .join(ZSH_COMPLETIONS_SUBDIR)
                     .join(ZSH_COMPLETION_FILENAME),

@@ -3,10 +3,7 @@
 use anyhow::Result;
 
 use crate::domains::shell::resources::shell::DefaultShellResource;
-use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
-    task_metadata,
-};
+use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
 
 /// Configure the default shell to zsh.
 #[derive(Debug)]
@@ -15,7 +12,7 @@ pub struct ConfigureShell;
 const NAME: &str = "Default shell";
 
 impl ConfigureShell {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         run_resource_task(
             ctx,
             announce,
@@ -23,7 +20,7 @@ impl ConfigureShell {
             |(), ctx| {
                 DefaultShellResource::new(
                     "zsh".to_string(),
-                    ctx.system().executor_arc(),
+                    ctx.executor_arc(),
                     std::sync::Arc::clone(ctx.env()),
                 )
             },
@@ -39,19 +36,18 @@ impl Task for ConfigureShell {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        let system = ctx.system();
-        system.platform().is_linux() && !system.is_ci()
+        ctx.platform().is_linux() && !ctx.is_ci()
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.system().which("zsh") {
+        if !ctx.which("zsh") {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
-        Ok(configured_task_result(Self::process(ctx, Some(NAME))?))
+        Self::process(ctx, Some(NAME))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(Self::process(ctx, None)?))
+        Self::process(ctx, None)
     }
 }
 

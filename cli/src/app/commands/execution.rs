@@ -93,7 +93,7 @@ impl<'a> RunCoordinator<'a> {
             Some(run_task_graph(&mut plan.tasks, self.ctx, self.log, None)?)
         };
 
-        summary.map_or(Ok(()), |summary| finish_run(self.ctx, self.log, &summary))
+        summary.map_or(Ok(()), |summary| finish_run(self.log, &summary))
     }
 
     fn execute_with_restart(
@@ -264,14 +264,10 @@ fn resolve_task_graph(
 }
 
 fn finish_run(
-    ctx: &Context,
     log: &Arc<Logger>,
     summary: &crate::engine::scheduler::ExecutionSummary,
 ) -> Result<()> {
     log.print_summary();
-    if let Err(error) = crate::app::recovery::persist(ctx, &log.command_title(), summary) {
-        log.warn(format!("could not persist recovery state: {error:#}"));
-    }
     let count = summary.failure_count();
     if count > 0 {
         return Err(TaskFailures::new(count).into());
@@ -364,15 +360,6 @@ mod tests {
             assert!(!built.iter().any(|arg| arg.contains("packages")));
             assert!(!built.iter().any(|arg| arg.contains("registry")));
         }
-    }
-
-    #[test]
-    fn elevated_child_args_drop_retry_mode_after_parent_selection() {
-        let built =
-            build_elevated_child_args(&args(&["install", "--retry-failed"]), &["developer-mode"]);
-
-        assert!(!built.contains(&"--retry-failed".to_string()));
-        assert!(built.contains(&"--only".to_string()));
     }
 
     #[test]

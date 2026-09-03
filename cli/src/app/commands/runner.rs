@@ -26,7 +26,6 @@ pub struct CommandRunner {
     log: Arc<Logger>,
     store: ConfigStore,
     overlay: Option<std::path::PathBuf>,
-    recovery_selectors: Option<std::collections::HashSet<String>>,
 }
 
 impl CommandRunner {
@@ -119,18 +118,12 @@ impl CommandRunner {
                 || !std::io::stdin().is_terminal(),
         )
         .with_cancellation(token.clone());
-        let recovery_selectors = global
-            .retry_failed
-            .then(|| crate::app::recovery::load(&ctx, &log.command_title()))
-            .transpose()?;
-
         Ok(Self {
             _run_lock: run_lock,
             ctx,
             log: Arc::clone(log),
             store,
             overlay,
-            recovery_selectors,
         })
     }
 
@@ -162,12 +155,6 @@ impl CommandRunner {
             let scripts = self.store.scripts.read();
             crate::domains::overlay::scripts::overlay_script_tasks(&scripts, root)
         })
-    }
-
-    /// Selectors recovered from the previous run, when retry mode is active.
-    #[must_use]
-    pub(crate) const fn recovery_selectors(&self) -> Option<&std::collections::HashSet<String>> {
-        self.recovery_selectors.as_ref()
     }
 
     /// Read-only process environment used by command orchestration.
@@ -368,7 +355,6 @@ mod root_tests {
             no_repo_update: false,
             require_complete: false,
             non_interactive: false,
-            retry_failed: false,
             no_symbols: false,
             skip_attestation: false,
             elevated_child: false,

@@ -3,7 +3,7 @@
 //! Provides [`run_tasks_parallel`](crate::engine::scheduler::run_tasks_parallel) for executing tasks concurrently using OS
 //! threads.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
@@ -39,7 +39,6 @@ pub(crate) struct ExecutionSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TaskRecord {
-    selector: String,
     name: String,
     outcome: TaskOutcome,
 }
@@ -66,14 +65,12 @@ impl ExecutionSummary {
     pub(crate) fn record(
         &mut self,
         task_id: TaskId,
-        selector: impl Into<String>,
         name: impl Into<String>,
         outcome: TaskOutcome,
     ) {
         self.tasks.insert(
             task_id,
             TaskRecord {
-                selector: selector.into(),
                 name: name.into(),
                 outcome,
             },
@@ -90,21 +87,6 @@ impl ExecutionSummary {
         self.tasks
             .get(task_id)
             .map_or_else(|| "earlier task".to_string(), |task| task.name.clone())
-    }
-
-    /// Selectors that should be retried after this run.
-    #[must_use]
-    pub(crate) fn incomplete_selectors(&self) -> HashSet<String> {
-        self.tasks
-            .values()
-            .filter(|task| {
-                matches!(
-                    task.outcome,
-                    TaskOutcome::Unmet | TaskOutcome::Failed | TaskOutcome::Blocked
-                )
-            })
-            .map(|task| task.selector.clone())
-            .collect()
     }
 }
 
@@ -448,14 +430,7 @@ pub(crate) fn run_tasks_parallel_with_prior(
                 recorded_outcomes
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(
-                        task.task_id(),
-                        (
-                            task.selector().to_string(),
-                            task.name().to_string(),
-                            outcome,
-                        ),
-                    );
+                    .insert(task.task_id(), (task.name().to_string(), outcome));
 
                 signal_dependents(task.name(), dependent_senders, &signal);
             });
@@ -468,15 +443,8 @@ pub(crate) fn run_tasks_parallel_with_prior(
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut task_records = HashMap::with_capacity(recorded.len());
-    for (task_id, (selector, name, outcome)) in recorded {
-        task_records.insert(
-            task_id,
-            TaskRecord {
-                selector,
-                name,
-                outcome,
-            },
-        );
+    for (task_id, (name, outcome)) in recorded {
+        task_records.insert(task_id, TaskRecord { name, outcome });
     }
     ExecutionSummary {
         failed_tasks: failed_count,
@@ -550,7 +518,7 @@ pub(crate) fn run_tasks_sequential_with_prior(
         if let Some(slot) = signals.get_mut(idx) {
             *slot = Some(signal);
         }
-        summary.record(task.task_id(), task.selector(), task.name(), outcome);
+        summary.record(task.task_id(), task.name(), outcome);
     }
     summary
 }

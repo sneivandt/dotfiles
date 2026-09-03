@@ -11,9 +11,22 @@ use crate::infra::platform::Platform;
 use super::CancellationToken;
 use crate::infra::logging::OutputExt as _;
 
-mod views;
+#[derive(Debug, PartialEq, Eq)]
+struct RepoPaths {
+    root: std::path::PathBuf,
+    symlinks_dir: std::path::PathBuf,
+    hooks_dir: std::path::PathBuf,
+}
 
-pub(crate) use views::{PathContext, RepoPaths, SystemContext};
+impl RepoPaths {
+    fn new(root: std::path::PathBuf) -> Self {
+        Self {
+            symlinks_dir: root.join("symlinks"),
+            hooks_dir: root.join("hooks"),
+            root,
+        }
+    }
+}
 
 // Note: `Platform` is `Copy` (two small fields), so it is stored by value
 // rather than behind an `Arc`.  This avoids atomic refcount overhead for a
@@ -37,27 +50,6 @@ pub struct ContextOpts {
 }
 
 /// Shared context for task execution.
-///
-/// # Choosing an accessor
-///
-/// Two idioms are supported deliberately, and mixing them arbitrarily is the
-/// main source of confusion:
-///
-/// - **One-off access** — use the flat accessors ([`Context::root`],
-///   [`Context::home`], [`Context::executor`], [`Context::platform`]). This is
-///   the dominant idiom and the right default.
-/// - **Several related reads in one scope** — take a view snapshot first
-///   ([`Context::paths`] for filesystem locations, [`Context::system`] for
-///   platform and process execution), then read fields off it:
-///
-///   ```ignore
-///   let system = ctx.system();
-///   if system.platform().is_windows() && system.which("pwsh") { … }
-///   ```
-///
-/// The views exist to avoid repeated `ctx.` chains and to keep related reads
-/// together; they are not a security or encapsulation boundary. Prefer a view
-/// once a scope needs two or more values from the same group.
 #[derive(Clone)]
 pub struct Context {
     paths: Arc<RepoPaths>,
@@ -226,46 +218,28 @@ impl Context {
         &self.env
     }
 
-    /// Repository-relative paths derived from the repository root.
-    ///
-    /// Prefer this over multiple calls to [`Context::root`],
-    /// [`Context::symlinks_dir`], and [`Context::hooks_dir`] when the caller
-    /// needs more than one path.
-    #[must_use]
-    pub(crate) fn repo_paths(&self) -> &RepoPaths {
-        self.paths.as_ref()
-    }
-
     /// Path to the optional overlay repository, if one is configured.
     #[must_use]
     pub fn overlay(&self) -> Option<&Path> {
         self.overlay.as_deref()
     }
 
-    /// Return a focused view of filesystem paths used by task code.
-    #[must_use]
-    pub(crate) fn paths(&self) -> PathContext<'_> {
-        PathContext {
-            home: self.home.as_path(),
-            repo: self.repo_paths(),
-        }
-    }
-
-    /// Return a focused view of platform and process-execution dependencies.
-    #[must_use]
-    pub(crate) fn system(&self) -> SystemContext<'_> {
-        SystemContext {
-            platform: self.platform,
-            home: self.home.as_path(),
-            executor: &self.executor,
-            is_ci: self.is_ci,
-        }
-    }
-
     /// Root directory of the dotfiles repository.
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.paths.root
+    }
+
+    /// Symlink source directory inside the repository.
+    #[must_use]
+    pub(crate) fn symlinks_dir(&self) -> &Path {
+        &self.paths.symlinks_dir
+    }
+
+    /// Git hook source directory inside the repository.
+    #[must_use]
+    pub(crate) fn hooks_dir(&self) -> &Path {
+        &self.paths.hooks_dir
     }
 
     /// Detected platform information.
@@ -302,6 +276,48 @@ impl Context {
     #[must_use]
     pub fn executor_arc(&self) -> Arc<dyn Executor> {
         Arc::clone(&self.executor)
+    }
+
+    /// Return whether the process is running in CI.
+    #[must_use]
+    pub(crate) const fn is_ci(&self) -> bool {
+        self.is_ci
+    }
+
+    /// Return whether `program` is available on PATH.
+    #[must_use]
+    pub(crate) fn which(&self, program: &str) -> bool {
+        self.executor.which(program)
+    }
+
+    /// Return whether the current process holds administrator/root privileges.
+    ///
+    /// Always `false` off Windows. Unix elevation is per-command through
+    /// `sudo`, so tasks express their needs through `needs_elevation`.
+    #[must_use]
+    #[allow(
+        clippy::unused_self,
+        reason = "the Windows implementation inspects process state"
+    )]
+    #[cfg_attr(
+        not(windows),
+        allow(
+            clippy::missing_const_for_fn,
+            reason = "the Windows implementation inspects the process token"
+        )
+    )]
+    pub(crate) fn is_elevated(&self) -> bool {
+        crate::infra::elevation::is_elevated()
+    }
+
+    /// Return whether symlinks can be created without elevation.
+    #[must_use]
+    pub(crate) fn can_create_symlinks(&self) -> bool {
+        if self.platform.is_windows() {
+            crate::infra::platform::developer_mode_enabled() || self.is_elevated()
+        } else {
+            true
+        }
     }
 
     /// Whether task and resource parallelism is enabled.

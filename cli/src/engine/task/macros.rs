@@ -85,17 +85,19 @@ pub(crate) fn run_resource_task<Item, R>(
     items: Vec<Item>,
     mut build: impl FnMut(Item, &crate::engine::Context) -> R,
     opts: &crate::engine::ProcessOpts,
-) -> ::anyhow::Result<Option<crate::engine::TaskResult>>
+) -> ::anyhow::Result<crate::engine::TaskResult>
 where
     R: crate::engine::IntrinsicState + Send,
 {
     if items.is_empty() {
-        return Ok(None);
+        return Ok(crate::engine::TaskResult::NotApplicable(
+            "nothing configured".to_string(),
+        ));
     }
     emit_task_stage(ctx, announce);
 
     let resources = items.into_iter().map(|item| build(item, ctx));
-    crate::engine::process_resources(ctx, resources, opts).map(Some)
+    crate::engine::process_resources(ctx, resources, opts)
 }
 
 /// Run a resource task whose state for every resource comes from one shared
@@ -109,13 +111,15 @@ pub(crate) fn run_batch_resource_task<Item, Cache, R>(
     state: impl for<'a> Fn(&'a R, &Cache) -> crate::engine::ResourceResult<crate::engine::ResourceState>
     + Sync,
     opts: &crate::engine::ProcessOpts,
-) -> ::anyhow::Result<Option<crate::engine::TaskResult>>
+) -> ::anyhow::Result<crate::engine::TaskResult>
 where
     R: crate::engine::Resource + Send,
     Cache: Sync,
 {
     if items.is_empty() {
-        return Ok(None);
+        return Ok(crate::engine::TaskResult::NotApplicable(
+            "nothing configured".to_string(),
+        ));
     }
     emit_task_stage(ctx, announce);
     ctx.trace_fmt(|| {
@@ -127,14 +131,5 @@ where
 
     let resources: Vec<R> = items.into_iter().map(|item| build(item, ctx)).collect();
     let cache = load(&resources, ctx)?;
-    crate::engine::process_resources_with_cache(ctx, resources, &cache, state, opts).map(Some)
-}
-
-/// Convert an optional configured-task result into the direct [`Task::run`] result.
-pub(crate) fn configured_task_result(
-    result: Option<crate::engine::TaskResult>,
-) -> crate::engine::TaskResult {
-    result.unwrap_or_else(|| {
-        crate::engine::TaskResult::NotApplicable("nothing configured".to_string())
-    })
+    crate::engine::process_resources_with_cache(ctx, resources, &cache, state, opts)
 }

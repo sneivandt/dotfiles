@@ -15,11 +15,10 @@ impl Task for ConfigurePath {
     }
 
     fn run(&self, ctx: &Context) -> anyhow::Result<TaskResult> {
-        let system = ctx.system();
         let resource = PathEntryResource::new(
-            system.home(),
-            system.platform(),
-            system.executor_arc(),
+            ctx.home(),
+            ctx.platform(),
+            ctx.executor_arc(),
             std::sync::Arc::clone(ctx.env()),
         );
         process_resources(

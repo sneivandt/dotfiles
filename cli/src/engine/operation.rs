@@ -17,8 +17,6 @@ pub(crate) enum OperationState<Plan> {
     Complete,
     /// The operation should run to converge state.
     NeedsRun {
-        /// Human-readable reason the operation needs to run.
-        reason: String,
         /// Immutable data discovered while checking current state.
         plan: Plan,
     },
@@ -36,11 +34,8 @@ pub(crate) enum OperationState<Plan> {
 
 impl<Plan> OperationState<Plan> {
     /// Create a [`NeedsRun`](Self::NeedsRun) state.
-    pub(crate) fn needs_run(reason: impl Into<String>, plan: Plan) -> Self {
-        Self::NeedsRun {
-            reason: reason.into(),
-            plan,
-        }
+    pub(crate) const fn needs_run(plan: Plan) -> Self {
+        Self::NeedsRun { plan }
     }
 
     /// Create a [`Blocked`](Self::Blocked) state.
@@ -97,8 +92,8 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
         }
         OperationState::NotApplicable { reason } => Ok(TaskResult::NotApplicable(reason)),
         OperationState::Blocked { reason } => Ok(TaskResult::unmet(reason)),
-        OperationState::NeedsRun { plan, .. } if ctx.dry_run() => operation.preview(ctx, &plan),
-        OperationState::NeedsRun { plan, .. } => operation.apply(ctx, &plan),
+        OperationState::NeedsRun { plan } if ctx.dry_run() => operation.preview(ctx, &plan),
+        OperationState::NeedsRun { plan } => operation.apply(ctx, &plan),
     }
 }
 
@@ -202,8 +197,7 @@ mod tests {
     #[test]
     fn dry_run_previews_without_applying() {
         let ctx = test_context().with_dry_run(true);
-        let operation =
-            TestOperation::new(OperationState::needs_run("write file", "planned change"));
+        let operation = TestOperation::new(OperationState::needs_run("planned change"));
 
         let result = process_operation(&ctx, &operation).unwrap();
 
@@ -218,8 +212,7 @@ mod tests {
     #[test]
     fn needs_run_applies_outside_dry_run() {
         let ctx = test_context();
-        let operation =
-            TestOperation::new(OperationState::needs_run("write file", "planned change"));
+        let operation = TestOperation::new(OperationState::needs_run("planned change"));
 
         let result = process_operation(&ctx, &operation).unwrap();
 

@@ -7,7 +7,7 @@ use crate::domains::files::config::symlinks::Symlink;
 use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::engine::{
     Context, IntrinsicState as _, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
-    configured_task_result, process_resources_remove, run_resource_task, task_metadata,
+    process_resources_remove, run_resource_task, task_metadata,
 };
 use crate::infra::ConfigHandle;
 
@@ -39,11 +39,10 @@ fn build_resource(
 
 /// Build [`SymlinkResource`] instances from a symlink configuration slice.
 pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<SymlinkResource> {
-    let paths = ctx.paths();
-    let executor = ctx.system().executor_arc();
+    let executor = ctx.executor_arc();
     symlinks
         .iter()
-        .map(|s| build_resource(s, paths.root(), paths.home(), &executor))
+        .map(|s| build_resource(s, ctx.root(), ctx.home(), &executor))
         .collect()
 }
 
@@ -62,16 +61,15 @@ impl InstallSymlinks {
         Self { config }
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         let symlinks = self.config.read().to_vec();
         run_resource_task(
             ctx,
             announce,
             symlinks,
             |s, ctx| {
-                let paths = ctx.paths();
-                let executor = ctx.system().executor_arc();
-                build_resource(&s, paths.root(), paths.home(), &executor)
+                let executor = ctx.executor_arc();
+                build_resource(&s, ctx.root(), ctx.home(), &executor)
             },
             &ProcessOpts::strict("link"),
         )
@@ -85,9 +83,7 @@ impl Task for InstallSymlinks {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(
-            self.process(ctx, Some(INSTALL_NAME))?,
-        ))
+        self.process(ctx, Some(INSTALL_NAME))
     }
 
     /// Windows file symlinks require Developer Mode or an administrator token.
@@ -96,7 +92,7 @@ impl Task for InstallSymlinks {
     /// privilege, so only pending *file* links can justify elevation. Returns
     /// `false` once they all exist, so a converged machine plans none.
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        if !ctx.platform().is_windows() || ctx.system().can_create_symlinks() {
+        if !ctx.platform().is_windows() || ctx.can_create_symlinks() {
             return false;
         }
 
@@ -111,7 +107,7 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)?))
+        self.process(ctx, None)
     }
 }
 
@@ -232,12 +228,7 @@ mod tests {
             origin: Some(overlay),
         };
         let ctx = make_linux_context(empty_config(root.clone())).with_home(home);
-        let resource = build_resource(
-            &symlink,
-            &root,
-            ctx.paths().home(),
-            &ctx.system().executor_arc(),
-        );
+        let resource = build_resource(&symlink, &root, ctx.home(), &ctx.executor_arc());
 
         assert_eq!(
             resource.description(),

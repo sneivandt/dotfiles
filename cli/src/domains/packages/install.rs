@@ -87,7 +87,7 @@ impl PackageTaskKind {
     fn should_run(self, ctx: &Context, packages: &[Package]) -> bool {
         let platform_is_supported = match self {
             Self::Native => true,
-            Self::Aur => ctx.system().platform().supports_aur(),
+            Self::Aur => ctx.platform().supports_aur(),
         };
         platform_is_supported
             && packages
@@ -96,7 +96,7 @@ impl PackageTaskKind {
     }
 
     fn needs_elevation(self, ctx: &Context, packages: &[Package]) -> bool {
-        let platform = ctx.system().platform();
+        let platform = ctx.platform();
         let (supported, manager, executable) = match self {
             Self::Native => (platform.uses_pacman(), PackageManager::Pacman, "pacman"),
             Self::Aur => (platform.supports_aur(), PackageManager::Paru, "paru"),
@@ -183,12 +183,12 @@ impl Task for InstallParu {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.system().platform().uses_pacman()
+        ctx.platform().uses_pacman()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
         // makepkg -si calls sudo internally to install the built package
-        ctx.system().platform().uses_pacman()
+        ctx.platform().uses_pacman()
             && !matches!(
                 check_paru_health(ctx.executor()),
                 ParuHealth::Healthy { .. }
@@ -237,10 +237,9 @@ impl Operation for ParuInstallOperation {
         match check_paru_health(ctx.executor()) {
             ParuHealth::Missing { reason } => {
                 ctx.log().debug(format!("paru status: missing · {reason}"));
-                Ok(OperationState::needs_run(
-                    "install missing paru from AUR source",
-                    ParuInstallPlan::Install { reason },
-                ))
+                Ok(OperationState::needs_run(ParuInstallPlan::Install {
+                    reason,
+                }))
             }
             ParuHealth::Healthy {
                 path,
@@ -258,10 +257,10 @@ impl Operation for ParuInstallOperation {
                     "paru status: broken · executable {} · {reason}",
                     path.display()
                 ));
-                Ok(OperationState::needs_run(
-                    format!("rebuild broken paru at {}", path.display()),
-                    ParuInstallPlan::Rebuild { path, reason },
-                ))
+                Ok(OperationState::needs_run(ParuInstallPlan::Rebuild {
+                    path,
+                    reason,
+                }))
             }
         }
     }
@@ -349,10 +348,7 @@ impl Operation for PackageInstallOperation {
         if plan.missing.is_empty() {
             Ok(OperationState::Complete)
         } else {
-            Ok(OperationState::needs_run(
-                format!("install {} missing package(s)", plan.missing.len()),
-                plan,
-            ))
+            Ok(OperationState::needs_run(plan))
         }
     }
 
@@ -377,7 +373,7 @@ impl Operation for PackageInstallOperation {
         let report = match install_missing_packages(
             self.manager,
             &missing_refs,
-            ctx.system().executor(),
+            ctx.executor(),
             &progress,
         ) {
             Ok(report) => report,

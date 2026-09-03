@@ -20,9 +20,8 @@ use crate::infra::fs::{FileSystemOps, SystemFileSystemOps};
 ///
 /// Returns an error if the `hooks/` directory cannot be read.
 fn discover_hooks(ctx: &Context, fs_ops: &Arc<dyn FileSystemOps>) -> Result<Vec<HookFileResource>> {
-    let paths = ctx.paths();
-    let hooks_src = paths.hooks_dir().to_path_buf();
-    let hooks_dst = paths.root().join(".git/hooks");
+    let hooks_src = ctx.hooks_dir().to_path_buf();
+    let hooks_dst = ctx.root().join(".git/hooks");
 
     let mut resources = Vec::new();
     for path in fs_ops
@@ -80,8 +79,7 @@ impl Task for InstallGitHooks {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        let paths = ctx.paths();
-        self.fs_ops.exists(paths.hooks_dir()) && self.fs_ops.exists(&paths.root().join(".git"))
+        self.fs_ops.exists(ctx.hooks_dir()) && self.fs_ops.exists(&ctx.root().join(".git"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -129,9 +127,7 @@ impl Task for UninstallGitHooks {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        let paths = ctx.paths();
-        self.fs_ops.exists(paths.hooks_dir())
-            && self.fs_ops.exists(&paths.root().join(".git/hooks"))
+        self.fs_ops.exists(ctx.hooks_dir()) && self.fs_ops.exists(&ctx.root().join(".git/hooks"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

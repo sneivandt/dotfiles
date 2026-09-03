@@ -130,7 +130,6 @@ impl<'a> ElevationBroker<'a> {
             self.log.emit_task_result_and_redraw(&task_id);
             summary.record(
                 id,
-                task.selector(),
                 task.name(),
                 if roots.contains_key(&task.task_id()) {
                     if cascade {
@@ -248,9 +247,7 @@ fn prepare_elevation(
     // any other headless session there is nobody to answer it, so requesting it
     // would at best fail and at worst stall the run until the command timeout.
     // Degrade to the same outcome as a declined prompt instead.
-    if ctx.non_interactive()
-        || ctx.system().is_ci()
-        || !std::io::IsTerminal::is_terminal(&std::io::stdout())
+    if ctx.non_interactive() || ctx.is_ci() || !std::io::IsTerminal::is_terminal(&std::io::stdout())
     {
         log.warn(format!(
             "administrator access is required for: {}",
@@ -315,8 +312,8 @@ const fn prepare_elevation(
 
 /// Rewrite this run's arguments so the elevated child runs only `selectors`.
 ///
-/// Existing `--only` / `--skip` filters and `--retry-failed` are dropped because
-/// the parent has already resolved the child's exact scope. `--no-parallel` is
+/// Existing `--only` / `--skip` filters are dropped because the parent has
+/// already resolved the child's exact scope. `--no-parallel` is
 /// forced so output stays readable in the separate console `Start-Process`
 /// opens. Every other flag is preserved.
 #[cfg_attr(
@@ -343,9 +340,6 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
             .iter()
             .any(|flag| arg.starts_with(&format!("{flag}=")))
         {
-            continue;
-        }
-        if arg == "--retry-failed" {
             continue;
         }
         if arg == "--no-parallel" || arg == "--elevated-child" {

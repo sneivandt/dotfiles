@@ -15,7 +15,7 @@ use crate::domains::overlay::config::scripts::{ScriptEntry, overlay_script_selec
 use crate::domains::overlay::resources::script::ScriptResource;
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, TaskVisibility,
-    configured_task_result, process_operation,
+    process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
 use crate::infra::ConfigHandle;
@@ -43,17 +43,17 @@ impl ReportOverlayScriptSnapshot {
         Self { config }
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Option<TaskResult> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> TaskResult {
         let count = self.config.read().len();
         if count == 0 {
-            return None;
+            return TaskResult::NotApplicable("nothing configured".to_string());
         }
         if let Some(name) = announce {
             ctx.log().task_stage(name);
         }
         ctx.log()
             .info(format!("discovered {count} overlay script(s)"));
-        Some(TaskResult::Ok)
+        TaskResult::Ok
     }
 }
 
@@ -67,11 +67,11 @@ impl Task for ReportOverlayScriptSnapshot {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, Some(REPORT_NAME))))
+        Ok(self.process(ctx, Some(REPORT_NAME)))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)))
+        Ok(self.process(ctx, None))
     }
 }
 
@@ -117,7 +117,7 @@ impl Operation for OverlayScriptOperation {
         Ok(match resource.current_state()? {
             ResourceState::Correct => OperationState::Complete,
             ResourceState::Missing | ResourceState::Incorrect { .. } => {
-                OperationState::needs_run(format!("run {}", self.entry.name), ())
+                OperationState::needs_run(())
             }
             ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
                 ctx.log().warn(format!("skipping: {reason}"));

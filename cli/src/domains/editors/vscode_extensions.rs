@@ -37,18 +37,17 @@ impl Task for InstallVsCodeExtensions {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let system = ctx.system();
         if crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()) {
             ctx.log().warn(
                 "VS Code extensions deferred: Arch chroot provisioning has no real user session; verified Marketplace installation is scheduled for first graphical login",
             );
             return process_resources(
                 ctx,
-                std::iter::once(DeferredExtensionsResource::new(system.home())),
+                std::iter::once(DeferredExtensionsResource::new(ctx.home())),
                 &ProcessOpts::install_missing("defer").sequential(),
             );
         }
-        let Some(cmd) = find_code_command(system.executor()) else {
+        let Some(cmd) = find_code_command(ctx.executor()) else {
             ctx.log().debug("no VS Code CLI launcher found in PATH");
             return Ok(TaskResult::unmet("VS Code CLI not found"));
         };
@@ -61,11 +60,11 @@ impl Task for InstallVsCodeExtensions {
                 extensions.len()
             )
         });
-        let installed = get_installed_extensions(&cmd, system.executor())?;
+        let installed = get_installed_extensions(&cmd, ctx.executor())?;
 
         let resources = extensions
             .iter()
-            .map(|id| VsCodeExtensionResource::new(id.clone(), cmd.clone(), system.executor_arc()));
+            .map(|id| VsCodeExtensionResource::new(id.clone(), cmd.clone(), ctx.executor_arc()));
         process_resources_with_cache(
             ctx,
             resources,

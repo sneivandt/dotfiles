@@ -43,7 +43,7 @@ impl Task for UpdateApmPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.system().which("apm") {
+        if !ctx.which("apm") {
             return Ok(skip(missing_apm_reason(ctx)));
         }
 

@@ -389,7 +389,6 @@ pub(crate) fn run_install_dry_run(
         no_repo_update: true,
         require_complete: false,
         non_interactive: false,
-        retry_failed: false,
         no_symbols: false,
         skip_attestation: false,
         elevated_child: false,

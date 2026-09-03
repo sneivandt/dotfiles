@@ -98,10 +98,9 @@ impl Operation for UpdateRepositoryOperation {
             RepositorySetReadiness::Ready(repositories) if repositories.is_empty() => {
                 Ok(OperationState::Complete)
             }
-            RepositorySetReadiness::Ready(repositories) => Ok(OperationState::needs_run(
-                "update repositories",
-                repositories,
-            )),
+            RepositorySetReadiness::Ready(repositories) => {
+                Ok(OperationState::needs_run(repositories))
+            }
             RepositorySetReadiness::Blocked(reason) => Ok(OperationState::blocked(reason)),
             RepositorySetReadiness::NotApplicable(reason) => {
                 Ok(OperationState::not_applicable(reason))

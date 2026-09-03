@@ -26,23 +26,12 @@ fn root_returns_config_root() {
 }
 
 #[test]
-fn path_view_returns_derived_paths() {
+fn derived_paths_use_the_configured_root() {
     let config = empty_config(PathBuf::from("/dotfiles"));
     let ctx = make_linux_context(config);
-    let paths = ctx.paths();
-    assert_eq!(paths.root(), Path::new("/dotfiles"));
-    assert_eq!(paths.symlinks_dir(), Path::new("/dotfiles/symlinks"));
-    assert_eq!(paths.hooks_dir(), Path::new("/dotfiles/hooks"));
-}
-
-#[test]
-fn repo_paths_returns_all_derived_paths_from_one_snapshot() {
-    let config = empty_config(PathBuf::from("/dotfiles"));
-    let ctx = make_linux_context(config);
-    let paths = ctx.repo_paths();
-    assert_eq!(paths.root, PathBuf::from("/dotfiles"));
-    assert_eq!(paths.symlinks_dir, PathBuf::from("/dotfiles/symlinks"));
-    assert_eq!(paths.hooks_dir, PathBuf::from("/dotfiles/hooks"));
+    assert_eq!(ctx.root(), Path::new("/dotfiles"));
+    assert_eq!(ctx.symlinks_dir(), Path::new("/dotfiles/symlinks"));
+    assert_eq!(ctx.hooks_dir(), Path::new("/dotfiles/hooks"));
 }
 
 #[test]
@@ -125,10 +114,7 @@ fn new_reads_home_and_ci_from_the_injected_environment() {
     .expect("context builds from the injected environment");
 
     assert_eq!(ctx.home(), Path::new("/home/injected"));
-    assert!(
-        ctx.system().is_ci(),
-        "CI is set in the injected environment"
-    );
+    assert!(ctx.is_ci(), "CI is set in the injected environment");
 }
 
 #[test]

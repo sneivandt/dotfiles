@@ -34,12 +34,11 @@ impl Task for ConfigureSystemd {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        let system = ctx.system();
-        system.platform().supports_systemd()
+        ctx.platform().supports_systemd()
             && !self.config.read().is_empty()
-            && system.which("systemctl")
+            && ctx.which("systemctl")
             && systemd_available(ctx)
-            && !system.is_ci()
+            && !ctx.is_ci()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
@@ -56,12 +55,12 @@ impl Task for ConfigureSystemd {
         let system_reload_required = system_unit_needs_change(ctx, &units);
         reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
-        let system = ctx.system();
+        let executor = ctx.executor_arc();
         let resources = units.iter().map(|entry| {
             SystemdUnitResource::from_entry(
                 entry,
-                system.executor_arc(),
-                system.home(),
+                Arc::clone(&executor),
+                ctx.home(),
                 user_manager_available,
             )
         });
@@ -74,29 +73,22 @@ impl Task for ConfigureSystemd {
 }
 
 fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
-    let executor = ctx.system().executor_arc();
+    let executor = ctx.executor_arc();
     units
         .iter()
         .filter(|unit| unit.scope == UnitScope::System)
         .any(|unit| {
             matches!(
-                SystemdUnitResource::from_entry(
-                    unit,
-                    Arc::clone(&executor),
-                    ctx.system().home(),
-                    true,
-                )
-                .current_state(),
+                SystemdUnitResource::from_entry(unit, Arc::clone(&executor), ctx.home(), true)
+                    .current_state(),
                 Ok(ResourceState::Missing | ResourceState::Incorrect { .. })
             )
         })
 }
 
 fn systemd_available(ctx: &Context) -> bool {
-    let system = ctx.system();
-    if system.platform().is_wsl() {
-        system
-            .executor()
+    if ctx.platform().is_wsl() {
+        ctx.executor()
             .execute(
                 CommandSpec::new("systemctl")
                     .arg("is-system-running")

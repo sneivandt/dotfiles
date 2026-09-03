@@ -56,8 +56,7 @@ pub(super) enum WorkflowDbProbe {
 /// see [`WorkflowDbProbe`] for why the outcome is returned rather than logged
 /// here.
 pub(super) fn probe_workflow_db(ctx: &Context) -> WorkflowDbProbe {
-    let system = ctx.system();
-    let db = system.home().join(".copilot").join("data.db");
+    let db = ctx.home().join(".copilot").join("data.db");
     match db.try_exists() {
         Ok(true) => {}
         Ok(false) => {
@@ -79,9 +78,9 @@ pub(super) fn probe_workflow_db(ctx: &Context) -> WorkflowDbProbe {
         };
     };
 
-    let python = if system.which("python3") {
+    let python = if ctx.which("python3") {
         "python3"
-    } else if system.which("python") {
+    } else if ctx.which("python") {
         "python"
     } else {
         return WorkflowDbProbe::PythonMissing;

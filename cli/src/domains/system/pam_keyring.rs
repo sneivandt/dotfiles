@@ -33,7 +33,7 @@ impl ConfigurePamKeyring {
     }
 
     fn resources(&self, ctx: &Context) -> [PamKeyringResource; 2] {
-        let executor = ctx.system().executor_arc();
+        let executor = ctx.executor_arc();
         [
             PamKeyringResource::new(
                 PamKeyringService::Login,
@@ -71,11 +71,11 @@ impl Task for ConfigurePamKeyring {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        *self.enabled.read() && ctx.platform().uses_pacman() && !ctx.system().is_ci()
+        *self.enabled.read() && ctx.platform().uses_pacman() && !ctx.is_ci()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        !ctx.system().is_elevated()
+        !ctx.is_elevated()
             && self.resources(ctx).iter().any(|resource| {
                 matches!(
                     resource.current_state(),

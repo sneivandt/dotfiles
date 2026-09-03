@@ -78,7 +78,6 @@ usage error.
 | `--no-repo-update` | Use the current checkout without synchronizing its repository; `install` only |
 | `--fail-on-skip` | Fail when applicable work cannot be completed |
 | `--non-interactive` | Disable prompts and fail when input is required |
-| `--retry-failed` | Retry failed, incomplete, and dependency-blocked tasks from the previous run |
 | `--no-symbols` | Use ASCII words instead of status symbols |
 | `--update-pins` | Advance pinned dependencies after normal convergence; `install` only |
 | `--skip-attestation` | Skip provenance verification for self-updates; `install` and `uninstall` only |
@@ -116,11 +115,6 @@ skips.
 Only one command may operate on a repository at a time. A second run reports
 the PID, command, and start time of the owner recorded in the repository's
 common Git directory.
-
-After a failed run, add `--retry-failed` to the original command to retry
-incomplete tasks and their prerequisite closure. Recovery state is structured
-and repository-scoped, not reconstructed from display logs. Retry mode cannot
-be combined with `--only` or `--skip`.
 
 When `install-arch` runs the desktop profile inside `arch-chroot`, dotfiles
 enables user units directly on disk because no user service manager exists yet.

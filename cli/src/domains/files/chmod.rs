@@ -4,10 +4,7 @@ use anyhow::Result;
 
 use crate::domains::files::config::chmod::ChmodEntry;
 use crate::domains::files::resources::chmod::ChmodResource;
-use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
-    task_metadata,
-};
+use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
 use crate::infra::ConfigHandle;
 
 /// Configure file permissions from chmod.toml.
@@ -25,13 +22,13 @@ impl ApplyFilePermissions {
         Self { config }
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         let entries = self.config.read().to_vec();
         run_resource_task(
             ctx,
             announce,
             entries,
-            |entry, ctx| ChmodResource::from_entry(&entry, ctx.paths().home()),
+            |entry, ctx| ChmodResource::from_entry(&entry, ctx.home()),
             &ProcessOpts::fix_existing("configure"),
         )
     }
@@ -45,15 +42,15 @@ impl Task for ApplyFilePermissions {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.system().platform().supports_chmod()
+        ctx.platform().supports_chmod()
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, Some(NAME))?))
+        self.process(ctx, Some(NAME))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)?))
+        self.process(ctx, None)
     }
 }
 

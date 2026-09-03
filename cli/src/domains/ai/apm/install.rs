@@ -48,12 +48,11 @@ impl Task for InstallApmPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let system = ctx.system();
-        if !ctx.dry_run() && !system.which("apm") {
+        if !ctx.dry_run() && !ctx.which("apm") {
             return Ok(skip(missing_apm_reason(ctx)));
         }
 
-        let fragments = discover_effective_fragment_files(system.home(), &self.fragments.read())?;
+        let fragments = discover_effective_fragment_files(ctx.home(), &self.fragments.read())?;
         if fragments.is_empty() {
             return Ok(skip("no manifest fragments found under ~/.apm/config/"));
         }

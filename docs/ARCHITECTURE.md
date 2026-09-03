@@ -181,7 +181,7 @@ The shared re-exec guard suppresses run-lock reacquisition. A separate
 self-update guard prevents update loops without suppressing the repository
 child's fresh release check. If that check replaces the binary, the next child
 inherits the repository guard and does not synchronize the checkout again.
-`--only`, `--skip`, `--retry-failed`, `--no-repo-update`, dry-run, and elevation
+`--only`, `--skip`, `--no-repo-update`, dry-run, and elevation
 retain their normal selection semantics. A filtered boundary falls back to one
 graph.
 

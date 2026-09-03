@@ -19,18 +19,18 @@ impl Task for InstallWslConf {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().is_wsl() && !ctx.system().is_ci()
+        ctx.platform().is_wsl() && !ctx.is_ci()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        let resource = WslConfResource::system(ctx.system().executor_arc());
+        let resource = WslConfResource::system(ctx.executor_arc());
         !matches!(resource.current_state(), Ok(ResourceState::Correct))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_resources(
             ctx,
-            [WslConfResource::system(ctx.system().executor_arc())],
+            [WslConfResource::system(ctx.executor_arc())],
             &ProcessOpts::strict("configure").sequential(),
         )
     }

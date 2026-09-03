@@ -52,7 +52,6 @@ fn check_command_fails_on_config_warnings() {
         no_repo_update: false,
         require_complete: false,
         non_interactive: false,
-        retry_failed: false,
         no_symbols: false,
         skip_attestation: false,
         elevated_child: false,

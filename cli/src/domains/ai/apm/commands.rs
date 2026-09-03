@@ -62,8 +62,7 @@ pub(super) fn run_apm_invocation(
     command: ApmCommand,
     args: &[&str],
 ) -> Result<ApmCommandResult> {
-    let system = ctx.system();
-    let cwd = system.home();
+    let cwd = ctx.home();
     let rendered = args.join(" ");
     ctx.debug_fmt(|| {
         format!(
@@ -72,7 +71,7 @@ pub(super) fn run_apm_invocation(
         )
     });
 
-    match system.executor().execute(
+    match ctx.executor().execute(
         CommandSpec::new("apm")
             .args(args)
             .current_dir(cwd)
@@ -105,8 +104,7 @@ fn classify_apm_error(
 
 /// Best-effort enable of an experimental APM deployment target.
 pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, config_key: &str) {
-    let system = ctx.system();
-    let cwd = system.home();
+    let cwd = ctx.home();
 
     // The CLI call costs a full apm process start (~1.3s) purely to re-assert a
     // flag that is almost always already set.  Reading the config apm itself
@@ -128,7 +126,7 @@ pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, co
             cwd.display()
         )
     });
-    match system.executor().execute(
+    match ctx.executor().execute(
         CommandSpec::new("apm")
             .args(&["experimental", "enable", target])
             .current_dir(cwd)

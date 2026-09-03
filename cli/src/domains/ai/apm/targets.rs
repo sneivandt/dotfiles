@@ -164,7 +164,7 @@ pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Option<PathBuf> {
         return Some(PathBuf::from(path));
     }
 
-    if ctx.system().platform().is_windows() {
+    if ctx.platform().is_windows() {
         for name in [ONEDRIVE_COMMERCIAL, ONEDRIVE_CONSUMER] {
             if let Some(root) = ctx.env().var_os(name).filter(|value| !value.is_empty()) {
                 return Some(
@@ -181,7 +181,7 @@ pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Option<PathBuf> {
 
 /// Return a platform-specific reason for skipping APM work when `apm` is absent.
 pub(super) fn missing_apm_reason(ctx: &Context) -> String {
-    let platform = ctx.system().platform();
+    let platform = ctx.platform();
     let hint = if platform.is_wsl() {
         Some(
             "install the Windows package with `winget.exe install Microsoft.APM` and re-open your \

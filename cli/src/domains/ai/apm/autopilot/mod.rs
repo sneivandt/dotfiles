@@ -55,11 +55,10 @@ fn run_workflow_script(
     ids: &[String],
 ) -> Result<ExecResult> {
     let args = build_workflow_script_args(script, db_str, ids);
-    let system = ctx.system();
-    Ok(system.executor().execute(
+    Ok(ctx.executor().execute(
         CommandSpec::new(python)
             .args(&args)
-            .current_dir(system.home())
+            .current_dir(ctx.home())
             .unchecked(),
     )?)
 }

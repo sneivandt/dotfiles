@@ -11,7 +11,6 @@ pub mod commands;
 pub mod config;
 pub mod filter;
 pub mod interrupt;
-pub(crate) mod recovery;
 pub mod run;
 pub mod validation;
 

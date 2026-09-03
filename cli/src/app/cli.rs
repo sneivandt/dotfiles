@@ -109,10 +109,6 @@ pub struct ExecutionOpts {
     #[arg(long)]
     pub non_interactive: bool,
 
-    /// Retry incomplete tasks from the previous run of this command
-    #[arg(long)]
-    pub retry_failed: bool,
-
     /// Use ASCII words instead of status symbols
     #[arg(long)]
     pub no_symbols: bool,
@@ -125,7 +121,6 @@ impl Default for ExecutionOpts {
             parallel: true,
             require_complete: false,
             non_interactive: false,
-            retry_failed: false,
             no_symbols: false,
         }
     }
@@ -266,8 +261,6 @@ pub struct GlobalOpts {
     pub require_complete: bool,
     /// Whether prompts are disabled.
     pub non_interactive: bool,
-    /// Whether incomplete work from the previous run should be retried.
-    pub retry_failed: bool,
     /// Whether status symbols are disabled.
     pub no_symbols: bool,
     /// Whether self-update attestation verification is disabled.
@@ -287,7 +280,6 @@ impl GlobalOpts {
             no_repo_update: false,
             require_complete: execution.require_complete,
             non_interactive: execution.non_interactive,
-            retry_failed: execution.retry_failed,
             no_symbols: execution.no_symbols,
             skip_attestation: false,
             elevated_child: false,
@@ -371,7 +363,7 @@ pub enum EngineCommand {
 }
 
 impl EngineCommand {
-    /// Name used for run logs, progress output, and recovery state.
+    /// Name used for run logs and progress output.
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
@@ -545,7 +537,7 @@ mod tests {
 
     #[test]
     fn install_rejects_removed_option_names() {
-        for old in ["-d", "--offline", "--require-complete"] {
+        for old in ["-d", "--offline", "--require-complete", "--retry-failed"] {
             let error = Cli::try_parse_from(["dotfiles", "install", old])
                 .expect_err("removed option should fail");
             assert_eq!(error.kind(), ErrorKind::UnknownArgument, "{old}");
@@ -557,7 +549,6 @@ mod tests {
         for args in [
             &["dotfiles", "log", "--dry-run"][..],
             &["dotfiles", "log", "--profile", "base"][..],
-            &["dotfiles", "tasks", "--retry-failed"][..],
             &["dotfiles", "check", "--skip-attestation"][..],
             &["dotfiles", "uninstall", "--only", "symlinks"][..],
         ] {

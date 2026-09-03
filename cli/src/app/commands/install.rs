@@ -80,41 +80,20 @@ pub(crate) fn run_pipeline(
 
     let startup_overlay_tasks = runner.overlay_script_tasks();
     let boundary = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
-    let recovery_selectors = runner.recovery_selectors().cloned();
-    let mut filtered = if let Some(selectors) = recovery_selectors.as_ref() {
-        if !opts.only.is_empty() || !opts.skip.is_empty() {
-            anyhow::bail!("--retry-failed cannot be combined with --only or --skip");
-        }
-        let dynamic_retry = startup_overlay_tasks
-            .iter()
-            .any(|task| crate::app::recovery::task_selected(task.as_ref(), selectors));
-        let required = if dynamic_retry {
-            std::slice::from_ref(&boundary)
-        } else {
-            &[]
-        };
-        crate::app::recovery::select_tasks(&all_tasks, &startup_overlay_tasks, selectors, required)?
-    } else {
-        apply_task_filters(
-            &all_tasks,
-            &startup_overlay_tasks,
-            &opts.only,
-            &opts.skip,
-            opts.with_deps,
-            log,
-        )?
-    };
+    let mut filtered = apply_task_filters(
+        &all_tasks,
+        &startup_overlay_tasks,
+        &opts.only,
+        &opts.skip,
+        opts.with_deps,
+        log,
+    )?;
 
     omit_repository_task(&mut filtered, repository_child);
     filtered.extend(
         startup_overlay_tasks
             .iter()
-            .filter(|task| {
-                recovery_selectors.as_ref().map_or_else(
-                    || task_passes_filters(task.as_ref(), &opts.only, &opts.skip),
-                    |selectors| crate::app::recovery::task_selected(task.as_ref(), selectors),
-                )
-            })
+            .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
             .map(Box::as_ref),
     );
 
@@ -154,35 +133,5 @@ mod tests {
 
         assert!(!RunMode::Install.includes_task(&UpdateOnly));
         assert!(RunMode::Update.includes_task(&UpdateOnly));
-    }
-
-    #[test]
-    fn repository_retry_selector_is_resolved_before_child_omits_update_task() {
-        let tasks = sample_install_tasks();
-        let selectors = std::collections::HashSet::from(["repository".to_string()]);
-        let mut selected =
-            crate::app::recovery::select_tasks(&tasks, &[], &selectors, &[]).unwrap();
-
-        omit_repository_task(&mut selected, true);
-
-        assert!(
-            selected
-                .iter()
-                .all(|task| task.task_id()
-                    != TaskId::Type(std::any::TypeId::of::<UpdateRepository>())),
-            "the guarded child must not synchronize the repository again"
-        );
-        assert!(
-            selected.is_empty(),
-            "the child already completed repository recovery"
-        );
-    }
-
-    fn sample_install_tasks() -> Vec<Box<dyn Task>> {
-        use crate::app::catalog::all_install_tasks;
-        use crate::app::config::store::ConfigStore;
-        use crate::test_helpers::empty_config;
-        let config = empty_config(std::path::PathBuf::from("/tmp"));
-        all_install_tasks(&ConfigStore::from_config(config))
     }
 }

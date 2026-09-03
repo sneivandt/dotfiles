@@ -4,10 +4,7 @@ use anyhow::Result;
 
 use crate::domains::git::config::git_config::GitSetting;
 use crate::domains::git::resources::git_config::GitConfigResource;
-use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
-    task_metadata,
-};
+use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
 use crate::infra::ConfigHandle;
 
 /// Configure global git settings.
@@ -25,7 +22,7 @@ impl ConfigureGit {
         Self { config }
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         let settings = self.config.read().to_vec();
         let manages_autocrlf = settings
             .iter()
@@ -56,10 +53,10 @@ impl Task for ConfigureGit {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, Some(NAME))?))
+        self.process(ctx, Some(NAME))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)?))
+        self.process(ctx, None)
     }
 }

@@ -184,7 +184,6 @@ pub(crate) fn install_tasks_for_run(
 mod tests {
     use super::*;
     use crate::test_helpers::empty_config;
-    use std::collections::HashSet;
     use std::path::PathBuf;
 
     fn test_params() -> ConfigStore {
@@ -207,38 +206,6 @@ mod tests {
         assert!(
             script.contains("-CommandName 'dot' -ParameterName 'Arguments'"),
             "PowerShell completions should register the dot function parameter"
-        );
-    }
-
-    #[test]
-    fn install_tasks_have_resolvable_dependencies() {
-        let tasks = all_install_tasks(&test_params());
-        let ids: Vec<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-        let unique: HashSet<TaskId> = ids.iter().cloned().collect();
-        assert_eq!(ids.len(), unique.len(), "duplicate task TaskIds found");
-        let present: HashSet<TaskId> = tasks.iter().map(|t| t.task_id()).collect();
-        for task in &tasks {
-            for dep in task
-                .dependencies()
-                .iter()
-                .chain(task.ordering_dependencies())
-            {
-                assert!(
-                    present.contains(dep),
-                    "task '{}' depends on a TaskId not in the task list",
-                    task.name()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn install_tasks_have_no_cycles() {
-        let tasks = all_install_tasks(&test_params());
-        let task_refs: Vec<&dyn Task> = tasks.iter().map(Box::as_ref).collect();
-        assert!(
-            crate::engine::graph::ResolvedTaskGraph::resolve(&task_refs).is_ok(),
-            "install task graph should be a valid DAG"
         );
     }
 

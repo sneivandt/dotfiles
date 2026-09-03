@@ -24,14 +24,7 @@ pub fn run(
 ) -> Result<()> {
     let runner = super::CommandRunner::new(global, log, token)?;
     let tasks = validation_tasks(runner.config_handle());
-    let filtered = if let Some(selectors) = runner.recovery_selectors() {
-        if !opts.only.is_empty() || !opts.skip.is_empty() {
-            anyhow::bail!("--retry-failed cannot be combined with --only or --skip");
-        }
-        crate::app::recovery::select_tasks(&tasks, &[], selectors, &[])?
-    } else {
-        apply_task_filters(&tasks, &[], &opts.only, &opts.skip, opts.with_deps, log)?
-    };
+    let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, opts.with_deps, log)?;
     runner.run(filtered)
 }
 

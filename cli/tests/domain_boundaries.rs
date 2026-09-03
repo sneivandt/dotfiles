@@ -42,8 +42,6 @@ struct Facts {
     macros: Vec<(String, TokenStream, usize)>,
     /// Types carrying an `impl Task for ...` block.
     task_impls: Vec<String>,
-    /// Types declared by a `resource_task!` / `config_resource_task!` call.
-    declared_tasks: Vec<String>,
     /// Every path introduced by a `use` declaration, with its line.
     imports: Vec<(Vec<String>, usize)>,
 }
@@ -130,11 +128,6 @@ impl<'ast> Visit<'ast> for Collector {
         };
         let name = name.ident.to_string();
         let line = name_line(&mac.path);
-        if matches!(name.as_str(), "resource_task" | "config_resource_task")
-            && let Some(declared) = declared_task_name(mac.tokens.clone())
-        {
-            self.facts.declared_tasks.push(declared);
-        }
         self.facts.macros.push((name, mac.tokens.clone(), line));
         collect_tokens(mac.tokens.clone(), &mut self.facts);
         syn::visit::visit_macro(self, mac);
@@ -219,33 +212,6 @@ fn collect_use_tree(
             }
         }
     }
-}
-
-/// The type name declared by a `resource_task!`-family invocation, whose body
-/// starts with optional doc attributes, a visibility, and then the type name.
-fn declared_task_name(tokens: TokenStream) -> Option<String> {
-    let mut trees = tokens.into_iter().peekable();
-    let mut after_visibility = false;
-
-    while let Some(tree) = trees.next() {
-        match tree {
-            TokenTree::Punct(punct) if punct.as_char() == '#' => {
-                trees.next();
-            }
-            TokenTree::Ident(ident) if ident == "pub" => {
-                after_visibility = true;
-                if matches!(trees.peek(), Some(TokenTree::Group(group))
-                    if group.delimiter() == Delimiter::Parenthesis)
-                {
-                    trees.next();
-                }
-            }
-            TokenTree::Ident(ident) if after_visibility => return Some(ident.to_string()),
-            _ => {}
-        }
-    }
-
-    None
 }
 
 /// Record a completed path chain and clear the accumulator.
@@ -517,12 +483,7 @@ fn domain_tasks_are_registered_by_the_application() {
     let mut task_types = BTreeMap::new();
 
     for source in production_sources(&src_root.join("domains")) {
-        for name in source
-            .facts
-            .task_impls
-            .iter()
-            .chain(&source.facts.declared_tasks)
-        {
+        for name in &source.facts.task_impls {
             task_types.insert(name.clone(), source.path.clone());
         }
     }

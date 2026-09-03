@@ -43,7 +43,7 @@ impl IntrinsicState for DummyResource {
 struct CountingResourceTask;
 
 impl CountingResourceTask {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
         run_resource_task(
             ctx,
@@ -61,14 +61,11 @@ impl Task for CountingResourceTask {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(Self::process(
-            ctx,
-            Some("Counting resource task"),
-        )?))
+        Self::process(ctx, Some("Counting resource task"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(Self::process(ctx, None)?))
+        Self::process(ctx, None)
     }
 }
 
@@ -77,7 +74,7 @@ impl Task for CountingResourceTask {
 struct CountingBatchTask;
 
 impl CountingBatchTask {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
         run_batch_resource_task(
             ctx,
@@ -97,14 +94,11 @@ impl Task for CountingBatchTask {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(Self::process(
-            ctx,
-            Some("Counting batch task"),
-        )?))
+        Self::process(ctx, Some("Counting batch task"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(Self::process(ctx, None)?))
+        Self::process(ctx, None)
     }
 }
 
@@ -119,7 +113,7 @@ impl CountingConfigResourceTask {
         Self { config }
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         let items = self.config.read().to_vec();
         CONFIG_RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
         run_resource_task(
@@ -138,13 +132,11 @@ impl Task for CountingConfigResourceTask {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(
-            self.process(ctx, Some("Counting config resource task"))?,
-        ))
+        self.process(ctx, Some("Counting config resource task"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)?))
+        self.process(ctx, None)
     }
 }
 
@@ -159,7 +151,7 @@ impl CountingConfigBatchTask {
         Self { config }
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         let items = self.config.read().to_vec();
         CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
         run_batch_resource_task(
@@ -180,13 +172,11 @@ impl Task for CountingConfigBatchTask {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(
-            self.process(ctx, Some("Counting config batch task"))?,
-        ))
+        self.process(ctx, Some("Counting config batch task"))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)?))
+        self.process(ctx, None)
     }
 }
 

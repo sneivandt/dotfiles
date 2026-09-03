@@ -43,16 +43,15 @@ pub(super) fn select_packages(packages: &[Package], is_aur: bool) -> Vec<Package
 /// Returns `Ok(manager)` when one is usable, or `Err(reason)` describing why
 /// the task should skip.
 pub(super) fn resolve_native_manager(ctx: &Context) -> Result<PackageManager, String> {
-    let system = ctx.system();
-    if system.platform().is_linux() {
+    if ctx.platform().is_linux() {
         ctx.log().debug("using pacman package manager");
-        if !system.which("pacman") {
+        if !ctx.which("pacman") {
             return Err("pacman not found".to_string());
         }
         Ok(PackageManager::Pacman)
     } else {
         ctx.log().debug("using winget package manager");
-        if !system.which("winget") {
+        if !ctx.which("winget") {
             return Err("winget not found".to_string());
         }
         Ok(PackageManager::Winget)
@@ -74,11 +73,10 @@ pub(super) fn predict_sudo(
     tool: &str,
     packages: &[Package],
 ) -> bool {
-    let system = ctx.system();
-    if !system.which(tool) || packages.is_empty() {
+    if !ctx.which(tool) || packages.is_empty() {
         return false;
     }
-    let Ok(installed) = get_installed_packages(manager, system.executor()) else {
+    let Ok(installed) = get_installed_packages(manager, ctx.executor()) else {
         return false;
     };
     packages.iter().any(|p| !installed.contains(&p.name))
@@ -96,15 +94,10 @@ pub(super) fn build_install_plan(
         )
     });
 
-    let system = ctx.system();
-    let installed = get_installed_packages(manager, system.executor())?;
+    let installed = get_installed_packages(manager, ctx.executor())?;
     let provider_config = match manager {
         PackageManager::Pacman | PackageManager::Paru => {
-            let path = ctx
-                .paths()
-                .symlinks_dir()
-                .join("config")
-                .join("pacman.conf");
+            let path = ctx.symlinks_dir().join("config").join("pacman.conf");
             path.is_file().then(|| path.to_string_lossy().into_owned())
         }
         PackageManager::Winget => None,
@@ -112,8 +105,7 @@ pub(super) fn build_install_plan(
     let resources: Vec<PackageResource> = packages
         .iter()
         .map(|pkg| {
-            let mut resource =
-                PackageResource::new(pkg.name.clone(), manager, system.executor_arc());
+            let mut resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor_arc());
             if let Some(path) = &provider_config {
                 resource = resource.with_provider_config(path.clone());
             }

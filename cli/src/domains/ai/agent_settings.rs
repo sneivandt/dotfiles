@@ -6,10 +6,7 @@ use anyhow::Result;
 
 use crate::domains::ai::config::agent_settings::{AgentHarness, AgentSetting};
 use crate::domains::ai::resources::agent_settings::{AgentSettingResource, SettingsFormat};
-use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_resource_task,
-    task_metadata,
-};
+use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
 use crate::infra::ConfigHandle;
 
 /// Configure agent harness settings from `agent-settings.toml`.
@@ -42,9 +39,9 @@ impl ConfigureAgentSettings {
         )
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         let settings = self.config.read().to_vec();
-        let home = ctx.paths().home().to_path_buf();
+        let home = ctx.home().to_path_buf();
         run_resource_task(
             ctx,
             announce,
@@ -75,11 +72,11 @@ impl Task for ConfigureAgentSettings {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, Some(NAME))?))
+        self.process(ctx, Some(NAME))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)?))
+        self.process(ctx, None)
     }
 }
 

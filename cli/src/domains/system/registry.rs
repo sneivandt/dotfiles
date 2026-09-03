@@ -5,8 +5,7 @@ use anyhow::Result;
 use crate::domains::system::config::registry::RegistryEntry;
 use crate::domains::system::resources::registry::{RegistryResource, batch_check_values};
 use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, configured_task_result, run_batch_resource_task,
-    task_metadata,
+    Context, ProcessOpts, Task, TaskResult, run_batch_resource_task, task_metadata,
 };
 use crate::infra::ConfigHandle;
 
@@ -25,7 +24,7 @@ impl ApplyRegistry {
         Self { config }
     }
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<Option<TaskResult>> {
+    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
         let entries = self.config.read().to_vec();
         run_batch_resource_task(
             ctx,
@@ -54,11 +53,11 @@ impl Task for ApplyRegistry {
     }
 
     fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, Some(NAME))?))
+        self.process(ctx, Some(NAME))
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(configured_task_result(self.process(ctx, None)?))
+        self.process(ctx, None)
     }
 }
 

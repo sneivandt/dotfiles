@@ -11,6 +11,8 @@ AbstractButton {
     property color textColor: Theme.foreground
     property bool interactive: true
     property bool selected: false
+    readonly property real naturalTextWidth: label.implicitWidth
+    readonly property bool textTruncated: label.truncated
     signal activated(int button)
     signal scrolled(int steps)
 
@@ -55,6 +57,7 @@ AbstractButton {
             horizontalAlignment: Text.AlignHCenter
         }
         Text {
+            id: label
             visible: root.text.length > 0
             Layout.fillWidth: true
             text: root.text

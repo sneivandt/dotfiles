@@ -61,61 +61,13 @@ PanelWindow {
         anchors.rightMargin: 8
         spacing: 8
 
-        BarGroup {
+        WorkspaceGroup {
             id: workspaceGroup
-            Layout.preferredWidth: workspaceRow.implicitWidth + (appTitle.visible ? appTitle.width : 0)
-            RowLayout {
-                id: workspaceRow
-                height: parent.height
-                spacing: 0
-                Repeater {
-                    model: 9
-                    BarBlock {
-                        id: workspaceButton
-                        required property int index
-                        readonly property int number: index + 1
-                        readonly property bool occupied: Hyprland.workspaces.values.some(workspace => workspace.id === number)
-                        readonly property bool current: bar.activeWorkspace && bar.activeWorkspace.id === number
-                        visible: current || occupied
-                        implicitWidth: Theme.barControlHeight
-                        horizontalPadding: 0
-                        tooltip: "Workspace " + number
-                        onActivated: Hyprland.dispatch("hl.dsp.focus({ workspace = " + number + " })")
-                        contentItem: Item {
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: workspaceButton.current ? 14 : 6
-                                height: 6
-                                radius: 3
-                                color: workspaceButton.current ? Theme.blue : Theme.mutedStrong
-                                Behavior on width {
-                                    NumberAnimation {
-                                        duration: Theme.animationNormal
-                                        easing.type: Easing.OutCubic
-                                    }
-                                }
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: Theme.animationFast
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            BarBlock {
-                id: appTitle
-                readonly property var toplevel: Hyprland.activeToplevel
-                readonly property real titleWidthBudget: Math.max(0, bar.width - controls.implicitWidth - clockGroup.implicitWidth - workspaceRow.implicitWidth - trayGroup.implicitWidth - 160)
-                x: workspaceRow.width
-                width: Math.min(implicitWidth, 320, titleWidthBudget)
-                visible: titleWidthBudget >= 80 && text.length > 0
-                text: toplevel && toplevel.title ? toplevel.title : ""
-                tooltip: text
-                interactive: false
-                textColor: Theme.mutedStrong
-            }
+            workspaces: Hyprland.workspaces.values
+            activeWorkspace: bar.activeWorkspace
+            activeToplevel: Hyprland.activeToplevel
+            titleWidthBudget: Math.max(0, bar.width - controls.implicitWidth - clockGroup.implicitWidth - workspaceWidth - trayGroup.implicitWidth - 160)
+            onWorkspaceRequested: number => Hyprland.dispatch("hl.dsp.focus({ workspace = " + number + " })")
         }
 
         Item {

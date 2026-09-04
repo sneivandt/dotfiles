@@ -97,15 +97,10 @@ fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
                 "{file}, dry_run={dry_run}: {text}"
             );
             assert!(text.contains(code), "{file}, dry_run={dry_run}: {text}");
+            // The CLI canonicalizes --root, expanding Windows short path names.
+            let root = dunce::canonicalize(repo.root_path()).expect("canonicalize repository root");
             assert!(
-                text.contains(
-                    &repo
-                        .root_path()
-                        .join("conf")
-                        .join(file)
-                        .display()
-                        .to_string()
-                ),
+                text.contains(&root.join("conf").join(file).display().to_string()),
                 "{text}"
             );
             assert!(

@@ -83,7 +83,15 @@ cd cli
 cargo test --test install_command test_name
 ```
 
-## Desktop network helper
+## Desktop shell
+
+Workspace layout regressions use the Qt 6 Quick Test runner. On Arch, run them
+offscreen without switching real workspaces:
+
+```bash
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+  /usr/lib/qt6/bin/qmltestrunner -input symlinks/config/quickshell/tests
+```
 
 The Quickshell network helper uses Python's standard-library test runner. Its
 tests mock network actions, so they never connect, disconnect, or toggle an

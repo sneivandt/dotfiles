@@ -31,6 +31,98 @@ fn install_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     tasks::all_install_tasks(&store)
 }
 
+#[test]
+fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
+    let mut cases = vec![(
+        "git-config.toml",
+        "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n",
+        "[base]\nsettings = [{ key = \"CORE.EDITOR\", value = \"nano\" }]\n",
+        "git.conflicting-values",
+    )];
+    if cfg!(windows) {
+        cases.push((
+            "registry.toml",
+            "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
+            "[console]\npath = 'hkcu:\\console'\n[console.values]\nfontsize = 15\n",
+            "registry.conflicting-values",
+        ));
+    }
+    for (file, main, overlay_content, code) in cases {
+        for dry_run in [false, true] {
+            let repo = common::TestContextBuilder::new()
+                .with_config_file(file, main)
+                .with_config_file(
+                    "symlinks.toml",
+                    "[base]\nsymlinks = [\"conflict-sentinel\"]\n",
+                )
+                .with_symlink_source_content("conflict-sentinel", "must not be installed")
+                .build();
+            let overlay = tempfile::tempdir().unwrap();
+            let home = tempfile::tempdir().unwrap();
+            std::fs::create_dir(overlay.path().join("conf")).unwrap();
+            std::fs::write(overlay.path().join("conf").join(file), overlay_content).unwrap();
+            let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
+            command
+                .args([
+                    "install",
+                    "--profile",
+                    "base",
+                    "--only",
+                    "symlinks",
+                    "--no-repo-update",
+                    "--non-interactive",
+                ])
+                .arg("--root")
+                .arg(repo.root_path())
+                .arg("--overlay")
+                .arg(overlay.path())
+                .env("HOME", home.path())
+                .env("USERPROFILE", home.path())
+                .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+                .env_remove("DOTFILES_OVERLAY")
+                .env_remove("DOTFILES_REEXEC_GUARD")
+                .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
+                .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD");
+            if dry_run {
+                command.arg("--dry-run");
+            }
+            let output = command.output().expect("run isolated install");
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                !output.status.success(),
+                "{file}, dry_run={dry_run}: {text}"
+            );
+            assert!(text.contains(code), "{file}, dry_run={dry_run}: {text}");
+            assert!(
+                text.contains(
+                    &repo
+                        .root_path()
+                        .join("conf")
+                        .join(file)
+                        .display()
+                        .to_string()
+                ),
+                "{text}"
+            );
+            assert!(
+                text.contains(&overlay.path().join("conf").join(file).display().to_string()),
+                "{text}"
+            );
+            assert!(
+                home.path()
+                    .join(".conflict-sentinel")
+                    .symlink_metadata()
+                    .is_err(),
+                "even an unrelated selected task must not mutate before validation succeeds"
+            );
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Structural invariants
 // ---------------------------------------------------------------------------

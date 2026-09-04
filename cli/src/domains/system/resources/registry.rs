@@ -7,7 +7,7 @@ use anyhow::Result;
 #[cfg(any(windows, test))]
 use anyhow::bail;
 
-use crate::domains::system::config::registry::RegistryValueType;
+use crate::domains::system::config::registry::{RegistryValueType, parse_dword_for_compare};
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// Current registry value data and its native value type.
@@ -336,30 +336,6 @@ fn value_matches(
     }
 }
 
-/// Parse a value as a 32-bit register word for comparison.
-///
-/// Accepts unsigned decimal, signed decimal (reinterpreted as two's-complement
-/// `u32`), and `0x`-prefixed hex.  Returns `None` for anything that does not
-/// fit a `u32` bit pattern.
-#[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
-fn parse_dword_for_compare(value: &str) -> Option<u32> {
-    if let Some(hex) = value
-        .strip_prefix("0x")
-        .or_else(|| value.strip_prefix("0X"))
-    {
-        return u64::from_str_radix(hex, 16)
-            .ok()
-            .and_then(|n| u32::try_from(n).ok());
-    }
-    if let Ok(unsigned) = value.parse::<u32>() {
-        return Some(unsigned);
-    }
-    if let Ok(signed) = value.parse::<i32>() {
-        return Some(u32::from_ne_bytes(signed.to_ne_bytes()));
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,6 +395,7 @@ mod tests {
             value_name: "TestValue".to_string(),
             value_data: "123".to_string(),
             value_type: RegistryValueType::Dword,
+            origin: None,
         };
 
         let resource = RegistryResource::from_entry(&entry);

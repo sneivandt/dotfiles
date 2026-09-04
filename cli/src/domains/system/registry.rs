@@ -77,6 +77,7 @@ mod tests {
             value_name: "QuickEdit".to_string(),
             value_data: "1".to_string(),
             value_type: crate::domains::system::config::registry::RegistryValueType::Dword,
+            origin: None,
         }
     }
 

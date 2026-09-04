@@ -99,6 +99,42 @@ impl Validator {
         self
     }
 
+    /// Reject different desired values for the same target, retaining both
+    /// declaration locations. Identical declarations are harmless.
+    pub(crate) fn check_conflicts<T, V: PartialEq>(
+        mut self,
+        items: &[T],
+        code: DiagnosticCode,
+        identity: impl Fn(&T) -> String,
+        value: impl Fn(&T) -> V,
+        source: impl Fn(&T) -> Option<&str>,
+    ) -> Self {
+        let mut seen = std::collections::BTreeMap::new();
+        for (index, item) in items.iter().enumerate() {
+            let key = identity(item);
+            let desired = value(item);
+            let location = source(item).map_or_else(
+                || format!("{} entry {}", self.source, index.saturating_add(1)),
+                str::to_owned,
+            );
+            if let Some((previous_value, previous_location)) = seen.get(&key) {
+                if previous_value != &desired {
+                    self.diagnostics.push(Diagnostic::error(
+                        self.source,
+                        key,
+                        code,
+                        format!(
+                            "conflicting desired values at {previous_location} and {location}; keep only one desired value for this target"
+                        ),
+                    ));
+                }
+            } else {
+                seen.insert(key, (desired, location));
+            }
+        }
+        self
+    }
+
     /// Consume the builder and return the collected diagnostics.
     #[must_use]
     pub(crate) fn finish(self) -> Vec<Diagnostic> {
@@ -163,6 +199,50 @@ mod tests {
             check(false, DiagnosticCode::new("test", "rule"), "invalid value"),
             None
         );
+    }
+
+    #[test]
+    fn conflicts_aggregate_against_the_first_declaration_without_exposing_values() {
+        let items = [
+            ("a", "first-private-value", Some("main.toml [base] entry 1")),
+            ("a", "first-private-value", Some("main.toml [base] entry 2")),
+            ("b", "unrelated-private-value", None),
+            (
+                "a",
+                "second-private-value",
+                Some("overlay.toml [base] entry 1"),
+            ),
+            ("a", "third-private-value", None),
+        ];
+        let diagnostics = Validator::new("settings.toml")
+            .check_conflicts(
+                &items,
+                DiagnosticCode::new("test", "conflicting-values"),
+                |item| item.0.to_string(),
+                |item| item.1.to_string(),
+                |item| item.2,
+            )
+            .finish();
+        assert_eq!(
+            diagnostics.len(),
+            2,
+            "all conflicting declarations should be reported"
+        );
+        for diagnostic in &diagnostics {
+            assert_eq!(diagnostic.item, "a");
+            assert_eq!(diagnostic.severity, Severity::Error);
+            assert!(diagnostic.message.contains("main.toml [base] entry 1"));
+            assert!(
+                !diagnostic.message.contains("private-value"),
+                "do not print setting values"
+            );
+        }
+        assert!(
+            diagnostics[0]
+                .message
+                .contains("overlay.toml [base] entry 1")
+        );
+        assert!(diagnostics[1].message.contains("settings.toml entry 5"));
     }
 
     #[test]

@@ -272,7 +272,8 @@ impl Config {
     ///
     /// # Errors
     ///
-    /// Returns an error if any configuration file cannot be parsed.
+    /// Returns an error if a configuration file cannot be parsed, symlink targets
+    /// conflict, or active Git/registry declarations specify contradictory values.
     pub fn load(
         root: &Path,
         profile: &profiles::Profile,
@@ -340,6 +341,23 @@ impl Config {
             .context("expanding symlink glob patterns")?;
         symlinks::validate_unique_targets(&config.symlinks)
             .context("validating symlink targets")?;
+
+        let conflicts = git_config::validate_conflicts(&config.git_settings)
+            .into_iter()
+            .chain(registry::validate_conflicts(&config.registry))
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            conflicts.is_empty(),
+            "contradictory desired state:\n{}",
+            conflicts
+                .iter()
+                .map(|diagnostic| format!(
+                    "  {} [{}] ({}): {}",
+                    diagnostic.source, diagnostic.item, diagnostic.code, diagnostic.message
+                ))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
 
         Ok(config)
     }

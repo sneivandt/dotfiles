@@ -61,6 +61,122 @@ fn write_overlay_config(overlay: &tempfile::TempDir, file: &str, content: &str) 
 }
 
 #[test]
+fn load_rejects_all_conflicting_main_and_overlay_values_before_publishing_config() {
+    let (dir, profile, platform) = setup_load(
+        windows(),
+        &[
+            (
+                "git-config.toml",
+                "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n",
+            ),
+            (
+                "registry.toml",
+                "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
+            ),
+        ],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    let git_path = write_overlay_config(
+        &overlay,
+        "git-config.toml",
+        "[base]\nsettings = [{ key = \"CORE.EDITOR\", value = \"nano\" }]\n",
+    );
+    let registry_path = write_overlay_config(
+        &overlay,
+        "registry.toml",
+        "[display]\npath = 'hkcu:\\console'\n[display.values]\nfontsize = 15\n",
+    );
+    let error = Config::load(dir.path(), &profile, platform, Some(overlay.path()))
+        .expect_err("conflicts must fail before a configuration snapshot is published");
+    let message = format!("{error:#}");
+    for expected in [
+        "git.conflicting-values",
+        "registry.conflicting-values",
+        "[base] settings entry 1",
+        "[console.values] \"FontSize\"",
+        "[display.values] \"fontsize\"",
+    ] {
+        assert!(
+            message.contains(expected),
+            "missing {expected:?}: {message}"
+        );
+    }
+    for path in [
+        dir.path().join("conf").join("git-config.toml"),
+        dir.path().join("conf").join("registry.toml"),
+        git_path,
+        registry_path,
+    ] {
+        assert!(
+            message.contains(&path.display().to_string()),
+            "missing {}: {message}",
+            path.display()
+        );
+    }
+}
+
+#[test]
+fn load_accepts_equivalent_main_and_overlay_values() {
+    let (dir, profile, platform) = setup_load(
+        windows(),
+        &[
+            (
+                "git-config.toml",
+                "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n",
+            ),
+            (
+                "registry.toml",
+                "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
+            ),
+        ],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    write_overlay_config(
+        &overlay,
+        "git-config.toml",
+        "[base]\nsettings = [{ key = \"CORE.EDITOR\", value = \"vim\" }]\n",
+    );
+    write_overlay_config(
+        &overlay,
+        "registry.toml",
+        "[display]\npath = 'hkcu:\\console'\n[display.values]\nfontsize = '0x0E'\n",
+    );
+    let config = Config::load(dir.path(), &profile, platform, Some(overlay.path()))
+        .expect("equivalent declarations should remain valid");
+    assert_eq!(config.git_settings.len(), 2, "preserve append semantics");
+    assert_eq!(config.registry.len(), 2, "preserve append semantics");
+    assert!(git_config::validate_conflicts(&config.git_settings).is_empty());
+    assert!(registry::validate_conflicts(&config.registry).is_empty());
+}
+
+#[test]
+fn load_checks_only_active_desired_state_for_conflicts() {
+    let (dir, profile, platform) = setup_load(
+        linux(),
+        &[
+            (
+                "git-config.toml",
+                "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n\
+                 [desktop]\nsettings = [{ key = \"core.editor\", value = \"nano\" }]\n",
+            ),
+            (
+                "registry.toml",
+                "[first]\npath = 'HKCU:\\Console'\n[first.values]\nFontSize = 14\n\
+                 [second]\npath = 'HKCU:\\Console'\n[second.values]\nFontSize = 15\n",
+            ),
+        ],
+    );
+    let config = Config::load(dir.path(), &profile, platform, None)
+        .expect("inactive profile and platform declarations must not conflict");
+    assert_eq!(config.git_settings.len(), 1);
+    assert!(config.registry.is_empty());
+    let mut desktop = profile.clone();
+    desktop.active_categories.push(Category::Desktop);
+    assert!(Config::load(dir.path(), &desktop, platform, None).is_err());
+    assert!(Config::load(dir.path(), &profile, windows(), None).is_err());
+}
+
+#[test]
 fn load_keeps_profile_excluded_main_symlinks_for_validation() {
     let (dir, profile, platform) = setup_load(
         linux(),

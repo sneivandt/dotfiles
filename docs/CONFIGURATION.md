@@ -21,6 +21,22 @@ shared handles.
 An overlay may also provide `conf/scripts.toml`. The main repository does not
 load scripts from that file.
 
+### Conflicting desired state
+
+Active Git settings and Windows registry entries must declare only one desired
+value per target, including entries appended from an overlay. Conflicting
+declarations fail configuration loading before any task runs, even with `--only`
+or `--dry-run`. The error reports both source files and their section/entry
+locations using `git.conflicting-values` or `registry.conflicting-values`.
+Overlay append order is not an override mechanism.
+
+Identical declarations remain valid. Git section and variable names are
+case-insensitive, subsection names are case-sensitive, and setting values are
+compared literally. Registry key paths and value names are case-insensitive;
+both the native value type and data must agree. Equivalent DWORD forms such as
+`14` and `"0x0E"` agree, but DWORD `14` and string `"14"` conflict. Inactive Git
+categories and registry entries on non-Windows platforms do not participate.
+
 ## Category sections
 
 Most files group records under category names:

@@ -81,8 +81,7 @@ fi
 # FZF (optional)
 # Distro packages ship the shell integration under /usr/share/fzf; elsewhere
 # (Codespaces, Debian/Ubuntu, a manual install) fzf generates it itself. Keep
-# this aligned with the equivalent block in bashrc, and note it must run before
-# the fzf-history-widget check below, which depends on the keybindings.
+# this aligned with the equivalent block in bashrc.
 if [ -f /usr/share/fzf/key-bindings.zsh ]; then
   . /usr/share/fzf/key-bindings.zsh
 fi
@@ -100,20 +99,6 @@ do
   autoload -Uz "${func:t}"
 done
 unset func
-
-# Custom FZF Ctrl+R behavior: Execute immediately
-if zle -l fzf-history-widget
-then
-  fzf-history-widget-accept() {
-    fzf-history-widget
-    if [[ $? -eq 0 ]]
-    then
-      zle accept-line
-    fi
-  }
-  zle -N fzf-history-widget-accept
-  bindkey '^R' fzf-history-widget-accept
-fi
 
 for plugin in \
   /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh \

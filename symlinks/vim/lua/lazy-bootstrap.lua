@@ -175,7 +175,9 @@ lazy.setup({
         "rust", "go", "c", "cpp", "java", "haskell", "bash",
         "json", "yaml", "toml", "markdown", "markdown_inline",
       }
-      treesitter.install(parsers):wait(300000)
+      vim.api.nvim_create_user_command("TSInstallConfigured", function()
+        treesitter.install(parsers)
+      end, { desc = "Install configured Tree-sitter parsers" })
 
       local group = vim.api.nvim_create_augroup("TreesitterConfig", { clear = true })
       vim.api.nvim_create_autocmd("FileType", {
@@ -189,7 +191,8 @@ lazy.setup({
           local started, message = pcall(vim.treesitter.start, args.buf)
           if not started then
             vim.notify(
-              "Tree-sitter failed for " .. vim.bo[args.buf].filetype .. ": " .. message,
+              "Tree-sitter failed for " .. vim.bo[args.buf].filetype .. ": " .. message
+                .. ". Run :TSInstallConfigured if parsers are missing.",
               vim.log.levels.WARN
             )
             return

@@ -107,7 +107,6 @@
         "**/.ruff_cache": true,
         "**/.venv": true,
         "**/__pycache__": true,
-        "**/bin": true,
         "**/node_modules": true,
         "**/obj": true,
         "**/target": true
@@ -120,7 +119,6 @@
         "**/.ruff_cache/**": true,
         "**/.venv/**": true,
         "**/__pycache__/**": true,
-        "**/bin/**": true,
         "**/node_modules/**": true,
         "**/obj/**": true,
         "**/target/**": true
@@ -146,15 +144,10 @@
     "powershell.sideBar.CommandExplorerVisibility": false,
     "powershell.startAutomatically": false,
     "redhat.telemetry.enabled": false,
-    "rust-analyzer.cargo.allFeatures": true,
+    "rust-analyzer.cargo.features": [],
     "rust-analyzer.cargo.targetDir": true,
-    "rust-analyzer.check.allTargets": true,
-    "rust-analyzer.check.command": "clippy",
-    "rust-analyzer.check.extraArgs": [
-        "--",
-        "-D",
-        "warnings"
-    ],
+    "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.check.command": "check",
     "rust-analyzer.inlayHints.closureReturnTypeHints.enable": "with_block",
     "rust-analyzer.inlayHints.lifetimeElisionHints.enable": "skip_trivial",
     "rust-analyzer.inlayHints.lifetimeElisionHints.useParameterNames": true,
@@ -168,7 +161,6 @@
         "**/.ruff_cache": true,
         "**/.venv": true,
         "**/__pycache__": true,
-        "**/bin": true,
         "**/node_modules": true,
         "**/obj": true,
         "**/target": true

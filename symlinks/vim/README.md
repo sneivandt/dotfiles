@@ -25,7 +25,11 @@ When you first launch Neovim:
    `~/.config/nvim/lazy-lock.json`; both `~/.vim` and `~/.config/nvim` link
    directly to this directory.
 
-No configuration or environment variables needed - it works out of the box.
+Run `:TSInstallConfigured` once to install the configured Tree-sitter parsers.
+Installation runs asynchronously; wait for it to finish, then reopen the file
+to enable highlighting and indentation. Normal startup never installs parsers
+or waits for their downloads. Installed parsers are updated by the plugin's
+`:TSUpdate` build hook when updating plugins.
 
 **Security Note:** The bootstrap process pins lazy.nvim to a specific commit hash to prevent supply-chain attacks. The commit is periodically updated to get security fixes.
 
@@ -42,6 +46,7 @@ You can use lazy.nvim commands in Neovim:
 - `:Lazy sync` - Install missing and update plugins
 - `:Lazy clean` - Remove unused plugins
 - `:Lazy profile` - Profile plugin loading times
+- `:TSInstallConfigured` - Install any missing configured Tree-sitter parsers
 
 ### Configuration
 

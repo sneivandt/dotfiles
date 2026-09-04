@@ -18,7 +18,7 @@
   cia = commit --amend --reuse-message=HEAD
 
   # clean
-  cal = clean -xdf
+  cal = clean -xdi
 
   # clone
   cl  = clone

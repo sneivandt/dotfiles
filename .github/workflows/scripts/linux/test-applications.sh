@@ -43,6 +43,23 @@ test_zsh_completion()
   log_verbose "Loaded $loaded profiles"
 )}
 
+test_zsh_history()
+{(
+  is_program_installed "zsh" || { log_verbose "Skipping: zsh not installed"; return 0; }
+  is_program_installed "fzf" || { log_verbose "Skipping: fzf not installed"; return 0; }
+  log_stage "Testing zsh history selection"
+
+  fixture="$(mktemp -d)"
+  trap 'rm -rf "$fixture"' EXIT
+  HOME="$fixture" XDG_CACHE_HOME="$fixture/.cache" DIR="$DIR" \
+    zsh -d -f -i -c '
+      source "$DIR/symlinks/zshrc"
+      [[ "$(bindkey -M emacs "^R")" == "\"^R\" fzf-history-widget" ]] || exit 1
+      (( ! $+widgets[fzf-history-widget-accept] )) || exit 1
+    '
+  log_verbose "Ctrl+R uses the standard non-executing fzf history widget"
+)}
+
 # ---------------------------------------------------------------------------
 # Vim
 # ---------------------------------------------------------------------------
@@ -68,6 +85,10 @@ test_nvim_opens()
 {(
   is_program_installed "nvim" || { log_verbose "Skipping: nvim not installed"; return 0; }
   log_stage "Testing nvim startup"
+
+  DIR="$DIR" timeout 10 nvim --headless -u NONE -i NONE -n \
+    -c 'lua local ok, err = pcall(dofile, vim.env.DIR .. "/.github/workflows/scripts/linux/test-nvim-config.lua"); if not ok then vim.api.nvim_err_writeln(tostring(err)); vim.cmd("cquit") end' \
+    -c 'qa!' </dev/null
 
   nvim --version >/dev/null 2>&1 || { printf "%sERROR: nvim --version failed%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Nvim binary OK"
@@ -167,6 +188,32 @@ test_git_behavior()
   echo test > test.txt && git add test.txt
   git commit -m "Test commit" >/dev/null 2>&1 || { printf "%sERROR: commit failed%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "✓ Commit created successfully"
+)}
+
+test_git_clean()
+{(
+  is_program_installed "git" || { log_verbose "Skipping: git not installed"; return 0; }
+  log_stage "Testing interactive git cleanup"
+
+  repo="$(mktemp -d)"
+  trap 'rm -rf "$repo"' EXIT
+  git -c init.templateDir= init -q "$repo"
+  cd "$repo"
+  git config include.path "$DIR/symlinks/config/git/aliases"
+  printf '.env\n' > .git/info/exclude
+  printf 'fixture\n' > .env
+  printf 'unfinished work\n' > untracked.txt
+
+  git cal </dev/null >/dev/null
+  [ -f .env ] && [ -f untracked.txt ] || {
+    log_error "git cal deleted files without confirmation"
+  }
+
+  printf '1\n' | git cal >/dev/null
+  [ ! -e .env ] && [ ! -e untracked.txt ] || {
+    log_error "git cal did not clean files after explicit confirmation"
+  }
+  log_verbose "Cleanup preserves files until explicitly confirmed"
 )}
 
 # ---------------------------------------------------------------------------

@@ -454,10 +454,10 @@ jobs:
         include:
           - application: git
             packages: git
-            tests: config aliases behavior
+            tests: config aliases behavior clean
           - application: zsh
-            packages: zsh
-            tests: completion
+            packages: zsh fzf
+            tests: completion history
           - application: vim
             packages: vim
             tests: opens

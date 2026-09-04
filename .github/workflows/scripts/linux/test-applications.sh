@@ -200,6 +200,7 @@ test_git_clean()
   git -c init.templateDir= init -q "$repo"
   cd "$repo"
   git config include.path "$DIR/symlinks/config/git/aliases"
+  mkdir -p .git/info
   printf '.env\n' > .git/info/exclude
   printf 'fixture\n' > .env
   printf 'unfinished work\n' > untracked.txt

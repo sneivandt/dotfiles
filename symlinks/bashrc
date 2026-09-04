@@ -41,14 +41,18 @@ then
 fi
 
 # FZF (optional)
-if [ -f /usr/share/fzf/key-bindings.bash ]; then
-  # shellcheck disable=SC1091
-  . /usr/share/fzf/key-bindings.bash
-fi
-if [ -f /usr/share/fzf/completion.bash ]; then
-  # shellcheck disable=SC1091
-  . /usr/share/fzf/completion.bash
-fi
-if [ ! -f /usr/share/fzf/key-bindings.bash ] && [ ! -f /usr/share/fzf/completion.bash ] && command -v fzf >/dev/null 2>&1; then
+# Prefer packaged scripts, including older Debian/Ubuntu FZF versions without
+# --bash. Keep this aligned with the equivalent block in zshrc.
+for _fzf_dir in /usr/share/fzf /usr/share/doc/fzf/examples; do
+  if [ -f "$_fzf_dir/key-bindings.bash" ] || [ -f "$_fzf_dir/completion.bash" ]; then
+    # shellcheck disable=SC1090
+    [ ! -f "$_fzf_dir/key-bindings.bash" ] || . "$_fzf_dir/key-bindings.bash"
+    # shellcheck disable=SC1090
+    [ ! -f "$_fzf_dir/completion.bash" ] || . "$_fzf_dir/completion.bash"
+    break
+  fi
+done
+if [ ! -f "$_fzf_dir/key-bindings.bash" ] && [ ! -f "$_fzf_dir/completion.bash" ] && command -v fzf >/dev/null 2>&1; then
   eval "$(fzf --bash)"
 fi
+unset _fzf_dir

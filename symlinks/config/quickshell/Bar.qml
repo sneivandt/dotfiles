@@ -37,6 +37,9 @@ PanelWindow {
         if (except !== "volume")
             volumeMenu.visible = false;
 
+        if (except !== "battery")
+            batteryMenu.visible = false;
+
         if (except !== "power")
             powerMenu.visible = false;
 
@@ -302,7 +305,7 @@ PanelWindow {
                 }
                 fontFamily: Theme.iconFont
                 textColor: charging ? Theme.green : (charge <= 0.15 ? Theme.red : (charge <= 0.3 ? Theme.yellow : Theme.foreground))
-                interactive: false
+                onActivated: bar.toggleMenu("battery", batteryMenu)
             }
 
             BarBlock {
@@ -334,6 +337,14 @@ PanelWindow {
 
         anchorItem: volumeButton
         audio: audio
+        visible: false
+    }
+
+    BatteryMenu {
+        id: batteryMenu
+
+        anchorItem: batteryButton
+        battery: batteryButton.battery
         visible: false
     }
 

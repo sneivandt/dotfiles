@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::engine::{Context, TaskResult};
-use crate::infra::exec::CommandSpec;
+use crate::infra::exec::{CommandSpec, ExecResult};
 use crate::infra::logging::OutputExt as _;
 use anyhow::{Context as _, Result};
 
@@ -53,7 +53,7 @@ impl ApmCommand {
 
 #[derive(Debug)]
 pub(super) enum ApmCommandResult {
-    Success,
+    Success(ExecResult),
     AuthSkipped(String),
 }
 
@@ -80,7 +80,7 @@ pub(super) fn run_apm_invocation(
     ) {
         Ok(result) => {
             report_apm_output(ctx, &result.stdout, &result.stderr);
-            Ok(ApmCommandResult::Success)
+            Ok(ApmCommandResult::Success(result))
         }
         Err(err) => classify_apm_error(ctx, command, err.into()),
     }
@@ -166,7 +166,7 @@ fn experimental_target_enabled(home: &Path, config_key: &str) -> Option<bool> {
 /// Convert a command result into the task-level result used by install.
 pub(super) fn install_task_result(result: ApmCommandResult) -> TaskResult {
     match result {
-        ApmCommandResult::Success => TaskResult::Ok,
+        ApmCommandResult::Success(_) => TaskResult::Ok,
         ApmCommandResult::AuthSkipped(reason) => TaskResult::unmet(reason),
     }
 }

@@ -131,7 +131,9 @@ before convergence. The task:
 5. Lets APM verify local sources, converge deployments, and remove stale or
    orphaned user-scope content.
 6. Compares the exact lockfile before and after to report whether APM changed
-   resolved state.
+   resolved state. Changed tasks list each added, removed, or updated dependency
+   and show ref, commit, content, deployment-file, or target changes when APM's
+   lockfile records them.
 
 Re-running `dotfiles install` should not advance pinned dependency versions.
 Native APM owns idempotency through its lockfile. **APM packages** can therefore
@@ -159,6 +161,9 @@ success marker is involved.
 The task compares the exact lockfile bytes before and after update. Current APM
 preserves unchanged target mappings and timestamps, so an identical lockfile
 reports current while any native lock-state change is reported as changed.
+Applied updates list each changed dependency with its old and new ref or commit.
+Dry-run promotes the dependency names from APM's native update plan while the
+full native output remains available under `--verbose` and in the run log.
 
 ```bash
 dotfiles install --update-pins --only apm,apm-update

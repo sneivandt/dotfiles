@@ -10,7 +10,7 @@ use super::commands::{ApmCommand, install_task_result};
 use super::fragments::{discover_effective_fragment_files, merge_fragments};
 use super::managed_targets::{ManagedTargetPreview, ManagedTargets};
 use super::manifest::{
-    describe_dependencies, merged_manifest_needs_write, read_lock_snapshot, write_merged_manifest,
+    describe_lock_changes, merged_manifest_needs_write, read_lock_snapshot, write_merged_manifest,
 };
 use super::skip;
 use super::targets::missing_apm_reason;
@@ -125,22 +125,41 @@ impl ApmInstallPlan {
 
         let lock_after = read_lock_snapshot(&self.lock_path)?;
         let autopilot_changed = self.targets.finish(ctx, &target_snapshot);
-        let changed = self.manifest_needs_write || lock_before != lock_after || autopilot_changed;
+        let lock_changed = lock_before != lock_after;
+        let dependency_changes =
+            describe_lock_changes(lock_before.as_deref(), lock_after.as_deref());
+        for detail in &dependency_changes {
+            ctx.log().info(detail);
+        }
+        if self.manifest_needs_write {
+            ctx.log().info("updated: generated APM manifest");
+        }
+        if lock_changed && dependency_changes.is_empty() {
+            ctx.log().info("updated: APM lock state");
+        }
+
+        let changed = self.manifest_needs_write || lock_changed || autopilot_changed;
         if changed {
-            ctx.log().trace(format!(
-                "installed: {}",
-                describe_dependencies(&self.merged)
-            ));
-            Ok(TaskStats::changed_with_message(format!(
-                "installed {}",
-                describe_dependencies(&self.merged)
-            ))
-            .finish())
+            let message = if dependency_changes.is_empty() {
+                "updated APM configuration".to_string()
+            } else {
+                changed_dependency_summary(dependency_changes.len())
+            };
+            ctx.log().trace(format!("APM change summary: {message}"));
+            Ok(TaskStats::changed_with_message(message).finish())
         } else {
             ctx.log()
                 .debug("APM dependencies and deployments already current");
             Ok(TaskResult::Ok)
         }
+    }
+}
+
+fn changed_dependency_summary(count: usize) -> String {
+    if count == 1 {
+        "changed 1 APM dependency".to_string()
+    } else {
+        format!("changed {count} APM dependencies")
     }
 }
 

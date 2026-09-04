@@ -1,6 +1,7 @@
 //! Focused tests for native APM install/update ownership.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use super::test_fixture::{
     expect_apm_install_without_enable, expect_copilot_app_enable,
@@ -11,8 +12,9 @@ use super::test_fixture::{
 use super::*;
 use crate::engine::Context;
 use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+use crate::infra::logging::{self, Log, Logger};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{assert_task_changed, assert_task_ok, task_skipped};
+use crate::test_helpers::{assert_task_changed, assert_task_ok, task_batch, task_skipped};
 
 fn command_failure(message: &str) -> ExecError {
     ExecError::non_zero("apm", ExecResult::failure("", message, Some(1)))
@@ -247,6 +249,12 @@ fn install_removes_legacy_cowork_records_without_a_detectable_cowork_path() {
 fn update_delegates_directly_and_reports_exact_lock_changes() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());
+    std::fs::write(
+        dir.path().join(".apm").join("apm.lock.yaml"),
+        "dependencies:\n- repo_url: example/plugin\n  name: example-plugin\n  \
+         resolved_commit: 1111111aaaa\n",
+    )
+    .expect("seed lock");
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_which_apm(&mut mock, true);
@@ -260,14 +268,29 @@ fn update_delegates_directly_and_reports_exact_lock_changes() {
                     .expect("home")
                     .join(".apm")
                     .join("apm.lock.yaml"),
-                "dependencies:\n- resolved_commit: advanced\n",
+                "dependencies:\n- repo_url: example/plugin\n  name: example-plugin\n  \
+                 resolved_commit: 2222222bbbb\n",
             )
             .expect("advance lock");
             Ok(ExecResult::success("updated\n"))
         });
-    let ctx = linux_context(dir.path(), mock);
+    let (log, _tmp, _guard) = logging::isolated_logger();
+    let log = Arc::new(log);
+    let log_output: Arc<dyn Log> = Arc::<Logger>::clone(&log);
+    let ctx = linux_context(dir.path(), mock).with_log(log_output);
 
-    assert_task_changed(&update_task().run(&ctx).expect("run update"));
+    let result = update_task().run(&ctx).expect("run update");
+
+    assert_task_changed(&result);
+    assert_eq!(
+        task_batch(&result).message(),
+        Some("updated 1 APM dependency")
+    );
+    let contents = std::fs::read_to_string(log.log_path().expect("log path")).expect("read log");
+    assert!(
+        contents.contains("[info] updated: example-plugin · commit 1111111 -> 2222222"),
+        "APM dependency change should be emitted as task detail: {contents}"
+    );
 }
 
 #[test]

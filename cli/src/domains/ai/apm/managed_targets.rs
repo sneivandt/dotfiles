@@ -94,17 +94,17 @@ impl ManagedTargets {
         command: ApmCommand,
     ) -> Result<ApmCommandResult> {
         remove_legacy_cowork_lock_deployments(ctx.home())?;
-        match run_apm_invocation(ctx, command, command.args())? {
-            ApmCommandResult::Success => {}
+        let primary_result = match run_apm_invocation(ctx, command, command.args())? {
+            result @ ApmCommandResult::Success(_) => result,
             result @ ApmCommandResult::AuthSkipped(_) => return Ok(result),
-        }
+        };
 
         for target in self.active.active() {
             match target.deployment() {
                 CopilotDeployment::NativeApm { config_key, args } => {
                     ensure_experimental_target_enabled(ctx, target.apm_name(), config_key);
                     let result = run_apm_invocation(ctx, ApmCommand::Install, args)?;
-                    if !matches!(result, ApmCommandResult::Success) {
+                    if !matches!(result, ApmCommandResult::Success(_)) {
                         return Ok(result);
                     }
                 }
@@ -114,7 +114,7 @@ impl ManagedTargets {
                 }
             }
         }
-        Ok(ApmCommandResult::Success)
+        Ok(primary_result)
     }
 
     /// Re-apply the retained Copilot App autopilot policy.

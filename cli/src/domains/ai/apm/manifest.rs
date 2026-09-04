@@ -1,6 +1,9 @@
 //! Generated-manifest persistence and dependency descriptions.
 
 use anyhow::{Context as _, Result};
+use serde::Deserialize;
+use serde_yaml_ng::Value;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
@@ -16,45 +19,168 @@ pub(super) fn read_lock_snapshot(path: &Path) -> Result<Option<Vec<u8>>> {
     }
 }
 
-/// Build a human-facing phrase describing the dependencies in the merged
-/// manifest, e.g. `"3 APM dependencies"` or `"1 APM dependency"`.
+/// Describe dependency-level changes between two APM lockfile snapshots.
 ///
-/// Used for the always-visible install change line so the console output
-/// matches the `    {verb}: {desc}` style emitted by the other apply tasks.
-/// Falls back to `"APM manifest"` when the count cannot be determined.
-pub(super) fn describe_dependencies(merged: &str) -> String {
-    match count_manifest_dependencies(merged) {
-        Some(1) => "1 APM dependency".to_string(),
-        Some(n) => format!("{n} APM dependencies"),
-        None => "APM manifest".to_string(),
+/// The lockfile is APM's authoritative record of resolved packages and
+/// deployments. Parsing it avoids treating install chatter such as cached,
+/// unchanged packages as state changes. Unknown lock fields remain part of the
+/// comparison so a newer APM can still produce a conservative metadata-change
+/// description instead of silently hiding a dependency change.
+pub(super) fn describe_lock_changes(before: Option<&[u8]>, after: Option<&[u8]>) -> Vec<String> {
+    let Some(before) = parse_locked_dependencies(before) else {
+        return Vec::new();
+    };
+    let Some(after) = parse_locked_dependencies(after) else {
+        return Vec::new();
+    };
+
+    let keys: BTreeSet<&String> = before.keys().chain(after.keys()).collect();
+    keys.into_iter()
+        .filter_map(|key| match (before.get(key), after.get(key)) {
+            (None, Some(dependency)) => Some(format!("installed: {}", dependency.display_name())),
+            (Some(dependency), None) => Some(format!("removed: {}", dependency.display_name())),
+            (Some(before), Some(after)) if before != after => {
+                Some(describe_dependency_update(before, after))
+            }
+            (Some(_), Some(_)) | (None, None) => None,
+        })
+        .collect()
+}
+
+#[derive(Debug, Deserialize)]
+struct ApmLock {
+    #[serde(default)]
+    dependencies: Vec<LockedDependency>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+struct LockedDependency {
+    #[serde(default)]
+    repo_url: String,
+    #[serde(default)]
+    name: String,
+    virtual_path: Option<String>,
+    local_path: Option<String>,
+    resolved_commit: Option<String>,
+    resolved_ref: Option<String>,
+    version: Option<String>,
+    content_hash: Option<String>,
+    #[serde(default)]
+    deployed_files: Vec<String>,
+    #[serde(default)]
+    deployed_file_hashes: BTreeMap<String, String>,
+    target_subset: Option<Vec<String>>,
+    #[serde(flatten)]
+    extra: BTreeMap<String, Value>,
+}
+
+impl LockedDependency {
+    fn identity(&self) -> String {
+        format!(
+            "{}\0{}\0{}\0{}",
+            self.repo_url,
+            self.virtual_path.as_deref().unwrap_or_default(),
+            self.local_path.as_deref().unwrap_or_default(),
+            self.name
+        )
+    }
+
+    fn display_name(&self) -> String {
+        if let Some(virtual_path) = self.virtual_path.as_deref() {
+            return join_package_path(&self.repo_url, virtual_path);
+        }
+        if !self.name.is_empty() {
+            return self.name.clone();
+        }
+        if let Some(local_path) = self.local_path.as_deref() {
+            return local_path.to_string();
+        }
+        if !self.repo_url.is_empty() {
+            return self.repo_url.clone();
+        }
+        "unnamed APM dependency".to_string()
     }
 }
 
-/// Count all dependency entries in the merged manifest.
-///
-/// Both `dependencies` and `devDependencies` are included, and every dependency
-/// group under each section counts. Returns `None` if the manifest cannot be
-/// parsed or has no dependency sections.
-fn count_manifest_dependencies(merged: &str) -> Option<usize> {
-    use serde_yaml_ng::Value;
-
-    let value: Value = match serde_yaml_ng::from_str(merged) {
-        Ok(value) => value,
-        Err(err) => {
-            // A genuine parse failure is worth surfacing at debug level; the
-            // caller still falls back to the generic "APM manifest" phrase.
-            tracing::debug!("failed to parse merged manifest for dependency count: {err}");
-            return None;
-        }
+fn parse_locked_dependencies(bytes: Option<&[u8]>) -> Option<BTreeMap<String, LockedDependency>> {
+    let lock = match bytes {
+        Some(bytes) => serde_yaml_ng::from_slice::<ApmLock>(bytes).ok()?,
+        None => ApmLock {
+            dependencies: Vec::new(),
+        },
     };
-    let count = ["dependencies", "devDependencies"]
-        .iter()
-        .filter_map(|section| value.get(section).and_then(Value::as_mapping))
-        .flat_map(serde_yaml_ng::Mapping::values)
-        .filter_map(Value::as_sequence)
-        .map(Vec::len)
-        .sum();
-    (count > 0).then_some(count)
+    Some(
+        lock.dependencies
+            .into_iter()
+            .map(|dependency| (dependency.identity(), dependency))
+            .collect(),
+    )
+}
+
+fn describe_dependency_update(before: &LockedDependency, after: &LockedDependency) -> String {
+    let mut changes = Vec::new();
+    if before.version != after.version {
+        changes.push(format!(
+            "version {} -> {}",
+            display_value(before.version.as_deref()),
+            display_value(after.version.as_deref())
+        ));
+    }
+    if before.resolved_ref != after.resolved_ref {
+        changes.push(format!(
+            "ref {} -> {}",
+            display_value(before.resolved_ref.as_deref()),
+            display_value(after.resolved_ref.as_deref())
+        ));
+    }
+    if before.resolved_commit != after.resolved_commit {
+        changes.push(format!(
+            "commit {} -> {}",
+            display_revision(before.resolved_commit.as_deref()),
+            display_revision(after.resolved_commit.as_deref())
+        ));
+    }
+
+    let content_changed = before.content_hash != after.content_hash
+        || before.deployed_file_hashes != after.deployed_file_hashes;
+    if content_changed && before.resolved_commit == after.resolved_commit {
+        changes.push("content changed".to_string());
+    }
+    if before.deployed_files != after.deployed_files {
+        changes.push("deployed files changed".to_string());
+    }
+    if before.target_subset != after.target_subset {
+        changes.push("targets changed".to_string());
+    }
+    if changes.is_empty() {
+        changes.push("lock metadata changed".to_string());
+    }
+
+    format!(
+        "updated: {} · {}",
+        after.display_name(),
+        changes.join(" · ")
+    )
+}
+
+fn display_value(value: Option<&str>) -> &str {
+    value.filter(|value| !value.is_empty()).unwrap_or("-")
+}
+
+fn display_revision(value: Option<&str>) -> &str {
+    let value = display_value(value);
+    value.get(..7).unwrap_or(value)
+}
+
+fn join_package_path(repo_url: &str, virtual_path: &str) -> String {
+    match (
+        repo_url.trim_end_matches('/'),
+        virtual_path.trim_start_matches('/'),
+    ) {
+        ("", "") => "unnamed APM dependency".to_string(),
+        ("", path) | (path, "") => path.to_string(),
+        (repo, path) => format!("{repo}/{path}"),
+    }
 }
 
 /// Return whether the generated manifest should be written to disk.
@@ -137,58 +263,71 @@ fn manifest_temp_path(target: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::super::fragments::merge_fragments;
     use super::*;
 
     #[test]
-    fn describe_dependencies_counts_apm_and_mcp_entries() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("deps.yml");
-        std::fs::write(
-            &f,
-            "\
-name: d
-version: 1.0.0
+    fn lock_changes_name_remote_ref_and_commit_updates() {
+        let before = b"\
 dependencies:
-  apm:
-    - foo/bar
-    - baz/qux
-  mcp:
-    - server-1
-  lsp:
-    - rust-analyzer
-devDependencies:
-  apm:
-    - ./dev/package
-",
-        )
-        .expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert_eq!(count_manifest_dependencies(&merged), Some(5));
-        assert_eq!(describe_dependencies(&merged), "5 APM dependencies");
+  - repo_url: cursor/plugins
+    name: unslop
+    virtual_path: pstack/skills/unslop
+    resolved_commit: efa2a531abcd
+    version: unknown
+";
+        let after = b"\
+dependencies:
+  - repo_url: cursor/plugins
+    name: unslop
+    virtual_path: pstack/skills/unslop
+    resolved_ref: main
+    resolved_commit: 93b00b89abcd
+    version: unknown
+";
+
+        assert_eq!(
+            describe_lock_changes(Some(before), Some(after)),
+            [
+                "updated: cursor/plugins/pstack/skills/unslop · ref - -> main · commit \
+                 efa2a53 -> 93b00b8"
+            ]
+        );
     }
 
     #[test]
-    fn describe_dependencies_uses_singular_for_one_entry() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("one.yml");
-        std::fs::write(
-            &f,
-            "name: o\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n",
-        )
-        .expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert_eq!(describe_dependencies(&merged), "1 APM dependency");
+    fn lock_changes_distinguish_added_removed_and_local_content() {
+        let before = b"\
+dependencies:
+  - repo_url: old/plugin
+    name: old-plugin
+  - repo_url: _local/dot-agent
+    name: dot-agent
+    source: local
+    local_path: ~/.apm/plugins/dot-agent
+    deployed_file_hashes:
+      .agents/skills/status-update/SKILL.md: sha256:old
+";
+        let after = b"\
+dependencies:
+  - repo_url: new/plugin
+    name: new-plugin
+  - repo_url: _local/dot-agent
+    name: dot-agent
+    source: local
+    local_path: ~/.apm/plugins/dot-agent
+    deployed_file_hashes:
+      .agents/skills/status-update/SKILL.md: sha256:new
+";
+
+        let changes = describe_lock_changes(Some(before), Some(after));
+        assert!(changes.contains(&"removed: old-plugin".to_string()));
+        assert!(changes.contains(&"installed: new-plugin".to_string()));
+        assert!(changes.contains(&"updated: dot-agent · content changed".to_string()));
     }
 
     #[test]
-    fn describe_dependencies_falls_back_when_no_dependencies() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("none.yml");
-        std::fs::write(&f, "name: n\nversion: 1.0.0\n").expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
-        assert_eq!(count_manifest_dependencies(&merged), None);
-        assert_eq!(describe_dependencies(&merged), "APM manifest");
+    fn lock_changes_fall_back_when_a_snapshot_cannot_be_parsed() {
+        assert!(describe_lock_changes(Some(b"not: [yaml"), Some(b"dependencies: []")).is_empty());
     }
 
     #[test]

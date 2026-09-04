@@ -345,6 +345,27 @@ fn task_result_lines_are_flat_with_reduced_indent() {
 }
 
 #[test]
+fn task_result_lines_omit_success_reason_when_actions_are_listed() {
+    let task = task_entry(
+        "APM package updates",
+        TaskStatus::Changed,
+        Some("updated 2 APM dependencies"),
+    );
+    let details = vec![TaskDetailEntry {
+        task_id: task.task_id.clone(),
+        lines: vec!["updated: cursor/plugins/pstack/skills/unslop".to_string()],
+    }];
+
+    assert_eq!(
+        task_result_lines(&task, &details, plain_opts()),
+        [
+            "✓ APM package updates",
+            "  update cursor/plugins/pstack/skills/unslop"
+        ]
+    );
+}
+
+#[test]
 fn task_result_lines_abbreviate_symlink_actions() {
     let mut task = task_entry("Install symlinks", TaskStatus::DryRun, None);
     task.actions = ActionCounts {

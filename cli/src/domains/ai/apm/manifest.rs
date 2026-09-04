@@ -75,7 +75,11 @@ struct LockedDependency {
 }
 
 impl LockedDependency {
-    fn identity(&self) -> String {
+    fn match_key(&self) -> String {
+        self.display_name()
+    }
+
+    fn source_identity(&self) -> String {
         format!(
             "{}\0{}\0{}\0{}",
             self.repo_url,
@@ -112,7 +116,7 @@ fn parse_locked_dependencies(bytes: Option<&[u8]>) -> Option<BTreeMap<String, Lo
     Some(
         lock.dependencies
             .into_iter()
-            .map(|dependency| (dependency.identity(), dependency))
+            .map(|dependency| (dependency.match_key(), dependency))
             .collect(),
     )
 }
@@ -153,6 +157,9 @@ fn describe_dependency_update(before: &LockedDependency, after: &LockedDependenc
         changes.push("targets changed".to_string());
     }
     if changes.is_empty() {
+        if before.source_identity() != after.source_identity() {
+            return format!("updated: {}", after.display_name());
+        }
         changes.push("lock metadata changed".to_string());
     }
 
@@ -323,6 +330,26 @@ dependencies:
         assert!(changes.contains(&"removed: old-plugin".to_string()));
         assert!(changes.contains(&"installed: new-plugin".to_string()));
         assert!(changes.contains(&"updated: dot-agent · content changed".to_string()));
+    }
+
+    #[test]
+    fn lock_changes_treat_same_displayed_package_as_an_update() {
+        let before = b"\
+dependencies:
+  - repo_url: cursor/plugins
+    name: cursor/plugins/pstack/skills/unslop
+";
+        let after = b"\
+dependencies:
+  - repo_url: cursor/plugins
+    name: unslop
+    virtual_path: pstack/skills/unslop
+";
+
+        assert_eq!(
+            describe_lock_changes(Some(before), Some(after)),
+            ["updated: cursor/plugins/pstack/skills/unslop"]
+        );
     }
 
     #[test]

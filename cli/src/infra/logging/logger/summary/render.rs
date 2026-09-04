@@ -35,8 +35,14 @@ pub(super) fn task_result_lines(
         return Vec::new();
     }
 
-    let mut lines = vec![format_task_line(task, opts)];
-    lines.extend(detail_rows(details, task, opts));
+    let detail_rows = detail_rows(details, task, opts);
+    let show_reason = detail_rows.is_empty()
+        || matches!(
+            task.status,
+            TaskStatus::Failed | TaskStatus::Skipped | TaskStatus::NotApplicable
+        );
+    let mut lines = vec![format_task_line_with_reason(task, opts, show_reason)];
+    lines.extend(detail_rows);
     lines
 }
 
@@ -89,9 +95,13 @@ fn status_text(status: TaskStatus, mode: SummaryMode, symbols: bool) -> String {
 
 /// Render one task row: status, name, then the reason and timing sections.
 ///
-/// The task's message lives on this row rather than in the indented block
-/// below it, so an indented line always means "an action this task took".
+/// The task's message lives on this row unless a successful outcome already
+/// lists its concrete actions below it.
 pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
+    format_task_line_with_reason(task, opts, true)
+}
+
+fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bool) -> String {
     let padded = format!(
         "{:<STATUS_WIDTH$}",
         status_text(task.status, opts.mode, opts.symbols)
@@ -102,7 +112,7 @@ pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
         task.name
     );
 
-    if let Some(reason) = row_reason(task) {
+    if show_reason && let Some(reason) = row_reason(task) {
         line.push_str(
             &opts
                 .style

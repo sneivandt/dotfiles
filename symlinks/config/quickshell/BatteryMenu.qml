@@ -1,43 +1,38 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
-import Quickshell
 import Quickshell.Services.UPower
 import "Theme.js" as Theme
 
-PopupWindow {
+ShellPopup {
     id: root
 
-    required property Item anchorItem
     required property var battery
-    readonly property real charge: battery && battery.ready ? battery.percentage : 0
-    readonly property bool charging: battery && battery.state === UPowerDeviceState.Charging
-    readonly property bool fullyCharged: battery && battery.state === UPowerDeviceState.FullyCharged
-    readonly property color accentColor: charging || fullyCharged ? Theme.green : (charge <= 0.15 ? Theme.red : (charge <= 0.3 ? Theme.yellow : Theme.blue))
-    readonly property color accentBackground: charging || fullyCharged ? Theme.greenSoft : (charge <= 0.15 ? Theme.redSoft : (charge <= 0.3 ? Theme.yellowSoft : Theme.blueSoft))
+    readonly property bool available: Boolean(battery && battery.ready)
+    readonly property real charge: available ? battery.percentage : -1
+    readonly property bool charging: available && battery.state === UPowerDeviceState.Charging
+    readonly property bool fullyCharged: available && battery.state === UPowerDeviceState.FullyCharged
+    readonly property color accentColor: !available ? Theme.mutedStrong : (charging || fullyCharged ? Theme.green : (charge <= 0.15 ? Theme.red : (charge <= 0.3 ? Theme.yellow : Theme.blue)))
 
     function batteryIcon() {
         if (charging)
             return "\uf0e7";
-
+        if (!available)
+            return "\uf128";
         if (charge <= 0.15)
             return "\uf244";
-
         if (charge <= 0.35)
             return "\uf243";
-
         if (charge <= 0.6)
             return "\uf242";
-
         if (charge <= 0.85)
             return "\uf241";
-
         return "\uf240";
     }
 
     function stateLabel() {
-        if (!battery || !battery.ready)
+        if (!available)
             return "Battery unavailable";
-
         switch (battery.state) {
         case UPowerDeviceState.Charging:
             return "Charging";
@@ -60,212 +55,151 @@ PopupWindow {
         const totalMinutes = Math.max(1, Math.round(seconds / 60));
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
-
         if (hours === 0)
             return minutes + "m";
-
         if (minutes === 0)
             return hours + "h";
-
         return hours + "h " + minutes + "m";
     }
 
     function timeSummary() {
-        if (!battery || !battery.ready)
+        if (!available)
             return "Waiting for battery data";
-
         if (charging && battery.timeToFull > 0)
             return duration(battery.timeToFull) + " until full";
-
         if (battery.state === UPowerDeviceState.Discharging && battery.timeToEmpty > 0)
             return duration(battery.timeToEmpty) + " remaining";
-
         return stateLabel();
     }
 
-    implicitWidth: 370
-    implicitHeight: 244
-    color: "transparent"
-    grabFocus: true
+    ColumnLayout {
+        width: parent.width
+        spacing: Theme.padding
 
-    anchor {
-        window: root.anchorItem.QsWindow.window
-        adjustment: PopupAdjustment.SlideX | PopupAdjustment.FlipY
-        gravity: Edges.Bottom | Edges.Right
-        onAnchoring: {
-            const content = root.anchorItem.QsWindow.contentItem;
-            const point = content.mapFromItem(root.anchorItem, root.anchorItem.width - root.width, root.anchorItem.height + 8);
-            anchor.rect.x = point.x;
-            anchor.rect.y = point.y;
+        MenuHeader {
+            id: header
+
+            Layout.fillWidth: true
+            icon: root.batteryIcon()
+            title: "Battery"
+            subtitle: root.stateLabel()
+            accentColor: root.accentColor
+            accentBackground: "transparent"
         }
-    }
 
-    MenuPanel {
-        anchors.fill: parent
+        Flickable {
+            id: scroll
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 6
+            Layout.fillWidth: true
+            implicitHeight: Math.min(contentHeight, Math.max(0, root.availableContentHeight - header.implicitHeight - Theme.padding))
+            contentHeight: batteryContent.implicitHeight
+            contentWidth: width
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickableDirection: Flickable.VerticalFlick
+            activeFocusOnTab: contentHeight > height
+            Keys.onDownPressed: contentY = Math.min(Math.max(0, contentHeight - height), contentY + 40)
+            Keys.onUpPressed: contentY = Math.max(0, contentY - 40)
+            ScrollBar.vertical: ShellScrollBar {}
 
-            MenuHeader {
-                Layout.fillWidth: true
-                Layout.leftMargin: 2
-                Layout.rightMargin: 2
-                Layout.bottomMargin: 4
-                icon: root.batteryIcon()
-                title: "Battery"
-                subtitle: root.battery && root.battery.model.length > 0 ? root.battery.model : "System battery"
-                accentColor: root.accentColor
-                accentBackground: root.accentBackground
-                trailingItem: Rectangle {
-                    implicitWidth: percentageText.implicitWidth + 18
-                    implicitHeight: 28
-                    radius: Theme.controlRadius
-                    color: Theme.raised
-                    border.width: 1
-                    border.color: Theme.borderSubtle
+            ColumnLayout {
+                id: batteryContent
 
-                    Text {
-                        id: percentageText
+                width: scroll.width
+                spacing: Theme.spacing
 
-                        anchors.centerIn: parent
-                        text: Math.round(root.charge * 100) + "%"
-                        color: root.accentColor
-                        font.family: Theme.font
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
+                Text {
+                    Layout.fillWidth: true
+                    text: root.available ? Math.round(root.charge * 100) + "%" : "--"
+                    color: root.available ? Theme.foreground : Theme.mutedStrong
+                    font.family: Theme.font
+                    font.pixelSize: 40
+                    font.weight: Font.DemiBold
+                    Accessible.name: root.available ? text + " charged" : "Charge unavailable"
                 }
-            }
 
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: 94
-                radius: Theme.itemRadius
-                color: Theme.raised
-                border.width: 1
-                border.color: Theme.borderSubtle
+                Text {
+                    Layout.fillWidth: true
+                    text: root.timeSummary()
+                    color: Theme.mutedStrong
+                    font.family: Theme.font
+                    font.pixelSize: Theme.textBody
+                    wrapMode: Text.WordWrap
+                }
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 1
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Charge level"
-                                color: Theme.foreground
-                                font.family: Theme.font
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.stateLabel()
-                                color: root.accentColor
-                                font.family: Theme.font
-                                font.pixelSize: 10
-                            }
-                        }
-
-                        Text {
-                            text: root.timeSummary()
-                            color: Theme.mutedStrong
-                            font.family: Theme.font
-                            font.pixelSize: 10
-                        }
-                    }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spacing
+                    Layout.bottomMargin: Theme.spacing
+                    implicitHeight: 6
+                    radius: 3
+                    color: Theme.borderSubtle
+                    visible: root.available
 
                     Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: 8
-                        radius: 4
-                        color: Theme.borderSubtle
+                        width: Math.max(0, Math.min(1, root.charge)) * parent.width
+                        height: parent.height
+                        radius: parent.radius
+                        color: root.accentColor
 
-                        Rectangle {
-                            width: Math.max(0, Math.min(1, root.charge)) * parent.width
-                            height: parent.height
-                            radius: parent.radius
-                            color: root.accentColor
-
-                            Behavior on width {
-                                NumberAnimation {
-                                    duration: Theme.animationNormal
-                                    easing.type: Easing.OutCubic
-                                }
+                        Behavior on width {
+                            NumberAnimation {
+                                duration: Theme.animationNormal
+                                easing.type: Easing.OutCubic
                             }
                         }
                     }
                 }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
 
                 Repeater {
                     model: [
                         {
-                            "label": "POWER",
-                            "value": root.battery && root.battery.changeRate > 0 ? root.battery.changeRate.toFixed(1) + " W" : "--",
-                            "color": Theme.cyan
+                            "label": "Power",
+                            "value": root.available && root.battery.changeRate > 0 ? root.battery.changeRate.toFixed(1) + " W" : "--"
                         },
                         {
-                            "label": "HEALTH",
-                            "value": root.battery && root.battery.healthSupported ? Math.round(root.battery.healthPercentage * 100) + "%" : "--",
-                            "color": Theme.green
+                            "label": "Health",
+                            "value": root.available && root.battery.healthSupported ? Math.round(root.battery.healthPercentage * 100) + "%" : "--"
                         },
                         {
-                            "label": "CAPACITY",
-                            "value": root.battery && root.battery.energyCapacity > 0 ? root.battery.energyCapacity.toFixed(1) + " Wh" : "--",
-                            "color": Theme.purple
+                            "label": "Capacity",
+                            "value": root.available && root.battery.energyCapacity > 0 ? root.battery.energyCapacity.toFixed(1) + " Wh" : "--"
                         }
                     ]
 
-                    Rectangle {
-                        id: statCard
+                    RowLayout {
+                        id: stat
 
                         required property var modelData
 
                         Layout.fillWidth: true
-                        implicitHeight: 58
-                        radius: Theme.controlRadius
-                        color: Theme.raised
-                        border.width: 1
-                        border.color: Theme.borderSubtle
+                        spacing: Theme.spacing
 
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: stat.modelData.label
+                            color: Theme.mutedStrong
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textSmall
+                        }
 
-                            Text {
-                                Layout.alignment: Qt.AlignHCenter
-                                text: statCard.modelData.value
-                                color: statCard.modelData.color
-                                font.family: Theme.font
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                            }
-
-                            Text {
-                                Layout.alignment: Qt.AlignHCenter
-                                text: statCard.modelData.label
-                                color: Theme.mutedStrong
-                                font.family: Theme.font
-                                font.pixelSize: 9
-                                font.weight: Font.DemiBold
-                            }
+                        Text {
+                            text: stat.modelData.value
+                            color: Theme.mutedStrong
+                            font.family: Theme.font
+                            font.pixelSize: Theme.textSmall
                         }
                     }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.topMargin: Theme.spacing
+                    text: root.available && root.battery.model ? root.battery.model : "System battery"
+                    color: Theme.mutedStrong
+                    font.family: Theme.font
+                    font.pixelSize: Theme.textSmall
+                    wrapMode: Text.Wrap
                 }
             }
         }

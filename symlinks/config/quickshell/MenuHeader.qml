@@ -12,39 +12,29 @@ RowLayout {
     property color accentBackground: Theme.blueSoft
     property alias trailingItem: trailingSlot.data
 
-    spacing: 10
+    spacing: 12
 
-    Rectangle {
+    Text {
         visible: root.icon.length > 0
-        implicitWidth: 34
-        implicitHeight: 34
-        radius: Theme.controlRadius
-        color: root.accentBackground
-        border.width: 1
-        border.color: root.accentBackground
-
-        Text {
-            anchors.fill: parent
-            text: root.icon
-            color: root.accentColor
-            font.family: Theme.iconFont
-            font.pixelSize: 14
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            renderType: Text.NativeRendering
-        }
+        Layout.preferredWidth: 20
+        text: root.icon
+        color: root.accentColor
+        font.family: Theme.iconFont
+        font.pixelSize: 17
+        horizontalAlignment: Text.AlignHCenter
     }
 
     ColumnLayout {
         Layout.fillWidth: true
-        spacing: 1
+        spacing: 4
 
         Text {
             Layout.fillWidth: true
             text: root.title
+            textFormat: Text.PlainText
             color: Theme.foreground
             font.family: Theme.font
-            font.pixelSize: 15
+            font.pixelSize: Theme.textHeading
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
@@ -53,9 +43,10 @@ RowLayout {
             visible: root.subtitle.length > 0
             Layout.fillWidth: true
             text: root.subtitle
+            textFormat: Text.PlainText
             color: Theme.mutedStrong
             font.family: Theme.font
-            font.pixelSize: 10
+            font.pixelSize: Theme.textSmall
             elide: Text.ElideRight
         }
     }

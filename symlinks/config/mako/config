@@ -4,23 +4,23 @@
 font=Source Code Pro 11
 
 # Geometry
-width=380
+width=368
 height=200
-margin=12,12
-padding=14
+margin=44,8,8
+padding=16
 anchor=top-right
-border-size=2
-border-radius=10
+border-size=1
+border-radius=12
 max-visible=3
 layer=overlay
 
 # Colors (Tokyo Night)
-background-color=#1a1b26
+background-color=#1f2335fa
 text-color=#c0caf5
-border-color=#7aa2f7
+border-color=#414868
 
 # Icons
-max-icon-size=48
+max-icon-size=32
 icon-location=left
 
 # Behaviour
@@ -35,7 +35,7 @@ group-by=category
 
 # Low urgency — subdued styling
 [urgency=low]
-background-color=#1a1b26
+background-color=#1f2335fa
 text-color=#9aa5ce
 border-color=#414868
 default-timeout=5000

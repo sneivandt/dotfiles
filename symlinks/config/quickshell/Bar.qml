@@ -1,4 +1,7 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Hyprland
@@ -12,461 +15,319 @@ import "Theme.js" as Theme
 
 PanelWindow {
     id: bar
-
     required property var modelData
+    required property var audio
+    required property var network
+    required property var markets
+    required property var menuController
     readonly property var hyprMonitor: Hyprland.monitorFor(screen)
     readonly property var activeWorkspace: hyprMonitor ? hyprMonitor.activeWorkspace : null
     readonly property var player: {
         const players = Mpris.players.values;
-        for (let i = 0; i < players.length; ++i) {
-            if (players[i].dbusName.toLowerCase().includes("spotify"))
-                return players[i];
-
-        }
-        return players.length > 0 ? players[0] : null;
+        return players.find(player => player.dbusName.toLowerCase().includes("spotify")) || players[0] || null;
     }
-    property var stockQuotes: []
-    property int stocksUpdated: 0
-    property string networkIcon: "\uf127"
-    property bool networkConnected: false
-    property string networkName: ""
-    property string networkType: ""
-    property string networkDevice: ""
+    readonly property string track: player ? (player.trackArtist ? player.trackArtist + " - " : "") + (player.trackTitle || "Unknown track") : ""
+    readonly property var battery: UPower.displayDevice
+    readonly property bool hasBattery: battery && battery.ready && battery.isLaptopBattery
+    readonly property real charge: hasBattery ? battery.percentage : 0
+    readonly property bool charging: hasBattery && (battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.FullyCharged)
+    readonly property string batteryIcon: charging ? "\uf0e7" : (charge <= 0.15 ? "\uf244" : (charge <= 0.35 ? "\uf243" : (charge <= 0.6 ? "\uf242" : (charge <= 0.85 ? "\uf241" : "\uf240"))))
 
-    function closeMenus(except) {
-        if (except !== "volume")
-            volumeMenu.visible = false;
-
-        if (except !== "battery")
-            batteryMenu.visible = false;
-
-        if (except !== "power")
-            powerMenu.visible = false;
-
-        if (except !== "calendar")
-            calendarMenu.visible = false;
-
-        if (except !== "stocks")
-            stocksMenu.visible = false;
-
-        if (except !== "network")
-            networkMenu.visible = false;
-
-    }
-
-    function toggleMenu(name, menu) {
-        const show = !menu.visible;
-        closeMenus(show ? name : "");
-        menu.visible = show;
+    function toggleMenu(menu) {
+        menuController.toggle(menu);
     }
 
     screen: modelData
-    implicitHeight: 30
-    exclusiveZone: visible ? 30 : 0
+    implicitHeight: Theme.barHeight
+    exclusiveZone: visible ? Theme.barHeight : 0
     color: "transparent"
     visible: !(activeWorkspace && activeWorkspace.hasFullscreen)
-    WlrLayershell.layer: WlrLayer.Bottom
-
+    WlrLayershell.layer: WlrLayer.Top
+    WlrLayershell.namespace: "dotfiles-bar"
+    onVisibleChanged: {
+        if (!visible && menuController.openMenu && menuController.openMenu.anchorWindow === bar)
+            menuController.openMenu.visible = false;
+    }
     anchors {
         top: true
         left: true
         right: true
     }
 
-    Item {
+    RowLayout {
+        id: barLayout
         anchors.fill: parent
+        anchors.leftMargin: 8
+        anchors.rightMargin: 8
+        spacing: 8
 
-        RowLayout {
-            anchors.left: parent.left
-            anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
-
-            Rectangle {
-                implicitWidth: workspaceRow.implicitWidth + 12
-                implicitHeight: 22
-                radius: 6
-                color: Theme.background
-
-                Row {
-                    id: workspaceRow
-
-                    anchors.centerIn: parent
-                    spacing: 0
-
-                    Repeater {
-                        model: 9
-
-                        Item {
-                            required property int index
-                            readonly property int number: index + 1
-                            readonly property var workspace: {
-                                const workspaces = Hyprland.workspaces.values;
-                                for (let i = 0; i < workspaces.length; ++i) {
-                                    if (workspaces[i].id === number)
-                                        return workspaces[i];
-
-                                }
-                                return null;
-                            }
-                            readonly property bool active: bar.activeWorkspace && bar.activeWorkspace.id === number
-
-                            visible: active || workspace !== null
-                            width: visible ? 22 : 0
-                            height: 22
-
+        BarGroup {
+            id: workspaceGroup
+            Layout.preferredWidth: workspaceRow.implicitWidth + (appTitle.visible ? appTitle.width : 0)
+            RowLayout {
+                id: workspaceRow
+                height: parent.height
+                spacing: 0
+                Repeater {
+                    model: 9
+                    BarBlock {
+                        id: workspaceButton
+                        required property int index
+                        readonly property int number: index + 1
+                        readonly property bool occupied: Hyprland.workspaces.values.some(workspace => workspace.id === number)
+                        readonly property bool current: bar.activeWorkspace && bar.activeWorkspace.id === number
+                        visible: current || occupied
+                        implicitWidth: Theme.barControlHeight
+                        horizontalPadding: 0
+                        tooltip: "Workspace " + number
+                        onActivated: Hyprland.dispatch("hl.dsp.focus({ workspace = " + number + " })")
+                        contentItem: Item {
                             Rectangle {
-                                anchors.fill: parent
-                                radius: 6
-                                color: workspaceMouse.containsMouse ? Theme.hover : "transparent"
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: parent.parent.active ? "\u25cf" : "\u25cb"
-                                    color: parent.parent.active ? Theme.blue : Theme.foreground
-                                    font.family: Theme.font
-                                    font.pixelSize: 16
+                                anchors.centerIn: parent
+                                width: workspaceButton.current ? 14 : 6
+                                height: 6
+                                radius: 3
+                                color: workspaceButton.current ? Theme.blue : Theme.mutedStrong
+                                Behavior on width {
+                                    NumberAnimation {
+                                        duration: Theme.animationNormal
+                                        easing.type: Easing.OutCubic
+                                    }
                                 }
-                            }
-
-                            MouseArea {
-                                id: workspaceMouse
-
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + parent.number + " })")
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: Theme.animationFast
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-
             BarBlock {
+                id: appTitle
                 readonly property var toplevel: Hyprland.activeToplevel
-
-                visible: Boolean(toplevel && toplevel.title && toplevel.title.length > 0)
-                text: toplevel && toplevel.title ? toplevel.title.slice(0, 80) : ""
+                readonly property real titleWidthBudget: Math.max(0, bar.width - controls.implicitWidth - clockGroup.implicitWidth - workspaceRow.implicitWidth - trayGroup.implicitWidth - 160)
+                x: workspaceRow.width
+                width: Math.min(implicitWidth, 320, titleWidthBudget)
+                visible: titleWidthBudget >= 80 && text.length > 0
+                text: toplevel && toplevel.title ? toplevel.title : ""
+                tooltip: text
                 interactive: false
+                textColor: Theme.mutedStrong
             }
         }
 
-        RowLayout {
-            anchors.right: parent.right
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
+        Item {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+        }
 
+        BarGroup {
+            id: mediaGroup
+            readonly property real room: bar.width - workspaceGroup.width - controls.implicitWidth - clockGroup.implicitWidth - trayGroup.implicitWidth - 64
+            visible: bar.player !== null && bar.player.playbackState !== MprisPlaybackState.Stopped && room >= 44
+            Layout.preferredWidth: Math.max(36, Math.min(340, room))
             BarBlock {
-                visible: bar.player !== null && bar.player.playbackState !== MprisPlaybackState.Stopped
-                text: visible ? "\uf001  " + ((bar.player.trackArtist ? bar.player.trackArtist + " - " : "") + (bar.player.trackTitle || "Unknown track")).slice(0, 72) : ""
-                textColor: bar.player && bar.player.isPlaying ? Theme.purple : Theme.muted
-                onActivated: (button) => {
+                anchors.fill: parent
+                glyph: bar.player && bar.player.isPlaying ? "\uf001" : "\uf04c"
+                text: parent.width >= 140 ? bar.track : ""
+                textColor: bar.player && bar.player.isPlaying ? Theme.purple : Theme.mutedStrong
+                tooltip: bar.track + "\nClick: play/pause | Middle: previous | Right: next"
+                onActivated: button => {
                     if (!bar.player)
-                        return ;
-
+                        return;
                     if (button === Qt.MiddleButton && bar.player.canGoPrevious)
                         bar.player.previous();
                     else if (button === Qt.RightButton && bar.player.canGoNext)
                         bar.player.next();
-                    else if (bar.player.canTogglePlaying)
+                    else if (button === Qt.LeftButton && bar.player.canTogglePlaying)
                         bar.player.togglePlaying();
                 }
             }
+        }
 
-            Rectangle {
-                visible: SystemTray.items.values.length > 0
-                implicitWidth: trayRow.implicitWidth + 12
-                implicitHeight: 22
-                radius: 6
-                color: Theme.background
-
-                Row {
-                    id: trayRow
-
-                    anchors.centerIn: parent
-                    spacing: 6
-
-                    Repeater {
-                        model: SystemTray.items
-
-                        Item {
-                            id: trayItem
-
-                            required property var modelData
-
-                            width: 18
-                            height: 18
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 4
-                                color: trayMouse.containsMouse ? Theme.hover : "transparent"
-                            }
-
+        BarGroup {
+            id: trayGroup
+            visible: SystemTray.items.values.length > 0
+            implicitWidth: visible ? trayRow.implicitWidth : 0
+            Row {
+                id: trayRow
+                Repeater {
+                    model: SystemTray.items
+                    AbstractButton {
+                        id: trayItem
+                        required property var modelData
+                        implicitWidth: Theme.barControlHeight
+                        implicitHeight: Theme.barControlHeight
+                        hoverEnabled: true
+                        focusPolicy: Qt.StrongFocus
+                        Accessible.name: modelData.tooltipTitle || modelData.title || modelData.id
+                        function showMenu() {
+                            bar.menuController.dismiss();
+                            const point = bar.contentItem.mapFromItem(trayItem, 0, trayItem.height);
+                            modelData.display(bar, point.x, point.y);
+                        }
+                        onClicked: {
+                            if (modelData.onlyMenu)
+                                showMenu();
+                            else
+                                modelData.activate();
+                        }
+                        Keys.onMenuPressed: showMenu()
+                        Keys.onReturnPressed: clicked()
+                        background: Rectangle {
+                            radius: Theme.controlRadius
+                            color: trayItem.hovered || trayItem.down ? Theme.hover : "transparent"
+                            border.width: trayItem.visualFocus ? 1 : 0
+                            border.color: Theme.blue
+                        }
+                        contentItem: Item {
                             IconImage {
                                 anchors.centerIn: parent
-                                width: 14
-                                height: 14
+                                width: 16
+                                height: 16
                                 source: trayItem.modelData.icon
                             }
-
-                            MouseArea {
-                                id: trayMouse
-
-                                anchors.fill: parent
-                                acceptedButtons: Qt.AllButtons
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: (event) => {
-                                    if (event.button === Qt.MiddleButton) {
-                                        trayItem.modelData.secondaryActivate();
-                                    } else if (event.button === Qt.RightButton || trayItem.modelData.onlyMenu) {
-                                        const point = bar.contentItem.mapFromItem(trayItem, 0, trayItem.height);
-                                        trayItem.modelData.display(bar, point.x, point.y);
-                                    } else {
-                                        trayItem.modelData.activate();
-                                    }
-                                }
-                                onWheel: (event) => {
-                                    return trayItem.modelData.scroll(event.angleDelta.y, false);
-                                }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.MiddleButton | Qt.RightButton
+                            onClicked: event => {
+                                if (event.button === Qt.MiddleButton)
+                                    trayItem.modelData.secondaryActivate();
+                                else
+                                    trayItem.showMenu();
                             }
+                            onWheel: event => trayItem.modelData.scroll(event.angleDelta.y, false)
+                        }
+                        ShellToolTip {
+                            text: trayItem.Accessible.name
+                            visible: trayItem.hovered || trayItem.visualFocus
+                        }
+                        HoverHandler {
+                            cursorShape: Qt.PointingHandCursor
                         }
                     }
                 }
             }
+        }
 
-            BarBlock {
-                id: stocksButton
-
-                text: "\uf201"
-                fontFamily: Theme.iconFont
-                textColor: bar.stockQuotes.length > 0 ? Theme.foreground : Theme.muted
-                onActivated: bar.toggleMenu("stocks", stocksMenu)
-            }
-
-            BarBlock {
-                id: networkButton
-
-                text: bar.networkIcon
-                fontFamily: Theme.iconFont
-                textColor: bar.networkIcon === "\uf127" ? Theme.muted : Theme.foreground
-                onActivated: (button) => {
-                    if (button === Qt.RightButton)
-                        networkEditor.startDetached();
-                    else
-                        bar.toggleMenu("network", networkMenu);
+        BarGroup {
+            id: controls
+            implicitWidth: controlRow.implicitWidth
+            Row {
+                id: controlRow
+                BarBlock {
+                    id: stocksButton
+                    glyph: "\uf201"
+                    tooltip: "Markets"
+                    selected: stocksMenu.visible && !stocksMenu.closing
+                    onActivated: bar.toggleMenu(stocksMenu)
+                }
+                BarBlock {
+                    id: networkButton
+                    glyph: bar.network.icon
+                    tooltip: !bar.network.available ? "Network status unavailable" : (bar.network.connected ? bar.network.connectionName : "Network")
+                    textColor: !bar.network.available ? Theme.yellow : (bar.network.connected ? Theme.foreground : Theme.mutedStrong)
+                    selected: networkMenu.visible && !networkMenu.closing
+                    onActivated: button => {
+                        if (button === Qt.RightButton) {
+                            bar.menuController.dismiss();
+                            networkEditor.startDetached();
+                        } else {
+                            bar.toggleMenu(networkMenu);
+                        }
+                    }
+                }
+                BarBlock {
+                    id: volumeButton
+                    glyph: bar.audio.muted ? "\uf6a9" : "\uf028"
+                    tooltip: bar.audio.available ? (bar.audio.muted ? "Muted" : "Volume " + Math.round(bar.audio.volume * 100) + "%") + "\nScroll: volume | Middle click: mute" : "No audio output"
+                    textColor: bar.audio.available && !bar.audio.muted ? Theme.foreground : Theme.mutedStrong
+                    selected: volumeMenu.visible && !volumeMenu.closing
+                    onActivated: button => {
+                        if (button === Qt.MiddleButton)
+                            bar.audio.toggleMuted();
+                        else
+                            bar.toggleMenu(volumeMenu);
+                    }
+                    onScrolled: steps => bar.audio.setVolume(bar.audio.volume + steps * 0.05)
+                }
+                BarBlock {
+                    id: batteryButton
+                    visible: bar.hasBattery
+                    glyph: bar.batteryIcon
+                    tooltip: Math.round(bar.charge * 100) + "% battery" + (bar.charging ? " - Charging" : "")
+                    textColor: bar.charging ? Theme.green : (bar.charge <= 0.15 ? Theme.red : (bar.charge <= 0.3 ? Theme.yellow : Theme.foreground))
+                    selected: batteryMenu.visible && !batteryMenu.closing
+                    onActivated: bar.toggleMenu(batteryMenu)
+                }
+                BarBlock {
+                    id: powerButton
+                    glyph: "\uf011"
+                    tooltip: "Power and session"
+                    selected: powerMenu.visible && !powerMenu.closing
+                    onActivated: bar.toggleMenu(powerMenu)
                 }
             }
+        }
 
-            BarBlock {
-                id: volumeButton
-
-                text: audio.muted ? "\uf6a9" : "\uf028"
-                fontFamily: Theme.iconFont
-                textColor: !audio.available || audio.muted ? Theme.muted : Theme.foreground
-                onActivated: (button) => {
-                    if (button === Qt.MiddleButton)
-                        audio.toggleMuted();
-                    else
-                        bar.toggleMenu("volume", volumeMenu);
-                }
-                onScrolled: (steps) => {
-                    return audio.setVolume(audio.volume + steps * 0.05);
-                }
-            }
-
-            BarBlock {
-                id: batteryButton
-
-                readonly property var battery: UPower.displayDevice
-                readonly property real charge: battery && battery.ready ? battery.percentage : 0
-                readonly property bool charging: battery && (battery.state === UPowerDeviceState.Charging || battery.state === UPowerDeviceState.FullyCharged)
-
-                visible: battery && battery.ready && battery.isLaptopBattery
-                text: {
-                    if (charging)
-                        return "\uf0e7";
-
-                    if (charge <= 0.15)
-                        return "\uf244";
-
-                    if (charge <= 0.35)
-                        return "\uf243";
-
-                    if (charge <= 0.6)
-                        return "\uf242";
-
-                    if (charge <= 0.85)
-                        return "\uf241";
-
-                    return "\uf240";
-                }
-                fontFamily: Theme.iconFont
-                textColor: charging ? Theme.green : (charge <= 0.15 ? Theme.red : (charge <= 0.3 ? Theme.yellow : Theme.foreground))
-                onActivated: bar.toggleMenu("battery", batteryMenu)
-            }
-
-            BarBlock {
-                id: powerButton
-
-                text: "\uf011"
-                fontFamily: Theme.iconFont
-                onActivated: bar.toggleMenu("power", powerMenu)
-            }
-
+        BarGroup {
+            id: clockGroup
+            implicitWidth: clockButton.implicitWidth
             BarBlock {
                 id: clockButton
-
-                text: Qt.formatDateTime(clock.date, "MMM dd HH:mm")
-                horizontalPadding: 12
-                onActivated: bar.toggleMenu("calendar", calendarMenu)
-
-                SystemClock {
-                    id: clock
-
-                    precision: SystemClock.Minutes
-                }
+                text: Qt.formatDateTime(clock.date, bar.width < 800 ? "HH:mm" : "MMM dd  HH:mm")
+                tooltip: Qt.formatDate(clock.date, "dddd, MMMM d")
+                selected: calendarMenu.visible && !calendarMenu.closing
+                onActivated: bar.toggleMenu(calendarMenu)
             }
         }
     }
 
+    SystemClock {
+        id: clock
+        precision: SystemClock.Minutes
+    }
     VolumeMenu {
         id: volumeMenu
-
         anchorItem: volumeButton
-        audio: audio
-        visible: false
+        audio: bar.audio
     }
-
     BatteryMenu {
         id: batteryMenu
-
         anchorItem: batteryButton
-        battery: batteryButton.battery
-        visible: false
+        battery: bar.battery
     }
-
     StocksMenu {
         id: stocksMenu
-
         anchorItem: stocksButton
-        visible: false
-        quotes: bar.stockQuotes
-        updated: bar.stocksUpdated
+        quotes: bar.markets.quotes
+        updated: bar.markets.updated
+        loading: bar.markets.loading
+        error: bar.markets.error
+        onRefreshRequested: bar.markets.refresh()
     }
-
     NetworkMenu {
         id: networkMenu
-
         anchorItem: networkButton
-        visible: false
-        connected: bar.networkConnected
-        connectionName: bar.networkName
-        connectionType: bar.networkType
-        deviceName: bar.networkDevice
-        statusIcon: bar.networkIcon
-        onOpenEditorRequested: networkEditor.startDetached()
-        onRefreshRequested: network.running = true
+        network: bar.network
+        onOpenEditorRequested: {
+            bar.menuController.dismiss();
+            networkEditor.startDetached();
+        }
     }
-
     PowerMenu {
         id: powerMenu
-
         anchorItem: powerButton
-        visible: false
     }
-
     CalendarMenu {
         id: calendarMenu
-
         anchorItem: clockButton
-        visible: false
     }
-
-    AudioState {
-        id: audio
-    }
-
-    Process {
-        id: stocks
-
-        command: [Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.sh"]
-        running: true
-        onExited: {
-            try {
-                const payload = JSON.parse(stocksOutput.text);
-                bar.stockQuotes = payload.quotes || [];
-                bar.stocksUpdated = payload.updated || 0;
-            } catch (error) {
-                bar.stockQuotes = [];
-                bar.stocksUpdated = 0;
-            }
-        }
-
-        stdout: StdioCollector {
-            id: stocksOutput
-        }
-    }
-
-    Timer {
-        interval: 300000
-        repeat: true
-        running: true
-        onTriggered: stocks.running = true
-    }
-
-    Process {
-        id: network
-
-        command: ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device"]
-        running: true
-        onExited: {
-            const lines = networkOutput.text.trim().split("\n");
-            let connected = null;
-            let priority = 0;
-            for (let i = 0; i < lines.length; ++i) {
-                const fields = lines[i].split(":");
-                if (fields.length < 4 || fields[2] !== "connected")
-                    continue;
-
-                const candidatePriority = fields[1] === "wifi" ? 3 : (fields[1] === "ethernet" ? 2 : 1);
-                if (candidatePriority > priority) {
-                    connected = fields;
-                    priority = candidatePriority;
-                }
-            }
-            if (!connected) {
-                bar.networkIcon = "\uf127";
-                bar.networkConnected = false;
-                bar.networkName = "";
-                bar.networkType = "";
-                bar.networkDevice = "";
-            } else {
-                bar.networkConnected = true;
-                bar.networkDevice = connected[0];
-                bar.networkType = connected[1];
-                bar.networkName = connected.slice(3).join(":");
-                bar.networkIcon = connected[1] === "wifi" ? "\uf1eb" : "\uf796";
-            }
-        }
-
-        stdout: StdioCollector {
-            id: networkOutput
-        }
-    }
-
-    Timer {
-        interval: 10000
-        repeat: true
-        running: true
-        onTriggered: network.running = true
-    }
-
     Process {
         id: networkEditor
-
         command: ["nm-connection-editor"]
     }
 }

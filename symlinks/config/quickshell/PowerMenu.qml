@@ -4,121 +4,169 @@ import Quickshell
 import Quickshell.Io
 import "Theme.js" as Theme
 
-PopupWindow {
+ShellPopup {
     id: root
-
-    required property Item anchorItem
+    panelWidth: 336
     property string confirmation: ""
+    property string error: ""
+    readonly property var actions: ({
+            logout: {
+                label: "Log out",
+                detail: "Your open applications will close.",
+                command: ["hyprctl", "dispatch", "hl.dsp.exit()"]
+            },
+            reboot: {
+                label: "Restart",
+                detail: "The computer will restart.",
+                command: ["systemctl", "reboot"]
+            },
+            shutdown: {
+                label: "Shut down",
+                detail: "The computer will power off.",
+                command: ["systemctl", "poweroff"]
+            }
+        })
 
     function run(command) {
+        if (actionProcess.running)
+            return;
+        error = "";
         actionProcess.exec(command);
-        visible = false;
     }
 
-    function request(action, command) {
-        if (confirmation === action) {
-            confirmation = "";
-            run(command);
-        } else {
-            confirmation = action;
-            confirmationTimer.restart();
-        }
-    }
-
-    implicitWidth: 324
-    implicitHeight: 300
-    color: "transparent"
-    grabFocus: true
     onVisibleChanged: {
-        if (!visible)
+        if (!visible) {
             confirmation = "";
-
-    }
-
-    anchor {
-        window: root.anchorItem.QsWindow.window
-        adjustment: PopupAdjustment.SlideX | PopupAdjustment.FlipY
-        gravity: Edges.Bottom | Edges.Right
-        onAnchoring: {
-            const content = root.anchorItem.QsWindow.contentItem;
-            const point = content.mapFromItem(root.anchorItem, root.anchorItem.width - root.width, root.anchorItem.height + 8);
-            anchor.rect.x = point.x;
-            anchor.rect.y = point.y;
+            error = "";
         }
     }
 
     Process {
         id: actionProcess
+        stderr: StdioCollector {
+            id: actionErrors
+        }
+        onExited: code => {
+            if (code === 0)
+                root.close();
+            else
+                root.error = actionErrors.text.trim() || "The action could not be completed.";
+        }
     }
 
-    Timer {
-        id: confirmationTimer
+    ColumnLayout {
+        width: parent.width
+        spacing: Theme.spacing
 
-        interval: 3000
-        onTriggered: root.confirmation = ""
-    }
-
-    MenuPanel {
-        anchors.fill: parent
-
+        MenuHeader {
+            Layout.fillWidth: true
+            Layout.bottomMargin: 8
+            icon: "\uf011"
+            title: "Power"
+            subtitle: "Session and system"
+        }
         ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 6
-
-            MenuHeader {
-                Layout.fillWidth: true
-                Layout.leftMargin: 2
-                Layout.rightMargin: 2
-                Layout.bottomMargin: 4
-                icon: "\uf011"
-                title: "Power"
-                subtitle: "Session and system controls"
-                accentColor: Theme.purple
-                accentBackground: Theme.purpleSoft
-            }
+            visible: root.confirmation.length === 0
+            Layout.fillWidth: true
+            spacing: 0
+            enabled: !actionProcess.running
 
             MenuButton {
                 Layout.fillWidth: true
-                icon: "\uf023"
+                glyph: "\uf023"
                 label: "Lock"
-                detail: "Keep the session running"
                 showChevron: false
                 onTriggered: root.run([Quickshell.env("HOME") + "/.config/hypr/scripts/lock-screen.sh"])
             }
-
             MenuButton {
                 Layout.fillWidth: true
-                icon: "\uf2f5"
-                label: root.confirmation === "logout" ? "Click again to log out" : "Log out"
-                detail: root.confirmation === "logout" ? "Confirm within 3 seconds" : "End this Hyprland session"
-                danger: root.confirmation === "logout"
-                selected: root.confirmation === "logout"
+                glyph: "\uf2f5"
+                label: "Log out"
                 showChevron: false
-                onTriggered: root.request("logout", ["hyprctl", "dispatch", "hl.dsp.exit()"])
+                onTriggered: {
+                    root.confirmation = "logout";
+                    cancelButton.forceActiveFocus(Qt.TabFocusReason);
+                }
             }
-
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.topMargin: 8
+                Layout.bottomMargin: 8
+                implicitHeight: 1
+                color: Theme.borderSubtle
+            }
             MenuButton {
                 Layout.fillWidth: true
-                icon: "\uf2f1"
-                label: root.confirmation === "reboot" ? "Click again to restart" : "Restart"
-                detail: root.confirmation === "reboot" ? "Confirm within 3 seconds" : "Reboot the computer"
-                danger: root.confirmation === "reboot"
-                selected: root.confirmation === "reboot"
+                glyph: "\uf2f1"
+                label: "Restart"
                 showChevron: false
-                onTriggered: root.request("reboot", ["systemctl", "reboot"])
+                onTriggered: {
+                    root.confirmation = "reboot";
+                    cancelButton.forceActiveFocus(Qt.TabFocusReason);
+                }
             }
-
             MenuButton {
                 Layout.fillWidth: true
-                icon: "\uf011"
-                label: root.confirmation === "shutdown" ? "Click again to shut down" : "Shut down"
-                detail: root.confirmation === "shutdown" ? "Confirm within 3 seconds" : "Power off the computer"
+                glyph: "\uf011"
+                label: "Shut down"
                 danger: true
-                selected: root.confirmation === "shutdown"
                 showChevron: false
-                onTriggered: root.request("shutdown", ["systemctl", "poweroff"])
+                onTriggered: {
+                    root.confirmation = "shutdown";
+                    cancelButton.forceActiveFocus(Qt.TabFocusReason);
+                }
             }
+        }
+        ColumnLayout {
+            visible: root.confirmation.length > 0
+            Layout.fillWidth: true
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: root.confirmation ? root.actions[root.confirmation].label + "?" : ""
+                color: Theme.foreground
+                font.family: Theme.font
+                font.pixelSize: Theme.textHeading
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: root.confirmation ? root.actions[root.confirmation].detail + " Save your work before continuing." : ""
+                wrapMode: Text.WordWrap
+                color: Theme.mutedStrong
+                font.family: Theme.font
+                font.pixelSize: Theme.textSmall
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MenuButton {
+                    id: cancelButton
+                    Layout.fillWidth: true
+                    label: "Cancel"
+                    showChevron: false
+                    enabled: !actionProcess.running
+                    onTriggered: root.confirmation = ""
+                }
+                MenuButton {
+                    Layout.fillWidth: true
+                    label: actionProcess.running ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
+                    danger: true
+                    selected: true
+                    showChevron: false
+                    enabled: !actionProcess.running
+                    onTriggered: root.run(root.actions[root.confirmation].command)
+                }
+            }
+        }
+        Text {
+            visible: root.error.length > 0
+            Layout.fillWidth: true
+            text: root.error
+            wrapMode: Text.Wrap
+            color: Theme.red
+            font.family: Theme.font
+            font.pixelSize: Theme.textSmall
         }
     }
 }

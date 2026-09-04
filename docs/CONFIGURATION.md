@@ -264,6 +264,28 @@ to select `user` or `system` scope or to keep a conflicting unit disabled.
 User unit files are normally delivered through managed symlinks before the task
 enables and starts them. Changing a system unit uses `sudo`.
 
+### Arch desktop appearance
+
+The Quickshell bar and popups share colors, typography, spacing, and motion
+tokens in `symlinks/config/quickshell/Theme.js`. `ShellPopup.qml` owns anchoring,
+dismissal, scrolling, and focus; shared controls provide keyboard focus and
+tooltips. Only one bar popup is open at a time, including across monitors.
+
+The volume menu selects the default output and supports amplification up to
+150%, with a marked 100% threshold. The network menu manages Wi-Fi through
+NetworkManager, including saved networks and password entry; enterprise
+configuration remains in the connection editor. Passwords are sent over stdin,
+not placed in command arguments. Power actions require an explicit confirmation.
+Market refresh failures retain previous quotes and show stale/error status.
+
+Quickshell watches its linked configuration. Reload feedback uses a themed
+notice; failures keep the last valid shell active and remain visible until
+dismissed or corrected. After changing the other desktop configurations, use
+`hyprctl reload config-only` and `makoctl reload`. Fuzzel reads its configuration
+on launch; existing GTK applications may need reopening to pick up cursor changes.
+Keep the simple Hyprlock background and disabled animations until its documented
+DPMS workaround is no longer needed.
+
 ## VS Code extensions
 
 ```toml

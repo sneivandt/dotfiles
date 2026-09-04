@@ -83,6 +83,17 @@ cd cli
 cargo test --test install_command test_name
 ```
 
+## Desktop network helper
+
+The Quickshell network helper uses Python's standard-library test runner. Its
+tests mock network actions, so they never connect, disconnect, or toggle an
+adapter:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+  -s symlinks/config/quickshell -p network_helper_test.py
+```
+
 ## CLI validation
 
 `dotfiles check` is the user-facing repository validator. It checks:

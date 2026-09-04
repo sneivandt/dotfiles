@@ -1,60 +1,51 @@
 import QtQuick
+import QtQuick.Controls
 import "Theme.js" as Theme
 
-Rectangle {
+AbstractButton {
     id: root
 
-    property string icon: ""
+    property string glyph: ""
+    property string tooltip: ""
     property color accentColor: Theme.blue
     property color accentBackground: Theme.blueSoft
     property bool selected: false
-
-    signal triggered()
+    signal triggered
 
     implicitWidth: 32
     implicitHeight: 32
-    radius: Theme.controlRadius
-    scale: mouse.pressed ? 0.94 : 1
-    color: mouse.pressed ? Theme.pressed : (mouse.containsMouse ? Theme.hover : (selected ? accentBackground : "transparent"))
-    border.width: 1
-    border.color: mouse.containsMouse || selected ? accentBackground : Theme.borderSubtle
+    hoverEnabled: true
+    focusPolicy: Qt.StrongFocus
+    opacity: enabled ? 1 : 0.45
+    Accessible.name: tooltip
+    onClicked: triggered()
+    Keys.onReturnPressed: triggered()
+    Keys.onEnterPressed: triggered()
 
-    Text {
-        anchors.fill: parent
-        text: root.icon
-        color: root.accentColor
+    background: Rectangle {
+        radius: Theme.controlRadius
+        color: root.down ? Theme.pressed : (root.hovered ? Theme.hover : (root.selected ? root.accentBackground : "transparent"))
+        border.width: root.visualFocus ? 1 : 0
+        border.color: root.accentColor
+        Behavior on color {
+            ColorAnimation {
+                duration: Theme.animationFast
+            }
+        }
+    }
+    contentItem: Text {
+        text: root.glyph
+        color: root.selected ? root.accentColor : Theme.foreground
         font.family: Theme.iconFont
-        font.pixelSize: 13
+        font.pixelSize: 14
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
-        renderType: Text.NativeRendering
     }
-
-    MouseArea {
-        id: mouse
-
-        anchors.fill: parent
-        hoverEnabled: true
+    ShellToolTip {
+        text: root.tooltip
+        visible: root.tooltip.length > 0 && (root.hovered || root.visualFocus) && !root.down
+    }
+    HoverHandler {
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.triggered()
-    }
-
-    Behavior on color {
-        ColorAnimation {
-            duration: Theme.animationFast
-        }
-    }
-
-    Behavior on border.color {
-        ColorAnimation {
-            duration: Theme.animationFast
-        }
-    }
-
-    Behavior on scale {
-        NumberAnimation {
-            duration: Theme.animationFast
-            easing.type: Easing.OutCubic
-        }
     }
 }

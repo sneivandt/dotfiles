@@ -42,7 +42,8 @@ PanelWindow {
     exclusiveZone: visible ? Theme.barHeight : 0
     color: "transparent"
     visible: !(activeWorkspace && activeWorkspace.hasFullscreen)
-    WlrLayershell.layer: WlrLayer.Top
+    // Reserve tiled space, but let floating and dragged windows cover the bar.
+    WlrLayershell.layer: WlrLayer.Bottom
     WlrLayershell.namespace: "dotfiles-bar"
     onVisibleChanged: {
         if (!visible && menuController.openMenu && menuController.openMenu.anchorWindow === bar)

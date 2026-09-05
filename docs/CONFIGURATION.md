@@ -271,6 +271,10 @@ tokens in `symlinks/config/quickshell/Theme.js`. `ShellPopup.qml` owns anchoring
 dismissal, scrolling, and focus; shared controls provide keyboard focus and
 tooltips. Only one bar popup is open at a time, including across monitors.
 
+The bar uses the bottom Wayland layer so floating and dragged windows can cover
+it. It still reserves space for tiled windows and hides on fullscreen workspaces;
+Hyprland keeps its popup menus above application windows.
+
 The volume menu selects the default output and supports amplification up to
 150%, with a marked 100% threshold. The network menu manages Wi-Fi through
 NetworkManager, including saved networks and password entry; enterprise

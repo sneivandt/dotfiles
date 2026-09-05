@@ -9,6 +9,27 @@ hl.bind(mod .. " + o", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-browser.sh
 hl.bind(mod .. " + g", hl.dsp.exec_cmd("~/.config/hypr/scripts/launch-github.sh"))
 hl.bind(mod .. " + v", hl.dsp.exec_cmd("~/.config/hypr/scripts/choose-editor.sh"))
 
+-- Standard media key symbols work regardless of their physical F-key positions.
+-- Super + F1/F2/F3: mute/down/up; Super + F4: microphone mute;
+-- Super + F5/F6: brightness down/up, including keyboards without media keys.
+local function mediaBind(key, fallback, command, repeating)
+    hl.bind(key, hl.dsp.exec_cmd(command), { locked = true, repeating = repeating })
+    if fallback then
+        hl.bind(mod .. " + " .. fallback, hl.dsp.exec_cmd(command), { repeating = repeating })
+    end
+end
+
+mediaBind("XF86AudioMute", "F1", "pactl set-sink-mute @DEFAULT_SINK@ toggle", false)
+mediaBind("XF86AudioLowerVolume", "F2", "pactl set-sink-volume @DEFAULT_SINK@ -5%", true)
+mediaBind("XF86AudioRaiseVolume", "F3", "pactl set-sink-volume @DEFAULT_SINK@ +5%", true)
+mediaBind("XF86AudioMicMute", "F4", "pactl set-source-mute @DEFAULT_SOURCE@ toggle", false)
+mediaBind("XF86MonBrightnessDown", "F5", "~/.config/hypr/scripts/brightness.sh down", true)
+mediaBind("XF86MonBrightnessUp", "F6", "~/.config/hypr/scripts/brightness.sh up", true)
+mediaBind("XF86AudioPlay", nil, "playerctl play-pause", false)
+mediaBind("XF86AudioPause", nil, "playerctl play-pause", false)
+mediaBind("XF86AudioNext", nil, "playerctl next", false)
+mediaBind("XF86AudioPrev", nil, "playerctl previous", false)
+
 -- Window management
 hl.bind(mod .. " + q", hl.dsp.window.close())
 hl.bind(mod .. " + f", hl.dsp.window.fullscreen({ mode = "maximized" }))

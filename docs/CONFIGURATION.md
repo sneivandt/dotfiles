@@ -290,6 +290,37 @@ on launch; existing GTK applications may need reopening to pick up cursor change
 Keep the simple Hyprlock background and disabled animations until its documented
 DPMS workaround is no longer needed.
 
+### Hyprland media keys
+
+`symlinks/config/hypr/conf/binds.lua` binds standard `XF86` media key symbols,
+so the physical F-key positions can differ between keyboards. The keyboard's
+Fn mode determines whether a key sends a media symbol or an ordinary F-key.
+Unused media bindings are harmless on keyboards without those keys.
+
+Fallback shortcuts use Super plus ordinary function keys:
+
+| Shortcut | Action |
+| --- | --- |
+| Super + F1 | Toggle output mute |
+| Super + F2 / F3 | Lower / raise volume by 5% |
+| Super + F4 | Toggle microphone mute |
+| Super + F5 / F6 | Lower / raise display brightness by 5% |
+
+Volume uses `pactl` from `libpulse` and follows the default output, including
+headphones. It works with PulseAudio or PipeWire's PulseAudio compatibility
+server. Volume can exceed 100%. Play/pause and track keys use `playerctl`.
+Dedicated media keys also work while locked; fallback shortcuts do not.
+
+`brightness.sh` uses `brightnessctl` to select the first available display
+backlight without hardcoding a GPU or device name. It keeps brightness above
+zero and does nothing when no backlight exists, without changing keyboard LEDs.
+External monitors need a separate DDC/CI setup unless their driver exposes a
+backlight device. All helper packages are declared in `conf/packages.toml`.
+
+After editing, run `hyprctl reload config-only` and check `hyprctl configerrors`.
+Test the media keys, holding Fn if required by the keyboard, or the fallback
+shortcuts. To remove these shortcuts, revert the media binding block and reload.
+
 ## VS Code extensions
 
 ```toml

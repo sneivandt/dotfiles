@@ -12,17 +12,14 @@ ShellPopup {
     readonly property var actions: ({
             logout: {
                 label: "Log out",
-                detail: "Your open applications will close.",
                 command: ["hyprctl", "dispatch", "hl.dsp.exit()"]
             },
             reboot: {
                 label: "Restart",
-                detail: "The computer will restart.",
                 command: ["systemctl", "reboot"]
             },
             shutdown: {
                 label: "Shut down",
-                detail: "The computer will power off.",
                 command: ["systemctl", "poweroff"]
             }
         })
@@ -117,46 +114,26 @@ ShellPopup {
                 }
             }
         }
-        ColumnLayout {
+        RowLayout {
             visible: root.confirmation.length > 0
             Layout.fillWidth: true
-            spacing: 12
-            Text {
+            spacing: 8
+            MenuButton {
+                id: cancelButton
                 Layout.fillWidth: true
-                text: root.confirmation ? root.actions[root.confirmation].label + "?" : ""
-                color: Theme.foreground
-                font.family: Theme.font
-                font.pixelSize: Theme.textHeading
-                font.weight: Font.DemiBold
+                label: "Cancel"
+                showChevron: false
+                enabled: !actionProcess.running
+                onTriggered: root.confirmation = ""
             }
-            Text {
+            MenuButton {
                 Layout.fillWidth: true
-                text: root.confirmation ? root.actions[root.confirmation].detail + " Save your work before continuing." : ""
-                wrapMode: Text.WordWrap
-                color: Theme.mutedStrong
-                font.family: Theme.font
-                font.pixelSize: Theme.textSmall
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                MenuButton {
-                    id: cancelButton
-                    Layout.fillWidth: true
-                    label: "Cancel"
-                    showChevron: false
-                    enabled: !actionProcess.running
-                    onTriggered: root.confirmation = ""
-                }
-                MenuButton {
-                    Layout.fillWidth: true
-                    label: actionProcess.running ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
-                    danger: true
-                    selected: true
-                    showChevron: false
-                    enabled: !actionProcess.running
-                    onTriggered: root.run(root.actions[root.confirmation].command)
-                }
+                label: actionProcess.running ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
+                danger: true
+                selected: true
+                showChevron: false
+                enabled: !actionProcess.running
+                onTriggered: root.run(root.actions[root.confirmation].command)
             }
         }
         Text {

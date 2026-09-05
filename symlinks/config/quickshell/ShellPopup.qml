@@ -14,8 +14,10 @@ PopupWindow {
     // Animate inside a stable Wayland buffer; resizing it mid-transition flickers.
     property real reservedContentHeight: availableContentHeight
     readonly property int shadowMargin: 8
+    readonly property int topOffset: Theme.windowGap + Theme.windowBorderWidth
+    readonly property int screenInset: Theme.windowGap + shadowMargin
     readonly property var anchorWindow: anchorItem ? anchorItem.QsWindow.window : null
-    readonly property int availableContentHeight: Math.max(96, (anchorWindow && anchorWindow.screen ? anchorWindow.screen.height : 720) - (anchorWindow ? anchorWindow.height : Theme.barHeight) - Theme.spacing * 2 - Theme.padding * 2 - shadowMargin * 2)
+    readonly property int availableContentHeight: Math.max(96, (anchorWindow && anchorWindow.screen ? anchorWindow.screen.height : 720) - (anchorWindow ? anchorWindow.height : Theme.barHeight) - topOffset - Theme.windowGap - Theme.padding * 2 - shadowMargin * 2)
     readonly property bool closing: closeAnimation.running
     default property alias contentData: body.data
     property real reveal: 0
@@ -28,7 +30,7 @@ PopupWindow {
         closeAnimation.start();
     }
 
-    implicitWidth: Math.min(panelWidth, (anchorWindow && anchorWindow.screen ? anchorWindow.screen.width : panelWidth + 32) - 32) + shadowMargin * 2
+    implicitWidth: Math.min(panelWidth, (anchorWindow && anchorWindow.screen ? anchorWindow.screen.width : panelWidth + screenInset * 2) - screenInset * 2) + shadowMargin * 2
     implicitHeight: Math.min(Math.max(body.implicitHeight, reservedContentHeight), availableContentHeight) + Theme.padding * 2 + shadowMargin * 2
     color: "transparent"
     visible: false
@@ -44,7 +46,7 @@ PopupWindow {
         onAnchoring: {
             if (!root.anchorWindow)
                 return;
-            const point = root.anchorWindow.contentItem.mapFromItem(root.anchorItem, root.anchorItem.width - root.width + root.shadowMargin, root.anchorItem.height + Theme.spacing - root.shadowMargin);
+            const point = root.anchorWindow.contentItem.mapFromItem(root.anchorItem, root.anchorItem.width - root.width + root.shadowMargin, root.anchorItem.height + root.topOffset - root.shadowMargin);
             anchor.rect.x = point.x;
             anchor.rect.y = point.y;
         }

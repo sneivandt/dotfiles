@@ -54,6 +54,8 @@ AbstractButton {
             color: root.selected ? Theme.blue : root.textColor
             font.family: Theme.iconFont
             font.pixelSize: 14
+            style: Text.Raised
+            styleColor: Theme.textShadow
             horizontalAlignment: Text.AlignHCenter
         }
         Text {
@@ -65,6 +67,8 @@ AbstractButton {
             color: root.textColor
             font.family: Theme.font
             font.pixelSize: Theme.textBody
+            style: Text.Raised
+            styleColor: Theme.textShadow
             elide: Text.ElideRight
         }
     }

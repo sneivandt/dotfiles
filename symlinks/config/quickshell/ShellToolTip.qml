@@ -17,8 +17,7 @@ ToolTip {
         color: Theme.foreground
     }
     background: Rectangle {
-        color: Theme.backgroundSolid
+        color: Theme.tooltipBackground
         radius: Theme.controlRadius
-        border.color: Theme.border
     }
 }

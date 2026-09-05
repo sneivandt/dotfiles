@@ -223,9 +223,24 @@ reason after a `·` separator:
 ⊘ Dotfiles repository · local changes present
 ```
 
-Indented dimmed lines beneath a row are the individual actions the task took or
-planned, listed in full without truncation. They follow their task row
-immediately, without blank lines between task outputs.
+Task names are bold, with color reserved for status indicators. Indented action
+lines use normal text contrast and list every action taken or planned without
+truncation. Details follow their task row immediately; one blank line separates
+visible task blocks in both normal and verbose output. Reasons, timings, and
+the startup header stay dim.
+
+The final totals are separated by one blank line, with the first outcome in
+bold and current counts and elapsed time dimmed. A run with no changes keeps
+the compact header-and-result layout:
+
+```text
+Install · profile desktop · Arch Linux
+
+No changes · 15 current · 1.3s
+```
+
+`No changes` is bold in the terminal's normal foreground color. Redirected
+output and terminals with `NO_COLOR` set omit styling but keep the same spacing.
 
 Normal output includes only tasks that changed state or need attention.
 `--verbose` includes every task, including current and non-applicable tasks. It

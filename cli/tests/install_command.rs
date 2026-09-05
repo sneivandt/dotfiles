@@ -31,6 +31,108 @@ fn install_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     tasks::all_install_tasks(&store)
 }
 
+#[cfg(unix)]
+#[test]
+fn install_console_separates_tasks_and_keeps_no_op_compact() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    for verbose in [false, true] {
+        for symbols in [false, true] {
+            let repo = common::TestContextBuilder::new()
+                .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"example\"]\n")
+                .with_symlink_source_content("example", "example\n")
+                .with_config_file(
+                    "chmod.toml",
+                    "[base]\npermissions = [{ path = \"example\", mode = \"600\" }]\n",
+                )
+                .build();
+            std::fs::set_permissions(
+                repo.root_path().join("symlinks/example"),
+                std::fs::Permissions::from_mode(0o644),
+            )
+            .unwrap();
+            let home = tempfile::tempdir().unwrap();
+            let overlay = tempfile::tempdir().unwrap();
+            let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
+            command
+                .args([
+                    "install",
+                    "--profile",
+                    "base",
+                    "--only",
+                    "symlinks,file-permissions",
+                    "--no-repo-update",
+                    "--non-interactive",
+                ])
+                .arg("--root")
+                .arg(repo.root_path())
+                .arg("--overlay")
+                .arg(overlay.path())
+                .env("HOME", home.path())
+                .env("XDG_STATE_HOME", home.path().join("state"))
+                .env("XDG_CACHE_HOME", home.path().join("cache"))
+                .env("DOTFILES_LOG_DIR", home.path().join("logs"))
+                .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+                .env_remove("LOCALAPPDATA")
+                .env_remove("DOTFILES_OVERLAY")
+                .env_remove("DOTFILES_REEXEC_GUARD")
+                .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
+                .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD");
+            if verbose {
+                command.arg("--verbose");
+            }
+            if !symbols {
+                command.arg("--no-symbols");
+            }
+
+            // Both runs mutate only the temporary repository and home.
+            // The second run exercises hidden current rows and verbose rows.
+            for changed in [true, false] {
+                let output = command.output().expect("run isolated install");
+                let text = String::from_utf8(output.stdout).unwrap();
+                assert!(
+                    output.status.success(),
+                    "{text}\n{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert!(
+                    !text.contains('\u{1b}'),
+                    "piped output must be plain: {text:?}"
+                );
+                assert!(!text.contains("\n\n\n"), "extra blank line: {text:?}");
+                let blocks: Vec<_> = text.trim().split("\n\n").collect();
+                assert_eq!(
+                    blocks.len(),
+                    if changed || verbose { 4 } else { 2 },
+                    "{text}"
+                );
+                if changed || verbose {
+                    let status = match (changed, symbols) {
+                        (true, true) => "✓",
+                        (true, false) => "CHANGE",
+                        (false, true) => "○",
+                        (false, false) => "OK",
+                    };
+                    for (block, name) in blocks[1..3]
+                        .iter()
+                        .zip(["Home symlinks", "File permissions"])
+                    {
+                        assert!(block.starts_with(&format!("{status} {name}")), "{text}");
+                    }
+                }
+                assert!(
+                    blocks.last().unwrap().starts_with(if changed {
+                        "2 changed"
+                    } else {
+                        "No changes · 2 current"
+                    }),
+                    "{text}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
     let mut cases = vec![(

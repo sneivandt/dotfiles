@@ -66,6 +66,9 @@ pub(super) fn format_summary_lines(
         SummaryMode::Standard => format_standard_totals(counts, dry_run, style),
         SummaryMode::Check => format_check_totals(counts, style),
     };
+    if let Some(outcome) = parts.first_mut() {
+        *outcome = style.paint(TextStyle::Bold, outcome);
+    }
     parts.push(style.paint(TextStyle::Dim, elapsed));
     vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
 }
@@ -85,7 +88,7 @@ pub(super) fn format_standard_totals(
     } else if counts.changed > 0 {
         parts.push(style.paint(TextStyle::Green, &format!("{} changed", counts.changed)));
     } else if counts.failed == 0 {
-        parts.push(style.paint(TextStyle::Dim, "No changes"));
+        parts.push("No changes".to_string());
     }
     push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);
     push_count(

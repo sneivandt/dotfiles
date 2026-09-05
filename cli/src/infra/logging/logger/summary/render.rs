@@ -63,7 +63,7 @@ fn detail_rows(details: &[TaskDetailEntry], task: &TaskEntry, opts: RowOpts) -> 
 }
 
 fn indented(text: &str, style: StyleChoice) -> String {
-    style.paint(TextStyle::Dim, &format!("  {}", text.trim_start()))
+    style.clean(&format!("  {}", text.trim_start()))
 }
 
 /// Whether a task produces a console row.
@@ -109,7 +109,7 @@ fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bo
     let mut line = format!(
         "{} {}",
         opts.style.paint(status::text_style(task.status), &padded),
-        task.name
+        opts.style.paint(TextStyle::Bold, &task.name)
     );
 
     if show_reason && let Some(reason) = row_reason(task) {

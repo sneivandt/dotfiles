@@ -71,7 +71,7 @@ fn standard_no_op_has_only_no_changes_line() {
     assert_eq!(plain_lines, ["No changes · 1.2s"]);
     assert_eq!(
         colored_lines,
-        ["\x1b[2mNo changes\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.2s\x1b[0m"]
+        ["\x1b[1mNo changes\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.2s\x1b[0m"]
     );
 }
 
@@ -250,7 +250,7 @@ fn changed_task_line_uses_symbol_status() {
 
     assert_eq!(
         format_task_line(&task, colored_opts()),
-        "\x1b[32m✓\x1b[0m symlinks"
+        "\x1b[32m✓\x1b[0m \x1b[1msymlinks\x1b[0m"
     );
     assert_eq!(format_task_line(&task, plain_opts()), "✓ symlinks");
 }
@@ -338,8 +338,8 @@ fn task_result_lines_are_flat_with_reduced_indent() {
     assert_eq!(
         task_result_lines(&task, &details, colored_opts()),
         vec![
-            "\x1b[32m✓\x1b[0m changed-task",
-            "\x1b[2m  link ~/.example\x1b[0m"
+            "\x1b[32m✓\x1b[0m \x1b[1mchanged-task\x1b[0m",
+            "  link ~/.example"
         ]
     );
 }
@@ -519,7 +519,7 @@ fn colored_summary_styles_each_outcome_group() {
 
     assert_eq!(
         lines,
-        ["\x1b[31m4 failed\x1b[0m \
+        ["\x1b[1m\x1b[31m4 failed\x1b[0m\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[32m1 changed\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m2 current\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[33m3 ignored\x1b[0m \

@@ -97,24 +97,20 @@ impl BufferedLog {
             for entry in &entries {
                 entry.replay_verbose(&self.inner, message);
             }
-        } else if !matches!(status, TaskStatus::Ok | TaskStatus::NotApplicable) {
-            let has_visible_entries = entries
-                .iter()
-                .any(|entry| entry.is_visible_in_non_verbose(status, message));
-            if has_visible_entries {
-                self.inner.separate_from_startup();
-                for entry in &entries {
-                    if entry.is_visible_in_non_verbose(status, message) {
-                        entry.replay(&self.inner);
-                    }
-                }
-                self.inner.mark_task_console_output();
-            }
         }
         self.inner.remove_active_task_locked(task_name);
         self.inner.mark_task_completed(task_id);
         if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
             self.inner.emit_recorded_task_result(task_id);
+            // Keep warnings inside their task's block, after its status and
+            // actions, so the next separator belongs to the next task.
+            if status != TaskStatus::Ok {
+                for entry in &entries {
+                    if entry.is_visible_in_non_verbose(status, message) {
+                        entry.replay(&self.inner);
+                    }
+                }
+            }
         }
         self.inner.redraw_active_status_locked(show_progress);
     }

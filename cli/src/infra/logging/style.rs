@@ -13,6 +13,7 @@ pub(in crate::infra::logging) struct StyleChoice {
 /// Text styles used by the logging UI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::infra::logging) enum TextStyle {
+    Bold,
     Dim,
     Red,
     Yellow,
@@ -23,6 +24,7 @@ pub(in crate::infra::logging) enum TextStyle {
 impl TextStyle {
     const fn ansi_code(self) -> &'static str {
         match self {
+            Self::Bold => "1",
             Self::Dim => "2",
             Self::Red => "31",
             Self::Yellow => "33",

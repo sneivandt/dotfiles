@@ -84,9 +84,12 @@ impl Logger {
         self.mark_task_console_output();
     }
 
-    /// Open a task block after the startup separator.
+    /// Separate visible task blocks without adding space for hidden tasks.
     fn begin_task_block(&self) {
         self.separate_from_startup();
+        if self.has_task_console_output() {
+            self.task_result("");
+        }
     }
 
     /// Close a task block and mark its output as durable.

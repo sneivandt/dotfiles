@@ -20,6 +20,11 @@ description: >
 ## Output contract
 
 - Visible task rows stay in natural completion order.
+- Separate visible task blocks by one blank line in both verbosity modes;
+  hidden tasks add no spacing. Keep details inside their task block.
+- Task names and the first summary outcome are bold. Action details use normal
+  contrast; context, reasons, and timing stay dim. `No changes` is bold in the
+  default foreground. Plain output preserves spacing without ANSI styling.
 - Non-verbose mode shows reportable outcomes; verbose mode also shows current
   and not-applicable tasks plus elapsed time.
 - A task reason stays on its status row after ` · `. Indented lines are actions

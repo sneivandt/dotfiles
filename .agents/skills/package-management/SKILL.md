@@ -27,17 +27,25 @@ Add a provider rather than branching manager-specific commands through tasks.
 5. Batch installs where the provider supports it.
 
 Route every command through the executor and preserve provider-specific exact,
-noninteractive, and already-present behavior. An unavailable manager returns an
-explicit skip or diagnostic, never silent success.
+noninteractive, and already-present behavior. A missing native manager for
+selected packages is unmet work (`TaskResult::unmet`), not a benign skip. Query
+failure is not an empty installed set: propagating it prevents accidental
+reinstallation of everything.
 
 ## Platform rules
 
 - Pacman handles ordinary Arch packages; AUR bootstrap and AUR packages stay
   separate.
 - Do not wrap AUR helpers in an extra sudo layer.
+- Check the PATH-selected `paru` executable's health, not just its existence.
+  Keep bootstrap/rebuild planning separate from AUR package installation and
+  preserve the prerequisite edge.
 - Winget uses exact IDs, prefers user scope, and retries unscoped only when no
   user-scope installer exists. Privilege-only failures are explicit skips.
 
-Test provider commands, state mapping, batching, missing-manager behavior, and
-dry-run planning. Use `toml-configuration` if entry syntax changes and
+Read [installation planning](../../../cli/src/domains/packages/install/planning.rs)
+and the affected [provider](../../../cli/src/domains/packages/resources/).
+Test provider commands, state mapping, batching, missing-manager behavior,
+query failures, and dry-run planning using mocks, not real package installs.
+Use `toml-configuration` if entry syntax changes and
 [Testing](../../../docs/TESTING.md) for commands.

@@ -24,12 +24,24 @@ Wrappers may own:
 The Rust binary owns normal CLI validation, task behavior, and self-update after
 bootstrap.
 
+When changing a wrapper, compare its shell/PowerShell counterpart and existing
+wrapper fixtures. Cover consumed `--build`, empty arguments, spaces, arguments
+after `--`, stdout/stderr routing, and the child's exit code. Do not reconstruct
+forwarded arguments through `eval` or an interpolated command string.
+
+Downloads must be verified before execution or replacement of the cached binary.
+Preserve temporary-file cleanup, rejection of mismatched checksums/provenance,
+and the working binary on failure. Never weaken verification to work around a
+network or test failure.
+
 ## Portability
 
 - POSIX scripts use `#!/bin/sh`; do not add Bash-only syntax.
 - Enable error and unset-variable handling.
 - Quote expansions and keep conditionals portable.
 - PowerShell uses terminating errors and path helpers.
+- Explicitly handle native process exit codes in PowerShell. In POSIX shell,
+  do not assume `set -e` catches failures in every conditional or pipeline.
 - Hook scripts remain small orchestrators over focused `hooks/check-*.sh`
   helpers.
 

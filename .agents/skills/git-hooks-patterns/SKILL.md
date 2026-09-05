@@ -10,9 +10,9 @@ description: >
 ## Installation
 
 `InstallGitHooks` discovers extensionless files under `hooks/` through injected
-`FileSystemOps` and copies them into `.git/hooks/`. Keep filesystem access out
-of applicability checks. Cross-domain dependency wiring belongs in the app
-catalog.
+`FileSystemOps` and copies them into `.git/hooks/`. Keep directory enumeration in
+execution; applicability uses only cheap injected existence checks.
+Cross-domain dependency wiring belongs in the app catalog.
 
 ## Pre-commit contract
 
@@ -24,7 +24,13 @@ catalog.
   `DOTFILES_HOOKS_FULL=1`.
 
 Keep the hook and its integration test synchronized when adding a helper.
-Installed hooks are copies, so rerun install after editing.
+The installed entry point is a copy, but it resolves `.sh` helpers from the
+checkout at runtime. A copied entry-point change needs explicit redeployment;
+helper-only changes do not. Do not run the whole installer to test a hook.
+
+Preserve staged-content semantics: a partially staged file's working-tree
+contents are not necessarily what will be committed. Cover spaces in filenames,
+renames, deletions, and empty diffs when changing discovery or filtering.
 
 ## Sensitive patterns
 
@@ -38,8 +44,10 @@ Installed hooks are copies, so rerun install after editing.
 - Test both directions: the false positive clears and a real secret on the same
   line remains detected.
 
-The full hook integration script creates commits and requires a clean scratch
-repository; do not run it against a dirty checkout.
+The full hook integration script creates commits. Run it only in a fresh
+disposable repository, never the user's checkout even when clean. Follow the
+scratch-repository procedure in
+[Wrapper and hook tests](../../../docs/TESTING.md#wrapper-and-hook-tests).
 
 Use `shell-patterns` for POSIX conventions and `ci-cd-patterns` when changing CI
 parity scope.

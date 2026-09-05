@@ -2,7 +2,21 @@
 
 Load the narrowest relevant skill from `.agents/skills/`. Load a companion only
 when the change crosses into its subsystem; do not recurse through related
-skills.
+skills. If no skill fits, follow the owning code and the guides below rather
+than loading an unrelated skill. Reviewing skill text does not require
+activating every skill being reviewed.
+
+## Working safely
+
+- Check the working tree and current branch before editing; preserve unrelated
+  changes. Commit and push only when requested, and stage only intended files.
+- This checkout may be the live source of home-directory symlinks. Edit tracked
+  sources, not installed copies, and account for applications that auto-reload.
+- A code change is not permission to run a real install/uninstall, update packages,
+  deploy agent plugins, request elevation, or restart the desktop. Use isolated
+  fixtures and scoped checks; ask before unrequested machine changes.
+- Never include private overlay content, credentials, or unsanitized machine logs
+  in public code, fixtures, skills, or remote requests.
 
 ## Repository invariants
 
@@ -23,3 +37,5 @@ skills.
 - [Architecture](docs/ARCHITECTURE.md) describes layers and runtime contracts.
 - [Testing](docs/TESTING.md) owns validation commands and CI coverage.
 - Skills contain only task-specific procedures and subsystem gotchas.
+- Follow executable source when guidance has drifted; correct the affected
+  guidance rather than changing working code to match stale instructions.

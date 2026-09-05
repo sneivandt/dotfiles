@@ -10,7 +10,7 @@ description: >
 
 ## Ownership
 
-- Startup initializes one shared `Logger`; task code uses `ctx.log`.
+- Startup initializes one shared `Logger`; task code uses `ctx.log()`.
 - `engine::execute()` records task results. Tasks do not call
   `record_task()` directly.
 - Records are keyed by `TaskId::record_key()`, never display name.
@@ -47,6 +47,14 @@ description: >
 Do not hardcode indentation, duplicate task recording, rephrase a task reason as
 detail, or build task-local buffering.
 
+Command arguments are logged by default. Use `CommandSpec::redact_arguments()`
+when they contain sensitive values, and separately avoid exposing secrets in
+stdout, stderr, resource descriptions, or errors: argument redaction is not
+output redaction. Use synthetic values in log fixtures and snapshots.
+
 When summary semantics change, test statuses, visibility, details, progress
-denominator, totals, and both verbose modes. Wrapper style belongs in
-`shell-patterns`.
+denominator, totals, both verbose modes, and `--no-symbols`. Preserve durable run
+logs when changing console filtering or transient output. Start with
+[summary rendering](../../../cli/src/infra/logging/logger/summary/) and
+[subscriber tests](../../../cli/src/infra/logging/subscriber/tests.rs).
+Wrapper style belongs in `shell-patterns`.

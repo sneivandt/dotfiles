@@ -18,8 +18,9 @@ description: >
 | stable Copilot/Codex preference | `conf/agent-settings.toml` |
 | install and pin-update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
 
-Use the global `apm-dotfiles` skill for public-vs-private placement and plugin
-audience decisions.
+For placement and target behavior, start with [APM](../../../docs/APM.md).
+If available, the personal `apm-dotfiles` skill adds public-vs-private audience
+guidance; it is not a prerequisite for working in this repository.
 
 ## APM rules
 
@@ -39,6 +40,9 @@ audience decisions.
   `~/.apm/plugins/dot-agent`.
 - New config fragments also need the matching `conf/symlinks.toml` entry.
 - Never place secrets or private/employer content in public APM files.
+- Edit versioned plugin/fragment sources, not deployed copies or generated
+  manifests under the user's home. Local install and pin-update commands mutate
+  that environment; do not run them merely to review skill content.
 
 ## Engine rules
 
@@ -49,6 +53,12 @@ deployment convergence, and stale/orphan cleanup. Do not reintroduce
 fingerprints, success markers, `apm outdated` parsing, or a separate
 `apm prune`. Keep update-only scheduling behind `dotfiles install --update-pins`
 in the command pipeline.
+
+Do not duplicate native APM schema validation in Rust. Dotfiles' validator owns
+cross-file local-plugin/source relationships; native APM owns fragment/package
+syntax. Consult [cross-file validation](../../../cli/src/domains/ai/apm/validation.rs)
+and the existing [APM fixture](../../../cli/src/domains/ai/apm/test_fixture.rs)
+before extending coverage.
 
 ## Validation
 

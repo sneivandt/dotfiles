@@ -9,7 +9,11 @@ description: >
 # Windows-Specific Patterns
 
 Prefer capability methods. Use a direct Windows check only when the behavior is
-inherently Windows-specific and has no narrower capability.
+inherently Windows-specific and has no narrower capability, within the platform
+abstraction. `#[cfg(windows)]` gates platform-only implementations/imports;
+`cfg!(windows)` is a runtime boolean and does not hide unavailable APIs from the
+other target. Preserve the boundaries enforced by
+[`domain_boundaries`](../../../cli/tests/domain_boundaries.rs).
 
 ## Registry
 
@@ -31,8 +35,9 @@ inherently Windows-specific and has no narrower capability.
 
 - Keep the parent process unprivileged.
 - Delegate only tasks whose current state reports `needs_elevation()`.
-- The elevation-capable tasks are `EnableDeveloperMode` and `InstallSymlinks`;
-  neither should prompt once its desired state is already satisfied.
+- Check current task metadata and assessments rather than maintaining a second
+  inventory of elevation-capable tasks. Developer Mode and symlink tasks must
+  not prompt once their desired state is already satisfied.
 - The child uses explicit selectors and cannot recurse.
 - Never prompt in CI or a non-interactive session.
 - If elevation is unavailable, skip elevating tasks and their transitive
@@ -43,7 +48,13 @@ inherently Windows-specific and has no narrower capability.
 
 `dotfiles.ps1` owns bootstrap, checksum/provenance verification, build mode, and
 argument forwarding only. Use `$ErrorActionPreference = 'Stop'` and `Join-Path`.
-Task behavior belongs in Rust.
+Check native executable exit codes explicitly; PowerShell's error preference
+does not by itself make every non-zero native exit terminating. Task behavior
+belongs in Rust.
+
+Cover paths with spaces, drive roots, UNC/extended prefixes, and case differences
+where the changed code handles paths. Do not approximate Windows path rules by
+testing only Unix-looking strings on the host.
 
 Use the native-runtime caveats and checks under
 [Platform coverage parity](../../../docs/TESTING.md#platform-coverage-parity)

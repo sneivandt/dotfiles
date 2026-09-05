@@ -12,8 +12,8 @@
 [base]
 settings = [
   # Copilot CLI core behaviour
-  { target = "copilot", key = "model",          value = "gpt-5.6-sol" },
-  { target = "copilot", key = "effortLevel",    value = "high"        },
+  { target = "copilot", key = "model",          value = "gpt-6-astra" },
+  { target = "copilot", key = "effortLevel",    value = "medium"      },
   { target = "copilot", key = "banner",         value = "never"       },
   { target = "copilot", key = "beep",           value = false         },
   { target = "copilot", key = "memory",         value = true          },
@@ -37,8 +37,8 @@ settings = [
   { target = "copilot", key = "footer.showCustom",        value = true  },
 
   # Codex agent defaults shared by the CLI, IDE extension, and desktop app
-  { target = "codex", key = "model",                                    value = "gpt-5.6-sol" },
-  { target = "codex", key = "model_reasoning_effort",                   value = "high"      },
+  { target = "codex", key = "model",                                    value = "gpt-6-astra" },
+  { target = "codex", key = "model_reasoning_effort",                   value = "medium"    },
   { target = "codex", key = "personality",                              value = "pragmatic" },
   { target = "codex", key = "web_search",                               value = "cached"    },
   { target = "codex", key = "file_opener",                              value = "vscode"    },

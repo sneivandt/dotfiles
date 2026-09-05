@@ -105,7 +105,9 @@ ShellPopup {
             id: scroll
 
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(body.implicitHeight, Math.max(0, root.availableContentHeight - header.implicitHeight - advanced.implicitHeight - Theme.spacing * 2))
+            Layout.minimumHeight: 0
+            Layout.preferredHeight: Math.min(body.implicitHeight, Layout.maximumHeight)
+            Layout.maximumHeight: Math.min(440, Math.max(0, root.availableContentHeight - header.implicitHeight - advanced.implicitHeight - Theme.spacing * 2))
             contentWidth: availableWidth
             contentHeight: body.implicitHeight
             clip: true
@@ -217,6 +219,8 @@ ShellPopup {
                     model: !root.enteringCredentials && root.network.wifiEnabled ? root.network.networks : []
 
                     delegate: MenuButton {
+                        id: networkButton
+
                         required property var modelData
 
                         Layout.fillWidth: true
@@ -230,6 +234,17 @@ ShellPopup {
                         clickable: !modelData.active
                         showChevron: !modelData.active
                         onTriggered: root.selectNetwork(modelData)
+                        onActiveFocusChanged: {
+                            if (!activeFocus)
+                                return;
+                            const viewport = scroll.contentItem as Flickable;
+                            if (!viewport)
+                                return;
+                            if (networkButton.y < viewport.contentY)
+                                viewport.contentY = networkButton.y;
+                            else if (networkButton.y + height > viewport.contentY + viewport.height)
+                                viewport.contentY = networkButton.y + height - viewport.height;
+                        }
                     }
                 }
 

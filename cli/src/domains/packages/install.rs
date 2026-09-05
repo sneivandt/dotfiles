@@ -366,9 +366,8 @@ impl Operation for PackageInstallOperation {
             plan.missing.len()
         ));
         let missing_refs: Vec<&PackageResource> = plan.missing.iter().collect();
-        // Installs run one at a time and can each be slow — or, on Windows,
-        // raise their own UAC prompt — so name the package before starting it
-        // rather than reporting only once the whole batch is done.
+        // Name packages before their batch or individual install starts;
+        // slow installs and Windows UAC prompts otherwise hide the active work.
         let progress = |package: &str| ctx.log().info(format!("install {package}"));
         let report = match install_missing_packages(
             self.manager,

@@ -91,9 +91,10 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// continuing after individual failures and reporting them in the returned
     /// [`PackageInstallReport`].
     ///
-    /// `progress` is called with each package name immediately before its
-    /// install starts. One-at-a-time installs can be slow and, on Windows, can
-    /// raise a per-installer UAC prompt, so the caller needs to be able to name
+    /// `progress` is called with each package name before the batch starts,
+    /// or immediately before its individual install starts. One-at-a-time
+    /// installs can be slow and, on Windows, can raise a per-installer UAC
+    /// prompt, so the caller needs to be able to name
     /// the package a stalled run is waiting on rather than reporting only after
     /// every install has finished.
     ///
@@ -121,6 +122,9 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         }
 
         if let Some((program, args)) = self.batch_invocation(&names, executor, config_path)? {
+            for name in &names {
+                progress(name);
+            }
             executor.execute(CommandSpec::new(program).args(&args))?;
             return Ok(PackageInstallReport::applied(
                 resources
@@ -268,8 +272,8 @@ pub fn get_installed_packages(
 
 /// Install missing package resources through the selected manager's batch API.
 ///
-/// `progress` is called with each package name immediately before its install
-/// starts, so callers can show what a long-running install is working on.
+/// `progress` is called with each package name before its batch or individual
+/// install starts, so callers can show what a long-running install is working on.
 ///
 /// # Errors
 ///

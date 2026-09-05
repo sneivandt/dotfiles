@@ -284,6 +284,53 @@ impl Executor for RecordingExecutor {
 // ------------------------------------------------------------------
 
 #[test]
+fn batch_install_announces_each_package_before_execution() {
+    for manager in [PackageManager::Pacman, PackageManager::Paru] {
+        for fails in [false, true] {
+            let announced = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let announced_at_execute = Arc::clone(&announced);
+            let mut mock = MockExecutor::new();
+            if manager == PackageManager::Pacman {
+                expect_sudo_lookup_if_needed(&mut mock);
+            }
+            mock.expect_execute().once().returning(move |_| {
+                assert_eq!(
+                    *announced_at_execute.lock().unwrap(),
+                    ["first", "second"],
+                    "all package names must be announced before the batch starts"
+                );
+                if fails {
+                    Err(ExecError::spawn(
+                        "package-manager",
+                        std::io::Error::other("simulated failure"),
+                    ))
+                } else {
+                    Ok(ExecResult::success(""))
+                }
+            });
+            let executor: Arc<dyn Executor> = Arc::new(mock);
+            let first = PackageResource::new("first".to_string(), manager, Arc::clone(&executor));
+            let second = PackageResource::new("second".to_string(), manager, Arc::clone(&executor));
+
+            let result =
+                install_missing_packages(manager, &[&first, &second], &*executor, &|package| {
+                    announced.lock().unwrap().push(package.to_string());
+                });
+
+            assert_eq!(result.is_err(), fails);
+            if let Ok(report) = result {
+                assert_eq!(report.applied_count(), 2);
+            }
+            assert_eq!(
+                *announced.lock().unwrap(),
+                ["first", "second"],
+                "each package must be announced exactly once"
+            );
+        }
+    }
+}
+
+#[test]
 fn batch_install_pacman_groups_into_single_command() {
     let executor = Arc::new(RecordingExecutor::new());
     let r1 = PackageResource::new(

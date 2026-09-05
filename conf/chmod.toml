@@ -15,6 +15,7 @@ permissions = [
 
 [arch-desktop]
 permissions = [
+  { mode = "755", path = "config/hypr/scripts/brightness.sh" },
   { mode = "755", path = "config/hypr/scripts/choose-browser.sh" },
   { mode = "755", path = "config/hypr/scripts/choose-editor.sh" },
   { mode = "755", path = "config/hypr/scripts/launch-github.sh" },

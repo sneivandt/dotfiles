@@ -114,9 +114,12 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
         [(MsgKind::Debug, "dependency failed".to_string())],
         "keep the reason in the persistent debug log, not a premature info line"
     );
-    let records = log.records.lock().unwrap();
-    assert_eq!(records.len(), 1);
-    assert_eq!(records[0].status, TaskStatus::Skipped);
-    assert_eq!(records[0].message.as_deref(), Some("dependency failed"));
+    {
+        let records = log.records.lock().unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].status, TaskStatus::Skipped);
+        assert_eq!(records[0].message.as_deref(), Some("dependency failed"));
+        drop(records);
+    }
     task.assert_ran(false);
 }

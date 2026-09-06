@@ -17,6 +17,7 @@ mod common;
 use dotfiles_cli::testing as test_api;
 #[cfg(unix)]
 use test_api::tasks::files::chmod::ApplyFilePermissions;
+#[cfg(unix)]
 use test_api::tasks::files::symlinks::InstallSymlinks;
 #[cfg(unix)]
 use test_api::tasks::files::symlinks::UninstallSymlinks;

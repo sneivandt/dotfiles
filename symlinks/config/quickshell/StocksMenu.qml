@@ -3,7 +3,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Quickshell
 import "Theme.js" as Theme
 
 ShellPopup {
@@ -11,12 +10,13 @@ ShellPopup {
 
     property var quotes: []
     property int updated: 0
+    required property date currentDate
     property bool loading: false
     property string error: ""
     property string expandedSymbol: ""
     signal refreshRequested
     readonly property bool hasQuotes: Boolean(quotes && quotes.length > 0)
-    readonly property bool stale: hasQuotes && (updated <= 0 || clock.date.getTime() / 1000 - updated > 15 * 60)
+    readonly property bool stale: hasQuotes && (updated <= 0 || currentDate.getTime() / 1000 - updated > 15 * 60)
     readonly property string statusText: {
         if (loading)
             return hasQuotes ? "Refreshing quotes..." : "Loading quotes...";
@@ -33,12 +33,6 @@ ShellPopup {
     onVisibleChanged: {
         if (!visible)
             expandedSymbol = "";
-    }
-
-    SystemClock {
-        id: clock
-
-        precision: SystemClock.Minutes
     }
 
     ColumnLayout {

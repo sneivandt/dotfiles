@@ -466,6 +466,51 @@ mod tests {
     }
 
     #[test]
+    fn elevated_child_does_not_request_elevation_again() {
+        let trace = trace();
+        let task = ProbeTask::new("Home symlinks", 1, &trace);
+        let mut tasks: Vec<&dyn Task> = vec![&task];
+        let assessments = HashMap::from([(
+            task.task_id(),
+            TaskAssessment::applicable().with_elevation(true),
+        )]);
+        let global = super::super::tests::global(&["--elevated-child", "--non-interactive"]);
+        let runtime = crate::app::commands::RuntimePolicy::new(
+            &global,
+            false,
+            crate::infra::env::MapEnv::new()
+                .with("HOME", "/fixture-home")
+                .into_handle(),
+            false,
+            false,
+        );
+        let (base, log) = sequential_context();
+        let ctx = Context::new_with_policy(
+            base.root().to_path_buf(),
+            None,
+            base.platform(),
+            Arc::<Logger>::clone(&log),
+            base.executor_arc(),
+            Arc::clone(&runtime.env),
+            runtime.execution,
+        )
+        .unwrap();
+        let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).unwrap();
+        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+        assert_eq!(
+            tasks.len(),
+            1,
+            "the child must execute its own elevating task"
+        );
+        assert_eq!(summary.failure_count(), 0);
+        assert_eq!(
+            summary.outcome(&task.task_id()),
+            None,
+            "no delegation or unmet result"
+        );
+    }
+
+    #[test]
     fn strict_completion_counts_unavailable_elevation_as_failure() {
         let trace = trace();
         let root = ProbeTask::new("Home symlinks", 1, &trace);

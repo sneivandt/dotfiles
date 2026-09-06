@@ -2,11 +2,8 @@
 
 use std::sync::Arc;
 
-use std::io::IsTerminal as _;
-
 use anyhow::Result;
 
-use crate::app::cli::GlobalOpts;
 use crate::app::config::Config;
 use crate::app::config::profiles;
 use crate::app::config::store::ConfigStore;
@@ -15,6 +12,7 @@ use crate::infra::ConfigHandle;
 use crate::infra::logging::{Log, LogEvent, Logger};
 use crate::infra::platform::Platform;
 
+use super::RuntimePolicy;
 use super::execution::{ExecutionPlan, RunCoordinator};
 use crate::infra::logging::Output as _;
 use crate::infra::logging::OutputExt as _;
@@ -25,7 +23,6 @@ pub struct CommandRunner {
     ctx: Context,
     log: Arc<Logger>,
     store: ConfigStore,
-    overlay: Option<std::path::PathBuf>,
 }
 
 impl CommandRunner {
@@ -36,30 +33,27 @@ impl CommandRunner {
     /// Returns an error if profile resolution, configuration loading, or
     /// context construction fails.
     pub fn new(
-        global: &GlobalOpts,
+        runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
     ) -> Result<Self> {
-        let run_lock = Self::acquire_run_lock(global, log)?;
-        Self::new_with_lock(global, log, token, run_lock)
+        let run_lock = Self::acquire_run_lock(runtime, log)?;
+        Self::new_with_lock(runtime, log, token, run_lock)
     }
 
     pub(crate) fn acquire_run_lock(
-        global: &GlobalOpts,
+        runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
     ) -> Result<Option<crate::infra::run_lock::RunLock>> {
-        if crate::infra::elevation::is_elevated_child()
-            || std::env::var_os(super::reexec::REEXEC_GUARD_VAR).is_some()
-        {
+        if runtime.execution.elevated_child || runtime.reexec_guarded {
             return Ok(None);
         }
 
         let platform = Platform::detect();
-        let root = resolve_root(global)?;
-        let env = crate::infra::env::system();
+        let root = resolve_root(runtime)?;
         crate::infra::run_lock::RunLock::acquire(
             &root,
-            env.as_ref(),
+            runtime.env.as_ref(),
             platform,
             &log.command_title(),
         )
@@ -67,63 +61,41 @@ impl CommandRunner {
     }
 
     pub(crate) fn new_with_lock(
-        global: &GlobalOpts,
+        runtime: &RuntimePolicy<'_>,
         log: &Arc<Logger>,
         token: &crate::engine::CancellationToken,
         run_lock: Option<crate::infra::run_lock::RunLock>,
     ) -> Result<Self> {
         let platform = Platform::detect();
-        let root = resolve_root(global)?;
-        let env = crate::infra::env::system();
+        let root = resolve_root(runtime)?;
+        let env = &runtime.env;
         let overlay = crate::domains::overlay::resolution::resolve_from_args(
-            global.overlay.as_deref(),
+            runtime.global.overlay.as_deref(),
             &root,
             env.as_ref(),
         )?;
-        let repository_child = super::repository_reexec_active(env.as_ref());
-        let profile = resolve_profile(
-            global,
-            &root,
-            platform,
-            overlay.as_deref(),
-            repository_child,
-            log,
-        )?;
+        let profile = resolve_profile(runtime, &root, platform, overlay.as_deref(), log)?;
         let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;
         let store = ConfigStore::from_config(config);
 
         let executor: Arc<dyn crate::infra::exec::Executor> =
             Arc::new(crate::infra::exec::ProcessExecutor::managed(token.clone()));
         let log_output: Arc<dyn Log> = Arc::<Logger>::clone(log);
-        let ctx = Context::new(
+        let ctx = Context::new_with_policy(
             root,
-            overlay.clone(),
+            overlay,
             platform,
             log_output,
             executor,
-            env,
-            crate::engine::ContextOpts {
-                dry_run: global.dry_run,
-                parallel: global.parallel,
-                is_ci: None,
-            },
+            Arc::clone(env),
+            runtime.execution,
         )?
-        .with_require_complete(
-            global.require_complete
-                || crate::infra::env::Env::var_os(&crate::infra::env::SystemEnv, "CI").is_some(),
-        )
-        .with_non_interactive(
-            global.non_interactive
-                || crate::infra::env::Env::var_os(&crate::infra::env::SystemEnv, "CI").is_some()
-                || !std::io::stdin().is_terminal(),
-        )
         .with_cancellation(token.clone());
         Ok(Self {
             _run_lock: run_lock,
             ctx,
             log: Arc::clone(log),
             store,
-            overlay,
         })
     }
 
@@ -151,16 +123,10 @@ impl CommandRunner {
     /// Create dynamic overlay script tasks from the current configuration.
     #[must_use]
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
-        self.overlay.as_ref().map_or_else(Vec::new, |root| {
+        self.ctx.overlay().map_or_else(Vec::new, |root| {
             let scripts = self.store.scripts.read();
             crate::domains::overlay::scripts::overlay_script_tasks(&scripts, root)
         })
-    }
-
-    /// Read-only process environment used by command orchestration.
-    #[must_use]
-    pub(crate) fn env(&self) -> &dyn crate::infra::env::Env {
-        self.ctx.env().as_ref()
     }
 
     /// Execute the given tasks to completion using the stored context.
@@ -195,8 +161,13 @@ impl CommandRunner {
 /// # Errors
 ///
 /// Returns an error if the root directory cannot be determined or doesn't exist.
-pub(super) fn resolve_root(global: &GlobalOpts) -> Result<std::path::PathBuf> {
-    resolve_root_path(global.root.as_deref())
+pub(super) fn resolve_root(runtime: &RuntimePolicy<'_>) -> Result<std::path::PathBuf> {
+    let cwd = std::env::current_dir().ok();
+    resolve_root_from_dir(
+        runtime.global.root.as_deref(),
+        cwd.as_deref(),
+        runtime.env.as_ref(),
+    )
 }
 
 /// Resolve a repository root for standalone discovery commands.
@@ -204,18 +175,19 @@ pub(crate) fn resolve_root_path(
     explicit_root: Option<&std::path::Path>,
 ) -> Result<std::path::PathBuf> {
     let cwd = std::env::current_dir().ok();
-    resolve_root_from_dir(explicit_root, cwd.as_deref())
+    resolve_root_from_dir(explicit_root, cwd.as_deref(), &crate::infra::env::SystemEnv)
 }
 
 fn resolve_root_from_dir(
     explicit_root: Option<&std::path::Path>,
     cwd: Option<&std::path::Path>,
+    env: &dyn crate::infra::env::Env,
 ) -> Result<std::path::PathBuf> {
     if let Some(root) = explicit_root {
         return crate::infra::fs::canonicalize(root);
     }
 
-    if let Ok(root) = std::env::var("DOTFILES_ROOT") {
+    if let Some(root) = env.var("DOTFILES_ROOT") {
         return Ok(std::path::PathBuf::from(root));
     }
 
@@ -241,33 +213,29 @@ fn resolve_root_from_dir(
 }
 
 fn resolve_profile(
-    global: &GlobalOpts,
+    runtime: &RuntimePolicy<'_>,
     root: &std::path::Path,
     platform: Platform,
     overlay: Option<&std::path::Path>,
-    repository_child: bool,
     log: &Logger,
 ) -> Result<profiles::Profile> {
     // Run-log only: the startup header must be the first console line.
     log.run_event(LogEvent::Stage, "resolving profile");
-    let non_interactive = global.non_interactive
-        || crate::infra::env::Env::var_os(&crate::infra::env::SystemEnv, "CI").is_some()
-        || !std::io::stdin().is_terminal();
     let profile = profiles::resolve_from_args(
-        global.profile.as_deref(),
+        runtime.global.profile.as_deref(),
         root,
         platform,
-        &crate::infra::env::SystemEnv,
-        non_interactive,
+        runtime.env.as_ref(),
+        runtime.execution.non_interactive,
     )?;
     let context = startup_context_line(
         &log.command_title(),
         &profile.name,
         platform,
-        global.dry_run,
+        runtime.execution.dry_run,
         overlay,
     );
-    emit_startup_context(log, &context, repository_child);
+    emit_startup_context(log, &context, runtime.repository_child);
     Ok(profile)
 }
 
@@ -344,49 +312,143 @@ fn load_config(
 #[cfg(test)]
 mod root_tests {
     use super::*;
+    use crate::infra::env::MapEnv;
 
-    fn global(root: Option<std::path::PathBuf>) -> GlobalOpts {
-        GlobalOpts {
-            root,
-            profile: None,
-            dry_run: false,
-            overlay: None,
-            parallel: true,
-            no_repo_update: false,
-            require_complete: false,
-            non_interactive: false,
-            no_symbols: false,
-            skip_attestation: false,
-            elevated_child: false,
+    #[test]
+    fn explicit_root_is_canonicalized_before_environment_selection() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let env = MapEnv::new().with("DOTFILES_ROOT", "/environment-root");
+        for root in [temp_dir.path().to_path_buf(), temp_dir.path().join(".")] {
+            let result = resolve_root_from_dir(Some(&root), None, &env).unwrap();
+            assert_eq!(
+                result,
+                crate::infra::fs::canonicalize(temp_dir.path()).unwrap()
+            );
+            assert_eq!(
+                resolve_root_path(Some(&root)).unwrap(),
+                result,
+                "standalone discovery must resolve the same explicit root"
+            );
         }
     }
 
     #[test]
-    fn resolve_root_uses_explicit_root() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let result = resolve_root(&global(Some(temp_dir.path().to_path_buf()))).unwrap();
-        assert_eq!(
-            result,
-            crate::infra::fs::canonicalize(temp_dir.path()).unwrap()
-        );
+    fn only_parent_commands_acquire_the_repository_lock() {
+        let root = tempfile::tempdir().unwrap();
+        git2::Repository::init(root.path()).unwrap();
+        let (log, _logs, _guard) = crate::infra::logging::isolated_logger();
+        let log = Arc::new(log);
+        for elevated in [false, true] {
+            for guarded in [false, true] {
+                let mut global =
+                    super::super::tests::global(if elevated { &["--elevated-child"] } else { &[] });
+                global.root = Some(root.path().to_path_buf());
+                let env = if guarded {
+                    MapEnv::new().with(super::super::reexec::REEXEC_GUARD_VAR, "")
+                } else {
+                    MapEnv::new()
+                };
+                let runtime = RuntimePolicy::new(&global, false, env.into_handle(), true, true);
+                let lock = CommandRunner::acquire_run_lock(&runtime, &log).unwrap();
+                assert_eq!(
+                    lock.is_some(),
+                    !elevated && !guarded,
+                    "elevated={elevated}, guarded={guarded}"
+                );
+            }
+        }
     }
 
     #[test]
-    fn resolve_root_canonicalizes_explicit_relative_root() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let result = resolve_root(&global(Some(temp_dir.path().join(".")))).unwrap();
+    fn overlay_tasks_use_the_context_overlay_and_startup_script_snapshot() {
+        for overlay in [None, Some(std::path::PathBuf::from("/fixture-overlay"))] {
+            let mut config = crate::test_helpers::empty_config("/fixture-repo".into());
+            config.overlay = overlay.clone();
+            config
+                .scripts
+                .push(crate::domains::overlay::config::scripts::ScriptEntry {
+                    name: "fixture".into(),
+                    path: "scripts/fixture.sh".into(),
+                    description: None,
+                });
+            let (ctx, log) = crate::test_helpers::make_static_context(config.clone());
+            let runner = CommandRunner {
+                _run_lock: None,
+                ctx,
+                log,
+                store: ConfigStore::from_config(config),
+            };
+            let tasks = runner.overlay_script_tasks();
+            let selectors: Vec<_> = tasks.iter().map(|task| task.selector()).collect();
+            assert_eq!(
+                selectors,
+                if overlay.is_some() {
+                    vec!["script-fixture"]
+                } else {
+                    vec![]
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn environment_root_is_used_without_canonicalizing() {
+        let env = MapEnv::new().with("DOTFILES_ROOT", "relative-root");
         assert_eq!(
-            result,
-            crate::infra::fs::canonicalize(temp_dir.path()).unwrap()
+            resolve_root_from_dir(None, None, &env).unwrap(),
+            std::path::Path::new("relative-root")
         );
     }
 
     #[test]
     fn resolve_root_errors_when_not_in_repo() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        if std::env::var("DOTFILES_ROOT").is_err() {
-            let error = resolve_root_from_dir(None, Some(temp_dir.path())).unwrap_err();
-            assert!(error.to_string().contains("cannot determine dotfiles root"));
+        let root = tempfile::tempdir().unwrap();
+        let error = resolve_root_from_dir(None, Some(root.path()), &MapEnv::new()).unwrap_err();
+        assert!(error.to_string().contains("cannot determine dotfiles root"));
+    }
+
+    #[test]
+    fn profile_precedence_and_prompt_policy_use_the_same_runtime_environment() {
+        let root = tempfile::tempdir().unwrap();
+        let conf = root.path().join("conf");
+        std::fs::create_dir(&conf).unwrap();
+        std::fs::write(conf.join("profiles.toml"), "[base]\n[desktop]\n").unwrap();
+        let repo = git2::Repository::init(root.path()).unwrap();
+        repo.config()
+            .unwrap()
+            .set_str("dotfiles.profile", "base")
+            .unwrap();
+        let log = Logger::new("test");
+
+        for (flags, env_profile, expected) in [
+            (vec![], None, Some("base")),
+            (vec![], Some("desktop"), Some("desktop")),
+            (vec!["--profile", "base"], Some("desktop"), Some("base")),
+            (vec!["--profile", "missing"], Some("desktop"), None),
+            (vec![], Some("missing"), None),
+        ] {
+            let global = super::super::tests::global(&flags);
+            let env = env_profile.map_or_else(MapEnv::new, |name| {
+                MapEnv::new().with("DOTFILES_PROFILE", name)
+            });
+            let runtime = RuntimePolicy::new(&global, false, env.into_handle(), false, true);
+            let profile = resolve_profile(&runtime, root.path(), Platform::detect(), None, &log);
+            assert_eq!(
+                profile.ok().map(|profile| profile.name).as_deref(),
+                expected,
+                "{flags:?} {env_profile:?}"
+            );
         }
+
+        repo.config().unwrap().remove("dotfiles.profile").unwrap();
+        let global = super::super::tests::global(&[]);
+        let runtime = RuntimePolicy::new(&global, false, MapEnv::new().into_handle(), false, true);
+        let error =
+            resolve_profile(&runtime, root.path(), Platform::detect(), None, &log).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("profile selection is required in non-interactive mode")
+        );
     }
 }

@@ -39,6 +39,10 @@ description: >
   `run_batch_resource_task()`) where it fits; otherwise use `process_resources*()`.
   Pick `ProcessOpts` deliberately and use `.sequential()` when items share a
   file or exclusive lock.
+- Keep configured dispatch distinct from direct `run()`: the adapters announce
+  a stage only after finding configured work. Do not replace explicit task
+  wrappers with a new abstraction merely to hide forwarding methods, or remove
+  post-dependency readiness checks.
 
 Read the [resource contracts](../../../cli/src/engine/resource/contract.rs),
 [processing entry points](../../../cli/src/engine/orchestrate.rs), and

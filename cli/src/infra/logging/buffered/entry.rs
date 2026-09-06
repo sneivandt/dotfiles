@@ -7,7 +7,7 @@
 use crate::infra::logging::logger::Logger;
 use crate::infra::logging::types::{MsgKind, TaskStatus};
 use crate::infra::logging::utils::{
-    compact_detail_line, duplicates_task_message, is_stats_summary,
+    compact_detail_line, duplicates_task_message, is_redundant_detail,
 };
 
 /// A single buffered console entry, replayed when the task completes.
@@ -42,8 +42,7 @@ impl LogEntry {
         if matches!(
             self.kind,
             MsgKind::TaskStage | MsgKind::Stage | MsgKind::Trace
-        ) || duplicates_task_message(&self.msg, task_message)
-            || is_stats_summary(&self.msg)
+        ) || is_redundant_detail(&self.msg, task_message)
         {
             return false;
         }

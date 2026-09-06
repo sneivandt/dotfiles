@@ -13,6 +13,8 @@ pub mod cli {
 }
 
 pub mod commands {
+    pub use crate::app::commands::RuntimePolicy;
+
     pub mod install {
         pub use crate::app::commands::install::run;
     }

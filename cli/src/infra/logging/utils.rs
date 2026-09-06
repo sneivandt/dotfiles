@@ -45,6 +45,11 @@ pub(super) fn is_stats_summary(line: &str) -> bool {
         && rest.contains(" already ok")
 }
 
+/// Detail suppressed by both buffered replay and completed-task rendering.
+pub(super) fn is_redundant_detail(line: &str, task_message: Option<&str>) -> bool {
+    duplicates_task_message(line, task_message) || is_stats_summary(line)
+}
+
 /// Verbs used to introduce the per-item action lines a task emits.
 const ACTION_VERBS: &[&str] = &["configure", "install", "link", "ok", "remove", "update"];
 
@@ -73,14 +78,6 @@ pub(super) fn compact_detail_line(line: &str) -> String {
     let line = line.trim_start();
     for (prefix, verb) in ACTION_PREFIXES {
         if let Some(detail) = line.strip_prefix(prefix) {
-            return format!("{verb} {detail}");
-        }
-    }
-    for verb in ACTION_VERBS {
-        if let Some(detail) = line
-            .strip_prefix(*verb)
-            .and_then(|rest| rest.strip_prefix(' '))
-        {
             return format!("{verb} {detail}");
         }
     }
@@ -358,25 +355,38 @@ mod tests {
 
     #[test]
     fn compact_detail_line_normalizes_every_tense() {
-        assert_eq!(
-            compact_detail_line("would link: a \u{2192} b"),
-            "link a \u{2192} b"
-        );
-        assert_eq!(
-            compact_detail_line("linked: a \u{2192} b"),
-            "link a \u{2192} b"
-        );
-        assert_eq!(
-            compact_detail_line("link a \u{2192} b"),
-            "link a \u{2192} b"
-        );
-        assert_eq!(compact_detail_line("ok: a \u{2192} b"), "ok a \u{2192} b");
-        assert_eq!(compact_detail_line("  installed: pkg"), "install pkg");
-        assert_eq!(
-            compact_detail_line("using winget package manager"),
-            "using winget package manager",
-            "non-action lines must pass through untouched"
-        );
+        for (verb, past) in [
+            ("configure", "configured"),
+            ("install", "installed"),
+            ("link", "linked"),
+            ("remove", "removed"),
+            ("update", "updated"),
+        ] {
+            for prefix in [
+                format!("would {verb}: "),
+                format!("{past}: "),
+                format!("{verb} "),
+            ] {
+                let input = format!("  {prefix}a → b");
+                assert_eq!(
+                    compact_detail_line(&input),
+                    format!("{verb} a → b"),
+                    "{input}"
+                );
+            }
+        }
+        for (input, expected) in [
+            ("ok: a → b", "ok a → b"),
+            ("ok a → b", "ok a → b"),
+            (
+                "using winget package manager",
+                "using winget package manager",
+            ),
+            ("install  spaced", "install  spaced"),
+            ("install", "install"),
+        ] {
+            assert_eq!(compact_detail_line(input), expected, "{input}");
+        }
     }
 
     #[test]

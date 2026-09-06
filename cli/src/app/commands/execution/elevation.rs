@@ -51,7 +51,7 @@ impl<'a> ElevationBroker<'a> {
         graph: &ResolvedTaskGraph,
     ) -> ExecutionSummary {
         let mut summary = ExecutionSummary::default();
-        let elevating: Vec<&dyn Task> = if crate::infra::elevation::is_elevated_child() {
+        let elevating: Vec<&dyn Task> = if self.ctx.execution_policy().elevated_child {
             // The child was spawned precisely to run these tasks; it must not
             // recurse into another elevation request.
             Vec::new()
@@ -247,8 +247,7 @@ fn prepare_elevation(
     // any other headless session there is nobody to answer it, so requesting it
     // would at best fail and at worst stall the run until the command timeout.
     // Degrade to the same outcome as a declined prompt instead.
-    if ctx.non_interactive() || ctx.is_ci() || !std::io::IsTerminal::is_terminal(&std::io::stdout())
-    {
+    if !ctx.execution_policy().can_prompt_for_elevation() {
         log.warn(format!(
             "administrator access is required for: {}",
             names.join(", ")

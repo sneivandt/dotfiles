@@ -19,6 +19,8 @@ Paths below are relative to
 | screen instances, shared services, open-menu coordination | `shell.qml` |
 | per-monitor bar and service bindings | `Bar.qml` |
 | workspace visibility, title sizing | `WorkspaceGroup.qml` and `tests/tst_WorkspaceGroup.qml` |
+| calendar layout, local/UTC selection | `CalendarContent.qml`, `CalendarMenu.qml` |
+| volume thumb, track, and input behavior | `VolumeSlider.qml`, `VolumeMenu.qml` |
 | palette, typography, spacing, animation | `Theme.js` |
 | popup geometry, focus, dismissal | `ShellPopup.qml` |
 | reusable controls | `BarBlock.qml`, `MenuButton.qml`, `MenuIconButton.qml` |
@@ -29,6 +31,8 @@ Paths below are relative to
 
 - Reuse shared state objects instead of starting a poller for every screen or
   popup. Keep service logic out of presentation delegates.
+- Calendar and bar clocks receive the shared date from `shell.qml`. Keep
+  calendar highlighting and month arithmetic in the selected local/UTC zone.
 - Pass dependencies through declared properties; keep extracted visual components
   independent of the live compositor where practical.
 - Preserve per-monitor workspace behavior, transient missing model entries, and

@@ -108,17 +108,87 @@ fn run_log_layer_omits_empty_messages() {
 }
 
 #[test]
-fn console_line_uses_ansi_when_style_enabled() {
-    let line = console_line_with_style(
-        tracing::Level::WARN,
-        "dotfiles",
-        "careful",
-        StyleChoice::colored(),
-        true,
-    )
-    .unwrap();
+fn message_presentation_golden_matrix() {
+    use crate::infra::logging::MsgKind;
 
-    assert_eq!(line, "\x1b[33mWARN\x1b[0m  careful");
+    for (kind, verbose_only, plain, colored) in [
+        (MsgKind::Stage, true, "detail", "detail"),
+        (MsgKind::TaskStage, true, "detail", "detail"),
+        (MsgKind::Info, true, "  detail", "  detail"),
+        (MsgKind::Debug, true, "  detail", "  detail"),
+        (MsgKind::Trace, false, "", ""),
+        (
+            MsgKind::Warn,
+            false,
+            "WARN  detail",
+            "\x1b[33mWARN\x1b[0m  detail",
+        ),
+        (
+            MsgKind::Error,
+            false,
+            "ERROR detail",
+            "\x1b[31mERROR\x1b[0m detail",
+        ),
+        (MsgKind::DryRun, false, "  detail", "  detail"),
+        (MsgKind::Always, false, "detail", "detail"),
+        (MsgKind::Startup, false, "detail", "\x1b[2mdetail\x1b[0m"),
+    ] {
+        for (terminal, no_color, ansi) in [
+            (false, false, false),
+            (false, true, false),
+            (true, false, true),
+            (true, true, false),
+        ] {
+            for verbose in [false, true] {
+                let expected = (kind != MsgKind::Trace && (!verbose_only || verbose))
+                    .then_some(if ansi { colored } else { plain });
+                assert_eq!(
+                    super::console::ui_line_with_style(
+                        kind,
+                        "detail",
+                        StyleChoice::auto(terminal, no_color),
+                        verbose,
+                    )
+                    .as_deref(),
+                    expected,
+                    "{kind:?}, verbose={verbose}, terminal={terminal}, NO_COLOR={no_color}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn raw_tracing_presentation_golden_matrix() {
+    for (level, plain, colored) in [
+        (
+            tracing::Level::ERROR,
+            Some("ERROR detail"),
+            Some("\x1b[31mERROR\x1b[0m detail"),
+        ),
+        (
+            tracing::Level::WARN,
+            Some("WARN  detail"),
+            Some("\x1b[33mWARN\x1b[0m  detail"),
+        ),
+        (tracing::Level::INFO, Some("  detail"), Some("  detail")),
+        (tracing::Level::DEBUG, None, None),
+        (tracing::Level::TRACE, None, None),
+    ] {
+        for verbose in [false, true] {
+            for (style, expected) in [
+                (StyleChoice::plain(), plain),
+                (StyleChoice::colored(), colored),
+            ] {
+                let expected = expected.filter(|_| verbose || level != tracing::Level::INFO);
+                assert_eq!(
+                    console_line_with_style(level, "dotfiles", "detail", style, verbose).as_deref(),
+                    expected,
+                    "{level}, verbose={verbose}, style={style:?}"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -148,62 +218,4 @@ fn console_line_plain_stderr_warning_has_no_ansi() {
 
     assert_eq!(line, "WARN  careful");
     assert!(!line.contains("\x1b["));
-}
-
-#[test]
-fn console_line_never_emits_debug_events() {
-    assert_eq!(
-        console_line_with_style(
-            tracing::Level::DEBUG,
-            "dotfiles",
-            "internal detail",
-            StyleChoice::plain(),
-            true,
-        ),
-        None
-    );
-}
-
-#[test]
-fn ui_startup_header_is_dim() {
-    let colored = super::console::ui_line_with_style(
-        crate::infra::logging::MsgKind::Startup,
-        "Install · profile desktop · Arch Linux",
-        StyleChoice::colored(),
-        true,
-    );
-    let plain = super::console::ui_line_with_style(
-        crate::infra::logging::MsgKind::Startup,
-        "Install · profile desktop · Arch Linux",
-        StyleChoice::plain(),
-        true,
-    );
-
-    assert_eq!(
-        colored.as_deref(),
-        Some("\x1b[2mInstall · profile desktop · Arch Linux\x1b[0m")
-    );
-    assert_eq!(
-        plain.as_deref(),
-        Some("Install · profile desktop · Arch Linux")
-    );
-}
-
-#[test]
-fn ui_stage_and_task_stage_are_plain() {
-    let task = super::console::ui_line_with_style(
-        crate::infra::logging::MsgKind::TaskStage,
-        "Install packages",
-        StyleChoice::colored(),
-        true,
-    );
-    let stage = super::console::ui_line_with_style(
-        crate::infra::logging::MsgKind::Stage,
-        "Loading configuration",
-        StyleChoice::colored(),
-        true,
-    );
-
-    assert_eq!(task.as_deref(), Some("Install packages"));
-    assert_eq!(stage.as_deref(), Some("Loading configuration"));
 }

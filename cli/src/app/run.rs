@@ -102,11 +102,12 @@ fn standalone(result: anyhow::Result<()>) -> ExitCode {
 /// Initialise the runtime and dispatch a command through the task engine.
 fn run_engine(command: &cli::EngineCommand) -> ExitCode {
     let global = command.global();
-    if global.elevated_child {
+    let runtime = commands::RuntimePolicy::detect(global, command.verbose());
+    if runtime.execution.elevated_child {
         elevation::mark_elevated_child();
     }
-    let mut raw_log = logging::init(command.verbose(), !global.no_symbols, command.name());
-    raw_log.set_dry_run(global.dry_run);
+    let mut raw_log = logging::init(runtime.verbose, !runtime.global.no_symbols, command.name());
+    raw_log.set_dry_run(runtime.execution.dry_run);
     let log = std::sync::Arc::new(raw_log);
 
     // Set up cooperative cancellation so Ctrl-C lets in-flight operations
@@ -118,11 +119,13 @@ fn run_engine(command: &cli::EngineCommand) -> ExitCode {
     let result = match command {
         cli::EngineCommand::Install {
             opts, update_pins, ..
-        } => commands::install::run(global, opts, *update_pins, &log, &token),
+        } => commands::install::run(&runtime, opts, *update_pins, &log, &token),
         cli::EngineCommand::Uninstall { opts, .. } => {
-            commands::uninstall::run(global, opts, &log, &token)
+            commands::uninstall::run(&runtime, opts, &log, &token)
         }
-        cli::EngineCommand::Check { opts, .. } => commands::check::run(global, opts, &log, &token),
+        cli::EngineCommand::Check { opts, .. } => {
+            commands::check::run(&runtime, opts, &log, &token)
+        }
     };
 
     if let Err(e) = result {

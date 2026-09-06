@@ -109,6 +109,16 @@ convergence. Otherwise, unrelated APM commands can retry directory deletion
 that OneDrive blocks. Dry-run reports the planned file-level reconciliation
 without modifying Cowork or the lockfile.
 
+These compatibility paths are not redundant with native APM. The
+[v0.29.1 skill integrator](https://github.com/microsoft/apm/blob/v0.29.1/src/apm_cli/integration/skill_integrator.py)
+still removes existing target directories before copying, and its
+[workflow integrator](https://github.com/microsoft/apm/blob/v0.29.1/src/apm_cli/integration/copilot_app_workflow_integrator.py)
+rejects autopilot mode and inserts disabled workflows. Retain both dotfiles
+adapters until a candidate passes isolated checks for ACL-preserving updates,
+stale target cleanup, fragment and target filtering, managed workflow
+enablement, and preservation of foreign workflows on Linux, Windows, and WSL.
+Release notes or Linux-only success are not sufficient evidence for removal.
+
 Fragments merge their `targets:` lists by union with deduplication, so a private
 overlay fragment can add a runtime without restating the base list.
 

@@ -39,7 +39,7 @@ pub(in crate::infra::logging) fn take_transient_progress_rows() -> u16 {
 /// console output.
 pub(super) struct DotfilesFormatter;
 
-fn progress_clear_sequence(rows: u16) -> String {
+pub(in crate::infra::logging) fn progress_clear_sequence(rows: u16) -> String {
     if rows == 0 {
         return String::new();
     }
@@ -132,13 +132,13 @@ pub(super) fn console_line_with_style(
     style: StyleChoice,
     verbose: bool,
 ) -> Option<String> {
-    let msg = style.clean(msg);
-    match level {
-        tracing::Level::ERROR => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
-        tracing::Level::WARN => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
-        tracing::Level::INFO => verbose.then(|| format!("  {msg}")),
-        tracing::Level::DEBUG | tracing::Level::TRACE => None,
-    }
+    let kind = match level {
+        tracing::Level::ERROR => MsgKind::Error,
+        tracing::Level::WARN => MsgKind::Warn,
+        tracing::Level::INFO => MsgKind::Info,
+        tracing::Level::DEBUG | tracing::Level::TRACE => return None,
+    };
+    ui_line_with_style(kind, msg, style, verbose)
 }
 
 impl<S, N> tracing_subscriber::fmt::FormatEvent<S, N> for DotfilesFormatter
@@ -165,5 +165,24 @@ where
         };
         write!(writer, "{}", clear_transient_console_prefix())?;
         writeln!(writer, "{line}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn progress_clear_sequences_cover_each_row_once() {
+        for (rows, expected) in [
+            (0, ""),
+            (1, "\r\x1b[K"),
+            (2, "\r\x1b[K\x1b[1A\r\x1b[K"),
+            (3, "\r\x1b[K\x1b[1A\r\x1b[K\x1b[1A\r\x1b[K"),
+        ] {
+            assert_eq!(
+                super::progress_clear_sequence(rows),
+                expected,
+                "{rows} rows"
+            );
+        }
     }
 }

@@ -1,5 +1,18 @@
 use super::*;
 
+pub(super) fn global(args: &[&str]) -> crate::app::cli::GlobalOpts {
+    use clap::Parser as _;
+    let cli = crate::app::cli::Cli::parse_from(
+        ["dotfiles", "install"]
+            .into_iter()
+            .chain(args.iter().copied()),
+    );
+    let crate::app::cli::Command::Install(opts) = cli.command else {
+        panic!("expected install command");
+    };
+    opts.into_engine_parts(false).0
+}
+
 #[cfg(test)]
 mod reexec_tests {
     use super::*;
@@ -74,42 +87,54 @@ mod reexec_tests {
     }
 
     #[test]
-    fn repository_re_exec_guard_is_read_from_injected_environment() {
-        let unset = crate::infra::env::MapEnv::new();
-        let set = crate::infra::env::MapEnv::new().with(REPOSITORY_REEXEC_GUARD_VAR, "1");
+    fn self_update_policy_handles_all_guard_combinations() {
+        use crate::domains::dotfiles::self_update::CachePolicy::{Refresh, Use};
+        use crate::infra::env::MapEnv;
 
-        assert!(!repository_reexec_active(&unset));
-        assert!(repository_reexec_active(&set));
-    }
-
-    #[test]
-    fn repository_child_forces_a_fresh_self_update_check() {
-        let env = crate::infra::env::MapEnv::new()
-            .with(REEXEC_GUARD_VAR, "1")
-            .with(REPOSITORY_REEXEC_GUARD_VAR, "1");
-
-        assert_eq!(
-            self_update_check_policy(&env, false),
-            Some(crate::domains::dotfiles::self_update::CachePolicy::Refresh)
-        );
-    }
-
-    #[test]
-    fn self_update_child_does_not_check_again() {
-        let env = crate::infra::env::MapEnv::new()
-            .with(REEXEC_GUARD_VAR, "1")
-            .with(REPOSITORY_REEXEC_GUARD_VAR, "1")
-            .with(SELF_UPDATE_REEXEC_GUARD_VAR, "1");
-
-        assert_eq!(self_update_check_policy(&env, false), None);
-    }
-
-    #[test]
-    fn initial_process_uses_the_release_cache() {
-        assert_eq!(
-            self_update_check_policy(&crate::infra::env::MapEnv::new(), false),
-            Some(crate::domains::dotfiles::self_update::CachePolicy::Use)
-        );
+        let global = global(&[]);
+        for (guards, expected) in [
+            (vec![], Some(Use)),
+            (vec![REEXEC_GUARD_VAR], None),
+            (vec![REPOSITORY_REEXEC_GUARD_VAR], Some(Refresh)),
+            (
+                vec![REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR],
+                Some(Refresh),
+            ),
+            (vec![SELF_UPDATE_REEXEC_GUARD_VAR], None),
+            (vec![REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR], None),
+            (
+                vec![REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR],
+                None,
+            ),
+            (
+                vec![
+                    REEXEC_GUARD_VAR,
+                    REPOSITORY_REEXEC_GUARD_VAR,
+                    SELF_UPDATE_REEXEC_GUARD_VAR,
+                ],
+                None,
+            ),
+        ] {
+            // Empty guards still count as present, unlike the elevation marker.
+            let env = guards
+                .iter()
+                .fold(MapEnv::new(), |env, guard| env.with(guard, ""));
+            let runtime = RuntimePolicy::new(&global, false, env.clone().into_handle(), true, true);
+            assert_eq!(self_update_check_policy(&runtime), expected, "{guards:?}");
+            let elevated = RuntimePolicy::new(
+                &global,
+                false,
+                env.with(crate::infra::elevation::ELEVATED_CHILD_VAR, "1")
+                    .into_handle(),
+                true,
+                true,
+            );
+            assert_eq!(
+                self_update_check_policy(&elevated),
+                None,
+                "elevated: {guards:?}"
+            );
+        }
     }
 }
 

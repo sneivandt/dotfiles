@@ -2,7 +2,8 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use crate::app::cli::{CheckOpts, GlobalOpts};
+use super::RuntimePolicy;
+use crate::app::cli::CheckOpts;
 use crate::app::filter::apply_task_filters;
 use crate::app::validation::{
     RunPSScriptAnalyzer, RunShellcheck, ValidateApmPlugins, ValidateConfigFiles,
@@ -17,12 +18,12 @@ use crate::infra::logging::Logger;
 ///
 /// Returns an error if profile resolution, configuration validation, or script checks fail.
 pub fn run(
-    global: &GlobalOpts,
+    runtime: &RuntimePolicy<'_>,
     opts: &CheckOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
-    let runner = super::CommandRunner::new(global, log, token)?;
+    let runner = super::CommandRunner::new(runtime, log, token)?;
     let tasks = validation_tasks(runner.config_handle());
     let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, opts.with_deps, log)?;
     runner.run(filtered)

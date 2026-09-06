@@ -296,11 +296,13 @@ impl InstallCommandOpts {
     ) -> (GlobalOpts, InstallOpts, bool, bool) {
         let verbose = self.execution.verbose;
         let update_pins = self.update_pins || force_update_pins;
-        let mut global = GlobalOpts::from_execution(self.repository, &self.execution);
-        global.dry_run = self.dry_run;
-        global.no_repo_update = self.no_repo_update;
-        global.skip_attestation = self.skip_attestation;
-        global.elevated_child = self.elevated_child;
+        let global = GlobalOpts {
+            dry_run: self.dry_run,
+            no_repo_update: self.no_repo_update,
+            skip_attestation: self.skip_attestation,
+            elevated_child: self.elevated_child,
+            ..GlobalOpts::from_execution(self.repository, &self.execution)
+        };
         (global, self.tasks, update_pins, verbose)
     }
 }
@@ -320,10 +322,12 @@ impl UninstallCommandOpts {
     #[must_use]
     pub fn into_engine_parts(self) -> (GlobalOpts, UninstallOpts, bool) {
         let verbose = self.execution.verbose;
-        let mut global = GlobalOpts::from_execution(self.repository, &self.execution);
-        global.dry_run = self.dry_run;
-        global.skip_attestation = self.skip_attestation;
-        global.elevated_child = self.elevated_child;
+        let global = GlobalOpts {
+            dry_run: self.dry_run,
+            skip_attestation: self.skip_attestation,
+            elevated_child: self.elevated_child,
+            ..GlobalOpts::from_execution(self.repository, &self.execution)
+        };
         (global, UninstallOpts, verbose)
     }
 }
@@ -626,6 +630,78 @@ mod tests {
                 Cli::parse_from(["dotfiles", "completions", shell]).command,
                 Command::Completions(_)
             ));
+        }
+    }
+
+    #[test]
+    fn engine_option_conversion_preserves_command_and_output_flags() {
+        for name in ["install", "update", "uninstall", "check", "test"] {
+            let mut args = vec![
+                "dotfiles",
+                name,
+                "--profile",
+                "base",
+                "--root",
+                "/repo",
+                "--overlay",
+                "/overlay",
+                "--verbose",
+                "--no-parallel",
+                "--fail-on-skip",
+                "--non-interactive",
+                "--no-symbols",
+            ];
+            let mutating = matches!(name, "install" | "update" | "uninstall");
+            if mutating {
+                args.extend(["--dry-run", "--skip-attestation", "--elevated-child"]);
+            }
+            if matches!(name, "install" | "update") {
+                args.push("--no-repo-update");
+            }
+            let (global, verbose) = match Cli::parse_from(args).command {
+                Command::Install(opts) | Command::Update(opts) => {
+                    let (global, _, update_pins, verbose) =
+                        opts.into_engine_parts(name == "update");
+                    assert_eq!(update_pins, name == "update");
+                    assert!(global.no_repo_update);
+                    (global, verbose)
+                }
+                Command::Uninstall(opts) => {
+                    let (global, _, verbose) = opts.into_engine_parts();
+                    assert!(!global.no_repo_update);
+                    (global, verbose)
+                }
+                Command::Check(opts) | Command::Test(opts) => {
+                    let (global, _, verbose) = opts.into_engine_parts();
+                    assert!(!global.no_repo_update);
+                    (global, verbose)
+                }
+                Command::Tasks(_)
+                | Command::Profiles(_)
+                | Command::Log(_)
+                | Command::Completions(_) => panic!("expected engine command"),
+            };
+            let runtime = crate::app::commands::RuntimePolicy::new(
+                &global,
+                verbose,
+                crate::infra::env::MapEnv::new().into_handle(),
+                true,
+                true,
+            );
+            assert_eq!(global.profile.as_deref(), Some("base"));
+            assert_eq!(global.root.as_deref(), Some(std::path::Path::new("/repo")));
+            assert_eq!(
+                global.overlay.as_deref(),
+                Some(std::path::Path::new("/overlay"))
+            );
+            assert!(runtime.verbose);
+            assert!(runtime.global.no_symbols);
+            assert!(!runtime.execution.parallel);
+            assert!(runtime.execution.require_complete);
+            assert!(runtime.execution.non_interactive);
+            assert_eq!(runtime.execution.dry_run, mutating);
+            assert_eq!(global.skip_attestation, mutating);
+            assert_eq!(runtime.execution.elevated_child, mutating);
         }
     }
 }

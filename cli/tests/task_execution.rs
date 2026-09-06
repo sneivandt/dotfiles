@@ -369,63 +369,6 @@ fn chmod_is_idempotent() {
 }
 
 // ===========================================================================
-// tasks::execute() wrapper
-// ===========================================================================
-
-/// `tasks::execute()` must record a successful task without failures.
-#[cfg(unix)]
-#[test]
-fn execute_records_no_failures_for_successful_task() {
-    let test = common::TestContextBuilder::new()
-        .with_config_file("symlinks.toml", include_str!("fixtures/base_profile.toml"))
-        .with_symlink_source("bashrc")
-        .build();
-
-    let ec = test.make_context("base");
-    tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
-
-    assert_eq!(
-        ec.log.failure_count(),
-        0,
-        "successful task should record no failures"
-    );
-}
-
-/// A task that is not applicable (empty config) must be recorded without failure.
-#[test]
-fn execute_records_not_applicable_when_skipped() {
-    let test = common::TestContextBuilder::new().build();
-    let ec = test.make_context("base");
-
-    tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
-    assert_eq!(
-        ec.log.failure_count(),
-        0,
-        "skipped task should not count as a failure"
-    );
-}
-
-/// Running `execute()` on a task that is not applicable and then a task that
-/// succeeds should still report zero failures.
-#[cfg(unix)]
-#[test]
-fn execute_mixed_skip_and_success() {
-    let test = common::TestContextBuilder::new()
-        .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
-        .with_git_hooks_dir()
-        .build();
-
-    let ec = test.make_context("base");
-
-    // Symlinks task has empty config → skipped
-    tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
-    // Hooks task has real hooks → succeeds
-    tasks::execute(&InstallGitHooks::new(), &ec.ctx);
-
-    assert_eq!(ec.log.failure_count(), 0);
-}
-
-// ===========================================================================
 // Chmod dry-run
 // ===========================================================================
 

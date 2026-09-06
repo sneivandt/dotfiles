@@ -11,16 +11,6 @@ pub enum Os {
 }
 
 impl Os {
-    /// Returns a human-readable name for the OS.
-    #[cfg(test)]
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Linux => "Linux",
-            Self::Windows => "Windows",
-        }
-    }
-
     /// Returns whether this OS is Unix-like.
     #[must_use]
     pub const fn is_unix_like(self) -> bool {
@@ -284,189 +274,83 @@ mod tests {
     }
 
     #[test]
-    fn platform_new_linux() {
-        let p = Platform::new(Os::Linux, false);
-        assert!(p.is_linux());
-        assert!(!p.is_windows());
-        assert!(!p.is_arch);
-    }
-
-    #[test]
-    fn platform_new_windows() {
-        let p = Platform::new(Os::Windows, false);
-        assert!(p.is_windows());
-        assert!(!p.is_linux());
-    }
-
-    #[test]
-    fn platform_new_arch() {
-        let p = Platform::new(Os::Linux, true);
-        assert!(p.is_arch);
-    }
-
-    #[test]
-    fn excludes_category_linux_on_linux() {
-        let p = Platform::new(Os::Linux, false);
-        assert!(!p.excludes_category(&Category::Linux));
-    }
-
-    #[test]
-    fn excludes_category_linux_on_windows() {
-        let p = Platform::new(Os::Windows, false);
-        assert!(p.excludes_category(&Category::Linux));
-    }
-
-    #[test]
-    fn excludes_category_windows_on_linux() {
-        let p = Platform::new(Os::Linux, false);
-        assert!(p.excludes_category(&Category::Windows));
-        assert!(!p.excludes_category(&Category::Desktop));
-    }
-
-    #[test]
-    fn excludes_category_arch_on_non_arch() {
-        let p = Platform::new(Os::Linux, false);
-        assert!(p.excludes_category(&Category::Arch));
-    }
-
-    #[test]
-    fn excludes_category_arch_on_arch() {
-        let p = Platform::new(Os::Linux, true);
-        assert!(!p.excludes_category(&Category::Arch));
-    }
-
-    #[test]
-    fn wsl_arch_disables_arch_specific_capabilities() {
-        let p = Platform {
-            os: Os::Linux,
-            is_arch: true,
-            is_wsl: true,
-        };
-
-        assert!(!p.uses_pacman());
-        assert!(!p.supports_aur());
-        assert!(p.excludes_category(&Category::Arch));
-        assert!(!p.excludes_category(&Category::Linux));
-    }
-
-    #[test]
-    fn excludes_category_windows_on_windows() {
-        let p = Platform::new(Os::Windows, false);
-        assert!(!p.excludes_category(&Category::Windows));
-        assert!(p.excludes_category(&Category::Arch));
-    }
-
-    #[test]
     fn os_display() {
         assert_eq!(Os::Linux.to_string(), "linux");
         assert_eq!(Os::Windows.to_string(), "windows");
     }
 
-    #[test]
-    fn os_name() {
-        assert_eq!(Os::Linux.name(), "Linux");
-        assert_eq!(Os::Windows.name(), "Windows");
+    fn platforms() -> [Platform; 5] {
+        [
+            Platform::new(Os::Linux, false),
+            Platform::new(Os::Linux, true),
+            Platform::new(Os::Windows, false),
+            Platform::new_wsl(),
+            Platform {
+                os: Os::Linux,
+                is_arch: true,
+                is_wsl: true,
+            },
+        ]
     }
 
     #[test]
-    fn os_is_unix_like() {
-        assert!(Os::Linux.is_unix_like());
-        assert!(!Os::Windows.is_unix_like());
+    fn platform_capabilities_and_labels() {
+        // POSIX support, Arch identity, WSL identity, Arch package support, label.
+        let expected = [
+            (true, false, false, false, "Linux"),
+            (true, true, false, true, "Arch Linux"),
+            (false, false, false, false, "Windows"),
+            (true, false, true, false, "Linux"),
+            (true, true, true, false, "Arch Linux"),
+        ];
+        assert_eq!(platforms().len(), expected.len(), "cover every platform");
+        for (platform, (posix, arch, wsl, arch_packages, label)) in
+            platforms().into_iter().zip(expected)
+        {
+            assert_eq!(platform.is_linux(), posix, "{platform:?}: Linux");
+            assert_eq!(platform.is_windows(), !posix, "{platform:?}: Windows");
+            assert_eq!(platform.supports_chmod(), posix, "{platform:?}: chmod");
+            assert_eq!(platform.supports_systemd(), posix, "{platform:?}: systemd");
+            assert_eq!(platform.has_registry(), !posix, "{platform:?}: registry");
+            assert_eq!(platform.is_arch_linux(), arch, "{platform:?}: Arch");
+            assert_eq!(platform.is_wsl(), wsl, "{platform:?}: WSL");
+            assert_eq!(
+                platform.uses_pacman(),
+                arch_packages,
+                "{platform:?}: pacman"
+            );
+            assert_eq!(platform.supports_aur(), arch_packages, "{platform:?}: AUR");
+            assert_eq!(platform.description(), label, "{platform:?}: description");
+            assert_eq!(platform.to_string(), label, "{platform:?}: display");
+        }
     }
 
     #[test]
-    fn os_supports_posix_permissions() {
-        assert!(Os::Linux.supports_posix_permissions());
-        assert!(!Os::Windows.supports_posix_permissions());
-    }
-
-    #[test]
-    fn os_has_registry() {
-        assert!(!Os::Linux.has_registry());
-        assert!(Os::Windows.has_registry());
-    }
-
-    #[test]
-    fn platform_supports_chmod() {
-        let linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert!(linux.supports_chmod());
-        assert!(!windows.supports_chmod());
-    }
-
-    #[test]
-    fn platform_supports_systemd() {
-        let linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert!(linux.supports_systemd());
-        assert!(!windows.supports_systemd());
-    }
-
-    #[test]
-    fn platform_has_registry() {
-        let linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert!(!linux.has_registry());
-        assert!(windows.has_registry());
-    }
-
-    #[test]
-    fn platform_is_arch_linux() {
-        let arch = Platform::new(Os::Linux, true);
-        let generic_linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert!(arch.is_arch_linux());
-        assert!(!generic_linux.is_arch_linux());
-        assert!(!windows.is_arch_linux());
-    }
-
-    #[test]
-    fn platform_uses_pacman() {
-        let arch = Platform::new(Os::Linux, true);
-        let generic_linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert!(arch.uses_pacman());
-        assert!(!generic_linux.uses_pacman());
-        assert!(!windows.uses_pacman());
-    }
-
-    #[test]
-    fn platform_supports_aur() {
-        let arch = Platform::new(Os::Linux, true);
-        let generic_linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert!(arch.supports_aur());
-        assert!(!generic_linux.supports_aur());
-        assert!(!windows.supports_aur());
-    }
-
-    #[test]
-    fn platform_description() {
-        let arch = Platform::new(Os::Linux, true);
-        let generic_linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert_eq!(arch.description(), "Arch Linux");
-        assert_eq!(generic_linux.description(), "Linux");
-        assert_eq!(windows.description(), "Windows");
-    }
-
-    #[test]
-    fn platform_is_wsl() {
-        let wsl = Platform::new_wsl();
-        let linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert!(wsl.is_wsl());
-        assert!(!linux.is_wsl());
-        assert!(!windows.is_wsl());
-    }
-
-    #[test]
-    fn platform_display() {
-        let arch = Platform::new(Os::Linux, true);
-        let generic_linux = Platform::new(Os::Linux, false);
-        let windows = Platform::new(Os::Windows, false);
-        assert_eq!(arch.to_string(), "Arch Linux");
-        assert_eq!(generic_linux.to_string(), "Linux");
-        assert_eq!(windows.to_string(), "Windows");
+    fn platform_category_exclusions() {
+        let categories = [
+            Category::Linux,
+            Category::Windows,
+            Category::Arch,
+            Category::Base,
+            Category::Desktop,
+            Category::Other("custom".to_string()),
+        ];
+        let expected = [
+            [false, true, true, false, false, false],
+            [false, true, false, false, false, false],
+            [true, false, true, false, false, false],
+            [false, true, true, false, false, false],
+            [false, true, true, false, false, false],
+        ];
+        assert_eq!(platforms().len(), expected.len(), "cover every platform");
+        for (platform, exclusions) in platforms().into_iter().zip(expected) {
+            for (category, excluded) in categories.iter().zip(exclusions) {
+                assert_eq!(
+                    platform.excludes_category(category),
+                    excluded,
+                    "{platform:?}: {category:?}"
+                );
+            }
+        }
     }
 }

@@ -79,6 +79,7 @@ mod tests {
     }
 
     #[derive(Debug, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Doc {
         entries: Vec<StringOrTable<Pair>>,
     }
@@ -88,61 +89,36 @@ mod tests {
     }
 
     #[test]
-    fn bare_string_uses_shorthand_variant() {
-        let doc = parse(r#"entries = ["bashrc"]"#).unwrap();
+    fn parses_mixed_shorthand_and_explicit_entries() {
+        let doc = parse(r#"entries = ["bashrc", { source = "a", target = "b" }]"#).unwrap();
         assert_eq!(
-            doc.entries[0],
-            StringOrTable::Bare("bashrc".to_string()),
-            "a bare string should parse as the shorthand variant"
+            doc.entries,
+            vec![
+                StringOrTable::Bare("bashrc".to_string()),
+                StringOrTable::Table(Pair {
+                    source: "a".to_string(),
+                    target: "b".to_string(),
+                })
+            ]
         );
     }
 
     #[test]
-    fn table_uses_explicit_variant() {
-        let doc = parse(r#"entries = [{ source = "a", target = "b" }]"#).unwrap();
-        assert_eq!(
-            doc.entries[0],
-            StringOrTable::Table(Pair {
-                source: "a".to_string(),
-                target: "b".to_string(),
-            }),
-            "a table should parse as the explicit variant"
-        );
-    }
-
-    #[test]
-    fn unknown_key_in_table_is_rejected() {
-        let err = parse(r#"entries = [{ source = "a", target = "b", targett = "c" }]"#)
-            .expect_err("an unknown key must not be silently ignored");
-        let message = err.to_string();
-        assert!(
-            message.contains("targett"),
-            "error should name the unknown key, got: {message}"
-        );
-    }
-
-    #[test]
-    fn missing_required_key_in_table_is_rejected() {
-        let err = parse(r#"entries = [{ source = "a" }]"#)
-            .expect_err("a missing required key must be rejected");
-        let message = err.to_string();
-        assert!(
-            message.contains("target"),
-            "error should name the missing key, got: {message}"
-        );
-    }
-
-    #[test]
-    fn non_string_non_table_is_rejected_with_type_name() {
-        let err = parse("entries = [42]").expect_err("an integer entry must be rejected");
-        let message = err.to_string();
-        assert!(
-            message.contains("expected a string or a table"),
-            "error should explain the accepted forms, got: {message}"
-        );
-        assert!(
-            message.contains("integer"),
-            "error should name the offending type, got: {message}"
-        );
+    fn rejects_invalid_entries_without_discarding_unknown_keys() {
+        for (entry, expected) in [
+            (
+                r#"{ source = "a", target = "b", targett = "c" }"#,
+                "unknown field `targett`",
+            ),
+            (r#"{ source = "a" }"#, "missing field `target`"),
+            ("42", "expected a string or a table, found integer"),
+            ("4.2", "expected a string or a table, found float"),
+            ("true", "expected a string or a table, found boolean"),
+            ("2026-09-06", "expected a string or a table, found datetime"),
+            ("[]", "expected a string or a table, found array"),
+        ] {
+            let error = parse(&format!("entries = [{entry}]")).unwrap_err();
+            assert!(error.to_string().contains(expected), "{entry}: {error}");
+        }
     }
 }

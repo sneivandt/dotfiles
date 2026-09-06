@@ -56,22 +56,108 @@ fn buffered_log_record_task_with_actions_forwards_counts() {
 }
 
 #[test]
-fn buffered_log_preserves_entry_order() {
-    let (buf, log, _tmp, _guard) = buffered_fixture();
-    buf.stage("stage-1");
-    buf.info("info-1");
-    buf.debug("debug-1");
-    buf.warn("warn-1");
-    buf.flush();
-    let path = log.log_path().expect("log path");
-    let contents = fs::read_to_string(path).unwrap();
-    let stage_pos = contents.find("stage-1").expect("stage-1 in log");
-    let info_pos = contents.find("info-1").expect("info-1 in log");
-    let debug_pos = contents.find("debug-1").expect("debug-1 in log");
-    let warn_pos = contents.find("warn-1").expect("warn-1 in log");
-    assert!(stage_pos < info_pos, "stage before info");
-    assert!(info_pos < debug_pos, "info before debug");
-    assert!(debug_pos < warn_pos, "debug before warn");
+fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
+    for verbose in [false, true] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(verbose);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        let mut previous = 0;
+        for (kind, event) in [
+            (MsgKind::Stage, "stage"),
+            (MsgKind::TaskStage, "stage"),
+            (MsgKind::Info, "info"),
+            (MsgKind::Debug, "debug"),
+            (MsgKind::Trace, "debug"),
+            (MsgKind::Warn, "warn"),
+            (MsgKind::Error, "error"),
+            (MsgKind::DryRun, "dry_run"),
+            (MsgKind::Always, "info"),
+            (MsgKind::Startup, "info"),
+        ] {
+            let outputs: [(&str, &dyn Output); 2] = [("buffered", &buf), ("direct", log.as_ref())];
+            for (sink, output) in outputs {
+                let message = format!("{sink} {kind:?}");
+                output.emit(kind, message.clone().into());
+                let contents = fs::read_to_string(log.log_path().unwrap()).unwrap();
+                let position = contents.find(&format!("[{event}] {message}")).unwrap();
+                assert!(
+                    position > previous,
+                    "{message}: must persist immediately and chronologically"
+                );
+                assert_eq!(
+                    contents.matches(&message).count(),
+                    1,
+                    "{message}: written once"
+                );
+                previous = position;
+            }
+        }
+        assert_eq!(buf.entries.lock().unwrap().len(), 10);
+        let before_flush = fs::read_to_string(log.log_path().unwrap()).unwrap();
+        buf.flush();
+        buf.flush();
+        assert!(buf.entries.lock().unwrap().is_empty());
+        assert_eq!(
+            fs::read_to_string(log.log_path().unwrap()).unwrap(),
+            before_flush,
+            "replaying console output must neither reorder nor duplicate persistent events"
+        );
+    }
+}
+
+#[test]
+fn completion_order_and_action_barriers_survive_buffered_flush() {
+    for verbose in [false, true] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(verbose);
+        let log = Arc::new(log);
+        let alpha = BufferedLog::new(Arc::clone(&log));
+        let beta = BufferedLog::new(Arc::clone(&log));
+        alpha.info("linked: z");
+        alpha.info("linked: a");
+        alpha.info("context");
+        alpha.info("installed: z");
+        alpha.info("installed: a");
+        beta.info("configured: b");
+
+        for (buf, name) in [(&beta, "beta"), (&alpha, "alpha")] {
+            buf.record_task(task_entry(
+                name,
+                TaskStatus::Changed,
+                ActionCounts::default(),
+            ));
+            buf.flush_and_complete(name, name, TaskStatus::Changed);
+        }
+        assert_eq!(
+            log.task_entries()
+                .iter()
+                .map(|task| task.name.as_str())
+                .collect::<Vec<_>>(),
+            ["beta", "alpha"],
+            "task results retain completion order rather than task-name order"
+        );
+        let details = log.lock_task_details().clone();
+        assert_eq!(details[0].task_id, "beta");
+        assert_eq!(details[0].lines, ["configured: b"]);
+        assert_eq!(details[1].task_id, "alpha");
+        assert_eq!(
+            details[1].lines,
+            [
+                "linked: a",
+                "linked: z",
+                "context",
+                "installed: a",
+                "installed: z"
+            ],
+            "only consecutive action runs may be reordered"
+        );
+        let contents = fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert!(
+            contents.find("linked: z").unwrap() < contents.find("linked: a").unwrap(),
+            "console sorting must not reorder chronological run-log events"
+        );
+    }
 }
 
 #[test]
@@ -119,116 +205,63 @@ fn flush_and_complete_clears_progress_rows() {
 }
 
 #[test]
-fn buffered_log_writes_to_run_log_immediately() {
-    let (buf, log, _tmp, _guard) = buffered_fixture();
-    let marker = format!("buf-runlog-{}", std::process::id());
-    buf.info(&marker);
-    let path = log.log_path().expect("log path");
-    let contents = fs::read_to_string(path).unwrap();
-    assert!(
-        contents.contains(&marker),
-        "BufferedLog should write to the run log immediately, not after flush"
-    );
-}
-
-#[test]
-fn log_entry_replay_all_variants() {
-    let (buf, log, _tmp, _guard) = buffered_fixture();
-    let pid = std::process::id();
-    buf.stage(format!("replay-stage-{pid}"));
-    buf.info(format!("replay-info-{pid}"));
-    buf.debug(format!("replay-debug-{pid}"));
-    buf.warn(format!("replay-warn-{pid}"));
-    buf.error(format!("replay-error-{pid}"));
-    buf.dry_run(format!("replay-dryrun-{pid}"));
-    buf.flush();
-    let path = log.log_path().expect("log path");
-    let contents = fs::read_to_string(path).unwrap();
-    assert!(contents.contains(&format!("replay-stage-{pid}")));
-    assert!(contents.contains(&format!("replay-info-{pid}")));
-    assert!(contents.contains(&format!("replay-debug-{pid}")));
-    assert!(contents.contains(&format!("replay-warn-{pid}")));
-    assert!(contents.contains(&format!("replay-error-{pid}")));
-    assert!(contents.contains(&format!("replay-dryrun-{pid}")));
-}
-
-#[test]
-fn buffered_log_all_variants_buffered() {
-    let (buf, log, _tmp, _guard) = buffered_fixture();
-    let pid = std::process::id();
-    buf.info(format!("all-info-{pid}"));
-    buf.warn(format!("all-warn-{pid}"));
-    buf.error(format!("all-error-{pid}"));
-    buf.dry_run(format!("all-dryrun-{pid}"));
-    buf.debug(format!("all-debug-{pid}"));
-    buf.flush();
-    let path = log.log_path().expect("log path");
-    let contents = fs::read_to_string(path).unwrap();
-    assert!(contents.contains(&format!("all-info-{pid}")));
-    assert!(contents.contains(&format!("all-warn-{pid}")));
-    assert!(contents.contains(&format!("all-error-{pid}")));
-    assert!(contents.contains(&format!("all-dryrun-{pid}")));
-    assert!(contents.contains(&format!("all-debug-{pid}")));
-}
-
-#[test]
-fn non_verbose_replay_only_shows_warnings_and_errors() {
-    for entry in [
-        entry(MsgKind::Stage, "stage"),
-        entry(MsgKind::TaskStage, "task"),
-        entry(MsgKind::Info, "info"),
-        entry(MsgKind::DryRun, "dry-run"),
-        entry(MsgKind::Always, "always"),
+fn buffered_presentation_golden_matrix() {
+    let (_buf, log, _tmp, _guard) = buffered_fixture();
+    for (kind, verbose, warning, detail) in [
+        (MsgKind::Stage, false, false, false),
+        (MsgKind::TaskStage, false, false, false),
+        (MsgKind::Info, true, false, true),
+        (MsgKind::Debug, true, false, false),
+        (MsgKind::Trace, false, false, false),
+        (MsgKind::Warn, true, true, false),
+        (MsgKind::Error, true, true, false),
+        (MsgKind::DryRun, true, false, true),
+        (MsgKind::Always, true, false, true),
+        (MsgKind::Startup, true, false, false),
+    ] {
+        let entry = entry(kind, "detail");
+        assert_eq!(entry.replay_verbose(&log, None), verbose, "{kind:?}");
+        assert!(
+            !entry.replay_verbose(&log, Some("detail")),
+            "{kind:?}: duplicate reason"
+        );
+        for status in [
+            TaskStatus::Ok,
+            TaskStatus::Changed,
+            TaskStatus::Passed,
+            TaskStatus::NotApplicable,
+            TaskStatus::Skipped,
+            TaskStatus::DryRun,
+            TaskStatus::Failed,
+        ] {
+            assert_eq!(
+                entry.detail_line(status),
+                (detail || (warning && status == TaskStatus::Failed)).then_some("detail"),
+                "{kind:?}, {status:?}: summary detail"
+            );
+            assert_eq!(
+                entry.is_visible_in_non_verbose(status, None),
+                warning && status != TaskStatus::Failed,
+                "{kind:?}, {status:?}: non-verbose console"
+            );
+            assert!(
+                !entry.is_visible_in_non_verbose(status, Some("detail")),
+                "{kind:?}, {status:?}: duplicate reason"
+            );
+        }
+    }
+    for message in [
+        "skipped: reason",
+        "skipping: reason",
+        "failed: reason",
+        "interrupted: reason",
+        "3 changed, 1 already ok",
     ] {
         assert!(
-            !entry.is_visible_in_non_verbose(TaskStatus::Ok, None),
-            "{entry:?} should be deferred to the summary in non-verbose replay"
+            !entry(MsgKind::Info, message).replay_verbose(&log, Some("reason")),
+            "{message}"
         );
     }
-
-    for entry in [entry(MsgKind::Warn, "warn"), entry(MsgKind::Error, "error")] {
-        assert!(
-            entry.is_visible_in_non_verbose(TaskStatus::Ok, None),
-            "{entry:?} must reach the console in non-verbose replay"
-        );
-    }
-}
-
-#[test]
-fn non_verbose_failed_replay_keeps_errors_off_the_console() {
-    for entry in [entry(MsgKind::Warn, "warn"), entry(MsgKind::Error, "error")] {
-        assert!(
-            !entry.is_visible_in_non_verbose(TaskStatus::Failed, None),
-            "failed-task output surfaces through the summary, not a separate console line"
-        );
-    }
-}
-
-#[test]
-fn verbose_replay_suppresses_stage_headers_and_renders_details() {
-    let (_buf, log, _tmp, _guard) = buffered_fixture();
-
-    assert!(!entry(MsgKind::Stage, "stage").replay_verbose(&log, None));
-    assert!(!entry(MsgKind::TaskStage, "task").replay_verbose(&log, None));
-    assert!(entry(MsgKind::Info, "info").replay_verbose(&log, None));
-    assert!(entry(MsgKind::Warn, "warn").replay_verbose(&log, None));
-}
-
-#[test]
-fn failed_task_errors_become_task_details() {
-    let warning = entry(MsgKind::Warn, "failed: package install");
-    let error = entry(MsgKind::Error, "packages: command failed");
-
-    assert_eq!(
-        warning.detail_line(TaskStatus::Failed),
-        Some("failed: package install")
-    );
-    assert_eq!(
-        error.detail_line(TaskStatus::Failed),
-        Some("packages: command failed")
-    );
-    assert_eq!(warning.detail_line(TaskStatus::Ok), None);
-    assert_eq!(error.detail_line(TaskStatus::Ok), None);
 }
 
 #[test]

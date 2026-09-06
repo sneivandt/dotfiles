@@ -49,6 +49,42 @@ pub struct ContextOpts {
     pub is_ci: Option<bool>,
 }
 
+/// Resolved execution decisions, shared unchanged by startup and task execution.
+#[derive(Debug, Clone, Copy)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent runtime capabilities and execution switches"
+)]
+pub(crate) struct ExecutionPolicy {
+    pub dry_run: bool,
+    pub parallel: bool,
+    pub is_ci: bool,
+    pub require_complete: bool,
+    pub non_interactive: bool,
+    pub stdout_terminal: bool,
+    pub elevated_child: bool,
+}
+
+impl ExecutionPolicy {
+    const fn from_options(opts: ContextOpts, is_ci: bool) -> Self {
+        Self {
+            dry_run: opts.dry_run,
+            parallel: opts.parallel,
+            is_ci,
+            require_complete: is_ci,
+            non_interactive: is_ci,
+            stdout_terminal: true,
+            elevated_child: false,
+        }
+    }
+
+    /// Whether a consent dialog can be answered on the interactive desktop.
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows UAC policy"))]
+    pub(crate) const fn can_prompt_for_elevation(self) -> bool {
+        !self.non_interactive && !self.is_ci && self.stdout_terminal
+    }
+}
+
 /// Shared context for task execution.
 #[derive(Clone)]
 pub struct Context {
@@ -60,17 +96,8 @@ pub struct Context {
     overlay: Option<std::path::PathBuf>,
     platform: Platform,
     log: Arc<dyn Log>,
-    dry_run: bool,
     home: Arc<std::path::PathBuf>,
     executor: Arc<dyn Executor>,
-    parallel: bool,
-    /// Whether the process is running inside a CI environment.
-    ///
-    /// Derived from the `CI` environment variable at construction time (or
-    /// supplied directly via [`ContextOpts::is_ci`]) so that tasks can check
-    /// this without reading env-globals themselves and tests can inject the
-    /// value without mutating process state.
-    is_ci: bool,
     execution_policy: ExecutionPolicy,
     /// Read-only access to the process environment.
     ///
@@ -85,12 +112,6 @@ pub struct Context {
     cancelled: CancellationToken,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ExecutionPolicy {
-    require_complete: bool,
-    non_interactive: bool,
-}
-
 impl std::fmt::Debug for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Context")
@@ -98,11 +119,8 @@ impl std::fmt::Debug for Context {
             .field("overlay", &self.overlay)
             .field("platform", &self.platform)
             .field("log", &"<dyn Log>")
-            .field("dry_run", &self.dry_run)
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
-            .field("parallel", &self.parallel)
-            .field("is_ci", &self.is_ci)
             .field("execution_policy", &self.execution_policy)
             .field("env", &"<dyn Env>")
             .field("cancelled", &self.cancelled)
@@ -136,6 +154,28 @@ impl Context {
         env: Arc<dyn Env>,
         opts: ContextOpts,
     ) -> Result<Self> {
+        let is_ci = opts.is_ci.unwrap_or_else(|| env.var_os("CI").is_some());
+        Self::new_with_policy(
+            root,
+            overlay,
+            platform,
+            log,
+            executor,
+            env,
+            ExecutionPolicy::from_options(opts, is_ci),
+        )
+    }
+
+    /// Build a context without reinterpreting the application's runtime policy.
+    pub(crate) fn new_with_policy(
+        root: std::path::PathBuf,
+        overlay: Option<std::path::PathBuf>,
+        platform: Platform,
+        log: Arc<dyn Log>,
+        executor: Arc<dyn Executor>,
+        env: Arc<dyn Env>,
+        execution_policy: ExecutionPolicy,
+    ) -> Result<Self> {
         let home = if platform.is_windows() {
             env.var("USERPROFILE")
                 .or_else(|| env.var("HOME"))
@@ -145,22 +185,14 @@ impl Context {
                 .context("HOME environment variable is not set")?
         };
 
-        let is_ci = opts.is_ci.unwrap_or_else(|| env.var_os("CI").is_some());
-
         Ok(Self {
             paths: Arc::new(RepoPaths::new(root)),
             overlay,
             platform,
             log,
-            dry_run: opts.dry_run,
             home: Arc::new(std::path::PathBuf::from(home)),
             executor,
-            parallel: opts.parallel,
-            is_ci,
-            execution_policy: ExecutionPolicy {
-                require_complete: is_ci,
-                non_interactive: is_ci,
-            },
+            execution_policy,
             env,
             cancelled: CancellationToken::new(),
         })
@@ -188,15 +220,9 @@ impl Context {
             overlay,
             platform,
             log,
-            dry_run: opts.dry_run,
             home: Arc::new(home),
             executor,
-            parallel: opts.parallel,
-            is_ci: opts.is_ci.unwrap_or(false),
-            execution_policy: ExecutionPolicy {
-                require_complete: opts.is_ci.unwrap_or(false),
-                non_interactive: opts.is_ci.unwrap_or(false),
-            },
+            execution_policy: ExecutionPolicy::from_options(opts, opts.is_ci.unwrap_or(false)),
             env: crate::infra::env::system(),
             cancelled: CancellationToken::new(),
         }
@@ -257,7 +283,7 @@ impl Context {
     /// Whether mutations are being previewed rather than applied.
     #[must_use]
     pub const fn dry_run(&self) -> bool {
-        self.dry_run
+        self.execution_policy.dry_run
     }
 
     /// User home directory.
@@ -281,7 +307,7 @@ impl Context {
     /// Return whether the process is running in CI.
     #[must_use]
     pub(crate) const fn is_ci(&self) -> bool {
-        self.is_ci
+        self.execution_policy.is_ci
     }
 
     /// Return whether `program` is available on PATH.
@@ -323,7 +349,11 @@ impl Context {
     /// Whether task and resource parallelism is enabled.
     #[must_use]
     pub const fn parallel(&self) -> bool {
-        self.parallel
+        self.execution_policy.parallel
+    }
+
+    pub(crate) const fn execution_policy(&self) -> &ExecutionPolicy {
+        &self.execution_policy
     }
 
     /// Whether unmet work must make the command fail.
@@ -357,13 +387,13 @@ impl Context {
     /// Create a copy of this context with dry-run mode set.
     #[must_use]
     pub fn with_dry_run(&self, dry_run: bool) -> Self {
-        self.clone_with(|ctx| ctx.dry_run = dry_run)
+        self.clone_with(|ctx| ctx.execution_policy.dry_run = dry_run)
     }
 
     /// Create a copy of this context with parallel mode set.
     #[must_use]
     pub fn with_parallel(&self, parallel: bool) -> Self {
-        self.clone_with(|ctx| ctx.parallel = parallel)
+        self.clone_with(|ctx| ctx.execution_policy.parallel = parallel)
     }
 
     /// Create a copy of this context with strict completion policy set.
@@ -390,7 +420,7 @@ impl Context {
     /// process-global environment variables.
     #[must_use]
     pub fn with_ci(&self, is_ci: bool) -> Self {
-        self.clone_with(|ctx| ctx.is_ci = is_ci)
+        self.clone_with(|ctx| ctx.execution_policy.is_ci = is_ci)
     }
 
     /// Create a copy of this context with the given cancellation token.

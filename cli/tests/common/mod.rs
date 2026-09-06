@@ -399,9 +399,24 @@ pub(crate) fn run_install_dry_run(
         with_deps: false,
     };
     let log: Arc<Logger> = Arc::new(Logger::new("test-install-dry-run"));
+    let runtime = test_api::commands::RuntimePolicy::new(
+        &global,
+        false,
+        test_api::env::MapEnv::new()
+            .with("HOME", ctx.root_path().join("home"))
+            .with("USERPROFILE", ctx.root_path().join("home"))
+            .with("XDG_STATE_HOME", ctx.root_path().join("state"))
+            .with(
+                "USER",
+                std::env::var("USER").unwrap_or_else(|_| "root".to_owned()),
+            )
+            .into_handle(),
+        false,
+        false,
+    );
 
     test_api::commands::install::run(
-        &global,
+        &runtime,
         &opts,
         false,
         &log,

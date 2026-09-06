@@ -39,9 +39,6 @@ pub(crate) trait ConfigSection: DeserializeOwned {
 
 /// Load a TOML config using a [`ConfigSection`] implementation.
 ///
-/// This replaces the repeated `load_filtered(path, extract, map, cats, mode)`
-/// calls across config modules with a single generic call.
-///
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
@@ -49,7 +46,11 @@ pub(crate) fn load_section<S: ConfigSection>(
     path: &Path,
     active_categories: &[Category],
 ) -> Result<Vec<S::Item>> {
-    load_filtered(path, S::extract, S::map, active_categories)
+    let sections = load_section_items(path, S::extract)?;
+    Ok(filter_by_categories(sections, active_categories)
+        .into_iter()
+        .map(S::map)
+        .collect())
 }
 
 /// Load every item from a TOML config using a [`ConfigSection`]
@@ -134,29 +135,6 @@ where
     Ok(config.into_iter().map(|(k, v)| (k, extract(v))).collect())
 }
 
-/// Load, filter, and map TOML section items in a single step.
-///
-/// Combines [`load_section_items`] and [`filter_by_categories`], then maps
-/// each surviving entry through `map`.  This eliminates the repeated
-/// three-step pattern found in most config loaders.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be read or parsed.
-pub(crate) fn load_filtered<S, E, T>(
-    path: &Path,
-    extract: impl Fn(S) -> Vec<E>,
-    map: impl Fn(E) -> T,
-    active_categories: &[Category],
-) -> Result<Vec<T>>
-where
-    S: DeserializeOwned,
-{
-    let items = load_section_items(path, extract)?;
-    let entries = filter_by_categories(items, active_categories);
-    Ok(entries.into_iter().map(map).collect())
-}
-
 /// Filter items from a TOML table by category matching.
 ///
 /// A section is included only when all of its category tags are present in
@@ -179,21 +157,33 @@ mod tests {
     use crate::infra::config::test_helpers::write_temp_toml;
     use serde::Deserialize;
 
-    // -----------------------------------------------------------------------
-    // load_config
-    // -----------------------------------------------------------------------
-
     #[test]
-    fn load_config_missing_file_returns_empty_hashmap() {
+    fn missing_files_respect_required_and_optional_boundaries() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("nonexistent.toml");
         let result: BTreeMap<String, String> = load_optional_config(&path).unwrap();
         assert!(result.is_empty());
+        assert!(
+            load_section_items(&path, |s: Section| s.items)
+                .unwrap()
+                .is_empty()
+        );
+        let required_error = load_required_config::<BTreeMap<String, String>>(&path).unwrap_err();
+        assert_eq!(
+            required_error.to_string(),
+            format!("Failed to read config file: {}", path.display())
+        );
+        let optional_error = load_optional_config::<Section>(&path).err().unwrap();
+        assert_eq!(
+            optional_error.to_string(),
+            format!("Failed to create empty config: {}", path.display())
+        );
     }
 
     #[test]
     fn load_config_valid_toml() {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Root {
             key: String,
         }
@@ -203,37 +193,39 @@ mod tests {
     }
 
     #[test]
-    fn load_config_invalid_toml_returns_error() {
-        let (_dir, path) = write_temp_toml("not valid {{{{ toml");
-        let result: Result<BTreeMap<String, String>> = load_optional_config(&path);
-        assert!(result.is_err());
-        let msg = result.unwrap_err().to_string();
-        assert!(
-            msg.contains("Failed to parse TOML config"),
-            "error should mention parse failure: {msg}"
-        );
-        assert!(
-            msg.contains(path.to_str().unwrap_or("")),
-            "error should include the file path: {msg}"
-        );
+    fn loaders_preserve_parse_and_read_errors() {
+        for load in [
+            load_optional_config::<BTreeMap<String, Section>>,
+            load_required_config::<BTreeMap<String, Section>>,
+        ] {
+            for content in [
+                "{{invalid toml",
+                "[base]\nitems = 42",
+                "[base]\nitems = \"not-an-array\"",
+                "[base]\nitems = []\nunknown = true",
+            ] {
+                let (_dir, path) = write_temp_toml(content);
+                let error = load(&path).err().expect("invalid TOML must fail");
+                assert_eq!(
+                    error.to_string(),
+                    format!("Failed to parse TOML config: {}", path.display())
+                );
+                assert!(error.chain().count() > 1, "preserve the parser error");
+                assert!(load_section_items(&path, |s: Section| s.items).is_err());
+            }
+            let dir = tempfile::tempdir().unwrap();
+            let error = load(dir.path())
+                .err()
+                .expect("reading a directory must fail");
+            assert_eq!(
+                error.to_string(),
+                format!("Failed to read config file: {}", dir.path().display())
+            );
+        }
     }
-
-    #[test]
-    fn load_required_config_missing_file_returns_error() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("nonexistent.toml");
-        let result: Result<BTreeMap<String, String>> = load_required_config(&path);
-        assert!(
-            result.is_err(),
-            "required config should reject missing file"
-        );
-    }
-
-    // -----------------------------------------------------------------------
-    // load_section_items
-    // -----------------------------------------------------------------------
 
     #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct Section {
         items: Vec<String>,
     }
@@ -249,113 +241,35 @@ items = [\"c\"]
 ";
         let (_dir, path) = write_temp_toml(toml);
         let sections = load_section_items(&path, |s: Section| s.items).unwrap();
-        let total_items: usize = sections.iter().map(|(_, v)| v.len()).sum();
-        assert_eq!(total_items, 3);
+        assert_eq!(
+            sections,
+            vec![
+                ("base".to_string(), vec!["a".to_string(), "b".to_string()]),
+                ("desktop".to_string(), vec!["c".to_string()])
+            ]
+        );
     }
 
     #[test]
-    fn load_section_items_missing_file_returns_empty() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("nonexistent.toml");
-        let sections = load_section_items(&path, |s: Section| s.items).unwrap();
-        assert!(sections.is_empty());
-    }
-
-    // -----------------------------------------------------------------------
-    // filter_by_categories
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn filter_by_categories_single_match() {
+    fn category_filter_preserves_order_and_requires_all_tags() {
         let items = vec![
             ("base".to_string(), vec!["a", "b"]),
-            ("desktop".to_string(), vec!["c"]),
-            ("windows".to_string(), vec!["d"]),
+            ("arch-desktop".to_string(), vec!["c"]),
+            ("arch".to_string(), vec!["d"]),
         ];
-        let active = vec![Category::Base, Category::Desktop];
-        let result = filter_by_categories(items, &active);
-        assert_eq!(result.len(), 3, "base + desktop items");
-        assert!(result.contains(&"a"));
-        assert!(result.contains(&"b"));
-        assert!(result.contains(&"c"));
-    }
-
-    #[test]
-    fn filter_by_categories_all_mode() {
-        let items = vec![
-            ("arch-desktop".to_string(), vec!["a"]),
-            ("arch".to_string(), vec!["b"]),
-        ];
-        let active = vec![Category::Arch];
-        let result = filter_by_categories(items, &active);
-        // "arch-desktop" requires both arch AND desktop; only arch is active
-        assert_eq!(result, vec!["b"]);
-    }
-
-    #[test]
-    fn filter_by_categories_compound_key_both_active() {
-        let items = vec![("arch-desktop".to_string(), vec!["x"])];
-        let active = vec![Category::Arch, Category::Desktop];
-        let result = filter_by_categories(items, &active);
-        assert_eq!(result, vec!["x"]);
-    }
-
-    #[test]
-    fn filter_by_categories_no_match_returns_empty() {
-        let items = vec![("windows".to_string(), vec!["a", "b"])];
-        let active = vec![Category::Linux];
-        let result = filter_by_categories(items, &active);
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn filter_by_categories_empty_items() {
-        let items: Vec<(String, Vec<&str>)> = vec![];
-        let active = vec![Category::Base];
-        let result = filter_by_categories(items, &active);
-        assert!(result.is_empty());
-    }
-
-    // -----------------------------------------------------------------------
-    // load_section_items — error cases
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn load_section_items_returns_error_on_malformed_toml() {
-        let (_dir, path) = write_temp_toml("{{invalid toml");
-        let result = load_section_items(&path, |s: Section| s.items);
-        assert!(result.is_err(), "malformed TOML should return error");
-    }
-
-    #[test]
-    fn load_section_items_returns_error_on_type_mismatch() {
-        let (_dir, path) = write_temp_toml("[base]\nitems = 42\n");
-        let result = load_section_items(&path, |s: Section| s.items);
-        assert!(
-            result.is_err(),
-            "integer instead of array should return error"
-        );
-    }
-
-    // -----------------------------------------------------------------------
-    // load_config — type mismatch
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn load_config_type_mismatch_returns_error() {
-        #[derive(Deserialize)]
-        struct Root {
-            #[allow(
-                dead_code,
-                reason = "field exists only to give the deserializer a type to reject"
-            )]
-            key: Vec<String>,
+        for (active, expected) in [
+            (vec![Category::Base], vec!["a", "b"]),
+            (vec![Category::Arch], vec!["d"]),
+            (vec![Category::Arch, Category::Desktop], vec!["c", "d"]),
+            (vec![Category::Linux], vec![]),
+            (vec![], vec![]),
+        ] {
+            assert_eq!(
+                filter_by_categories(items.clone(), &active),
+                expected,
+                "{active:?}"
+            );
         }
-        let (_dir, path) = write_temp_toml("key = \"not-an-array\"\n");
-        let result: Result<Root> = load_optional_config(&path);
-        assert!(
-            result.is_err(),
-            "string-to-array mismatch should return error"
-        );
+        assert!(filter_by_categories::<String>(vec![], &[Category::Base]).is_empty());
     }
 }

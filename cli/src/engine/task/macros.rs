@@ -61,8 +61,8 @@ pub(crate) use task_metadata;
 
 /// Announce the start of a task stage.
 ///
-/// `announce` is `Some(name)` only when the task runs standalone; as part of a
-/// larger command the surrounding runner has already announced it.
+/// Configured dispatch passes `Some(name)` after checking for work; direct
+/// `Task::run` calls pass `None` to avoid announcing a stage.
 fn emit_task_stage(ctx: &crate::engine::Context, announce: Option<&'static str>) {
     if let Some(name) = announce {
         crate::infra::logging::Output::emit(
@@ -77,8 +77,7 @@ fn emit_task_stage(ctx: &crate::engine::Context, announce: Option<&'static str>)
 /// the stage, then build and process one resource per configured item.
 ///
 /// Keeping this in a normal function rather than in macro expansion means the
-/// shared behaviour is written, type-checked, and debugged once instead of
-/// once, not once per task.
+/// shared behaviour is written, type-checked, and debugged once, not per task.
 pub(crate) fn run_resource_task<Item, R>(
     ctx: &crate::engine::Context,
     announce: Option<&'static str>,

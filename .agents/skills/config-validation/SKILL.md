@@ -19,6 +19,9 @@ description: >
   meaning and rendering. Reporting a diagnostic during ordinary startup does
   not itself abort every mutation: preserve structural preflight checks and
   resource-level safety guards.
+- `app/config/error.rs::reject_conflicts` formats fatal desired-state conflicts
+  in encounter order. Pass conflict diagnostics only; do not funnel ordinary
+  `Config::validate()` findings through it.
 
 Each diagnostic has a source, item, stable dotted code, severity, and actionable
 message. Reuse `Validator` and its `check_each`, `warn`, `warn_if`, and

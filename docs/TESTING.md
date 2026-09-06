@@ -65,7 +65,7 @@ The Rust integration tests under `cli/tests/` cover distinct boundaries:
 | `domain_boundaries` | Architectural dependency boundaries |
 | `e2e_apply` | End-to-end convergence against controlled state |
 | `install_command` | Install selection and command composition |
-| `task_execution` | Scheduler, dependencies, and result behavior |
+| `task_execution` | Filesystem-backed task execution, resource convergence, and dry-run safety |
 | `test_command` | Validation task construction and outcomes |
 | `uninstall_command` | Conservative uninstall composition and behavior |
 
@@ -82,6 +82,25 @@ Run one named test:
 cd cli
 cargo test --test install_command test_name
 ```
+
+## Test ownership
+
+Unit tests own parsing, state transitions, resource error paths, idempotency,
+and dry-run safety. Shared cases in
+[`engine/tests/scheduler/conformance.rs`](../cli/src/engine/tests/scheduler/conformance.rs)
+exercise the same contracts in sequential and parallel modes and compare their
+structured outcomes. Scheduler output ordering and channel-synchronized
+concurrency cases stay in adjacent `output.rs` and `parallel.rs` suites.
+Command tests own selection, dependency wiring, elevation,
+re-execution, and exit results. End-to-end fixtures cover representative
+install, repeat, dry-run, and uninstall lifecycles for materially different
+platform paths.
+
+Use named case tables instead of repeating fixture setup for parsing or
+rejection cases. Judge test cleanup by the branches and contracts retained,
+not the number of registered tests. Derived equality, cloning, and simple
+field copies alone do not need independent tests; shared ownership,
+cancellation propagation, and observable formatting still do.
 
 ## Desktop shell
 

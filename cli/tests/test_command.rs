@@ -62,9 +62,20 @@ fn check_command_fails_on_config_warnings() {
         with_deps: false,
     };
     let log = Arc::new(Logger::new("test-command"));
+    let runtime = test_api::commands::RuntimePolicy::new(
+        &global,
+        false,
+        test_api::env::MapEnv::new()
+            .with("HOME", ctx.root_path().join("home"))
+            .with("USERPROFILE", ctx.root_path().join("home"))
+            .with("XDG_STATE_HOME", ctx.root_path().join("state"))
+            .into_handle(),
+        false,
+        false,
+    );
 
     let result = test_api::commands::check::run(
-        &global,
+        &runtime,
         &opts,
         &log,
         &test_api::engine::CancellationToken::new(),

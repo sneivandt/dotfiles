@@ -126,18 +126,25 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_category_tag() {
+    fn rejects_invalid_category_tags_in_main_and_overlay() {
         let dir = complete_repo();
-        std::fs::write(
-            dir.path().join("conf").join("packages.toml"),
-            "[windwos]\npackages = []\n",
-        )
-        .expect("write packages");
-
-        let error = validate(dir.path(), None, &[Category::Base, Category::Windows])
-            .expect_err("unknown category should fail");
-
-        assert!(error.to_string().contains("windwos"));
+        let overlay = complete_repo();
+        for (section, expected) in [
+            ("windwos", "uses unknown category 'windwos'"),
+            ("base-", "contains an empty category tag"),
+            ("base-base", "repeats category 'base'"),
+        ] {
+            for root in [dir.path(), overlay.path()] {
+                let path = root.join("conf").join("packages.toml");
+                std::fs::write(&path, format!("[{section}]\npackages = []\n")).unwrap();
+                let error = validate(dir.path(), Some(overlay.path()), &[Category::Base])
+                    .expect_err("invalid category should fail");
+                let message = format!("{error:#}");
+                assert!(message.contains(expected), "{message}");
+                assert!(message.contains(&path.display().to_string()), "{message}");
+                std::fs::write(path, "").unwrap();
+            }
+        }
     }
 
     #[test]

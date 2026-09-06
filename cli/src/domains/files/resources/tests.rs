@@ -19,53 +19,37 @@ mod chmod {
 
     #[test]
     fn octal_mode_parses_valid_modes() {
-        assert_eq!(OctalMode::parse("644").unwrap().as_u32(), 0o644);
-        assert_eq!(OctalMode::parse("755").unwrap().as_u32(), 0o755);
-        assert_eq!(OctalMode::parse("0644").unwrap().as_u32(), 0o644);
-        assert_eq!(OctalMode::parse("0755").unwrap().as_u32(), 0o755);
-        assert_eq!(OctalMode::parse("600").unwrap().as_u32(), 0o600);
-        assert_eq!(OctalMode::parse("777").unwrap().as_u32(), 0o777);
+        for (input, bits) in [
+            ("000", 0o000),
+            ("644", 0o644),
+            ("755", 0o755),
+            ("0644", 0o644),
+            ("0755", 0o755),
+            ("600", 0o600),
+            ("777", 0o777),
+            ("7777", 0o7777),
+        ] {
+            let parsed = OctalMode::parse(input).unwrap();
+            assert_eq!(parsed.as_u32(), bits, "{input}: permission bits");
+            assert_eq!(parsed.as_str(), input, "{input}: original spelling");
+            assert_eq!(parsed.to_string(), input, "{input}: display");
+        }
     }
 
     #[test]
-    fn octal_mode_rejects_non_digits() {
-        let err = OctalMode::parse("abc").unwrap_err();
-        assert!(err.contains("must contain only digits"));
-    }
-
-    #[test]
-    fn octal_mode_rejects_invalid_length() {
-        assert!(
-            OctalMode::parse("12")
-                .unwrap_err()
-                .contains("must be 3 or 4 digits")
-        );
-        assert!(
-            OctalMode::parse("12345")
-                .unwrap_err()
-                .contains("must be 3 or 4 digits")
-        );
-    }
-
-    #[test]
-    fn octal_mode_rejects_invalid_octal_digits() {
-        assert!(
-            OctalMode::parse("888")
-                .unwrap_err()
-                .contains("invalid octal digit '8'")
-        );
-        assert!(
-            OctalMode::parse("799")
-                .unwrap_err()
-                .contains("invalid octal digit '9'")
-        );
-    }
-
-    #[test]
-    fn octal_mode_display() {
-        let m = OctalMode::parse("644").unwrap();
-        assert_eq!(m.to_string(), "644");
-        assert_eq!(m.as_str(), "644");
+    fn octal_mode_rejects_invalid_input() {
+        for (input, reason) in [
+            ("abc", "must contain only digits"),
+            (" 644", "must contain only digits"),
+            ("", "must be 3 or 4 digits"),
+            ("12", "must be 3 or 4 digits"),
+            ("12345", "must be 3 or 4 digits"),
+            ("888", "invalid octal digit '8'"),
+            ("799", "invalid octal digit '9'"),
+        ] {
+            let error = OctalMode::parse(input).unwrap_err();
+            assert!(error.contains(reason), "{input:?}: {error}");
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -146,26 +130,14 @@ mod chmod {
     }
 
     #[test]
-    fn from_entry_creates_resource() {
-        let entry = crate::domains::files::config::chmod::ChmodEntry::new("600", "ssh/config");
-
-        let home = std::path::Path::new("/home/user");
-        let resource = ChmodResource::from_entry(&entry, home);
-
-        assert_eq!(resource.mode.as_ref().unwrap(), &mode("600"));
-        assert_eq!(resource.target, PathBuf::from("/home/user/.ssh/config"));
-    }
-
-    #[test]
     fn from_entry_normalizes_leading_dot_path() {
-        let entry = crate::domains::files::config::chmod::ChmodEntry::new("600", ".ssh/config");
-
         let home = std::path::Path::new("/home/user");
-        let resource = ChmodResource::from_entry(&entry, home);
-
-        assert_eq!(resource.mode.as_ref().unwrap(), &mode("600"));
-        assert_eq!(resource.target, PathBuf::from("/home/user/.ssh/config"));
-        assert_ne!(resource.target, PathBuf::from("/home/user/..ssh/config"));
+        for path in ["ssh/config", ".ssh/config"] {
+            let entry = crate::domains::files::config::chmod::ChmodEntry::new("600", path);
+            let resource = ChmodResource::from_entry(&entry, home);
+            assert_eq!(resource.mode.as_ref().unwrap(), &mode("600"), "{path}");
+            assert_eq!(resource.target, home.join(".ssh/config"), "{path}");
+        }
     }
 
     #[test]

@@ -121,7 +121,7 @@ pub enum MsgKind {
     TaskStage,
     /// An informational message.
     Info,
-    /// A debug message; never rendered on the console.
+    /// Diagnostic item detail; rendered on the console in verbose mode.
     Debug,
     /// An internal plumbing message; recorded in the run log only.
     ///
@@ -359,7 +359,7 @@ pub trait OutputExt: Output {
     fn info<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Info, msg.into());
     }
-    /// Log a debug message; recorded in the run log only.
+    /// Log diagnostic item detail; visible on the console in verbose mode.
     fn debug<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Debug, msg.into());
     }
@@ -425,34 +425,6 @@ impl<T: Output + TaskRecorder> Log for T {}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn task_status_equality() {
-        assert_eq!(TaskStatus::Ok, TaskStatus::Ok);
-        assert_eq!(TaskStatus::Changed, TaskStatus::Changed);
-        assert_eq!(TaskStatus::Failed, TaskStatus::Failed);
-        assert_ne!(TaskStatus::Ok, TaskStatus::Failed);
-        assert_ne!(TaskStatus::Changed, TaskStatus::Ok);
-        assert_ne!(TaskStatus::Skipped, TaskStatus::DryRun);
-        assert_ne!(TaskStatus::NotApplicable, TaskStatus::Ok);
-    }
-
-    #[test]
-    fn task_entry_clone() {
-        let entry = TaskEntry::new(
-            "test-task",
-            "test-task",
-            TaskStatus::Ok,
-            Some("all good"),
-            ActionCounts::default(),
-            TaskVisibility::Visible,
-        );
-        let cloned = entry.clone();
-        assert_eq!(cloned.name, entry.name);
-        assert_eq!(cloned.status, entry.status);
-        assert_eq!(cloned.message, entry.message);
-        assert_eq!(cloned.actions, entry.actions);
-    }
 
     #[test]
     fn action_counts_merge_saturates() {

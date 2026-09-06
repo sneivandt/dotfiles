@@ -39,12 +39,6 @@ pub fn write_current_manifest_and_lock(home: &Path) {
     .expect("write lock");
 }
 
-/// Compatibility name retained for autopilot fixtures; install markers no
-/// longer exist because native APM owns convergence.
-pub fn write_current_manifest_lock_and_marker(home: &Path) {
-    write_current_manifest_and_lock(home);
-}
-
 pub fn write_copilot_app_db(home: &Path) -> PathBuf {
     let copilot_dir = home.join(".copilot");
     std::fs::create_dir_all(&copilot_dir).expect("create .copilot dir");

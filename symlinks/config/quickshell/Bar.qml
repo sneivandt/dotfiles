@@ -19,6 +19,7 @@ PanelWindow {
     required property var audio
     required property var network
     required property var markets
+    required property date currentDate
     required property var menuController
     readonly property var hyprMonitor: Hyprland.monitorFor(screen)
     readonly property var activeWorkspace: hyprMonitor ? hyprMonitor.activeWorkspace : null
@@ -231,18 +232,14 @@ PanelWindow {
             implicitWidth: clockButton.implicitWidth
             BarBlock {
                 id: clockButton
-                text: Qt.formatDateTime(clock.date, bar.width < 800 ? "HH:mm" : "MMM dd  HH:mm")
-                tooltip: Qt.formatDate(clock.date, "dddd, MMMM d")
+                text: Qt.formatDateTime(bar.currentDate, bar.width < 800 ? "HH:mm" : "MMM dd  HH:mm")
+                tooltip: Qt.formatDate(bar.currentDate, "dddd, MMMM d")
                 selected: calendarMenu.visible && !calendarMenu.closing
                 onActivated: bar.toggleMenu(calendarMenu)
             }
         }
     }
 
-    SystemClock {
-        id: clock
-        precision: SystemClock.Minutes
-    }
     VolumeMenu {
         id: volumeMenu
         anchorItem: volumeButton
@@ -258,6 +255,7 @@ PanelWindow {
         anchorItem: stocksButton
         quotes: bar.markets.quotes
         updated: bar.markets.updated
+        currentDate: bar.currentDate
         loading: bar.markets.loading
         error: bar.markets.error
         onRefreshRequested: bar.markets.refresh()
@@ -278,6 +276,7 @@ PanelWindow {
     CalendarMenu {
         id: calendarMenu
         anchorItem: clockButton
+        currentDate: bar.currentDate
     }
     Process {
         id: networkEditor

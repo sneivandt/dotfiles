@@ -62,20 +62,11 @@ ShellPopup {
             }
         }
 
-        Slider {
+        VolumeSlider {
             id: outputSlider
 
             Layout.fillWidth: true
-            implicitHeight: 44
-            from: 0
-            to: 1.5
-            stepSize: 0.01
-            live: true
-            focusPolicy: Qt.StrongFocus
             enabled: root.audio.available && !root.audio.switchingOutput
-            opacity: enabled ? 1 : 0.45
-            Accessible.name: "Output volume"
-            Accessible.description: "Use arrow keys to adjust volume from 0 to 150 percent. Above 100 percent amplifies audio."
             onMoved: root.audio.setVolume(value)
 
             Binding {
@@ -83,62 +74,6 @@ ShellPopup {
                 property: "value"
                 value: root.audio.volume
                 when: !outputSlider.pressed
-            }
-
-            background: Item {
-                x: outputSlider.leftPadding + outputSlider.handle.width / 2
-                y: outputSlider.topPadding + outputSlider.availableHeight / 2 - height / 2
-                width: outputSlider.availableWidth - outputSlider.handle.width
-                height: 8
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: height / 2
-                    color: Theme.border
-                }
-
-                Rectangle {
-                    x: parent.width * 2 / 3
-                    width: parent.width / 3
-                    height: parent.height
-                    radius: height / 2
-                    color: Theme.yellowSoft
-                }
-
-                Rectangle {
-                    width: outputSlider.visualPosition * parent.width
-                    height: parent.height
-                    radius: height / 2
-                    color: outputSlider.value > 1 ? Theme.yellow : Theme.blue
-                }
-
-                Rectangle {
-                    x: parent.width * 2 / 3 - width / 2
-                    y: -4
-                    width: 2
-                    height: parent.height + 8
-                    color: Theme.yellow
-                }
-            }
-
-            handle: Rectangle {
-                x: outputSlider.leftPadding + outputSlider.visualPosition * (outputSlider.availableWidth - width)
-                y: outputSlider.topPadding + outputSlider.availableHeight / 2 - height / 2
-                implicitWidth: 22
-                implicitHeight: 22
-                radius: width / 2
-                color: Theme.foreground
-                border.width: outputSlider.activeFocus ? 4 : 3
-                border.color: outputSlider.value > 1 ? Theme.yellow : Theme.blue
-
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    radius: width / 2
-                    color: "transparent"
-                    border.width: outputSlider.activeFocus ? 1 : 0
-                    border.color: Theme.foreground
-                }
             }
         }
 

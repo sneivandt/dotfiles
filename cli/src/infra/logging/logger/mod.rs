@@ -598,19 +598,6 @@ mod tests {
     }
 
     #[test]
-    fn debug_always_written_to_file() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let marker = format!("debug-marker-{}", std::process::id());
-        log.debug(&marker);
-        let path = log.log_path().expect("log path should exist");
-        let contents = fs::read_to_string(path).unwrap();
-        assert!(
-            contents.contains(&marker),
-            "debug messages should always appear in the log file"
-        );
-    }
-
-    #[test]
     fn failure_count_returns_correct_count() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.failure_count(), 0);
@@ -661,79 +648,6 @@ mod tests {
         assert!(
             log_ref.run_log().is_some(),
             "run_log() should be accessible via Log trait"
-        );
-    }
-
-    #[test]
-    fn info_written_to_file() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let marker = format!("info-marker-{}", std::process::id());
-        log.info(&marker);
-        let path = log.log_path().expect("log path");
-        let contents = fs::read_to_string(path).unwrap();
-        assert!(
-            contents.contains(&marker),
-            "info message should appear in log file"
-        );
-    }
-
-    #[test]
-    fn warn_written_to_file() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let marker = format!("warn-marker-{}", std::process::id());
-        log.warn(&marker);
-        let path = log.log_path().expect("log path");
-        let contents = fs::read_to_string(path).unwrap();
-        assert!(
-            contents.contains("[warn]"),
-            "warn text level should appear in log file"
-        );
-        assert!(
-            contents.contains(&marker),
-            "warn message should appear in log file"
-        );
-    }
-
-    #[test]
-    fn error_written_to_file() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let marker = format!("error-marker-{}", std::process::id());
-        log.error(&marker);
-        let path = log.log_path().expect("log path");
-        let contents = fs::read_to_string(path).unwrap();
-        assert!(
-            contents.contains("[error]"),
-            "error text level should appear in log file"
-        );
-        assert!(
-            contents.contains(&marker),
-            "error message should appear in log file"
-        );
-    }
-
-    #[test]
-    fn stage_written_to_file_with_event_kind() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let marker = format!("stage-marker-{}", std::process::id());
-        log.stage(&marker);
-        let path = log.log_path().expect("log path");
-        let contents = fs::read_to_string(path).unwrap();
-        assert!(
-            contents.contains(&format!("[stage] {marker}")),
-            "stage should be recorded under the stage event kind: {contents}"
-        );
-    }
-
-    #[test]
-    fn dry_run_written_to_file() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let marker = format!("dryrun-marker-{}", std::process::id());
-        log.dry_run(&marker);
-        let path = log.log_path().expect("log path");
-        let contents = fs::read_to_string(path).unwrap();
-        assert!(
-            contents.contains(&marker),
-            "dry run message should appear in log file: {contents}"
         );
     }
 

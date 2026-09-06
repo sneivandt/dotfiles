@@ -2,7 +2,7 @@
 name: engine-orchestration
 description: >
   Use for task graph and execution changes in cli/src/engine/, command task
-  membership, dependencies, startup task discovery, restart boundaries, Operation plans,
+  membership, dependencies, startup runtime policy, task discovery, restart boundaries, Operation plans,
   ProcessMode, or task/resource parallelism. Not for a standalone Resource.
 ---
 
@@ -20,10 +20,19 @@ description: >
 Use `resource-implementation` for a concrete resource that does not alter
 scheduling.
 
+## Runtime policy
+
+Resolve engine-command flags and environment/terminal decisions once through
+`app/commands/runtime.rs::RuntimePolicy`. Pass its `ExecutionPolicy` into
+`Context::new_with_policy`; do not re-read CI or recompute prompt/child guards in
+profile, re-exec, or elevation callers. Use injected `RuntimePolicy::new` in
+fixtures. Preserve CI presence semantics and the distinct nonempty elevated
+marker rule. Legacy Windows exit-pause/interrupt policy remains separate.
+
 ## Task graph rules
 
-- `Task::meta()` is the source for `TaskId`, selector, display name, visibility,
-  and update-only status. Prefer `task_metadata!`.
+- `Task::meta()` owns selector, display name, visibility, and update-only status;
+  `Task::task_id()` owns scheduler identity. Prefer `task_metadata!` for metadata.
 - Keep identity, CLI selector, and display label distinct. A label change must
   not silently rename a selector or change a dependency identity.
 - Dependencies are the only ordering policy; catalog order is irrelevant.
@@ -75,8 +84,12 @@ Read [operation lifecycle](../../../cli/src/engine/operation.rs) and
 [processing modes](../../../cli/src/engine/mode.rs) when changing convergence.
 Cover selection (`--only`, `--skip`, update-only membership), dependency failure,
 ordering-only continuation, internal visibility, and sequential/parallel parity
-as applicable. Use
-`task_execution` and affected command suites listed under
+as applicable. Add shared scheduler contracts to
+[`conformance.rs`](../../../cli/src/engine/tests/scheduler/conformance.rs);
+its harness runs both modes and compares outcomes and records. Keep
+concurrency-only synchronization in `parallel.rs` and stage/result ordering in
+`output.rs`. Use `task_execution` for filesystem-backed task behavior and the
+affected command suites listed under
 [Integration test suites](../../../docs/TESTING.md#integration-test-suites).
 Update [Task reference](../../../docs/TASKS.md) when public task metadata or
 command membership changes.

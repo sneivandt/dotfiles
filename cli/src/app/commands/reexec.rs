@@ -2,10 +2,9 @@
 
 use anyhow::Result;
 
-use crate::app::cli::GlobalOpts;
 use crate::infra::logging::Output;
 
-use super::runner;
+use super::{RuntimePolicy, runner};
 use crate::infra::logging::OutputExt as _;
 
 /// Environment variable set before re-exec so the child does not reacquire the run lock.
@@ -84,26 +83,17 @@ pub(super) fn build_repository_reexec_command(
     command
 }
 
-/// Return whether this process is the refreshed child of a repository update.
-#[must_use]
-pub(crate) fn repository_reexec_active(env: &dyn crate::infra::env::Env) -> bool {
-    env.var_os(REPOSITORY_REEXEC_GUARD_VAR).is_some()
-}
-
-pub(super) fn self_update_check_policy(
-    env: &dyn crate::infra::env::Env,
-    elevated: bool,
+pub(super) const fn self_update_check_policy(
+    runtime: &RuntimePolicy<'_>,
 ) -> Option<crate::domains::dotfiles::self_update::CachePolicy> {
-    let repository_child = repository_reexec_active(env);
-    let guarded_non_repository_child = env.var_os(REEXEC_GUARD_VAR).is_some() && !repository_child;
-    if elevated
-        || env.var_os(SELF_UPDATE_REEXEC_GUARD_VAR).is_some()
-        || guarded_non_repository_child
+    if runtime.execution.elevated_child
+        || runtime.self_update_child
+        || (runtime.reexec_guarded && !runtime.repository_child)
     {
         return None;
     }
 
-    Some(if repository_child {
+    Some(if runtime.repository_child {
         crate::domains::dotfiles::self_update::CachePolicy::Refresh
     } else {
         crate::domains::dotfiles::self_update::CachePolicy::Use
@@ -117,23 +107,20 @@ pub(super) fn self_update_check_policy(
 /// Returns an error if the repository root cannot be resolved or the pre-update
 /// check fails.
 pub(crate) fn prepare_self_update(
-    global: &GlobalOpts,
+    runtime: &RuntimePolicy<'_>,
     log: &std::sync::Arc<crate::infra::logging::Logger>,
 ) -> Result<Option<crate::infra::run_lock::RunLock>> {
-    let run_lock = runner::CommandRunner::acquire_run_lock(global, log)?;
-    let env = crate::infra::env::system();
-    let Some(cache_policy) =
-        self_update_check_policy(env.as_ref(), crate::infra::elevation::is_elevated_child())
-    else {
+    let run_lock = runner::CommandRunner::acquire_run_lock(runtime, log)?;
+    let Some(cache_policy) = self_update_check_policy(runtime) else {
         return Ok(run_lock);
     };
 
-    let root = runner::resolve_root(global)?;
+    let root = runner::resolve_root(runtime)?;
     if crate::domains::dotfiles::self_update::pre_update(
         &root,
         &**log,
-        global.dry_run,
-        global.skip_attestation,
+        runtime.execution.dry_run,
+        runtime.global.skip_attestation,
         cache_policy,
     )? {
         re_exec(&root, &**log);

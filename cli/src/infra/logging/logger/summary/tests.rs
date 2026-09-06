@@ -1,8 +1,6 @@
 use std::time::Duration;
 
-use super::render::{
-    RowOpts, format_task_line, should_emit_task_result, task_detail_lines, task_result_lines,
-};
+use super::render::{RowOpts, format_task_line, task_detail_lines, task_result_lines};
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
 use crate::infra::logging::Logger;
 use crate::infra::logging::logger::TaskDetailEntry;
@@ -413,60 +411,65 @@ fn task_result_lines_include_all_details() {
 }
 
 #[test]
-fn task_result_lines_skip_unchanged_tasks() {
-    let task = task_entry("unchanged-task", TaskStatus::Ok, None);
-
-    assert!(task_result_lines(&task, &[], colored_opts()).is_empty());
-}
-
-#[test]
-fn verbose_task_result_lines_account_for_unchanged_tasks() {
-    let task = task_entry("unchanged-task", TaskStatus::Ok, None);
-    let opts = RowOpts {
-        verbose: true,
-        ..plain_opts()
-    };
-
-    assert_eq!(task_result_lines(&task, &[], opts), ["○ unchanged-task"]);
-}
-
-#[test]
-fn validation_task_line_uses_passed_status() {
-    let task = task_entry("Validate config", TaskStatus::Passed, None);
-    let opts = RowOpts {
-        mode: SummaryMode::Check,
-        ..plain_opts()
-    };
-
-    assert_eq!(format_task_line(&task, opts), "✓ Validate config");
-}
-
-#[test]
-fn task_line_uses_words_when_symbols_are_disabled() {
-    let task = task_entry("symlinks", TaskStatus::Changed, None);
-    let opts = RowOpts {
-        symbols: false,
-        ..plain_opts()
-    };
-
-    assert_eq!(format_task_line(&task, opts), "CHANGE symlinks");
-}
-
-#[test]
-fn task_result_visibility_is_unchanged_for_every_status() {
-    for status in [
-        TaskStatus::Changed,
-        TaskStatus::DryRun,
-        TaskStatus::Passed,
-        TaskStatus::Skipped,
-        TaskStatus::Failed,
+fn task_row_golden_matrix() {
+    for (status, glyph, word, color, verbose_only) in [
+        (TaskStatus::Changed, "✓", "CHANGE", "32", false),
+        (TaskStatus::Passed, "✓", "PASSED", "32", false),
+        (TaskStatus::DryRun, "~", "DRYRUN", "35", false),
+        (TaskStatus::Skipped, "⊘", "IGNORE", "33", false),
+        (TaskStatus::Failed, "✗", "FAILED", "31", false),
+        (TaskStatus::Ok, "○", "OK", "2", true),
+        (TaskStatus::NotApplicable, "⁃", "N/A", "2", true),
     ] {
-        assert!(should_emit_task_result(status, false));
-        assert!(should_emit_task_result(status, true));
-    }
-    for status in [TaskStatus::Ok, TaskStatus::NotApplicable] {
-        assert!(!should_emit_task_result(status, false));
-        assert!(should_emit_task_result(status, true));
+        let mut task = task_entry("task", status, Some("reason"));
+        task.duration = Some(Duration::from_millis(1500));
+        for mode in [SummaryMode::Standard, SummaryMode::Check] {
+            for symbols in [false, true] {
+                for verbose in [false, true] {
+                    for ansi in [false, true] {
+                        let label = if symbols {
+                            glyph
+                        } else if status == TaskStatus::Changed && mode == SummaryMode::Check {
+                            "PASSED"
+                        } else {
+                            word
+                        };
+                        let mut row = if ansi {
+                            format!(
+                                "\x1b[{color}m{label}\x1b[0m \x1b[1mtask\x1b[0m\x1b[2m · reason\x1b[0m"
+                            )
+                        } else {
+                            format!("{label} task · reason")
+                        };
+                        if verbose && status != TaskStatus::NotApplicable {
+                            row.push_str(if ansi {
+                                "\x1b[2m · 1.5s\x1b[0m"
+                            } else {
+                                " · 1.5s"
+                            });
+                        }
+                        let expected: Vec<_> = (!verbose_only || verbose)
+                            .then_some(row)
+                            .into_iter()
+                            .collect();
+                        assert_eq!(
+                            task_result_lines(
+                                &task,
+                                &[],
+                                RowOpts {
+                                    mode,
+                                    symbols,
+                                    verbose,
+                                    style: StyleChoice::auto(ansi, false),
+                                }
+                            ),
+                            expected,
+                            "{status:?}, {mode:?}, symbols={symbols}, verbose={verbose}, ansi={ansi}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 

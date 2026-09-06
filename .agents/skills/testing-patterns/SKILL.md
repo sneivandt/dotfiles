@@ -29,9 +29,18 @@ description: >
   `task_batch`, `task_skipped`
 - APM setup: `domains/ai/apm/test_fixture.rs`
 - Environment behavior: inject `MapEnv`; never mutate process-global env
+- Engine-command startup: inject `RuntimePolicy::new` with explicit stdin/stdout
+  capabilities; keep process exit-pause tests separate from task prompt policy
 
 Prefer named case tables for repeated input/output cases. Assertions should
 state behavior and include enough context to diagnose failure.
+
+Choose coverage by contract, not by test count. Unit tests own parsing, resource
+branches, and dry-run safety; scheduler conformance owns shared execution
+semantics; command tests own selection, wiring, restarts, and exit policy.
+Keep end-to-end coverage for materially different platform lifecycles. When
+consolidating cases, retain each failure, cancellation, idempotency, and
+platform branch; avoid tests of derives or field copies alone.
 
 ## Prove behavior, not just success
 

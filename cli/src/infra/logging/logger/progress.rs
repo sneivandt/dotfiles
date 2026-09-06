@@ -44,10 +44,7 @@ impl Logger {
             return;
         }
 
-        print!("\r\x1b[K");
-        for _ in 1..usize::from(rows) {
-            print!("\x1b[1A\r\x1b[K");
-        }
+        print!("{}", subscriber::progress_clear_sequence(rows));
         drop(std::io::stdout().flush());
         self.progress_rows.store(0, Ordering::Relaxed);
         self.status_row_visible.store(false, Ordering::Relaxed);

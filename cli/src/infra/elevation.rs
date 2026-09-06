@@ -32,6 +32,13 @@ pub(crate) const ELEVATION_DECLINED_EXIT_CODE: i32 = 1223;
 /// Resolved once: from [`mark_elevated_child`] when the CLI flag is present, or
 /// from the environment as a fallback for wrappers that set it directly.
 #[must_use]
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "only the Windows exit wait uses process-wide child state"
+    )
+)]
 pub fn is_elevated_child() -> bool {
     *ELEVATED_CHILD
         .get_or_init(|| std::env::var_os(ELEVATED_CHILD_VAR).is_some_and(|value| !value.is_empty()))

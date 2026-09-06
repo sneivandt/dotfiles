@@ -27,7 +27,7 @@ Preserve the executable rules in
 | Change | Load next |
 |---|---|
 | concrete `Resource`, state provider, resource task | `resource-implementation` |
-| task graph, dependencies, `Operation`, `ProcessMode`, parallelism | `engine-orchestration` |
+| startup runtime policy, task graph, dependencies, `Operation`, `ProcessMode`, parallelism | `engine-orchestration` |
 | errors, idempotency, dry-run result semantics | `error-handling-patterns` |
 | console rows, details, progress, summaries | `logging-patterns` |
 | TOML models/loaders | `toml-configuration` |

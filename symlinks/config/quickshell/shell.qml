@@ -32,6 +32,10 @@ ShellRoot {
     MarketState {
         id: marketState
     }
+    SystemClock {
+        id: clock
+        precision: SystemClock.Minutes
+    }
     ReloadNotice {
         id: reloadNotice
     }
@@ -57,6 +61,7 @@ ShellRoot {
             audio: audioState
             network: networkState
             markets: marketState
+            currentDate: clock.date
             menuController: shell
         }
     }

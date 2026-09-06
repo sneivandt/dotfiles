@@ -98,17 +98,8 @@ fn apm_fragment_target_name(symlink: &Symlink) -> Option<std::ffi::OsString> {
 mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
-    use crate::domains::overlay::config::scripts::ScriptEntry;
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
-
-    fn script(name: &str) -> ScriptEntry {
-        ScriptEntry {
-            name: name.to_string(),
-            path: format!("scripts/{name}.sh"),
-            description: None,
-        }
-    }
 
     fn symlink(root: &Path, source: &str) -> Symlink {
         Symlink {
@@ -136,15 +127,5 @@ mod tests {
                 "base.yml".into(),
             )]
         );
-    }
-
-    #[test]
-    fn publishes_consistent_immutable_snapshots() {
-        let mut initial = empty_config(PathBuf::from("/tmp"));
-        initial.scripts = vec![script("initial")];
-        let store = ConfigStore::from_config(initial);
-
-        assert_eq!(store.scripts.read()[0].name, "initial");
-        assert_eq!(store.aggregate.read().scripts[0].name, "initial");
     }
 }

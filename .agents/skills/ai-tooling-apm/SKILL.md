@@ -54,6 +54,12 @@ fingerprints, success markers, `apm outdated` parsing, or a separate
 `apm prune`. Keep update-only scheduling behind `dotfiles install --update-pins`
 in the command pipeline.
 
+Before deleting either compatibility adapter, verify current upstream code and
+exercise the replacement in isolated fixtures across the platform contracts in
+[Deployment targets](../../../docs/APM.md#deployment-targets). Retain the adapter
+when upstream still violates a contract or native-platform evidence is missing;
+an APM version bump alone does not make it obsolete.
+
 Do not duplicate native APM schema validation in Rust. Dotfiles' validator owns
 cross-file local-plugin/source relationships; native APM owns fragment/package
 syntax. Consult [cross-file validation](../../../cli/src/domains/ai/apm/validation.rs)

@@ -69,6 +69,18 @@ Cross-domain dependencies belong here. A domain task may declare same-domain
 prerequisites, while the catalog decorates it with dependencies on tasks from
 other domains.
 
+Engine commands resolve one immutable `RuntimePolicy` before logger setup.
+It borrows parsed flags and captures CI, terminal, and child/re-exec decisions
+through an injectable environment. Profile selection, run-lock and re-exec
+guards, and elevation planning consume that policy; `Context` receives its
+path-free `ExecutionPolicy` without reinterpreting the flags.
+
+CI and re-exec markers use presence semantics, including empty values. The
+elevated-child environment marker requires a nonempty value; the CLI marker
+also enables it. Windows exit-pause and interrupt handling retain their
+separate process-wide compatibility rules rather than inheriting task prompt
+policy.
+
 ## Task engine
 
 Every task exposes:
@@ -161,7 +173,15 @@ main TOML load ---- overlay TOML load
 ```
 
 Each domain owns its parser and typed records. The app-level loader guarantees
-that supported overlay sections are merged consistently.
+that supported overlay sections are merged consistently. `SectionLoader::collect`
+appends main then overlay batches and applies provenance with each batch's
+originating root. Filtered task inputs and unfiltered validation inputs share
+this path; overlay-only scripts remain an explicit exception.
+
+Structural preflight, conflicting symlink targets, and contradictory active
+Git/registry values fail loading. Other semantic diagnostics remain available
+for startup reporting and `check`; centralizing fatal conflict formatting does
+not promote all diagnostics into load errors.
 
 `ConfigStore` publishes immutable, `Arc`-backed handles. Static catalog tasks and
 dynamic overlay tasks are built once from that startup snapshot.
@@ -202,9 +222,9 @@ The abstraction provides:
 
 Tasks and resources read environment variables through the context adapter, not
 process globals. Tests can provide a fixed environment without changing shared
-state. Startup code runs before a context exists, so argument parsing, re-exec
-guards, and log-directory discovery still read the process environment
-directly.
+state. Engine-command startup also uses the runtime policy's injected
+environment; standalone discovery, low-level process exit, and log-directory
+discovery retain their own process-environment boundaries.
 
 ## Error handling and observability
 
@@ -217,6 +237,9 @@ failures through task and resource boundaries.
 The logger records stages, structured results, actions, warnings, summaries, and
 diagnostics. Internal orchestration remains in diagnostic and file logs but does
 not appear in normal task rows or totals.
+Status labels/styles, message formatting, redundant-detail filtering, and cursor
+clearing share pure presentation helpers. Terminal rendering, buffered replay,
+notifications, and chronological run-log persistence remain separate sinks.
 Engine records are keyed by scheduler identity rather than display name, so
 dynamic tasks with the same label retain separate status, detail, and duration
 records. Command success policy consumes the scheduler's `ExecutionSummary`;

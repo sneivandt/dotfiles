@@ -2,7 +2,8 @@
 use anyhow::Result;
 use std::sync::Arc;
 
-use crate::app::cli::{GlobalOpts, InstallOpts};
+use super::RuntimePolicy;
+use crate::app::cli::InstallOpts;
 use crate::app::filter::{apply_task_filters, task_passes_filters};
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::engine::{Task, TaskId};
@@ -33,7 +34,7 @@ impl RunMode {
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(
-    global: &GlobalOpts,
+    runtime: &RuntimePolicy<'_>,
     opts: &InstallOpts,
     update_pins: bool,
     log: &Arc<Logger>,
@@ -44,7 +45,7 @@ pub fn run(
     } else {
         RunMode::Install
     };
-    run_pipeline(global, opts, log, token, mode)
+    run_pipeline(runtime, opts, log, token, mode)
 }
 
 /// Shared implementation for normal installation and optional pin updates.
@@ -56,23 +57,22 @@ pub fn run(
 ///
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub(crate) fn run_pipeline(
-    global: &GlobalOpts,
+    runtime: &RuntimePolicy<'_>,
     opts: &InstallOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
     mode: RunMode,
 ) -> Result<()> {
-    let run_lock = super::prepare_self_update(global, log)?;
-    let runner = super::CommandRunner::new_with_lock(global, log, token, run_lock)?;
+    let run_lock = super::prepare_self_update(runtime, log)?;
+    let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
 
-    let repository_child = super::repository_reexec_active(runner.env());
     let repository_update = RepositoryUpdateSignal::new();
     let mut all_tasks = runner.install_tasks_for_run(&repository_update);
 
     // Version-advancing tasks are scheduled only with `--update-pins`. Filter
     // membership before user filters so warnings reflect eligible tasks.
     all_tasks.retain(|task| mode.includes_task(task.as_ref()));
-    if global.no_repo_update {
+    if runtime.global.no_repo_update {
         let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
         all_tasks.retain(|task| task.task_id() != repository_task);
         log.debug("repository update disabled — using the current checkout");
@@ -89,7 +89,7 @@ pub(crate) fn run_pipeline(
         log,
     )?;
 
-    omit_repository_task(&mut filtered, repository_child);
+    omit_repository_task(&mut filtered, runtime.repository_child);
     filtered.extend(
         startup_overlay_tasks
             .iter()
@@ -100,7 +100,7 @@ pub(crate) fn run_pipeline(
     runner.run_with_restart(
         filtered,
         boundary,
-        move || repository_update.was_updated() && !crate::infra::elevation::is_elevated_child(),
+        move || runtime.restart_after_repository_update(repository_update.was_updated()),
         || super::re_exec_after_repository_update(&**log),
     )
 }

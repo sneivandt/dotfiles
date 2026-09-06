@@ -51,6 +51,9 @@ data, fixtures, and owning task. Do not copy a hand-written public/overlay merge
 Preserve public-then-overlay ordering and per-entry provenance for source paths.
 Overlay lists append; they are not a generic last-writer-wins override. Test
 conflicting desired values rather than silently selecting one.
+Use `SectionLoader::collect` for unfiltered lists and its filtered adapter for
+active categories; both apply post-processing to each originating batch before
+append. Do not rebuild a separate provenance loop for validation-only inputs.
 
 Cover unknown fields, malformed types, optional overlay absence, required main
 absence, category inclusion/exclusion, and merged data. Use the TOML checks in

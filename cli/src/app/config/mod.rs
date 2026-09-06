@@ -67,76 +67,43 @@ enum ConfigSource {
 }
 
 #[derive(Debug)]
-struct ConfigLoader {
-    conf_dir: PathBuf,
+struct ConfigLoader<'a> {
+    root: &'a Path,
     source: ConfigSource,
 }
 
-impl ConfigLoader {
-    fn main(root: &Path) -> Self {
-        Self {
-            conf_dir: root.join("conf"),
-            source: ConfigSource::Main,
-        }
-    }
-
-    fn overlay(root: &Path) -> Self {
-        Self {
-            conf_dir: root.join("conf"),
-            source: ConfigSource::Overlay,
-        }
-    }
-
-    fn path(&self, file: &str) -> PathBuf {
-        self.conf_dir.join(file)
-    }
-
-    fn error_context(&self, path: &Path) -> String {
-        match self.source {
+impl ConfigLoader<'_> {
+    fn load<T>(&self, file: &str, loader: impl FnOnce(&Path) -> Result<T>) -> Result<T> {
+        let path = self.root.join("conf").join(file);
+        loader(&path).with_context(|| match self.source {
             ConfigSource::Main => format!("Invalid syntax in {}", path.display()),
             ConfigSource::Overlay => format!("Invalid syntax in overlay {}", path.display()),
-        }
-    }
-
-    fn load<T>(&self, file: &str, loader: impl FnOnce(&Path) -> Result<T>) -> Result<T> {
-        let path = self.path(file);
-        loader(&path).with_context(|| self.error_context(&path))
-    }
-
-    fn load_filtered<T>(
-        &self,
-        file: &str,
-        loader: impl FnOnce(&Path, &[category_matcher::Category]) -> Result<T>,
-        categories: &[category_matcher::Category],
-    ) -> Result<T> {
-        let path = self.path(file);
-        loader(&path, categories).with_context(|| self.error_context(&path))
+        })
     }
 }
 
 /// Loads config sections from the main `conf/` directory and, when present,
 /// merges matching sections from an overlay repository.
 ///
-/// Each `collect_*` method performs the main load and the overlay merge for a
-/// single section in one call.  Keeping both halves in one place makes it
-/// structurally impossible for a section to be loaded without also being
-/// merged from the overlay — the desync footgun that a hand-written
-/// `load` + `merge_overlay` pair invited.
+/// Filtered and unfiltered sections share one append/provenance path.
+/// Overlay-only scripts deliberately bypass the main repository.
 struct SectionLoader<'a> {
-    root: &'a Path,
-    overlay_root: Option<&'a Path>,
-    main: ConfigLoader,
-    overlay: Option<ConfigLoader>,
+    main: ConfigLoader<'a>,
+    overlay: Option<ConfigLoader<'a>>,
     active: &'a [category_matcher::Category],
 }
 
 impl<'a> SectionLoader<'a> {
     fn new(root: &'a Path, overlay_root: Option<&'a Path>, profile: &'a profiles::Profile) -> Self {
         Self {
-            root,
-            overlay_root,
-            main: ConfigLoader::main(root),
-            overlay: overlay_root.map(ConfigLoader::overlay),
+            main: ConfigLoader {
+                root,
+                source: ConfigSource::Main,
+            },
+            overlay: overlay_root.map(|origin_root| ConfigLoader {
+                root: origin_root,
+                source: ConfigSource::Overlay,
+            }),
             active: &profile.active_categories,
         }
     }
@@ -148,11 +115,7 @@ impl<'a> SectionLoader<'a> {
         file: &str,
         load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
     ) -> Result<Vec<T>> {
-        let mut items = self.main.load_filtered(file, load, self.active)?;
-        if let Some(overlay) = &self.overlay {
-            items.extend(overlay.load_filtered(file, load, self.active)?);
-        }
-        Ok(items)
+        self.collect_filtered_post(file, load, |_, _| {})
     }
 
     /// Like [`collect_filtered`](Self::collect_filtered) but applies `post` to
@@ -164,26 +127,22 @@ impl<'a> SectionLoader<'a> {
         load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
         post: impl Fn(&mut [T], &Path),
     ) -> Result<Vec<T>> {
-        let mut items = self.main.load_filtered(file, load, self.active)?;
-        post(&mut items, self.root);
-        if let (Some(overlay), Some(overlay_root)) = (&self.overlay, self.overlay_root) {
-            let mut extra = overlay.load_filtered(file, load, self.active)?;
-            post(&mut extra, overlay_root);
-            items.extend(extra);
-        }
-        Ok(items)
+        self.collect(file, |path| load(path, self.active), post)
     }
 
-    /// Load an unfiltered section (no category tags) from main config and
-    /// append the overlay's matching section.
-    fn collect_unfiltered<T>(
+    /// Append main then overlay items, post-processing each batch with its
+    /// originating root before merging. Filtering is owned by `load`.
+    fn collect<T>(
         &self,
         file: &str,
-        load: fn(&Path) -> Result<Vec<T>>,
+        load: impl Fn(&Path) -> Result<Vec<T>>,
+        post: impl Fn(&mut [T], &Path),
     ) -> Result<Vec<T>> {
-        let mut items = self.main.load(file, load)?;
-        if let Some(overlay) = &self.overlay {
-            items.extend(overlay.load(file, load)?);
+        let mut items = Vec::new();
+        for source in std::iter::once(&self.main).chain(self.overlay.iter()) {
+            let mut batch = source.load(file, &load)?;
+            post(&mut batch, source.root);
+            items.extend(batch);
         }
         Ok(items)
     }
@@ -195,11 +154,10 @@ impl<'a> SectionLoader<'a> {
         file: &str,
         load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
     ) -> Result<Vec<T>> {
-        let mut items = Vec::new();
-        if let Some(overlay) = &self.overlay {
-            items.extend(overlay.load_filtered(file, load, self.active)?);
-        }
-        Ok(items)
+        self.overlay.as_ref().map_or_else(
+            || Ok(Vec::new()),
+            |overlay| overlay.load(file, |path| load(path, self.active)),
+        )
     }
 }
 
@@ -284,23 +242,15 @@ impl Config {
         preflight::validate(root, overlay, &configured_categories)?;
         let sections = SectionLoader::new(root, overlay, profile);
 
-        // Each field is loaded and overlay-merged by a single `SectionLoader`
-        // call, so adding a new config section means adding one struct field
-        // and one line here — never a second edit in a separate merge step.
-        let mut validation_symlinks = sections
-            .main
-            .load(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
-        symlinks::set_origin(&mut validation_symlinks, root);
-        if let (Some(overlay_loader), Some(overlay_root)) =
-            (&sections.overlay, sections.overlay_root)
-        {
-            let mut overlay_symlinks =
-                overlay_loader.load(symlinks::SYMLINKS_TOML, symlinks::load_all)?;
-            symlinks::set_origin(&mut overlay_symlinks, overlay_root);
-            validation_symlinks.extend(overlay_symlinks);
-        }
-        let validation_chmod = sections.collect_unfiltered(chmod::CHMOD_TOML, chmod::load_all)?;
-        let registry = sections.collect_unfiltered(registry::REGISTRY_TOML, registry::load)?;
+        // Collect each section with its overlay in one call; validation lists
+        // retain inactive categories and their source roots.
+        let validation_symlinks = sections.collect(
+            symlinks::SYMLINKS_TOML,
+            symlinks::load_all,
+            symlinks::set_origin,
+        )?;
+        let validation_chmod = sections.collect(chmod::CHMOD_TOML, chmod::load_all, |_, _| {})?;
+        let registry = sections.collect(registry::REGISTRY_TOML, registry::load, |_, _| {})?;
         let units =
             sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::load)?;
         let mut config = Self {
@@ -342,22 +292,11 @@ impl Config {
         symlinks::validate_unique_targets(&config.symlinks)
             .context("validating symlink targets")?;
 
-        let conflicts = git_config::validate_conflicts(&config.git_settings)
-            .into_iter()
-            .chain(registry::validate_conflicts(&config.registry))
-            .collect::<Vec<_>>();
-        anyhow::ensure!(
-            conflicts.is_empty(),
-            "contradictory desired state:\n{}",
-            conflicts
-                .iter()
-                .map(|diagnostic| format!(
-                    "  {} [{}] ({}): {}",
-                    diagnostic.source, diagnostic.item, diagnostic.code, diagnostic.message
-                ))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
+        error::reject_conflicts(
+            git_config::validate_conflicts(&config.git_settings)
+                .into_iter()
+                .chain(registry::validate_conflicts(&config.registry)),
+        )?;
 
         Ok(config)
     }

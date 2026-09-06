@@ -16,6 +16,12 @@ description: >
 - Records are keyed by `TaskId::record_key()`, never display name.
 - `ExecutionSummary` controls success and later phases. Logger counters are
   presentation only.
+- Keep status labels/styles together in `logger/summary/status.rs::presentation`.
+  Raw tracing and UI messages share formatting through `ui_line_with_style`;
+  raw DEBUG/TRACE remain hidden even when UI debug details are verbose-visible.
+- Reuse `is_redundant_detail` for buffered replay and completed rows, and
+  `progress_clear_sequence` for cursor clearing. Do not duplicate these pure
+  decisions across sinks.
 
 ## Output contract
 
@@ -62,4 +68,7 @@ denominator, totals, both verbose modes, and `--no-symbols`. Preserve durable ru
 logs when changing console filtering or transient output. Start with
 [summary rendering](../../../cli/src/infra/logging/logger/summary/) and
 [subscriber tests](../../../cli/src/infra/logging/subscriber/tests.rs).
+The summary and subscriber matrices own exact plain/ANSI presentation across
+statuses, modes, verbosity, and symbols. [Buffered tests](../../../cli/src/infra/logging/buffered/tests.rs)
+own direct/buffered persistence parity, completion order, and action barriers.
 Wrapper style belongs in `shell-patterns`.

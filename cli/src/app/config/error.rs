@@ -2,6 +2,30 @@
 
 use thiserror::Error;
 
+use crate::infra::config::Diagnostic;
+
+/// Only desired-state conflicts are fatal here; ordinary validation findings
+/// are reported after loading without preventing snapshot publication.
+pub(super) fn reject_conflicts(
+    conflicts: impl IntoIterator<Item = Diagnostic>,
+) -> anyhow::Result<()> {
+    let messages: Vec<_> = conflicts
+        .into_iter()
+        .map(|diagnostic| {
+            format!(
+                "  {} [{}] ({}): {}",
+                diagnostic.source, diagnostic.item, diagnostic.code, diagnostic.message
+            )
+        })
+        .collect();
+    anyhow::ensure!(
+        messages.is_empty(),
+        "contradictory desired state:\n{}",
+        messages.join("\n")
+    );
+    Ok(())
+}
+
 /// Errors that arise from configuration loading and profile resolution.
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -52,39 +76,43 @@ mod tests {
     }
 
     #[test]
-    fn io_display_includes_path() {
-        let error = ConfigError::Io {
-            path: "/conf/packages.toml".to_string(),
-            source: io::Error::new(io::ErrorKind::NotFound, "no such file"),
-        };
-        assert!(error.to_string().contains("/conf/packages.toml"));
-        assert!(error.to_string().contains("I/O error reading config file"));
-    }
-
-    #[test]
-    fn io_preserves_source() {
+    fn io_preserves_source_and_path() {
         use std::error::Error as _;
 
         let error = ConfigError::Io {
             path: "/conf/packages.toml".to_string(),
-            source: io::Error::new(io::ErrorKind::PermissionDenied, "permission denied"),
+            source: io::Error::new(io::ErrorKind::NotFound, "no such file"),
         };
-        assert!(error.source().is_some());
+        assert_eq!(
+            error.to_string(),
+            "I/O error reading config file /conf/packages.toml: no such file"
+        );
+        assert_eq!(error.source().unwrap().to_string(), "no such file");
     }
 
     #[test]
-    fn converts_to_anyhow() {
-        let error = ConfigError::InvalidProfile {
-            name: "bad".to_string(),
-            available: "base, desktop".to_string(),
-        };
-        let _anyhow_error: anyhow::Error = error.into();
-    }
+    fn conflicts_preserve_header_and_diagnostic_order() {
+        use crate::infra::config::DiagnosticCode;
 
-    #[test]
-    fn is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-
-        assert_send_sync::<ConfigError>();
+        reject_conflicts([]).unwrap();
+        let error = reject_conflicts([
+            Diagnostic::error(
+                "main.toml",
+                "first",
+                DiagnosticCode::new("test", "first"),
+                "first conflict",
+            ),
+            Diagnostic::error(
+                "overlay.toml",
+                "second",
+                DiagnosticCode::new("test", "second"),
+                "second conflict",
+            ),
+        ])
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "contradictory desired state:\n  main.toml [first] (test.first): first conflict\n  overlay.toml [second] (test.second): second conflict"
+        );
     }
 }

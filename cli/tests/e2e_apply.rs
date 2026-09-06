@@ -5,50 +5,23 @@
     clippy::indexing_slicing,
     reason = "panicking allowed at this trust boundary"
 )]
-//! End-to-end integration tests for the non-dry-run install/apply pipeline.
+//! End-to-end convergence against a temporary repository and home.
 //!
-//! These tests exercise the full `config-load → task-execution →
-//! filesystem-outcome` pipeline in a hermetic sandbox:
-//!
-//! - A minimal dotfiles repository is built under a temporary directory.
-//! - A second temporary directory acts as the isolated `$HOME`.
-//! - Multiple filesystem-safe install tasks are run together (not in dry-run
-//!   mode) using the same [`tasks::execute`] wrapper that the real install
-//!   command uses.
-//! - Concrete side effects on the sandbox home are asserted after the first
-//!   run (real mutations) and after a second run (idempotency).
-//!
-//! No network access, no package managers, and no real home directory are
-//! touched by these tests.
+//! Exercise configuration loading, real task execution, dry-run safety,
+//! repeated installation, and conservative removal without system commands.
 
 mod common;
 
 #[cfg(unix)]
 mod unix_e2e {
     use super::common;
-    use dotfiles_cli::testing as test_api;
-    use test_api::tasks;
-    use test_api::tasks::files::chmod::ApplyFilePermissions;
-    use test_api::tasks::files::symlinks::InstallSymlinks;
-    use test_api::tasks::git::hooks::InstallGitHooks;
+    use dotfiles_cli::testing::tasks;
+    use std::os::unix::fs::PermissionsExt as _;
+    use std::path::Path;
+    use tasks::files::chmod::ApplyFilePermissions;
+    use tasks::files::symlinks::{InstallSymlinks, UninstallSymlinks};
+    use tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
 
-    // -----------------------------------------------------------------------
-    // Helpers
-    // -----------------------------------------------------------------------
-
-    /// Build a test execution context that has:
-    ///
-    /// - One symlink (`bashrc`) declared in `conf/symlinks.toml`.
-    /// - A `pre-commit` hook source in `hooks/`.
-    /// - A `.git/hooks/` directory so the hook task can install.
-    /// - A chmod permission entry for `.ssh/config` in `conf/chmod.toml`.
-    ///
-    /// The helper also creates the `ssh/config` file in the sandbox home so
-    /// the chmod task has a target to operate on.
-    ///
-    /// Returns `(test_repo, execution_context)`.  Both must stay alive for the
-    /// duration of the test — `test_repo` owns the repository root and
-    /// `execution_context` owns the sandbox home.
     fn build_full_fixture() -> (common::IntegrationTestContext, common::ExecutionContext) {
         let test = common::TestContextBuilder::new()
             .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
@@ -60,151 +33,98 @@ mod unix_e2e {
                 "[base]\npermissions = [{ path = \"ssh/config\", mode = \"600\" }]\n",
             )
             .build();
-
         let ec = test.make_context("base");
-
-        // Pre-create the ssh/config file that ApplyFilePermissions targets.
         let ssh_config = ec.ctx.home().join(".ssh/config");
         std::fs::create_dir_all(ssh_config.parent().unwrap()).unwrap();
         std::fs::write(&ssh_config, "Host *\n").unwrap();
-
+        std::fs::set_permissions(&ssh_config, std::fs::Permissions::from_mode(0o644)).unwrap();
         (test, ec)
     }
 
-    // -----------------------------------------------------------------------
-    // Full non-dry-run pipeline
-    // -----------------------------------------------------------------------
+    fn install(ec: &common::ExecutionContext, ctx: &tasks::Context) {
+        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), ctx);
+        tasks::execute(&InstallGitHooks::new(), ctx);
+        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), ctx);
+        assert_eq!(ec.log.failure_count(), 0, "install must not fail");
+    }
 
-    /// Running the complete set of filesystem-safe install tasks in non-dry-run
-    /// mode must produce all expected side effects in the sandbox home.
-    ///
-    /// Specifically this test validates:
-    /// 1. `InstallSymlinks` creates a symlink in the sandbox home pointing to
-    ///    the source inside the repository's `symlinks/` directory.
-    /// 2. `InstallGitHooks` writes the hook file to `.git/hooks/`.
-    /// 3. `ApplyFilePermissions` sets the declared mode on the target file.
-    /// 4. No task records a failure.
+    fn uninstall(ec: &common::ExecutionContext, ctx: &tasks::Context) {
+        tasks::execute(&UninstallSymlinks::new(ec.store.symlinks.clone()), ctx);
+        tasks::execute(&UninstallGitHooks::new(), ctx);
+        assert_eq!(ec.log.failure_count(), 0, "uninstall must not fail");
+    }
+
+    fn permissions(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
     #[test]
-    fn apply_pipeline_produces_expected_filesystem_state() {
-        use std::os::unix::fs::PermissionsExt as _;
-
+    fn install_preview_repeat_and_uninstall_preserve_the_lifecycle() {
         let (test, ec) = build_full_fixture();
-
-        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
-        tasks::execute(&InstallGitHooks::new(), &ec.ctx);
-        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), &ec.ctx);
-
-        assert_eq!(ec.log.failure_count(), 0, "no task should fail");
-
-        // 1. Symlink created and points to the repository source.
+        let dry_run = ec.ctx.with_dry_run(true);
         let link = ec.ctx.home().join(".bashrc");
-        assert!(
-            link.symlink_metadata().is_ok(),
-            "symlink .bashrc should exist in sandbox home"
-        );
-        assert!(
-            link.symlink_metadata().unwrap().is_symlink(),
-            ".bashrc should be a symlink, not a regular file"
-        );
-        let target = std::fs::read_link(&link).unwrap();
-        assert_eq!(
-            target,
-            test.root_path().join("symlinks/bashrc"),
-            "symlink should point to the source in the repository"
-        );
-
-        // 2. Hook installed in the repository's .git/hooks/ directory.
         let hook = test.root_path().join(".git/hooks/pre-commit");
+        let ssh_config = ec.ctx.home().join(".ssh/config");
+
+        install(&ec, &dry_run);
         assert!(
-            hook.exists(),
-            "pre-commit hook should be installed in .git/hooks/"
+            link.symlink_metadata().is_err(),
+            "preview must not create a link"
         );
+        assert!(!hook.exists(), "preview must not install a hook");
+        assert_eq!(permissions(&ssh_config), 0o644, "preview must not chmod");
+        assert_eq!(std::fs::read_to_string(&ssh_config).unwrap(), "Host *\n");
 
-        // 3. File permissions applied to the sandbox home target.
-        let mode = std::fs::metadata(ec.ctx.home().join(".ssh/config"))
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o600, "ssh/config should have mode 0600 after apply");
-    }
+        for pass in ["initial install", "repeat install"] {
+            install(&ec, &ec.ctx);
+            assert!(
+                link.symlink_metadata().unwrap().is_symlink(),
+                "{pass}: .bashrc must be a symlink"
+            );
+            assert_eq!(
+                std::fs::read_link(&link).unwrap(),
+                test.root_path().join("symlinks/bashrc"),
+                "{pass}: link target"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&link).unwrap(),
+                "# bash config\n",
+                "{pass}: source content must be readable through the link"
+            );
+            assert!(hook.is_file(), "{pass}: hook must exist");
+            assert_eq!(permissions(&ssh_config), 0o600, "{pass}: configured mode");
+        }
 
-    // -----------------------------------------------------------------------
-    // Idempotency
-    // -----------------------------------------------------------------------
-
-    /// Running the same pipeline twice must succeed without errors and leave
-    /// the filesystem in an identical state.
-    ///
-    /// This is the key idempotency guarantee: a second `dotfiles install` must
-    /// not break anything that the first run already set up correctly.
-    #[test]
-    fn apply_pipeline_is_idempotent() {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        let (test, ec) = build_full_fixture();
-
-        // ── First run ───────────────────────────────────────────────────────
-        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
-        tasks::execute(&InstallGitHooks::new(), &ec.ctx);
-        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), &ec.ctx);
-        assert!(
-            ec.log.failure_count() == 0,
-            "first run should produce no failures"
-        );
-
-        // ── Second run (same context, same tasks) ────────────────────────────
-        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
-        tasks::execute(&InstallGitHooks::new(), &ec.ctx);
-        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), &ec.ctx);
-        assert!(
-            ec.log.failure_count() == 0,
-            "second (idempotent) run should also produce no failures"
-        );
-
-        // Filesystem state must still be correct after the second run.
-        let link = ec.ctx.home().join(".bashrc");
+        let installed_hook = std::fs::read(&hook).unwrap();
+        uninstall(&ec, &dry_run);
         assert!(
             link.symlink_metadata().unwrap().is_symlink(),
-            ".bashrc should still be a symlink after idempotent run"
+            "uninstall preview must not materialize the link"
         );
-        assert_eq!(
-            std::fs::read_link(&link).unwrap(),
-            test.root_path().join("symlinks/bashrc"),
-            "symlink target should be unchanged after idempotent run"
-        );
-        assert!(
-            test.root_path().join(".git/hooks/pre-commit").exists(),
-            "hook should still be present after idempotent run"
-        );
-        let mode = std::fs::metadata(ec.ctx.home().join(".ssh/config"))
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(
-            mode, 0o600,
-            "permissions should still be 0600 after idempotent run"
-        );
-    }
+        assert_eq!(std::fs::read(&hook).unwrap(), installed_hook);
 
-    // -----------------------------------------------------------------------
-    // Symlink content reachable through link
-    // -----------------------------------------------------------------------
-
-    /// The symlink created by the pipeline must resolve to the correct content
-    /// (i.e., reading through the symlink returns the source file's content).
-    #[test]
-    fn apply_pipeline_symlink_resolves_to_source_content() {
-        let (_test, ec) = build_full_fixture();
-
-        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), &ec.ctx);
-        assert_eq!(ec.log.failure_count(), 0);
-
-        let content = std::fs::read_to_string(ec.ctx.home().join(".bashrc")).unwrap();
-        assert_eq!(
-            content, "# bash config\n",
-            "reading through symlink should return source file content"
-        );
+        for pass in ["initial uninstall", "repeat uninstall"] {
+            uninstall(&ec, &ec.ctx);
+            assert!(
+                !link.symlink_metadata().unwrap().is_symlink(),
+                "{pass}: managed link must be materialized"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&link).unwrap(),
+                "# bash config\n",
+                "{pass}: materialized content must survive"
+            );
+            assert!(!hook.exists(), "{pass}: managed hook must be removed");
+            assert_eq!(
+                permissions(&ssh_config),
+                0o600,
+                "{pass}: retain permissions"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&ssh_config).unwrap(),
+                "Host *\n",
+                "{pass}: retain unrelated user files"
+            );
+        }
     }
 }

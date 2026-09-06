@@ -9,7 +9,7 @@ use super::super::test_fixture::{
     expect_apm_install, expect_apm_update, expect_copilot_app_enable,
     expect_copilot_app_workflow_install, expect_which_apm, install_task,
     make_home_context_with_executor, update_task, write_copilot_app_db,
-    write_current_manifest_lock_and_marker, write_home_fragment,
+    write_current_manifest_and_lock, write_home_fragment,
 };
 use super::DesiredApmWorkflows;
 use super::lockfile::parse_deployed_workflow_ids;
@@ -424,7 +424,7 @@ fn run_skips_autopilot_fixup_when_lock_lists_no_workflows() {
 #[test]
 fn current_install_delegates_to_apm_and_repairs_autopilot_drift() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    write_current_manifest_lock_and_marker(dir.path());
+    write_current_manifest_and_lock(dir.path());
     write_workflow_lock(dir.path(), &["apm--a"]);
     let db_path = write_copilot_app_db(dir.path());
     let db_str = db_path.to_str().expect("db path utf-8").to_string();
@@ -473,7 +473,7 @@ fn current_install_delegates_to_apm_and_repairs_autopilot_drift() {
 #[test]
 fn current_install_previews_autopilot_drift_without_repairing_it() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    write_current_manifest_lock_and_marker(dir.path());
+    write_current_manifest_and_lock(dir.path());
     write_workflow_lock(dir.path(), &["apm--a"]);
     write_copilot_app_db(dir.path());
 
@@ -504,7 +504,7 @@ fn update_re_arms_apm_workflows_cases() {
     ];
     for (_case, pre_stdout, update_stdout, expected_changed) in cases {
         let dir = tempfile::tempdir().expect("create temp dir");
-        write_current_manifest_lock_and_marker(dir.path());
+        write_current_manifest_and_lock(dir.path());
         // Overwrite the plain lock with one that records a dotfiles-managed
         // workflow so the pre-update snapshot and post-update fixup are
         // scoped to it.

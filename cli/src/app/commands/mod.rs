@@ -11,10 +11,12 @@ pub(crate) mod error;
 mod execution;
 mod reexec;
 mod runner;
+mod runtime;
 
 pub(crate) use reexec::prepare_self_update;
-pub(crate) use reexec::{re_exec_after_repository_update, repository_reexec_active};
+pub(crate) use reexec::re_exec_after_repository_update;
 pub use runner::CommandRunner;
+pub use runtime::RuntimePolicy;
 
 #[cfg(test)]
 use reexec::{

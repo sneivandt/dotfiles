@@ -45,8 +45,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn read_returns_initial_value() {
-        let handle = ConfigHandle::new(vec![1, 2, 3]);
-        assert_eq!(*handle.read(), vec![1, 2, 3]);
+    fn cloned_handles_share_the_startup_snapshot_without_cloning_the_value() {
+        struct NotClone;
+        let handle = ConfigHandle::new(NotClone);
+        assert!(Arc::ptr_eq(&handle.read(), &handle.read()));
+        let cloned = handle.clone();
+        assert!(Arc::ptr_eq(&handle.read(), &cloned.read()));
     }
 }

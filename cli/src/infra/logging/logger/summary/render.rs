@@ -9,12 +9,8 @@ use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{TaskEntry, TaskStatus};
 use crate::infra::logging::utils::{
-    compact_detail_line, duplicates_task_message, format_elapsed, is_stats_summary,
-    sort_action_runs,
+    compact_detail_line, format_elapsed, is_redundant_detail, is_stats_summary, sort_action_runs,
 };
-
-/// Width of the one-cell status glyph column.
-const STATUS_WIDTH: usize = 1;
 
 /// Rendering options for a single task row.
 #[derive(Clone, Copy, Debug)]
@@ -82,17 +78,6 @@ pub(super) const fn should_emit_task_result(status: TaskStatus, verbose: bool) -
     }
 }
 
-/// The status text shown at the start of a task row.
-fn status_text(status: TaskStatus, mode: SummaryMode, symbols: bool) -> String {
-    if symbols {
-        status::symbol(status).to_string()
-    } else if matches!((status, mode), (TaskStatus::Changed, SummaryMode::Check)) {
-        "PASSED".to_string()
-    } else {
-        status::word(status).to_string()
-    }
-}
-
 /// Render one task row: status, name, then the reason and timing sections.
 ///
 /// The task's message lives on this row unless a successful outcome already
@@ -102,13 +87,10 @@ pub(super) fn format_task_line(task: &TaskEntry, opts: RowOpts) -> String {
 }
 
 fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bool) -> String {
-    let padded = format!(
-        "{:<STATUS_WIDTH$}",
-        status_text(task.status, opts.mode, opts.symbols)
-    );
+    let (label, text_style) = status::presentation(task.status, opts.mode, opts.symbols);
     let mut line = format!(
         "{} {}",
-        opts.style.paint(status::text_style(task.status), &padded),
+        opts.style.paint(text_style, label),
         opts.style.paint(TextStyle::Bold, &task.name)
     );
 
@@ -153,9 +135,8 @@ pub(super) fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -
         .iter()
         .filter(|entry| entry.task_id == task.task_id)
         .flat_map(|entry| entry.lines.iter())
-        .filter(|line| !duplicates_task_message(line, task_message))
+        .filter(|line| !is_redundant_detail(line, task_message))
         .filter(|line| Some(line.as_str()) != row_reason(task))
-        .filter(|line| !is_stats_summary(line))
         .cloned()
         .collect()
 }

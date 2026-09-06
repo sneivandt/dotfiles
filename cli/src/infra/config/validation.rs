@@ -181,24 +181,19 @@ mod tests {
     }
 
     #[test]
-    fn check_returns_warning_item_when_condition_is_true() {
-        let result = check(true, DiagnosticCode::new("test", "rule"), "invalid value");
-        assert_eq!(
-            result,
-            Some((
-                DiagnosticCode::new("test", "rule"),
-                Severity::Warning,
-                "invalid value".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn check_returns_none_when_condition_is_false() {
-        assert_eq!(
-            check(false, DiagnosticCode::new("test", "rule"), "invalid value"),
-            None
-        );
+    fn checks_fire_only_for_invalid_conditions_with_the_requested_severity() {
+        let code = DiagnosticCode::new("test", "rule");
+        for invalid in [false, true] {
+            for (actual, severity) in [
+                (check(invalid, code, "invalid"), Severity::Warning),
+                (check_error(invalid, code, "invalid"), Severity::Error),
+            ] {
+                assert_eq!(
+                    actual,
+                    invalid.then(|| (code, severity, "invalid".to_string()))
+                );
+            }
+        }
     }
 
     #[test]
@@ -243,27 +238,6 @@ mod tests {
                 .contains("overlay.toml [base] entry 1")
         );
         assert!(diagnostics[1].message.contains("settings.toml entry 5"));
-    }
-
-    #[test]
-    fn check_error_returns_error_item_when_condition_is_true() {
-        let result = check_error(true, DiagnosticCode::new("test", "unsafe"), "unsafe path");
-        assert_eq!(
-            result,
-            Some((
-                DiagnosticCode::new("test", "unsafe"),
-                Severity::Error,
-                "unsafe path".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn check_error_returns_none_when_condition_is_false() {
-        assert_eq!(
-            check_error(false, DiagnosticCode::new("test", "unsafe"), "unsafe path"),
-            None
-        );
     }
 
     #[test]

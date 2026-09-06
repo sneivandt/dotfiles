@@ -11,6 +11,7 @@ PopupWindow {
 
     required property Item anchorItem
     property int panelWidth: 368
+    property bool alignToWindowFrame: false
     // Animate inside a stable Wayland buffer; resizing it mid-transition flickers.
     property real reservedContentHeight: availableContentHeight
     readonly property int shadowMargin: 8
@@ -41,14 +42,14 @@ PopupWindow {
 
     anchor {
         window: root.anchorWindow
-        adjustment: PopupAdjustment.SlideX | PopupAdjustment.SlideY
+        adjustment: root.alignToWindowFrame ? PopupAdjustment.SlideY : PopupAdjustment.SlideX | PopupAdjustment.SlideY
         gravity: Edges.Bottom | Edges.Right
         onAnchoring: {
             if (!root.anchorWindow)
                 return;
             const point = root.anchorWindow.contentItem.mapFromItem(root.anchorItem, root.anchorItem.width - root.width + root.shadowMargin, root.anchorItem.height + root.topOffset - root.shadowMargin);
-            anchor.rect.x = point.x;
-            anchor.rect.y = point.y;
+            anchor.rect.x = root.alignToWindowFrame ? root.anchorWindow.contentItem.width - Theme.windowGap + Theme.windowBorderWidth - root.width + root.shadowMargin : point.x;
+            anchor.rect.y = root.alignToWindowFrame ? root.anchorWindow.contentItem.height + Theme.windowGap - root.shadowMargin : point.y;
         }
     }
 

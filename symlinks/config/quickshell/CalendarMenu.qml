@@ -9,6 +9,7 @@ import "Theme.js" as Theme
 ShellPopup {
     id: root
 
+    alignToWindowFrame: true
     property int monthOffset: 0
     property date shownMonth: new Date(clock.date.getFullYear(), clock.date.getMonth() + monthOffset, 1)
     readonly property int firstWeekday: (shownMonth.getDay() + 6) % 7

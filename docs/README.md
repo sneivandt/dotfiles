@@ -7,7 +7,7 @@ workflows for maintaining a configured machine.
 
 | Guide | Purpose |
 |---|---|
-| [Usage](USAGE.md) | Bootstrap the CLI; use its commands and scoped options |
+| [Usage](USAGE.md) | Bootstrap the CLI and use its commands and scoped options |
 | [Task reference](TASKS.md) | Look up install, pin-update, uninstall, validation, and overlay tasks |
 | [Configuration](CONFIGURATION.md) | Edit the TOML desired-state files |
 | [Profiles](PROFILES.md) | Select role-specific and platform-specific configuration |
@@ -17,7 +17,7 @@ workflows for maintaining a configured machine.
 
 | Guide | Purpose |
 |---|---|
-| [Architecture](ARCHITECTURE.md) | See the CLI layers, task engine, resource model, and execution flow |
+| [Architecture](ARCHITECTURE.md) | Understand the CLI layers, task engine, resource model, and execution flow |
 | [Contributing](CONTRIBUTING.md) | Build, test, and change the project |
 | [Testing](TESTING.md) | Run local checks and understand CI coverage |
 | [Hooks](HOOKS.md) | Understand installed Git hooks and sensitive-data checks |

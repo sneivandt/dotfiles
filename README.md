@@ -1,7 +1,7 @@
 <h1 align="center">Dotfiles</h1>
 
 <p align="center">
-  <strong>Keep Linux and Windows machines configured with a Rust CLI and declarative config.</strong>
+  <strong>Manage Linux and Windows machines with declarative config and a Rust CLI.</strong>
 </p>
 
 <p align="center">
@@ -30,10 +30,10 @@
 
 ## Scope
 
-This is my opinionated system for Arch Linux, Windows, and WSL. I keep it public
+This is my opinionated setup for Arch Linux, Windows, and WSL. I keep it public
 so others can borrow the engine or adapt the configuration, but it is not a
-general-purpose, distribution-neutral configuration manager. Its profiles,
-packages, desktop setup, and app choices match my machines and preferences.
+general-purpose configuration manager. Its profiles, packages, desktop setup,
+and app choices match my machines and preferences.
 
 To adapt it, start with `conf/`, `symlinks/`, and the profile definitions. Other
 platforms or package managers require code changes.
@@ -47,14 +47,12 @@ without `--dry-run`.
 
 ```bash
 ./dotfiles.sh install --profile base --dry-run
-./dotfiles.sh install --profile base
 ```
 
 ### Windows
 
 ```powershell
 .\dotfiles.ps1 install --profile desktop --dry-run
-.\dotfiles.ps1 install --profile desktop
 ```
 
 The examples use `base` for a command-line environment and `desktop` for a
@@ -69,7 +67,7 @@ The wrappers download and verify a compatible release binary when needed. Pass
 | Area | Managed state |
 |------|---------------|
 | Shell | Zsh and Bash configuration, `PATH`, and completions |
-| Editors | Neovim, VS Code and extensions |
+| Editors | Neovim, VS Code, and extensions |
 | Terminal | Alacritty and Windows Terminal settings |
 | Git | Global settings and hooks |
 | Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
@@ -89,8 +87,8 @@ Desired state lives in `conf/*.toml`. See the
 </p>
 
 The selected profile and detected platform determine the active configuration.
-Resources inspect the current machine, compare it with the desired state, and
-make only the changes required to converge.
+Resources compare that configuration with the machine, then apply the required
+changes through a dependency-aware task graph.
 
 ## CLI at a glance
 
@@ -101,7 +99,10 @@ make only the changes required to converge.
 | `dotfiles install` | Applies the configured machine state |
 | `dotfiles install --update-pins` | Applies the configured state and advances pinned dependency versions |
 | `dotfiles uninstall` | Materializes managed symlinks and removes hooks and the launcher |
-| `dotfiles check` | Validates configuration and repository scripts |
+| `dotfiles check` | Validates configuration and runs available repository analyzers |
+| `dotfiles tasks` | Lists task selectors and command membership |
+| `dotfiles profiles` | Lists configured role profiles |
+| `dotfiles log` | Reads retained install, uninstall, and check logs |
 
 Use `install` for normal setup and maintenance. Add `--update-pins` only when
 you want pinned dependency versions to move forward. `uninstall` leaves packages,
@@ -122,9 +123,9 @@ the selection. The CLI automatically activates the `linux`, `windows`, and
 
 | Guide | Purpose |
 |-------|---------|
-| [Usage](docs/USAGE.md) | Bootstrap the CLI and use its commands and options |
-| [Configuration](docs/CONFIGURATION.md) | Edit the declarative TOML desired state |
-| [Profiles](docs/PROFILES.md) | Configure role-specific and platform-specific behavior |
+| [Usage](docs/USAGE.md) | Bootstrap the CLI and use each command |
+| [Configuration](docs/CONFIGURATION.md) | Edit the declarative TOML files |
+| [Profiles](docs/PROFILES.md) | Select role and platform configuration |
 | [Architecture](docs/ARCHITECTURE.md) | Understand the CLI layers, task engine, and resource model |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Diagnose bootstrap and convergence failures |
 | [Contributing](docs/CONTRIBUTING.md) | Build, test, and change the project |

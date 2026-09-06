@@ -79,6 +79,9 @@ usage error.
 | `--fail-on-skip` | Fail when applicable work cannot be completed |
 | `--non-interactive` | Disable prompts and fail when input is required |
 | `--no-symbols` | Use ASCII words instead of status symbols |
+| `--only <SELECTOR>` | Run matching tasks; repeat the option or separate selectors with commas; `install` and `check` only |
+| `--skip <SELECTOR>` | Exclude matching tasks; repeat the option or separate selectors with commas; `install` and `check` only |
+| `--with-deps` | Include dependencies of tasks selected by `--only`; `install` and `check` only |
 | `--update-pins` | Advance pinned dependencies after normal convergence; `install` only |
 | `--skip-attestation` | Skip provenance verification for self-updates; `install` and `uninstall` only |
 
@@ -108,9 +111,9 @@ self-update, and overlay tasks may still use the network.
 CI automatically enables `--fail-on-skip` and `--non-interactive`.
 Non-interactive mode is also enabled when stdin is not a terminal; select a
 profile explicitly or through `DOTFILES_PROFILE` in unattended environments.
-Strict completion turns missing capabilities such as package managers, VS Code,
-APM authentication, or elevation into command failures instead of successful
-skips.
+With `--fail-on-skip`, missing capabilities such as package managers, VS Code,
+APM authentication, or elevation make the command fail instead of succeeding
+with unfinished work.
 
 Only one command may operate on a repository at a time. A second run reports
 the PID, command, and start time of the owner recorded in the repository's
@@ -284,7 +287,7 @@ dotfiles uninstall --dry-run
 dotfiles uninstall
 ```
 
-Uninstall does only the following:
+Uninstall performs three actions:
 
 1. Replaces managed home-directory symlinks with materialized files or
    directories.
@@ -312,9 +315,9 @@ the validation task set. Command examples and tool behavior are documented under
 
 ## Logs
 
-Every run writes a separate log file and retains the newest 50. The CLI prints
-the exact path after each run so an installation script can retain or collect
-it. On Linux, the default directory is
+Each `install`, `uninstall`, and `check` run writes a separate log file. The CLI
+keeps the newest 50 and prints the exact path after each run so a script can
+retain or collect it. On Linux, the default directory is
 `$XDG_STATE_HOME/dotfiles/logs`, or `~/.local/state/dotfiles/logs` when
 `XDG_STATE_HOME` is unset; set `DOTFILES_LOG_DIR` to choose another directory.
 
@@ -409,8 +412,9 @@ asking.
 
 ## Exit behavior
 
-A command exits unsuccessfully when required configuration cannot be loaded, a
-task fails, or validation reports an error. A force quit exits with code 130.
+A command exits with a nonzero status when required configuration cannot be
+loaded, a task fails, or validation reports an error. A force quit exits with
+code 130.
 Non-applicable tasks and optional tool checks are recorded separately from
 failures. Use `--verbose` and `dotfiles log --verbose` when diagnosing a failed
 run.

@@ -16,9 +16,9 @@ cd cli
 cargo build
 ```
 
-See [Usage](USAGE.md) for wrapper and command examples. See
-[Testing](TESTING.md) for all validation commands, optional tools, focused test
-selection, and CI coverage.
+See [Usage](USAGE.md) for wrapper and command examples. [Testing](TESTING.md)
+covers validation commands, optional tools, focused test selection, and CI
+coverage.
 
 ## Contribution workflow
 

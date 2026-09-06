@@ -63,7 +63,7 @@ The application layer composes commands and configuration:
 - `catalog.rs` constructs the static install and uninstall task lists.
 - command modules select/filter tasks and execute them.
 - aggregate configuration loading merges domain-specific configuration.
-- validation modules build the `test` workflow.
+- validation modules build the `check` task set.
 
 Cross-domain dependencies belong here. A domain task may declare same-domain
 prerequisites, while the catalog decorates it with dependencies on tasks from

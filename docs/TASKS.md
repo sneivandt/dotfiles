@@ -1,8 +1,9 @@
 # Task reference
 
-This page describes the CLI's visible install, pin-update, uninstall, validation,
-and dynamic overlay tasks. Run `dotfiles tasks --profile <profile>` for the active list of
-selectors, labels, and command membership.
+This page describes the CLI's visible install, pin-update, uninstall,
+validation, and dynamic overlay tasks. Run
+`dotfiles tasks --profile <profile>` for the active selectors, labels, and
+command membership.
 
 Each task has separate metadata for:
 
@@ -313,7 +314,7 @@ registry, shell, WSL, APM, editor, or overlay-script changes.
 
 ## Validation tasks
 
-`dotfiles check` executes these six validation tasks through the dependency
+`dotfiles check` executes these validation tasks through the dependency
 scheduler:
 
 | Selector | Task label | What it checks |

@@ -37,11 +37,15 @@ settings = [
   { target = "copilot", key = "footer.showCustom",        value = true  },
 
   # Codex agent defaults shared by the CLI, IDE extension, and desktop app
-  { target = "codex", key = "model",                                    value = "gpt-6-astra" },
-  { target = "codex", key = "model_reasoning_effort",                   value = "medium"    },
-  { target = "codex", key = "personality",                              value = "pragmatic" },
-  { target = "codex", key = "web_search",                               value = "cached"    },
-  { target = "codex", key = "file_opener",                              value = "vscode"    },
-  { target = "codex", key = "tui.show_tooltips",                        value = false       },
+  { target = "codex", key = "approval_policy",                                 value = "on-request"      },
+  { target = "codex", key = "approvals_reviewer",                             value = "auto_review"     },
+  { target = "codex", key = "sandbox_mode",                                   value = "workspace-write" },
+  { target = "codex", key = "features.memories",                              value = true              },
+  { target = "codex", key = "model",                                          value = "gpt-6-astra"    },
+  { target = "codex", key = "model_reasoning_effort",                         value = "medium"          },
+  { target = "codex", key = "personality",                                    value = "pragmatic"       },
+  { target = "codex", key = "web_search",                                     value = "cached"          },
+  { target = "codex", key = "file_opener",                                    value = "vscode"          },
+  { target = "codex", key = "tui.show_tooltips",                              value = false             },
   { target = "codex", key = "shell_environment_policy.ignore_default_excludes", value = false },
 ]

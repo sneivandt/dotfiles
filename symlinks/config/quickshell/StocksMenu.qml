@@ -52,7 +52,7 @@ ShellPopup {
             icon: "\uf201"
             title: "Markets"
             subtitle: root.updated > 0 ? "Updated " + Qt.formatDateTime(new Date(root.updated * 1000), root.stale ? "MMM d, HH:mm" : "HH:mm") : "Market overview"
-            accentColor: Theme.mutedStrong
+            accentColor: Theme.blue
             accentBackground: "transparent"
             trailingItem: MenuIconButton {
                 glyph: "\uf2f1"

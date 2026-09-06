@@ -64,7 +64,7 @@ AbstractButton {
             Layout.fillWidth: true
             text: root.text
             textFormat: Text.PlainText
-            color: root.textColor
+            color: root.selected ? Theme.blue : root.textColor
             font.family: Theme.font
             font.pixelSize: Theme.textBody
             style: Text.Raised

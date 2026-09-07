@@ -562,7 +562,10 @@ fn execute_detects_cancellation_through_resource_error_wrappers() {
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, log) = make_static_context(config);
 
-    assert_eq!(execute(&WrappedCancellationTask, &ctx), TaskStatus::Skipped);
+    assert_eq!(
+        execute(&WrappedCancellationTask, &ctx),
+        TaskStatus::Interrupted
+    );
     assert_eq!(log.failure_count(), 0);
 }
 
@@ -787,4 +790,36 @@ fn config_batch_task_run_evaluates_snapshot_items_once() {
     let result = task.run(&ctx).unwrap();
     assert!(matches!(result, TaskResult::NotApplicable(_)));
     CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
+}
+
+#[test]
+fn persistent_task_identity_preserves_dynamic_kind_and_wrapper_identity() {
+    struct IdentityTask {
+        id: TaskId,
+    }
+    impl Task for IdentityTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("same display name")
+        }
+        fn task_id(&self) -> TaskId {
+            self.id.clone()
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+    let named = IdentityTask {
+        id: TaskId::dynamic::<IdentityTask>("5"),
+    };
+    let numbered = IdentityTask {
+        id: TaskId::Dynamic(5),
+    };
+    assert_ne!(named.log_key(), numbered.log_key());
+    assert_eq!(
+        named.log_key(),
+        format!("{}#named:5", std::any::type_name::<IdentityTask>())
+    );
+    let key = named.log_key();
+    let decorated = TaskWithExtraDeps::new(Box::new(named), &[], &[]);
+    assert_eq!(decorated.log_key(), key);
 }

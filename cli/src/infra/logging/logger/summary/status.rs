@@ -16,7 +16,9 @@ pub(super) const fn presentation(
         }
         TaskStatus::Changed | TaskStatus::Passed => ("✓", "PASSED", TextStyle::Green),
         TaskStatus::DryRun => ("~", "DRYRUN", TextStyle::Magenta),
-        TaskStatus::Skipped => ("⊘", "IGNORE", TextStyle::Yellow),
+        TaskStatus::Skipped => ("⊘", "SKIPPED", TextStyle::Yellow),
+        TaskStatus::Blocked => ("⊘", "BLOCKED", TextStyle::Yellow),
+        TaskStatus::Interrupted => ("⊘", "INTERRUPTED", TextStyle::Yellow),
         TaskStatus::Failed => ("✗", "FAILED", TextStyle::Red),
         TaskStatus::Ok => ("○", "OK", TextStyle::Dim),
         TaskStatus::NotApplicable => ("⁃", "N/A", TextStyle::Dim),

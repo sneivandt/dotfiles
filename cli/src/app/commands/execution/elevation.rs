@@ -110,11 +110,13 @@ impl<'a> ElevationBroker<'a> {
             let span = tracing::info_span!("task", name = task.name());
             let _enter = span.enter();
             self.log.debug(message.as_str());
-            let task_id = id.record_key();
+            let task_id = task.log_key();
             let status = if roots.contains_key(&id)
                 && (failed || (self.ctx.require_complete() && cascade))
             {
                 TaskStatus::Failed
+            } else if blocked.contains_key(&id) {
+                TaskStatus::Blocked
             } else {
                 TaskStatus::Skipped
             };

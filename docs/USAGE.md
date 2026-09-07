@@ -211,13 +211,14 @@ may appear in a different order between runs. Statuses distinguish the outcome:
 |---|---|
 | `✓` | The task applied one or more changes, or a validation task passed |
 | `~` | Dry-run changes were planned but not applied |
-| `⊘` | The task was skipped |
+| `⊘` | The task was skipped, blocked by a prerequisite, or interrupted; the reason explains which |
 | `✗` | The task failed |
 | `○` | The task was already up to date (verbose only) |
 | `⁃` | The task does not apply to this platform or configuration (verbose only) |
 
 Use `--no-symbols` to restore the ASCII status words for terminals or pipelines
-that cannot render the glyphs.
+that cannot render the glyphs. Skipped, blocked, and interrupted tasks use
+`SKIPPED`, `BLOCKED`, and `INTERRUPTED` respectively.
 
 A row states the task name and, when the task has something to explain, the
 reason after a `·` separator:
@@ -268,17 +269,16 @@ Running · 12/16 done · Home symlinks, System packages
 ```
 
 The counter reports tasks that have already finished; the names after it are the
-tasks running right now. Its denominator counts the same tasks the summary
-accounts for. Applicability is only known once a task has run, so a task that
-turns out not to apply leaves the denominator rather than advancing the
-numerator.
+tasks running right now. The denominator counts scheduled visible tasks and
+stays fixed within each execution phase. Non-applicable tasks advance the
+counter but are omitted from final totals.
 
 The final line reports task counts without status glyphs. Color distinguishes
 each outcome group: green for changed, magenta for dry run, dim for current,
-yellow for ignored, and red for failed. For example:
-`2 changed · 14 current · 1 ignored · 2.3s`,
-`5 would change · 8 current · 3 ignored · 0.7s`, or
-`6 passed · 1 ignored · 1.4s`.
+yellow for skipped, blocked, or interrupted, and red for failed. For example:
+`2 changed · 14 current · 1 skipped · 2.3s`,
+`5 would change · 8 current · 3 skipped · 0.7s`, or
+`6 passed · 1 skipped · 1.4s`.
 
 ## Uninstall
 
@@ -315,41 +315,52 @@ the validation task set. Command examples and tool behavior are documented under
 
 ## Logs
 
-Each `install`, `uninstall`, and `check` run writes a separate log file. The CLI
-keeps the newest 50 and prints the exact path after each run so a script can
-retain or collect it. On Linux, the default directory is
-`$XDG_STATE_HOME/dotfiles/logs`, or `~/.local/state/dotfiles/logs` when
-`XDG_STATE_HOME` is unset; set `DOTFILES_LOG_DIR` to choose another directory.
+Each `install`, `uninstall`, and `check` process writes a separate log file. The
+CLI keeps the newest 50. A failed run prints a command that selects its exact
+log and includes diagnostics, provided the log is still writable. Successful
+runs keep their compact console summary.
 
 ```bash
-dotfiles log            # newest run
-dotfiles log --list     # retained runs, newest first
-dotfiles log 2          # third-newest run
-dotfiles log -c install # newest install run
-dotfiles log --verbose  # include diagnostic lines
+dotfiles log                          # newest run
+dotfiles log --list                   # history with outcome, duration, profile and ID
+dotfiles log 2                        # third-newest run
+dotfiles log -c install               # newest install run
+dotfiles log --id 20260907T100000Z-install-1234 -v
+# Copy an exact task identity from a log's context column:
+dotfiles log --task dotfiles_cli::domains::files::symlinks::InstallSymlinks
+dotfiles log --raw                    # original stored records, including diagnostics
 ```
 
-`--list` prints an index, timestamp, command, and size:
+An index shifts when another run is recorded. `--id` selects a stable filename
+stem and fails if that run is no longer retained. `--command` filters the list
+before indexing, so `dotfiles log -c install 1` selects the second-newest install.
+`--task` selects an exact task identity within the selected run; it can be
+combined with `--id`, `--verbose`, or `--raw`.
 
-```text
-  #  WHEN                  COMMAND    SIZE
-  0  2026-07-31 15:42:10Z  install  112.4 KB
-  1  2026-07-31 15:39:02Z  check      8.1 KB
-```
+History distinguishes succeeded, failed, and interrupted runs. A run with a
+start record but no finish record is `unfinished`; it may still be running or
+may have stopped unexpectedly. Older logs without lifecycle records show
+`unknown`. Restarted and elevated children carry their parent's run ID, shown
+in the history list. Each process keeps its own duration and exit result.
 
-The index argument selects from that list and is stable for the duration of a
-listing; it shifts as new runs are recorded. `--command` filters the list and
-renumbers it, so `dotfiles log -c install 1` means the second-newest install.
+Logs preserve event order with sequence numbers, elapsed microseconds, UTC
+timestamps, context, event kind, and message. Versioned JSON records alongside
+text diagnostics store run lifecycle, task identity and outcome, exact duration,
+resource actions, and command results. Task identities use the implementation
+type name and any dynamic instance key, so changing a display label or rebuilding
+the same code does not change them. Renaming an implementation or instance key
+does change its identity. Multiline messages retain line breaks and indentation.
 
-Logs contain every event in execution order, including messages hidden from the
-console. Lines are
-`seq | elapsed_us | wall_utc | context | event | message`, where `context` is the
-task that produced the event, so parallel execution can be reconstructed. Each
-executed task also emits a `task_timing` event recording how long it ran, which
-is otherwise not derivable from a parallel run's interleaved timestamps.
+The viewer renders these records as readable text. Failed-command output and
+successful stderr are visible without `--verbose`. Other diagnostic messages
+and successful command records require `--verbose`; `--raw` prints stored lines
+without verbosity filtering. Older logs remain readable, and unknown record
+schemas or malformed lines are shown unchanged.
 
-Without `--verbose`, `dotfiles log` hides `debug` events, matching what the
-console shows during a normal run. `--verbose` prints the file unfiltered.
+By default, command records retain failed stdout/stderr and successful stderr.
+Successful stdout is represented by its byte count. Command implementations can
+request full capture or omit both streams. Omitted output cannot be recovered
+with `--verbose` or `--raw`. Argument redaction is separate from output retention.
 
 Logs live in a platform state directory, resolved in this order:
 

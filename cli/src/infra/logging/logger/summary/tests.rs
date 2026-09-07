@@ -96,6 +96,8 @@ fn standard_summary_groups_task_and_action_counts() {
         SummaryCounts {
             changed: 3,
             passed: 0,
+            blocked: 0,
+            interrupted: 0,
             ok: 0,
             skipped: 1,
             dry_run: 0,
@@ -113,7 +115,7 @@ fn standard_summary_groups_task_and_action_counts() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["1 failed · 3 changed · 1 ignored · 2.0s"]);
+    assert_eq!(lines, ["1 failed · 3 changed · 1 skipped · 2.0s"]);
 }
 
 #[test]
@@ -122,6 +124,8 @@ fn dry_run_summary_pairs_affected_and_planned_counts() {
         SummaryCounts {
             changed: 0,
             passed: 0,
+            blocked: 0,
+            interrupted: 0,
             ok: 0,
             skipped: 0,
             dry_run: 1,
@@ -162,6 +166,8 @@ fn summary_totals_account_for_every_reported_task() {
         SummaryCounts {
             changed: 2,
             passed: 0,
+            blocked: 0,
+            interrupted: 0,
             ok: 15,
             skipped: 1,
             dry_run: 0,
@@ -179,7 +185,7 @@ fn summary_totals_account_for_every_reported_task() {
 
     assert_eq!(
         lines,
-        ["2 changed \u{b7} 15 current \u{b7} 1 ignored \u{b7} 2.3s"],
+        ["2 changed \u{b7} 15 current \u{b7} 1 skipped \u{b7} 2.3s"],
         "every task the run reported on must be represented in the totals"
     );
 }
@@ -190,6 +196,8 @@ fn standard_summary_omits_actions_when_all_action_counts_are_zero() {
         SummaryCounts {
             changed: 2,
             passed: 0,
+            blocked: 0,
+            interrupted: 0,
             ok: 0,
             skipped: 0,
             dry_run: 0,
@@ -211,6 +219,8 @@ fn check_summary_uses_check_vocabulary_and_omits_not_run() {
         SummaryCounts {
             changed: 0,
             passed: 7,
+            blocked: 0,
+            interrupted: 0,
             ok: 0,
             skipped: 2,
             dry_run: 0,
@@ -223,7 +233,7 @@ fn check_summary_uses_check_vocabulary_and_omits_not_run() {
         StyleChoice::plain(),
     );
 
-    assert_eq!(lines, ["1 failed · 7 passed · 2 ignored · 3.4s"]);
+    assert_eq!(lines, ["1 failed · 7 passed · 2 skipped · 3.4s"]);
 }
 
 #[test]
@@ -416,8 +426,10 @@ fn task_row_golden_matrix() {
         (TaskStatus::Changed, "✓", "CHANGE", "32", false),
         (TaskStatus::Passed, "✓", "PASSED", "32", false),
         (TaskStatus::DryRun, "~", "DRYRUN", "35", false),
-        (TaskStatus::Skipped, "⊘", "IGNORE", "33", false),
+        (TaskStatus::Skipped, "⊘", "SKIPPED", "33", false),
         (TaskStatus::Failed, "✗", "FAILED", "31", false),
+        (TaskStatus::Blocked, "⊘", "BLOCKED", "33", false),
+        (TaskStatus::Interrupted, "⊘", "INTERRUPTED", "33", false),
         (TaskStatus::Ok, "○", "OK", "2", true),
         (TaskStatus::NotApplicable, "⁃", "N/A", "2", true),
     ] {
@@ -525,7 +537,7 @@ fn colored_summary_styles_each_outcome_group() {
         ["\x1b[1m\x1b[31m4 failed\x1b[0m\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[32m1 changed\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m2 current\x1b[0m \
-             \x1b[2m·\x1b[0m \x1b[33m3 ignored\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[33m3 skipped\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"]
     );
 }
@@ -567,4 +579,41 @@ fn install_summary_needs_totals_separator_after_task_output() {
     log.mark_task_console_output();
 
     assert!(log.needs_totals_separator());
+}
+
+#[test]
+fn blocked_and_interrupted_counts_do_not_become_skips_or_failures() {
+    let tasks = [
+        task_entry(
+            "skip",
+            TaskStatus::Skipped,
+            Some("optional tool unavailable"),
+        ),
+        task_entry(
+            "blocked",
+            TaskStatus::Blocked,
+            Some("requires prerequisite"),
+        ),
+        task_entry("interrupted", TaskStatus::Interrupted, Some("interrupted")),
+    ];
+    let counts = SummaryCounts::from_tasks(&tasks);
+    assert_eq!(
+        (
+            counts.skipped,
+            counts.blocked,
+            counts.interrupted,
+            counts.failed
+        ),
+        (1, 1, 1, 0)
+    );
+    assert_eq!(
+        format_summary_lines(
+            counts,
+            SummaryMode::Check,
+            false,
+            "1.0s",
+            StyleChoice::plain()
+        ),
+        ["1 blocked · 1 interrupted · 1 skipped · 1.0s"]
+    );
 }

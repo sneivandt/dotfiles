@@ -235,6 +235,13 @@ fn resolve_profile(
         runtime.execution.dry_run,
         overlay,
     );
+    if let Some(run) = crate::infra::logging::Output::run_log(log) {
+        run.record(crate::infra::logging::records::Record::RunContext {
+            profile: profile.name.clone(),
+            platform: platform.description().into(),
+            dry_run: runtime.execution.dry_run,
+        });
+    }
     emit_startup_context(log, &context, runtime.repository_child);
     Ok(profile)
 }

@@ -13,7 +13,8 @@ use clap::{CommandFactory, Parser};
 use crate::infra::{elevation, logging};
 
 use super::{catalog, cli, commands, interrupt};
-use crate::infra::logging::OutputExt as _;
+use crate::infra::logging::records::RunOutcome;
+use crate::infra::logging::{Output as _, OutputExt as _};
 
 /// Run the dotfiles CLI and return the process exit code.
 ///
@@ -76,7 +77,7 @@ pub fn run() -> ExitCode {
         }
     };
 
-    run_engine(&command)
+    run_engine(&command, args.parent_run_id.as_deref())
 }
 
 fn install_command(opts: cli::InstallCommandOpts, force_update_pins: bool) -> cli::EngineCommand {
@@ -100,7 +101,7 @@ fn standalone(result: anyhow::Result<()>) -> ExitCode {
 }
 
 /// Initialise the runtime and dispatch a command through the task engine.
-fn run_engine(command: &cli::EngineCommand) -> ExitCode {
+fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> ExitCode {
     let global = command.global();
     let runtime = commands::RuntimePolicy::detect(global, command.verbose());
     if runtime.execution.elevated_child {
@@ -109,6 +110,9 @@ fn run_engine(command: &cli::EngineCommand) -> ExitCode {
     let mut raw_log = logging::init(runtime.verbose, !runtime.global.no_symbols, command.name());
     raw_log.set_dry_run(runtime.execution.dry_run);
     let log = std::sync::Arc::new(raw_log);
+    if let Some(run) = log.run_log() {
+        run.start_run(command.name(), parent_run_id.map(str::to_string));
+    }
 
     // Set up cooperative cancellation so Ctrl-C lets in-flight operations
     // finish cleanly instead of terminating the process immediately, and
@@ -128,6 +132,16 @@ fn run_engine(command: &cli::EngineCommand) -> ExitCode {
         }
     };
 
+    if let Some(run) = log.run_log() {
+        let outcome = if result.is_err() {
+            RunOutcome::Failed
+        } else if token.is_cancelled() || log.has_interrupted_tasks() {
+            RunOutcome::Interrupted
+        } else {
+            RunOutcome::Succeeded
+        };
+        run.finish(outcome, i32::from(result.is_err()));
+    }
     if let Err(e) = result {
         log.separate_from_startup();
         report_failure(&e, &*log);
@@ -146,7 +160,12 @@ fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
     {
         log.error(format!("{error:#}"));
     }
-    log.startup("Run 'dotfiles log' for details.");
+    if let Some(run) = log.run_log().filter(|run| run.is_healthy()) {
+        log.startup(format!(
+            "Run 'dotfiles log --id {} -v' for details.",
+            run.id()
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -159,9 +178,13 @@ mod tests {
     struct CapturingOutput {
         errors: Mutex<Vec<String>>,
         startup: Mutex<Vec<String>>,
+        logger: Option<logging::Logger>,
     }
 
     impl logging::Output for CapturingOutput {
+        fn run_log(&self) -> Option<&logging::RunLog> {
+            self.logger.as_ref().and_then(logging::Output::run_log)
+        }
         fn emit(&self, kind: logging::MsgKind, msg: std::borrow::Cow<'_, str>) {
             let sink = match kind {
                 logging::MsgKind::Error => &self.errors,
@@ -183,7 +206,13 @@ mod tests {
 
     #[test]
     fn aggregate_task_failure_only_prints_dim_log_hint() {
-        let log = CapturingOutput::default();
+        let tmp = tempfile::tempdir().unwrap();
+        let logger = logging::Logger::new_in("install", tmp.path());
+        let id = logger.run_log().unwrap().id();
+        let log = CapturingOutput {
+            logger: Some(logger),
+            ..CapturingOutput::default()
+        };
         let error = anyhow::Error::from(commands::error::TaskFailures::new(2));
 
         report_failure(&error, &log);
@@ -197,14 +226,20 @@ mod tests {
         );
         assert_eq!(
             *log.startup.lock().unwrap_or_else(PoisonError::into_inner),
-            ["Run 'dotfiles log' for details."],
+            [format!("Run 'dotfiles log --id {id} -v' for details.")],
             "log hint should use the always-visible dim channel"
         );
     }
 
     #[test]
     fn unexpected_failure_still_prints_error_and_dim_log_hint() {
-        let log = CapturingOutput::default();
+        let tmp = tempfile::tempdir().unwrap();
+        let logger = logging::Logger::new_in("install", tmp.path());
+        let id = logger.run_log().unwrap().id();
+        let log = CapturingOutput {
+            logger: Some(logger),
+            ..CapturingOutput::default()
+        };
         let error = anyhow::anyhow!("configuration failed");
 
         report_failure(&error, &log);
@@ -216,8 +251,15 @@ mod tests {
         );
         assert_eq!(
             *log.startup.lock().unwrap_or_else(PoisonError::into_inner),
-            ["Run 'dotfiles log' for details."],
+            [format!("Run 'dotfiles log --id {id} -v' for details.")],
             "log hint should use the always-visible dim channel"
         );
+    }
+    #[test]
+    fn unavailable_log_never_offers_a_misleading_failure_hint() {
+        let log = CapturingOutput::default();
+        report_failure(&anyhow::anyhow!("configuration failed"), &log);
+        assert!(log.startup.lock().unwrap().is_empty());
+        assert_eq!(*log.errors.lock().unwrap(), ["configuration failed"]);
     }
 }

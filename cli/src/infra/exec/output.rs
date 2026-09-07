@@ -1,50 +1,79 @@
-//! Captured command output formatting and run-log recording.
+//! Captured child-process diagnostics with explicit retention.
+use super::{ExecError, ExecResult, OutputLog};
+use crate::infra::logging::records::{Record, elapsed_us, trace_record};
+use std::time::Duration;
 
-use super::ExecResult;
-
-/// Log captured child-process output at debug level.
-pub(super) fn log_command_output(label: &str, result: &ExecResult) {
-    if !result.success {
-        tracing::debug!(
-            target: "dotfiles::exec",
-            "command failed: {label}; exit status: {}",
-            result.code.map_or_else(
-                || "signal".to_string(),
-                |code| code.to_string(),
-            )
-        );
-        if result.stdout.trim().is_empty() {
-            tracing::debug!(target: "dotfiles::exec", "{label} stdout: <empty>");
-        }
-        if result.stderr.trim().is_empty() {
-            tracing::debug!(target: "dotfiles::exec", "{label} stderr: <empty>");
-        }
-    }
-    log_stream(label, "stdout", &result.stdout, result.success);
-    log_stream(label, "stderr", &result.stderr, result.success);
+pub(super) fn log_command_output(
+    label: &str,
+    result: &ExecResult,
+    policy: OutputLog,
+    elapsed: Duration,
+) {
+    log_result(
+        label,
+        result,
+        policy,
+        elapsed,
+        if result.success {
+            "succeeded"
+        } else {
+            "failed"
+        },
+    );
 }
 
-fn log_stream(label: &str, stream: &str, output: &str, success: bool) {
-    let summary = stream_summary(output);
-    if summary.is_empty() {
-        return;
+pub(super) fn log_command_error(
+    label: &str,
+    error: &ExecError,
+    policy: OutputLog,
+    elapsed: Duration,
+) {
+    match error {
+        ExecError::Cancelled { result, .. } => {
+            log_result(label, result, policy, elapsed, "interrupted");
+        }
+        ExecError::TimedOut { result, .. } => {
+            log_result(label, result, policy, elapsed, "timed_out");
+        }
+        ExecError::NonZero { result, .. } => log_result(label, result, policy, elapsed, "failed"),
+        ExecError::Spawn { .. } | ExecError::Io { .. } => {
+            trace_record(Record::Command {
+                command: label.into(),
+                outcome: "failed".into(),
+                exit_code: None,
+                elapsed_us: elapsed_us(elapsed),
+                stdout: None,
+                stderr: Some(error.to_string()),
+                stdout_bytes: 0,
+                stderr_bytes: 0,
+            });
+        }
     }
+}
 
-    if success {
-        tracing::debug!(
-            target: "dotfiles::exec",
-            "{label} {stream}: {summary} suppressed on success"
-        );
-        return;
-    }
-
-    tracing::debug!(target: "dotfiles::exec", "{label} {stream}: {summary}");
-    for line in output.lines().filter(|line| !line.trim().is_empty()) {
-        tracing::debug!(target: "dotfiles::exec", "{label} {stream}: {line}");
-    }
+fn log_result(
+    label: &str,
+    result: &ExecResult,
+    policy: OutputLog,
+    elapsed: Duration,
+    outcome: &str,
+) {
+    let retain = policy != OutputLog::Omit;
+    trace_record(Record::Command {
+        command: label.into(),
+        outcome: outcome.into(),
+        exit_code: result.code,
+        elapsed_us: elapsed_us(elapsed),
+        stdout: (retain && (policy == OutputLog::Full || outcome != "succeeded"))
+            .then(|| result.stdout.clone()),
+        stderr: retain.then(|| result.stderr.clone()),
+        stdout_bytes: result.stdout.len(),
+        stderr_bytes: result.stderr.len(),
+    });
 }
 
 /// Summarise a captured child-process output stream.
+#[cfg(test)]
 pub(super) fn stream_summary(output: &str) -> String {
     let line_count = output
         .lines()

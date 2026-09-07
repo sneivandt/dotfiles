@@ -200,7 +200,11 @@ pub(crate) fn run_elevated_child(
     use anyhow::Context as _;
 
     let exe = std::env::current_exe().context("failed to determine current executable path")?;
-    let script = build_elevated_child_script(&exe.display().to_string(), args);
+    let child_args = log.run_log().map_or_else(
+        || args.to_vec(),
+        |run| crate::infra::logging::records::child_args(args, &run.id()),
+    );
+    let script = build_elevated_child_script(&exe.display().to_string(), &child_args);
 
     let ps_exe = if executor.which("pwsh") {
         "pwsh"

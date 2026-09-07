@@ -106,6 +106,19 @@ pub struct CommandSpec {
     checked: bool,
     log_arguments: bool,
     timeout: Option<Duration>,
+    output_log: OutputLog,
+}
+
+/// Persistent child-output policy. Argument redaction is independent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OutputLog {
+    /// Retain failed output and successful stderr; summarise successful stdout.
+    #[default]
+    Diagnostics,
+    /// Retain both streams, including successful stdout.
+    Full,
+    /// Retain byte counts only, even on failure. Use for sensitive output.
+    Omit,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +140,7 @@ impl CommandSpec {
             checked: true,
             log_arguments: true,
             timeout: None,
+            output_log: OutputLog::Diagnostics,
         }
     }
 
@@ -142,6 +156,7 @@ impl CommandSpec {
             checked: false,
             log_arguments: false,
             timeout: None,
+            output_log: OutputLog::Diagnostics,
         }
     }
 
@@ -196,6 +211,13 @@ impl CommandSpec {
     #[must_use]
     pub const fn redact_arguments(mut self) -> Self {
         self.log_arguments = false;
+        self
+    }
+
+    /// Choose which captured streams may appear in logs and error messages.
+    #[must_use]
+    pub const fn output_log(mut self, policy: OutputLog) -> Self {
+        self.output_log = policy;
         self
     }
 
@@ -405,6 +427,47 @@ impl std::error::Error for ExecError {
 }
 
 impl ExecError {
+    /// Short command failure for a task row. Full streams belong in the run log.
+    pub(crate) fn concise_message(&self) -> String {
+        let (label, result) = match self {
+            Self::NonZero { command, result } => (
+                format!(
+                    "{command} failed (exit {})",
+                    result
+                        .code
+                        .map_or_else(|| "signal".into(), |code| code.to_string())
+                ),
+                result,
+            ),
+            Self::TimedOut {
+                command,
+                timeout,
+                result,
+            } => (format!("{command} timed out after {timeout:?}"), result),
+            Self::Cancelled { command, result } => (format!("{command} interrupted"), result),
+            Self::Spawn { .. } | Self::Io { .. } => return self.to_string(),
+        };
+        let detail = result
+            .stderr
+            .lines()
+            .chain(result.stdout.lines())
+            .map(str::trim)
+            .find(|line| !line.is_empty());
+        detail.map_or_else(|| label.clone(), |detail| format!("{label}: {detail}"))
+    }
+
+    fn omit_output(&mut self) {
+        match self {
+            Self::Cancelled { result, .. }
+            | Self::TimedOut { result, .. }
+            | Self::NonZero { result, .. } => {
+                result.stdout = "[output omitted]".into();
+                result.stderr = "[output omitted]".into();
+            }
+            Self::Spawn { .. } | Self::Io { .. } => {}
+        }
+    }
+
     /// Create an unsuccessful checked-command error, primarily for executor
     /// implementations and mocks.
     #[must_use]
@@ -502,8 +565,24 @@ fn execute_spec(
     let checked = spec.checked;
     let effective_settings = settings.with_timeout(spec.timeout.unwrap_or(settings.timeout));
     let label = spec.label();
-    let result = execute_unchecked(spec.into_command(), &label, &effective_settings)?;
-    log_command_output(&label, &result);
+    let policy = spec.output_log;
+    let started = Instant::now();
+    let executed = execute_unchecked(spec.into_command(), &label, &effective_settings);
+    let mut result = match executed {
+        Ok(result) => result,
+        Err(mut error) => {
+            output::log_command_error(&label, &error, policy, started.elapsed());
+            if policy == OutputLog::Omit {
+                error.omit_output();
+            }
+            return Err(error);
+        }
+    };
+    log_command_output(&label, &result, policy, started.elapsed());
+    if policy == OutputLog::Omit && checked && !result.success {
+        result.stdout = "[output omitted]".into();
+        result.stderr = "[output omitted]".into();
+    }
     if checked && !result.success {
         return Err(ExecError::NonZero {
             command: label,
@@ -587,7 +666,6 @@ fn terminate_and_collect(
     terminate_child(child);
     wait_after_terminate(child);
     let result = collect_result(None, stdout_reader, stderr_reader, label)?;
-    log_command_output(label, &result);
     Ok(result)
 }
 

@@ -45,7 +45,7 @@ impl TaskExecution {
 fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: Option<&str>) {
     let event_detail = reason.unwrap_or("not applicable");
     ctx.log()
-        .run_task_event(LogEvent::TaskSkip, task.name(), event_detail);
+        .run_task_event(LogEvent::TaskSkip, &task.log_key(), event_detail);
     ctx.log().record_task(TaskEntry::new(
         task_id,
         task.name(),
@@ -62,7 +62,7 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: 
 /// the log file and diagnostic output include structured context about
 /// which task produced each message.
 ///
-/// A typed executor cancellation error is recorded as [`TaskStatus::Skipped`]
+/// A typed executor cancellation error is recorded as [`TaskStatus::Interrupted`]
 /// with an "interrupted" message. Other failures remain failures even if the
 /// global cancellation token was requested independently.
 ///
@@ -83,22 +83,22 @@ pub(crate) fn execute_assessed(
 ) -> TaskExecution {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
-    let _diag_context = log_task_context(task.name());
-    let task_id = task.task_id().record_key();
+    let _diag_context = log_task_context(&task.log_key());
+    let task_id = task.log_key();
     if !assessment.is_applicable() {
         record_not_applicable(ctx, task, &task_id, assessment.not_applicable_reason());
         return TaskExecution::new(TaskStatus::NotApplicable, TaskOutcome::Satisfied);
     }
 
     ctx.log()
-        .run_task_event(LogEvent::TaskStart, task.name(), "executing");
+        .run_task_event(LogEvent::TaskStart, &task.log_key(), "executing");
     let started = std::time::Instant::now();
     let execution = record_run_outcome(task, &task_id, ctx);
     let elapsed = started.elapsed();
     ctx.log().record_task_duration(&task_id, elapsed);
     ctx.log().run_task_event(
         LogEvent::TaskTiming,
-        task.name(),
+        &task.log_key(),
         &format!("elapsed {}", format_elapsed(elapsed)),
     );
     execution
@@ -124,7 +124,7 @@ fn record(
     status
 }
 
-/// Downgrade a cancellation-induced failure to [`TaskStatus::Skipped`].
+/// Downgrade a cancellation-induced failure to [`TaskStatus::Interrupted`].
 ///
 /// Ctrl-C aborts in-flight work, so the resulting errors are signal artefacts
 /// rather than real failures and must not be counted as such in the summary.
@@ -136,13 +136,13 @@ fn record_interrupted(
     actions: ActionCounts,
 ) -> TaskStatus {
     ctx.log()
-        .run_task_event(LogEvent::TaskSkip, task.name(), "interrupted");
+        .run_task_event(LogEvent::TaskSkip, &task.log_key(), "interrupted");
     ctx.log().warn(format!("interrupted: {detail}"));
     record(
         task,
         task_id,
         ctx,
-        TaskStatus::Skipped,
+        TaskStatus::Interrupted,
         Some("interrupted"),
         actions,
     )
@@ -150,7 +150,7 @@ fn record_interrupted(
 
 /// Run a task and record its outcome.
 ///
-/// Typed executor cancellation errors are downgraded to [`TaskStatus::Skipped`]
+/// Typed executor cancellation errors are recorded as [`TaskStatus::Interrupted`]
 /// so the summary does not count signal interruptions as real failures.
 fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExecution {
     let rec = |status: TaskStatus, msg: Option<&str>| {
@@ -161,22 +161,22 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
         Ok(result) => match result {
             TaskResult::Ok => {
                 ctx.log()
-                    .run_task_event(LogEvent::TaskDone, task.name(), "ok");
+                    .run_task_event(LogEvent::TaskDone, &task.log_key(), "ok");
                 TaskExecution::new(rec(TaskStatus::Ok, None), TaskOutcome::Satisfied)
             }
             TaskResult::DryRun => {
                 ctx.log()
-                    .run_task_event(LogEvent::TaskDone, task.name(), "planned");
+                    .run_task_event(LogEvent::TaskDone, &task.log_key(), "planned");
                 TaskExecution::new(rec(TaskStatus::DryRun, None), TaskOutcome::Satisfied)
             }
             TaskResult::CheckPassed => {
                 ctx.log()
-                    .run_task_event(LogEvent::TaskDone, task.name(), "passed");
+                    .run_task_event(LogEvent::TaskDone, &task.log_key(), "passed");
                 TaskExecution::new(rec(TaskStatus::Passed, None), TaskOutcome::Satisfied)
             }
             TaskResult::NotApplicable(reason) => {
                 ctx.log()
-                    .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
+                    .run_task_event(LogEvent::TaskSkip, &task.log_key(), &reason);
                 TaskExecution::new(
                     rec(TaskStatus::NotApplicable, Some(&reason)),
                     TaskOutcome::Satisfied,
@@ -190,7 +190,7 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
                     );
                 }
                 ctx.log()
-                    .run_task_event(LogEvent::TaskSkip, task.name(), &reason);
+                    .run_task_event(LogEvent::TaskSkip, &task.log_key(), &reason);
                 TaskExecution::new(
                     rec(TaskStatus::Skipped, Some(&reason)),
                     if kind.is_failure() {
@@ -234,11 +234,36 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
         Err(e) => {
             let message = format!("{e:#}");
             ctx.log()
-                .run_task_event(LogEvent::TaskFail, task.name(), &message);
-            ctx.log().error(format!("{}: {message}", task.name()));
-            TaskExecution::new(rec(TaskStatus::Failed, Some(&message)), TaskOutcome::Failed)
+                .run_task_event(LogEvent::TaskFail, &task.log_key(), &message);
+            let summary = concise_failure(&e);
+            ctx.log().error(&summary);
+            TaskExecution::new(rec(TaskStatus::Failed, Some(&summary)), TaskOutcome::Failed)
         }
     }
+}
+
+/// Keep the task context and first useful child diagnostic on the console.
+/// The full chain has already been persisted by the caller.
+fn concise_failure(error: &anyhow::Error) -> String {
+    let mut context = Vec::new();
+    for cause in error.chain() {
+        if let Some(exec) = cause.downcast_ref::<ExecError>() {
+            return context
+                .into_iter()
+                .chain([exec.concise_message()])
+                .collect::<Vec<_>>()
+                .join(": ");
+        }
+        // Resource errors wrap ExecError and repeat its Display; stop before
+        // collecting that wrapper and use its source instead.
+        if cause
+            .downcast_ref::<crate::engine::resource::ResourceError>()
+            .is_none()
+        {
+            context.push(cause.to_string());
+        }
+    }
+    format!("{error:#}")
 }
 
 fn record_failed_outcome(
@@ -252,7 +277,7 @@ fn record_failed_outcome(
         ..ActionCounts::default()
     };
     ctx.log()
-        .run_task_event(LogEvent::TaskFail, task.name(), reason);
+        .run_task_event(LogEvent::TaskFail, &task.log_key(), reason);
     ctx.log().warn(format!("failed: {reason}"));
     record(
         task,
@@ -304,7 +329,7 @@ fn record_batch_outcome(
     } else {
         LogEvent::TaskDone
     };
-    ctx.log().run_task_event(event, task.name(), &message);
+    ctx.log().run_task_event(event, &task.log_key(), &message);
     if outcome == TaskStatus::Failed {
         ctx.log().warn(format!("failed: {message}"));
     } else {
@@ -325,7 +350,7 @@ fn record_batch_outcome(
 ///
 /// A skipped batch always states why it did nothing: the aggregate counters are
 /// the only reason available once per-item detail has been filtered out, and a
-/// bare `IGNORE` row is the outcome users most often have to ask about.
+/// bare `SKIPPED` row is the outcome users most often have to ask about.
 fn batch_reason(
     stats: &crate::engine::TaskStats,
     outcome: TaskStatus,
@@ -345,8 +370,11 @@ fn batch_reason(
                 "items"
             }
         )),
-        TaskStatus::Ok | TaskStatus::Passed | TaskStatus::DryRun | TaskStatus::NotApplicable => {
-            None
-        }
+        TaskStatus::Ok
+        | TaskStatus::Passed
+        | TaskStatus::DryRun
+        | TaskStatus::NotApplicable
+        | TaskStatus::Blocked
+        | TaskStatus::Interrupted => None,
     }
 }

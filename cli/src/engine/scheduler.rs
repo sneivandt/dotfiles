@@ -207,15 +207,15 @@ fn dependency_outcome(
     })
 }
 
-fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str) {
+fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str, status: TaskStatus) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
-    log.run_task_event(LogEvent::TaskSkip, task.name(), reason);
+    log.run_task_event(LogEvent::TaskSkip, &task.log_key(), reason);
     log.debug(reason);
     log.record_task(TaskEntry::new(
-        task.task_id().record_key(),
+        task.log_key(),
         task.name(),
-        TaskStatus::Skipped,
+        status,
         Some(reason),
         ActionCounts::default(),
         task.visibility(),
@@ -257,10 +257,10 @@ fn run_task_buffered(
                         .map(|s| format!("task panicked: {s}"))
                 })
                 .unwrap_or_else(|| "task panicked".to_string());
-            log.run_task_event(LogEvent::TaskFail, task.name(), &msg);
+            log.run_task_event(LogEvent::TaskFail, &task.log_key(), &msg);
             buf.error(format!("{}: {msg}", task.name()));
             log.record_task(TaskEntry::new(
-                task.task_id().record_key(),
+                task.log_key(),
                 task.name(),
                 TaskStatus::Failed,
                 Some(&msg),
@@ -274,7 +274,7 @@ fn run_task_buffered(
         }
     };
 
-    buf.flush_and_complete(&task.task_id().record_key(), task.name(), execution.status);
+    buf.flush_and_complete(&task.log_key(), task.name(), execution.status);
     execution
 }
 
@@ -312,8 +312,13 @@ fn dispatch_task(
         );
     };
 
-    let task_id = task.task_id().record_key();
-    record_scheduler_skip(task, &**log, &reason);
+    let task_id = task.log_key();
+    let status = if signal == DependencySignal::Cancelled {
+        TaskStatus::Interrupted
+    } else {
+        TaskStatus::Blocked
+    };
+    record_scheduler_skip(task, &**log, &reason, status);
     log.mark_task_completed(&task_id);
     log.emit_task_result_and_redraw(&task_id);
     let outcome = if signal == DependencySignal::Cancelled {
@@ -321,7 +326,7 @@ fn dispatch_task(
     } else {
         TaskOutcome::Blocked
     };
-    (signal, TaskStatus::Skipped, outcome)
+    (signal, status, outcome)
 }
 
 /// Run tasks in parallel using a dependency graph.
@@ -396,7 +401,7 @@ pub(crate) fn run_tasks_parallel_with_prior(
             let prior_signal = prior_dependency_signal(task, prior);
 
             s.spawn(move || {
-                logging::set_log_thread_name(task.name());
+                logging::set_log_thread_name(&task.log_key());
 
                 if let Some(diag) = log.run_log() {
                     if dep_names.is_empty() {

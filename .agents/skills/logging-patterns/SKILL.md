@@ -13,7 +13,7 @@ description: >
 - Startup initializes one shared `Logger`; task code uses `ctx.log()`.
 - `engine::execute()` records task results. Tasks do not call
   `record_task()` directly.
-- Records are keyed by `TaskId::record_key()`, never display name.
+- Records are keyed by `Task::log_key()`, never display name.
 - `ExecutionSummary` controls success and later phases. Logger counters are
   presentation only.
 - Keep status labels/styles together in `logger/summary/status.rs::presentation`.
@@ -35,12 +35,17 @@ description: >
   and not-applicable tasks plus elapsed time.
 - A task reason stays on its status row after ` · `. Indented lines are actions
   or planned actions and must not restate the row.
-- Normalize detail through `compact_detail_line`; sort only consecutive action
-  runs inside one task.
+- Emit resource actions with `Output::action(verb, subject, planned, message)`.
+  Typed actions persist once before buffering; legacy messages retain
+  `compact_detail_line` as a fallback. Sort only consecutive action runs and
+  preserve warning/context barriers.
 - Resource descriptions read `subject -> value`; symlinks are `target -> source`.
 - Final summaries count tasks, not detail lines or parsed display text.
-- Progress uses `Running · {done}/{total} done · {active}` and the denominator
-  matches visible summary accounting.
+- Progress uses `Running · {done}/{total} done · {active}`. Its denominator
+  counts scheduled visible tasks within a phase. Non-applicable tasks advance
+  progress but do not contribute to final totals.
+- Keep skipped, blocked, and interrupted outcomes distinct in rows and totals.
+  Typed cancellation is interrupted; dependency prevention is blocked.
 - Transient status lines are always cleared and never replace durable logging.
 
 ## Message intent
@@ -55,13 +60,34 @@ description: >
 | `always` | output that must be visible |
 | `startup` | the single dim run-context header |
 
+## Persistent records
+
+- Extend `records.rs::Record` for facts that consumers need to query. Keep schema
+  versions explicit; preserve unknown records and legacy text in the viewer.
+- Use stable task keys, not labels or `TypeId` debug text. Task decorators must
+  forward `log_key()` and worker threads must inherit the owning task's context.
+- Record run start, resolved context, and finish independently of console totals.
+  Restarted and elevated children receive the parent ID through `child_args`.
+  A missing finish record means unfinished, not necessarily crashed.
+- Failure hints select the exact run with `--id` and diagnostics with `-v`.
+  Do not offer a hint when the persistent sink is unavailable or degraded.
+- Preserve multiline messages and command streams in storage. Normal log viewing
+  includes failed command diagnostics and successful stderr. `--raw` reads stored
+  records; `--task` filters by exact identity.
+- Test lifecycle and parent linkage, stable selection after newer runs,
+  task filtering, legacy/unknown records, output retention, and multiline parity.
+
 Do not hardcode indentation, duplicate task recording, rephrase a task reason as
 detail, or build task-local buffering.
 
 Command arguments are logged by default. Use `CommandSpec::redact_arguments()`
 when they contain sensitive values, and separately avoid exposing secrets in
-stdout, stderr, resource descriptions, or errors: argument redaction is not
-output redaction. Use synthetic values in log fixtures and snapshots.
+stdout, stderr, resource descriptions, or errors. `OutputLog::Diagnostics`
+retains failed streams and successful stderr; `Full` also retains successful
+stdout. Use `OutputLog::Omit` for sensitive streams; it also removes streams
+from checked-command errors. Successful and unchecked results remain available
+to the caller, which must avoid logging them itself. Argument redaction is
+independent. Use synthetic values in log fixtures and snapshots.
 
 When summary semantics change, test statuses, visibility, details, progress
 denominator, totals, both verbose modes, and `--no-symbols`. Preserve durable run

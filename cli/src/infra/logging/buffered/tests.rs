@@ -19,6 +19,7 @@ fn buffered_fixture() -> (
 /// Build a buffered entry of the given kind for replay assertions.
 fn entry(kind: MsgKind, msg: &str) -> LogEntry {
     LogEntry {
+        action: false,
         kind,
         msg: msg.to_string(),
     }
@@ -418,4 +419,33 @@ fn non_verbose_dry_run_flush_keeps_detail_in_persistent_log() {
         contents.contains("[dry_run] would configure beep = true"),
         "dry-run details are recorded under the dry_run event kind\nlog:\n{contents}"
     );
+}
+
+#[test]
+fn typed_actions_persist_once_before_flush_with_arbitrary_verbs() {
+    use crate::infra::logging::records::{Record, StoredRecord};
+    let (buf, log, _tmp, _guard) = buffered_fixture();
+    buf.action("refresh", "z-item", true, "refresh z-item");
+    buf.warn("barrier");
+    buf.action("refresh", "b-item", true, "refresh b-item");
+    buf.action("refresh", "a-item", true, "refresh a-item");
+    let before = fs::read_to_string(log.log_path().unwrap()).unwrap();
+    let subjects: Vec<_> = before
+        .lines()
+        .filter_map(StoredRecord::from_line)
+        .filter_map(|entry| {
+            if let Record::Action {
+                subject, planned, ..
+            } = entry.record
+            {
+                assert!(planned);
+                Some(subject)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(subjects, ["z-item", "b-item", "a-item"]);
+    buf.flush();
+    assert_eq!(fs::read_to_string(log.log_path().unwrap()).unwrap(), before);
 }

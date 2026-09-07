@@ -21,9 +21,27 @@ pub(super) const REPOSITORY_REEXEC_GUARD_VAR: &str = "DOTFILES_REPOSITORY_REEXEC
 /// process finishes.
 pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = log.run_log().map_or_else(
+        || args.clone(),
+        |run| crate::infra::logging::records::child_args(&args, &run.id()),
+    );
     let exe = re_exec_path(root);
     let command = build_reexec_command(&exe, &args);
     run_reexec(command, log)
+}
+
+fn finish_reexec(log: &dyn Output, code: i32) {
+    if let Some(run) = log.run_log() {
+        use crate::infra::logging::records::RunOutcome;
+        run.finish(
+            if code == 0 {
+                RunOutcome::Succeeded
+            } else {
+                RunOutcome::Failed
+            },
+            code,
+        );
+    }
 }
 
 fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
@@ -32,10 +50,13 @@ fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
             if status.code().is_none() {
                 log.warn("child process terminated by signal");
             }
-            std::process::exit(status.code().unwrap_or(1))
+            let code = status.code().unwrap_or(1);
+            finish_reexec(log, code);
+            std::process::exit(code)
         }
         Err(error) => {
             log.error(format!("failed to re-exec: {error}"));
+            finish_reexec(log, 1);
             std::process::exit(1);
         }
     }
@@ -65,10 +86,15 @@ pub(crate) fn re_exec_after_repository_update(log: &dyn Output) -> ! {
             log.error(format!(
                 "failed to determine executable for repository restart: {error}"
             ));
+            finish_reexec(log, 1);
             std::process::exit(1);
         }
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = log.run_log().map_or_else(
+        || args.clone(),
+        |run| crate::infra::logging::records::child_args(&args, &run.id()),
+    );
     let command = build_repository_reexec_command(&exe, &args);
     log.startup("Repository updated · restarting with refreshed configuration");
     run_reexec(command, log)

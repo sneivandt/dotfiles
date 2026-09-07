@@ -80,7 +80,8 @@ fn record_resource_change(
         ResourceChange::Applied => {
             ctx.log()
                 .run_event(LogEvent::ResourceResult, &format!("{desc} {applied_label}"));
-            ctx.log().info(format!("{verb} {desc}"));
+            ctx.log()
+                .action(verb, desc, false, &format!("{verb} {desc}"));
             delta.record(ItemOutcome::Changed);
         }
         ResourceChange::AlreadyCorrect => {
@@ -157,7 +158,8 @@ where
 {
     if ctx.dry_run() {
         if let Some(message) = mutation.dry_run_message {
-            ctx.log().dry_run(&message);
+            ctx.log()
+                .action(mutation.verb, mutation.description, true, &message);
         }
         let mut delta = TaskStats::new();
         delta.record(ItemOutcome::Changed);

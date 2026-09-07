@@ -41,6 +41,9 @@ marker rule. Legacy Windows exit-pause/interrupt policy remains separate.
   domain imports.
 - `dependencies()` block on predecessor failure.
   `ordering_dependencies()` wait without propagating failure.
+- `Task::log_key()` owns persistent identity; it uses the implementation type
+  name and any dynamic instance key. Decorators forward it. Keep `TaskId` for
+  dependency edges and use `log_key()` consistently for logger lookups.
 - Dynamic instances use `TaskId::dynamic::<Self>(stable_key)` and are created
   once from the immutable startup configuration.
 - A repository update that changes task/config inputs must use the guarded

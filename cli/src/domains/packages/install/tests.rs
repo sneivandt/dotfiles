@@ -615,7 +615,7 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
         .iter()
         .find(|entry| entry.name == "AUR packages")
         .expect("AUR task entry");
-    assert_eq!(aur_entry.status, TaskStatus::Skipped);
+    assert_eq!(aur_entry.status, TaskStatus::Blocked);
     assert_eq!(
         aur_entry.message.as_deref(),
         Some("blocked by failed dependency: Paru package manager")

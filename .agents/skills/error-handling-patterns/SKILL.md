@@ -37,6 +37,13 @@ exit-code protocol and classify every outcome, including an absent exit code.
 An `Ok(ExecResult)` from an unchecked call is not proof of command success.
 Do not flatten typed errors into strings before adding context.
 
+`CommandSpec::output_log` controls persistent streams separately from argument
+redaction. `Diagnostics` retains failed streams and successful stderr, `Full`
+also retains successful stdout, and `Omit` suppresses streams in logs and checked
+errors. An unchecked or successful result is still available to its caller;
+avoid re-logging sensitive output. Keep full errors in retained logs and use the
+typed executor's concise message for a task row.
+
 ## Mutation order
 
 The lifecycle owner follows this order:

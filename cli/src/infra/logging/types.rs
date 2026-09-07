@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use super::runlog::RunLog;
 
 /// Structured action totals contributed by a task.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ActionCounts {
     /// Actions applied to the system.
     pub applied: u32,
@@ -94,7 +94,8 @@ impl TaskEntry {
 }
 
 /// Status of a completed task.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     /// Task completed successfully and changed system state.
     Changed,
@@ -106,6 +107,10 @@ pub enum TaskStatus {
     NotApplicable,
     /// Task was explicitly skipped (e.g., tool not found, config empty).
     Skipped,
+    /// A prerequisite prevented this task from running.
+    Blocked,
+    /// Cancellation stopped or prevented this task.
+    Interrupted,
     /// Task would change state in dry-run mode; no changes were applied.
     DryRun,
     /// Task encountered an error and could not complete.
@@ -165,6 +170,8 @@ impl MsgKind {
 /// Semantic kinds recorded in the chronological execution log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogEvent {
+    /// Versioned structured facts.
+    Record,
     /// Informational message.
     Info,
     /// Debug-level message.
@@ -204,6 +211,7 @@ impl LogEvent {
     #[must_use]
     pub(in crate::infra::logging) const fn name(self) -> &'static str {
         match self {
+            Self::Record => "record",
             Self::Info => "info",
             Self::Debug => "debug",
             Self::Warn => "warn",
@@ -326,6 +334,18 @@ pub trait Output: Send + Sync {
         if let Some(run_log) = self.run_log() {
             run_log.emit_task(event, task, message);
         }
+    }
+
+    /// Record an action before emitting its established console message.
+    fn action(&self, _verb: &str, _subject: &str, planned: bool, message: &str) {
+        self.emit(
+            if planned {
+                MsgKind::DryRun
+            } else {
+                MsgKind::Info
+            },
+            message.into(),
+        );
     }
 
     /// Show a transient one-line status on an interactive console.

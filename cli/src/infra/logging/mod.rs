@@ -2,7 +2,7 @@
 //!
 //! Two independent sinks share one set of messages:
 //!
-//! - the **run log** ([`RunLog`]), an append-only file that records every
+//! - the **run log** ([`RunLog`](runlog::RunLog)), an append-only file that records every
 //!   event immediately in true chronological order;
 //! - the **console**, rendered directly from logger messages after per-task
 //!   buffering keeps parallel output readable.
@@ -12,6 +12,7 @@
 
 mod buffered;
 mod logger;
+pub(crate) mod records;
 mod runlog;
 mod style;
 mod subscriber;
@@ -20,6 +21,8 @@ mod utils;
 
 pub use buffered::BufferedLog;
 pub use logger::Logger;
+#[cfg(test)]
+pub(crate) use runlog::RunLog;
 pub use runlog::{log_task_context, log_thread_name, set_log_thread_name};
 pub(crate) use types::TaskEntry;
 pub use types::{ActionCounts, Log, LogEvent, Output, OutputExt, TaskStatus, TaskVisibility};

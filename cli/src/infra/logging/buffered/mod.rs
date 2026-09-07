@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use super::logger::{Logger, stdout_supports_progress};
 use super::runlog::RunLog;
 use super::types::{MsgKind, Output, TaskRecorder, TaskStatus};
-use super::utils::sort_action_runs;
+use super::utils::{is_action_line, sort_action_runs_by};
 
 mod entry;
 
@@ -70,7 +70,11 @@ impl BufferedLog {
         };
         // Parallel resource processing finishes in a nondeterministic order, so
         // sort the action lines before they reach either console path.
-        sort_action_runs(&mut entries, |entry| entry.msg.as_str());
+        sort_action_runs_by(
+            &mut entries,
+            |entry| entry.msg.as_str(),
+            |entry| entry.action || is_action_line(&entry.msg),
+        );
         if should_record_task_details(status) {
             let detail_lines: Vec<String> = entries
                 .iter()
@@ -117,6 +121,24 @@ impl BufferedLog {
 }
 
 impl Output for BufferedLog {
+    fn action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
+        if let Some(run) = &self.inner.run_log {
+            run.record_action(verb, subject, planned, message);
+        }
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(LogEntry {
+                kind: if planned {
+                    MsgKind::DryRun
+                } else {
+                    MsgKind::Info
+                },
+                msg: message.into(),
+                action: true,
+            });
+    }
+
     /// Record the message in the run log immediately and buffer it for later
     /// console replay.
     ///
@@ -135,6 +157,7 @@ impl Output for BufferedLog {
             .push(LogEntry {
                 kind,
                 msg: msg.into_owned(),
+                action: false,
             });
     }
 

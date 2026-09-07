@@ -35,7 +35,11 @@ pub(super) fn task_result_lines(
     let show_reason = detail_rows.is_empty()
         || matches!(
             task.status,
-            TaskStatus::Failed | TaskStatus::Skipped | TaskStatus::NotApplicable
+            TaskStatus::Failed
+                | TaskStatus::Skipped
+                | TaskStatus::Blocked
+                | TaskStatus::Interrupted
+                | TaskStatus::NotApplicable
         );
     let mut lines = vec![format_task_line_with_reason(task, opts, show_reason)];
     lines.extend(detail_rows);
@@ -72,6 +76,8 @@ pub(super) const fn should_emit_task_result(status: TaskStatus, verbose: bool) -
         TaskStatus::Changed
         | TaskStatus::Passed
         | TaskStatus::Skipped
+        | TaskStatus::Blocked
+        | TaskStatus::Interrupted
         | TaskStatus::DryRun
         | TaskStatus::Failed => true,
         TaskStatus::Ok | TaskStatus::NotApplicable => verbose,

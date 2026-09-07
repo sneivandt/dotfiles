@@ -102,7 +102,7 @@ changes through a dependency-aware task graph.
 | `dotfiles check` | Validates configuration and runs available repository analyzers |
 | `dotfiles tasks` | Lists task selectors and command membership |
 | `dotfiles profiles` | Lists configured role profiles |
-| `dotfiles log` | Reads retained install, uninstall, and check logs |
+| `dotfiles log` | Reads retained run logs |
 
 Use `install` for normal setup and maintenance. Add `--update-pins` only when
 you want pinned dependency versions to move forward. `uninstall` leaves packages,

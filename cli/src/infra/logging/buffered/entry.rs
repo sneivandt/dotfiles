@@ -21,6 +21,8 @@ pub(super) struct LogEntry {
     pub(super) kind: MsgKind,
     /// The message text, with the caller's allocation taken over.
     pub(super) msg: String,
+    /// Explicit action classification for new producers; older messages retain their fallback.
+    pub(super) action: bool,
 }
 
 impl LogEntry {
@@ -86,6 +88,11 @@ impl LogEntry {
 pub(super) const fn should_record_task_details(status: TaskStatus) -> bool {
     matches!(
         status,
-        TaskStatus::Changed | TaskStatus::Skipped | TaskStatus::DryRun | TaskStatus::Failed
+        TaskStatus::Changed
+            | TaskStatus::Skipped
+            | TaskStatus::Blocked
+            | TaskStatus::Interrupted
+            | TaskStatus::DryRun
+            | TaskStatus::Failed
     )
 }

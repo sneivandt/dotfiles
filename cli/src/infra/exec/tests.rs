@@ -313,3 +313,82 @@ fn reader_failure_returns_typed_io_error() {
         "output capture failure should produce a typed I/O error"
     );
 }
+
+#[test]
+fn output_retention_records_streams_and_preserves_multiline_boundaries() {
+    use crate::infra::logging::records::{Record, StoredRecord};
+    for (policy, success, keep_stdout, keep_stderr) in [
+        (OutputLog::Diagnostics, true, false, true),
+        (OutputLog::Diagnostics, false, true, true),
+        (OutputLog::Full, true, true, true),
+        (OutputLog::Omit, false, false, false),
+    ] {
+        let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+        let result = ExecResult {
+            stdout: "stdout marker\n  second\n\n".into(),
+            stderr: "\x1b[31mstderr marker\x1b[0m\n".into(),
+            success,
+            code: Some(i32::from(!success)),
+        };
+        log_command_output(
+            "example [arguments redacted]",
+            &result,
+            policy,
+            Duration::from_millis(123),
+        );
+        let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        let record = content.lines().find_map(StoredRecord::from_line).unwrap();
+        let Record::Command {
+            stdout,
+            stderr,
+            exit_code,
+            elapsed_us,
+            stdout_bytes,
+            ..
+        } = record.record
+        else {
+            panic!("expected command record")
+        };
+        assert_eq!(stdout.is_some(), keep_stdout, "{policy:?}");
+        assert_eq!(stderr.is_some(), keep_stderr, "{policy:?}");
+        if keep_stdout {
+            assert_eq!(stdout.as_deref(), Some(result.stdout.as_str()));
+        }
+        if keep_stderr {
+            assert_eq!(stderr.as_deref(), Some("stderr marker\n"));
+        }
+        assert_eq!(exit_code, result.code);
+        assert_eq!(elapsed_us, 123_000);
+        assert_eq!(stdout_bytes, result.stdout.len());
+        assert!(!content.contains("\\u001b"));
+    }
+}
+
+#[test]
+fn omitted_failure_output_does_not_escape_through_the_error() {
+    let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+    #[cfg(windows)]
+    let spec = CommandSpec::new("cmd").args(&["/C", "echo synthetic-sensitive-marker & exit /b 3"]);
+    #[cfg(not(windows))]
+    let spec = CommandSpec::new("sh").args(&["-c", "echo synthetic-sensitive-marker; exit 3"]);
+    let error = ProcessExecutor::system()
+        .execute(spec.redact_arguments().output_log(OutputLog::Omit))
+        .unwrap_err();
+    assert!(!error.to_string().contains("synthetic-sensitive-marker"));
+    let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+    assert!(!content.contains("synthetic-sensitive-marker"));
+    assert!(content.contains("omitted") || content.contains("stdout_bytes"));
+}
+
+#[test]
+fn command_failure_summary_keeps_one_cause_and_omits_stream_dump() {
+    let error = ExecError::non_zero(
+        "example",
+        ExecResult::failure("large stdout", "first cause\nsecond detail", Some(2)),
+    );
+    assert_eq!(
+        error.concise_message(),
+        "example failed (exit 2): first cause"
+    );
+    assert!(error.to_string().contains("second detail"));
+}

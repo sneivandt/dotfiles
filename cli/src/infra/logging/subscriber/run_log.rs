@@ -34,7 +34,11 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for RunLogLayer {
         let metadata = event.metadata();
         let mut extractor = MessageExtractor::default();
         event.record(&mut extractor);
-        self.run_log
-            .emit(LogEvent::from_level(*metadata.level()), &extractor.message);
+        let kind = if metadata.target() == "dotfiles::record" {
+            LogEvent::Record
+        } else {
+            LogEvent::from_level(*metadata.level())
+        };
+        self.run_log.emit(kind, &extractor.message);
     }
 }

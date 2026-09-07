@@ -47,9 +47,7 @@ impl Mode {
             let positions: Vec<_> = entries
                 .iter()
                 .enumerate()
-                .filter_map(|(pos, entry)| {
-                    (entry.task_id == task.task_id().record_key()).then_some(pos)
-                })
+                .filter_map(|(pos, entry)| (entry.task_id == task.log_key()).then_some(pos))
                 .collect();
             assert_eq!(
                 positions.len(),
@@ -58,7 +56,7 @@ impl Mode {
                 task.name()
             );
             for &dep_idx in graph.dependencies(idx) {
-                let dependency = tasks[dep_idx].task_id().record_key();
+                let dependency = tasks[dep_idx].log_key();
                 let dep_pos = entries
                     .iter()
                     .position(|entry| entry.task_id == dependency)
@@ -197,7 +195,7 @@ impl TestTask {
         let entry = log
             .task_entries()
             .into_iter()
-            .find(|entry| entry.task_id == self.task_id().record_key())
+            .find(|entry| entry.task_id == self.log_key())
             .expect("task must be recorded");
         assert_eq!(entry.status, status, "{}", self.key);
         assert_eq!(entry.message.as_deref(), message, "{}", self.key);

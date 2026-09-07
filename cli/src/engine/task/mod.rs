@@ -96,6 +96,17 @@ pub trait Task: Send + Sync + 'static {
         &[]
     }
 
+    /// Persistent identity across rebuilds. Display labels do not affect it.
+    /// Dynamic tasks retain their explicit instance key; wrappers forward it.
+    fn log_key(&self) -> String {
+        let kind = std::any::type_name::<Self>();
+        match self.task_id() {
+            TaskId::Type(_) => kind.into(),
+            TaskId::Dynamic(value) => format!("{kind}#dynamic:{value}"),
+            TaskId::NamedDynamic { key, .. } => format!("{kind}#named:{key}"),
+        }
+    }
+
     /// Whether this task should run on the current platform/profile.
     ///
     /// Tasks with platform, tool-availability, or configuration gates override
@@ -209,6 +220,10 @@ impl std::fmt::Debug for TaskWithExtraDeps {
 }
 
 impl Task for TaskWithExtraDeps {
+    fn log_key(&self) -> String {
+        self.inner.log_key()
+    }
+
     fn meta(&self) -> TaskMeta<'_> {
         self.inner.meta()
     }

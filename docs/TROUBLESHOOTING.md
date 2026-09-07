@@ -9,7 +9,17 @@ dotfiles log --verbose
 
 Logs are retained per run, so a failure stays readable after later runs. Use
 `dotfiles log --list` to enumerate retained runs and `dotfiles log <N>` to read
-an earlier one.
+an earlier one. Prefer the exact `dotfiles log --id ... -v` command printed after
+a failure: it continues to select that run after later commands. The history
+list includes outcomes, profiles, durations, and parent IDs for restarted or
+elevated processes. `unfinished` means no finish record was written, which can
+also mean the process is still running.
+
+Failed-command output is visible in the default viewer. Use `--verbose` for
+other diagnostics, `--task <TASK_ID>` to isolate a task, and `--raw` for the
+original records. Successful stdout is omitted unless the command requests full
+capture. If persistent logging is unavailable, the CLI warns and does not offer
+a log command for that failure.
 
 Then narrow the command with `--only` and a selector from
 [Task reference](TASKS.md).

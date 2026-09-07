@@ -243,9 +243,12 @@ not appear in normal task rows or totals.
 Status labels/styles, message formatting, redundant-detail filtering, and cursor
 clearing share pure presentation helpers. Terminal rendering, buffered replay,
 notifications, and chronological run-log persistence remain separate sinks.
-Engine records are keyed by scheduler identity rather than display name, so
-dynamic tasks with the same label retain separate status, detail, and duration
-records. Command success policy consumes the scheduler's `ExecutionSummary`;
+Engine presentation and persistent records use `Task::log_key()` rather than
+display name. This key contains the implementation type name and any dynamic
+instance key; task decorators forward it. Scheduler dependencies still use
+`TaskId`. Dynamic tasks with the same label retain separate status, detail,
+and duration records. Command success policy consumes the scheduler's
+`ExecutionSummary`;
 logger counters are presentation data only.
 
 Visible rows use `✓`, `~`, `⊘`, and `✗`, plus the verbose-only `○` and `⁃`.
@@ -255,16 +258,34 @@ separator. Indented lines are actions the task took or planned.
 Normal output includes only tasks that changed state or need attention, with no
 detail truncation. Verbose output includes every task, elapsed time for tasks
 that ran, and each resource decision behind the result. Standard summaries
-report changed or would-change tasks, then current, ignored, and failed tasks as
-applicable. Test summaries report passed, ignored, and failed tasks. Both omit
-status glyphs and finish with elapsed time. The progress line and summary count
-the same tasks. When a task proves non-applicable, it leaves the progress
-denominator.
-`dotfiles log` prints a retained run log for post-run investigation. Each run
-writes its own file in a platform state directory and the newest 50 are kept, so
-a failed run stays readable after later runs. `dotfiles log --list` enumerates
-them and an index selects one. Without `--verbose` the command hides `debug`
-events so its output matches what the console showed during the run.
+report changed or would-change tasks alongside current, skipped, blocked,
+interrupted, and failed tasks as applicable. Check summaries report passed,
+skipped, blocked, interrupted, and failed tasks. Both omit status glyphs and
+finish with elapsed time. The progress denominator counts scheduled visible
+tasks within each phase; non-applicable tasks advance it but do not contribute
+to final totals.
+
+`dotfiles log` reads retained process logs. It lists outcomes, durations,
+profiles, stable run IDs, and parent IDs; exact IDs and task identities can be
+selected without parsing presentation text. Each process records start and
+finish facts. Restarted and elevated children receive their parent ID through
+an internal CLI argument. A missing finish record means unfinished, not a proven
+crash. Command success still comes from execution results, not log metadata.
+
+The append-only log keeps its timestamped text envelope. `record` events contain
+schema-versioned JSON with typed run, task, action, duration, and command facts.
+Multiline messages are encoded as records rather than flattened. The viewer
+renders known records, preserves unknown records, and supports legacy text logs.
+`--raw` exposes stored records. Shared resource mutations emit typed actions;
+older domain messages retain their formatting fallback during migration.
+
+Command capture defaults to retaining failed streams and successful stderr;
+successful stdout gets a byte count. `CommandSpec::output_log` allows full capture
+or omission, independently of argument redaction. Omission also removes streams
+from checked-command errors. Failure rows keep a concise cause while retained
+logs contain the full diagnostic chain. The failure hint names an exact retained
+run and appears only while its log is healthy. The newest 50 process logs are
+retained; log viewing does not create another run.
 
 ## Extending the system
 

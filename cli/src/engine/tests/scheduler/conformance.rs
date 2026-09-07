@@ -84,7 +84,7 @@ fn failure_and_panic_block_transitively_without_stopping_independent_work() {
                 task.assert_record(
                     log,
                     &summary,
-                    TaskStatus::Skipped,
+                    TaskStatus::Blocked,
                     TaskOutcome::Blocked,
                     Some("blocked by failed dependency: root"),
                 );
@@ -124,7 +124,7 @@ fn incomplete_dependencies_block_in_both_completion_policies() {
             child.assert_record(
                 log,
                 &summary,
-                TaskStatus::Skipped,
+                TaskStatus::Blocked,
                 TaskOutcome::Blocked,
                 Some("blocked by incomplete dependency: incomplete"),
             );
@@ -203,7 +203,7 @@ fn ordering_only_edges_wait_without_propagating_failure() {
         mixed.assert_record(
             log,
             &summary,
-            TaskStatus::Skipped,
+            TaskStatus::Blocked,
             TaskOutcome::Blocked,
             Some("blocked by failed dependency: failed"),
         );
@@ -235,7 +235,7 @@ fn dynamic_identity_disambiguates_same_label_records_and_edges() {
         blocked.assert_record(
             log,
             &summary,
-            TaskStatus::Skipped,
+            TaskStatus::Blocked,
             TaskOutcome::Blocked,
             Some("blocked by failed dependency: same-display-name"),
         );
@@ -260,7 +260,7 @@ fn cancellation_before_dispatch_and_after_start_records_every_task() {
                 root.assert_record(
                     log,
                     &summary,
-                    TaskStatus::Skipped,
+                    TaskStatus::Interrupted,
                     TaskOutcome::Cancelled,
                     Some("cancelled"),
                 );
@@ -272,7 +272,7 @@ fn cancellation_before_dispatch_and_after_start_records_every_task() {
                 task.assert_record(
                     log,
                     &summary,
-                    TaskStatus::Skipped,
+                    TaskStatus::Interrupted,
                     TaskOutcome::Cancelled,
                     Some("cancelled"),
                 );
@@ -293,7 +293,7 @@ fn interrupted_execution_cancels_dependents_without_a_global_request() {
         root.assert_record(
             log,
             &summary,
-            TaskStatus::Skipped,
+            TaskStatus::Interrupted,
             TaskOutcome::Cancelled,
             Some("interrupted"),
         );
@@ -302,7 +302,7 @@ fn interrupted_execution_cancels_dependents_without_a_global_request() {
             task.assert_record(
                 log,
                 &summary,
-                TaskStatus::Skipped,
+                TaskStatus::Interrupted,
                 TaskOutcome::Cancelled,
                 Some("cancelled"),
             );
@@ -344,7 +344,7 @@ fn dependency_failure_precedes_cancellation_and_incomplete_results() {
             child.assert_record(
                 log,
                 &summary,
-                TaskStatus::Skipped,
+                TaskStatus::Blocked,
                 TaskOutcome::Blocked,
                 Some("blocked by failed dependency: failed"),
             );
@@ -384,9 +384,9 @@ fn previous_phase_outcomes_preserve_blocking_and_ordering_semantics() {
             child.assert_ran(reason.is_none());
             let (status, expected) = match outcome {
                 TaskOutcome::Satisfied => (TaskStatus::Ok, TaskOutcome::Satisfied),
-                TaskOutcome::Cancelled => (TaskStatus::Skipped, TaskOutcome::Cancelled),
+                TaskOutcome::Cancelled => (TaskStatus::Interrupted, TaskOutcome::Cancelled),
                 TaskOutcome::Unmet | TaskOutcome::Failed | TaskOutcome::Blocked => {
-                    (TaskStatus::Skipped, TaskOutcome::Blocked)
+                    (TaskStatus::Blocked, TaskOutcome::Blocked)
                 }
             };
             child.assert_record(log, &summary, status, expected, reason);
@@ -396,7 +396,7 @@ fn previous_phase_outcomes_preserve_blocking_and_ordering_semantics() {
                 log,
                 &summary,
                 if cancelled {
-                    TaskStatus::Skipped
+                    TaskStatus::Interrupted
                 } else {
                     TaskStatus::Ok
                 },
@@ -433,7 +433,7 @@ fn completed_phase_results_are_used_by_later_dispatch() {
         child.assert_record(
             log,
             &second,
-            TaskStatus::Skipped,
+            TaskStatus::Blocked,
             TaskOutcome::Blocked,
             Some("blocked by failed dependency: root"),
         );

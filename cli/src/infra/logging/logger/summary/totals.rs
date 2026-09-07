@@ -28,6 +28,8 @@ pub(super) struct SummaryCounts {
     pub(super) passed: u32,
     pub(super) ok: u32,
     pub(super) skipped: u32,
+    pub(super) blocked: u32,
+    pub(super) interrupted: u32,
     pub(super) dry_run: u32,
     pub(super) failed: u32,
     pub(super) actions: ActionCounts,
@@ -45,6 +47,10 @@ impl SummaryCounts {
                 TaskStatus::Passed => counts.passed = counts.passed.saturating_add(1),
                 TaskStatus::Ok => counts.ok = counts.ok.saturating_add(1),
                 TaskStatus::NotApplicable => {}
+                TaskStatus::Blocked => counts.blocked = counts.blocked.saturating_add(1),
+                TaskStatus::Interrupted => {
+                    counts.interrupted = counts.interrupted.saturating_add(1);
+                }
                 TaskStatus::Skipped => counts.skipped = counts.skipped.saturating_add(1),
                 TaskStatus::DryRun => counts.dry_run = counts.dry_run.saturating_add(1),
                 TaskStatus::Failed => counts.failed = counts.failed.saturating_add(1),
@@ -93,9 +99,23 @@ pub(super) fn format_standard_totals(
     push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);
     push_count(
         &mut parts,
+        counts.blocked,
+        TextStyle::Yellow,
+        "blocked",
+        style,
+    );
+    push_count(
+        &mut parts,
+        counts.interrupted,
+        TextStyle::Yellow,
+        "interrupted",
+        style,
+    );
+    push_count(
+        &mut parts,
         counts.skipped,
         TextStyle::Yellow,
-        "ignored",
+        "skipped",
         style,
     );
     parts
@@ -120,9 +140,23 @@ pub(super) fn format_check_totals(counts: SummaryCounts, style: StyleChoice) -> 
     push_count(&mut parts, counts.passed, TextStyle::Green, "passed", style);
     push_count(
         &mut parts,
+        counts.blocked,
+        TextStyle::Yellow,
+        "blocked",
+        style,
+    );
+    push_count(
+        &mut parts,
+        counts.interrupted,
+        TextStyle::Yellow,
+        "interrupted",
+        style,
+    );
+    push_count(
+        &mut parts,
         counts.skipped,
         TextStyle::Yellow,
-        "ignored",
+        "skipped",
         style,
     );
     if parts.is_empty() {

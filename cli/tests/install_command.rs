@@ -180,6 +180,8 @@ fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
                 .arg(overlay.path())
                 .env("HOME", home.path())
                 .env("USERPROFILE", home.path())
+                .env("XDG_STATE_HOME", home.path().join("state"))
+                .env("DOTFILES_LOG_DIR", home.path().join("logs"))
                 .env("DOTFILES_SKIP_SELF_UPDATE", "1")
                 .env_remove("DOTFILES_OVERLAY")
                 .env_remove("DOTFILES_REEXEC_GUARD")
@@ -646,4 +648,176 @@ fn install_tasks_should_run_with_parallel_enabled() {
     for task in &all_tasks {
         let _ = task.should_run(&ec.ctx);
     }
+}
+
+#[test]
+fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"log-example\"]\n")
+        .with_symlink_source_content("log-example", "example\n")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let overlay = tempfile::tempdir().unwrap();
+    let log_dir = home.path().join("logs");
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
+    command
+        .args([
+            "install",
+            "--profile",
+            "base",
+            "--only",
+            "symlinks",
+            "--dry-run",
+            "--no-repo-update",
+            "--non-interactive",
+        ])
+        .arg("--root")
+        .arg(repo.root_path())
+        .arg("--overlay")
+        .arg(overlay.path())
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .env("XDG_STATE_HOME", home.path().join("state"))
+        .env("DOTFILES_LOG_DIR", &log_dir)
+        .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+        .env_remove("DOTFILES_OVERLAY")
+        .env_remove("DOTFILES_REEXEC_GUARD")
+        .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
+        .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD");
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parent = std::fs::read_dir(&log_dir)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    let parent_id = parent.file_stem().unwrap().to_str().unwrap();
+    let parent_contents = std::fs::read_to_string(&parent).unwrap();
+    let records: Vec<serde_json::Value> = parent_contents
+        .lines()
+        .filter_map(|line| {
+            let (_, json) = line.split_once(" [record] ")?;
+            serde_json::from_str(json).ok()
+        })
+        .collect();
+    assert!(
+        records
+            .iter()
+            .any(|r| r["type"] == "run_start" && r["run_id"] == parent_id)
+    );
+    assert!(
+        records.iter().any(|r| r["type"] == "run_finish"
+            && r["outcome"] == "succeeded"
+            && r["exit_code"] == 0)
+    );
+    assert!(records.iter().any(|r| r["type"] == "action"
+        && r["planned"] == true
+        && r["subject"].as_str().unwrap().contains("log-example")));
+    let task_id = records
+        .iter()
+        .find(|r| r["type"] == "task_result" && r["status"] == "dry_run")
+        .unwrap()["task_id"]
+        .as_str()
+        .unwrap();
+
+    // The same binary accepts explicit parent linkage without changing the preview scope.
+    command.args(["--parent-run-id", parent_id]);
+    assert!(command.output().unwrap().status.success());
+    let history = read_retained_log(&log_dir, &["--list"]);
+    assert!(
+        history.contains("succeeded")
+            && history.contains("base")
+            && history.contains(&format!("/ {parent_id}")),
+        "{history}"
+    );
+    assert_eq!(
+        read_retained_log(&log_dir, &["--id", parent_id, "--raw"]),
+        parent_contents
+    );
+    let task_log = read_retained_log(&log_dir, &["--id", parent_id, "--task", task_id]);
+    assert!(
+        task_log.contains("log-example") && !task_log.contains("[run_start]"),
+        "{task_log}"
+    );
+    assert_eq!(
+        std::fs::read_dir(&log_dir).unwrap().count(),
+        2,
+        "viewing logs must not create a run"
+    );
+    assert!(
+        !home.path().join("log-example").exists(),
+        "preview must not install the link"
+    );
+}
+
+fn read_retained_log(log_dir: &std::path::Path, args: &[&str]) -> String {
+    let result = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"))
+        .arg("log")
+        .args(args)
+        .env("DOTFILES_LOG_DIR", log_dir)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    String::from_utf8(result.stdout).unwrap()
+}
+
+#[test]
+fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file("symlinks.toml", "this is invalid toml")
+        .build();
+    let home = tempfile::tempdir().unwrap();
+    let overlay = tempfile::tempdir().unwrap();
+    let log_dir = home.path().join("logs");
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"))
+        .args([
+            "install",
+            "--profile",
+            "base",
+            "--only",
+            "symlinks",
+            "--dry-run",
+            "--no-repo-update",
+            "--non-interactive",
+        ])
+        .arg("--root")
+        .arg(repo.root_path())
+        .arg("--overlay")
+        .arg(overlay.path())
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .env("XDG_STATE_HOME", home.path().join("state"))
+        .env("DOTFILES_LOG_DIR", &log_dir)
+        .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+        .env_remove("DOTFILES_OVERLAY")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let id = text
+        .split_once("Run 'dotfiles log --id ")
+        .unwrap()
+        .1
+        .split_once(" -v'")
+        .unwrap()
+        .0;
+    let raw = read_retained_log(&log_dir, &["--id", id, "--raw"]);
+    assert!(
+        raw.contains("\"type\":\"run_finish\"") && raw.contains("\"outcome\":\"failed\""),
+        "{raw}"
+    );
+    assert!(read_retained_log(&log_dir, &["--list"]).contains("failed"));
 }

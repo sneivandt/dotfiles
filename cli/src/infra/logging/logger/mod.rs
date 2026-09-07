@@ -245,6 +245,13 @@ impl Logger {
         self.run_log.as_deref().is_some_and(RunLog::is_healthy)
     }
 
+    /// Presentation fact used by run history, never by command success policy.
+    pub(crate) fn has_interrupted_tasks(&self) -> bool {
+        self.lock_tasks()
+            .iter()
+            .any(|task| task.status == TaskStatus::Interrupted)
+    }
+
     /// Return whether verbose output mode is enabled.
     pub const fn is_verbose(&self) -> bool {
         self.verbose
@@ -308,11 +315,32 @@ impl Logger {
 
     /// Record a task result for the summary.
     pub fn record_task(&self, task: TaskEntry) {
+        if let Some(log) = &self.run_log {
+            log.record_in_context(
+                &task.task_id,
+                super::records::Record::TaskResult {
+                    task_id: task.task_id.clone(),
+                    name: task.name.clone(),
+                    status: task.status,
+                    reason: task.message.clone(),
+                    actions: task.actions,
+                },
+            );
+        }
         self.lock_tasks().push(task);
     }
 
     /// Attach a measured duration to the entry for a scheduler identity.
     pub fn record_task_duration(&self, task_id: &str, duration: std::time::Duration) {
+        if let Some(log) = &self.run_log {
+            log.record_in_context(
+                task_id,
+                super::records::Record::TaskDuration {
+                    task_id: task_id.into(),
+                    elapsed_us: super::records::elapsed_us(duration),
+                },
+            );
+        }
         if let Some(task) = self
             .lock_tasks()
             .iter_mut()
@@ -416,6 +444,20 @@ impl Logger {
 }
 
 impl Output for Logger {
+    fn action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
+        if let Some(run) = &self.run_log {
+            run.record_action(verb, subject, planned, message);
+        }
+        self.emit_console(
+            if planned {
+                MsgKind::DryRun
+            } else {
+                MsgKind::Info
+            },
+            message,
+        );
+    }
+
     fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
         if let Some(run_log) = &self.run_log {
             run_log.emit(kind.log_event(), &msg);
@@ -671,9 +713,17 @@ mod tests {
             !contents.contains("Summary"),
             "file summary should not include the full task breakdown: {contents}"
         );
-        assert!(
-            !contents.contains("summary-test"),
-            "file summary should not repeat individual task names: {contents}"
+        assert_eq!(
+            contents
+                .lines()
+                .filter_map(super::super::records::StoredRecord::from_line)
+                .filter(|record| matches!(
+                    record.record,
+                    super::super::records::Record::TaskResult { .. }
+                ))
+                .count(),
+            1,
+            "task facts are recorded once; the summary must not repeat them"
         );
         assert!(
             contents.contains("No checks ran ·"),

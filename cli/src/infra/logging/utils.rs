@@ -88,7 +88,7 @@ pub(super) fn compact_detail_line(line: &str) -> String {
 ///
 /// Tested against the compact form so every tense of the same action
 /// (`would link: …`, `linked: …`, `link …`) is recognised alike.
-fn is_action_line(line: &str) -> bool {
+pub(super) fn is_action_line(line: &str) -> bool {
     let compact = compact_detail_line(line);
     ACTION_VERBS.iter().any(|verb| {
         compact
@@ -110,13 +110,18 @@ fn is_action_line(line: &str) -> bool {
 /// as `using winget package manager`, or a warning) acts as a barrier and keeps
 /// its position, so lines whose order carries meaning are left alone.
 pub(super) fn sort_action_runs<T>(items: &mut [T], text: impl Fn(&T) -> &str) {
+    sort_action_runs_by(items, &text, |item| is_action_line(text(item)));
+}
+
+pub(super) fn sort_action_runs_by<T>(
+    items: &mut [T],
+    text: impl Fn(&T) -> &str,
+    is_action: impl Fn(&T) -> bool,
+) {
     let mut start = 0;
     let mut index = 0;
     while index <= items.len() {
-        if !items
-            .get(index)
-            .is_some_and(|item| is_action_line(text(item)))
-        {
+        if !items.get(index).is_some_and(&is_action) {
             if let Some(run) = items.get_mut(start..index) {
                 run.sort_by_cached_key(|item| compact_detail_line(text(item)));
             }

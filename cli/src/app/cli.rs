@@ -24,6 +24,9 @@ Examples:
 "
 )]
 pub struct Cli {
+    /// Internal linkage for restarted and elevated processes.
+    #[arg(long, hide = true, global = true)]
+    pub parent_run_id: Option<String>,
     /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Command,
@@ -427,6 +430,18 @@ pub struct LogOpts {
     /// Run to show, newest first (0 is the latest run)
     #[arg(value_name = "RUN")]
     pub run: Option<usize>,
+
+    /// Read an exact run identifier from --list or a failure hint
+    #[arg(long, value_name = "ID", conflicts_with_all = ["run", "list"])]
+    pub id: Option<String>,
+
+    /// Only show events for this exact task identity
+    #[arg(long, value_name = "TASK_ID", conflicts_with = "list")]
+    pub task: Option<String>,
+
+    /// Print original stored records, including diagnostics
+    #[arg(long, conflicts_with = "list")]
+    pub raw: bool,
 
     /// List retained runs instead of showing one
     #[arg(short, long)]

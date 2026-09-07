@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
+use super::records::{Record, RunOutcome, StoredRecord, elapsed_us};
 use super::types::{ExecutionEvent, LogEvent};
 use super::utils::{format_utc_compact, format_utc_datetime_us, strip_ansi};
 
@@ -149,6 +150,7 @@ pub struct RunLog {
     start: Instant,
     sequence: AtomicU64,
     healthy: AtomicBool,
+    finished: AtomicBool,
 }
 
 impl RunLog {
@@ -194,7 +196,55 @@ impl RunLog {
             start,
             sequence: AtomicU64::new(0),
             healthy: AtomicBool::new(true),
+            finished: AtomicBool::new(false),
         })
+    }
+
+    /// Stable filename stem, also accepted by `dotfiles log --id`.
+    pub(crate) fn id(&self) -> String {
+        self.path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    pub(crate) fn start_run(&self, command: &str, parent_run_id: Option<String>) {
+        self.record(Record::RunStart {
+            run_id: self.id(),
+            command: command.into(),
+            parent_run_id,
+        });
+    }
+
+    pub(crate) fn finish(&self, outcome: RunOutcome, exit_code: i32) {
+        if !self.finished.swap(true, Ordering::Relaxed) {
+            self.record(Record::RunFinish {
+                outcome,
+                elapsed_us: elapsed_us(self.start.elapsed()),
+                exit_code,
+            });
+        }
+    }
+
+    pub(crate) fn record_action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
+        self.record(Record::Action {
+            verb: verb.into(),
+            subject: subject.into(),
+            planned,
+            message: message.into(),
+        });
+    }
+
+    pub(crate) fn record(&self, record: Record) {
+        self.record_in_context(&log_thread_name(), record);
+    }
+
+    pub(crate) fn record_in_context(&self, context: &str, record: Record) {
+        match serde_json::to_string(&StoredRecord::new(context, record)) {
+            Ok(message) => self.write_event(LogEvent::Record, context, &message),
+            Err(error) => self.mark_degraded(&format!("encoding record failed: {error}")),
+        }
     }
 
     /// Emit an event, attributing it to the current thread's task context.
@@ -220,14 +270,21 @@ impl RunLog {
 
     /// Deliver one typed execution event to the persistent sink.
     pub(in crate::infra::logging) fn emit_event(&self, event: &ExecutionEvent<'_>) {
-        let Some(formatted_message) = format_log_message(&event.message) else {
-            return;
-        };
         let context = event
             .context
             .as_deref()
             .map_or_else(log_thread_name, str::to_string);
-        self.write_event(event.kind, &context, &formatted_message);
+        if event.message.contains(['\n', '\r']) {
+            self.record_in_context(
+                &context,
+                Record::Message {
+                    event: event.kind.name().into(),
+                    text: strip_ansi(&event.message),
+                },
+            );
+        } else if let Some(formatted_message) = format_log_message(&event.message) {
+            self.write_event(event.kind, &context, &formatted_message);
+        }
     }
 
     fn write_event(&self, event: LogEvent, context: &str, formatted_message: &str) {
@@ -689,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn run_log_collapses_multiline_message_without_blank_lines() {
+    fn run_log_preserves_multiline_message_without_splitting_records() {
         let (run_log, _tmp) = isolated_run_log();
         run_log.emit(LogEvent::Info, "first\n\n  second  ");
         let contents = fs::read_to_string(run_log.path()).unwrap();
@@ -697,9 +754,10 @@ mod tests {
             .lines()
             .find(|line| line.contains("first"))
             .unwrap();
+        let stored = StoredRecord::from_line(line).unwrap();
         assert!(
-            line.ends_with("first | second"),
-            "multiline messages should be collapsed: {line}"
+            matches!(stored.record, Record::Message { text, .. } if text == "first\n\n  second  "),
+            "multiline messages must retain indentation, blank lines and trailing spaces"
         );
         assert!(
             !contents.lines().any(str::is_empty),
@@ -736,5 +794,30 @@ mod tests {
             !contents.contains("\x1b[31m"),
             "ANSI codes should be stripped"
         );
+    }
+    #[test]
+    fn lifecycle_preserves_parent_and_records_one_finish() {
+        let (log, _tmp) = isolated_run_log();
+        log.start_run("install", Some("parent-id".into()));
+        log.finish(RunOutcome::Failed, 1);
+        log.finish(RunOutcome::Succeeded, 0);
+        let content = fs::read_to_string(log.path()).unwrap();
+        let records: Vec<_> = content
+            .lines()
+            .filter_map(StoredRecord::from_line)
+            .collect();
+        assert!(
+            matches!(&records[0].record, Record::RunStart { run_id, parent_run_id, .. }
+            if *run_id == log.id() && parent_run_id.as_deref() == Some("parent-id"))
+        );
+        assert!(matches!(
+            records[1].record,
+            Record::RunFinish {
+                outcome: RunOutcome::Failed,
+                exit_code: 1,
+                ..
+            }
+        ));
+        assert_eq!(records.len(), 2);
     }
 }

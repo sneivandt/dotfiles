@@ -120,7 +120,7 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
 
     let log = RecordingLog::default();
     let task = TestTask::new("blocked");
-    record_scheduler_skip(&task, &log, "dependency failed");
+    record_scheduler_skip(&task, &log, "dependency failed", TaskStatus::Blocked);
     assert_eq!(
         *log.messages.lock().unwrap(),
         [(MsgKind::Debug, "dependency failed".to_string())],
@@ -129,7 +129,7 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
     {
         let records = log.records.lock().unwrap();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].status, TaskStatus::Skipped);
+        assert_eq!(records[0].status, TaskStatus::Blocked);
         assert_eq!(records[0].message.as_deref(), Some("dependency failed"));
         drop(records);
     }

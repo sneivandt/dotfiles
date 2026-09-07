@@ -64,12 +64,12 @@ ShellPopup {
 
     function timeSummary() {
         if (!available)
-            return "Waiting for battery data";
+            return "";
         if (charging && battery.timeToFull > 0)
             return duration(battery.timeToFull) + " until full";
         if (battery.state === UPowerDeviceState.Discharging && battery.timeToEmpty > 0)
             return duration(battery.timeToEmpty) + " remaining";
-        return stateLabel();
+        return "";
     }
 
     ColumnLayout {
@@ -121,6 +121,7 @@ ShellPopup {
                 Text {
                     Layout.fillWidth: true
                     text: root.timeSummary()
+                    visible: text.length > 0
                     color: Theme.mutedStrong
                     font.family: Theme.font
                     font.pixelSize: Theme.textBody
@@ -149,57 +150,6 @@ ShellPopup {
                             }
                         }
                     }
-                }
-
-                Repeater {
-                    model: [
-                        {
-                            "label": "Power",
-                            "value": root.available && root.battery.changeRate > 0 ? root.battery.changeRate.toFixed(1) + " W" : "--"
-                        },
-                        {
-                            "label": "Health",
-                            "value": root.available && root.battery.healthSupported ? Math.round(root.battery.healthPercentage * 100) + "%" : "--"
-                        },
-                        {
-                            "label": "Capacity",
-                            "value": root.available && root.battery.energyCapacity > 0 ? root.battery.energyCapacity.toFixed(1) + " Wh" : "--"
-                        }
-                    ]
-
-                    RowLayout {
-                        id: stat
-
-                        required property var modelData
-
-                        Layout.fillWidth: true
-                        spacing: Theme.spacing
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: stat.modelData.label
-                            color: Theme.mutedStrong
-                            font.family: Theme.font
-                            font.pixelSize: Theme.textSmall
-                        }
-
-                        Text {
-                            text: stat.modelData.value
-                            color: Theme.mutedStrong
-                            font.family: Theme.font
-                            font.pixelSize: Theme.textSmall
-                        }
-                    }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    Layout.topMargin: Theme.spacing
-                    text: root.available && root.battery.model ? root.battery.model : "System battery"
-                    color: Theme.mutedStrong
-                    font.family: Theme.font
-                    font.pixelSize: Theme.textSmall
-                    wrapMode: Text.Wrap
                 }
             }
         }

@@ -89,7 +89,7 @@ ShellPopup {
 
             Layout.fillWidth: true
             title: "Network"
-            subtitle: !root.network.available ? (root.network.loading ? "Checking connection…" : "Status unavailable") : root.network.connected ? (root.network.connectivity === "portal" ? "Sign in to this network" : root.network.connectivity === "limited" ? "Connected · limited internet" : "Connected") : "No active connection"
+            subtitle: !root.network.available ? (root.network.loading ? "Checking connection…" : "Status unavailable") : root.network.connected ? (root.network.connectivity === "portal" ? "Sign in to this network" : root.network.connectivity === "limited" ? "Limited internet" : "") : "No active connection"
             icon: root.network.icon
             accentColor: Theme.blue
             accentBackground: Theme.blueSoft
@@ -120,26 +120,23 @@ ShellPopup {
                 width: scroll.availableWidth
                 spacing: Theme.spacing
 
-                MenuButton {
-                    Layout.fillWidth: true
-                    glyph: root.network.icon
-                    label: root.network.connected ? root.network.connectionName : root.network.available ? "Not connected" : "Connection unknown"
-                    detail: root.network.connected ? (root.network.connectionType === "ethernet" ? "Wired" : root.network.connectionType === "wifi" ? "Wi-Fi" : root.network.connectionType) + " · " + root.network.deviceName : root.network.available ? "Choose a network below" : "Last known state is retained"
-                    trailing: root.network.connected ? (root.network.available ? "Connected" : "Last known") : ""
-                    clickable: false
-                    showChevron: false
-                }
+                Repeater {
+                    model: root.network.connections.filter(connection => {
+                        return connection.type !== "wifi" || root.enteringCredentials || !root.network.wifiEnabled || !root.network.networks.some(accessPoint => {
+                            return accessPoint.active && accessPoint.uuid === connection.uuid && accessPoint.device === connection.device;
+                        });
+                    })
 
-                Text {
-                    Layout.fillWidth: true
-                    visible: root.network.connections.length > 1
-                    text: root.network.connections.slice(1).map(connection => {
-                        return connection.name + " · " + connection.device;
-                    }).join("\n")
-                    font.family: Theme.font
-                    font.pixelSize: Theme.textSmall
-                    color: Theme.mutedStrong
-                    wrapMode: Text.Wrap
+                    delegate: MenuButton {
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        glyph: modelData.type === "wifi" ? "\uf1eb" : "\uf6ff"
+                        label: modelData.name
+                        trailing: root.network.available ? "Connected" : "Last known"
+                        clickable: false
+                        showChevron: false
+                    }
                 }
 
                 MenuButton {
@@ -149,9 +146,7 @@ ShellPopup {
                     label: "Wi-Fi"
                     detail: !root.network.wifiHardwareEnabled ? "Blocked by hardware or airplane mode" : root.network.adapters.filter(adapter => {
                         return adapter.managed;
-                    }).length === 0 ? "Adapters are unmanaged · use Advanced" : root.network.adapters.map(adapter => {
-                        return adapter.name;
-                    }).join(" · ")
+                    }).length === 0 ? "Adapters are unmanaged · use Advanced" : ""
                     trailing: root.network.wifiEnabled ? "On" : "Off"
                     selected: root.network.wifiEnabled
                     enabled: root.network.available && root.network.wifiAvailable && !root.network.working
@@ -207,8 +202,8 @@ ShellPopup {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: !root.enteringCredentials && root.network.wifiAvailable && root.network.wifiEnabled
-                    text: root.network.networks.length === 0 ? (root.network.scanning ? "Looking for networks..." : "No networks found. Use Rescan to search.") : "Available and saved networks"
+                    visible: !root.enteringCredentials && root.network.wifiAvailable && root.network.wifiEnabled && root.network.networks.length === 0
+                    text: root.network.scanning ? "Looking for networks..." : "No networks found. Use Rescan to search."
                     font.family: Theme.font
                     font.pixelSize: Theme.textSmall
                     color: Theme.mutedStrong
@@ -225,9 +220,18 @@ ShellPopup {
 
                         Layout.fillWidth: true
                         label: modelData.name
-                        detail: modelData.security + " · " + modelData.device + (modelData.advanced ? " · opens Advanced" : modelData.saved ? " · Saved" : "")
-                        trailing: modelData.active ? "Connected" : modelData.available ? modelData.signal + "%" : "Saved"
-                        trailingDetail: modelData.available ? (modelData.active ? modelData.signal + "%" : "") : modelData.hidden ? "Hidden" : "Not in range"
+                        detail: {
+                            const parts = [];
+                            if (modelData.advanced)
+                                parts.push("Opens Advanced settings");
+                            else if (modelData.saved && !modelData.active && modelData.available)
+                                parts.push("Saved");
+                            if (root.network.adapters.length > 1)
+                                parts.push(modelData.device);
+                            return parts.join(" · ");
+                        }
+                        trailing: modelData.active ? (root.network.available ? "Connected" : "Last known") : modelData.available ? modelData.signal + "%" : "Saved"
+                        trailingDetail: !modelData.available && !modelData.active ? (modelData.hidden ? "Hidden" : "Not in range") : ""
                         glyph: modelData.protected || modelData.advanced ? "\uf023" : "\uf1eb"
                         selected: modelData.active
                         enabled: root.network.available && !root.network.working

@@ -116,6 +116,11 @@ impl Logger {
         self.task_console_output_emitted.load(Ordering::Relaxed)
     }
 
+    /// Return whether the durable console output already ends with a blank line.
+    pub(in crate::infra::logging) fn console_ends_with_blank_line(&self) -> bool {
+        self.console_ends_with_blank_line.load(Ordering::Relaxed)
+    }
+
     /// Remember that a completed task emitted durable console output.
     pub(in crate::infra::logging) fn mark_task_console_output(&self) {
         self.task_console_output_emitted

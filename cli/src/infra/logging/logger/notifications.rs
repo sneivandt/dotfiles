@@ -45,9 +45,12 @@ impl Logger {
         if self.has_status_row() {
             self.replace_status_line(&line);
         } else {
+            // Keep the startup separator durable so clearing the transient
+            // status row leaves the final summary at the same visual level.
+            self.separate_from_startup();
             self.append_status_line(
                 &line,
-                self.has_transient_rows() || self.has_task_console_output(),
+                self.has_transient_rows() || !self.console_ends_with_blank_line(),
             );
         }
     }
@@ -139,8 +142,10 @@ impl Logger {
 
 #[cfg(test)]
 mod tests {
-    use crate::infra::logging::isolated_logger;
+    use std::sync::atomic::Ordering;
+
     use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
+    use crate::infra::logging::{OutputExt as _, isolated_logger};
 
     fn task_entry(name: &str, status: TaskStatus, visibility: TaskVisibility) -> TaskEntry {
         TaskEntry::new(
@@ -311,14 +316,51 @@ mod tests {
     }
 
     #[test]
-    fn notify_task_start_sets_progress_rows_to_one() {
+    fn notify_task_start_separates_the_first_progress_row_from_startup() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.progress_rows_count(), 0, "progress_rows starts at 0");
+        assert!(!log.startup_separator_emitted.load(Ordering::Relaxed));
+
         log.notify_task_start_with_progress("task-a", true);
+
         assert_eq!(
             log.progress_rows_count(),
             1,
-            "progress_rows should be 1 after first notify_task_start"
+            "the durable separator should not count as a transient progress row"
+        );
+        assert!(
+            log.startup_separator_emitted.load(Ordering::Relaxed),
+            "the first running row should be separated from startup output"
+        );
+    }
+
+    #[test]
+    fn notify_task_start_adds_one_spacer_after_later_console_output() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.separate_from_startup();
+        log.warn("warning after startup");
+
+        log.notify_task_start_with_progress("task-a", true);
+
+        assert_eq!(
+            log.progress_rows_count(),
+            2,
+            "the status and its added blank spacer should both be transient"
+        );
+    }
+
+    #[test]
+    fn notify_task_start_reuses_an_existing_blank_line() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.always("prior output");
+        log.always("");
+
+        log.notify_task_start_with_progress("task-a", true);
+
+        assert_eq!(
+            log.progress_rows_count(),
+            1,
+            "an existing blank line should not be duplicated or made transient"
         );
     }
 
@@ -432,6 +474,8 @@ mod tests {
     #[test]
     fn notify_task_start_adds_blank_row_after_task_console_output() {
         let (log, _tmp, _guard) = isolated_logger();
+        log.separate_from_startup();
+        log.task_result("completed task");
         log.mark_task_console_output();
         assert!(log.task_console_output_emitted());
         log.notify_task_start_with_progress("task-a", true);

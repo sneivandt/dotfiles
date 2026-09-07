@@ -12,7 +12,7 @@ use std::sync::Arc;
 use console::DotfilesFormatter;
 pub(in crate::infra::logging) use console::{
     emit_console, emit_task_result, progress_clear_sequence, set_transient_progress, set_verbose,
-    take_transient_progress_rows, transient_progress_rows,
+    take_transient_progress_rows, transient_progress_rows, visible_line_is_blank,
 };
 pub(in crate::infra::logging) use run_log::RunLogLayer;
 

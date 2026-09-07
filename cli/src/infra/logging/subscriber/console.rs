@@ -78,6 +78,15 @@ pub(super) fn ui_line_with_style(
     }
 }
 
+pub(in crate::infra::logging) fn visible_line_is_blank(
+    kind: MsgKind,
+    msg: &str,
+    verbose: bool,
+) -> Option<bool> {
+    ui_line_with_style(kind, msg, StyleChoice::auto(false, true), verbose)
+        .map(|line| line.trim().is_empty())
+}
+
 /// Render a user-facing logger message without routing it through `tracing`.
 pub(in crate::infra::logging) fn emit_console(kind: MsgKind, msg: &str, verbose: bool) {
     let is_error = matches!(kind, MsgKind::Warn | MsgKind::Error);

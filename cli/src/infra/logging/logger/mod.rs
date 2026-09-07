@@ -63,6 +63,8 @@ pub struct Logger {
     pub(super) status_row_visible: AtomicBool,
     /// Whether any completed task has emitted durable console output.
     pub(super) task_console_output_emitted: AtomicBool,
+    /// Whether the most recent durable console line is blank.
+    pub(super) console_ends_with_blank_line: AtomicBool,
     /// Number of tasks scheduled for this run, used as the progress denominator.
     pub(super) task_total: AtomicUsize,
     /// Number of tasks that have finished, used as the progress numerator.
@@ -147,6 +149,7 @@ impl Logger {
             progress_rows: AtomicU16::new(0),
             status_row_visible: AtomicBool::new(false),
             task_console_output_emitted: AtomicBool::new(false),
+            console_ends_with_blank_line: AtomicBool::new(false),
             task_total: AtomicUsize::new(0),
             tasks_completed: AtomicUsize::new(0),
             run_log,
@@ -301,6 +304,8 @@ impl Logger {
         if let Some(run_log) = &self.run_log {
             run_log.emit(LogEvent::Info, msg);
         }
+        self.console_ends_with_blank_line
+            .store(msg.trim().is_empty(), Ordering::Relaxed);
         if self.console_output == ConsoleOutput::Enabled {
             super::subscriber::emit_task_result(msg);
         }
@@ -308,6 +313,10 @@ impl Logger {
 
     /// Render one message directly to the console without recording it again.
     pub(in crate::infra::logging) fn emit_console(&self, kind: MsgKind, msg: &str) {
+        if let Some(is_blank) = super::subscriber::visible_line_is_blank(kind, msg, self.verbose) {
+            self.console_ends_with_blank_line
+                .store(is_blank, Ordering::Relaxed);
+        }
         if self.console_output == ConsoleOutput::Enabled {
             super::subscriber::emit_console(kind, msg, self.verbose);
         }
@@ -437,7 +446,9 @@ impl Logger {
     /// consecutive startup lines remain a compact header. The guard is
     /// idempotent for paths that emit before — or without — a header.
     pub fn separate_from_startup(&self) {
-        if !self.startup_separator_emitted.swap(true, Ordering::Relaxed) {
+        if !self.startup_separator_emitted.swap(true, Ordering::Relaxed)
+            && !self.console_ends_with_blank_line.load(Ordering::Relaxed)
+        {
             self.always("");
         }
     }

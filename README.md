@@ -1,7 +1,7 @@
 <h1 align="center">Dotfiles</h1>
 
 <p align="center">
-  <strong>Manage Linux and Windows machines with declarative config and a Rust CLI.</strong>
+  <strong>My Arch Linux and Windows setup, managed by a Rust CLI.</strong>
 </p>
 
 <p align="center">
@@ -20,114 +20,182 @@
   <a href="docs/CONTRIBUTING.md">Contribute</a>
 </p>
 
-<p align="center">
-  The CLI inspects the current machine and applies only the changes needed to match the selected profile.
-</p>
+Packages, symlinks, and system settings live in TOML files. Choose a profile
+and preview it with `--dry-run`. Run `dotfiles install` to apply the changes;
+it checks the machine first and skips anything that already matches.
 
 <p align="center">
-  <img src="docs/assets/terminal-screenshot.svg" alt="Generated terminal output of a dotfiles install">
+  <img src="docs/assets/terminal-screenshot.svg" width="600" alt="Example install output showing changed symlinks, packages, and the default shell, followed by a summary">
 </p>
 
 ## Scope
 
-This is my opinionated setup for Arch Linux, Windows, and WSL. I keep it public
-so others can borrow the engine or adapt the configuration, but it is not a
-general-purpose configuration manager. Its profiles, packages, desktop setup,
-and app choices match my machines and preferences.
+I use these dotfiles on my own machines. Borrow individual configs or adapt
+the whole setup, but read through the package lists and settings before
+installing them.
 
-To adapt it, start with `conf/`, `symlinks/`, and the profile definitions. Other
-platforms or package managers require code changes.
+The CLI installs packages through pacman and the AUR on Arch Linux, and winget
+on Windows. Shell and file configuration also works on other Linux distributions.
+
+## What it manages
+
+Your profile and operating system determine which settings apply.
+
+| Area | Included configuration |
+|---|---|
+| Shell | Zsh, Bash, PowerShell, tmux, `PATH`, and completions |
+| Editors | Vim/Neovim, VS Code settings, and extensions |
+| Terminal | Alacritty and Windows Terminal |
+| Git | Global settings, aliases, and repository hooks |
+| Packages | pacman and AUR packages via `paru`; winget packages on Windows |
+| Arch desktop | Hyprland, Quickshell, mako, fuzzel, and GTK settings |
+| Services | systemd user and system units |
+| AI tooling | APM packages and plugins, Copilot and Codex settings |
+| Windows | Current-user registry values and Developer Mode |
 
 ## Quick start
 
-From a repository checkout, preview the changes first, then run the install
-without `--dry-run`.
+You'll need Git, plus `curl` or `wget` on Linux. On Windows, run the commands
+in PowerShell. You only need Rust to build from source.
+
+Clone into a folder you intend to keep. The installed symlinks point back to it.
+
+```sh
+git clone https://github.com/sneivandt/dotfiles.git
+cd dotfiles
+```
+
+To keep your own changes, clone a fork and edit
+[the configuration files](#make-it-yours) before continuing.
+
+### Profiles
+
+| Profile | Use it for |
+|---|---|
+| `base` | Shell tools and core configuration for servers, WSL, and command-line environments |
+| `desktop` | The core setup plus GUI apps and desktop services |
+
+Both profiles work on Linux and Windows. The CLI detects the operating system.
+Choose a profile with `--profile`; if none is selected or saved, `install`
+asks and remembers your answer. See [Profiles](docs/PROFILES.md) for details.
 
 ### Linux
+
+Preview the `base` profile:
 
 ```bash
 ./dotfiles.sh install --profile base --dry-run
 ```
 
+Review the output, then apply it:
+
+```bash
+./dotfiles.sh install --profile base
+```
+
+For an Arch workstation, use `--profile desktop` in both commands.
+
 ### Windows
+
+Preview the `desktop` profile:
 
 ```powershell
 .\dotfiles.ps1 install --profile desktop --dry-run
 ```
 
-The examples use `base` for a command-line environment and `desktop` for a
-workstation. Profiles describe machine roles, not operating systems, so either
-profile works on Linux or Windows. See [Profiles](#profiles) for details.
+Review the output, then apply it:
 
-The wrappers download and verify a compatible release binary when needed. Pass
-`--build` to compile from source. After installation, run `dotfiles` directly.
+```powershell
+.\dotfiles.ps1 install --profile desktop
+```
 
-## What it manages
+See the [Windows guide](docs/WINDOWS.md) for winget, symlinks, and elevation.
 
-| Area | Managed state |
-|------|---------------|
-| Shell | Zsh and Bash configuration, `PATH`, and completions |
-| Editors | Neovim, VS Code, and extensions |
-| Terminal | Alacritty and Windows Terminal settings |
-| Git | Global settings and hooks |
-| Packages | pacman and AUR packages via `paru` on Arch; winget packages on Windows |
-| Linux desktop | Hyprland, Quickshell, mako, fuzzel, and GTK configuration |
-| Services | systemd user and system units |
-| AI tooling | APM packages and plugins, plus Copilot and Codex settings |
-| Windows | Current-user registry values, Developer Mode, and WSL configuration |
+Both scripts download the CLI when needed and verify its SHA-256 checksum.
+When `gh` is installed, they also verify that GitHub built the download for
+this repository. Downloads are available for Linux x86-64 and ARM64, and
+Windows x86-64. Pass `--build` to compile from your checkout instead.
+See [Bootstrap](docs/USAGE.md#bootstrap) for verification and update details.
 
-Desired state lives in `conf/*.toml`. See the
-[Configuration Reference](docs/CONFIGURATION.md) for the file formats and the
-[Task Reference](docs/TASKS.md) for the tasks behind these areas.
+## CLI at a glance
+
+After installation, open a new shell and use `dotfiles` directly.
+
+| Command | What it does |
+|---------|--------------|
+| `dotfiles install` | Syncs the repository and applies the selected configuration |
+| `dotfiles install --update-pins` | Installs the configuration and updates pinned dependencies |
+| `dotfiles uninstall` | Replaces managed symlinks with local copies and removes managed hooks and the launcher |
+| `dotfiles check` | Checks configuration and runs available script analyzers |
+| `dotfiles tasks` | Lists task selectors and the commands that run them |
+| `dotfiles profiles` | Lists configured role profiles |
+| `dotfiles log` | Shows saved run logs |
+
+Run `install` after changing your configuration. Add `--no-repo-update` to
+use your current checkout without syncing the repository.
+
+To work on just the symlinks:
+
+```sh
+dotfiles tasks --profile desktop
+dotfiles install --only symlinks --dry-run
+dotfiles install --only symlinks
+```
+
+Add `--with-deps` to run the selected tasks' prerequisites too. See
+[task selection](docs/USAGE.md#select-tasks) for details.
+
+`uninstall` leaves packages, services, and registry values in place.
+Preview it with `dotfiles uninstall --dry-run`.
+
+## Make it yours
+
+- [conf/packages.toml](conf/packages.toml) selects packages by platform and role.
+- [conf/profiles.toml](conf/profiles.toml) defines roles and their included or
+  excluded categories.
+- [conf/symlinks.toml](conf/symlinks.toml) maps files under [symlinks/](symlinks/)
+  into your home directory. Edit those source files to change app settings.
+- The remaining [conf/](conf/) files declare Git settings, services, registry
+  values, permissions, extensions, and agent settings.
+
+For example, `[arch-desktop]` entries apply only when both `arch` and `desktop`
+are active. The [configuration guide](docs/CONFIGURATION.md) explains section
+matching and each file format.
+
+Keep private additions in a separate repository and pass `--overlay <PATH>`.
+The CLI adds overlay entries to the public configuration without replacing
+matching records. See [Overlays](docs/CONFIGURATION.md#overlays) for details.
+
+After editing, run `dotfiles check`, then preview with
+`dotfiles install --dry-run --no-repo-update`.
 
 ## How it works
 
 <p align="center">
-  <img src="docs/assets/how-it-works.svg" alt="Configuration flows through profile and platform selection, machine inspection, and application of required changes">
+  <img src="docs/assets/how-it-works.svg" width="720" alt="Select TOML configuration for your profile and platform, compare it with the machine, then apply only the changes needed">
 </p>
 
-The selected profile and detected platform determine the active configuration.
-Resources compare that configuration with the machine, then apply the required
-changes through a dependency-aware task graph.
+The CLI selects the TOML entries for your profile and operating system, then
+compares them with the machine. It applies the changes in dependency order;
+tasks that don't depend on each other can run together. With `--dry-run`, it
+reports the planned changes without applying them.
 
-## CLI at a glance
-
-### Commands
-
-| Command | What it does |
-|---------|--------------|
-| `dotfiles install` | Applies the configured machine state |
-| `dotfiles install --update-pins` | Applies the configured state and advances pinned dependency versions |
-| `dotfiles uninstall` | Materializes managed symlinks and removes hooks and the launcher |
-| `dotfiles check` | Validates configuration and runs available repository analyzers |
-| `dotfiles tasks` | Lists task selectors and command membership |
-| `dotfiles profiles` | Lists configured role profiles |
-| `dotfiles log` | Reads retained run logs |
-
-Use `install` for normal setup and maintenance. Add `--update-pins` only when
-you want pinned dependency versions to move forward. `uninstall` leaves packages,
-services, and registry values in place.
-
-### Profiles
-
-| Profile | Use it for |
-|---------|------------|
-| `base` | Core setup for servers, WSL, and command-line environments |
-| `desktop` | Core setup plus desktop apps and services |
-
-Pass `--profile` or `-p` to choose one. Otherwise, `install` prompts and saves
-the selection. The CLI automatically activates the `linux`, `windows`, and
-`arch` categories that match the machine.
+See [Architecture](docs/ARCHITECTURE.md) for the code structure and
+[Task reference](docs/TASKS.md) for what each command runs.
 
 ## Documentation
 
 | Guide | Purpose |
 |-------|---------|
-| [Usage](docs/USAGE.md) | Bootstrap the CLI and use each command |
-| [Configuration](docs/CONFIGURATION.md) | Edit the declarative TOML files |
-| [Profiles](docs/PROFILES.md) | Select role and platform configuration |
-| [Architecture](docs/ARCHITECTURE.md) | Understand the CLI layers, task engine, and resource model |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Diagnose bootstrap and convergence failures |
-| [Contributing](docs/CONTRIBUTING.md) | Build, test, and change the project |
+| [Usage](docs/USAGE.md) | Command options, task selection, logs, and updates |
+| [Configuration](docs/CONFIGURATION.md) | TOML formats, category matching, and private overlays |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Bootstrap failures, skipped tasks, and configuration problems |
+| [Contributing](docs/CONTRIBUTING.md) | Development setup and the change workflow |
+| [Testing](docs/TESTING.md) | Local checks and CI coverage |
 
-The complete documentation index is available in [`docs/`](docs/README.md).
+The [documentation index](docs/README.md) also links to Windows, APM, and
+security guides.
+
+## License
+
+[MIT](LICENSE).

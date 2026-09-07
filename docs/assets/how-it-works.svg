@@ -1,124 +1,74 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="190" viewBox="0 0 960 190" role="img" aria-labelledby="title desc">
-  <title id="title">How dotfiles applies configuration</title>
-  <desc id="desc">Four steps show desired TOML configuration being resolved for the selected profile and platform, compared with the current machine, and converged by applying only the required changes.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="224" viewBox="0 0 720 224" role="img" aria-labelledby="title desc">
+  <title id="title">How dotfiles works</title>
+  <desc id="desc">Select TOML configuration for your profile and platform. Compare it with what is installed and configured on the machine. Apply the changes needed and keep settings that already match.</desc>
   <style>
-    .card {
-      fill: #f6f8fa;
-      stroke: #d0d7de;
-      stroke-width: 1.5;
-    }
-
-    .card-final {
-      fill: #f0fff4;
-      stroke: #1a7f37;
-    }
-
-    .eyebrow {
-      fill: #6e7781;
-      font: 600 10px system-ui, sans-serif;
-      letter-spacing: 1.2px;
-      text-anchor: middle;
-    }
-
-    .heading {
-      fill: #1f2328;
-      font: 600 17px system-ui, sans-serif;
-      text-anchor: middle;
-    }
-
-    .pill {
-      fill: #ffffff;
-      stroke: #d8dee4;
-    }
-
-    .detail {
-      fill: #59636e;
-      font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
-      text-anchor: middle;
-    }
-
-    .arrow {
-      fill: none;
-      stroke: #0969da;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      stroke-width: 2;
-    }
-
+    .panel { fill: #f6f8fa; stroke: #d1d9e0; }
+    .route { fill: none; stroke: #9aa6b2; stroke-width: 1.5; }
+    .config-bg { fill: #ddedff; }
+    .config-ink { stroke: #0969da; }
+    .check-bg { fill: #eee5ff; }
+    .check-ink { stroke: #8250df; }
+    .apply-bg { fill: #daf2e2; }
+    .apply-ink { stroke: #1a7f37; }
+    .icon { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; text-anchor: middle; }
+    .heading { fill: #1f2328; font-size: 20px; font-weight: 650; }
+    .detail { fill: #59636e; font-size: 15px; }
     @media (prefers-color-scheme: dark) {
-      .card {
-        fill: #161b22;
-        stroke: #30363d;
-      }
-
-      .card-final {
-        fill: #12261a;
-        stroke: #3fb950;
-      }
-
-      .arrow {
-        stroke: #58a6ff;
-      }
-
-      .heading {
-        fill: #f0f6fc;
-      }
-
-      .eyebrow {
-        fill: #9198a1;
-      }
-
-      .pill {
-        fill: #0d1117;
-        stroke: #30363d;
-      }
-
-      .detail {
-        fill: #c9d1d9;
-      }
+      .panel { fill: #161b22; stroke: #30363d; }
+      .route { stroke: #657181; }
+      .config-bg { fill: #162f4d; }
+      .config-ink { stroke: #79b8ff; }
+      .check-bg { fill: #302344; }
+      .check-ink { stroke: #c4a0ff; }
+      .apply-bg { fill: #173526; }
+      .apply-ink { stroke: #7ee2a8; }
+      .heading { fill: #f0f6fc; }
+      .detail { fill: #aab4c0; }
     }
   </style>
 
-  <defs>
-    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-      <path d="M1 1l5 3-5 3" class="arrow"/>
-    </marker>
-  </defs>
+  <rect x="0.5" y="0.5" width="719" height="223" rx="18" class="panel"/>
 
-  <path d="M222 95h22" class="arrow" marker-end="url(#arrowhead)"/>
-  <path d="M462 95h22" class="arrow" marker-end="url(#arrowhead)"/>
-  <path d="M702 95h22" class="arrow" marker-end="url(#arrowhead)"/>
-
-  <g transform="translate(12 18)">
-    <rect width="210" height="154" rx="14" class="card"/>
-    <text x="105" y="39" class="eyebrow">DESIRED STATE</text>
-    <text x="105" y="69" class="heading">Declare</text>
-    <rect x="25" y="92" width="160" height="38" rx="7" class="pill"/>
-    <text x="105" y="116" class="detail">conf/*.toml</text>
+  <!-- The route connects the three steps; arrows also convey direction without color. -->
+  <g class="route">
+    <path d="M156 65H324M396 65H564"/>
+    <path d="m236 60 5 5-5 5m240-10 5 5-5 5"/>
   </g>
 
-  <g transform="translate(252 18)">
-    <rect width="210" height="154" rx="14" class="card"/>
-    <text x="105" y="39" class="eyebrow">ACTIVE CONFIG</text>
-    <text x="105" y="69" class="heading">Resolve</text>
-    <rect x="25" y="92" width="160" height="38" rx="7" class="pill"/>
-    <text x="105" y="116" class="detail">profile + platform</text>
+  <g transform="translate(120 65)">
+    <circle r="33" class="config-bg"/>
+    <g class="icon config-ink">
+      <path d="M-12-17H5l8 8v26h-25zM5-17v8h8"/>
+      <path d="m-4-2-4 4 4 4m9-8 4 4-4 4M-5 11H6"/>
+    </g>
   </g>
+  <text x="120" y="132" class="heading">Select config</text>
+  <text x="120" y="162" class="detail">TOML for your</text>
+  <text x="120" y="183" class="detail">profile + platform</text>
 
-  <g transform="translate(492 18)">
-    <rect width="210" height="154" rx="14" class="card"/>
-    <text x="105" y="39" class="eyebrow">OBSERVED STATE</text>
-    <text x="105" y="69" class="heading">Inspect</text>
-    <rect x="25" y="92" width="160" height="38" rx="7" class="pill"/>
-    <text x="105" y="116" class="detail">current machine</text>
+  <g transform="translate(360 65)">
+    <circle r="33" class="check-bg"/>
+    <g class="icon check-ink">
+      <rect x="-18" y="-14" width="28" height="22" rx="3"/>
+      <path d="M-4 8v6m-7 0H2M-12-7H1m-13 6h7"/>
+      <circle cx="10" cy="7" r="8"/>
+      <path d="m16 13 6 6"/>
+    </g>
   </g>
+  <text x="360" y="132" class="heading">Check machine</text>
+  <text x="360" y="162" class="detail">Compare with what's</text>
+  <text x="360" y="183" class="detail">installed and configured</text>
 
-  <g transform="translate(732 18)">
-    <rect width="216" height="154" rx="14" class="card card-final"/>
-    <text x="108" y="39" class="eyebrow">CONVERGED STATE</text>
-    <text x="108" y="69" class="heading">Apply</text>
-    <rect x="25" y="92" width="166" height="38" rx="7" class="pill"/>
-    <text x="108" y="116" class="detail">only the delta</text>
+  <g transform="translate(600 65)">
+    <circle r="33" class="apply-bg"/>
+    <g class="icon apply-ink">
+      <path d="M-15-15H15V15H-15z"/>
+      <path d="m-8 0 6 6L9-6" stroke-width="2.5"/>
+    </g>
   </g>
+  <text x="600" y="132" class="heading">Apply changes</text>
+  <text x="600" y="162" class="detail">Change what's needed.</text>
+  <text x="600" y="183" class="detail">Keep what matches.</text>
 </svg>

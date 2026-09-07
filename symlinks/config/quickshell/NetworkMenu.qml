@@ -89,7 +89,7 @@ ShellPopup {
 
             Layout.fillWidth: true
             title: "Network"
-            subtitle: !root.network.available ? (root.network.loading ? "Checking connection…" : "Status unavailable") : root.network.connected ? (root.network.connectivity === "portal" ? "Sign in to this network" : root.network.connectivity === "limited" ? "Limited internet" : "") : "No active connection"
+            subtitle: !root.network.available ? (root.network.loading ? "Checking connection…" : "Status unavailable") : root.network.connected ? (root.network.connectivity === "portal" ? "Sign in to this network" : root.network.connectivity === "limited" ? "Limited internet" : "Connected") : "No active connection"
             icon: root.network.icon
             accentColor: Theme.blue
             accentBackground: Theme.blueSoft

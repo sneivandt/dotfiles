@@ -62,6 +62,8 @@ pub struct Logger {
     pub(super) status_row_visible: AtomicBool,
     /// Whether any completed task has emitted durable console output.
     pub(super) task_console_output_emitted: AtomicBool,
+    /// Whether the last visible task block included detail rows.
+    pub(super) last_task_block_had_details: AtomicBool,
     /// Whether the most recent durable console line is blank.
     pub(super) console_ends_with_blank_line: AtomicBool,
     /// Number of tasks scheduled for this run, used as the progress denominator.
@@ -148,6 +150,7 @@ impl Logger {
             progress_rows: AtomicU16::new(0),
             status_row_visible: AtomicBool::new(false),
             task_console_output_emitted: AtomicBool::new(false),
+            last_task_block_had_details: AtomicBool::new(false),
             console_ends_with_blank_line: AtomicBool::new(false),
             task_total: AtomicUsize::new(0),
             tasks_completed: AtomicUsize::new(0),

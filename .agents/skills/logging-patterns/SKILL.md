@@ -26,8 +26,9 @@ description: >
 ## Output contract
 
 - Visible task rows stay in natural completion order.
-- Separate visible task blocks by one blank line in both verbosity modes;
-  hidden tasks add no spacing. Keep details inside their task block.
+- Separate visible task blocks by one blank line for mutation commands and in
+  verbose output; compact consecutive one-line check rows. A check task with
+  details keeps a blank line on both sides. Hidden tasks add no spacing.
 - Task names and the first summary outcome are bold. Action details use normal
   contrast; context, reasons, and timing stay dim. `No changes` is bold in the
   default foreground. Plain output preserves spacing without ANSI styling.

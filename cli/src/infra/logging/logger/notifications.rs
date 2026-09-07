@@ -61,7 +61,7 @@ impl Logger {
         if show_progress {
             self.clear_progress();
         }
-        self.emit_recorded_task_result(task_id);
+        self.emit_recorded_task_result(task_id, false);
         self.redraw_active_status_locked(show_progress);
     }
 

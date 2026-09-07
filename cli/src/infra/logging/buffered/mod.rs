@@ -105,7 +105,12 @@ impl BufferedLog {
         self.inner.remove_active_task_locked(task_name);
         self.inner.mark_task_completed(task_id);
         if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
-            self.inner.emit_recorded_task_result(task_id);
+            let has_followup_rows = status != TaskStatus::Ok
+                && entries
+                    .iter()
+                    .any(|entry| entry.is_visible_in_non_verbose(status, message));
+            self.inner
+                .emit_recorded_task_result(task_id, has_followup_rows);
             // Keep warnings inside their task's block, after its status and
             // actions, so the next separator belongs to the next task.
             if status != TaskStatus::Ok {

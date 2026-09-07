@@ -249,6 +249,28 @@ fn no_op_standard_commands_skip_extra_blank() {
 }
 
 #[test]
+fn check_compacts_only_consecutive_single_line_rows() {
+    let should_separate = |command, verbose, previous_has_details, current_has_details| {
+        let (mut log, _tmp, _guard) = crate::infra::logging::isolated_logger_for(command);
+        log.set_verbose(verbose);
+        log.end_task_block(previous_has_details);
+        log.should_separate_task_blocks(current_has_details)
+    };
+
+    assert!(!should_separate("check", false, false, false));
+    for (previous_has_details, current_has_details) in [(true, false), (false, true)] {
+        assert!(should_separate(
+            "check",
+            false,
+            previous_has_details,
+            current_has_details,
+        ));
+    }
+    assert!(should_separate("check", true, false, false));
+    assert!(should_separate("install", false, false, false));
+}
+
+#[test]
 fn changed_task_line_uses_symbol_status() {
     let task = task_entry(
         "symlinks",

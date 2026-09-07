@@ -52,7 +52,11 @@ impl Logger {
         }
     }
 
-    pub(in crate::infra::logging) fn emit_recorded_task_result(&self, task_id: &str) {
+    pub(in crate::infra::logging) fn emit_recorded_task_result(
+        &self,
+        task_id: &str,
+        has_followup_rows: bool,
+    ) {
         let task = self.recorded_task(task_id);
         let Some(task) = task else {
             return;
@@ -64,12 +68,13 @@ impl Logger {
             return;
         };
 
-        self.begin_task_block();
+        let has_details = has_followup_rows || !detail_rows.is_empty();
+        self.begin_task_block(has_details);
         self.task_result(status_row);
         for line in detail_rows {
             self.task_result(line);
         }
-        self.end_task_block();
+        self.end_task_block(has_details);
     }
 
     pub(in crate::infra::logging) fn emit_recorded_task_status(&self, task_id: &str) {
@@ -79,22 +84,35 @@ impl Logger {
         if !task.visibility.is_visible() || !should_emit_task_result(task.status, self.verbose) {
             return;
         }
-        self.begin_task_block();
+        self.begin_task_block(true);
         self.task_result(&format_task_line(&task, self.row_opts()));
-        self.mark_task_console_output();
+        self.end_task_block(true);
     }
 
-    /// Separate visible task blocks without adding space for hidden tasks.
-    fn begin_task_block(&self) {
+    /// Separate expanded task blocks while keeping ordinary check rows compact.
+    fn begin_task_block(&self, has_details: bool) {
         self.separate_from_startup();
-        if self.has_task_console_output() {
+        if self.should_separate_task_blocks(has_details) {
             self.task_result("");
         }
     }
 
     /// Close a task block and mark its output as durable.
-    fn end_task_block(&self) {
+    fn end_task_block(&self, has_details: bool) {
+        self.last_task_block_had_details
+            .store(has_details, std::sync::atomic::Ordering::Relaxed);
         self.mark_task_console_output();
+    }
+
+    /// Decide whether the next task block needs a leading blank line.
+    fn should_separate_task_blocks(&self, current_has_details: bool) -> bool {
+        self.has_task_console_output()
+            && (SummaryMode::for_command(&self.command) == SummaryMode::Standard
+                || self.verbose
+                || self
+                    .last_task_block_had_details
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                || current_has_details)
     }
 
     fn recorded_task(&self, task_id: &str) -> Option<TaskEntry> {

@@ -6,7 +6,6 @@
 use std::fmt::Write as _;
 
 use super::{Logger, progress::stdout_supports_progress};
-use crate::infra::logging::style::{TextStyle, stdout_style};
 
 impl Logger {
     /// Record that a parallel task has started.
@@ -76,20 +75,13 @@ impl Logger {
     /// reports tasks that have *finished*, not the ones named after it, so it
     /// carries its own `done` label — a bare `Running 12/16` reads as "12 of 16
     /// are running right now", which is not what it means.
-    ///
-    /// The whole row is dimmed in one pass: it is transient scaffolding rather
-    /// than a result, and painting it piecewise would emit nested resets that
-    /// cut the dim short partway through the line.
     fn format_status_line(&self, names: &str) -> String {
         let progress = self
             .task_progress()
             .map_or_else(String::new, |(done, total)| {
                 format!(" \u{00b7} {done}/{total} done")
             });
-        stdout_style().paint(
-            TextStyle::Dim,
-            &format!("Running{progress} \u{00b7} {names}"),
-        )
+        format!("Running{progress} \u{00b7} {names}")
     }
 
     fn active_task_summary(&self) -> Option<String> {

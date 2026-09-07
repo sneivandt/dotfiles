@@ -24,7 +24,6 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::runlog::RunLog;
-use super::style::{TextStyle, stdout_style};
 use super::types::{
     LogEvent, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
 };
@@ -485,7 +484,7 @@ impl Output for Logger {
             return;
         }
         let _guard = self.lock_flush();
-        self.replace_status_line(&stdout_style().paint(TextStyle::Dim, msg));
+        self.replace_status_line(msg);
     }
 
     fn clear_status_line(&self) {

@@ -3,8 +3,10 @@
 use std::io::IsTerminal as _;
 use std::io::Write as _;
 use std::sync::atomic::Ordering;
+use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 use super::Logger;
+use crate::infra::logging::style::{StyleChoice, TextStyle, stdout_style};
 use crate::infra::logging::subscriber;
 use crate::infra::logging::utils::{strip_ansi, terminal_columns};
 
@@ -17,17 +19,33 @@ pub(in crate::infra::logging) fn stdout_supports_progress() -> bool {
 }
 
 fn transient_display_line(line: &str, cols: usize) -> String {
-    let plain = strip_ansi(line);
-    if plain.chars().count() <= cols {
-        return line.to_string();
-    }
+    transient_display_line_with_style(line, cols, stdout_style())
+}
 
-    let ellipsis_width = PROGRESS_ELLIPSIS.chars().count();
-    let truncated: String = plain
-        .chars()
-        .take(cols.saturating_sub(ellipsis_width))
-        .collect();
-    format!("{truncated}{PROGRESS_ELLIPSIS}")
+/// Fit a transient row to the terminal, then dim the finished text in one pass.
+/// Applying the style last keeps truncation from dropping the ANSI color.
+fn transient_display_line_with_style(line: &str, cols: usize, style: StyleChoice) -> String {
+    let plain = strip_ansi(line);
+    let display = if plain.width() <= cols {
+        plain
+    } else {
+        let ellipsis = if cols >= PROGRESS_ELLIPSIS.width() {
+            PROGRESS_ELLIPSIS
+        } else {
+            PROGRESS_ELLIPSIS.trim()
+        };
+        let text_width = cols.saturating_sub(ellipsis.width());
+        let truncated: String = plain
+            .chars()
+            .scan(0_usize, |width, ch| {
+                *width = (*width).saturating_add(ch.width().unwrap_or(0));
+                (*width <= text_width).then_some(ch)
+            })
+            .collect();
+        format!("{truncated}{ellipsis}")
+    };
+
+    style.paint(TextStyle::Dim, &display)
 }
 
 #[allow(clippy::print_stdout, reason = "intentional user-facing output")]
@@ -137,6 +155,7 @@ impl Logger {
 #[cfg(test)]
 mod tests {
     use crate::infra::logging::isolated_logger;
+    use crate::infra::logging::style::StyleChoice;
 
     #[test]
     fn progress_rows_zero_initially() {
@@ -145,10 +164,22 @@ mod tests {
     }
 
     #[test]
-    fn transient_display_line_strips_ansi_before_truncating() {
+    fn truncated_transient_line_stays_dim() {
         assert_eq!(
-            super::transient_display_line("\x1b[32mabcdefghij\x1b[0m", 8),
-            "abcdef …"
+            super::transient_display_line_with_style(
+                "\x1b[32mabcdefghij\x1b[0m",
+                8,
+                StyleChoice::colored()
+            ),
+            "\x1b[2mabcdef …\x1b[0m"
+        );
+    }
+
+    #[test]
+    fn transient_line_truncates_by_terminal_cell_width() {
+        assert_eq!(
+            super::transient_display_line_with_style("界界界", 4, StyleChoice::plain()),
+            "界 …"
         );
     }
 }

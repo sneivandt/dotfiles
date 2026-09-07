@@ -21,8 +21,15 @@ impl ConfigureGit {
     pub const fn new(config: ConfigHandle<Vec<GitSetting>>) -> Self {
         Self { config }
     }
+}
 
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
+impl Task for ConfigureGit {
+    task_metadata! {
+        name: NAME,
+        selector: "git",
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let settings = self.config.read().to_vec();
         let manages_autocrlf = settings
             .iter()
@@ -38,25 +45,9 @@ impl ConfigureGit {
 
         run_resource_task(
             ctx,
-            announce,
             resources,
             |resource, _ctx| resource,
             &ProcessOpts::strict("configure").sequential(),
         )
-    }
-}
-
-impl Task for ConfigureGit {
-    task_metadata! {
-        name: NAME,
-        selector: "git",
-    }
-
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, Some(NAME))
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, None)
     }
 }

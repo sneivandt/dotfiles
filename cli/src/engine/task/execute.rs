@@ -156,7 +156,8 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
     let rec = |status: TaskStatus, msg: Option<&str>| {
         record(task, task_id, ctx, status, msg, ActionCounts::default())
     };
-    match task.run_configured(ctx) {
+    ctx.log().task_stage(task.name());
+    match task.run(ctx) {
         Ok(result) => match result {
             TaskResult::Ok => {
                 ctx.log()

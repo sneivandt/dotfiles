@@ -1,9 +1,6 @@
 use crate::engine::mode::ProcessOpts;
-use crate::engine::orchestrate::process_resources_with_provider;
-use crate::engine::{
-    RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
-    ResourceStateProvider,
-};
+use crate::engine::orchestrate::process_resources_with_state;
+use crate::engine::{RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::engine::{TaskResult, process_resources, process_resources_remove};
 use crate::test_helpers::empty_config;
 use std::{
@@ -39,25 +36,6 @@ impl RemovableResource for PrecomputedResource {
     }
 }
 
-struct PrecomputedStateProvider;
-
-impl ResourceStateProvider<PrecomputedResource> for PrecomputedStateProvider {
-    fn current_state(&self, resource: &PrecomputedResource) -> ResourceResult<ResourceState> {
-        Ok(resource.state.clone())
-    }
-}
-
-struct CountingStateProvider {
-    checks: Arc<AtomicUsize>,
-}
-
-impl ResourceStateProvider<PrecomputedResource> for CountingStateProvider {
-    fn current_state(&self, resource: &PrecomputedResource) -> ResourceResult<ResourceState> {
-        self.checks.fetch_add(1, Ordering::SeqCst);
-        Ok(resource.state.clone())
-    }
-}
-
 const fn is_success(result: &TaskResult) -> bool {
     matches!(result, TaskResult::Ok)
         || matches!(result, TaskResult::Batch(stats) if stats.failed_count() == 0)
@@ -79,7 +57,7 @@ fn process_precomputed_states(
     let resources = resource_states
         .into_iter()
         .map(|(resource, state)| PrecomputedResource { resource, state });
-    process_resources_with_provider(ctx, resources, &PrecomputedStateProvider, opts)
+    process_resources_with_state(ctx, resources, |resource| Ok(resource.state.clone()), opts)
 }
 
 fn test_ctx() -> crate::engine::Context {
@@ -148,16 +126,17 @@ fn process_precomputed_states_applies_precomputed() {
 }
 
 #[test]
-fn process_resources_with_provider_empty_list_never_queries_provider() {
+fn process_resources_with_state_empty_list_never_queries_state() {
     let ctx = test_ctx();
     let resources: Vec<PrecomputedResource> = vec![];
     let opts = default_opts();
     let checks = Arc::new(AtomicUsize::new(0));
-    let provider = CountingStateProvider {
-        checks: Arc::clone(&checks),
+    let state = |resource: &PrecomputedResource| {
+        checks.fetch_add(1, Ordering::SeqCst);
+        Ok(resource.state.clone())
     };
 
-    let result = process_resources_with_provider(&ctx, resources, &provider, &opts).unwrap();
+    let result = process_resources_with_state(&ctx, resources, state, &opts).unwrap();
 
     assert!(is_success(&result));
     assert_eq!(checks.load(Ordering::SeqCst), 0);
@@ -764,4 +743,74 @@ fn sequential_opts_forces_sequential_for_resource_states() {
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
     assert!(is_success(&result));
+}
+
+#[test]
+fn batch_discovery_loads_once_and_uses_the_shared_cache_in_both_modes() {
+    for parallel in [false, true] {
+        for dry_run in [false, true] {
+            let ctx = test_ctx().with_parallel(parallel).with_dry_run(dry_run);
+            let loads = AtomicUsize::new(0);
+            let checks = AtomicUsize::new(0);
+            let resources = ["missing", "correct"]
+                .into_iter()
+                .map(|name| {
+                    let resource = MockResource::new(ResourceState::Unknown {
+                        reason: "intrinsic state must not be used".into(),
+                    })
+                    .with_desc(name);
+                    if dry_run || name == "correct" {
+                        resource.with_apply(Err("must not mutate this resource".into()))
+                    } else {
+                        resource
+                    }
+                })
+                .collect();
+            let result = crate::engine::run_batch_resource_task(
+                &ctx,
+                resources,
+                |resource, _| resource,
+                |resources, _| {
+                    loads.fetch_add(1, Ordering::SeqCst);
+                    assert_eq!(resources.len(), 2);
+                    Ok(std::collections::HashMap::from([
+                        ("missing".to_string(), ResourceState::Missing),
+                        ("correct".to_string(), ResourceState::Correct),
+                    ]))
+                },
+                |resource, cache| {
+                    checks.fetch_add(1, Ordering::SeqCst);
+                    Ok(cache.get(&resource.description()).unwrap().clone())
+                },
+                &ProcessOpts::strict("install"),
+            )
+            .unwrap();
+            let TaskResult::Batch(stats) = result else {
+                panic!("expected batch statistics");
+            };
+            assert_eq!(stats.changed_count(), 1);
+            assert_eq!(stats.already_ok, 1);
+            assert_eq!(stats.failed_count(), 0);
+            assert_eq!(loads.load(Ordering::SeqCst), 1);
+            assert_eq!(checks.load(Ordering::SeqCst), 2);
+        }
+    }
+}
+
+#[test]
+fn state_discovery_error_prevents_mutation_in_both_modes() {
+    for parallel in [false, true] {
+        let ctx = test_ctx().with_parallel(parallel);
+        let resources = (0..2).map(|_| {
+            MockResource::new(ResourceState::Missing)
+                .with_apply(Err("apply must not run after a failed state query".into()))
+        });
+        let result = process_resources_with_state(
+            &ctx,
+            resources,
+            |_| Err(anyhow::anyhow!("state query failed").into()),
+            &ProcessOpts::strict("install"),
+        );
+        assert!(format!("{:#}", result.unwrap_err()).contains("state query failed"));
+    }
 }

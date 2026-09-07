@@ -45,6 +45,10 @@ fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
                 inapplicable.applicable = false;
                 let mut tasks: Vec<&dyn Task> =
                     stats.iter().map(|task| -> &dyn Task { task }).collect();
+                let empty = TestTask::new("empty-config").returning(Behavior::Return(
+                    TaskResult::NotApplicable("nothing configured".into()),
+                ));
+                tasks.push(&empty);
                 tasks.push(&DetailTask);
                 tasks.push(&inapplicable);
                 let summary = mode.run(&tasks, ctx, log, None);
@@ -66,8 +70,16 @@ fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
                 );
                 assert_eq!(
                     contents.matches("[task_timing] elapsed ").count(),
-                    5,
+                    6,
                     "each executed task records one duration: {contents}"
+                );
+                let empty_stage = "[stage] empty-config";
+                assert_eq!(contents.matches(empty_stage).count(), 1);
+                assert!(
+                    contents.find(empty_stage).unwrap()
+                        < contents
+                            .find("[task_skip] nothing configured")
+                            .expect("empty outcome")
                 );
                 assert!(
                     !contents.contains("[stage] no-stage"),

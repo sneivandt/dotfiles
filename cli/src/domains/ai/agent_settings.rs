@@ -38,18 +38,6 @@ impl ConfigureAgentSettings {
             path,
         )
     }
-
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        let settings = self.config.read().to_vec();
-        let home = ctx.home().to_path_buf();
-        run_resource_task(
-            ctx,
-            announce,
-            settings,
-            move |setting, _ctx| Self::resource(setting, &home),
-            &ProcessOpts::strict("configure").sequential(),
-        )
-    }
 }
 
 fn target_document(target: AgentHarness, home: &Path) -> (SettingsFormat, PathBuf) {
@@ -71,12 +59,15 @@ impl Task for ConfigureAgentSettings {
         selector: "agent-settings",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, Some(NAME))
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, None)
+        let settings = self.config.read().to_vec();
+        let home = ctx.home().to_path_buf();
+        run_resource_task(
+            ctx,
+            settings,
+            move |setting, _ctx| Self::resource(setting, &home),
+            &ProcessOpts::strict("configure").sequential(),
+        )
     }
 }
 

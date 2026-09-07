@@ -51,7 +51,8 @@ marker rule. Legacy Windows exit-pause/interrupt policy remains separate.
 - Applicability and elevation are assessed once per execution phase. Keep
   `should_run()` and `needs_elevation()` read-only and use phase-stable state;
   avoid unnecessary expensive probes. Check state produced by a prerequisite
-  in `run()` / `run_configured()` after it finishes.
+  in `run()` after it finishes. The executor owns stage announcements; tasks
+  return `NotApplicable` when they have no configured work.
 - Removing unmet work before graph execution must also skip its transitive
   dependents; an absent node does not propagate failure.
 

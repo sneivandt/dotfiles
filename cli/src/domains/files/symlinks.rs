@@ -60,30 +60,12 @@ impl InstallSymlinks {
     pub const fn new(config: ConfigHandle<Vec<Symlink>>) -> Self {
         Self { config }
     }
-
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        let symlinks = self.config.read().to_vec();
-        run_resource_task(
-            ctx,
-            announce,
-            symlinks,
-            |s, ctx| {
-                let executor = ctx.executor_arc();
-                build_resource(&s, ctx.root(), ctx.home(), &executor)
-            },
-            &ProcessOpts::strict("link"),
-        )
-    }
 }
 
 impl Task for InstallSymlinks {
     task_metadata! {
         name: INSTALL_NAME,
         selector: "symlinks",
-    }
-
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, Some(INSTALL_NAME))
     }
 
     /// Windows file symlinks require Developer Mode or an administrator token.
@@ -107,7 +89,16 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, None)
+        let symlinks = self.config.read().to_vec();
+        run_resource_task(
+            ctx,
+            symlinks,
+            |s, ctx| {
+                let executor = ctx.executor_arc();
+                build_resource(&s, ctx.root(), ctx.home(), &executor)
+            },
+            &ProcessOpts::strict("link"),
+        )
     }
 }
 

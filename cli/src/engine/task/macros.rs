@@ -59,28 +59,13 @@ macro_rules! task_metadata {
 
 pub(crate) use task_metadata;
 
-/// Announce the start of a task stage.
-///
-/// Configured dispatch passes `Some(name)` after checking for work; direct
-/// `Task::run` calls pass `None` to avoid announcing a stage.
-fn emit_task_stage(ctx: &crate::engine::Context, announce: Option<&'static str>) {
-    if let Some(name) = announce {
-        crate::infra::logging::Output::emit(
-            ctx.log(),
-            crate::infra::logging::MsgKind::TaskStage,
-            ::std::borrow::Cow::Borrowed(name),
-        );
-    }
-}
-
-/// Run the body shared by every resource task: skip empty item lists, announce
-/// the stage, then build and process one resource per configured item.
+/// Run the body shared by resource tasks: skip empty item lists, then build
+/// and process one resource per configured item.
 ///
 /// Keeping this in a normal function rather than in macro expansion means the
 /// shared behaviour is written, type-checked, and debugged once, not per task.
 pub(crate) fn run_resource_task<Item, R>(
     ctx: &crate::engine::Context,
-    announce: Option<&'static str>,
     items: Vec<Item>,
     mut build: impl FnMut(Item, &crate::engine::Context) -> R,
     opts: &crate::engine::ProcessOpts,
@@ -93,7 +78,6 @@ where
             "nothing configured".to_string(),
         ));
     }
-    emit_task_stage(ctx, announce);
 
     let resources = items.into_iter().map(|item| build(item, ctx));
     crate::engine::process_resources(ctx, resources, opts)
@@ -103,7 +87,6 @@ where
 /// query rather than from each resource individually.
 pub(crate) fn run_batch_resource_task<Item, Cache, R>(
     ctx: &crate::engine::Context,
-    announce: Option<&'static str>,
     items: Vec<Item>,
     mut build: impl FnMut(Item, &crate::engine::Context) -> R,
     load: impl Fn(&[R], &crate::engine::Context) -> ::anyhow::Result<Cache> + Sync,
@@ -120,7 +103,6 @@ where
             "nothing configured".to_string(),
         ));
     }
-    emit_task_stage(ctx, announce);
     ctx.trace_fmt(|| {
         format!(
             "batch-checking {} resources with a single query",

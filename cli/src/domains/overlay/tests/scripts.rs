@@ -60,20 +60,13 @@ fn snapshot_report_returns_not_applicable_when_empty() {
     let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![]));
 
     assert!(matches!(
-        task.run_configured(&ctx).unwrap(),
+        task.run(&ctx).unwrap(),
         TaskResult::NotApplicable(reason) if reason == "nothing configured"
     ));
-    assert!(
-        matches!(
-            task.run(&ctx).unwrap(),
-            TaskResult::NotApplicable(reason) if reason == "nothing configured"
-        ),
-        "the direct execution path should report an empty snapshot"
-    );
 }
 
 #[test]
-fn snapshot_report_uses_the_same_result_for_both_execution_paths() {
+fn snapshot_report_succeeds_with_configured_scripts() {
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.overlay = Some(PathBuf::from("/overlay"));
     let ctx = make_linux_context(config);
@@ -83,12 +76,8 @@ fn snapshot_report_uses_the_same_result_for_both_execution_paths() {
     )]));
 
     assert!(
-        matches!(task.run_configured(&ctx).unwrap(), TaskResult::Ok),
-        "the configured path should report success"
-    );
-    assert!(
         matches!(task.run(&ctx).unwrap(), TaskResult::Ok),
-        "the direct path should report success"
+        "a configured snapshot should report success"
     );
 }
 

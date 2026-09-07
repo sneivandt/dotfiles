@@ -42,19 +42,6 @@ impl ReportOverlayScriptSnapshot {
     pub const fn new(config: ConfigHandle<Vec<ScriptEntry>>) -> Self {
         Self { config }
     }
-
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> TaskResult {
-        let count = self.config.read().len();
-        if count == 0 {
-            return TaskResult::NotApplicable("nothing configured".to_string());
-        }
-        if let Some(name) = announce {
-            ctx.log().task_stage(name);
-        }
-        ctx.log()
-            .info(format!("discovered {count} overlay script(s)"));
-        TaskResult::Ok
-    }
 }
 
 impl Task for ReportOverlayScriptSnapshot {
@@ -66,12 +53,14 @@ impl Task for ReportOverlayScriptSnapshot {
         ctx.overlay().is_some()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(self.process(ctx, Some(REPORT_NAME)))
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Ok(self.process(ctx, None))
+        let count = self.config.read().len();
+        if count == 0 {
+            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+        }
+        ctx.log()
+            .info(format!("discovered {count} overlay script(s)"));
+        Ok(TaskResult::Ok)
     }
 }
 
@@ -184,15 +173,10 @@ impl Task for OverlayScriptTask {
         ctx.overlay().is_some()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        ctx.log().task_stage(self.name());
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if let Some(description) = &self.entry.description {
             ctx.log().info(description);
         }
-        self.run(ctx)
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_operation(
             ctx,
             &OverlayScriptOperation::new(self.entry.clone(), self.overlay_root.clone()),

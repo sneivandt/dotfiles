@@ -2,7 +2,7 @@
 name: resource-implementation
 description: >
   Use when adding or changing a concrete Resource, RemovableResource,
-  IntrinsicState, ResourceStateProvider, or its resource-task adapter under
+  IntrinsicState, batch state discovery, or its resource-task adapter under
   cli/src/domains/. Not for scheduler policy or a whole-workflow Operation.
 ---
 
@@ -13,7 +13,7 @@ description: >
 | Requirement | Model |
 |---|---|
 | each item discovers its own state | `Resource` + `IntrinsicState` |
-| one expensive query supplies many items | `ResourceStateProvider` |
+| one expensive query supplies many items | `process_resources_with_cache()` |
 | a resource supports uninstall | additionally implement `RemovableResource` |
 | one multi-step workflow converges as a unit | `Operation` via `engine-orchestration` |
 
@@ -39,10 +39,9 @@ description: >
   `run_batch_resource_task()`) where it fits; otherwise use `process_resources*()`.
   Pick `ProcessOpts` deliberately and use `.sequential()` when items share a
   file or exclusive lock.
-- Keep configured dispatch distinct from direct `run()`: the adapters announce
-  a stage only after finding configured work. Do not replace explicit task
-  wrappers with a new abstraction merely to hide forwarding methods, or remove
-  post-dependency readiness checks.
+- Implement task execution in `run()`. The executor owns stage announcements;
+  the adapters return `NotApplicable` for empty item lists. Keep readiness
+  checks that depend on prerequisites in `run()`, after those tasks finish.
 
 Read the [resource contracts](../../../cli/src/engine/resource/contract.rs),
 [processing entry points](../../../cli/src/engine/orchestrate.rs), and

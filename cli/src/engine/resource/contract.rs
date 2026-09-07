@@ -17,10 +17,9 @@ pub type ResourceResult<T> = Result<T, ResourceError>;
 /// Interface for resources that can be described, applied, and removed.
 ///
 /// State discovery is intentionally separate from this trait. The engine uses
-/// a [`ResourceStateProvider`](super::ResourceStateProvider) to determine
-/// whether each resource is already in the desired state, which allows both
-/// intrinsic per-resource checks and cached/bulk checks to share the same
-/// orchestration path.
+/// a state-discovery function to determine whether each resource is already
+/// in the desired state. Intrinsic checks and checks against a shared batch
+/// cache use the same orchestration path.
 pub trait Resource {
     /// Human-readable description of this resource.
     fn description(&self) -> String;
@@ -51,6 +50,22 @@ pub trait Resource {
     /// Returns a [`ResourceError`] if the resource cannot be applied due to I/O
     /// failures, permission issues, invalid paths, or other system errors.
     fn apply(&self) -> ResourceResult<ResourceChange>;
+}
+
+/// State-checking extension for resources that can inspect themselves.
+///
+/// The engine calls this method through its shared state-discovery function.
+pub trait IntrinsicState: Resource {
+    /// Check the current state of the resource.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ResourceError`](super::ResourceError) if the resource state
+    /// cannot be determined due to I/O failures, permission issues, or other
+    /// system errors. Returning the typed error (rather than `anyhow::Error`)
+    /// keeps [`ResourceError::category`](super::ResourceError::category)
+    /// available to the orchestration layer without downcasting.
+    fn current_state(&self) -> ResourceResult<ResourceState>;
 }
 
 /// A [`Resource`] that can also be removed, undoing a previous `apply()`.

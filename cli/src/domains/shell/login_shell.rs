@@ -11,24 +11,6 @@ pub struct ConfigureShell;
 
 const NAME: &str = "Default shell";
 
-impl ConfigureShell {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        run_resource_task(
-            ctx,
-            announce,
-            vec![()],
-            |(), ctx| {
-                DefaultShellResource::new(
-                    "zsh".to_string(),
-                    ctx.executor_arc(),
-                    std::sync::Arc::clone(ctx.env()),
-                )
-            },
-            &ProcessOpts::strict("configure"),
-        )
-    }
-}
-
 impl Task for ConfigureShell {
     task_metadata! {
         name: NAME,
@@ -39,15 +21,22 @@ impl Task for ConfigureShell {
         ctx.platform().is_linux() && !ctx.is_ci()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if !ctx.which("zsh") {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
-        Self::process(ctx, Some(NAME))
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Self::process(ctx, None)
+        run_resource_task(
+            ctx,
+            vec![()],
+            |(), ctx| {
+                DefaultShellResource::new(
+                    "zsh".to_string(),
+                    ctx.executor_arc(),
+                    std::sync::Arc::clone(ctx.env()),
+                )
+            },
+            &ProcessOpts::strict("configure"),
+        )
     }
 }
 
@@ -69,14 +58,66 @@ mod tests {
     }
 
     #[test]
-    fn run_configured_is_not_applicable_when_zsh_is_still_unavailable() {
+    fn run_is_not_applicable_when_zsh_is_still_unavailable() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config); // which() returns false
         assert!(ConfigureShell.should_run(&ctx));
         assert!(matches!(
-            ConfigureShell.run_configured(&ctx).unwrap(),
+            ConfigureShell.run(&ctx).unwrap(),
             TaskResult::NotApplicable(_)
         ));
+    }
+
+    #[test]
+    fn execution_checks_shell_availability_after_assessment() {
+        use crate::infra::env::MapEnv;
+        use crate::infra::exec::{ExecResult, MockExecutor};
+        use crate::infra::platform::Platform;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        let ready = Arc::new(AtomicBool::new(false));
+        let readiness = Arc::clone(&ready);
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_which()
+            .once()
+            .withf(|program| program == "zsh")
+            .returning(move |_| {
+                assert!(
+                    readiness.load(Ordering::SeqCst),
+                    "readiness is checked during execution"
+                );
+                true
+            });
+        executor
+            .expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "getent"
+                    && spec.arguments() == ["passwd", "test-user"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| {
+                Ok(ExecResult::success(
+                    "test-user:x:1000:1000::/home/test-user:/usr/bin/zsh",
+                ))
+            });
+        let config = empty_config(PathBuf::from("/tmp"));
+        let ctx = crate::test_helpers::make_context(
+            config,
+            Platform::new(Os::Linux, false),
+            Arc::new(executor),
+        )
+        .with_env(MapEnv::new().with("USER", "test-user").into_handle());
+
+        let assessment = ConfigureShell.assess(&ctx);
+        assert!(assessment.is_applicable());
+        ready.store(true, Ordering::SeqCst);
+        let result = crate::engine::task::execute_assessed(&ConfigureShell, &assessment, &ctx);
+        assert_eq!(result.status, crate::infra::logging::TaskStatus::Ok);
     }
 
     #[test]

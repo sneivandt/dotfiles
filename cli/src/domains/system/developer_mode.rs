@@ -11,18 +11,6 @@ pub struct EnableDeveloperMode;
 
 const NAME: &str = "Windows Developer Mode";
 
-impl EnableDeveloperMode {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        run_resource_task(
-            ctx,
-            announce,
-            vec![()],
-            |(), _ctx| DeveloperModeResource::new(),
-            &ProcessOpts::lenient("enable"),
-        )
-    }
-}
-
 impl Task for EnableDeveloperMode {
     task_metadata! {
         name: NAME,
@@ -44,12 +32,13 @@ impl Task for EnableDeveloperMode {
             && !crate::infra::platform::developer_mode_enabled()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Self::process(ctx, Some(NAME))
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Self::process(ctx, None)
+        run_resource_task(
+            ctx,
+            vec![()],
+            |(), _ctx| DeveloperModeResource::new(),
+            &ProcessOpts::lenient("enable"),
+        )
     }
 }
 

@@ -21,17 +21,6 @@ impl ApplyFilePermissions {
     pub const fn new(config: ConfigHandle<Vec<ChmodEntry>>) -> Self {
         Self { config }
     }
-
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        let entries = self.config.read().to_vec();
-        run_resource_task(
-            ctx,
-            announce,
-            entries,
-            |entry, ctx| ChmodResource::from_entry(&entry, ctx.home()),
-            &ProcessOpts::fix_existing("configure"),
-        )
-    }
 }
 
 impl Task for ApplyFilePermissions {
@@ -45,12 +34,14 @@ impl Task for ApplyFilePermissions {
         ctx.platform().supports_chmod()
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, Some(NAME))
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, None)
+        let entries = self.config.read().to_vec();
+        run_resource_task(
+            ctx,
+            entries,
+            |entry, ctx| ChmodResource::from_entry(&entry, ctx.home()),
+            &ProcessOpts::fix_existing("configure"),
+        )
     }
 }
 

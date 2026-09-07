@@ -20,7 +20,7 @@ dotfiles.sh / dotfiles.ps1
           |
           +------------------+
           v                  v
-   resources/providers    operations
+      resources          operations
           |                  |
           +--------+---------+
                    v
@@ -101,7 +101,9 @@ controls discovery, normal console rows, and totals.
 The coordinator computes each task's `TaskAssessment` once and shares it between
 elevation preparation and dispatch. Assessment probes must use state stable for
 the phase; checks for state produced by a prerequisite run from
-`run_configured()` after dependencies finish.
+`run()` after dependencies finish. The executor records the stage before
+calling `run()`; the logger controls console presentation, including suppression
+of stage headings. Tasks return `NotApplicable` when no work is configured.
 
 The scheduler validates a dependency graph and runs ready tasks in parallel.
 Every ordering requirement is an explicit edge; the order of entries in
@@ -137,8 +139,9 @@ A `Resource` models independently convergent desired state:
 4. Preview or apply that change.
 
 Resources are used for packages, symlinks, registry values, permissions, and
-similar state. Providers can batch or cache state discovery, reducing repeated
-system calls.
+similar state. State discovery uses a function that either calls the resource's
+`current_state()` method or reads a shared batch cache, reducing repeated system
+calls without separate provider types.
 
 Resource processing respects dry-run and returns explicit outcomes such as
 applied, already correct, skipped, invalid, or unknown. A skipped outcome

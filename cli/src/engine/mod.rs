@@ -40,8 +40,8 @@ pub use mode::ProcessOpts;
 pub(crate) use operation::{Operation, OperationState, process_operation};
 pub use orchestrate::{process_resources, process_resources_remove, process_resources_with_cache};
 pub use resource::{
-    IntrinsicState, IntrinsicStateProvider, RemovableResource, Resource, ResourceChange,
-    ResourceResult, ResourceState, ResourceStateProvider, SkipKind,
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+    SkipKind,
 };
 pub use stats::{TaskResult, TaskStats};
 #[cfg(test)]

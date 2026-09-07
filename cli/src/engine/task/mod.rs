@@ -7,7 +7,6 @@ mod execute;
 pub(crate) mod macros;
 mod types;
 
-use crate::infra::logging::OutputExt as _;
 pub use crate::infra::logging::TaskVisibility;
 pub use execute::execute;
 pub(crate) use execute::{TaskExecution, TaskOutcome, execute_assessed};
@@ -105,21 +104,6 @@ pub trait Task: Send + Sync + 'static {
         true
     }
 
-    /// Execute the task when it has configured work.
-    ///
-    /// The default implementation emits a stage header and delegates to
-    /// [`Task::run`]. Resource-backed tasks can override it to emit the stage
-    /// header only when items are present, returning
-    /// [`TaskResult::NotApplicable`] when nothing is configured.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the task fails to execute.
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        ctx.log().task_stage(self.name());
-        self.run(ctx)
-    }
-
     /// Whether this task will need elevated privileges based on current state.
     ///
     /// Called before parallel dispatch to allow the runner to prime the
@@ -141,7 +125,11 @@ pub trait Task: Send + Sync + 'static {
         TaskAssessment::applicable().with_elevation(!ctx.dry_run() && self.needs_elevation(ctx))
     }
 
-    /// Execute the task.
+    /// Execute the task after dependencies finish.
+    ///
+    /// Check prerequisite-produced state here and return
+    /// [`TaskResult::NotApplicable`] when there is no configured work. The
+    /// executor owns stage announcements and outcome recording.
     ///
     /// # Errors
     ///
@@ -239,10 +227,6 @@ impl Task for TaskWithExtraDeps {
 
     fn should_run(&self, ctx: &Context) -> bool {
         self.inner.should_run(ctx)
-    }
-
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        self.inner.run_configured(ctx)
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {

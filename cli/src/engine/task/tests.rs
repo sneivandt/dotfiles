@@ -42,30 +42,19 @@ impl IntrinsicState for DummyResource {
 #[derive(Debug)]
 struct CountingResourceTask;
 
-impl CountingResourceTask {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-        run_resource_task(
-            ctx,
-            announce,
-            Vec::<()>::new(),
-            |(), _ctx| DummyResource,
-            &ProcessOpts::strict("count"),
-        )
-    }
-}
-
 impl Task for CountingResourceTask {
     task_metadata! {
         name: "Counting resource task",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Self::process(ctx, Some("Counting resource task"))
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Self::process(ctx, None)
+        RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
+        run_resource_task(
+            ctx,
+            Vec::<()>::new(),
+            |(), _ctx| DummyResource,
+            &ProcessOpts::strict("count"),
+        )
     }
 }
 
@@ -73,32 +62,21 @@ impl Task for CountingResourceTask {
 #[derive(Debug)]
 struct CountingBatchTask;
 
-impl CountingBatchTask {
-    fn process(ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
+impl Task for CountingBatchTask {
+    task_metadata! {
+        name: "Counting batch task",
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
         BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
         run_batch_resource_task(
             ctx,
-            announce,
             Vec::<()>::new(),
             |(), _ctx| DummyResource,
             |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
             |_resource, _cache| Ok(ResourceState::Correct),
             &ProcessOpts::strict("count"),
         )
-    }
-}
-
-impl Task for CountingBatchTask {
-    task_metadata! {
-        name: "Counting batch task",
-    }
-
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        Self::process(ctx, Some("Counting batch task"))
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        Self::process(ctx, None)
     }
 }
 
@@ -112,18 +90,6 @@ impl CountingConfigResourceTask {
     const fn new(config: ConfigHandle<Vec<()>>) -> Self {
         Self { config }
     }
-
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        let items = self.config.read().to_vec();
-        CONFIG_RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-        run_resource_task(
-            ctx,
-            announce,
-            items,
-            |(), _ctx| DummyResource,
-            &ProcessOpts::strict("count"),
-        )
-    }
 }
 
 impl Task for CountingConfigResourceTask {
@@ -131,12 +97,15 @@ impl Task for CountingConfigResourceTask {
         name: "Counting config resource task",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, Some("Counting config resource task"))
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, None)
+        let items = self.config.read().to_vec();
+        CONFIG_RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
+        run_resource_task(
+            ctx,
+            items,
+            |(), _ctx| DummyResource,
+            &ProcessOpts::strict("count"),
+        )
     }
 }
 
@@ -150,20 +119,6 @@ impl CountingConfigBatchTask {
     const fn new(config: ConfigHandle<Vec<()>>) -> Self {
         Self { config }
     }
-
-    fn process(&self, ctx: &Context, announce: Option<&'static str>) -> Result<TaskResult> {
-        let items = self.config.read().to_vec();
-        CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-        run_batch_resource_task(
-            ctx,
-            announce,
-            items,
-            |(), _ctx| DummyResource,
-            |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
-            |_resource, _cache| Ok(ResourceState::Correct),
-            &ProcessOpts::strict("count"),
-        )
-    }
 }
 
 impl Task for CountingConfigBatchTask {
@@ -171,12 +126,17 @@ impl Task for CountingConfigBatchTask {
         name: "Counting config batch task",
     }
 
-    fn run_configured(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, Some("Counting config batch task"))
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.process(ctx, None)
+        let items = self.config.read().to_vec();
+        CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
+        run_batch_resource_task(
+            ctx,
+            items,
+            |(), _ctx| DummyResource,
+            |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
+            |_resource, _cache| Ok(ResourceState::Correct),
+            &ProcessOpts::strict("count"),
+        )
     }
 }
 
@@ -236,7 +196,6 @@ impl Task for GatedTask {
 #[derive(Default)]
 struct DelegationCalls {
     should_run: AtomicUsize,
-    run_configured: AtomicUsize,
     needs_elevation: AtomicUsize,
     run: AtomicUsize,
 }
@@ -270,11 +229,6 @@ impl Task for DelegatedTask {
     fn should_run(&self, _ctx: &Context) -> bool {
         self.calls.should_run.fetch_add(1, Ordering::SeqCst);
         true
-    }
-
-    fn run_configured(&self, _ctx: &Context) -> Result<TaskResult> {
-        self.calls.run_configured.fetch_add(1, Ordering::SeqCst);
-        Ok(TaskResult::skipped("configured"))
     }
 
     fn needs_elevation(&self, _ctx: &Context) -> bool {
@@ -315,17 +269,12 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     assert!(task.needs_elevation(&ctx));
     assert!(requires_elevation(&task, &ctx));
     assert!(matches!(
-        task.run_configured(&ctx).unwrap(),
-        TaskResult::Skipped { reason, .. } if reason == "configured"
-    ));
-    assert!(matches!(
         task.run(&ctx).unwrap(),
         TaskResult::Failed(reason) if reason == "direct"
     ));
 
     assert_eq!(calls.should_run.load(Ordering::SeqCst), 2);
     assert_eq!(calls.needs_elevation.load(Ordering::SeqCst), 2);
-    assert_eq!(calls.run_configured.load(Ordering::SeqCst), 1);
     assert_eq!(calls.run.load(Ordering::SeqCst), 1);
 }
 
@@ -806,12 +755,12 @@ fn resource_task_run_evaluates_items_once_when_called_directly() {
 }
 
 #[test]
-fn batch_task_run_configured_evaluates_items_once() {
+fn batch_task_run_evaluates_items_once() {
     BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _) = make_static_context(config);
 
-    let result = CountingBatchTask.run_configured(&ctx).unwrap();
+    let result = CountingBatchTask.run(&ctx).unwrap();
     assert!(matches!(result, TaskResult::NotApplicable(_)));
     BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
 }
@@ -829,13 +778,13 @@ fn config_resource_task_run_evaluates_snapshot_items_once() {
 }
 
 #[test]
-fn config_batch_task_run_configured_evaluates_snapshot_items_once() {
+fn config_batch_task_run_evaluates_snapshot_items_once() {
     CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
     let config = empty_config(PathBuf::from("/tmp"));
     let (ctx, _) = make_static_context(config);
     let task = CountingConfigBatchTask::new(ConfigHandle::new(Vec::new()));
 
-    let result = task.run_configured(&ctx).unwrap();
+    let result = task.run(&ctx).unwrap();
     assert!(matches!(result, TaskResult::NotApplicable(_)));
     CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
 }

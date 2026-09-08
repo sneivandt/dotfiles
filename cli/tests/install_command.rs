@@ -400,7 +400,7 @@ fn install_tasks_assess_on_linux_and_windows() {
 fn install_task_catalog_contains_required_tasks() {
     let tasks = install_tasks();
     let selectors: Vec<&str> = tasks.iter().map(|task| task.selector()).collect();
-    for required in ["symlinks", "git-hooks", "git"] {
+    for required in ["symlinks", "git-hooks", "git", "codex-requirements"] {
         assert!(
             selectors.contains(&required),
             "install task catalog is missing required selector '{required}'"

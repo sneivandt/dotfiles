@@ -87,6 +87,48 @@ impl TempGuard {
         ))
     }
 
+    /// Create and guard a unique file with an explicit Unix creation mode.
+    ///
+    /// On non-Unix platforms, `mode` is ignored.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no candidate can be created exclusively.
+    pub fn create_unique_file_with_mode(
+        dir: &Path,
+        prefix: &str,
+        suffix: &str,
+        mode: u32,
+    ) -> io::Result<(Self, File)> {
+        for _ in 0..1_024 {
+            let path = unique_path(dir, prefix, suffix);
+            #[cfg(unix)]
+            let opened = {
+                use std::os::unix::fs::OpenOptionsExt as _;
+
+                File::options()
+                    .write(true)
+                    .create_new(true)
+                    .mode(mode)
+                    .open(&path)
+            };
+            #[cfg(not(unix))]
+            let opened = {
+                let _ = mode;
+                File::options().write(true).create_new(true).open(&path)
+            };
+            match opened {
+                Ok(file) => return Ok((Self::file(path), file)),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "could not reserve a unique temporary file",
+        ))
+    }
+
     /// Create and guard a new directory in `dir` whose name cannot collide
     /// with a concurrent call.
     ///
@@ -157,5 +199,26 @@ impl Drop for TempGuard {
                 );
             }
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt as _;
+
+    #[test]
+    fn unique_file_with_mode_does_not_depend_on_umask() {
+        let dir = tempfile::tempdir().unwrap();
+        let (guard, file) =
+            TempGuard::create_unique_file_with_mode(dir.path(), ".secret", "tmp", 0o600).unwrap();
+        drop(file);
+
+        let mode = std::fs::metadata(guard.path())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }

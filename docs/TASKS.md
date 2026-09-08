@@ -45,6 +45,7 @@ contract itself.
 | `repository` | Dotfiles repository | install | Synchronizes repository content |
 | `git` | Git settings | install | Applies declared global Git settings |
 | `agent-settings` | Agent settings | install | Converges selected harness settings |
+| `codex-requirements` | Codex requirements | install | Merges the managed browser policy into `/etc/codex/requirements.toml` |
 | `git-hooks` | Git hooks | install, uninstall | Installs or removes repository-maintained hooks |
 | `completions` | Shell completions | install | Installs generated shell completions |
 | `packages` | System packages | install | Installs non-AUR packages through pacman or winget |
@@ -142,6 +143,18 @@ configuration. Empty configuration produces no work.
 Reads `conf/agent-settings.toml` and updates declared dot-separated keys in
 Copilot's JSON settings and Codex's TOML settings. Undeclared and volatile
 harness-owned keys are preserved.
+
+#### Codex requirements
+
+Runs on Linux outside CI and merges the repository-owned browser policy into
+`/etc/codex/requirements.toml`. The task preserves unrelated requirements,
+refuses to replace a malformed or non-regular target, and uses `sudo install`
+only when the managed values, ownership, or mode differ. It installs the file as
+`root:root` with mode `0644`; `-D` creates `/etc/codex` when needed.
+
+The managed values live with the resource implementation rather than in
+`conf/`, because they are fixed administrator policy for this dotfiles system,
+not profile-selectable user configuration.
 
 #### System packages
 

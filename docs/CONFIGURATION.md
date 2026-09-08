@@ -21,6 +21,10 @@ shared handles.
 An overlay may also provide `conf/scripts.toml`. The main repository does not
 load scripts from that file.
 
+The fixed browser policy installed in `/etc/codex/requirements.toml` is owned by
+the Codex requirements resource, not by a `conf/` file. It is system policy and
+does not vary by profile or overlay.
+
 ### Conflicting desired state
 
 Active Git settings and Windows registry entries must declare only one desired

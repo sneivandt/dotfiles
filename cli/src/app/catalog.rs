@@ -14,6 +14,7 @@ use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
 use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
+use crate::domains::ai::codex_requirements::ConfigureCodexRequirements;
 use crate::domains::dotfiles::path::ConfigurePath;
 use crate::domains::dotfiles::wrapper::{InstallWrapper, UninstallWrapper};
 use crate::domains::editors::vscode_extensions::InstallVsCodeExtensions;
@@ -133,6 +134,7 @@ pub(crate) fn install_tasks_for_run(
         Box::new(UpdateRepository::new(repo_updated.clone())),
         Box::new(ConfigureGit::new(store.git_settings.clone())),
         Box::new(ConfigureAgentSettings::new(store.agent_settings.clone())),
+        Box::new(ConfigureCodexRequirements),
         with_ordering_deps(InstallGitHooks::new(), &[id::<UpdateRepository>()]),
         with_ordering_deps(
             GenerateCompletions::new(zsh_completions, powershell_completions),

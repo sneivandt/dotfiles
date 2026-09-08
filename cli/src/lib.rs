@@ -17,8 +17,9 @@
 //!
 //! Cross-platform tool for declarative dotfile installation: symlinks,
 //! packages, permissions, systemd units, registry entries, VS Code extensions,
-//! and AI plugin manifests (via Microsoft APM) — all driven by TOML
-//! configuration files in `conf/` and filtered by profile and platform.
+//! AI plugin manifests (via Microsoft APM), and administrator-enforced Codex
+//! requirements. Profile-selectable desired state comes from TOML files in
+//! `conf/`.
 //!
 //! The stable public API is intentionally small: [`run`] executes the CLI.
 //! Engine internals remain crate-private so implementation details can evolve

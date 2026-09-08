@@ -71,7 +71,7 @@ pub(super) fn wait_after_terminate(child: &mut Child) {
     target_os = "haiku",
     target_os = "linux"
 ))]
-fn child_exited_without_reaping(child: &Child) -> nix::Result<bool> {
+pub(super) fn child_exited_without_reaping(child: &Child) -> nix::Result<bool> {
     use nix::sys::wait::{Id, WaitPidFlag, WaitStatus, waitid};
 
     let Ok(pid_raw) = i32::try_from(child.id()) else {

@@ -53,13 +53,24 @@ impl WslConfResource {
         match fs::write(&self.target, &merged) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::PermissionDenied => {
-                let tmp = format!("/tmp/dotfiles-wsl-conf-{}", std::process::id());
-                fs::write(&tmp, merged).context("writing temporary wsl.conf")?;
+                use std::io::Write as _;
+
+                let (tmp, mut file) = crate::infra::fs::TempGuard::create_unique_file(
+                    &std::env::temp_dir(),
+                    ".dotfiles-wsl-conf",
+                    "tmp",
+                )
+                .context("creating temporary wsl.conf")?;
+                file.write_all(merged.as_bytes())
+                    .context("writing temporary wsl.conf")?;
+                drop(file);
                 let target = self.target.to_string_lossy();
-                let copy_result = self
-                    .executor
-                    .execute(CommandSpec::new("sudo").args(&["cp", &tmp, &target]));
-                drop(fs::remove_file(&tmp));
+                let copy_result = self.executor.execute(
+                    CommandSpec::new("sudo")
+                        .arg("cp")
+                        .arg(tmp.path())
+                        .arg(target.as_ref()),
+                );
                 copy_result.context("installing wsl.conf with sudo")?;
                 Ok(())
             }
@@ -138,12 +149,37 @@ fn merge_wsl_conf(current: &str) -> String {
 }
 
 fn ensure_section_key(lines: &mut Vec<String>, section: &str, key: &str, value: &str) {
-    let section_index = lines
+    let section_indices = lines
         .iter()
-        .position(|line| line.trim().eq_ignore_ascii_case(section));
+        .enumerate()
+        .filter(|(_, line)| line.trim().eq_ignore_ascii_case(section))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
 
-    if let Some(start) = section_index {
-        let content_start = start.saturating_add(1);
+    if let Some(&first_section) = section_indices.first() {
+        for &start in section_indices.iter().rev() {
+            let content_start = start.saturating_add(1);
+            let end = lines
+                .iter()
+                .enumerate()
+                .skip(content_start)
+                .find(|(_, line)| {
+                    let trimmed = line.trim();
+                    trimmed.starts_with('[') && trimmed.ends_with(']')
+                })
+                .map_or(lines.len(), |(index, _)| index);
+            for index in (content_start..end).rev() {
+                if lines
+                    .get(index)
+                    .and_then(|line| line.split_once('='))
+                    .is_some_and(|(candidate, _)| candidate.trim().eq_ignore_ascii_case(key))
+                {
+                    lines.remove(index);
+                }
+            }
+        }
+
+        let content_start = first_section.saturating_add(1);
         let end = lines
             .iter()
             .enumerate()
@@ -153,30 +189,11 @@ fn ensure_section_key(lines: &mut Vec<String>, section: &str, key: &str, value: 
                 trimmed.starts_with('[') && trimmed.ends_with(']')
             })
             .map_or(lines.len(), |(index, _)| index);
-
-        let key_indices: Vec<usize> = (content_start..end)
-            .filter(|&index| {
-                lines
-                    .get(index)
-                    .and_then(|line| line.split_once('='))
-                    .is_some_and(|(candidate, _)| candidate.trim().eq_ignore_ascii_case(key))
-            })
-            .collect();
-
-        if let Some((&first, duplicates)) = key_indices.split_first() {
-            if let Some(line) = lines.get_mut(first) {
-                *line = format!("{key}={value}");
-            }
-            for &index in duplicates.iter().rev() {
-                lines.remove(index);
-            }
-        } else {
-            let insert_at = (content_start..end)
-                .rev()
-                .find(|&index| lines.get(index).is_some_and(|line| !line.trim().is_empty()))
-                .map_or(content_start, |index| index.saturating_add(1));
-            lines.insert(insert_at, format!("{key}={value}"));
-        }
+        let insert_at = (content_start..end)
+            .rev()
+            .find(|&index| lines.get(index).is_some_and(|line| !line.trim().is_empty()))
+            .map_or(content_start, |index| index.saturating_add(1));
+        lines.insert(insert_at, format!("{key}={value}"));
     } else {
         if !lines.last().is_some_and(String::is_empty) {
             lines.push(String::new());
@@ -245,6 +262,26 @@ mod tests {
         assert_eq!(content.matches("appendWindowsPath=").count(), 1);
         assert!(content.contains("systemd=true"));
         assert!(content.contains("appendWindowsPath=false"));
+    }
+
+    #[test]
+    fn apply_normalizes_managed_keys_across_duplicate_sections() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("wsl.conf");
+        fs::write(
+            &path,
+            "[boot]\nsystemd=false\ncommand=first\n\n[boot]\nsystemd=false\ncommand=second\n\n[interop]\nappendWindowsPath=false\n",
+        )
+        .unwrap();
+
+        let resource = resource(&path);
+        resource.apply().unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert_eq!(content.matches("systemd=").count(), 1);
+        assert!(content.contains("command=first"));
+        assert!(content.contains("command=second"));
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[test]

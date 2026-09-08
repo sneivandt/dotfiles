@@ -61,7 +61,6 @@ pub(super) fn apply_repository_updates(
         }
     }
 
-    let mut updated = false;
     for plan in plans.iter().filter(|plan| plan.needs_update) {
         let result = ctx.executor().execute(git_command(
             &plan.target.root,
@@ -74,7 +73,7 @@ pub(super) fn apply_repository_updates(
                     .debug(format!("git merge output: {}", r.stdout.trim()));
                 ctx.log()
                     .info(format!("{} updated", plan.target.description()));
-                updated = true;
+                repo_updated.mark_updated();
             }
             Err(e) => {
                 if e.is_cancelled() {
@@ -87,9 +86,6 @@ pub(super) fn apply_repository_updates(
         }
     }
 
-    if updated {
-        repo_updated.mark_updated();
-    }
     Ok(TaskResult::Ok)
 }
 

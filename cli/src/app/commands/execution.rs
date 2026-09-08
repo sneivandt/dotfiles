@@ -119,9 +119,13 @@ impl<'a> RunCoordinator<'a> {
                 summary.outcome(&restart.boundary),
                 Some(crate::engine::TaskOutcome::Satisfied)
             );
-            if !self.ctx.is_cancelled() && boundary_satisfied && (restart.requested)() {
-                (restart.action)();
-                return Ok(None);
+            let restart_requested = !self.ctx.is_cancelled() && (restart.requested)();
+            if restart_requested {
+                if boundary_satisfied {
+                    (restart.action)();
+                    return Ok(None);
+                }
+                return Ok(Some(summary));
             }
             let mut remaining = tasks
                 .iter()
@@ -981,6 +985,33 @@ mod tests {
 
         assert!(error.downcast_ref::<TaskFailures>().is_some());
         assert_eq!(entries(&trace), vec!["boundary".to_string()]);
+    }
+
+    #[test]
+    fn failed_boundary_stops_independent_tasks_when_it_changed_restart_inputs() {
+        let trace = trace();
+        let tasks = vec![
+            ProbeTask::new("partially-updated-boundary", 1, &trace).failing(),
+            ProbeTask::new("independent", 2, &trace),
+        ];
+        let (ctx, log) = sequential_context();
+
+        let error = run_tasks_to_completion_with_restart(
+            as_dyn(&tasks),
+            &ctx,
+            &log,
+            TaskId::Dynamic(1),
+            || true,
+            || panic!("a failed update must be reported before a re-exec is attempted"),
+        )
+        .expect_err("the boundary failure must fail the run");
+
+        assert!(error.downcast_ref::<TaskFailures>().is_some());
+        assert_eq!(
+            entries(&trace),
+            vec!["partially-updated-boundary".to_string()],
+            "remaining tasks must not use inputs loaded before the partial update"
+        );
     }
 
     #[test]

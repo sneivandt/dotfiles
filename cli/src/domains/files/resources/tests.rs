@@ -345,26 +345,11 @@ mod symlink {
     }
 
     #[test]
-    fn sibling_temp_path_appends_suffix_without_clobbering_dotfile_name() {
-        let bashrc_tmp = sibling_temp_path(Path::new("/home/test/.bashrc"), ".dotfiles_tmp");
-        let vimrc_tmp = sibling_temp_path(Path::new("/home/test/.vimrc"), ".dotfiles_tmp");
-        let ssh_tmp = sibling_temp_path(Path::new("/home/test/.ssh/config"), ".dotfiles_tmp");
-
-        assert_eq!(bashrc_tmp, PathBuf::from("/home/test/.bashrc.dotfiles_tmp"));
-        assert_eq!(vimrc_tmp, PathBuf::from("/home/test/.vimrc.dotfiles_tmp"));
-        assert_eq!(
-            ssh_tmp,
-            PathBuf::from("/home/test/.ssh/config.dotfiles_tmp")
-        );
-        assert_ne!(bashrc_tmp, vimrc_tmp);
-    }
-
-    #[test]
-    fn copy_dir_into_place_removes_stale_temp_directory_before_copying() {
+    fn copy_dir_into_place_preserves_an_unrelated_former_staging_directory() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source");
         let target = temp_dir.path().join("target");
-        let stale_tmp = sibling_temp_path(&target, "_dotfiles_tmp");
+        let stale_tmp = temp_dir.path().join("target_dotfiles_tmp");
 
         std::fs::create_dir(&source).unwrap();
         std::fs::write(source.join("kept.txt"), "fresh").unwrap();
@@ -379,7 +364,11 @@ mod symlink {
             "fresh"
         );
         assert!(!target.join("stale.txt").exists());
-        assert!(!stale_tmp.exists());
+        assert_eq!(
+            std::fs::read_to_string(stale_tmp.join("stale.txt")).unwrap(),
+            "stale",
+            "materialization must clean up only the temporary directory it created"
+        );
     }
 
     #[test]
@@ -421,6 +410,37 @@ mod symlink {
 
         let state = resource.current_state().unwrap();
         assert_eq!(state, ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_resource_resolves_relative_target_from_link_parent() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = temp_dir.path().join("source");
+        let target = temp_dir.path().join("target");
+        std::fs::write(&source, "test").unwrap();
+        std::os::unix::fs::symlink("source", &target).unwrap();
+
+        let resource = SymlinkResource::new(source, target, system_executor());
+
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_resource_does_not_resolve_relative_target_from_process_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let source = std::env::current_dir().unwrap().join("Cargo.toml");
+        let target = temp_dir.path().join("target");
+        std::fs::write(temp_dir.path().join("Cargo.toml"), "unrelated").unwrap();
+        std::os::unix::fs::symlink("Cargo.toml", &target).unwrap();
+
+        let resource = SymlinkResource::new(source, target, system_executor());
+
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
     }
 
     #[cfg(unix)]

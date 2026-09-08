@@ -6,23 +6,10 @@
 //! here; deciding *whether* a target may be replaced remains resource policy.
 
 use anyhow::{Context as _, Result};
-use std::path::{Path, PathBuf};
+use std::io::Write as _;
+use std::path::Path;
 
 use super::{TempGuard, ensure_parent_dir};
-
-/// Build a sibling temporary path by appending `suffix` to the target name.
-///
-/// Staging next to the target keeps the rename on one filesystem, which is what
-/// makes the replacement atomic.
-#[must_use]
-pub fn sibling_temp_path(target: &Path, suffix: &str) -> PathBuf {
-    let parent = target.parent().unwrap_or_else(|| Path::new("."));
-    let name = target.file_name().map_or_else(
-        || "dotfiles_tmp".to_string(),
-        |n| format!("{}{suffix}", n.to_string_lossy()),
-    );
-    parent.join(name)
-}
 
 /// Rename `staged` over `target` with consistent path context.
 ///
@@ -49,11 +36,16 @@ pub fn rename_into_place(staged: &Path, target: &Path) -> Result<()> {
 pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     ensure_parent_dir(path)?;
 
-    let staged = sibling_temp_path(path, ".dotfiles_tmp");
-    super::write(&staged, content)?;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let (mut guard, mut staged_file) =
+        TempGuard::create_unique_file(parent, ".dotfiles-write", "tmp")
+            .with_context(|| format!("create temporary file beside {}", path.display()))?;
+    staged_file
+        .write_all(content.as_ref())
+        .with_context(|| format!("write temporary file beside {}", path.display()))?;
+    drop(staged_file);
 
-    let mut guard = TempGuard::file(staged.clone());
-    rename_into_place(&staged, path)?;
+    rename_into_place(guard.path(), path)?;
     guard.persist();
     Ok(())
 }
@@ -61,26 +53,6 @@ pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sibling_temp_path_appends_suffix_to_file_name() {
-        let tmp = sibling_temp_path(Path::new("/home/test/.bashrc"), ".dotfiles_tmp");
-        assert_eq!(
-            tmp,
-            Path::new("/home/test").join(".bashrc.dotfiles_tmp"),
-            "temp path must stay beside the target"
-        );
-    }
-
-    #[test]
-    fn sibling_temp_path_falls_back_for_pathological_targets() {
-        let tmp = sibling_temp_path(Path::new("/"), ".dotfiles_tmp");
-        assert!(
-            tmp.ends_with("dotfiles_tmp"),
-            "a target without a file name must still get a temp path, got {}",
-            tmp.display()
-        );
-    }
 
     #[test]
     fn write_atomic_creates_missing_parents() {
@@ -110,11 +82,38 @@ mod tests {
 
         write_atomic(&target, "content").unwrap();
 
-        let staged = sibling_temp_path(&target, ".dotfiles_tmp");
-        assert!(
-            !staged.exists(),
-            "staging path {} must not survive a successful write",
-            staged.display()
+        let staging_files = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".dotfiles-write")
+            })
+            .count();
+        assert_eq!(
+            staging_files, 0,
+            "temporary files must not survive a successful write"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_does_not_follow_a_preexisting_staging_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("config");
+        let unrelated = dir.path().join("unrelated");
+        std::fs::write(&unrelated, "keep me").unwrap();
+        std::os::unix::fs::symlink(&unrelated, dir.path().join("config.dotfiles_tmp")).unwrap();
+
+        write_atomic(&target, "replacement").unwrap();
+
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "replacement");
+        assert_eq!(
+            std::fs::read_to_string(unrelated).unwrap(),
+            "keep me",
+            "a path planted at the former fixed staging name must not be opened"
         );
     }
 

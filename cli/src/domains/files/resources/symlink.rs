@@ -193,11 +193,6 @@ impl IntrinsicState for SymlinkResource {
 }
 
 #[cfg(test)]
-pub(super) fn sibling_temp_path(target: &std::path::Path, suffix: &str) -> PathBuf {
-    crate::infra::fs::sibling_temp_path(target, suffix)
-}
-
-#[cfg(test)]
 pub(super) fn copy_dir_into_place(
     source: &std::path::Path,
     target: &std::path::Path,

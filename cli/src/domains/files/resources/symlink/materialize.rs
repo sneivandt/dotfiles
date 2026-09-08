@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::platform::{is_link_like, remove_symlink};
 use crate::infra::exec::Executor;
-use crate::infra::fs::{ensure_parent_dir, rename_into_place, sibling_temp_path};
+use crate::infra::fs::{TempGuard, ensure_parent_dir, rename_into_place};
 
 /// Copy `source` into `target`, replacing the symlink that currently lives at
 /// `target`. Files are staged to a sibling temp path first so that the window
@@ -43,14 +43,20 @@ fn clear_link_target(target: &Path, executor: &dyn Executor, label: &str) -> Res
 /// Copy a regular file: stage to a temp sibling, remove the symlink, rename
 /// the temp file into place.
 fn copy_file_into_place(source: &Path, target: &Path, executor: &dyn Executor) -> Result<()> {
-    let tmp = sibling_temp_path(target, ".dotfiles_tmp");
-    crate::infra::fs::copy_file(source, &tmp)?;
-
-    let mut guard = crate::infra::fs::TempGuard::file(tmp.clone());
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let (mut guard, mut staged_file) =
+        TempGuard::create_unique_file(parent, ".dotfiles-materialize-file", "tmp")
+            .with_context(|| format!("create temporary file beside {}", target.display()))?;
+    let mut source_file = std::fs::File::open(source)
+        .with_context(|| format!("open source file {}", source.display()))?;
+    std::io::copy(&mut source_file, &mut staged_file)
+        .with_context(|| format!("copy source file {}", source.display()))?;
+    std::fs::set_permissions(guard.path(), source_file.metadata()?.permissions())?;
+    drop(staged_file);
 
     clear_link_target(target, executor, "symlink")?;
 
-    rename_into_place(&tmp, target)?;
+    rename_into_place(guard.path(), target)?;
 
     guard.persist();
     Ok(())
@@ -64,53 +70,44 @@ pub(super) fn copy_dir_into_place(
     target: &Path,
     executor: &dyn Executor,
 ) -> Result<()> {
-    let tmp = sibling_temp_path(target, "_dotfiles_tmp");
-    remove_stale_temp_dir(&tmp)?;
-    let mut guard = crate::infra::fs::TempGuard::dir(tmp.clone());
+    let parent = target.parent().unwrap_or_else(|| Path::new("."));
+    let mut guard = TempGuard::create_unique_dir(parent, ".dotfiles-materialize-dir", "tmp")
+        .with_context(|| format!("create temporary directory beside {}", target.display()))?;
 
-    crate::infra::fs::copy_dir_recursive(source, &tmp, false)
-        .with_context(|| format!("recursive copy {} to {}", source.display(), tmp.display()))?;
+    crate::infra::fs::copy_dir_recursive(source, guard.path(), false).with_context(|| {
+        format!(
+            "recursive copy {} to {}",
+            source.display(),
+            guard.path().display()
+        )
+    })?;
 
     clear_link_target(target, executor, "symlink/junction")?;
 
-    match std::fs::rename(&tmp, target) {
+    match std::fs::rename(guard.path(), target) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
-            crate::infra::fs::copy_dir_recursive(&tmp, target, false).with_context(|| {
-                format!("cross-fs copy {} to {}", tmp.display(), target.display())
-            })?;
-            guard.persist();
-            if let Err(cleanup_error) = std::fs::remove_dir_all(&tmp) {
-                tracing::debug!(
-                    "best-effort cleanup of {} failed: {cleanup_error}",
-                    tmp.display()
-                );
-            }
+            crate::infra::fs::copy_dir_recursive(guard.path(), target, false).with_context(
+                || {
+                    format!(
+                        "cross-fs copy {} to {}",
+                        guard.path().display(),
+                        target.display()
+                    )
+                },
+            )?;
         }
         Err(e) => {
             return Err(anyhow::Error::new(e).context(format!(
                 "rename {} to {}",
-                tmp.display(),
+                guard.path().display(),
                 target.display()
             )));
         }
     }
 
-    guard.persist();
-    Ok(())
-}
-
-fn remove_stale_temp_dir(tmp: &Path) -> Result<()> {
-    let Some(meta) = crate::infra::fs::symlink_metadata_optional(tmp, "stat temp path")? else {
-        return Ok(());
-    };
-
-    if meta.file_type().is_symlink() || !meta.is_dir() {
-        std::fs::remove_file(tmp)
-            .with_context(|| format!("remove stale temp file: {}", tmp.display()))?;
-    } else {
-        std::fs::remove_dir_all(tmp)
-            .with_context(|| format!("remove stale temp dir: {}", tmp.display()))?;
+    if !guard.path().exists() {
+        guard.persist();
     }
     Ok(())
 }

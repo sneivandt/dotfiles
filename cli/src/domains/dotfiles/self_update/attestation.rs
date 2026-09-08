@@ -210,9 +210,15 @@ fn unverified(asset: &str, reason: &str) -> Result<()> {
 
 /// Write `data` to a uniquely named temporary file for verification.
 fn stage_for_verification(asset: &str, data: &[u8]) -> Result<crate::infra::fs::TempGuard> {
-    let temp =
-        crate::infra::fs::TempGuard::unique_file(&std::env::temp_dir(), ".dotfiles-attest", asset);
-    std::fs::write(temp.path(), data).with_context(|| {
+    use std::io::Write as _;
+
+    let (temp, mut file) = crate::infra::fs::TempGuard::create_unique_file(
+        &std::env::temp_dir(),
+        ".dotfiles-attest",
+        asset,
+    )
+    .with_context(|| format!("creating temporary file for {asset}"))?;
+    file.write_all(data).with_context(|| {
         format!(
             "writing {asset} to {} for provenance verification",
             temp.path().display()

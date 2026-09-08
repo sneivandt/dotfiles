@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::{fs::File, io};
 
 /// RAII guard that removes a temporary path when dropped.
 ///
@@ -40,7 +41,7 @@ impl TempKind {
         }
     }
 
-    fn remove(self, path: &Path) -> std::io::Result<()> {
+    fn remove(self, path: &Path) -> io::Result<()> {
         match self {
             Self::File => std::fs::remove_file(path),
             Self::Dir => std::fs::remove_dir_all(path),
@@ -59,7 +60,7 @@ impl TempGuard {
         }
     }
 
-    /// Create a guard over a *file* in `dir` whose name cannot collide with a
+    /// Create and guard a new file in `dir` whose name cannot collide with a
     /// concurrent call.
     ///
     /// The name is `{prefix}-{pid}-{seq}-{suffix}`. The PID alone is not
@@ -68,14 +69,43 @@ impl TempGuard {
     /// another call is still writing. The counter closes that window; the PID
     /// closes the equivalent one across processes.
     ///
-    /// Note this only reserves a *name* — the caller still creates the file.
-    #[must_use]
-    pub fn unique_file(dir: &Path, prefix: &str, suffix: &str) -> Self {
-        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    /// # Errors
+    ///
+    /// Returns an error if no candidate can be created exclusively.
+    pub fn create_unique_file(dir: &Path, prefix: &str, suffix: &str) -> io::Result<(Self, File)> {
+        for _ in 0..1_024 {
+            let path = unique_path(dir, prefix, suffix);
+            match File::options().write(true).create_new(true).open(&path) {
+                Ok(file) => return Ok((Self::file(path), file)),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "could not reserve a unique temporary file",
+        ))
+    }
 
-        let seq = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let pid = std::process::id();
-        Self::file(dir.join(format!("{prefix}-{pid}-{seq}-{suffix}")))
+    /// Create and guard a new directory in `dir` whose name cannot collide
+    /// with a concurrent call.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no candidate can be created exclusively.
+    pub fn create_unique_dir(dir: &Path, prefix: &str, suffix: &str) -> io::Result<Self> {
+        for _ in 0..1_024 {
+            let path = unique_path(dir, prefix, suffix);
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Ok(Self::dir(path)),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "could not reserve a unique temporary directory",
+        ))
     }
 
     /// Create a guard that recursively removes the given temporary
@@ -101,6 +131,16 @@ impl TempGuard {
     }
 }
 
+fn unique_path(dir: &Path, prefix: &str, suffix: &str) -> PathBuf {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    let sequence = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    dir.join(format!(
+        "{prefix}-{}-{sequence}-{suffix}",
+        std::process::id()
+    ))
+}
+
 impl Drop for TempGuard {
     fn drop(&mut self) {
         if !self.active {
@@ -108,7 +148,7 @@ impl Drop for TempGuard {
         }
         match self.kind.remove(&self.path) {
             Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => {
                 tracing::debug!(
                     "failed to remove temporary {} {}: {error}",

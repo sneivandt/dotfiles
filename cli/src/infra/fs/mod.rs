@@ -6,7 +6,7 @@
 //!   tasks that need to be unit-tested without touching the real filesystem.
 //! - [`ensure_parent_dir`] / [`remove_existing`] / [`copy_dir_recursive`] —
 //!   shared helper functions for resource `apply()` methods.
-//! - [`write_atomic`] / [`sibling_temp_path`] / [`rename_into_place`] —
+//! - [`write_atomic`] / [`rename_into_place`] —
 //!   shared staging and rename mechanics for resources that replace an
 //!   existing path in place.
 use anyhow::{Context as _, Result};
@@ -17,7 +17,7 @@ mod place;
 mod temp;
 
 pub use copy::copy_dir_recursive;
-pub use place::{rename_into_place, sibling_temp_path, write_atomic};
+pub use place::{rename_into_place, write_atomic};
 pub use temp::TempGuard;
 
 /// Abstraction over filesystem queries used by tasks.

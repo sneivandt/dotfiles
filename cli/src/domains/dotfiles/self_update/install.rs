@@ -64,13 +64,12 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
     // A unique staging name keeps two concurrent updates from clobbering each
     // other: with a fixed path, one run's `TempGuard` deletes the partially
     // written binary the other run is about to rename into place.
-    let mut tmp = crate::infra::fs::TempGuard::unique_file(dir, ".dotfiles-update", "tmp");
-
-    {
-        let mut f = fs::File::create(tmp.path()).context("creating temp file")?;
-        f.write_all(data).context("writing binary data")?;
-        f.flush().context("flushing binary data")?;
-    }
+    let (mut tmp, mut file) =
+        crate::infra::fs::TempGuard::create_unique_file(dir, ".dotfiles-update", "tmp")
+            .context("creating temp file")?;
+    file.write_all(data).context("writing binary data")?;
+    file.flush().context("flushing binary data")?;
+    drop(file);
 
     #[cfg(unix)]
     {

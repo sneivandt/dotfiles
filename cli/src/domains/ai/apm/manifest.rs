@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_yaml_ng::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Read the authoritative APM lockfile for before/after change detection.
 ///
@@ -240,32 +240,7 @@ pub(super) fn write_merged_manifest(target: &Path, content: &str) -> Result<()> 
         return Ok(());
     }
 
-    let tmp = manifest_temp_path(target);
-    std::fs::write(&tmp, content)
-        .with_context(|| format!("writing temporary merged manifest {}", tmp.display()))?;
-    let mut guard = crate::infra::fs::TempGuard::file(tmp.clone());
-    std::fs::rename(&tmp, target).with_context(|| {
-        format!(
-            "renaming {} into place at {}",
-            tmp.display(),
-            target.display()
-        )
-    })?;
-    guard.persist();
-    Ok(())
-}
-
-/// Build the sibling temp path used to stage an atomic manifest write.
-///
-/// Keeping the temp file in the same directory as `target` guarantees the
-/// subsequent rename stays on one filesystem and is therefore atomic.
-fn manifest_temp_path(target: &Path) -> PathBuf {
-    let parent = target.parent().unwrap_or_else(|| Path::new("."));
-    let name = target.file_name().map_or_else(
-        || "dotfiles_apm_tmp".to_string(),
-        |n| format!("{}.dotfiles_tmp", n.to_string_lossy()),
-    );
-    parent.join(name)
+    crate::infra::fs::write_atomic(target, content)
 }
 
 #[cfg(test)]

@@ -212,6 +212,30 @@ fn command_spec_timeout_overrides_executor_default() {
     );
 }
 
+#[cfg(any(
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "haiku",
+    target_os = "linux"
+))]
+#[test]
+fn timeout_remains_active_while_a_descendant_holds_output_pipes() {
+    let executor =
+        ProcessExecutor::managed_with_timeout(CancellationToken::new(), Duration::from_millis(100));
+    let started = Instant::now();
+
+    let result = executor.execute(CommandSpec::new("sh").args(&["-c", "sleep 5 & exit 0"]));
+
+    assert!(
+        matches!(result, Err(ExecError::TimedOut { .. })),
+        "a descendant holding inherited pipes must not disable the timeout"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "the command should stop at the timeout plus the termination grace"
+    );
+}
+
 #[test]
 fn managed_executor_cancels_commands() {
     let token = CancellationToken::new();

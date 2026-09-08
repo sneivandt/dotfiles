@@ -20,6 +20,13 @@ pub(crate) mod windows;
 #[cfg(test)]
 use output::stream_summary;
 use output::{failure_output, log_command_output};
+#[cfg(any(
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "haiku",
+    target_os = "linux"
+))]
+use process::child_exited_without_reaping;
 use process::{terminate_child, wait_after_terminate};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_mins(30);
@@ -639,6 +646,32 @@ fn execute_unchecked(
             });
         }
 
+        #[cfg(any(
+            target_os = "android",
+            target_os = "freebsd",
+            target_os = "haiku",
+            target_os = "linux"
+        ))]
+        if pipes_closed
+            && child_exited_without_reaping(&child).map_err(|source| ExecError::Io {
+                command: label.to_string(),
+                operation: "waiting for child",
+                source: source.into(),
+            })?
+        {
+            break child.wait().map_err(|source| ExecError::Io {
+                command: label.to_string(),
+                operation: "reaping child",
+                source,
+            })?;
+        }
+
+        #[cfg(not(any(
+            target_os = "android",
+            target_os = "freebsd",
+            target_os = "haiku",
+            target_os = "linux"
+        )))]
         if let Some(status) = child.try_wait().map_err(|source| ExecError::Io {
             command: label.to_string(),
             operation: "waiting for child",

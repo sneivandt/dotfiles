@@ -37,7 +37,16 @@ pub(super) fn current_state(resource: &SymlinkResource) -> ResourceResult<Resour
             None => Ok(ResourceState::Missing),
         },
         |existing| {
-            if paths_equal(&existing, &resource.source) {
+            let resolved = if existing.is_absolute() {
+                existing.clone()
+            } else {
+                resource
+                    .target
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .join(&existing)
+            };
+            if paths_equal(&resolved, &resource.source) {
                 Ok(ResourceState::Correct)
             } else {
                 Ok(ResourceState::Incorrect {

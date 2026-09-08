@@ -491,7 +491,7 @@ fn parallel_fetch_failure_reports_the_first_declared_repository() {
 }
 
 #[test]
-fn partial_multi_repository_merge_failure_does_not_request_restart() {
+fn partial_multi_repository_merge_failure_records_that_the_checkout_changed() {
     use super::models::{CheckedRepository, UpdateTarget, UpdateTargetKind};
 
     let main_root = PathBuf::from("/tmp/main");
@@ -524,8 +524,8 @@ fn partial_multi_repository_merge_failure_does_not_request_restart() {
 
     assert!(matches!(result, TaskResult::Failed(_)));
     assert!(
-        !signal.was_updated(),
-        "a partially updated repository set must not restart into mixed state"
+        signal.was_updated(),
+        "a successful first merge must prevent later tasks from using stale configuration"
     );
 }
 

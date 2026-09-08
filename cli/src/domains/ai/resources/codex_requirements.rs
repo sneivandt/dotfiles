@@ -126,6 +126,10 @@ impl CodexRequirementsResource {
     }
 
     #[cfg(not(unix))]
+    #[allow(
+        clippy::unused_self,
+        reason = "the Unix implementation validates owner and mode from resource state"
+    )]
     const fn metadata_is_correct(&self, _metadata: &fs::Metadata) -> bool {
         true
     }

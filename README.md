@@ -66,7 +66,7 @@ cd dotfiles
 ```
 
 To keep your own changes, clone a fork and edit
-[the configuration files](#make-it-yours) before continuing.
+[make it yours](#make-it-yours) before continuing.
 
 ### Profiles
 
@@ -193,9 +193,4 @@ See [Architecture](docs/ARCHITECTURE.md) for the code structure and
 | [Contributing](docs/CONTRIBUTING.md) | Development setup and the change workflow |
 | [Testing](docs/TESTING.md) | Local checks and CI coverage |
 
-The [documentation index](docs/README.md) also links to Windows, APM, and
-security guides.
-
-## License
-
-[MIT](LICENSE).
+The [documentation index](docs/README.md) also links to all other documentation.

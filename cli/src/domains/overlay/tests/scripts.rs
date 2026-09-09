@@ -2,10 +2,11 @@
 
 use super::*;
 use crate::domains::overlay::config::scripts::ScriptEntry;
-use crate::engine::{Context, Task, TaskResult};
+use crate::engine::{Context, Task, TaskResult, execute};
 use crate::infra::exec::{ExecResult, MockExecutor};
+use crate::infra::logging::{BufferedLog, Log, Logger, TaskStatus};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{empty_config, make_context, make_linux_context};
+use crate::test_helpers::{assert_task_changed, empty_config, make_context, make_linux_context};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -206,7 +207,7 @@ fn script_task_run_is_ok_when_check_reports_correct() {
 }
 
 #[test]
-fn script_task_run_applies_when_check_reports_missing() {
+fn script_task_run_reports_changed_when_check_reports_missing() {
     let (overlay, entry, script_arg) = shell_script_fixture();
     let overlay_path = overlay.path().to_path_buf();
     let check_script = script_arg.clone();
@@ -240,7 +241,68 @@ fn script_task_run_applies_when_check_reports_missing() {
     let ctx = context_with_executor(overlay.path(), mock);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
 
-    assert!(matches!(task.run(&ctx).unwrap(), TaskResult::Ok));
+    assert_task_changed(&task.run(&ctx).unwrap());
+}
+
+#[test]
+fn script_task_execute_records_changed_status_and_stdout() {
+    let (overlay, entry, script_arg) = shell_script_fixture();
+    let overlay_path = overlay.path().to_path_buf();
+    let check_script = script_arg.clone();
+    let apply_overlay_path = overlay.path().to_path_buf();
+    let apply_script = script_arg;
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(overlay_path.as_path())
+                && spec.program() == "sh"
+                && args.len() == 2
+                && args[0] == check_script.as_str()
+                && args[1] == "--check"
+                && !spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| {
+            let args = spec.arguments();
+            spec.working_dir() == Some(apply_overlay_path.as_path())
+                && spec.program() == "sh"
+                && args.len() == 1
+                && args[0] == apply_script.as_str()
+                && spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("script applied\n")));
+
+    let mut logger = Logger::new_in("install", overlay.path());
+    logger.set_verbose(false);
+    let logger = Arc::new(logger);
+    let buffered = Arc::new(BufferedLog::new(Arc::clone(&logger)));
+    let buffered_log = Arc::clone(&buffered);
+    let log: Arc<dyn Log> = buffered_log;
+    let ctx = context_with_executor(overlay.path(), mock).with_log(log);
+    let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
+
+    let status = execute(&task, &ctx);
+    assert_eq!(status, TaskStatus::Changed);
+    buffered.flush_and_complete(&task.log_key(), task.name(), status);
+
+    let entries = logger.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].status, TaskStatus::Changed);
+    assert!(
+        logger.task_console_output_emitted(),
+        "a changed overlay script should produce a durable non-verbose task block"
+    );
+
+    let contents =
+        std::fs::read_to_string(logger.log_path().expect("overlay script run log")).unwrap();
+    assert!(
+        contents.contains("script applied"),
+        "captured script stdout should remain in the durable run log: {contents}"
+    );
 }
 
 #[test]

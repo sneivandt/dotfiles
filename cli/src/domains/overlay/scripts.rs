@@ -133,7 +133,8 @@ impl Operation for OverlayScriptOperation {
                     TaskResult::skipped(reason)
                 })
             }
-            ResourceChange::Applied | ResourceChange::AlreadyCorrect => Ok(TaskResult::Ok),
+            ResourceChange::Applied => Ok(TaskStats::changed().finish()),
+            ResourceChange::AlreadyCorrect => Ok(TaskResult::Ok),
         }
     }
 }

@@ -338,3 +338,33 @@ fn temp_dir_persist_prevents_removal() {
     }
     assert!(td.exists(), "directory should remain after persist + drop");
 }
+
+#[cfg(unix)]
+#[test]
+fn copy_populates_read_only_directories_before_preserving_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let src = tempfile::tempdir().unwrap();
+    let dst = tempfile::tempdir().unwrap();
+    let source = src.path().join("readonly");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("data"), "contents").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let target = dst.path().join("copied");
+    copy_dir_recursive(src.path(), &target, false).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(target.join("readonly/data")).unwrap(),
+        "contents"
+    );
+    assert_eq!(
+        std::fs::metadata(target.join("readonly"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o500
+    );
+    // Restore write access so the temporary trees can be removed.
+    for path in [&source, &target.join("readonly")] {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+}

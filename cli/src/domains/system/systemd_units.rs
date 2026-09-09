@@ -554,6 +554,19 @@ mod tests {
                     && !spec.is_checked()
             })
             .returning(|_| Ok(ExecResult::success("enabled\n")));
+        mock.expect_execute()
+            .times(1)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments()
+                        == [
+                            "show",
+                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                            "NetworkManager.service",
+                        ]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("ActiveState=active\n")));
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 
@@ -610,6 +623,19 @@ mod tests {
                     && !spec.is_checked()
             })
             .returning(|_| Ok(ExecResult::success("enabled\n")));
+        mock.expect_execute()
+            .times(2)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments()
+                        == [
+                            "show",
+                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                            "NetworkManager.service",
+                        ]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("ActiveState=active\n")));
         let units = ConfigHandle::new(config.units.clone());
         let ctx = make_systemd_context(config, mock);
 
@@ -731,5 +757,103 @@ mod tests {
             matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
             "expected one changed action after system-scope daemon-reload + disable, got {result:?}"
         );
+    }
+
+    #[test]
+    fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for enabled in [true, false] {
+            let mut config = empty_config(PathBuf::from("/tmp"));
+            config.units.push(SystemdUnit {
+                name: "test.service".into(),
+                scope: UnitScope::System,
+                enabled,
+            });
+            let active = Arc::new(AtomicBool::new(!enabled));
+            let mut mock = MockExecutor::new();
+            mock.expect_execute()
+                .withf(|spec| {
+                    spec.program() == "systemctl"
+                        && spec.arguments() == ["is-enabled", "test.service"]
+                        && !spec.is_checked()
+                })
+                .returning(move |_| {
+                    Ok(if enabled {
+                        ExecResult::success("enabled\n")
+                    } else {
+                        disabled_result()
+                    })
+                });
+            let observed = Arc::clone(&active);
+            mock.expect_execute()
+                .withf(|spec| {
+                    spec.program() == "systemctl"
+                        && spec.arguments() == [
+                            "show",
+                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                            "test.service",
+                        ]
+                        && !spec.is_checked()
+                })
+                .returning(move |_| {
+                    Ok(ExecResult::success(if observed.load(Ordering::SeqCst) {
+                        "ActiveState=active\n"
+                    } else {
+                        "ActiveState=inactive\n"
+                    }))
+                });
+            mock.expect_execute()
+                .once()
+                .withf(|spec| {
+                    spec.program() == "sudo"
+                        && spec.arguments() == ["systemctl", "daemon-reload"]
+                        && spec.is_checked()
+                })
+                .returning(|_| Ok(ExecResult::success("")));
+            let applied = Arc::clone(&active);
+            mock.expect_execute()
+                .once()
+                .withf(move |spec| {
+                    spec.program() == "sudo"
+                        && spec.arguments()
+                            == [
+                                "systemctl",
+                                if enabled { "enable" } else { "disable" },
+                                "--now",
+                                "test.service",
+                            ]
+                        && !spec.is_checked()
+                })
+                .returning(move |_| {
+                    applied.store(enabled, Ordering::SeqCst);
+                    Ok(ExecResult::success(""))
+                });
+            let task = ConfigureSystemd::new(ConfigHandle::new(config.units.clone()));
+            let ctx = make_systemd_context(config, mock);
+            assert!(
+                task.needs_elevation(&ctx),
+                "runtime drift needs system privileges"
+            );
+            let preview = task.run(&ctx.with_dry_run(true)).unwrap();
+            assert!(matches!(preview, TaskResult::Batch(ref stats) if stats.changed_count() == 1));
+            assert_eq!(
+                active.load(Ordering::SeqCst),
+                !enabled,
+                "dry run changed runtime state"
+            );
+            let applied_result = task.run(&ctx).unwrap();
+            assert!(
+                matches!(applied_result, TaskResult::Batch(ref stats) if stats.changed_count() == 1)
+            );
+            assert_eq!(active.load(Ordering::SeqCst), enabled);
+            assert!(
+                !task.needs_elevation(&ctx),
+                "converged service needs no elevation"
+            );
+            let repeated = task.run(&ctx).unwrap();
+            assert!(
+                matches!(repeated, TaskResult::Batch(ref stats) if stats.already_ok_count() == 1 && stats.changed_count() == 0)
+            );
+        }
     }
 }

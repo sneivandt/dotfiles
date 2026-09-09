@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use std::path::Path;
 
-/// Recursively copy a directory tree.
+/// Recursively copy a directory tree, preserving Unix directory permissions.
 ///
 /// When `skip_git` is `true`, `.git` directories are skipped — useful when
 /// copying from a cloned repository where Git metadata is unwanted.
@@ -17,7 +17,7 @@ use std::path::Path;
 ///
 /// Returns an error if the destination directory cannot be created, a source
 /// entry cannot be read, a file cannot be copied, or (on Unix) a symlink
-/// cannot be recreated.
+/// cannot be recreated or directory permissions cannot be preserved.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
     copy_dir_recursive_inner(src, dst, skip_git)
 }
@@ -25,6 +25,18 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
 fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
+    #[cfg(unix)]
+    let permissions = std::fs::metadata(src)
+        .with_context(|| format!("reading directory metadata for {}", src.display()))?
+        .permissions();
+    // Keep staged contents private while copying, and defer the source mode
+    // until children are populated so read-only directories can be copied.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700))
+            .with_context(|| format!("restricting directory {}", dst.display()))?;
+    }
     for entry in
         std::fs::read_dir(src).with_context(|| format!("reading directory {}", src.display()))?
     {
@@ -82,5 +94,8 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
             })?;
         }
     }
+    #[cfg(unix)]
+    std::fs::set_permissions(dst, permissions)
+        .with_context(|| format!("preserving directory permissions for {}", dst.display()))?;
     Ok(())
 }

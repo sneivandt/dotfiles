@@ -53,10 +53,10 @@ impl SystemdUnitResource {
         resource
     }
 
-    fn check_args(&self) -> ResourceResult<Vec<&str>> {
+    fn check_args<'a>(&'a self, args: &[&'a str]) -> ResourceResult<Vec<&'a str>> {
         match self.scope {
-            UnitScope::User => Ok(vec!["--user", "is-enabled", &self.name]),
-            UnitScope::System => Ok(vec!["is-enabled", &self.name]),
+            UnitScope::User => Ok([&["--user"][..], args, &[&self.name]].concat()),
+            UnitScope::System => Ok([args, &[&self.name]].concat()),
             UnitScope::Invalid(ref value) => Err(ResourceError::not_supported(format!(
                 "unsupported systemd scope '{value}'"
             ))),
@@ -240,6 +240,39 @@ impl SystemdUnitResource {
     }
 }
 
+fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
+    let property = |key: &str| {
+        properties
+            .lines()
+            .filter_map(|line| line.split_once('='))
+            .find_map(|(name, value)| (name == key).then_some(value))
+    };
+    let active = property("ActiveState").unwrap_or("");
+    let completed_oneshot = active == "inactive"
+        && property("Type") == Some("oneshot")
+        && property("Result") == Some("success")
+        && property("ExecMainStartTimestampMonotonic")
+            .and_then(|value| value.parse::<u64>().ok())
+            .is_some_and(|value| value > 0);
+    let matches = match active {
+        "active" | "reloading" | "refreshing" | "activating" => enabled,
+        "inactive" | "failed" => !enabled || completed_oneshot,
+        "deactivating" => false,
+        _ => {
+            return ResourceState::Unknown {
+                reason: format!("unrecognized systemd ActiveState: {active:?}"),
+            };
+        }
+    };
+    if matches {
+        ResourceState::Correct
+    } else {
+        ResourceState::Incorrect {
+            current: format!("runtime state is {active}"),
+        }
+    }
+}
+
 fn install_targets(content: &str) -> ResourceResult<Vec<String>> {
     let mut in_install = false;
     let mut targets = Vec::new();
@@ -370,7 +403,7 @@ impl IntrinsicState for SystemdUnitResource {
         if self.scope == UnitScope::User && !self.user_manager_available {
             return self.offline_current_state();
         }
-        let args = match self.check_args() {
+        let args = match self.check_args(&["is-enabled"]) {
             Ok(args) => args,
             Err(error) => {
                 return Ok(ResourceState::Invalid {
@@ -381,7 +414,36 @@ impl IntrinsicState for SystemdUnitResource {
         let result = self
             .executor
             .execute(CommandSpec::new("systemctl").args(&args).unchecked())?;
-        Ok(self.state_from_is_enabled(&result))
+        let enablement = self.state_from_is_enabled(&result);
+        // Missing disabled units need no runtime probe. Ambiguous enablement
+        // must keep its diagnostic instead of being treated as converged.
+        if !matches!(enablement, ResourceState::Correct)
+            || (!self.enabled
+                && (command_output(&result).contains("not-found")
+                    || command_output(&result).contains("could not be found")))
+        {
+            return Ok(enablement);
+        }
+        let runtime_args = self.check_args(&[
+            "show",
+            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+        ])?;
+        let runtime_result = self.executor.execute(
+            CommandSpec::new("systemctl")
+                .args(&runtime_args)
+                .unchecked(),
+        )?;
+        if !runtime_result.success {
+            return Ok(ResourceState::Unknown {
+                reason: format!(
+                    "systemctl show {} failed ({}): {}",
+                    self.name,
+                    exit_status(&runtime_result),
+                    output_if_present(&command_output(&runtime_result))
+                ),
+            });
+        }
+        Ok(runtime_state(self.enabled, &runtime_result.stdout))
     }
 }
 
@@ -391,6 +453,123 @@ mod tests {
 
     use super::*;
     use crate::infra::exec::{ExecResult, MockExecutor};
+
+    fn expect_runtime(mock: &mut MockExecutor, unit: &str, scope: UnitScope, output: &str) {
+        let unit = unit.to_string();
+        let output = output.to_string();
+        mock.expect_execute()
+            .once()
+            .withf(move |spec| {
+                let mut args = vec![
+                    "show",
+                    "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                    &unit,
+                ];
+                if scope == UnitScope::User {
+                    args.insert(0, "--user");
+                }
+                spec.program() == "systemctl"
+                    && spec.arguments() == args.as_slice()
+                    && !spec.is_checked()
+            })
+            .returning(move |_| Ok(ExecResult::success(output.clone())));
+    }
+
+    #[test]
+    fn runtime_state_handles_daemons_and_completed_oneshots() {
+        for (label, enabled, properties, correct) in [
+            ("running daemon", true, "ActiveState=active", true),
+            ("stopped daemon", true, "ActiveState=inactive", false),
+            ("failed daemon", true, "ActiveState=failed", false),
+            ("starting daemon", true, "ActiveState=activating", true),
+            ("reloading daemon", true, "ActiveState=reloading", true),
+            ("refreshing daemon", true, "ActiveState=refreshing", true),
+            ("stopping daemon", true, "ActiveState=deactivating", false),
+            (
+                "disabled running daemon",
+                false,
+                "ActiveState=active",
+                false,
+            ),
+            (
+                "disabled starting daemon",
+                false,
+                "ActiveState=activating",
+                false,
+            ),
+            (
+                "disabled stopping daemon",
+                false,
+                "ActiveState=deactivating",
+                false,
+            ),
+            (
+                "disabled stopped daemon",
+                false,
+                "ActiveState=inactive",
+                true,
+            ),
+            ("disabled failed daemon", false, "ActiveState=failed", true),
+            (
+                "completed oneshot",
+                true,
+                "ActiveState=inactive\nType=oneshot\nResult=success\nExecMainStartTimestampMonotonic=123",
+                true,
+            ),
+            (
+                "unstarted oneshot",
+                true,
+                "ActiveState=inactive\nType=oneshot\nResult=success\nExecMainStartTimestampMonotonic=0",
+                false,
+            ),
+            (
+                "failed oneshot",
+                true,
+                "ActiveState=failed\nType=oneshot\nResult=exit-code\nExecMainStartTimestampMonotonic=123",
+                false,
+            ),
+            (
+                "oneshot missing history",
+                true,
+                "ActiveState=inactive\nType=oneshot\nResult=success",
+                false,
+            ),
+        ] {
+            let state = runtime_state(enabled, properties);
+            assert_eq!(
+                matches!(state, ResourceState::Correct),
+                correct,
+                "{label}: {state:?}"
+            );
+            assert!(
+                !matches!(state, ResourceState::Unknown { .. }),
+                "{label}: {state:?}"
+            );
+        }
+        for properties in ["", "ActiveState=unexpected"] {
+            assert!(matches!(
+                runtime_state(true, properties),
+                ResourceState::Unknown { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn runtime_probe_failure_is_not_converged() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| spec.arguments() == ["is-enabled", "test.service"])
+            .returning(|_| Ok(ExecResult::success("enabled\n")));
+        mock.expect_execute()
+            .once()
+            .withf(|spec| spec.arguments().first().is_some_and(|arg| arg == "show"))
+            .returning(|_| Ok(ExecResult::failure("", "Failed to connect to bus", Some(1))));
+        let resource = SystemdUnitResource::new("test.service", UnitScope::System, Arc::new(mock));
+        assert!(
+            matches!(resource.current_state().unwrap(), ResourceState::Unknown { reason } if reason.contains("Failed to connect to bus"))
+        );
+    }
 
     #[test]
     fn description_returns_unit_name() {
@@ -440,7 +619,14 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
+            .withf(|spec| spec.arguments().iter().any(|arg| arg == "is-enabled"))
             .returning(|_| Ok(ExecResult::success("enabled\n")));
+        expect_runtime(
+            &mut mock,
+            "dunst.service",
+            UnitScope::User,
+            "ActiveState=active\n",
+        );
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
@@ -462,7 +648,14 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
+            .withf(|spec| spec.arguments().iter().any(|arg| arg == "is-enabled"))
             .returning(|_| Ok(ExecResult::failure("disabled\n", "", Some(1))));
+        expect_runtime(
+            &mut mock,
+            "dhcpcd.service",
+            UnitScope::System,
+            "ActiveState=inactive\n",
+        );
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
         resource.enabled = false;
@@ -550,6 +743,12 @@ mod tests {
                     && !spec.is_checked()
             })
             .returning(|_| Ok(ExecResult::success("")));
+        expect_runtime(
+            &mut mock,
+            "sshd.service",
+            UnitScope::System,
+            "ActiveState=active\n",
+        );
         let executor: Arc<dyn Executor> = Arc::new(mock);
         let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);

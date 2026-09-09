@@ -605,6 +605,17 @@ mod symlink {
         std::fs::create_dir(source_dir.join("sub")).unwrap();
         std::fs::write(source_dir.join("sub").join("b.txt"), b"bbb").unwrap();
 
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&source_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+            std::fs::set_permissions(
+                source_dir.join("sub"),
+                std::fs::Permissions::from_mode(0o750),
+            )
+            .unwrap();
+        }
+
         let resource =
             SymlinkResource::new(source_dir.clone(), target_dir.clone(), system_executor());
         resource.apply().unwrap();
@@ -614,6 +625,22 @@ mod symlink {
         ));
 
         resource.remove().unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            for (relative, mode) in [("", 0o700), ("sub", 0o750)] {
+                assert_eq!(
+                    std::fs::metadata(target_dir.join(relative))
+                        .unwrap()
+                        .permissions()
+                        .mode()
+                        & 0o777,
+                    mode,
+                    "materialization must preserve directory permissions"
+                );
+            }
+        }
 
         // Must be a real directory, not a symlink.
         let meta = std::fs::symlink_metadata(&target_dir).unwrap();

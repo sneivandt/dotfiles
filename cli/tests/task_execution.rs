@@ -552,3 +552,56 @@ fn dry_run_pipeline_produces_no_failures() {
         "dry-run pipeline should produce no failures"
     );
 }
+
+/// Offline enablement must survive materialization and removal of the checkout.
+#[cfg(unix)]
+#[test]
+fn offline_service_survives_symlink_uninstall_and_checkout_removal() {
+    use test_api::tasks::system::systemd_units::ConfigureSystemd;
+    let source = "config/systemd/user/example.service";
+    let test = common::TestContextBuilder::new()
+        .with_config_file(
+            "symlinks.toml",
+            "[linux]\nsymlinks = [\"config/systemd/user/example.service\"]\n",
+        )
+        .with_config_file(
+            "systemd-units.toml",
+            "[linux]\nunits = [\"example.service\"]\n",
+        )
+        .with_symlink_source_content(
+            source,
+            "[Service]\nExecStart=/bin/true\n[Install]\nWantedBy=default.target\n",
+        )
+        .build();
+    let ec = test.make_context("base");
+    let ctx = ec.ctx.with_env(
+        test_api::env::MapEnv::new()
+            .with("DOTFILES_PROVISIONING", "arch-chroot")
+            .into_handle(),
+    );
+    assert!(batch_changed(
+        &InstallSymlinks::new(ec.store.symlinks.clone())
+            .run(&ctx)
+            .unwrap()
+    ));
+    let task = ConfigureSystemd::new(ec.store.units.clone());
+    let link = ctx
+        .home()
+        .join(".config/systemd/user/default.target.wants/example.service");
+    assert!(batch_changed(&task.run(&ctx.with_dry_run(true)).unwrap()));
+    assert!(!link.is_symlink(), "dry-run must not enable the unit");
+    assert!(batch_changed(&task.run(&ctx).unwrap()));
+    assert!(batch_unchanged(&task.run(&ctx).unwrap()));
+    assert!(batch_changed(
+        &UninstallSymlinks::new(ec.store.symlinks).run(&ctx).unwrap()
+    ));
+    let materialized = ctx.home().join(".config/systemd/user/example.service");
+    assert!(materialized.is_file() && !materialized.is_symlink());
+    std::fs::remove_dir_all(test.root_path().join("symlinks")).unwrap();
+    assert_eq!(std::fs::read_link(&link).unwrap(), materialized);
+    assert_eq!(
+        std::fs::read_to_string(&link).unwrap(),
+        std::fs::read_to_string(&materialized).unwrap()
+    );
+    assert!(batch_unchanged(&task.run(&ctx).unwrap()));
+}

@@ -268,6 +268,16 @@ to select `user` or `system` scope or to keep a conflicting unit disabled.
 User unit files are normally delivered through managed symlinks before the task
 enables and starts them. Changing a system unit uses `sudo`.
 
+Without a user service manager, the task enables user units for the next login.
+It looks first in `~/.config/systemd/user`, then `/etc/systemd/user`,
+`/run/systemd/user`, `/usr/local/lib/systemd/user`, `/usr/lib/systemd/user`, and
+`/lib/systemd/user`. Enablement links are created under the user's unit directory,
+including for packaged units. Links to managed units keep their installed home
+path so they continue working after uninstall materializes the files and the
+checkout is removed. An offline rerun repairs older links that point directly
+into the checkout.
+
+
 ### Arch desktop appearance
 
 The Quickshell bar and popups share colors, typography, spacing, and motion

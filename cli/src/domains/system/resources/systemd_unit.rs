@@ -20,6 +20,8 @@ pub struct SystemdUnitResource {
     executor: Arc<dyn Executor>,
     /// Home directory containing user unit files.
     home: Option<PathBuf>,
+    /// System-wide user unit directories, in lookup order.
+    system_user_unit_dirs: Vec<PathBuf>,
     /// Whether the live user service manager is reachable.
     user_manager_available: bool,
 }
@@ -34,6 +36,16 @@ impl SystemdUnitResource {
             enabled: true,
             executor,
             home: None,
+            system_user_unit_dirs: [
+                "/etc/systemd/user",
+                "/run/systemd/user",
+                "/usr/local/lib/systemd/user",
+                "/usr/lib/systemd/user",
+                "/lib/systemd/user",
+            ]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
             user_manager_available: true,
         }
     }
@@ -116,11 +128,15 @@ impl SystemdUnitResource {
     }
 
     fn offline_enablement_links(&self) -> ResourceResult<Vec<(PathBuf, PathBuf)>> {
-        let unit_path = self.offline_unit_path()?;
-        let source = unit_path.canonicalize().map_err(|error| {
-            anyhow::Error::new(error)
-                .context(format!("resolving user unit {}", unit_path.display()))
+        let unit_path = self.offline_unit_path()?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "user unit {} was not found in the unit search directories",
+                self.name
+            )
         })?;
+        // Keep the installed path, even when it is a symlink into the checkout.
+        // Uninstall materializes that path and may be followed by checkout removal.
+        let source = unit_path.clone();
         let content = std::fs::read_to_string(&unit_path).map_err(|error| {
             anyhow::Error::new(error).context(format!("reading user unit {}", unit_path.display()))
         })?;
@@ -131,28 +147,36 @@ impl SystemdUnitResource {
                 self.name
             )));
         }
-        let user_dir = unit_path
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("user unit path has no parent"))?;
+        let user_dir = self.offline_user_dir()?;
         Ok(targets
             .into_iter()
             .map(|target| (user_dir.join(target).join(&self.name), source.clone()))
             .collect())
     }
 
-    fn offline_unit_path(&self) -> ResourceResult<PathBuf> {
+    fn offline_user_dir(&self) -> ResourceResult<PathBuf> {
         let home = self.home.as_deref().ok_or_else(|| {
             ResourceError::not_supported("offline user-unit enablement requires a home directory")
         })?;
-        Ok(home
-            .join(".config")
-            .join("systemd")
-            .join("user")
-            .join(&self.name))
+        Ok(home.join(".config/systemd/user"))
+    }
+
+    fn offline_unit_path(&self) -> ResourceResult<Option<PathBuf>> {
+        let user_dir = self.offline_user_dir()?;
+        for directory in std::iter::once(&user_dir).chain(&self.system_user_unit_dirs) {
+            let candidate = directory.join(&self.name);
+            // Do not bypass a mask or broken override in a higher-priority directory.
+            match std::fs::symlink_metadata(&candidate) {
+                Ok(_) => return Ok(Some(candidate)),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(None)
     }
 
     fn offline_current_state(&self) -> ResourceResult<ResourceState> {
-        if !self.offline_unit_path()?.try_exists()? {
+        if self.offline_unit_path()?.is_none() {
             // This is expected during a fresh dry run: the preceding symlink
             // task reports the unit definition it would install but does not
             // create it. The enablement link would therefore also be missing.
@@ -167,7 +191,11 @@ impl SystemdUnitResource {
         let mut any_enabled = false;
         for (link, source) in &links {
             match std::fs::symlink_metadata(link) {
-                Ok(_) if symlink_points_to(link, source) => any_enabled = true,
+                Ok(_) if symlink_references(link, source) => any_enabled = true,
+                Ok(_) if symlink_points_to(link, source) => {
+                    any_enabled = true;
+                    all_enabled = false;
+                }
                 Ok(_) => {
                     return Ok(ResourceState::Invalid {
                         reason: format!(
@@ -185,6 +213,11 @@ impl SystemdUnitResource {
         if self.enabled {
             Ok(if all_enabled {
                 ResourceState::Correct
+            } else if any_enabled {
+                ResourceState::Incorrect {
+                    current: "enablement links are incomplete or bypass the installed unit"
+                        .to_string(),
+                }
             } else {
                 ResourceState::Missing
             })
@@ -204,7 +237,7 @@ impl SystemdUnitResource {
                 .ok_or_else(|| anyhow::anyhow!("enablement link has no parent"))?;
             std::fs::create_dir_all(parent)?;
             match std::fs::symlink_metadata(&link) {
-                Ok(_) if symlink_points_to(&link, &source) => continue,
+                Ok(_) if symlink_references(&link, &source) => continue,
                 Ok(metadata) if metadata.file_type().is_symlink() => std::fs::remove_file(&link)?,
                 Ok(_) => {
                     return Err(ResourceError::conflicting_state(
@@ -317,7 +350,26 @@ fn symlink_points_to(link: &Path, expected: &Path) -> bool {
     } else {
         link.parent().unwrap_or_else(|| Path::new(".")).join(actual)
     };
-    resolved.canonicalize().is_ok_and(|path| path == expected)
+    resolved
+        .canonicalize()
+        .ok()
+        .zip(expected.canonicalize().ok())
+        .is_some_and(|(resolved_path, expected_path)| resolved_path == expected_path)
+}
+
+// Resolve parent components but preserve the final filename so a link to the
+// installed unit differs from a link directly to its repository source.
+fn symlink_references(link: &Path, expected: &Path) -> bool {
+    fn reference_path(path: &Path) -> Option<PathBuf> {
+        Some(path.parent()?.canonicalize().ok()?.join(path.file_name()?))
+    }
+    let Ok(actual) = std::fs::read_link(link) else {
+        return false;
+    };
+    let resolved = link.parent().unwrap_or_else(|| Path::new(".")).join(actual);
+    reference_path(&resolved)
+        .zip(reference_path(expected))
+        .is_some_and(|(resolved_path, expected_path)| resolved_path == expected_path)
 }
 
 #[cfg(unix)]
@@ -829,6 +881,128 @@ mod tests {
         let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
         resource.enabled = false;
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offline_packaged_unit_enablement_uses_user_directory() {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("home");
+        let system_dir = fixture.path().join("usr/lib/systemd/user");
+        std::fs::create_dir_all(&system_dir).unwrap();
+        let unit = "gnome-keyring-daemon.socket";
+        let source = system_dir.join(unit);
+        std::fs::write(&source, "[Install]\nWantedBy=sockets.target\n").unwrap();
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: unit.to_string(),
+            scope: UnitScope::User,
+            enabled: true,
+        };
+        let mut resource =
+            SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+        resource.system_user_unit_dirs = vec![system_dir.clone()];
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+        assert!(!home.exists(), "discovery must not create user directories");
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        let link = home
+            .join(".config/systemd/user/sockets.target.wants")
+            .join(unit);
+        assert_eq!(std::fs::read_link(&link).unwrap(), source);
+        assert!(!system_dir.join("sockets.target.wants").exists());
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        resource.enabled = false;
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert!(!link.is_symlink());
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offline_lookup_preserves_override_precedence_and_masks() {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("home");
+        let user_dir = home.join(".config/systemd/user");
+        let admin_dir = fixture.path().join("etc/systemd/user");
+        let package_dir = fixture.path().join("usr/lib/systemd/user");
+        for dir in [&user_dir, &admin_dir, &package_dir] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(
+                dir.join("example.service"),
+                "[Install]\nWantedBy=default.target\n",
+            )
+            .unwrap();
+        }
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: "example.service".to_string(),
+            scope: UnitScope::User,
+            enabled: true,
+        };
+        let mut resource =
+            SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+        resource.system_user_unit_dirs = vec![admin_dir.clone(), package_dir.clone()];
+        for expected in [&user_dir, &admin_dir, &package_dir] {
+            assert_eq!(
+                resource.offline_unit_path().unwrap(),
+                Some(expected.join(&entry.name))
+            );
+            std::fs::remove_file(expected.join(&entry.name)).unwrap();
+        }
+        std::fs::write(
+            package_dir.join(&entry.name),
+            "[Install]\nWantedBy=default.target\n",
+        )
+        .unwrap();
+        for target in [Path::new("/dev/null"), &fixture.path().join("missing")] {
+            let mask = user_dir.join(&entry.name);
+            std::os::unix::fs::symlink(target, &mask).unwrap();
+            assert_eq!(resource.offline_unit_path().unwrap(), Some(mask.clone()));
+            assert!(
+                resource.apply().is_err(),
+                "must not fall back past a masked or broken override"
+            );
+            assert!(!user_dir.join("default.target.wants").exists());
+            std::fs::remove_file(mask).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn offline_enablement_repairs_checkout_links_and_accepts_relative_installed_links() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home.path().join("checkout/example.service");
+        let unit_dir = home.path().join(".config/systemd/user");
+        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(unit_dir.join("default.target.wants")).unwrap();
+        std::fs::write(&source, "[Install]\nWantedBy=default.target\n").unwrap();
+        let installed = unit_dir.join("example.service");
+        std::os::unix::fs::symlink(&source, &installed).unwrap();
+        let link = unit_dir.join("default.target.wants/example.service");
+        std::os::unix::fs::symlink(&source, &link).unwrap();
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: "example.service".to_string(),
+            scope: UnitScope::User,
+            enabled: true,
+        };
+        let resource = SystemdUnitResource::from_entry(
+            &entry,
+            Arc::new(MockExecutor::new()),
+            home.path(),
+            false,
+        );
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(std::fs::read_link(&link).unwrap(), installed);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("../example.service", &link).unwrap();
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[cfg(unix)]

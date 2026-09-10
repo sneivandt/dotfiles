@@ -85,6 +85,20 @@ impl Task for ConfigurePamKeyring {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        // The package task can fail for an unrelated package. Check the actual
+        // prerequisite after it finishes, before editing either PAM service.
+        if !ctx.dry_run() {
+            let installed = ctx.executor().execute(
+                crate::infra::exec::CommandSpec::new("pacman")
+                    .args(&["-Q", "gnome-keyring"])
+                    .unchecked(),
+            )?;
+            if !installed.success {
+                return Ok(TaskResult::unmet(
+                    "gnome-keyring is not installed; PAM configuration requires pam_gnome_keyring.so",
+                ));
+            }
+        }
         process_resources(
             ctx,
             self.resources(ctx),
@@ -202,5 +216,58 @@ password   optional     pam_gnome_keyring.so
         );
         assert_eq!(fs::read_to_string(login).unwrap(), LOGIN_BASE);
         assert_eq!(fs::read_to_string(passwd).unwrap(), PASSWD_BASE);
+    }
+
+    #[test]
+    fn rechecks_keyring_package_before_touching_pam() {
+        use crate::infra::exec::{ExecResult, MockExecutor};
+        for installed in [false, true] {
+            let temp = TempDir::new().unwrap();
+            let login = temp.path().join("login");
+            let passwd = temp.path().join("passwd");
+            let login_text = LOGIN_BASE
+                .replace("auth include system-local-login\n", "auth include system-local-login\nauth       optional     pam_gnome_keyring.so\n")
+                .replace("session include system-local-login\n", "session include system-local-login\nsession    optional     pam_gnome_keyring.so auto_start\n");
+            let passwd_text =
+                format!("{PASSWD_BASE}password   optional     pam_gnome_keyring.so\n");
+            fs::write(&login, &login_text).unwrap();
+            fs::write(&passwd, &passwd_text).unwrap();
+            let mut mock = MockExecutor::new();
+            mock.expect_execute()
+                .once()
+                .withf(|spec| {
+                    spec.program() == "pacman"
+                        && spec.arguments() == ["-Q", "gnome-keyring"]
+                        && !spec.is_checked()
+                })
+                .returning(move |_| {
+                    Ok(if installed {
+                        ExecResult::success("gnome-keyring 1.0")
+                    } else {
+                        ExecResult::failure("", "not installed", Some(1))
+                    })
+                });
+            let ctx = crate::test_helpers::make_context(
+                empty_config(temp.path().to_path_buf()),
+                arch_context().platform(),
+                std::sync::Arc::new(mock),
+            );
+            let result = task(true)
+                .with_paths(&login, &passwd, temp.path())
+                .run(&ctx)
+                .unwrap();
+            if installed {
+                assert!(
+                    matches!(result, TaskResult::Batch(stats) if stats.already_ok_count() == 2)
+                );
+            } else {
+                assert!(
+                    crate::test_helpers::task_skipped(&result)
+                        .contains("gnome-keyring is not installed")
+                );
+            }
+            assert_eq!(fs::read_to_string(login).unwrap(), login_text);
+            assert_eq!(fs::read_to_string(passwd).unwrap(), passwd_text);
+        }
     }
 }

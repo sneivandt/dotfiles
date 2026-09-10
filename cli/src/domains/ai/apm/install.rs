@@ -117,8 +117,8 @@ impl ApmInstallPlan {
             write_merged_manifest(&self.manifest_path, &self.merged)?;
         }
 
-        let install_result =
-            install_task_result(self.targets.run_apm_command(ctx, ApmCommand::Install)?);
+        let command = self.targets.run_apm_command(ctx, ApmCommand::Install)?;
+        let install_result = install_task_result(command.outcome);
         if !matches!(install_result, TaskResult::Ok) {
             return Ok(install_result);
         }
@@ -138,7 +138,8 @@ impl ApmInstallPlan {
             ctx.log().info("updated: APM lock state");
         }
 
-        let changed = self.manifest_needs_write || lock_changed || autopilot_changed;
+        let changed =
+            self.manifest_needs_write || lock_changed || autopilot_changed || command.changed;
         if changed {
             let message = if dependency_changes.is_empty() {
                 "updated APM configuration".to_string()

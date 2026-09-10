@@ -17,6 +17,42 @@ use crate::test_helpers::{
 use std::path::PathBuf;
 
 #[test]
+fn aur_preview_uses_package_database_without_requiring_paru() {
+    for query_fails in [false, true] {
+        let config = empty_config(PathBuf::from("/tmp"));
+        let packages = ConfigHandle::new(vec![Package {
+            name: "example-aur".into(),
+            is_aur: true,
+        }]);
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+            })
+            .returning(move |_| {
+                Ok(if query_fails {
+                    ExecResult::failure("", "fixture database error", Some(1))
+                } else {
+                    ExecResult::success("already-installed 1.0\n")
+                })
+            });
+        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(true);
+        let result = InstallAurPackages::new(packages).run(&ctx);
+        if query_fails {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("querying installed")
+            );
+        } else {
+            assert_eq!(task_batch(&result.unwrap()).changed_count(), 1);
+        }
+    }
+}
+
+#[test]
 fn package_resource_description() {
     let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
     let pacman_resource = PackageResource::new(

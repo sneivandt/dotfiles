@@ -149,16 +149,17 @@ pub(crate) fn install_tasks_for_run(
         ),
         Box::new(ApplyFilePermissions::new(store.chmod.clone())),
         with_ordering_deps(ConfigureShell, &[id::<InstallPackages>()]),
-        with_deps(
+        with_ordering_deps(
             ConfigurePamKeyring::new(store.pam_keyring_enabled.clone()),
             &[id::<InstallPackages>()],
         ),
-        with_deps(
+        with_ordering_deps(
             ConfigureSystemd::new(store.units.clone()),
             &[
                 id::<InstallPackages>(),
                 id::<InstallAurPackages>(),
                 id::<InstallSymlinks>(),
+                id::<ApplyFilePermissions>(),
             ],
         ),
         Box::new(ApplyRegistry::new(store.registry.clone())),
@@ -222,9 +223,30 @@ mod tests {
         };
         assert!(
             find("Systemd units")
-                .dependencies()
+                .ordering_dependencies()
+                .contains(&id::<ApplyFilePermissions>())
+        );
+        for name in [
+            "Systemd units",
+            "GNOME Keyring PAM integration",
+            "Paru package manager",
+        ] {
+            assert!(
+                !find(name).dependencies().contains(&id::<InstallPackages>()),
+                "{name} must not be blocked by unrelated package failures"
+            );
+            assert!(
+                find(name)
+                    .ordering_dependencies()
+                    .contains(&id::<InstallPackages>()),
+                "{name} must wait for package installation"
+            );
+        }
+        assert!(
+            find("Systemd units")
+                .ordering_dependencies()
                 .contains(&id::<InstallSymlinks>()),
-            "systemd must depend on symlinks (app-injected)"
+            "systemd must wait for symlinks (app-injected)"
         );
         assert!(
             find("Shell completions")

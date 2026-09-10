@@ -121,7 +121,7 @@ stage_config()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
   cargo run --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" -- \
-    check --root "$REPO_ROOT"
+    check --root "$REPO_ROOT" --profile desktop --only config-warnings,symlink-sources,config-files
 }
 
 # Mirrors the CI documentation consistency job.

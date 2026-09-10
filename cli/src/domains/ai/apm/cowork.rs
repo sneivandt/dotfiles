@@ -15,6 +15,7 @@ use serde_yaml_ng::Value;
 use super::targets::copilot_cowork_skills_path;
 use crate::engine::Context;
 use crate::infra::fs::{copy_dir_recursive, write_atomic};
+use crate::infra::logging::OutputExt as _;
 
 const COWORK_TARGET: &str = "copilot-cowork";
 const COWORK_URI_PREFIX: &str = "cowork://";
@@ -25,9 +26,10 @@ const COWORK_URI_PREFIX: &str = "cowork://";
 ///
 /// Returns an error when the configured Cowork path, shared APM skills, lock
 /// state, or a managed file cannot be read or written.
-pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<()> {
+pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
     let (source, target) = cowork_skill_paths(ctx)?;
     let desired = desired_cowork_skill_names(ctx.home())?;
+    let mut changed = !target.exists();
     std::fs::create_dir_all(&target)
         .with_context(|| format!("creating Copilot Cowork skill target {}", target.display()))?;
 
@@ -45,14 +47,22 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<()> {
         let name = entry.file_name().to_string_lossy().into_owned();
         let target_skill = target.join(&name);
         if desired.contains(&name) {
+            if skill_files_match(&entry.path(), &target_skill)? {
+                continue;
+            }
             copy_dir_recursive(&entry.path(), &target_skill, false).with_context(|| {
                 format!(
                     "reconciling APM skill {name} into Copilot Cowork at {}",
                     target_skill.display()
                 )
             })?;
-        } else {
-            remove_skill_entry_point(&target_skill)?;
+            changed = true;
+            ctx.log()
+                .info(format!("updated: Copilot Cowork skill {name}"));
+        } else if remove_skill_entry_point(&target_skill)? {
+            changed = true;
+            ctx.log()
+                .info(format!("removed: Copilot Cowork skill {name}"));
         }
     }
 
@@ -65,13 +75,54 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<()> {
             .with_context(|| format!("reading type for {}", entry.path().display()))?
             .is_dir()
             && !desired.contains(&entry.file_name().to_string_lossy().into_owned())
+            && remove_skill_entry_point(&entry.path())?
         {
-            remove_skill_entry_point(&entry.path())?;
+            changed = true;
+            ctx.log().info(format!(
+                "removed: Copilot Cowork skill {}",
+                entry.file_name().to_string_lossy()
+            ));
         }
     }
 
-    remove_legacy_cowork_lock_deployments(ctx.home())?;
-    Ok(())
+    changed |= remove_legacy_cowork_lock_deployments(ctx.home())?;
+    Ok(changed)
+}
+
+/// Compare only APM-owned source entries; preserve Cowork-owned extra files.
+fn skill_files_match(source: &Path, target: &Path) -> Result<bool> {
+    let source_meta = source.symlink_metadata()?;
+    let target_meta = match target.symlink_metadata() {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error).with_context(|| format!("reading {}", target.display())),
+    };
+    if source_meta.file_type() != target_meta.file_type() {
+        return Ok(false);
+    }
+    if source_meta.file_type().is_symlink() {
+        return Ok(std::fs::read_link(source)? == std::fs::read_link(target)?);
+    }
+    // The shared copier preserves directory modes on Unix only. Windows
+    // directory attributes belong to Cowork and do not indicate file drift.
+    #[cfg(unix)]
+    let compare_permissions = true;
+    #[cfg(not(unix))]
+    let compare_permissions = source_meta.is_file();
+    if compare_permissions && source_meta.permissions() != target_meta.permissions() {
+        return Ok(false);
+    }
+    if source_meta.is_dir() {
+        for entry in std::fs::read_dir(source)? {
+            let entry = entry?;
+            if !skill_files_match(&entry.path(), &target.join(entry.file_name()))? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    } else {
+        Ok(std::fs::read(source)? == std::fs::read(target)?)
+    }
 }
 
 /// Remove records left by direct APM Cowork installs.
@@ -189,11 +240,11 @@ fn is_cowork_uri(value: &Value) -> bool {
         .is_some_and(|value| value.starts_with(COWORK_URI_PREFIX))
 }
 
-fn remove_skill_entry_point(target_skill: &Path) -> Result<()> {
+fn remove_skill_entry_point(target_skill: &Path) -> Result<bool> {
     let entry_point = target_skill.join("SKILL.md");
     match std::fs::remove_file(&entry_point) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(err) => Err(err).with_context(|| {
             format!(
                 "removing excluded Copilot Cowork skill entry point {}",

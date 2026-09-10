@@ -122,6 +122,9 @@ impl PackageTaskKind {
                     Err(reason) => return Ok(TaskResult::unmet(reason)),
                 }
             }
+            // A preview queries pacman's database but must not require the helper
+            // that the preceding bootstrap task only *planned* to install.
+            Self::Aur if ctx.dry_run() => PackageManager::Paru,
             Self::Aur => {
                 let path = match check_paru_health(ctx.executor()) {
                     ParuHealth::Healthy { path, .. } => path,
@@ -179,7 +182,14 @@ impl Task for InstallParu {
     task_metadata! {
         name: "Paru package manager",
         selector: "paru",
-        deps: [InstallPackages],
+    }
+
+    fn ordering_dependencies(&self) -> &[crate::engine::TaskId] {
+        const DEPS: &[crate::engine::TaskId] =
+            &[crate::engine::TaskId::Type(std::any::TypeId::of::<
+                InstallPackages,
+            >())];
+        DEPS
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

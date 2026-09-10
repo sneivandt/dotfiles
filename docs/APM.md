@@ -150,8 +150,9 @@ before convergence. The task:
 Re-running `dotfiles install` should not advance pinned dependency versions.
 Native APM owns idempotency through its lockfile. **APM packages** can therefore
 invoke APM every time while still reporting a current task when the generated
-manifest, lockfile, and retained autopilot policy are unchanged. Dry-run
-previews the delegated install and target work without writing the generated
+manifest, lockfile, Cowork files, and retained autopilot policy are unchanged.
+Cowork repairs name the changed skills even when the lockfile stays identical.
+Dry-run previews the delegated install and target work without writing the generated
 manifest.
 
 ```bash
@@ -172,7 +173,8 @@ success marker is involved.
 
 The task compares the exact lockfile bytes before and after update. Current APM
 preserves unchanged target mappings and timestamps, so an identical lockfile
-reports current while any native lock-state change is reported as changed.
+reports current only when retained workflow state and Cowork files also remain
+unchanged. Native lock-state changes and Cowork repairs are reported as changed.
 Applied updates list each changed dependency with its old and new ref or commit.
 Dry-run promotes the dependency names from APM's native update plan while the
 full native output remains available under `--verbose` and in the run log.

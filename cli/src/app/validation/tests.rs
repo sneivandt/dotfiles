@@ -124,6 +124,11 @@ fn apm_plugin_validation_runs_pack_dry_run_in_each_plugin() {
         .expect("apm manifest should write");
 
     let mut executor = MockExecutor::new();
+    executor
+        .expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .once()
+        .return_const(true);
     executor.expect_execute().once().returning(|spec| {
         let plugin_dir = spec.working_dir().expect("working directory should be set");
         assert!(

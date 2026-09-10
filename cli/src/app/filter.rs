@@ -12,7 +12,7 @@ use crate::infra::logging::{Logger, Output};
 /// Validate task selectors, then return the tasks that survive them.
 pub(crate) fn apply_task_filters<'a>(
     all_tasks: &'a [Box<dyn Task>],
-    additional_known_tasks: &[Box<dyn Task>],
+    additional_known_tasks: &'a [Box<dyn Task>],
     only: &[String],
     skip: &[String],
     with_dependencies: bool,
@@ -31,12 +31,7 @@ pub(crate) fn apply_task_filters<'a>(
     let mut selected = all_tasks
         .iter()
         .chain(additional_known_tasks)
-        .filter(|task| {
-            only.is_empty()
-                || only
-                    .iter()
-                    .any(|filter| task_matches_filter(task.as_ref(), filter))
-        })
+        .filter(|task| task_passes_filters(task.as_ref(), only, &[]))
         .map(|task| task.task_id())
         .collect::<HashSet<_>>();
     if with_dependencies {
@@ -45,6 +40,7 @@ pub(crate) fn apply_task_filters<'a>(
     }
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
+        .chain(additional_known_tasks)
         .filter(|task| {
             selected.contains(&task.task_id())
                 && !skip
@@ -53,7 +49,7 @@ pub(crate) fn apply_task_filters<'a>(
         })
         .map(Box::as_ref)
         .collect();
-    let omitted_dependencies = omitted_dependencies(all_tasks, &filtered);
+    let omitted_dependencies = omitted_dependencies(&known_task_refs, &filtered);
 
     if !log.is_verbose() && !omitted_dependencies.is_empty() {
         log.separate_from_startup();
@@ -61,7 +57,11 @@ pub(crate) fn apply_task_filters<'a>(
     warn_omitted_dependencies(&omitted_dependencies, log);
 
     if !only.is_empty() || !skip.is_empty() {
-        let names: Vec<&str> = filtered.iter().map(|task| task.name()).collect();
+        let names: Vec<&str> = filtered
+            .iter()
+            .filter(|task| task.visibility().is_visible())
+            .map(|task| task.name())
+            .collect();
         log.debug(format!(
             "active filters — running {} task(s): {}",
             names.len(),
@@ -143,7 +143,7 @@ pub fn task_matches_filter(task: &dyn Task, filter: &str) -> bool {
 }
 
 fn omitted_dependencies<'a>(
-    all_tasks: &'a [Box<dyn Task>],
+    all_tasks: &[&'a dyn Task],
     filtered: &[&'a dyn Task],
 ) -> Vec<(&'a str, &'a str)> {
     let active = filtered
@@ -152,7 +152,7 @@ fn omitted_dependencies<'a>(
         .collect::<HashSet<_>>();
     let known = all_tasks
         .iter()
-        .map(|task| (task.task_id(), task.as_ref()))
+        .map(|task| (task.task_id(), *task))
         .collect::<HashMap<TaskId, &dyn Task>>();
     let mut omitted = Vec::new();
 
@@ -403,7 +403,8 @@ mod tests {
             "targeted execution should retain its existing non-expanding semantics"
         );
 
-        let dependencies = omitted_dependencies(&all, &filtered);
+        let dependencies =
+            omitted_dependencies(&all.iter().map(Box::as_ref).collect::<Vec<_>>(), &filtered);
         warn_omitted_dependencies(&dependencies, &log);
         assert_eq!(
             log.warnings(),

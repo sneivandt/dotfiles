@@ -200,11 +200,10 @@ impl Task for ValidateApmPlugins {
         selector: "apm-plugins",
     }
 
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.executor().which("apm")
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        if !ctx.which("apm") {
+            return Ok(TaskResult::unmet("apm not found in PATH"));
+        }
         let plugins =
             discover_apm_plugin_dirs(&ctx.root().join("symlinks").join("apm").join("plugins"))?;
         if plugins.is_empty() {
@@ -256,11 +255,10 @@ impl Task for RunShellcheck {
         selector: "shellcheck",
     }
 
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.executor().which("shellcheck")
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        if !ctx.which("shellcheck") {
+            return Ok(TaskResult::unmet("shellcheck not found in PATH"));
+        }
         let scripts = discover_linter_inputs(
             ctx.root(),
             &["dotfiles.sh"],
@@ -288,11 +286,10 @@ impl Task for RunPSScriptAnalyzer {
         selector: "psscriptanalyzer",
     }
 
-    fn should_run(&self, ctx: &Context) -> bool {
-        ctx.executor().which("pwsh")
-    }
-
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        if !ctx.which("pwsh") {
+            return Ok(TaskResult::unmet("pwsh not found in PATH"));
+        }
         let ps_files = discover_linter_inputs(
             ctx.root(),
             &["dotfiles.ps1"],

@@ -23,7 +23,7 @@ impl Task for ConfigureShell {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if !ctx.which("zsh") {
-            return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+            return Ok(TaskResult::unmet("zsh not found in PATH"));
         }
         run_resource_task(
             ctx,
@@ -58,13 +58,13 @@ mod tests {
     }
 
     #[test]
-    fn run_is_not_applicable_when_zsh_is_still_unavailable() {
+    fn run_reports_missing_zsh_as_unmet_work() {
         let config = empty_config(PathBuf::from("/tmp"));
         let ctx = make_linux_context(config); // which() returns false
         assert!(ConfigureShell.should_run(&ctx));
         assert!(matches!(
             ConfigureShell.run(&ctx).unwrap(),
-            TaskResult::NotApplicable(_)
+            TaskResult::Skipped { reason, .. } if reason == "zsh not found in PATH"
         ));
     }
 

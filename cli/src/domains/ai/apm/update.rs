@@ -80,7 +80,8 @@ fn advance_apm_dependencies(ctx: &Context, targets: ManagedTargets) -> Result<Ta
     let lock_before = read_lock_snapshot(&lock_path)?;
     let target_snapshot = targets.snapshot(ctx);
 
-    match targets.run_apm_command(ctx, ApmCommand::Update)? {
+    let command = targets.run_apm_command(ctx, ApmCommand::Update)?;
+    match command.outcome {
         ApmCommandResult::AuthSkipped(reason) => Ok(TaskResult::unmet(reason)),
         ApmCommandResult::Success(_) => {
             let lock_after = read_lock_snapshot(&lock_path)?;
@@ -95,7 +96,7 @@ fn advance_apm_dependencies(ctx: &Context, targets: ManagedTargets) -> Result<Ta
                 ctx.log().info("updated: APM lock state");
             }
 
-            if lock_changed || autopilot_changed {
+            if lock_changed || autopilot_changed || command.changed {
                 let message = if dependency_changes.is_empty() {
                     "updated APM deployments".to_string()
                 } else {

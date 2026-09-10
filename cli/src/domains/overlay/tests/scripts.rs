@@ -348,7 +348,7 @@ fn script_task_run_uses_dry_run_script_when_context_is_dry_run() {
 }
 
 #[test]
-fn script_task_run_treats_check_failures_as_not_applicable() {
+fn script_task_run_propagates_check_failures() {
     let (overlay, entry, script_arg) = shell_script_fixture();
     let overlay_path = overlay.path().to_path_buf();
     let check_script = script_arg;
@@ -368,16 +368,15 @@ fn script_task_run_treats_check_failures_as_not_applicable() {
 
     let ctx = context_with_executor(overlay.path(), mock);
     let task = OverlayScriptTask::new(entry, overlay.path().to_path_buf());
-    let result = task.run(&ctx).unwrap();
-
-    assert!(matches!(
-        result,
-        TaskResult::NotApplicable(reason) if reason.contains("exit 2") && reason.contains("boom")
-    ));
+    let error = task.run(&ctx).unwrap_err().to_string();
+    assert!(
+        error.contains("exit 2") && error.contains("boom"),
+        "{error}"
+    );
 }
 
 #[test]
-fn script_task_run_is_not_applicable_when_script_is_missing() {
+fn script_task_run_fails_when_script_is_missing() {
     let overlay = tempfile::tempdir().expect("create overlay dir");
     let mock = MockExecutor::new();
     let ctx = context_with_executor(overlay.path(), mock);
@@ -385,10 +384,6 @@ fn script_task_run_is_not_applicable_when_script_is_missing() {
         script_entry("Missing script", "scripts/missing.sh"),
         overlay.path().to_path_buf(),
     );
-    let result = task.run(&ctx).unwrap();
-
-    assert!(matches!(
-        result,
-        TaskResult::NotApplicable(reason) if reason.contains("script not found")
-    ));
+    let error = task.run(&ctx).unwrap_err().to_string();
+    assert!(error.contains("script not found"), "{error}");
 }

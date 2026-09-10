@@ -216,10 +216,9 @@ impl TestContextBuilder {
         self
     }
 
-    /// Create a `.git/hooks/` directory in the test repository.
+    /// Initialize a repository with its `.git/hooks/` directory.
     pub(crate) fn with_git_hooks_dir(self) -> Self {
-        std::fs::create_dir_all(self.ctx.root.path().join(".git/hooks"))
-            .expect("create .git/hooks dir");
+        git2::Repository::init(self.ctx.root.path()).expect("initialize Git hook repository");
         self
     }
 

@@ -184,11 +184,10 @@ fn run_classifies_repository_state_from_git_output() {
                 ),
                 "{case}: expected a skip mentioning {fragment:?}, got {result:?}"
             );
+        } else if expect_updated {
+            crate::test_helpers::assert_task_changed(&result);
         } else {
-            assert!(
-                matches!(result, TaskResult::Ok),
-                "{case}: expected Ok, got {result:?}"
-            );
+            crate::test_helpers::assert_task_ok(&result);
         }
         assert_eq!(updated, expect_updated, "{case}: update signal");
     }
@@ -406,7 +405,7 @@ fn run_updates_overlay_repository_when_behind_upstream() {
     let task = UpdateRepository::new(repo_updated.clone());
 
     let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
+    crate::test_helpers::assert_task_changed(&result);
     assert!(repo_updated.was_updated());
 }
 

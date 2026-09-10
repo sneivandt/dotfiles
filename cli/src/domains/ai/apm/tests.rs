@@ -24,6 +24,69 @@ fn linux_context(home: &Path, executor: MockExecutor) -> Context {
     make_context_with_home(home, Platform::new(Os::Linux, false), executor)
 }
 
+#[test]
+fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
+    for update in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        write_current_manifest_and_lock(dir.path());
+        let lock = "dependencies:\n  - deployed_files:\n      - .agents/skills/example/SKILL.md\n    target_subset: [agent-skills, copilot-cowork]\n";
+        std::fs::write(dir.path().join(".apm/apm.lock.yaml"), lock).unwrap();
+        let source = dir.path().join(".agents/skills/example");
+        let target = dir
+            .path()
+            .join("OneDrive - Test/Documents/Cowork/skills/example");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(source.join("SKILL.md"), "current fixture").unwrap();
+        std::fs::write(target.join("SKILL.md"), "stale fixture").unwrap();
+        std::fs::write(target.join("cowork-owned.txt"), "preserve").unwrap();
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .with(mockall::predicate::eq("apm"))
+            .times(2)
+            .return_const(true);
+        mock.expect_execute()
+            .times(2)
+            .withf(move |spec| {
+                spec.program() == "apm"
+                    && spec.arguments()
+                        == if update {
+                            vec!["update", "-g", "--yes"]
+                        } else {
+                            vec!["install", "-g"]
+                        }
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        mock.expect_execute()
+            .times(2)
+            .withf(|spec| {
+                spec.program() == "apm"
+                    && spec.arguments() == ["experimental", "enable", "copilot-cowork"]
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        let ctx = make_windows_cowork_context(dir.path(), mock);
+        let task: Box<dyn Task> = if update {
+            Box::new(update_task())
+        } else {
+            Box::new(install_task())
+        };
+        assert_task_changed(&task.run(&ctx).unwrap());
+        assert_task_ok(&task.run(&ctx).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(target.join("SKILL.md")).unwrap(),
+            "current fixture"
+        );
+        assert_eq!(
+            std::fs::read_to_string(target.join("cowork-owned.txt")).unwrap(),
+            "preserve"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(".apm/apm.lock.yaml")).unwrap(),
+            lock
+        );
+    }
+}
+
 fn expect_primary_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, home: &Path) {
     let home = home.to_path_buf();
     mock.expect_execute()

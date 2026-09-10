@@ -115,8 +115,9 @@ boundary.
 #### Git hooks
 
 Runs after **Dotfiles repository**, so it uses the latest hook sources. It
-installs files from `hooks/` into the checkout's Git hook directory. The task
-does not apply outside a Git checkout or when hook sources are absent.
+installs files from `hooks/` into Git's shared hook directory, including for
+linked worktrees, and honors `core.hooksPath`. The task does not apply outside a
+Git checkout or when hook sources are absent.
 
 #### Shell completions
 
@@ -179,8 +180,10 @@ packages.
 This Arch-only task bootstraps the `paru` AUR helper. It queries
 `pacman -Q paru` and runs `/usr/bin/paru --version` in the current system
 context. Under `install-arch`, both commands run inside the target chroot. The
-task installs a missing helper. It rebuilds an installed but unusable helper
-from AUR source against the current system libraries.
+task waits for system packages without being blocked by unrelated package
+failures, then checks its own prerequisites. It installs a missing helper and
+rebuilds an installed but unusable helper from AUR source against the current
+system libraries.
 
 Before cloning, the task requires `git`, `makepkg`, and `sudo`. It then resolves
 Cargo and runs `cargo --version`. An unconfigured `rustup` proxy therefore fails
@@ -191,7 +194,9 @@ the exact `/usr/bin/paru` path instead of resolving a host or stale PATH entry.
 #### AUR packages
 
 Installs package entries marked `{ aur = true }` in `conf/packages.toml`. It
-uses the AUR helper after its bootstrap prerequisite has completed.
+uses the AUR helper after its bootstrap prerequisite has completed. Dry-run
+queries pacman's installed-package database without requiring the helper that
+bootstrap only planned to install. Database query errors still fail the preview.
 
 #### Home symlinks
 
@@ -213,13 +218,14 @@ when the desired executable is available. It reads state from the account
 database instead of the invoking process's `SHELL` variable. A root invocation
 uses `usermod` directly. An unprivileged non-interactive invocation uses
 passwordless or cached sudo when available. A normal interactive run uses
-`chsh`.
+`chsh`. Missing zsh is reported as unmet work with an explicit reason.
 
 #### GNOME Keyring PAM integration
 
 This Arch-only task runs when the active package profile includes
-`gnome-keyring`, after package installation makes `pam_gnome_keyring.so`
-available. It adds the keyring authentication and session directives to
+`gnome-keyring`. It waits for package installation and checks that keyring is
+installed before editing PAM, even if an unrelated package failed. It adds the
+keyring authentication and session directives to
 `/etc/pam.d/login`, then adds password synchronization to
 `/etc/pam.d/passwd`.
 
@@ -237,10 +243,12 @@ autologin.
 
 Reads `conf/systemd-units.toml` and enables/starts selected units. Bare strings
 use user scope; table entries can select `user` or `system` scope. System units
-use `sudo` when they need enablement. The task runs after package, AUR, and
-symlink tasks because a unit may depend on installed binaries and linked unit
-definitions. When the user manager is unavailable in a fresh-install chroot, it
-creates per-user enablement links for user units and leaves startup to the first
+use `sudo` when they need enablement. The task runs after package, AUR, symlink,
+and file-permission tasks because a unit may depend on installed
+binaries, linked unit definitions, and executable scripts. These are ordering
+edges: unrelated prerequisite failures do not prevent the task from checking
+each unit's actual state. When the user manager is unavailable in a fresh-install
+chroot, it creates per-user enablement links for user units and leaves startup to the first
 real login.
 
 #### Windows registry
@@ -303,6 +311,10 @@ task:
 - uses its dry-run mode during `--dry-run`
 - captures and forwards non-empty output through the engine logger
 
+A missing configured script or a check exit other than 0 or 1 fails the task
+and remains visible in normal output. Exit 0 means current; exit 1 means apply
+is needed.
+
 The engine passes `--check` and `--dryrun` as needed, but it cannot stop a
 script that ignores the contract from changing state. The underlying resource
 supports `--remove`; dynamic script tasks are not registered in the current
@@ -351,9 +363,9 @@ The required main files are:
 - `conf/systemd-units.toml`
 - `conf/vscode-extensions.toml`
 
-ShellCheck and APM validation are not applicable when their executables are
-missing. PSScriptAnalyzer is different: the task is selected when `pwsh` is
-available, so a missing analyzer module causes that validation task to fail.
+Missing ShellCheck, APM, or PowerShell executables produce visible skipped
+checks naming the missing tool. `--fail-on-skip` and CI treat these as failures.
+When `pwsh` is available, a missing PSScriptAnalyzer module fails its check.
 Syntax and consistency failures in required configuration also fail the
 command. The separate `config_drift` integration test verifies relationships
 across the real configuration and source tree.

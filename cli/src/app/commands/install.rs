@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::RuntimePolicy;
 use crate::app::cli::InstallOpts;
-use crate::app::filter::{apply_task_filters, task_passes_filters};
+use crate::app::filter::apply_task_filters;
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
@@ -90,12 +90,6 @@ pub(crate) fn run_pipeline(
     )?;
 
     omit_repository_task(&mut filtered, runtime.repository_child);
-    filtered.extend(
-        startup_overlay_tasks
-            .iter()
-            .filter(|task| task_passes_filters(task.as_ref(), &opts.only, &opts.skip))
-            .map(Box::as_ref),
-    );
 
     runner.run_with_restart(
         filtered,

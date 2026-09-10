@@ -57,7 +57,7 @@ impl Operation for CompletionOperation<'_> {
         crate::infra::fs::write_with_parent(&plan.destination, &plan.content)?;
         ctx.log()
             .info(format!("{} completions written", self.shell_name));
-        Ok(TaskResult::Ok)
+        Ok(TaskStats::changed().finish())
     }
 }
 
@@ -173,7 +173,7 @@ mod tests {
         let ctx = make_linux_context(config);
 
         let result = task().run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        crate::test_helpers::assert_task_changed(&result);
 
         let dest = completions_dir.join(ZSH_COMPLETION_FILENAME);
         assert!(dest.exists(), "completion file should be written");
@@ -195,7 +195,7 @@ mod tests {
             .with_home(dir.path().to_path_buf());
 
         let result = task().run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        crate::test_helpers::assert_task_changed(&result);
 
         let dest = dir
             .path()
@@ -231,7 +231,7 @@ mod tests {
             .unwrap();
 
         // Second run should be a no-op (same content → same mtime).
-        drop(task().run(&ctx).unwrap());
+        crate::test_helpers::assert_task_ok(&task().run(&ctx).unwrap());
         let mtime2 = std::fs::metadata(completions_dir.join(ZSH_COMPLETION_FILENAME))
             .unwrap()
             .modified()
@@ -248,7 +248,7 @@ mod tests {
         let ctx = make_linux_context(config);
 
         let result = task().run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::Ok));
+        crate::test_helpers::assert_task_changed(&result);
 
         let dest = dir
             .path()

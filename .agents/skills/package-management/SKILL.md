@@ -39,7 +39,9 @@ reinstallation of everything.
 - Do not wrap AUR helpers in an extra sudo layer.
 - Check the PATH-selected `paru` executable's health, not just its existence.
   Keep bootstrap/rebuild planning separate from AUR package installation and
-  preserve the prerequisite edge.
+  preserve the blocking AUR-to-Paru prerequisite edge. Paru waits for native
+  packages without inheriting unrelated package failures. AUR dry-run queries
+  pacman's database without requiring a helper that bootstrap only previewed.
 - Winget uses exact IDs, prefers user scope, and retries unscoped only when no
   user-scope installer exists. Privilege-only failures are explicit skips.
 

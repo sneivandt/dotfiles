@@ -66,6 +66,7 @@ The Rust integration tests under `cli/tests/` cover distinct boundaries:
 | `e2e_apply` | End-to-end convergence against controlled state |
 | `install_command` | Install selection and command composition |
 | `task_execution` | Filesystem-backed task execution, resource convergence, and dry-run safety |
+| `task_output` | Visible task outcomes, missing-tool reasons, and command exit status |
 | `test_command` | Validation task construction and outcomes |
 | `uninstall_command` | Conservative uninstall composition and behavior |
 

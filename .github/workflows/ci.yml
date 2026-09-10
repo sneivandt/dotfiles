@@ -380,7 +380,8 @@ jobs:
       - name: Dry-run install
         run: ./bin/dotfiles install --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
       - name: Run validation
-        run: ./bin/dotfiles check --root . -p ${{ matrix.profile }}
+        # Linters have dedicated jobs; APM is not provisioned in this matrix.
+        run: ./bin/dotfiles check --root . -p ${{ matrix.profile }} --skip shellcheck,psscriptanalyzer,apm-plugins
 
   integration-windows:
     name: "Integration: ${{ matrix.profile }} on Windows"
@@ -402,7 +403,8 @@ jobs:
         run: ./bin/dotfiles.exe install --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
       - name: Run validation
         shell: bash
-        run: ./bin/dotfiles.exe check --root . -p ${{ matrix.profile }}
+        # Linters have dedicated jobs; APM is not provisioned in this matrix.
+        run: ./bin/dotfiles.exe check --root . -p ${{ matrix.profile }} --skip shellcheck,psscriptanalyzer,apm-plugins
 
   test-install-uninstall:
     name: "Integration: Install/Uninstall round-trip"

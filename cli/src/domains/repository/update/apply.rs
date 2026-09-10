@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use crate::engine::{Context, TaskResult};
+use crate::engine::{Context, TaskResult, TaskStats};
 use crate::infra::exec::{CommandSpec, ExecError};
 
 use super::RepositoryUpdateSignal;
@@ -86,7 +86,12 @@ pub(super) fn apply_repository_updates(
         }
     }
 
-    Ok(TaskResult::Ok)
+    let changed = plans.iter().filter(|plan| plan.needs_update).count();
+    Ok(if changed == 0 {
+        TaskResult::Ok
+    } else {
+        TaskStats::from_counts(u32::try_from(changed).unwrap_or(u32::MAX), 0, 0, 0).finish()
+    })
 }
 
 /// Fetch every repository, returning the failure reason for the first one that

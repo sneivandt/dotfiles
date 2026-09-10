@@ -109,8 +109,7 @@ impl Operation for OverlayScriptOperation {
                 OperationState::needs_run(())
             }
             ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
-                ctx.log().warn(format!("skipping: {reason}"));
-                OperationState::not_applicable(reason)
+                anyhow::bail!(reason)
             }
         })
     }

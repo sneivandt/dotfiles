@@ -20,6 +20,13 @@ pub(super) enum ManagedTargetPreview {
     Update,
 }
 
+/// Command outcome plus changes made by dotfiles-owned deployment adapters.
+#[derive(Debug)]
+pub(super) struct ManagedCommandResult {
+    pub(super) outcome: ApmCommandResult,
+    pub(super) changed: bool,
+}
+
 /// Lifecycle owner for conditionally available Copilot targets.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ManagedTargets {
@@ -92,11 +99,16 @@ impl ManagedTargets {
         self,
         ctx: &Context,
         command: ApmCommand,
-    ) -> Result<ApmCommandResult> {
-        remove_legacy_cowork_lock_deployments(ctx.home())?;
+    ) -> Result<ManagedCommandResult> {
+        let mut changed = remove_legacy_cowork_lock_deployments(ctx.home())?;
         let primary_result = match run_apm_invocation(ctx, command, command.args())? {
             result @ ApmCommandResult::Success(_) => result,
-            result @ ApmCommandResult::AuthSkipped(_) => return Ok(result),
+            result @ ApmCommandResult::AuthSkipped(_) => {
+                return Ok(ManagedCommandResult {
+                    outcome: result,
+                    changed,
+                });
+            }
         };
 
         for target in self.active.active() {
@@ -105,16 +117,22 @@ impl ManagedTargets {
                     ensure_experimental_target_enabled(ctx, target.apm_name(), config_key);
                     let result = run_apm_invocation(ctx, ApmCommand::Install, args)?;
                     if !matches!(result, ApmCommandResult::Success(_)) {
-                        return Ok(result);
+                        return Ok(ManagedCommandResult {
+                            outcome: result,
+                            changed,
+                        });
                     }
                 }
                 CopilotDeployment::CoworkFileReconcile { config_key } => {
                     ensure_experimental_target_enabled(ctx, target.apm_name(), config_key);
-                    reconcile_cowork_skills(ctx)?;
+                    changed |= reconcile_cowork_skills(ctx)?;
                 }
             }
         }
-        Ok(primary_result)
+        Ok(ManagedCommandResult {
+            outcome: primary_result,
+            changed,
+        })
     }
 
     /// Re-apply the retained Copilot App autopilot policy.

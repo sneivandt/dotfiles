@@ -561,7 +561,7 @@ mod tests {
                     && spec.arguments()
                         == [
                             "show",
-                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
                             "NetworkManager.service",
                         ]
                     && !spec.is_checked()
@@ -630,7 +630,7 @@ mod tests {
                     && spec.arguments()
                         == [
                             "show",
-                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
                             "NetworkManager.service",
                         ]
                     && !spec.is_checked()
@@ -790,7 +790,7 @@ mod tests {
                     spec.program() == "systemctl"
                         && spec.arguments() == [
                             "show",
-                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
                             "test.service",
                         ]
                         && !spec.is_checked()

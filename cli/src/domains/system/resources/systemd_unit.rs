@@ -287,9 +287,13 @@ fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
         && property("ExecMainStartTimestampMonotonic")
             .and_then(|value| value.parse::<u64>().ok())
             .is_some_and(|value| value > 0);
+    let condition_skipped_oneshot = active == "inactive"
+        && property("Type") == Some("oneshot")
+        && property("Result") == Some("success")
+        && property("ConditionResult") == Some("no");
     let matches = match active {
         "active" | "reloading" | "refreshing" | "activating" => enabled,
-        "inactive" | "failed" => !enabled || completed_oneshot,
+        "inactive" | "failed" => !enabled || completed_oneshot || condition_skipped_oneshot,
         "deactivating" => false,
         _ => {
             return ResourceState::Unknown {
@@ -478,7 +482,7 @@ impl IntrinsicState for SystemdUnitResource {
         }
         let runtime_args = self.check_args(&[
             "show",
-            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+            "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
         ])?;
         let runtime_result = self.executor.execute(
             CommandSpec::new("systemctl")
@@ -514,7 +518,7 @@ mod tests {
             .withf(move |spec| {
                 let mut args = vec![
                     "show",
-                    "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic",
+                    "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
                     &unit,
                 ];
                 if scope == UnitScope::User {
@@ -571,8 +575,14 @@ mod tests {
             (
                 "unstarted oneshot",
                 true,
-                "ActiveState=inactive\nType=oneshot\nResult=success\nExecMainStartTimestampMonotonic=0",
+                "ActiveState=inactive\nType=oneshot\nResult=success\nExecMainStartTimestampMonotonic=0\nConditionResult=yes",
                 false,
+            ),
+            (
+                "condition-skipped oneshot",
+                true,
+                "ActiveState=inactive\nType=oneshot\nResult=success\nExecMainStartTimestampMonotonic=0\nConditionResult=no",
+                true,
             ),
             (
                 "failed oneshot",

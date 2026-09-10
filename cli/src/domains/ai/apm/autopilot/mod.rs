@@ -162,8 +162,8 @@ fn fixup_runtime(ctx: &Context) -> Option<(&'static str, String)> {
 }
 
 /// Ground-truth snapshot of which dotfiles-managed workflows were already in
-/// the desired state (`mode='autopilot'`, `enabled=1`) before `apm install`
-/// mutated the Copilot App database.
+/// the desired state (`mode='autopilot'`, `enabled=1`, and an armed schedule
+/// when applicable) before `apm install` mutated the Copilot App database.
 ///
 /// Scoped to the workflow ids recorded in the *pre-install* lockfile so the
 /// post-install fixup can report a real delta instead of the full set APM

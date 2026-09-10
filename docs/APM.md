@@ -79,8 +79,10 @@ task idempotently enables `copilot-app` and runs a separate
 asking the MCP-incapable target to process manifest-wide MCP dependencies. The
 primary invocation still deploys those MCP dependencies to supported targets.
 If the APM manifest is already current, the primary native install still runs.
-After APM finishes, the task restores `autopilot` mode and enabled state for any
-dotfiles-managed workflow that drifted.
+After APM finishes, the task restores `autopilot` mode, enabled state, and
+`next_run_at` for any dotfiles-managed workflow that drifted. This includes
+custom cron schedules, which the App stores as `interval: manual` plus a
+`cron_expression`.
 
 Cowork remains an experimental APM target and is disabled by default. When a
 Cowork skills path is available, dotfiles re-asserts the feature with:

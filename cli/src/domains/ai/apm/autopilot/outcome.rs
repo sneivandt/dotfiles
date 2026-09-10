@@ -80,12 +80,13 @@ pub(super) fn report_fixup_outcome(ctx: &Context, outcome: FixupOutcome, stdout:
         }
         FixupOutcome::Set(n) => {
             ctx.log().always(format!(
-                "    workflows: set {n} apm workflow(s) to autopilot + enabled"
+                "    workflows: restored {n} apm workflow(s) to desired automation state"
             ));
         }
         FixupOutcome::Quiet => {
             ctx.debug_fmt(|| {
-                "autopilot fixup: apm workflows already autopilot + enabled (no change)".to_string()
+                "autopilot fixup: apm workflows already in desired automation state (no change)"
+                    .to_string()
             });
         }
         FixupOutcome::Unparsed => {
@@ -165,7 +166,8 @@ impl FixupFailure {
 /// secure-by-default and the fixup restores them, so the post set equals the
 /// pre set and the delta is zero -- [`FixupOutcome::Quiet`]. A non-zero delta
 /// means a workflow genuinely transitioned (first install, a newly added
-/// workflow, or a user-disabled one being re-enabled).
+/// workflow, a user-disabled one being re-enabled, or an unarmed schedule being
+/// restored).
 pub(super) fn decide_fixup_outcome(stdout: &str, pre: &DesiredApmWorkflows) -> FixupOutcome {
     let Some((matched, post_ids)) = parse_autopilot_result(stdout) else {
         return FixupOutcome::Unparsed;

@@ -14,23 +14,90 @@
 # It also removes duplicate rows for each managed workflow id before arming the
 # scheduler by setting `next_run_at` when it is unset or overdue, so the Copilot
 # App shows one automation card per APM workflow and actually fires it on schedule.
+# Custom cron schedules are stored as interval='manual' plus cron_expression and
+# must be handled before the ordinary interval schedule.
 #
-# Schema contract (version 3): the Copilot App sqlite `workflows` table must
+# Schema contract (version 4): the Copilot App sqlite `workflows` table must
 # expose `id`, `name`, `prompt`, `mode`, and `enabled`, plus the scheduling
-# columns `interval`, `schedule_hour`/`schedule_minute`/`schedule_day` and
-# `next_run_at` (TEXT, ISO-8601 UTC). If that contract changes, bump this
-# version and update the Rust callers in autopilot.rs.
+# columns `interval`, `schedule_hour`/`schedule_minute`/`schedule_day`, and
+# `next_run_at` (TEXT, ISO-8601 UTC). `cron_expression` is additive and detected
+# at runtime so older App schemas retain interval-only repair. If the required
+# contract changes, bump this version and update the Rust callers in autopilot.rs.
 import sqlite3, sys
 from datetime import datetime, timedelta, timezone
 
 
-def compute_next_run(interval, hour, minute, day, now_local):
+def parse_cron_field(field, minimum, maximum, *, sunday_alias=False):
+    """Expand one numeric cron field supporting lists, ranges, and steps."""
+    values = set()
+    for item in field.split(","):
+        base, separator, step_text = item.partition("/")
+        step = int(step_text) if separator else 1
+        if step <= 0:
+            raise ValueError(f"invalid cron step: {item!r}")
+        if base == "*":
+            start, end = minimum, maximum
+        elif "-" in base:
+            start_text, end_text = base.split("-", 1)
+            start, end = int(start_text), int(end_text)
+        else:
+            start = int(base)
+            end = maximum if separator else start
+        if start < minimum or end > maximum or start > end:
+            raise ValueError(f"invalid cron range: {item!r}")
+        values.update(range(start, end + 1, step))
+    if sunday_alias and 7 in values:
+        values.remove(7)
+        values.add(0)
+    return values
+
+
+def compute_next_cron(expression, now_local):
+    """Compute the next local occurrence of a standard five-field cron."""
+    fields = expression.split()
+    if len(fields) != 5:
+        raise ValueError(f"expected five cron fields, got {len(fields)}")
+    minute_text, hour_text, month_day_text, month_text, week_day_text = fields
+    minutes = parse_cron_field(minute_text, 0, 59)
+    hours = parse_cron_field(hour_text, 0, 23)
+    month_days = parse_cron_field(month_day_text, 1, 31)
+    months = parse_cron_field(month_text, 1, 12)
+    week_days = parse_cron_field(week_day_text, 0, 7, sunday_alias=True)
+    month_day_any = month_day_text == "*"
+    week_day_any = week_day_text == "*"
+
+    candidate = now_local.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    for _ in range(8 * 366 * 24 * 60):
+        if candidate.month not in months:
+            candidate += timedelta(minutes=1)
+            continue
+        month_day_matches = candidate.day in month_days
+        week_day_matches = ((candidate.weekday() + 1) % 7) in week_days
+        if month_day_any:
+            day_matches = week_day_matches
+        elif week_day_any:
+            day_matches = month_day_matches
+        else:
+            day_matches = month_day_matches or week_day_matches
+        if (
+            day_matches
+            and candidate.hour in hours
+            and candidate.minute in minutes
+        ):
+            return candidate
+        candidate += timedelta(minutes=1)
+    raise ValueError(f"cron has no occurrence in the next eight years: {expression!r}")
+
+
+def compute_next_run(interval, cron_expression, hour, minute, day, now_local):
     """Next scheduled fire time as an ISO-8601 UTC string, or None for manual.
 
     schedule_hour/minute/day are interpreted in machine-local time (matching the
     Copilot App) and converted to UTC. schedule_day is 0=Sunday..6=Saturday.
     """
-    if interval == "hourly":
+    if cron_expression and cron_expression.strip():
+        nxt = compute_next_cron(cron_expression.strip(), now_local)
+    elif interval == "hourly":
         nxt = now_local.replace(minute=minute, second=0, microsecond=0)
         if nxt <= now_local:
             nxt += timedelta(hours=1)
@@ -122,12 +189,26 @@ dedupe_managed_workflows(con, ids, ph)
 cur = con.execute("UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN (" + ph + ") AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)", ids)
 # Arm the scheduler: set next_run_at on managed rows that are unarmed (NULL) or
 # overdue (<= now), so the app fires them on schedule. A valid future next_run_at
-# is left untouched to avoid rescheduling on every install; manual rows are skipped.
+# is left untouched to avoid rescheduling on every install; manual rows without a
+# custom cron expression are skipped.
 now_local = datetime.now().astimezone()
 now_utc = datetime.now(timezone.utc)
-sched = con.execute("SELECT id, interval, schedule_hour, schedule_minute, schedule_day, next_run_at FROM workflows WHERE id IN (" + ph + ")", ids).fetchall()
-for wid, interval, hour, minute, day, nra in sched:
-    target = compute_next_run(interval, 9 if hour is None else hour, 0 if minute is None else minute, 1 if day is None else day, now_local)
+columns = {row[1] for row in con.execute("PRAGMA table_info(workflows)")}
+cron_column = "cron_expression" if "cron_expression" in columns else "NULL"
+sched = con.execute(
+    "SELECT id, interval, " + cron_column + ", schedule_hour, schedule_minute, "
+    "schedule_day, next_run_at FROM workflows WHERE id IN (" + ph + ")",
+    ids,
+).fetchall()
+for wid, interval, cron_expression, hour, minute, day, nra in sched:
+    target = compute_next_run(
+        interval,
+        cron_expression,
+        9 if hour is None else hour,
+        0 if minute is None else minute,
+        1 if day is None else day,
+        now_local,
+    )
     if target is None:
         continue
     existing = parse_utc(nra)
@@ -135,5 +216,16 @@ for wid, interval, hour, minute, day, nra in sched:
         con.execute("UPDATE workflows SET next_run_at=? WHERE id=?", (target, wid))
 con.commit()
 print(matched, cur.rowcount)
-for row in con.execute("SELECT id FROM workflows WHERE id IN (" + ph + ") AND mode IS 'autopilot' AND enabled IS 1 ORDER BY id", ids):
+cron_empty = (
+    "(cron_expression IS NULL OR trim(cron_expression) = '')"
+    if "cron_expression" in columns
+    else "1"
+)
+desired = (
+    "SELECT id FROM workflows WHERE id IN (" + ph + ") "
+    "AND mode IS 'autopilot' AND enabled IS 1 "
+    "AND ((interval IS 'manual' AND " + cron_empty + ") "
+    "OR next_run_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')) ORDER BY id"
+)
+for row in con.execute(desired, ids):
     print(row[0])

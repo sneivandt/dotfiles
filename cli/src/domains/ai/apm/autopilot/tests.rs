@@ -254,6 +254,99 @@ for row in con.execute("SELECT id, COUNT(*), MIN(mode), MIN(enabled) FROM workfl
     );
 }
 
+#[test]
+fn workflow_scripts_restore_custom_cron_schedule() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let db_path = dir.path().join("data.db");
+    let db = db_path.to_str().expect("db path utf-8");
+    let setup = run_python_script(
+        python,
+        r#"
+import sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+con.execute("CREATE TABLE workflows (id TEXT, name TEXT, prompt TEXT, mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT, cron_expression TEXT)")
+con.execute(
+    "INSERT INTO workflows VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ("apm--cron", "PR Review", "prompt", "autopilot", 1, "manual", 9, 0, 1, None, "0 9,11,13,15 * * 1-5"),
+)
+con.commit()
+"#,
+        &[db],
+    );
+    assert!(
+        setup.status.success(),
+        "setup failed: {}",
+        String::from_utf8_lossy(&setup.stderr)
+    );
+
+    let before = run_python_script(python, WORKFLOW_DESIRED_IDS_SCRIPT, &[db, "apm--cron"]);
+    assert!(
+        before.status.success(),
+        "snapshot failed: {}",
+        String::from_utf8_lossy(&before.stderr)
+    );
+    assert!(
+        before.stdout.is_empty(),
+        "an unarmed cron workflow must not be desired"
+    );
+
+    let fixup = run_python_script(python, WORKFLOW_AUTOPILOT_SCRIPT, &[db, "apm--cron"]);
+    assert!(
+        fixup.status.success(),
+        "fixup failed: {}",
+        String::from_utf8_lossy(&fixup.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(fixup.stdout)
+            .expect("stdout utf-8")
+            .replace("\r\n", "\n"),
+        "1 0\napm--cron\n"
+    );
+
+    let query = run_python_script(
+        python,
+        r#"
+import sqlite3, sys
+from datetime import datetime
+con = sqlite3.connect(sys.argv[1])
+next_run_at = con.execute("SELECT next_run_at FROM workflows WHERE id='apm--cron'").fetchone()[0]
+next_local = datetime.fromisoformat(next_run_at.replace("Z", "+00:00")).astimezone()
+print(next_local > datetime.now().astimezone())
+print(next_local.minute == 0)
+print(next_local.hour in {9, 11, 13, 15})
+print(next_local.isoweekday() <= 5)
+"#,
+        &[db],
+    );
+    assert!(
+        query.status.success(),
+        "query failed: {}",
+        String::from_utf8_lossy(&query.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&query.stdout)
+            .replace("\r\n", "\n")
+            .trim(),
+        "True\nTrue\nTrue\nTrue"
+    );
+
+    let after = run_python_script(python, WORKFLOW_DESIRED_IDS_SCRIPT, &[db, "apm--cron"]);
+    assert!(
+        after.status.success(),
+        "snapshot failed: {}",
+        String::from_utf8_lossy(&after.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&after.stdout)
+            .replace("\r\n", "\n")
+            .trim(),
+        "apm--cron"
+    );
+}
+
 /// Regression guard: the embedded Python scripts must keep the `print`
 /// body indented under its `for` loop. Rust string `\`-continuations strip
 /// the leading whitespace of the next source line, which previously
@@ -532,7 +625,7 @@ fn update_re_arms_apm_workflows_cases() {
         expect_apm_update(&mut mock, &mut seq, update_stdout);
         expect_copilot_app_enable(&mut mock, &mut seq);
         expect_copilot_app_workflow_install(&mut mock, &mut seq);
-        // Post-update fixup re-arms the workflow to autopilot + enabled.
+        // Post-update fixup restores the workflow's desired automation state.
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)

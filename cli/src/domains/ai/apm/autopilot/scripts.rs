@@ -23,7 +23,7 @@ pub(super) fn build_workflow_script_args<'a>(
 
 /// Read-only Python stdlib `sqlite3` program that lists which of the
 /// dotfiles-managed workflows are already in the desired state
-/// (`mode='autopilot'`, `enabled=1`).
+/// (`mode='autopilot'`, `enabled=1`, and an armed next run when scheduled).
 ///
 /// Invoked as `python -c <script> <db_path> <id>...` where the trailing
 /// arguments are the dotfiles-managed workflow ids. They are bound as query
@@ -51,6 +51,9 @@ pub(in crate::domains::ai::apm) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
 /// parts back. The ids are bound as query parameters in an `IN (...)` clause so
 /// the change is scoped to exactly the workflows this install deployed, and the
 /// `IS NOT` comparisons are NULL-safe.
+///
+/// Custom cron rows are included in scheduler repair. The App represents them
+/// as `interval='manual'` plus a non-empty `cron_expression`.
 ///
 /// The program lives in `scripts/workflow_autopilot.py` and is embedded at
 /// build time via [`include_str!`] so its real four-space indentation survives

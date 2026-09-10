@@ -74,8 +74,8 @@ impl ManagedTargets {
             }
             if target == CopilotTarget::CopilotApp {
                 ctx.log().dry_run(
-                    "re-assert dotfiles-managed Copilot App workflows to autopilot + enabled in \
-                     ~/.copilot/data.db",
+                    "restore dotfiles-managed Copilot App workflow automation state and \
+                     schedules in ~/.copilot/data.db",
                 );
             }
             planned = planned.saturating_add(1);

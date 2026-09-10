@@ -46,14 +46,17 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: 
     let event_detail = reason.unwrap_or("not applicable");
     ctx.log()
         .run_task_event(LogEvent::TaskSkip, &task.log_key(), event_detail);
-    ctx.log().record_task(TaskEntry::new(
-        task_id,
-        task.name(),
-        TaskStatus::NotApplicable,
-        reason,
-        ActionCounts::default(),
-        task.visibility(),
-    ));
+    ctx.log().record_task(
+        TaskEntry::new(
+            task_id,
+            task.name(),
+            TaskStatus::NotApplicable,
+            reason,
+            ActionCounts::default(),
+            task.visibility(),
+        )
+        .with_result_display(task.result_display()),
+    );
 }
 
 /// Execute a task, recording the result in the logger.
@@ -113,14 +116,17 @@ fn record(
     message: Option<&str>,
     actions: ActionCounts,
 ) -> TaskStatus {
-    ctx.log().record_task(TaskEntry::new(
-        task_id,
-        task.name(),
-        status,
-        message,
-        actions,
-        task.visibility(),
-    ));
+    ctx.log().record_task(
+        TaskEntry::new(
+            task_id,
+            task.name(),
+            status,
+            message,
+            actions,
+            task.visibility(),
+        )
+        .with_result_display(task.result_display()),
+    );
     status
 }
 

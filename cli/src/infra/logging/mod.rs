@@ -25,7 +25,9 @@ pub use logger::Logger;
 pub(crate) use runlog::RunLog;
 pub use runlog::{log_task_context, log_thread_name, set_log_thread_name};
 pub(crate) use types::TaskEntry;
-pub use types::{ActionCounts, Log, LogEvent, Output, OutputExt, TaskStatus, TaskVisibility};
+pub use types::{
+    ActionCounts, Log, LogEvent, Output, OutputExt, TaskResultDisplay, TaskStatus, TaskVisibility,
+};
 // Only the in-crate unit tests reach these types from outside the `logging`
 // module; production code uses the `super::types` path directly.
 pub(crate) use runlog::parse_run_log_file_name;

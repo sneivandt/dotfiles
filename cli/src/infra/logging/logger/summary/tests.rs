@@ -300,6 +300,40 @@ fn task_line_states_reason_beside_task_name() {
 }
 
 #[test]
+fn restart_notice_supersedes_changed_task_row() {
+    let task = task_entry("Dotfiles repository", TaskStatus::Changed, None)
+        .with_result_display(crate::infra::logging::TaskResultDisplay::RestartNotice);
+
+    assert!(task_result_lines(&task, &[], plain_opts()).is_empty());
+    assert!(
+        task_result_lines(
+            &task,
+            &[],
+            RowOpts {
+                verbose: true,
+                ..plain_opts()
+            }
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn restart_notice_tasks_still_report_non_changed_outcomes() {
+    let task = task_entry(
+        "Dotfiles repository",
+        TaskStatus::Skipped,
+        Some("local changes present"),
+    )
+    .with_result_display(crate::infra::logging::TaskResultDisplay::RestartNotice);
+
+    assert_eq!(
+        task_result_lines(&task, &[], plain_opts()),
+        ["⊘ Dotfiles repository \u{b7} local changes present"]
+    );
+}
+
+#[test]
 fn verbose_task_line_reports_elapsed_time() {
     let mut task = task_entry("Home symlinks", TaskStatus::Ok, None);
     task.duration = Some(Duration::from_millis(1500));

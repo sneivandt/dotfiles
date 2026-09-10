@@ -43,6 +43,7 @@ macro_rules! task_metadata {
         name: $task_name:expr,
         $(selector: $selector:expr,)?
         $(visibility: $visibility:expr,)?
+        $(result_display: $result_display:expr,)?
         $(update_only: $update_only:expr,)?
         $(deps: [$($dep:ty),+ $(,)?],)?
     ) => {
@@ -50,6 +51,7 @@ macro_rules! task_metadata {
             $crate::engine::TaskMeta::new($task_name)
                 $(.with_selector($selector))?
                 $(.with_visibility($visibility))?
+                $(.with_result_display($result_display))?
                 $(.with_update_only($update_only))?
         }
 

@@ -7,7 +7,7 @@ use super::status;
 use super::totals::SummaryMode;
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::{StyleChoice, TextStyle};
-use crate::infra::logging::types::{TaskEntry, TaskStatus};
+use crate::infra::logging::types::{TaskEntry, TaskResultDisplay, TaskStatus};
 use crate::infra::logging::utils::{
     compact_detail_line, format_elapsed, is_redundant_detail, is_stats_summary, sort_action_runs,
 };
@@ -27,7 +27,11 @@ pub(super) fn task_result_lines(
     details: &[TaskDetailEntry],
     opts: RowOpts,
 ) -> Vec<String> {
-    if !task.visibility.is_visible() || !should_emit_task_result(task.status, opts.verbose) {
+    if !task.visibility.is_visible()
+        || (task.result_display == TaskResultDisplay::RestartNotice
+            && task.status == TaskStatus::Changed)
+        || !should_emit_task_result(task.status, opts.verbose)
+    {
         return Vec::new();
     }
 

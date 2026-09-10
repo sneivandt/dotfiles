@@ -40,6 +40,16 @@ pub enum TaskVisibility {
     Internal,
 }
 
+/// How a completed task result is presented on the console.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TaskResultDisplay {
+    /// Render the task's completed row normally.
+    #[default]
+    Standard,
+    /// A changed result is superseded by the command's dedicated restart notice.
+    RestartNotice,
+}
+
 impl TaskVisibility {
     /// Whether this task contributes to user-facing rows and totals.
     #[must_use]
@@ -63,6 +73,8 @@ pub struct TaskEntry {
     pub actions: ActionCounts,
     /// Whether the task contributes to user-facing rows and totals.
     pub visibility: TaskVisibility,
+    /// How the completed result is presented on the console.
+    pub result_display: TaskResultDisplay,
     /// How long the task ran, once measured by the execution engine.
     ///
     /// Recorded separately from the outcome because the duration is only known
@@ -88,8 +100,16 @@ impl TaskEntry {
             message: message.map(str::to_string),
             actions,
             visibility,
+            result_display: TaskResultDisplay::Standard,
             duration: None,
         }
+    }
+
+    /// Set the console presentation policy for this task result.
+    #[must_use]
+    pub const fn with_result_display(mut self, result_display: TaskResultDisplay) -> Self {
+        self.result_display = result_display;
+        self
     }
 }
 

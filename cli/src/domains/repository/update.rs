@@ -5,7 +5,8 @@
 use anyhow::Result;
 
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskResult, process_operation, task_metadata,
+    Context, Operation, OperationState, Task, TaskResult, TaskResultDisplay, process_operation,
+    task_metadata,
 };
 
 mod apply;
@@ -63,6 +64,7 @@ impl Task for UpdateRepository {
     task_metadata! {
         name: "Dotfiles repository",
         selector: "repository",
+        result_display: TaskResultDisplay::RestartNotice,
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

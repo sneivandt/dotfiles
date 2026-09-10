@@ -3,7 +3,7 @@
 use std::any::TypeId;
 use std::sync::Arc;
 
-use crate::infra::logging::TaskVisibility;
+use crate::infra::logging::{TaskResultDisplay, TaskVisibility};
 
 /// Unique identifier for a task in the dependency graph.
 ///
@@ -189,6 +189,8 @@ pub struct TaskMeta<'a> {
     pub selector: Option<&'a str>,
     /// Whether the task is shown in user-facing discovery and results.
     pub visibility: TaskVisibility,
+    /// How the completed task result is presented on the console.
+    pub result_display: TaskResultDisplay,
     /// Whether the task is included only by `install --update-pins`.
     pub update_only: bool,
 }
@@ -201,6 +203,7 @@ impl<'a> TaskMeta<'a> {
             name,
             selector: None,
             visibility: TaskVisibility::Visible,
+            result_display: TaskResultDisplay::Standard,
             update_only: false,
         }
     }
@@ -216,6 +219,13 @@ impl<'a> TaskMeta<'a> {
     #[must_use]
     pub const fn with_visibility(mut self, visibility: TaskVisibility) -> Self {
         self.visibility = visibility;
+        self
+    }
+
+    /// Set the completed-result presentation policy.
+    #[must_use]
+    pub const fn with_result_display(mut self, result_display: TaskResultDisplay) -> Self {
+        self.result_display = result_display;
         self
     }
 

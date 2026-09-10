@@ -7,7 +7,7 @@ mod execute;
 pub(crate) mod macros;
 mod types;
 
-pub use crate::infra::logging::TaskVisibility;
+pub use crate::infra::logging::{TaskResultDisplay, TaskVisibility};
 pub use execute::execute;
 pub(crate) use execute::{TaskExecution, TaskOutcome, execute_assessed};
 pub(crate) use macros::{run_batch_resource_task, run_resource_task, task_deps, task_metadata};
@@ -52,6 +52,13 @@ pub trait Task: Send + Sync + 'static {
     /// Derived from [`Task::meta`]; do not override it.
     fn visibility(&self) -> TaskVisibility {
         self.meta().visibility
+    }
+
+    /// How the completed task result is presented on the console.
+    ///
+    /// Derived from [`Task::meta`]; do not override it.
+    fn result_display(&self) -> TaskResultDisplay {
+        self.meta().result_display
     }
 
     /// Whether this task is included only by `install --update-pins`.

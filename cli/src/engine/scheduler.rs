@@ -212,14 +212,17 @@ fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str, status: T
     let _enter = span.enter();
     log.run_task_event(LogEvent::TaskSkip, &task.log_key(), reason);
     log.debug(reason);
-    log.record_task(TaskEntry::new(
-        task.log_key(),
-        task.name(),
-        status,
-        Some(reason),
-        ActionCounts::default(),
-        task.visibility(),
-    ));
+    log.record_task(
+        TaskEntry::new(
+            task.log_key(),
+            task.name(),
+            status,
+            Some(reason),
+            ActionCounts::default(),
+            task.visibility(),
+        )
+        .with_result_display(task.result_display()),
+    );
 }
 
 /// Execute a single task, catching any panic.
@@ -259,14 +262,17 @@ fn run_task_buffered(
                 .unwrap_or_else(|| "task panicked".to_string());
             log.run_task_event(LogEvent::TaskFail, &task.log_key(), &msg);
             buf.error(format!("{}: {msg}", task.name()));
-            log.record_task(TaskEntry::new(
-                task.log_key(),
-                task.name(),
-                TaskStatus::Failed,
-                Some(&msg),
-                ActionCounts::default(),
-                task.visibility(),
-            ));
+            log.record_task(
+                TaskEntry::new(
+                    task.log_key(),
+                    task.name(),
+                    TaskStatus::Failed,
+                    Some(&msg),
+                    ActionCounts::default(),
+                    task.visibility(),
+                )
+                .with_result_display(task.result_display()),
+            );
             TaskExecution {
                 status: TaskStatus::Failed,
                 outcome: TaskOutcome::Failed,

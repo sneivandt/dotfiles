@@ -306,10 +306,18 @@ mod tests {
             .discover(&ctx)
             .unwrap();
         assert_eq!(resources.len(), 1);
+        // Git expands Windows short directory names such as RUNNER~1.
+        // Compare resolved directories, then the still-uncreated hook name.
         assert_eq!(
-            resources[0].target,
-            dir.path().join(".git/hooks/pre-commit")
+            resources[0]
+                .target
+                .parent()
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            dir.path().join(".git/hooks").canonicalize().unwrap()
         );
+        assert_eq!(resources[0].target.file_name().unwrap(), "pre-commit");
     }
 
     // ------------------------------------------------------------------

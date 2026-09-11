@@ -145,17 +145,43 @@ const fn retry_delay(_attempt: u32) -> std::time::Duration {
 /// Returns an error if the request fails after retries, or if the response is
 /// not valid JSON. A successful response that carries no `tag_name` yields
 /// `Ok(None)`.
-pub(super) fn fetch_latest_tag(client: &dyn HttpClient) -> Result<Option<String>> {
+pub(super) fn fetch_latest_tag(
+    client: &dyn HttpClient,
+    github_token: Option<&str>,
+) -> Result<Option<String>> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let body_bytes = get_with_retry(
-        client,
-        &url,
-        &[
-            ("Accept", "application/vnd.github.v3+json"),
-            ("User-Agent", "dotfiles-cli"),
-        ],
-    )
-    .with_context(|| format!("querying latest release from {url}"))?;
+    let authorization = github_token.map(|token| format!("Bearer {token}"));
+    let mut headers = vec![
+        ("Accept", "application/vnd.github.v3+json"),
+        ("User-Agent", "dotfiles-cli"),
+    ];
+    if let Some(value) = authorization.as_deref() {
+        headers.push(("Authorization", value));
+    }
+
+    let body_bytes = match get_with_retry(client, &url, &headers) {
+        Ok(body) => body,
+        Err(error)
+            if authorization.is_some()
+                && (error_has_http_status(&error, 401) || error_has_http_status(&error, 403)) =>
+        {
+            tracing::debug!(
+                "authenticated GitHub release check was denied, retrying anonymously: {error:#}"
+            );
+            get_with_retry(
+                client,
+                &url,
+                &[
+                    ("Accept", "application/vnd.github.v3+json"),
+                    ("User-Agent", "dotfiles-cli"),
+                ],
+            )
+            .with_context(|| format!("querying latest release anonymously from {url}"))?
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("querying latest release from {url}"));
+        }
+    };
 
     let body = String::from_utf8_lossy(&body_bytes);
     let parsed: serde_json::Value =
@@ -164,6 +190,12 @@ pub(super) fn fetch_latest_tag(client: &dyn HttpClient) -> Result<Option<String>
         .get("tag_name")
         .and_then(serde_json::Value::as_str)
         .map(String::from))
+}
+
+fn error_has_http_status(error: &anyhow::Error, status: u16) -> bool {
+    format!("{error:#}")
+        .to_ascii_lowercase()
+        .contains(&format!("http status: {status}"))
 }
 
 /// Download a URL and return the bytes.
@@ -221,6 +253,7 @@ pub(super) mod test_support {
     #[derive(Debug)]
     pub(crate) struct MockHttpClient {
         responses: std::sync::Mutex<std::collections::VecDeque<Result<Vec<u8>>>>,
+        requests: std::sync::Mutex<Vec<Vec<(String, String)>>>,
     }
 
     impl MockHttpClient {
@@ -228,12 +261,23 @@ pub(super) mod test_support {
         pub(crate) fn new(responses: Vec<Result<Vec<u8>>>) -> Self {
             Self {
                 responses: std::sync::Mutex::new(responses.into()),
+                requests: std::sync::Mutex::new(Vec::new()),
             }
+        }
+
+        pub(crate) fn request_headers(&self) -> Vec<Vec<(String, String)>> {
+            self.requests.lock().expect("mutex poisoned").clone()
         }
     }
 
     impl HttpClient for MockHttpClient {
-        fn get(&self, _url: &str, _headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+        fn get(&self, _url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+            self.requests.lock().expect("mutex poisoned").push(
+                headers
+                    .iter()
+                    .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+                    .collect(),
+            );
             self.responses
                 .lock()
                 .expect("mutex poisoned")
@@ -251,14 +295,52 @@ mod tests {
     #[test]
     fn fetch_latest_tag_parses_github_response() {
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec())]);
-        let result = fetch_latest_tag(&client).unwrap();
+        let result = fetch_latest_tag(&client, None).unwrap();
         assert_eq!(result, Some("v1.2.3".to_string()));
+    }
+
+    #[test]
+    fn fetch_latest_tag_uses_github_token_when_available() {
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec())]);
+
+        fetch_latest_tag(&client, Some("secret-token")).unwrap();
+
+        let requests = client.request_headers();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0]
+                .iter()
+                .any(|(name, value)| name == "Authorization" && value == "Bearer secret-token"),
+            "the release request should use the available GitHub token"
+        );
+    }
+
+    #[test]
+    fn fetch_latest_tag_falls_back_to_anonymous_when_token_is_rejected() {
+        let client = MockHttpClient::new(vec![
+            Err(anyhow::anyhow!("http status: 401")),
+            Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec()),
+        ]);
+
+        let result = fetch_latest_tag(&client, Some("expired-token")).unwrap();
+
+        assert_eq!(result, Some("v1.2.3".to_string()));
+        let requests = client.request_headers();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests[0].iter().any(|(name, _)| name == "Authorization"),
+            "the first request should be authenticated"
+        );
+        assert!(
+            requests[1].iter().all(|(name, _)| name != "Authorization"),
+            "the retry should be anonymous"
+        );
     }
 
     #[test]
     fn fetch_latest_tag_reports_network_error() {
         let client = MockHttpClient::new(vec![Err(anyhow::anyhow!("network error"))]);
-        let error = fetch_latest_tag(&client).unwrap_err();
+        let error = fetch_latest_tag(&client, None).unwrap_err();
         assert!(
             format!("{error:#}").contains("network error"),
             "the underlying cause must survive so a broken update is diagnosable, got: {error:#}"
@@ -268,7 +350,7 @@ mod tests {
     #[test]
     fn fetch_latest_tag_returns_none_when_tag_name_missing() {
         let client = MockHttpClient::new(vec![Ok(br#"{"name": "Release v1.0"}"#.to_vec())]);
-        let result = fetch_latest_tag(&client).unwrap();
+        let result = fetch_latest_tag(&client, None).unwrap();
         assert_eq!(result, None);
     }
 
@@ -333,7 +415,7 @@ mod tests {
             Err(anyhow::anyhow!("temporary failure in name resolution")),
             Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec()),
         ]);
-        let result = fetch_latest_tag(&client).unwrap();
+        let result = fetch_latest_tag(&client, None).unwrap();
         assert_eq!(
             result,
             Some("v1.2.3".to_string()),

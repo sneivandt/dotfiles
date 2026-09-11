@@ -68,6 +68,8 @@ use crate::infra::logging::OutputExt as _;
 pub(super) const REPO: &str = "sneivandt/dotfiles";
 /// Environment variable that disables the self-update preflight.
 const SKIP_SELF_UPDATE_ENV: &str = "DOTFILES_SKIP_SELF_UPDATE";
+const GH_TOKEN_ENV: &str = "GH_TOKEN";
+const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 
 use cache::{read_fresh_cache, write_cache};
 use http::{HttpClient, default_http_client, fetch_latest_tag};
@@ -77,6 +79,12 @@ use version::{is_newer, is_release_version};
 
 fn self_update_skipped(env: &dyn Env) -> bool {
     env.var(SKIP_SELF_UPDATE_ENV).as_deref() == Some("1")
+}
+
+fn github_token(env: &dyn Env) -> Option<String> {
+    [GH_TOKEN_ENV, GITHUB_TOKEN_ENV]
+        .into_iter()
+        .find_map(|key| env.var(key).filter(|value| !value.is_empty()))
 }
 
 /// Whether the release lookup may use the persistent version cache.
@@ -137,10 +145,11 @@ fn check_for_update(
     root: &std::path::Path,
     client: &dyn HttpClient,
     cache_policy: CachePolicy,
+    github_token: Option<&str>,
 ) -> Result<UpdateCheck> {
     let raw_version =
         option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
-    check_for_update_with_current(root, client, raw_version, cache_policy)
+    check_for_update_with_current(root, client, raw_version, cache_policy, github_token)
 }
 
 fn check_for_update_with_current(
@@ -148,6 +157,7 @@ fn check_for_update_with_current(
     client: &dyn HttpClient,
     raw_version: &str,
     cache_policy: CachePolicy,
+    github_token: Option<&str>,
 ) -> Result<UpdateCheck> {
     let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if !is_release_version(&current) {
@@ -160,7 +170,7 @@ fn check_for_update_with_current(
     {
         return Ok(classify_update(&current, latest));
     }
-    let latest = match fetch_latest_tag(client) {
+    let latest = match fetch_latest_tag(client, github_token) {
         Ok(Some(latest)) => latest,
         Ok(None) => {
             tracing::debug!("latest release carried no tag_name, treating as offline");
@@ -232,8 +242,9 @@ pub fn pre_update(
         return Ok(false);
     }
     let client = default_http_client();
+    let token = github_token(&SystemEnv);
     let check = with_status(log, "Checking for updates", || {
-        check_for_update(root, &client, cache_policy)
+        check_for_update(root, &client, cache_policy, token.as_deref())
     })?;
     match check {
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
@@ -284,15 +295,34 @@ mod tests {
     }
 
     #[test]
+    fn github_token_prefers_gh_token_and_ignores_empty_values() {
+        let env = MapEnv::new()
+            .with(GH_TOKEN_ENV, "gh-token")
+            .with(GITHUB_TOKEN_ENV, "github-token");
+        assert_eq!(github_token(&env).as_deref(), Some("gh-token"));
+
+        let fallback_env = MapEnv::new()
+            .with(GH_TOKEN_ENV, "")
+            .with(GITHUB_TOKEN_ENV, "github-token");
+        assert_eq!(github_token(&fallback_env).as_deref(), Some("github-token"));
+        assert_eq!(github_token(&MapEnv::new()), None);
+    }
+
+    #[test]
     fn fresh_cache_newer_than_current_returns_update_available() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         write_cache(dir.path(), "v9999.12.31-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", CachePolicy::Use)
-                .unwrap();
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            CachePolicy::Use,
+            None,
+        )
+        .unwrap();
 
         match result {
             UpdateCheck::UpdateAvailable { latest, .. } => {
@@ -310,9 +340,14 @@ mod tests {
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", CachePolicy::Use)
-                .unwrap();
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            CachePolicy::Use,
+            None,
+        )
+        .unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
         assert!(
@@ -328,9 +363,14 @@ mod tests {
         // GitHub reports an older release than the running binary.
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-9", CachePolicy::Use)
-                .unwrap();
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-9",
+            CachePolicy::Use,
+            None,
+        )
+        .unwrap();
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
@@ -356,9 +396,14 @@ mod tests {
         .unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", CachePolicy::Use)
-                .unwrap();
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            CachePolicy::Use,
+            None,
+        )
+        .unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
     }
@@ -375,6 +420,7 @@ mod tests {
             &client,
             "v2026.07.25-1",
             CachePolicy::Refresh,
+            None,
         )
         .unwrap();
 

@@ -51,8 +51,8 @@ target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot
 fixup. Native APM owns install/update planning, local-source integrity,
 deployment convergence, and stale/orphan cleanup. Do not reintroduce
 fingerprints, success markers, `apm outdated` parsing, or a separate
-`apm prune`. Keep update-only scheduling behind `dotfiles install --update-pins`
-in the command pipeline.
+`apm prune`. Keep dependency-ref advancement behind
+`dotfiles install --update-pins` in the command pipeline.
 
 Before deleting either compatibility adapter, verify current upstream code and
 exercise the replacement in isolated fixtures across the platform contracts in

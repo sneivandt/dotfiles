@@ -185,11 +185,11 @@ dotfiles profiles
 
 ```bash
 dotfiles install --update-pins
-dotfiles install --update-pins --only apm,apm-update
+dotfiles install --update-pins --only apm
 ```
 
-`--update-pins` includes update-only tasks, which may advance pinned dependency
-versions. Normal repeatable convergence should omit the option.
+`--update-pins` enables version-advancing behavior and includes any update-only
+tasks. Normal repeatable convergence should omit the option.
 Repository synchronization occurs during installation unless
 `--no-repo-update` was passed. If the repository changes, the CLI reloads
 configuration before downstream tasks consume it.

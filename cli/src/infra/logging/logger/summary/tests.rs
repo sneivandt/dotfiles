@@ -411,7 +411,7 @@ fn task_result_lines_are_flat_with_reduced_indent() {
 #[test]
 fn task_result_lines_omit_success_reason_when_actions_are_listed() {
     let task = task_entry(
-        "APM package updates",
+        "APM packages",
         TaskStatus::Changed,
         Some("updated 2 APM dependencies"),
     );
@@ -423,7 +423,7 @@ fn task_result_lines_omit_success_reason_when_actions_are_listed() {
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
         [
-            "✓ APM package updates",
+            "✓ APM packages",
             "  update cursor/plugins/pstack/skills/unslop"
         ]
     );

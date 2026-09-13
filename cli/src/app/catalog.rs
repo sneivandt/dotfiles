@@ -13,7 +13,7 @@ use clap::CommandFactory as _;
 use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
-use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
+use crate::domains::ai::apm::{ApmPackageMode, InstallApmPackages};
 use crate::domains::dotfiles::path::ConfigurePath;
 use crate::domains::dotfiles::wrapper::{InstallWrapper, UninstallWrapper};
 use crate::domains::editors::vscode_extensions::InstallVsCodeExtensions;
@@ -116,13 +116,14 @@ pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
 #[must_use]
 pub fn all_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     let repo_updated = RepositoryUpdateSignal::new();
-    install_tasks_for_run(store, &repo_updated)
+    install_tasks_for_run(store, &repo_updated, ApmPackageMode::Install)
 }
 
 #[must_use]
 pub(crate) fn install_tasks_for_run(
     store: &ConfigStore,
     repo_updated: &RepositoryUpdateSignal,
+    apm_mode: ApmPackageMode,
 ) -> Vec<Box<dyn Task>> {
     let zsh_completions = generate_zsh_completions();
     let powershell_completions = generate_powershell_completions();
@@ -165,13 +166,9 @@ pub(crate) fn install_tasks_for_run(
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
         with_dependencies(
-            InstallApmPackages::new(store.apm_fragments.clone()),
+            InstallApmPackages::new(store.apm_fragments.clone(), apm_mode),
             &[id::<InstallSymlinks>()],
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
-        ),
-        with_deps(
-            UpdateApmPackages::new(store.apm_fragments.clone()),
-            &[id::<InstallApmPackages>()],
         ),
         Box::new(ReportOverlayScriptSnapshot::new(store.scripts.clone())),
         Box::new(InstallWrapper),
@@ -275,6 +272,19 @@ mod tests {
                 .ordering_dependencies()
                 .contains(&id::<InstallPackages>()),
             "APM should recheck its CLI after package installation without being blocked by unrelated package failures"
+        );
+    }
+
+    #[test]
+    fn update_mode_builds_one_apm_task() {
+        let store = test_params();
+        let repo_updated = RepositoryUpdateSignal::new();
+        let tasks = install_tasks_for_run(&store, &repo_updated, ApmPackageMode::UpdatePins);
+
+        assert_eq!(
+            tasks.iter().filter(|task| task.selector() == "apm").count(),
+            1,
+            "update mode should select one mode-aware APM task"
         );
     }
 }

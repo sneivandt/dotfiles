@@ -7,8 +7,10 @@
 //! (for example `~/.apm/config/work.yml`).
 //!
 //! The APM flow is split into focused modules:
-//! - [`install`] converges the generated manifest and runs `apm install`.
-//! - [`update`] advances locked dependency refs for `install --update-pins`.
+//! - [`install`] converges the generated manifest and runs the APM command for
+//!   the active install mode.
+//! - [`update`] previews locked dependency advancement for
+//!   `install --update-pins`.
 //! - [`commands`] centralizes APM process invocation and common error handling.
 //! - [`managed_targets`] delegates Copilot App to APM, preserves Cowork's
 //!   protected directories, and retains the Copilot App autopilot policy.
@@ -29,8 +31,7 @@ mod validation;
 use crate::engine::TaskResult;
 
 pub(crate) use fragments::ApmFragmentSource;
-pub use install::InstallApmPackages;
-pub use update::UpdateApmPackages;
+pub use install::{ApmPackageMode, InstallApmPackages};
 pub(crate) use validation::validate;
 
 /// Header written at the top of the generated `~/.apm/apm.yml`.

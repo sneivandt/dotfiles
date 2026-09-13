@@ -151,7 +151,7 @@ set, then inspect applicability and planned actions:
 
 ```bash
 dotfiles install --root . --only symlinks --dry-run --verbose
-dotfiles install --root . --update-pins --only apm,apm-update --dry-run --verbose
+dotfiles install --root . --update-pins --only apm --dry-run --verbose
 dotfiles uninstall --root . --dry-run --verbose
 ```
 

@@ -12,8 +12,7 @@ their content.
 | `conf/agent-settings.toml` | Converges stable per-harness preferences in Copilot JSON and Codex TOML |
 | `symlinks/apm/config/*.yml` | Profile-specific APM source fragments |
 | `conf/symlinks.toml` | Selects and links applicable fragments and local plugins |
-| APM packages task | Merges fragments, persists the generated manifest, and invokes native APM convergence |
-| APM package updates task | Invokes native APM update during `dotfiles install --update-pins` |
+| APM packages task | Merges fragments, persists the generated manifest, and invokes native APM install or update for the active command mode |
 | APM itself | Resolves packages, verifies local sources, converges deployments, and removes stale content |
 
 Use APM to place APM-managed content in agent directories. Do not maintain
@@ -139,7 +138,8 @@ before convergence. The task:
    sources, while preserving unmanaged home fragments.
 2. Produces the merged manifest in deterministic order.
 3. Writes the generated manifest only when its content changed.
-4. Runs `apm install -g` on every applicable install pass.
+4. Runs `apm install -g` during ordinary installation, or `apm update -g --yes`
+   when `--update-pins` is enabled.
 5. Lets APM verify local sources, converge deployments, and remove stale or
    orphaned user-scope content.
 6. Compares the exact lockfile before and after to report whether APM changed
@@ -162,25 +162,24 @@ dotfiles install --only apm
 
 ## Pin-update behavior
 
-**APM package updates** is marked update-only, so it runs with
-`dotfiles install --update-pins` but not ordinary `dotfiles install`. It depends on
-**APM packages**.
-
-The install dependency first converges the generated manifest. Apply then runs
-`apm update -g --yes` directly; dry-run uses APM's native
-`apm update -g --dry-run` plan. No separate `apm outdated` parser or dotfiles
-success marker is involved.
+With `dotfiles install --update-pins`, **APM packages** writes the merged
+manifest and runs `apm update -g --yes` instead of `apm install -g`. Native APM
+advances matching refs and converges the resulting dependency graph in that one
+pass. No separate `apm outdated` parser or dotfiles success marker is involved.
 
 The task compares the exact lockfile bytes before and after update. Current APM
 preserves unchanged target mappings and timestamps, so an identical lockfile
 reports current only when retained workflow state and Cowork files also remain
 unchanged. Native lock-state changes and Cowork repairs are reported as changed.
 Applied updates list each changed dependency with its old and new ref or commit.
-Dry-run promotes the dependency names from APM's native update plan while the
-full native output remains available under `--verbose` and in the run log.
+When the generated manifest is current, dry-run promotes dependency names from
+APM's native update plan while the full native output remains available under
+`--verbose` and in the run log. When fragments would change the generated
+manifest, dotfiles reports the prospective manifest write and update command
+without asking APM to plan against the old manifest.
 
 ```bash
-dotfiles install --update-pins --only apm,apm-update
+dotfiles install --update-pins --only apm
 ```
 
 ## Overlays

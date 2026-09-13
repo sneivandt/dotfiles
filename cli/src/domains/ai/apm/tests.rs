@@ -357,6 +357,29 @@ fn update_delegates_directly_and_reports_exact_lock_changes() {
 }
 
 #[test]
+fn update_writes_generated_manifest_then_runs_only_update() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_default_home_fragment(dir.path());
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    mock.expect_execute().once().returning(|spec| {
+        assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
+        let manifest = std::fs::read_to_string(
+            spec.working_dir()
+                .expect("home")
+                .join(".apm")
+                .join("apm.yml"),
+        )
+        .expect("read generated manifest before update");
+        assert!(manifest.contains("example/plugin"));
+        Ok(ExecResult::success("updated\n"))
+    });
+    let ctx = linux_context(dir.path(), mock);
+
+    assert_task_changed(&update_task().run(&ctx).expect("run update"));
+}
+
+#[test]
 fn update_reports_ok_when_lock_is_byte_identical() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());
@@ -385,6 +408,18 @@ fn update_dry_run_uses_native_apm_plan() {
         update_task().run(&ctx).expect("preview update"),
         TaskResult::DryRun
     ));
+}
+
+#[test]
+fn update_dry_run_does_not_plan_against_a_stale_manifest() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_default_home_fragment(dir.path());
+    let mut mock = MockExecutor::new();
+    expect_which_apm(&mut mock, true);
+    let ctx = linux_context(dir.path(), mock).with_dry_run(true);
+
+    assert_task_changed(&update_task().run(&ctx).expect("preview update"));
+    assert!(!dir.path().join(".apm").join("apm.yml").exists());
 }
 
 #[test]

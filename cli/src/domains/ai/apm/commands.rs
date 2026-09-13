@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::engine::{Context, TaskResult};
+use crate::engine::Context;
 use crate::infra::exec::{CommandSpec, ExecResult};
 use crate::infra::logging::OutputExt as _;
 use anyhow::{Context as _, Result};
@@ -161,14 +161,6 @@ fn experimental_target_enabled(home: &Path, config_key: &str) -> Option<bool> {
     let raw = std::fs::read_to_string(apm_config_path(home)).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
     value.get("experimental")?.get(config_key)?.as_bool()
-}
-
-/// Convert a command result into the task-level result used by install.
-pub(super) fn install_task_result(result: ApmCommandResult) -> TaskResult {
-    match result {
-        ApmCommandResult::Success(_) => TaskResult::Ok,
-        ApmCommandResult::AuthSkipped(reason) => TaskResult::unmet(reason),
-    }
 }
 
 /// Relay raw APM command output to the diagnostic log file and the verbose

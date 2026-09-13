@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use super::ApmFragmentSource;
-use super::commands::{ApmCommand, install_task_result};
+use super::commands::{ApmCommand, ApmCommandResult};
 use super::fragments::{discover_effective_fragment_files, merge_fragments};
 use super::managed_targets::{ManagedTargetPreview, ManagedTargets};
 use super::manifest::{
@@ -14,9 +14,28 @@ use super::manifest::{
 };
 use super::skip;
 use super::targets::missing_apm_reason;
+use super::update::preview_apm_update;
 use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
+
+/// Select the native APM operation for an install command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApmPackageMode {
+    /// Converge the locked dependency graph without advancing refs.
+    Install,
+    /// Advance eligible refs and converge the resulting dependency graph.
+    UpdatePins,
+}
+
+impl ApmPackageMode {
+    const fn command(self) -> ApmCommand {
+        match self {
+            Self::Install => ApmCommand::Install,
+            Self::UpdatePins => ApmCommand::Update,
+        }
+    }
+}
 
 /// Converge AI plugin manifests via Microsoft APM.
 ///
@@ -26,14 +45,18 @@ use crate::infra::logging::OutputExt as _;
 #[derive(Debug)]
 pub struct InstallApmPackages {
     fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+    mode: ApmPackageMode,
 }
 
 impl InstallApmPackages {
     /// Create the task with the managed symlink configuration that supplies APM
     /// fragments.
     #[must_use]
-    pub const fn new(fragments: ConfigHandle<Vec<ApmFragmentSource>>) -> Self {
-        Self { fragments }
+    pub const fn new(
+        fragments: ConfigHandle<Vec<ApmFragmentSource>>,
+        mode: ApmPackageMode,
+    ) -> Self {
+        Self { fragments, mode }
     }
 }
 
@@ -48,7 +71,7 @@ impl Task for InstallApmPackages {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.dry_run() && !ctx.which("apm") {
+        if (!ctx.dry_run() || self.mode == ApmPackageMode::UpdatePins) && !ctx.which("apm") {
             return Ok(skip(missing_apm_reason(ctx)));
         }
 
@@ -57,9 +80,9 @@ impl Task for InstallApmPackages {
             return Ok(skip("no manifest fragments found under ~/.apm/config/"));
         }
 
-        let plan = ApmInstallPlan::build(ctx, &fragments)?;
+        let plan = ApmInstallPlan::build(ctx, &fragments, self.mode)?;
         if ctx.dry_run() {
-            return Ok(plan.preview(ctx));
+            return plan.preview(ctx);
         }
         plan.apply(ctx)
     }
@@ -73,10 +96,11 @@ struct ApmInstallPlan {
     lock_path: PathBuf,
     merged: String,
     manifest_needs_write: bool,
+    mode: ApmPackageMode,
 }
 
 impl ApmInstallPlan {
-    fn build(ctx: &Context, fragments: &[PathBuf]) -> Result<Self> {
+    fn build(ctx: &Context, fragments: &[PathBuf], mode: ApmPackageMode) -> Result<Self> {
         let apm_dir = ctx.home().join(".apm");
         let manifest_path = apm_dir.join("apm.yml");
         let lock_path = apm_dir.join("apm.lock.yaml");
@@ -89,10 +113,15 @@ impl ApmInstallPlan {
             lock_path,
             merged,
             manifest_needs_write,
+            mode,
         })
     }
 
-    fn preview(&self, ctx: &Context) -> TaskResult {
+    fn preview(&self, ctx: &Context) -> Result<TaskResult> {
+        if self.mode == ApmPackageMode::UpdatePins && !self.manifest_needs_write {
+            return preview_apm_update(ctx, self.targets);
+        }
+
         let mut planned = 1_u32;
         if self.manifest_needs_write {
             ctx.log().dry_run(format!(
@@ -102,11 +131,20 @@ impl ApmInstallPlan {
             ));
             planned = planned.saturating_add(1);
         }
-        ctx.log().dry_run(
-            "run apm install -g to converge dependencies and remove stale user-scope deployments",
-        );
-        planned = planned.saturating_add(self.targets.preview(ctx, ManagedTargetPreview::Install));
-        TaskStats::from_counts(planned, 0, 0, 0).finish()
+        let preview = match self.mode {
+            ApmPackageMode::Install => ManagedTargetPreview::Install,
+            ApmPackageMode::UpdatePins => ManagedTargetPreview::Update,
+        };
+        match self.mode {
+            ApmPackageMode::Install => ctx.log().dry_run(
+                "run apm install -g to converge dependencies and remove stale user-scope deployments",
+            ),
+            ApmPackageMode::UpdatePins => ctx.log().dry_run(
+                "run apm update -g --yes to advance matching refs and converge deployments",
+            ),
+        }
+        planned = planned.saturating_add(self.targets.preview(ctx, preview));
+        Ok(TaskStats::from_counts(planned, 0, 0, 0).finish())
     }
 
     fn apply(&self, ctx: &Context) -> Result<TaskResult> {
@@ -117,10 +155,9 @@ impl ApmInstallPlan {
             write_merged_manifest(&self.manifest_path, &self.merged)?;
         }
 
-        let command = self.targets.run_apm_command(ctx, ApmCommand::Install)?;
-        let install_result = install_task_result(command.outcome);
-        if !matches!(install_result, TaskResult::Ok) {
-            return Ok(install_result);
+        let command = self.targets.run_apm_command(ctx, self.mode.command())?;
+        if let ApmCommandResult::AuthSkipped(reason) = command.outcome {
+            return Ok(TaskResult::unmet(reason));
         }
 
         let lock_after = read_lock_snapshot(&self.lock_path)?;
@@ -141,18 +178,39 @@ impl ApmInstallPlan {
         let changed =
             self.manifest_needs_write || lock_changed || autopilot_changed || command.changed;
         if changed {
-            let message = if dependency_changes.is_empty() {
-                "updated APM configuration".to_string()
-            } else {
-                changed_dependency_summary(dependency_changes.len())
+            let message = match (self.mode, dependency_changes.is_empty()) {
+                (_, true) if self.manifest_needs_write => "updated APM configuration".to_string(),
+                (ApmPackageMode::Install, true) => "updated APM configuration".to_string(),
+                (ApmPackageMode::UpdatePins, true) => "updated APM deployments".to_string(),
+                (ApmPackageMode::Install, false) => {
+                    changed_dependency_summary(dependency_changes.len())
+                }
+                (ApmPackageMode::UpdatePins, false) => {
+                    updated_dependency_summary(dependency_changes.len())
+                }
             };
-            ctx.log().trace(format!("APM change summary: {message}"));
+            let summary = match self.mode {
+                ApmPackageMode::Install => "APM change summary",
+                ApmPackageMode::UpdatePins => "APM update summary",
+            };
+            ctx.log().trace(format!("{summary}: {message}"));
             Ok(TaskStats::changed_with_message(message).finish())
         } else {
-            ctx.log()
-                .debug("APM dependencies and deployments already current");
+            let message = match self.mode {
+                ApmPackageMode::Install => "APM dependencies and deployments already current",
+                ApmPackageMode::UpdatePins => "APM dependencies already at latest refs",
+            };
+            ctx.log().debug(message);
             Ok(TaskResult::Ok)
         }
+    }
+}
+
+fn updated_dependency_summary(count: usize) -> String {
+    if count == 1 {
+        "updated 1 APM dependency".to_string()
+    } else {
+        format!("updated {count} APM dependencies")
     }
 }
 

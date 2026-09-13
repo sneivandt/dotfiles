@@ -5,6 +5,7 @@ use std::sync::Arc;
 use super::RuntimePolicy;
 use crate::app::cli::InstallOpts;
 use crate::app::filter::apply_task_filters;
+use crate::domains::ai::apm::ApmPackageMode;
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
@@ -22,6 +23,13 @@ pub(crate) enum RunMode {
 impl RunMode {
     fn includes_task(self, task: &dyn Task) -> bool {
         matches!(self, Self::Update) || !task.update_only()
+    }
+
+    const fn apm_mode(self) -> ApmPackageMode {
+        match self {
+            Self::Install => ApmPackageMode::Install,
+            Self::Update => ApmPackageMode::UpdatePins,
+        }
     }
 }
 
@@ -67,7 +75,7 @@ pub(crate) fn run_pipeline(
     let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
 
     let repository_update = RepositoryUpdateSignal::new();
-    let mut all_tasks = runner.install_tasks_for_run(&repository_update);
+    let mut all_tasks = runner.install_tasks_for_run(&repository_update, mode.apm_mode());
 
     // Version-advancing tasks are scheduled only with `--update-pins`. Filter
     // membership before user filters so warnings reflect eligible tasks.

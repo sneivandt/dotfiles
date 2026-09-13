@@ -180,7 +180,7 @@ selector and verbose output:
 dotfiles install --only systemd --dry-run --verbose
 ```
 
-Use `dotfiles install --update-pins` for **APM package updates**.
+Use `dotfiles install --update-pins` to advance eligible APM package refs.
 
 ## A symlink cannot be created on Windows
 
@@ -281,17 +281,19 @@ task reports it as stale or broken. Later AUR operations call the validated
 
 ## APM update does not run or fails
 
-**APM package updates** is update-only and depends on the regular APM install
-task. Run both selectors with pin updates enabled:
+The **APM packages** task changes its native command when pin updates are
+enabled:
 
 ```bash
-dotfiles install --update-pins --only apm,apm-update --dry-run --verbose
-dotfiles install --update-pins --only apm,apm-update --verbose
+dotfiles install --update-pins --only apm --dry-run --verbose
+dotfiles install --update-pins --only apm --verbose
 ```
 
-The preview delegates planning to `apm update -g --dry-run`; apply delegates to
-`apm update -g --yes`. Confirm active main and overlay fragments pass native APM
-validation, `apm` is available on PATH, and GitHub authentication is usable.
+Apply delegates to `apm update -g --yes` instead of first running
+`apm install -g`. When the generated manifest is already current, the preview
+delegates planning to `apm update -g --dry-run`. Confirm active main and overlay
+fragments pass native APM validation, `apm` is available on PATH, and GitHub
+authentication is usable.
 
 ## Optional analyzers are not running
 

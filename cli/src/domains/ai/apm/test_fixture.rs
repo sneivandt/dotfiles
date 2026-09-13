@@ -11,8 +11,7 @@ use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{empty_config, make_context};
 
 use super::fragments::{discover_fragment_files, merge_fragments};
-use super::install::InstallApmPackages;
-use super::update::UpdateApmPackages;
+use super::install::{ApmPackageMode, InstallApmPackages};
 
 pub const DEFAULT_FRAGMENT: &str =
     "name: base\nversion: 1.0.0\ndependencies:\n  apm:\n    - example/plugin\n";
@@ -74,11 +73,11 @@ pub fn make_home_context_with_executor(home: &Path, executor: MockExecutor) -> C
 }
 
 pub fn install_task() -> InstallApmPackages {
-    InstallApmPackages::new(ConfigHandle::new(Vec::new()))
+    InstallApmPackages::new(ConfigHandle::new(Vec::new()), ApmPackageMode::Install)
 }
 
-pub fn update_task() -> UpdateApmPackages {
-    UpdateApmPackages::new(ConfigHandle::new(Vec::new()))
+pub fn update_task() -> InstallApmPackages {
+    InstallApmPackages::new(ConfigHandle::new(Vec::new()), ApmPackageMode::UpdatePins)
 }
 
 pub fn expect_which_apm(mock: &mut MockExecutor, found: bool) {

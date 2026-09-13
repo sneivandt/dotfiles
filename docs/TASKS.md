@@ -57,8 +57,7 @@ contract itself.
 | `systemd` | Systemd units | install | Enables and starts configured units, or enables user units offline during target provisioning |
 | `registry` | Windows registry | install | Converges declared current-user values |
 | `vscode-extensions` | VS Code extensions | install | Installs missing declared extensions, or schedules them for first login during target provisioning |
-| `apm` | APM packages | install | Converges merged APM manifests and AI tooling |
-| `apm-update` | APM package updates | install --update-pins | Advances eligible pinned APM dependencies |
+| `apm` | APM packages | install, install --update-pins | Converges merged APM manifests and AI tooling, advancing eligible refs with `--update-pins` |
 | `launcher` | Dotfiles launcher | install, uninstall | Installs or removes the platform wrapper |
 | `path` | Shell PATH | install | Ensures the launcher directory is on user PATH |
 
@@ -251,24 +250,20 @@ Builds the active APM desired state from repository-managed fragments under
 generated manifest, lock state, plugins, and skills. It runs after package,
 AUR, and symlink tasks so the APM executable and inputs are available.
 
-The task always delegates user-scope convergence and stale-content cleanup to
-`apm install -g`. Copilot App uses an APM-only pass through its native
+The task delegates user-scope convergence and stale-content cleanup to
+`apm install -g` during an ordinary install. With `--update-pins`, it runs
+`apm update -g --yes` instead so APM advances eligible refs and converges the
+resulting graph in one pass. Copilot App uses an APM-only pass through its native
 experimental target so manifest-wide MCP dependencies remain with supported
 targets. Cowork remains experimental and uses an ACL-safe file reconciliation
 after its APM feature flag and path configuration are honored. See
 [APM](APM.md) for the ownership boundary.
 
-### Update-only task
-
-#### APM package updates
-
-This update-only task depends on **APM packages**. It runs only during
-`dotfiles install --update-pins`. Apply invokes `apm update -g --yes` directly;
-dry-run uses
-`apm update -g --dry-run`. The task compares the exact lockfile before and after
-because current APM preserves unchanged serialization. The install dependency
-ensures the generated manifest is converged before update advances matching
-refs.
+The task compares the exact lockfile before and after either command because
+current APM preserves unchanged serialization. An update dry-run uses
+`apm update -g --dry-run` when the generated manifest is current. If fragment
+changes would first replace the generated manifest, the preview reports that
+write and the delegated update without asking APM to plan against stale input.
 
 ## Dynamic overlay tasks
 
@@ -352,7 +347,7 @@ across the real configuration and source tree.
 dotfiles install --only symlinks --dry-run
 
 # Run package and APM-related update tasks, except AUR tasks
-dotfiles install --update-pins --only "packages,apm,apm-update" --skip aur-packages
+dotfiles install --update-pins --only "packages,apm" --skip aur-packages
 
 # Run a dynamic overlay task by its generated stable selector
 dotfiles install --overlay C:\private-dotfiles --only script-private-tools

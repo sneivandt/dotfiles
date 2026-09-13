@@ -136,7 +136,9 @@ bare_urls = "deny"
 unescaped_backticks = "deny"
 
 [profile.dev.package."*"]
-opt-level = 3
+# Level 1 preserves fast dependencies without paying the cold-build cost of
+# fully optimizing every crate. Local clean builds were ~23% faster than level 3.
+opt-level = 1
 
 [profile.dev-opt]
 inherits = "dev"

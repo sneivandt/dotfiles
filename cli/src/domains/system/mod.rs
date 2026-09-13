@@ -2,8 +2,7 @@
 
 pub mod config;
 pub mod developer_mode;
-pub mod pam_keyring;
 pub mod registry;
 pub mod resources;
+pub mod system_files;
 pub mod systemd_units;
-pub mod wsl_conf;

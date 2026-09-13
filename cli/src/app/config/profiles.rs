@@ -75,6 +75,7 @@ pub(super) fn configured_categories(conf_dir: &Path) -> Result<Vec<Category>, Co
         Category::Linux,
         Category::Windows,
         Category::Arch,
+        Category::Wsl,
     ];
     categories.extend(
         definitions
@@ -315,6 +316,16 @@ mod tests {
         assert!(!profile.active_categories.contains(&Category::Desktop));
         assert!(profile.excluded_categories.contains(&Category::Linux));
         assert!(profile.excluded_categories.contains(&Category::Desktop));
+    }
+
+    #[test]
+    fn resolve_desktop_inside_wsl_activates_wsl_but_not_arch() {
+        let profile = resolve_default("desktop", Platform::new_wsl()).unwrap();
+        assert!(profile.active_categories.contains(&Category::Linux));
+        assert!(profile.active_categories.contains(&Category::Wsl));
+        assert!(profile.active_categories.contains(&Category::Desktop));
+        assert!(!profile.active_categories.contains(&Category::Arch));
+        assert!(profile.excluded_categories.contains(&Category::Windows));
     }
 
     #[test]

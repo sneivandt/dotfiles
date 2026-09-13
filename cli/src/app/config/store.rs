@@ -24,8 +24,6 @@ macro_rules! define_config_store {
             pub aggregate: ConfigHandle<Config>,
             /// Resolved APM fragment sources derived from managed symlinks.
             pub(crate) apm_fragments: ConfigHandle<Vec<ApmFragmentSource>>,
-            /// Whether the active package profile enables GNOME Keyring PAM integration.
-            pub(crate) pam_keyring_enabled: ConfigHandle<bool>,
             $(
                 #[doc = concat!("Configuration handle for `", stringify!($field), "`.")]
                 pub $field: ConfigHandle<$ty>,
@@ -37,14 +35,9 @@ macro_rules! define_config_store {
             #[must_use]
             pub fn from_config(config: Config) -> Self {
                 let apm_fragments = apm_fragment_sources(&config);
-                let pam_keyring_enabled = config
-                    .packages
-                    .iter()
-                    .any(|package| package.name == "gnome-keyring");
                 Self {
                     $($field: ConfigHandle::new(config.$field.clone()),)+
                     apm_fragments: ConfigHandle::new(apm_fragments),
-                    pam_keyring_enabled: ConfigHandle::new(pam_keyring_enabled),
                     aggregate: ConfigHandle::new(config),
                 }
             }

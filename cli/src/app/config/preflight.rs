@@ -16,6 +16,7 @@ const CATEGORY_CONFIG_FILES: &[&str] = &[
     "git-config.toml",
     "packages.toml",
     "symlinks.toml",
+    "system-files.toml",
     "systemd-units.toml",
     "vscode-extensions.toml",
 ];
@@ -27,6 +28,7 @@ const OVERLAY_CATEGORY_CONFIG_FILES: &[&str] = &[
     "packages.toml",
     "scripts.toml",
     "symlinks.toml",
+    "system-files.toml",
     "systemd-units.toml",
     "vscode-extensions.toml",
 ];

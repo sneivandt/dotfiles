@@ -1,0 +1,174 @@
+//! Declarative configuration for privileged files below `/etc`.
+
+use std::path::{Component, Path, PathBuf};
+
+use anyhow::{Result, bail};
+use serde::Deserialize;
+
+use crate::infra::config::config_section;
+
+/// How a tracked source fragment is combined with an existing target.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum MergeStrategy {
+    /// Recursively merge a TOML table, preserving unmanaged keys.
+    Toml,
+    /// Merge INI keys by section, preserving unmanaged keys and sections.
+    Ini,
+    /// Insert PAM module rules at the end of their matching facility stacks.
+    Pam,
+}
+
+/// One tracked source fragment and its privileged target.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SystemFile {
+    /// Absolute destination below `/etc`.
+    pub target: PathBuf,
+    /// Relative path below the declaring repository's `system/` directory.
+    pub source: PathBuf,
+    /// Content-aware merge behavior.
+    pub merge: MergeStrategy,
+    /// Repository root that declared this entry.
+    #[serde(skip)]
+    pub(crate) origin: Option<PathBuf>,
+}
+
+impl SystemFile {
+    /// Resolve the tracked fragment path.
+    #[must_use]
+    pub fn source_path(&self) -> PathBuf {
+        self.origin
+            .as_deref()
+            .unwrap_or_else(|| Path::new("."))
+            .join("system")
+            .join(&self.source)
+    }
+}
+
+config_section! {
+    field: "files",
+    ty: SystemFile,
+}
+
+/// Load every configured entry without applying category selectors.
+pub(crate) fn load_all(path: &Path) -> Result<Vec<SystemFile>> {
+    crate::infra::config::toml_loader::load_section_unfiltered::<Section>(path)
+}
+
+/// TOML filename that backs this config section.
+pub(crate) const SYSTEM_FILES_TOML: &str = "system-files.toml";
+
+/// Attach the repository root that owns a batch of entries.
+pub(crate) fn set_origin(files: &mut [SystemFile], root: &Path) {
+    for file in files {
+        file.origin = Some(root.to_path_buf());
+    }
+}
+
+/// Reject unsafe paths and duplicate targets before tasks are constructed.
+pub(crate) fn validate_entries(files: &[SystemFile]) -> Result<()> {
+    let mut targets = std::collections::BTreeSet::new();
+    for file in files {
+        if !file.target.is_absolute()
+            || !file.target.starts_with("/etc")
+            || file.target == Path::new("/etc")
+        {
+            bail!(
+                "system file target {} must be an absolute path below /etc",
+                file.target.display()
+            );
+        }
+        if file.source.as_os_str().is_empty()
+            || file.source.is_absolute()
+            || file
+                .source
+                .components()
+                .any(|component| matches!(component, Component::ParentDir))
+        {
+            bail!(
+                "system file source {} must stay below the system directory",
+                file.source.display()
+            );
+        }
+        if !targets.insert(file.target.clone()) {
+            bail!(
+                "system file target {} is configured more than once",
+                file.target.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Validate tracked fragment paths for the repository check command.
+#[must_use]
+pub fn validate(files: &[SystemFile]) -> Vec<crate::infra::config::Diagnostic> {
+    use crate::infra::config::{Diagnostic, DiagnosticCode};
+
+    const MISSING_SOURCE: DiagnosticCode = DiagnosticCode::new("system-file", "missing-source");
+    files
+        .iter()
+        .filter_map(|file| {
+            let source = file.source_path();
+            (!source.is_file()).then(|| {
+                Diagnostic::error(
+                    SYSTEM_FILES_TOML,
+                    file.target.display().to_string(),
+                    MISSING_SOURCE,
+                    format!("tracked fragment {} does not exist", source.display()),
+                )
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::config::category_matcher::Category;
+    use crate::infra::config::test_helpers::{assert_load_rejects, write_temp_toml};
+
+    #[test]
+    fn filters_profile_and_environment_sections() {
+        let (_dir, path) = write_temp_toml(
+            "[linux]\nfiles = [{ target = '/etc/base', source = 'base', merge = 'toml' }]\n\
+             [arch-desktop]\nfiles = [{ target = '/etc/desktop', source = 'desktop', merge = 'pam' }]\n\
+             [wsl]\nfiles = [{ target = '/etc/wsl.conf', source = 'wsl.conf', merge = 'ini' }]\n",
+        );
+        let files = load(&path, &[Category::Linux, Category::Arch, Category::Desktop]).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(
+            files
+                .iter()
+                .any(|file| file.target == Path::new("/etc/base"))
+        );
+        assert!(
+            files
+                .iter()
+                .any(|file| file.target == Path::new("/etc/desktop"))
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_entry_keys() {
+        assert_load_rejects(
+            load,
+            "[base]\nfiles = [{ target = '/etc/x', source = 'x', merge = 'toml', typo = true }]\n",
+            "typo",
+        );
+    }
+
+    #[test]
+    fn validation_rejects_unsafe_and_duplicate_paths() {
+        let file = |target: &str, source: &str| SystemFile {
+            target: PathBuf::from(target),
+            source: PathBuf::from(source),
+            merge: MergeStrategy::Toml,
+            origin: None,
+        };
+        assert!(validate_entries(&[file("relative", "x")]).is_err());
+        assert!(validate_entries(&[file("/etc/x", "../x")]).is_err());
+        assert!(validate_entries(&[file("/etc/x", "x"), file("/etc/x", "y")]).is_err());
+    }
+}

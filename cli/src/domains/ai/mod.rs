@@ -2,6 +2,5 @@
 
 pub mod agent_settings;
 pub mod apm;
-pub mod codex_requirements;
 pub mod config;
 pub mod resources;

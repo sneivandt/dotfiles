@@ -6,6 +6,7 @@
 #   - 'linux' is active on Linux, excluded on Windows
 #   - 'windows' is active on Windows, excluded on Linux
 #   - 'arch' is active on Arch Linux, excluded elsewhere
+#   - 'wsl' is active inside WSL, excluded elsewhere
 
 [base]
 description = "Core shell environment, no desktop GUI"

@@ -1,0 +1,18 @@
+# Privileged system files are selected with the same profile and environment
+# categories as the rest of the configuration.
+
+[linux]
+files = [
+  { target = "/etc/codex/requirements.toml", source = "codex/requirements.toml", merge = "toml" },
+]
+
+[arch-desktop]
+files = [
+  { target = "/etc/pam.d/login", source = "pam.d/login", merge = "pam" },
+  { target = "/etc/pam.d/passwd", source = "pam.d/passwd", merge = "pam" },
+]
+
+[wsl]
+files = [
+  { target = "/etc/wsl.conf", source = "wsl.conf", merge = "ini" },
+]

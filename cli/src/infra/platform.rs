@@ -165,6 +165,7 @@ impl Platform {
             Category::Linux => self.os != Os::Linux,
             Category::Windows => self.os != Os::Windows,
             Category::Arch => !self.is_arch_linux() || self.is_wsl(),
+            Category::Wsl => !self.is_wsl(),
             Category::Base | Category::Desktop | Category::Other(_) => false,
         }
     }
@@ -331,16 +332,17 @@ mod tests {
             Category::Linux,
             Category::Windows,
             Category::Arch,
+            Category::Wsl,
             Category::Base,
             Category::Desktop,
             Category::Other("custom".to_string()),
         ];
         let expected = [
-            [false, true, true, false, false, false],
-            [false, true, false, false, false, false],
-            [true, false, true, false, false, false],
-            [false, true, true, false, false, false],
-            [false, true, true, false, false, false],
+            [false, true, true, true, false, false, false],
+            [false, true, false, true, false, false, false],
+            [true, false, true, true, false, false, false],
+            [false, true, true, false, false, false, false],
+            [false, true, true, false, false, false, false],
         ];
         assert_eq!(platforms().len(), expected.len(), "cover every platform");
         for (platform, exclusions) in platforms().into_iter().zip(expected) {

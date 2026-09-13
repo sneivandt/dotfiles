@@ -14,7 +14,6 @@ use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
 use crate::domains::ai::apm::{InstallApmPackages, UpdateApmPackages};
-use crate::domains::ai::codex_requirements::ConfigureCodexRequirements;
 use crate::domains::dotfiles::path::ConfigurePath;
 use crate::domains::dotfiles::wrapper::{InstallWrapper, UninstallWrapper};
 use crate::domains::editors::vscode_extensions::InstallVsCodeExtensions;
@@ -28,10 +27,9 @@ use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepositor
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
 use crate::domains::system::developer_mode::EnableDeveloperMode;
-use crate::domains::system::pam_keyring::ConfigurePamKeyring;
 use crate::domains::system::registry::ApplyRegistry;
+use crate::domains::system::system_files::ConfigureSystemFiles;
 use crate::domains::system::systemd_units::ConfigureSystemd;
-use crate::domains::system::wsl_conf::InstallWslConf;
 use crate::engine::{Task, TaskId, TaskWithExtraDeps};
 
 const POWERSHELL_DOT_COMPLETER: &str = r"
@@ -134,7 +132,6 @@ pub(crate) fn install_tasks_for_run(
         Box::new(UpdateRepository::new(repo_updated.clone())),
         Box::new(ConfigureGit::new(store.git_settings.clone())),
         Box::new(ConfigureAgentSettings::new(store.agent_settings.clone())),
-        Box::new(ConfigureCodexRequirements),
         with_ordering_deps(InstallGitHooks::new(), &[id::<UpdateRepository>()]),
         with_ordering_deps(
             GenerateCompletions::new(zsh_completions, powershell_completions),
@@ -150,7 +147,7 @@ pub(crate) fn install_tasks_for_run(
         Box::new(ApplyFilePermissions::new(store.chmod.clone())),
         with_ordering_deps(ConfigureShell, &[id::<InstallPackages>()]),
         with_ordering_deps(
-            ConfigurePamKeyring::new(store.pam_keyring_enabled.clone()),
+            ConfigureSystemFiles::new(store.system_files.clone()),
             &[id::<InstallPackages>()],
         ),
         with_ordering_deps(
@@ -176,7 +173,6 @@ pub(crate) fn install_tasks_for_run(
             UpdateApmPackages::new(store.apm_fragments.clone()),
             &[id::<InstallApmPackages>()],
         ),
-        Box::new(InstallWslConf),
         Box::new(ReportOverlayScriptSnapshot::new(store.scripts.clone())),
         Box::new(InstallWrapper),
         Box::new(ConfigurePath),
@@ -226,11 +222,7 @@ mod tests {
                 .ordering_dependencies()
                 .contains(&id::<ApplyFilePermissions>())
         );
-        for name in [
-            "Systemd units",
-            "GNOME Keyring PAM integration",
-            "Paru package manager",
-        ] {
+        for name in ["Systemd units", "System files", "Paru package manager"] {
             assert!(
                 !find(name).dependencies().contains(&id::<InstallPackages>()),
                 "{name} must not be blocked by unrelated package failures"

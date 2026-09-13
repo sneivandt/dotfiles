@@ -111,6 +111,7 @@ pub(crate) fn setup_minimal_repo(root: &Path) {
         "git-config.toml",
         "agent-settings.toml",
         "registry.toml",
+        "system-files.toml",
     ] {
         std::fs::write(conf.join(file), "").expect("write config file");
     }

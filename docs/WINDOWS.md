@@ -169,7 +169,7 @@ reports the module error.
 
 ## WSL
 
-When the Linux binary runs inside WSL, **WSL configuration files** enables
+When the Linux binary runs inside WSL, **System files** enables
 systemd and disables Windows PATH injection in `/etc/wsl.conf` while preserving
 unrelated settings. The Windows executable on the host does not run this task.
 
@@ -177,7 +177,7 @@ Because `wsl.conf` is system-level:
 
 - the operation may need elevation inside the distribution
 - changes generally require `wsl --shutdown` from Windows before taking effect
-- the task is not applicable on native Linux or the Windows host
+- the WSL entry is not selected on native Linux or the Windows host
 
 ## Uninstall
 

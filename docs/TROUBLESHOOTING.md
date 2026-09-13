@@ -196,12 +196,12 @@ capability.
 
 ## GNOME Keyring does not unlock at login
 
-The `pam-keyring` task applies only on Arch when `gnome-keyring` belongs to the
-active package profile. Preview or reapply it directly:
+The PAM fragments apply only for the Arch desktop profile. Preview or reapply
+the shared system-file task directly:
 
 ```bash
-dotfiles install --only pam-keyring --dry-run --verbose
-dotfiles install --only pam-keyring
+dotfiles install --only system-files --dry-run --verbose
+dotfiles install --only system-files
 ```
 
 Fully log out of the TTY session and log back in; restarting Hyprland alone does

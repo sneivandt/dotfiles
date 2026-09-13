@@ -16,6 +16,8 @@ pub enum Category {
     Windows,
     /// Arch Linux-specific configuration.
     Arch,
+    /// Windows Subsystem for Linux-specific configuration.
+    Wsl,
     /// Desktop/GUI configuration.
     Desktop,
     /// A custom or user-defined category not covered by the known variants.
@@ -48,6 +50,8 @@ impl Category {
             Self::Windows
         } else if trimmed.eq_ignore_ascii_case("arch") {
             Self::Arch
+        } else if trimmed.eq_ignore_ascii_case("wsl") {
+            Self::Wsl
         } else if trimmed.eq_ignore_ascii_case("desktop") {
             Self::Desktop
         } else {
@@ -72,6 +76,7 @@ impl Category {
             Self::Linux => "linux",
             Self::Windows => "windows",
             Self::Arch => "arch",
+            Self::Wsl => "wsl",
             Self::Desktop => "desktop",
             Self::Other(s) => s.as_str(),
         }

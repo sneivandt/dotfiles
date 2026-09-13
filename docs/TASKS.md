@@ -45,7 +45,6 @@ contract itself.
 | `repository` | Dotfiles repository | install | Synchronizes repository content |
 | `git` | Git settings | install | Applies declared global Git settings |
 | `agent-settings` | Agent settings | install | Converges selected harness settings |
-| `codex-requirements` | Codex requirements | install | Merges the managed browser policy into `/etc/codex/requirements.toml` |
 | `git-hooks` | Git hooks | install, uninstall | Installs or removes repository-maintained hooks |
 | `completions` | Shell completions | install | Installs generated shell completions |
 | `packages` | System packages | install | Installs non-AUR packages through pacman or winget |
@@ -54,13 +53,12 @@ contract itself.
 | `symlinks` | Home symlinks | install, uninstall | Converges or materializes managed home links |
 | `file-permissions` | File permissions | install | Applies declared Unix modes |
 | `shell` | Default shell | install | Converges the configured login shell |
-| `pam-keyring` | GNOME Keyring PAM integration | install | Unlocks the login keyring at Arch console login and synchronizes password changes |
+| `system-files` | System files | install | Merges selected tracked fragments into administrator-owned files below `/etc` |
 | `systemd` | Systemd units | install | Enables and starts configured units, or enables user units offline during target provisioning |
 | `registry` | Windows registry | install | Converges declared current-user values |
 | `vscode-extensions` | VS Code extensions | install | Installs missing declared extensions, or schedules them for first login during target provisioning |
 | `apm` | APM packages | install | Converges merged APM manifests and AI tooling |
 | `apm-update` | APM package updates | install --update-pins | Advances eligible pinned APM dependencies |
-| `wsl-config` | WSL configuration files | install | Converges required `/etc/wsl.conf` settings |
 | `launcher` | Dotfiles launcher | install, uninstall | Installs or removes the platform wrapper |
 | `path` | Shell PATH | install | Ensures the launcher directory is on user PATH |
 
@@ -145,17 +143,19 @@ Reads `conf/agent-settings.toml` and updates declared dot-separated keys in
 Copilot's JSON settings and Codex's TOML settings. Undeclared and volatile
 harness-owned keys are preserved.
 
-#### Codex requirements
+#### System files
 
-Runs on Linux outside CI and merges the repository-owned browser policy into
-`/etc/codex/requirements.toml`. The task preserves unrelated requirements,
-refuses to replace a malformed or non-regular target, and uses `sudo install`
-only when the managed values, ownership, or mode differ. It installs the file as
-`root:root` with mode `0644`; `-D` creates `/etc/codex` when needed.
+Reads `conf/system-files.toml` and converges every entry selected by the active
+profile and environment categories. Tracked files and fragments live under
+`system/`. TOML tables and INI section keys are merged recursively while PAM
+rules are placed at the end of their matching facility stacks, preserving
+unmanaged content in each target.
 
-The managed values live with the resource implementation rather than in
-`conf/`, because they are fixed administrator policy for this dotfiles system,
-not profile-selectable user configuration.
+The task runs on Linux outside CI, refuses malformed or non-regular targets,
+and refuses to create missing PAM service files. Changes are staged and
+installed with `sudo install` as `root:root` mode `0644`; dry runs do not write.
+The current entries manage Codex requirements on Linux, GNOME Keyring PAM rules
+for the Arch desktop profile, and WSL settings inside WSL.
 
 #### System packages
 
@@ -220,24 +220,6 @@ uses `usermod` directly. An unprivileged non-interactive invocation uses
 passwordless or cached sudo when available. A normal interactive run uses
 `chsh`. Missing zsh is reported as unmet work with an explicit reason.
 
-#### GNOME Keyring PAM integration
-
-This Arch-only task runs when the active package profile includes
-`gnome-keyring`. It waits for package installation and checks that keyring is
-installed before editing PAM, even if an unrelated package failed. It adds the
-keyring authentication and session directives to
-`/etc/pam.d/login`, then adds password synchronization to
-`/etc/pam.d/passwd`.
-
-The resource preserves unrelated vendor configuration, removes duplicate
-keyring directives, and places each managed directive at the end of its PAM
-facility stack. It refuses to create a missing PAM service file or synthesize a
-missing stack. Applying changes uses `sudo`; dry runs only report the two files
-that would change.
-
-Automatic unlocking requires an interactive login password and a login keyring
-with the same password. It does not unlock a keyring during passwordless
-autologin.
 
 #### Systemd units
 
@@ -275,13 +257,6 @@ experimental target so manifest-wide MCP dependencies remain with supported
 targets. Cowork remains experimental and uses an ACL-safe file reconciliation
 after its APM feature flag and path configuration are honored. See
 [APM](APM.md) for the ownership boundary.
-
-#### WSL configuration files
-
-Runs only inside WSL and converges the required keys in `/etc/wsl.conf` while
-preserving unrelated sections and settings. Applying the file may require
-elevation, and some WSL settings take effect only after the distribution is
-restarted.
 
 ### Update-only task
 

@@ -72,11 +72,8 @@ to the smallest necessary scope:
 - Registry settings are currently user-scoped.
 - systemd configuration defaults to user units; explicitly scoped system units
   may require elevation.
-- GNOME Keyring integration uses elevation only to install merged directives in
-  the existing `/etc/pam.d/login` and `/etc/pam.d/passwd` files.
-- Codex requirements use elevation only to install the merged administrator
-  policy as `root:root` mode `0644` in `/etc/codex/requirements.toml`.
-- system-level WSL configuration may require elevation.
+- System-file convergence uses elevation only to install selected merged
+  fragments below `/etc` as `root:root` mode `0644`.
 - package managers elevate only for provider actions that need it.
 
 Do not move broad task execution behind an unconditional administrator or root

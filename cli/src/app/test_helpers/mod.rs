@@ -41,6 +41,8 @@ pub fn empty_config(root: PathBuf) -> Config {
         validation_symlinks: vec![],
         registry: vec![],
         units: vec![],
+        system_files: vec![],
+        validation_system_files: vec![],
         chmod: vec![],
         validation_chmod: vec![],
         vscode_extensions: vec![],
@@ -137,12 +139,6 @@ impl ContextBuilder {
     /// Set whether the platform is Arch Linux.
     pub fn arch(mut self, is_arch: bool) -> Self {
         self.is_arch = is_arch;
-        self
-    }
-
-    /// Set whether the platform is Windows Subsystem for Linux.
-    pub fn wsl(mut self, is_wsl: bool) -> Self {
-        self.is_wsl = is_wsl;
         self
     }
 

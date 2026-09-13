@@ -1,0 +1,9 @@
+[browser_use]
+disable_auto_review = true
+allow_global_persistent_approval = false
+
+[browser_use.default_origin_policy]
+access = "allow"
+auto_review = "deny"
+persistent_approval = false
+access_approval_lifetime = "turn"

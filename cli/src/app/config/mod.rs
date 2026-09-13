@@ -16,6 +16,10 @@ macro_rules! config_section_inventory {
                 |config: &Config| Some(SectionCount::new("registry entry", "registry entries", config.registry.len()));
             units: Vec<crate::domains::system::config::systemd_units::SystemdUnit> =>
                 |config: &Config| Some(SectionCount::new("systemd unit", "systemd units", config.units.len()));
+            system_files: Vec<crate::domains::system::config::system_files::SystemFile> =>
+                |config: &Config| Some(SectionCount::new("system file", "system files", config.system_files.len()));
+            validation_system_files: Vec<crate::domains::system::config::system_files::SystemFile> =>
+                |_config: &Config| None;
             chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
                 |config: &Config| Some(SectionCount::new("chmod entry", "chmod entries", config.chmod.len()));
             validation_chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
@@ -44,7 +48,7 @@ use crate::domains::files::config::{chmod, symlinks};
 use crate::domains::git::config::git_config;
 use crate::domains::overlay::config::scripts;
 use crate::domains::packages::config::packages;
-use crate::domains::system::config::{registry, systemd_units};
+use crate::domains::system::config::{registry, system_files, systemd_units};
 use crate::infra::config::{Diagnostic, category_matcher};
 use crate::infra::platform::Platform;
 
@@ -56,6 +60,7 @@ pub(crate) const REQUIRED_CONFIG_FILES: &[&str] = &[
     "profiles.toml",
     "registry.toml",
     "symlinks.toml",
+    "system-files.toml",
     "systemd-units.toml",
     "vscode-extensions.toml",
 ];
@@ -210,6 +215,10 @@ pub struct Config {
     pub registry: Vec<registry::RegistryEntry>,
     /// Systemd user units to enable.
     pub units: Vec<systemd_units::SystemdUnit>,
+    /// Privileged files to merge below `/etc`.
+    pub system_files: Vec<system_files::SystemFile>,
+    /// Main and overlay system-file definitions before category filtering.
+    pub validation_system_files: Vec<system_files::SystemFile>,
     /// File permissions to apply (chmod).
     pub chmod: Vec<chmod::ChmodEntry>,
     /// Main and overlay chmod definitions before category filtering.
@@ -253,6 +262,11 @@ impl Config {
         let registry = sections.collect(registry::REGISTRY_TOML, registry::load, |_, _| {})?;
         let units =
             sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::load)?;
+        let validation_system_files = sections.collect(
+            system_files::SYSTEM_FILES_TOML,
+            system_files::load_all,
+            system_files::set_origin,
+        )?;
         let mut config = Self {
             root: root.to_path_buf(),
             overlay: overlay.map(Path::to_path_buf),
@@ -274,6 +288,12 @@ impl Config {
             } else {
                 Vec::new()
             },
+            system_files: sections.collect_filtered_post(
+                system_files::SYSTEM_FILES_TOML,
+                system_files::load,
+                system_files::set_origin,
+            )?,
+            validation_system_files,
             chmod: sections.collect_filtered(chmod::CHMOD_TOML, chmod::load)?,
             validation_chmod,
             vscode_extensions: sections.collect_filtered(
@@ -291,6 +311,8 @@ impl Config {
             .context("expanding symlink glob patterns")?;
         symlinks::validate_unique_targets(&config.symlinks)
             .context("validating symlink targets")?;
+        system_files::validate_entries(&config.system_files)
+            .context("validating system file targets")?;
 
         error::reject_conflicts(
             git_config::validate_conflicts(&config.git_settings)
@@ -315,6 +337,7 @@ impl Config {
         diagnostics.extend(registry::validate(&self.registry, platform));
         diagnostics.extend(chmod::validate(&self.chmod, platform));
         diagnostics.extend(systemd_units::validate(&self.units, platform));
+        diagnostics.extend(system_files::validate(&self.validation_system_files));
         diagnostics.extend(vscode_extensions::validate(&self.vscode_extensions));
         diagnostics.extend(git_config::validate(&self.git_settings));
         diagnostics.extend(agent_settings::validate(&self.agent_settings));

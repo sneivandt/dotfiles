@@ -15,7 +15,8 @@ fn section_inventory_reports_every_user_configured_slice() {
 
     assert!(labels.contains(&"git settings"));
     assert!(labels.contains(&"agent settings"));
-    assert_eq!(labels.len(), 9);
+    assert!(labels.contains(&"system files"));
+    assert_eq!(labels.len(), 10);
 }
 
 /// Create a temporary directory tree with the minimal conf/ files required

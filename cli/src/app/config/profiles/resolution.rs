@@ -56,7 +56,12 @@ pub(super) fn resolve_with_defs(
         .map(|tag| Category::from_tag(tag))
         .collect();
 
-    for category in [Category::Linux, Category::Windows, Category::Arch] {
+    for category in [
+        Category::Linux,
+        Category::Windows,
+        Category::Arch,
+        Category::Wsl,
+    ] {
         if platform.excludes_category(&category) {
             if !excluded.contains(&category) {
                 excluded.push(category);

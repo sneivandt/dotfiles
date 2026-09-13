@@ -16,14 +16,16 @@ shared handles.
 | `chmod.toml` | Category sections containing mode/path records | Unix permissions |
 | `registry.toml` | Named registry records with `path` and `values` | Windows registry |
 | `systemd-units.toml` | Category sections containing user or system unit records | systemd configuration |
+| `system-files.toml` | Category sections mapping `/etc` targets to tracked fragments | System-file convergence |
 | `vscode-extensions.toml` | Category sections containing extension identifiers | VS Code extensions |
 
 An overlay may also provide `conf/scripts.toml`. The main repository does not
 load scripts from that file.
 
-The fixed browser policy installed in `/etc/codex/requirements.toml` is owned by
-the Codex requirements resource, not by a `conf/` file. It is system policy and
-does not vary by profile or overlay.
+Sources declared by `system-files.toml` are relative to the declaring
+repository's root-level `system/` directory. Each record chooses `toml`, `ini`,
+or `pam` merge behavior. Targets must be absolute paths below `/etc`; duplicate
+active targets are rejected rather than treated as overlay overrides.
 
 ### Conflicting desired state
 
@@ -82,9 +84,35 @@ include = ["desktop"]
 exclude = []
 ```
 
-The selected role is combined with detected `linux`, `windows`, and `arch`
+The selected role is combined with detected `linux`, `windows`, `arch`, and `wsl`
 categories. Profile names and category names are related but distinct: a
 profile controls a set of categories.
+
+## System files
+
+`system-files.toml` maps absolute targets below `/etc` to tracked sources below
+the root-level `system/` directory:
+
+```toml
+[linux]
+files = [
+  { target = "/etc/codex/requirements.toml", source = "codex/requirements.toml", merge = "toml" },
+]
+
+[arch-desktop]
+files = [
+  { target = "/etc/pam.d/login", source = "pam.d/login", merge = "pam" },
+]
+
+[wsl]
+files = [
+  { target = "/etc/wsl.conf", source = "wsl.conf", merge = "ini" },
+]
+```
+
+`toml` recursively overlays fragment tables, `ini` converges the fragment's
+section keys, and `pam` replaces matching module rules and inserts them after
+the final rule in each facility stack. All three preserve unrelated content.
 
 ## Symlinks
 
@@ -449,7 +477,7 @@ definitions. Typos do not fall back to defaults. For example, `excludee` in
 to stop excluding desktop categories.
 
 Section category tags are checked too. Built-in tags are `base`, `desktop`,
-`linux`, `windows`, and `arch`; custom tags must appear in a profile's
+`linux`, `windows`, `arch`, and `wsl`; custom tags must appear in a profile's
 `include` or `exclude` list before another config file can use them.
 
 Entries that accept either a bare string or a table (symlinks, packages,

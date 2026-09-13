@@ -254,7 +254,7 @@ impl Logger {
     pub(crate) fn has_interrupted_tasks(&self) -> bool {
         self.lock_tasks()
             .iter()
-            .any(|task| task.status == TaskStatus::Interrupted)
+            .any(|task| task.status == TaskStatus::Interrupted && !task.is_unstarted_interruption())
     }
 
     /// Return whether verbose output mode is enabled.

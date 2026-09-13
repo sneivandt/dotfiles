@@ -111,6 +111,12 @@ impl TaskEntry {
         self.result_display = result_display;
         self
     }
+
+    /// Whether cancellation prevented this task from starting.
+    #[must_use]
+    pub const fn is_unstarted_interruption(&self) -> bool {
+        matches!(self.status, TaskStatus::Interrupted) && self.duration.is_none()
+    }
 }
 
 /// Status of a completed task.

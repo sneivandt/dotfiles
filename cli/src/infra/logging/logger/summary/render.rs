@@ -28,6 +28,7 @@ pub(super) fn task_result_lines(
     opts: RowOpts,
 ) -> Vec<String> {
     if !task.visibility.is_visible()
+        || task.is_unstarted_interruption()
         || (task.result_display == TaskResultDisplay::RestartNotice
             && task.status == TaskStatus::Changed)
         || !should_emit_task_result(task.status, opts.verbose)

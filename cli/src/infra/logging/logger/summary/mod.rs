@@ -81,7 +81,10 @@ impl Logger {
         let Some(task) = self.recorded_task(task_id) else {
             return;
         };
-        if !task.visibility.is_visible() || !should_emit_task_result(task.status, self.verbose) {
+        if !task.visibility.is_visible()
+            || task.is_unstarted_interruption()
+            || !should_emit_task_result(task.status, self.verbose)
+        {
             return;
         }
         self.begin_task_block(true);

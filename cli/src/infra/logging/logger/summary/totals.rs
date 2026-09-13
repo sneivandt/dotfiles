@@ -39,7 +39,7 @@ impl SummaryCounts {
     pub(super) fn from_tasks(tasks: &[TaskEntry]) -> Self {
         let mut counts = Self::default();
         for task in tasks {
-            if !task.visibility.is_visible() {
+            if !task.visibility.is_visible() || task.is_unstarted_interruption() {
                 continue;
             }
             match task.status {

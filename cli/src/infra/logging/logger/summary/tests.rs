@@ -569,6 +569,33 @@ fn internal_tasks_never_produce_console_rows() {
 }
 
 #[test]
+fn unstarted_interruptions_do_not_produce_rows_or_totals() {
+    let queued = task_entry("queued", TaskStatus::Interrupted, Some("cancelled"));
+    let mut started = task_entry("started", TaskStatus::Interrupted, Some("interrupted"));
+    started.duration = Some(Duration::from_millis(100));
+
+    assert!(task_result_lines(&queued, &[], plain_opts()).is_empty());
+    assert!(
+        task_result_lines(
+            &queued,
+            &[],
+            RowOpts {
+                verbose: true,
+                ..plain_opts()
+            }
+        )
+        .is_empty()
+    );
+    assert_eq!(
+        task_result_lines(&started, &[], plain_opts()),
+        ["⊘ started · interrupted"]
+    );
+
+    let counts = SummaryCounts::from_tasks(&[queued, started]);
+    assert_eq!(counts.interrupted, 1);
+}
+
+#[test]
 fn colored_summary_styles_each_outcome_group() {
     let lines = format_summary_lines(
         SummaryCounts {
@@ -639,7 +666,7 @@ fn install_summary_needs_totals_separator_after_task_output() {
 
 #[test]
 fn blocked_and_interrupted_counts_do_not_become_skips_or_failures() {
-    let tasks = [
+    let mut tasks = [
         task_entry(
             "skip",
             TaskStatus::Skipped,
@@ -652,6 +679,7 @@ fn blocked_and_interrupted_counts_do_not_become_skips_or_failures() {
         ),
         task_entry("interrupted", TaskStatus::Interrupted, Some("interrupted")),
     ];
+    tasks[2].duration = Some(Duration::from_millis(100));
     let counts = SummaryCounts::from_tasks(&tasks);
     assert_eq!(
         (

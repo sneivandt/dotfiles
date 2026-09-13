@@ -90,23 +90,24 @@ profile controls a set of categories.
 
 ## System files
 
-`system-files.toml` maps absolute targets below `/etc` to tracked sources below
-the root-level `system/` directory:
+`system-files.toml` maps targets below `/etc` to tracked sources below the
+root-level `system/` directory. When the target is `/etc/<source>`, omit
+`target`; specify it only when the target path differs:
 
 ```toml
 [linux]
 files = [
-  { target = "/etc/codex/requirements.toml", source = "codex/requirements.toml", merge = "toml" },
+  { source = "codex/requirements.toml", merge = "toml" },
 ]
 
 [arch-desktop]
 files = [
-  { target = "/etc/pam.d/login", source = "pam.d/login", merge = "pam" },
+  { source = "pam.d/login", merge = "pam" },
 ]
 
 [wsl]
 files = [
-  { target = "/etc/wsl.conf", source = "wsl.conf", merge = "ini" },
+  { source = "wsl.conf", merge = "ini" },
 ]
 ```
 

@@ -3,7 +3,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::infra::config::config_section;
 
@@ -20,18 +20,42 @@ pub enum MergeStrategy {
 }
 
 /// One tracked source fragment and its privileged target.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SystemFile {
-    /// Absolute destination below `/etc`.
+    /// Absolute destination below `/etc`, inferred from `source` when omitted.
     pub target: PathBuf,
     /// Relative path below the declaring repository's `system/` directory.
     pub source: PathBuf,
     /// Content-aware merge behavior.
     pub merge: MergeStrategy,
     /// Repository root that declared this entry.
-    #[serde(skip)]
     pub(crate) origin: Option<PathBuf>,
+}
+
+impl<'de> Deserialize<'de> for SystemFile {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Entry {
+            target: Option<PathBuf>,
+            source: PathBuf,
+            merge: MergeStrategy,
+        }
+
+        let entry = Entry::deserialize(deserializer)?;
+        let target = entry
+            .target
+            .unwrap_or_else(|| Path::new("/etc").join(&entry.source));
+        Ok(Self {
+            target,
+            source: entry.source,
+            merge: entry.merge,
+            origin: None,
+        })
+    }
 }
 
 impl SystemFile {
@@ -157,6 +181,23 @@ mod tests {
             "[base]\nfiles = [{ target = '/etc/x', source = 'x', merge = 'toml', typo = true }]\n",
             "typo",
         );
+    }
+
+    #[test]
+    fn infers_target_from_source_when_omitted() {
+        let (_dir, path) = write_temp_toml(
+            "[base]\nfiles = [\
+             { source = 'codex/requirements.toml', merge = 'toml' }, \
+             { target = '/etc/custom.toml', source = 'source.toml', merge = 'toml' }\
+             ]\n",
+        );
+
+        let files = load_all(&path).unwrap();
+        assert_eq!(
+            files[0].target,
+            PathBuf::from("/etc/codex/requirements.toml")
+        );
+        assert_eq!(files[1].target, PathBuf::from("/etc/custom.toml"));
     }
 
     #[test]

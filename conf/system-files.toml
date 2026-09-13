@@ -3,16 +3,16 @@
 
 [linux]
 files = [
-  { target = "/etc/codex/requirements.toml", source = "codex/requirements.toml", merge = "toml" },
+  { source = "codex/requirements.toml", merge = "toml" },
 ]
 
 [arch-desktop]
 files = [
-  { target = "/etc/pam.d/login", source = "pam.d/login", merge = "pam" },
-  { target = "/etc/pam.d/passwd", source = "pam.d/passwd", merge = "pam" },
+  { source = "pam.d/login", merge = "pam" },
+  { source = "pam.d/passwd", merge = "pam" },
 ]
 
 [wsl]
 files = [
-  { target = "/etc/wsl.conf", source = "wsl.conf", merge = "ini" },
+  { source = "wsl.conf", merge = "ini" },
 ]

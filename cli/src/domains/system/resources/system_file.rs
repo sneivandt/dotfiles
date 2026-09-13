@@ -274,7 +274,10 @@ fn merge_toml(current: &str, fragment: &str) -> anyhow::Result<String> {
     Ok(rendered)
 }
 
-fn ini_settings(content: &str, strict: bool) -> anyhow::Result<Vec<(String, String, String)>> {
+fn ini_settings(
+    content: &str,
+    strict: bool,
+) -> anyhow::Result<Vec<(String, String, Option<String>)>> {
     let mut section = None::<String>;
     let mut settings = Vec::new();
     for raw in content.lines() {
@@ -283,12 +286,16 @@ fn ini_settings(content: &str, strict: bool) -> anyhow::Result<Vec<(String, Stri
             continue;
         }
         if line.starts_with('[') && line.ends_with(']') {
-            section = Some(line.to_ascii_lowercase());
+            section = Some(line.to_string());
             continue;
         }
-        let Some((key, value)) = line.split_once('=') else {
+        let (key, value) = if let Some((key, value)) = line.split_once('=') {
+            (key.trim(), Some(value.trim().to_string()))
+        } else if line.split_whitespace().count() == 1 {
+            (line, None)
+        } else {
             if strict {
-                bail!("INI fragment contains a setting without '=': {line}");
+                bail!("INI fragment contains an invalid bare setting: {line}");
             }
             continue;
         };
@@ -298,11 +305,7 @@ fn ini_settings(content: &str, strict: bool) -> anyhow::Result<Vec<(String, Stri
             }
             continue;
         };
-        settings.push((
-            section.clone(),
-            key.trim().to_ascii_lowercase(),
-            value.trim().to_string(),
-        ));
+        settings.push((section.clone(), key.to_string(), value));
     }
     Ok(settings)
 }
@@ -323,7 +326,7 @@ fn contains_ini(current: &str, fragment: &str) -> anyhow::Result<bool> {
 fn merge_ini(current: &str, fragment: &str) -> anyhow::Result<String> {
     let mut lines = current.lines().map(str::to_string).collect::<Vec<_>>();
     for (section, key, value) in ini_settings(fragment, true)? {
-        ensure_ini_key(&mut lines, &section, &key, &value);
+        ensure_ini_key(&mut lines, &section, &key, value.as_deref());
     }
     let mut rendered = lines.join("\n");
     if !rendered.ends_with('\n') {
@@ -332,14 +335,58 @@ fn merge_ini(current: &str, fragment: &str) -> anyhow::Result<String> {
     Ok(rendered)
 }
 
-fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: &str) {
+fn ini_line_key(line: &str) -> Option<&str> {
+    let line = line.trim();
+    if line.is_empty()
+        || line.starts_with(['#', ';'])
+        || (line.starts_with('[') && line.ends_with(']'))
+    {
+        return None;
+    }
+    if let Some((key, _)) = line.split_once('=') {
+        return Some(key.trim());
+    }
+    (line.split_whitespace().count() == 1).then_some(line)
+}
+
+fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Option<&str>) {
     let indices = lines
         .iter()
         .enumerate()
-        .filter(|(_, line)| line.trim().eq_ignore_ascii_case(section))
+        .filter(|(_, line)| line.trim() == section)
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     if let Some(&first) = indices.first() {
+        let first_end = lines
+            .iter()
+            .enumerate()
+            .skip(first.saturating_add(1))
+            .find(|(_, line)| {
+                let line = line.trim();
+                line.starts_with('[') && line.ends_with(']')
+            })
+            .map_or(lines.len(), |(index, _)| index);
+        let insertion_index = lines
+            .iter()
+            .enumerate()
+            .take(first_end)
+            .skip(first.saturating_add(1))
+            .find(|(_, line)| ini_line_key(line) == Some(key))
+            .map_or_else(
+                || {
+                    lines
+                        .iter()
+                        .enumerate()
+                        .take(first_end)
+                        .skip(first.saturating_add(1))
+                        .rfind(|(_, line)| ini_line_key(line).is_some())
+                        .map_or_else(
+                            || first.saturating_add(1),
+                            |(index, _)| index.saturating_add(1),
+                        )
+                },
+                |(index, _)| index,
+            );
         for &start in indices.iter().rev() {
             let content_start = start.saturating_add(1);
             let end = lines
@@ -352,31 +399,21 @@ fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: &str
                 })
                 .map_or(lines.len(), |(index, _)| index);
             for index in (content_start..end).rev() {
-                if lines
-                    .get(index)
-                    .and_then(|line| line.split_once('='))
-                    .is_some_and(|(candidate, _)| candidate.trim().eq_ignore_ascii_case(key))
-                {
+                if lines.get(index).and_then(|line| ini_line_key(line)) == Some(key) {
                     lines.remove(index);
                 }
             }
         }
-        let end = lines
-            .iter()
-            .enumerate()
-            .skip(first.saturating_add(1))
-            .find(|(_, line)| {
-                let line = line.trim();
-                line.starts_with('[') && line.ends_with(']')
-            })
-            .map_or(lines.len(), |(index, _)| index);
-        lines.insert(end, format!("{key}={value}"));
+        lines.insert(
+            insertion_index,
+            value.map_or_else(|| key.to_string(), |value| format!("{key}={value}")),
+        );
     } else {
         if lines.last().is_some_and(|line| !line.is_empty()) {
             lines.push(String::new());
         }
         lines.push(section.to_string());
-        lines.push(format!("{key}={value}"));
+        lines.push(value.map_or_else(|| key.to_string(), |value| format!("{key}={value}")));
     }
 }
 
@@ -486,6 +523,24 @@ mod tests {
             resource.current_state().unwrap(),
             ResourceState::Invalid { reason } if reason.contains("is missing")
         ));
+    }
+
+    #[test]
+    fn ini_merge_supports_bare_settings() {
+        let current = "[options]\n#Color\nColor\nColor\nCheckSpace\nParallelDownloads = 2\n";
+        let fragment = "[options]\nColor\nILoveCandy\nParallelDownloads = 5\n";
+
+        let merged = merge_ini(current, fragment).unwrap();
+
+        assert!(merged.contains("#Color"));
+        assert!(merged.contains("CheckSpace"));
+        assert_eq!(merged.lines().filter(|line| *line == "Color").count(), 1);
+        assert!(merged.contains("ILoveCandy"));
+        assert!(!merged.contains("ParallelDownloads = 2"));
+        assert!(merged.contains("ParallelDownloads=5"));
+        assert!(contains_ini(&merged, fragment).unwrap());
+        assert!(!contains_ini("[options]\ncolor\n", "[options]\nColor\n").unwrap());
+        assert!(merge_ini("[options]\nColor\n", "[options]\nColor enabled\n").is_err());
     }
 
     #[test]

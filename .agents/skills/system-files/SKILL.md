@@ -26,9 +26,9 @@ description: >
   from platform detection. Compound sections require every category.
 - Sources are relative to the declaring repository's `system/` directory;
   targets must be absolute paths below `/etc`.
-- `toml` recursively merges tables, `ini` converges fragment keys within their
-  sections, and `pam` places module rules after the matching facility stack.
-  All strategies preserve unrelated target content.
+- `toml` recursively merges tables, `ini` converges assigned keys and bare flags
+  within their sections, and `pam` places module rules after the matching
+  facility stack. All strategies preserve unrelated target content.
 - Refuse malformed content, non-regular targets, missing PAM service files,
   and PAM fragments whose facilities do not exist.
 - Install through the executor as `root:root` mode `0644` from a unique staged

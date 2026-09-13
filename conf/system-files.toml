@@ -6,6 +6,11 @@ files = [
   { source = "codex/requirements.toml", merge = "toml" },
 ]
 
+[arch]
+files = [
+  { source = "pacman.conf", merge = "ini" },
+]
+
 [arch-desktop]
 files = [
   { source = "pam.d/login", merge = "pam" },

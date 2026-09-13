@@ -146,15 +146,16 @@ harness-owned keys are preserved.
 
 Reads `conf/system-files.toml` and converges every entry selected by the active
 profile and environment categories. Tracked files and fragments live under
-`system/`. TOML tables and INI section keys are merged recursively while PAM
-rules are placed at the end of their matching facility stacks, preserving
-unmanaged content in each target.
+`system/`. TOML tables merge recursively, INI section keys and bare flags
+converge, and PAM rules are placed at the end of their matching facility stacks.
+Each strategy preserves unmanaged content.
 
 The task runs on Linux outside CI, refuses malformed or non-regular targets,
 and refuses to create missing PAM service files. Changes are staged and
 installed with `sudo install` as `root:root` mode `0644`; dry runs do not write.
-The current entries manage Codex requirements on Linux, GNOME Keyring PAM rules
-for the Arch desktop profile, and WSL settings inside WSL.
+The current entries manage Codex requirements on Linux, Pacman options on Arch,
+GNOME Keyring PAM rules for the Arch desktop profile, and WSL settings inside
+WSL.
 
 #### System packages
 

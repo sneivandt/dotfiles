@@ -100,6 +100,11 @@ files = [
   { source = "codex/requirements.toml", merge = "toml" },
 ]
 
+[arch]
+files = [
+  { source = "pacman.conf", merge = "ini" },
+]
+
 [arch-desktop]
 files = [
   { source = "pam.d/login", merge = "pam" },
@@ -111,9 +116,10 @@ files = [
 ]
 ```
 
-`toml` recursively overlays fragment tables, `ini` converges the fragment's
-section keys, and `pam` replaces matching module rules and inserts them after
-the final rule in each facility stack. All three preserve unrelated content.
+`toml` recursively overlays fragment tables. `ini` converges assigned keys and
+bare flags within sections, which also covers Pacman options. `pam` replaces
+matching module rules and inserts them after the final rule in each facility
+stack. All three preserve unrelated content.
 
 ## Symlinks
 

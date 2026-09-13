@@ -106,11 +106,6 @@ impl SystemFileResource {
             && metadata.permissions().mode() & 0o7777 == 0o644
     }
 
-    #[cfg(not(unix))]
-    fn metadata_is_correct(&self, _metadata: &fs::Metadata) -> bool {
-        true
-    }
-
     fn desired_content(&self, current: &str, fragment: &str) -> anyhow::Result<String> {
         match self.entry.merge {
             MergeStrategy::Toml => merge_toml(current, fragment),
@@ -205,7 +200,13 @@ impl IntrinsicState for SystemFileResource {
                 });
             }
         };
+        #[cfg(unix)]
         let metadata_matches = self.metadata_is_correct(&metadata);
+        #[cfg(not(unix))]
+        let metadata_matches = {
+            let _ = metadata;
+            true
+        };
         Ok(if content_matches && metadata_matches {
             ResourceState::Correct
         } else {
@@ -424,7 +425,9 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::exec::{ExecResult, MockExecutor};
+    #[cfg(unix)]
+    use crate::infra::exec::ExecResult;
+    use crate::infra::exec::MockExecutor;
     use std::path::Path;
 
     fn entry(root: &Path, target: &Path, source: &str, merge: MergeStrategy) -> SystemFile {

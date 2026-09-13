@@ -197,9 +197,14 @@ jobs:
       - name: Build CI binary
         run: cargo build --profile ci
       - name: Clippy
+        if: needs.classify-changes.outputs.run_rust_checks == 'true'
         run: cargo clippy --profile ci --all-targets -- -D warnings
       - name: Tests
+        if: needs.classify-changes.outputs.run_rust_checks == 'true'
         run: cargo test --profile ci
+      - name: Config drift tests
+        if: needs.classify-changes.outputs.run_rust_checks != 'true' && needs.classify-changes.outputs.run_profile_integration == 'true'
+        run: cargo test --profile ci --test config_drift
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dotfiles-linux
@@ -253,11 +258,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Linux
-            os: ubuntu-latest
-          - name: Windows
-            os: windows-latest
+        # Exclude Windows before runner allocation; job-level if cannot use matrix.
+        include: >-
+          ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
+          '[{"name":"Linux","os":"ubuntu-latest"},{"name":"Windows","os":"windows-latest"}]' ||
+          '[{"name":"Linux","os":"ubuntu-latest"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Rust toolchain
@@ -349,15 +354,41 @@ jobs:
           cache-on-failure: true
       - name: Build CI binary
         run: cargo build --profile ci
-      - name: Clippy
-        run: cargo clippy --profile ci --all-targets -- -D warnings
-      - name: Tests
-        run: cargo test --profile ci
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dotfiles-windows
           path: cli/target/ci/dotfiles.exe
           retention-days: 1
+
+  windows-rust-checks:
+    name: "Rust: Windows checks"
+    runs-on: windows-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_rust_checks == 'true'
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Disable Windows Defender real-time monitoring
+        continue-on-error: true
+        run: |
+          try {
+            Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+          } catch {
+            Write-Host "Could not disable Defender real-time monitoring (likely tamper protection); continuing: $_"
+          }
+      - name: Install Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: "cli -> target"
+          cache-on-failure: true
+      - name: Clippy
+        run: cargo clippy --profile ci --all-targets -- -D warnings
+      - name: Native Windows tests
+        # Keep host-dependent filesystem and subprocess tests; see docs/TESTING.md.
+        run: cargo test --profile ci --lib --test behavioral_ci --test install_command --test task_execution --test task_output --test test_command
 
   # ── Integration Tests ─────────────────────────────────
   integration-linux:
@@ -585,6 +616,7 @@ jobs:
       - build-linux
       - msrv
       - build-windows
+      - windows-rust-checks
       - integration-linux
       - integration-windows
       - test-install-uninstall

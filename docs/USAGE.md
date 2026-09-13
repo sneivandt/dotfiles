@@ -267,7 +267,7 @@ While tasks are running, a transient status line reports progress and the
 currently active tasks:
 
 ```text
-Running · 4 tasks remaining · Home symlinks, System packages
+Running · 4 remaining · Home symlinks, System packages
 ```
 
 The counter reports how many scheduled visible tasks have not finished; the

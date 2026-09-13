@@ -71,14 +71,13 @@ impl Logger {
 
     /// Build the status-line text for the currently active tasks.
     ///
-    /// Renders as `Running · {remaining} tasks remaining · {active tasks}`.
+    /// Renders as `Running · {remaining} remaining · {active tasks}`.
     fn format_status_line(&self, names: &str) -> String {
         let progress = self
             .task_progress()
             .map_or_else(String::new, |(done, total)| {
                 let remaining = total.saturating_sub(done);
-                let task_label = if remaining == 1 { "task" } else { "tasks" };
-                format!(" \u{00b7} {remaining} {task_label} remaining")
+                format!(" \u{00b7} {remaining} remaining")
             });
         format!("Running{progress} \u{00b7} {names}")
     }
@@ -251,13 +250,13 @@ mod tests {
 
         assert_eq!(
             log.format_status_line("Home symlinks, System packages"),
-            "Running · 4 tasks remaining · Home symlinks, System packages",
+            "Running · 4 remaining · Home symlinks, System packages",
             "the counter should directly report how many scheduled tasks remain"
         );
     }
 
     #[test]
-    fn status_line_uses_singular_task_for_one_remaining() {
+    fn status_line_reports_one_remaining() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(2);
         log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
@@ -265,7 +264,7 @@ mod tests {
 
         assert_eq!(
             log.format_status_line("System packages"),
-            "Running · 1 task remaining · System packages"
+            "Running · 1 remaining · System packages"
         );
     }
 

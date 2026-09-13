@@ -267,13 +267,12 @@ While tasks are running, a transient status line reports progress and the
 currently active tasks:
 
 ```text
-Running · 12/16 done · Home symlinks, System packages
+Running · 4 tasks remaining · Home symlinks, System packages
 ```
 
-The counter reports tasks that have already finished; the names after it are the
-tasks running right now. The denominator counts scheduled visible tasks and
-stays fixed within each execution phase. Non-applicable tasks advance the
-counter but are omitted from final totals.
+The counter reports how many scheduled visible tasks have not finished; the
+names after it are the tasks running right now. Non-applicable tasks reduce the
+remaining count when they finish but are omitted from final totals.
 
 The final line reports task counts without status glyphs. Color distinguishes
 each outcome group: green for changed, magenta for dry run, dim for current,

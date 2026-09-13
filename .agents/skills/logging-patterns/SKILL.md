@@ -42,9 +42,10 @@ description: >
   preserve warning/context barriers.
 - Resource descriptions read `subject -> value`; symlinks are `target -> source`.
 - Final summaries count tasks, not detail lines or parsed display text.
-- Progress uses `Running · {done}/{total} done · {active}`. Its denominator
-  counts scheduled visible tasks within a phase. Non-applicable tasks advance
-  progress but do not contribute to final totals.
+- Progress uses `Running · {remaining} tasks remaining · {active}`, with
+  singular `task` when one remains. The count covers unfinished scheduled
+  visible tasks within a phase. Non-applicable tasks reduce it when they finish
+  but do not contribute to final totals.
 - Keep skipped, blocked, and interrupted outcomes distinct in rows and totals.
   Typed cancellation is interrupted; dependency prevention is blocked.
 - Transient status lines are always cleared and never replace durable logging.

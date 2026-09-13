@@ -71,15 +71,14 @@ impl Logger {
 
     /// Build the status-line text for the currently active tasks.
     ///
-    /// Renders as `Running · {done}/{total} done · {active tasks}`. The counter
-    /// reports tasks that have *finished*, not the ones named after it, so it
-    /// carries its own `done` label — a bare `Running 12/16` reads as "12 of 16
-    /// are running right now", which is not what it means.
+    /// Renders as `Running · {remaining} tasks remaining · {active tasks}`.
     fn format_status_line(&self, names: &str) -> String {
         let progress = self
             .task_progress()
             .map_or_else(String::new, |(done, total)| {
-                format!(" \u{00b7} {done}/{total} done")
+                let remaining = total.saturating_sub(done);
+                let task_label = if remaining == 1 { "task" } else { "tasks" };
+                format!(" \u{00b7} {remaining} {task_label} remaining")
             });
         format!("Running{progress} \u{00b7} {names}")
     }
@@ -242,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn status_line_labels_the_counter_as_completed_tasks() {
+    fn status_line_reports_remaining_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.add_task_total(16);
         log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
@@ -252,8 +251,21 @@ mod tests {
 
         assert_eq!(
             log.format_status_line("Home symlinks, System packages"),
-            "Running · 12/16 done · Home symlinks, System packages",
-            "the counter must say what it counts so it is not read as the active-task count"
+            "Running · 4 tasks remaining · Home symlinks, System packages",
+            "the counter should directly report how many scheduled tasks remain"
+        );
+    }
+
+    #[test]
+    fn status_line_uses_singular_task_for_one_remaining() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.add_task_total(2);
+        log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
+        log.mark_task_completed("task");
+
+        assert_eq!(
+            log.format_status_line("System packages"),
+            "Running · 1 task remaining · System packages"
         );
     }
 

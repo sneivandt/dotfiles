@@ -20,8 +20,7 @@ pwsh -File .github\workflows\scripts\windows\Check.ps1
 These scripts define the local verification sequence and use the same `ci`
 Cargo profile as CI. A stage reports `SKIP` instead of failing when its tool is
 missing. The default stages do not include the opt-in MSRV check, integration
-jobs, coverage, or mutation testing. The local `test` stage runs the full Cargo
-suite on either platform; required Windows CI uses the focused selection below.
+jobs, coverage, or mutation testing.
 
 | Stage | Covers |
 |---|---|
@@ -62,7 +61,6 @@ The Rust integration tests under `cli/tests/` cover distinct boundaries:
 | Test target | Focus |
 |---|---|
 | `behavioral_ci` | Cross-cutting behaviors that protect CI assumptions |
-| `ci_workflow` | Workflow scheduling, required-job gating, coverage events, and path classification |
 | `config_drift` | Alignment among real configuration, symlink, and catalog state |
 | `domain_boundaries` | Architectural dependency boundaries |
 | `e2e_apply` | End-to-end convergence against controlled state |
@@ -211,30 +209,9 @@ The main CI workflow includes:
 - Rust test suites
 - wrapper, hook, install, uninstall, and application integration tests
 
-Rust, workflow, and uncategorized changes run the full Linux Rust suite and
-required native Windows checks. Manual runs and missing/empty comparison ranges
-also select full CI. Configuration-only changes (`conf/` or `symlinks/`) still
-build both artifacts and run Linux `config_drift`, configuration validation,
-profile integration, and application tests, but skip Clippy and the full Rust
-suites. Full Linux suite runs already include `config_drift`, so it is not run
-twice. Wrapper-only changes build artifacts and test the affected wrapper without
-running Rust checks; hooks-only changes do not build artifacts. Docs-only changes
-keep documentation checks without builds. Mixed changes combine the relevant
-checks.
-
-Windows artifact production (`build-windows`) and Rust checking
-(`windows-rust-checks`) run independently after classification. Windows profile,
-wrapper, install/uninstall, and application jobs wait only for the artifact.
-Both Windows jobs remain required by `ci-success`: failures and cancellations
-fail the gate, while intentionally skipped jobs are accepted. This favors
-wall-clock latency over avoiding repeated compilation on separate runners;
-dependency caching is unchanged.
-
-When Rust checks are relevant, Linux coverage runs on pushes, pull requests,
-and manual runs. Windows coverage runs only on pull requests and manual runs;
-pushes do not allocate a Windows coverage runner. Both run all Cargo targets and
-upload HTML reports. Coverage is informational and intentionally does not gate
-`ci-success` or replace required native Windows tests.
+The Linux and Windows coverage jobs run all Cargo targets and upload HTML
+reports. Coverage is informational and intentionally does not gate
+`ci-success`.
 
 Pull requests also run changed-code mutation testing when Rust code changes and
 upload the `cargo-mutants` report. Mutation results are informational and do not
@@ -247,9 +224,8 @@ validated on Windows.
 
 | Area | Linux | Windows | Notes |
 |---|---|---|---|
-| Build and all-target Clippy | yes | yes | Artifacts also build for config/wrapper changes; Clippy requires Rust checks |
-| Required Rust tests | full suite | library plus selected integration targets | Native selection below |
-| All-target coverage report | push/PR/manual | PR/manual | Rust-relevant changes only; informational HTML artifact |
+| Build, Clippy, tests | yes | yes | |
+| All-target coverage report | yes | yes | Informational HTML artifact |
 | Profile dry-run and `dotfiles check` | yes | yes | `base` and `desktop` |
 | Install/uninstall round-trip | yes | yes | |
 | Wrapper | yes | yes | `dotfiles.sh` / `dotfiles.ps1` |
@@ -259,35 +235,6 @@ validated on Windows.
 | Git hook sensitive-data check | yes | no | Hooks are POSIX `sh`; not run on Windows |
 | ShellCheck, PSScriptAnalyzer | yes | n/a | Both run on the Linux runner |
 | `cargo audit`, `cargo deny`, MSRV | yes | n/a | Platform-independent |
-
-Required Windows Rust tests run:
-
-```bash
-cargo test --profile ci --lib --test behavioral_ci --test install_command --test task_execution --test task_output --test test_command
-```
-
-The library retains native platform/resource tests. `behavioral_ci` retains
-Windows `.cmd` command construction, and `install_command` covers native startup,
-registry-conflict rejection, canonicalized paths, and retained-log subprocesses.
-`task_execution` retains real Git hook and Git config filesystem lifecycles;
-`task_output` retains completion paths, tool discovery through PATH, and process
-exit results; `test_command` retains native check-command startup and console
-behavior. These host dependencies matter even without `cfg(windows)` annotations.
-
-The omitted integration targets are `config_drift` and `domain_boundaries`
-(static configuration/source checks), `ci_workflow` (workflow contracts, with
-POSIX classifier execution on Linux), `e2e_apply` (Unix-only tests), and
-`uninstall_command` (catalog/applicability tests on Windows; its filesystem
-round-trip is Unix-only). Linux still runs all of them. Native Windows
-install/uninstall integration remains required. The binary entry point has no
-unit tests; its startup is exercised by the selected subprocess tests.
-
-Run the workflow/classifier contracts locally without running the full suite:
-
-```bash
-cd cli
-cargo test --profile ci --test ci_workflow
-```
 
 Cross-target Clippy catches many Windows compile errors from Linux, but it
 cannot test Windows runtime behavior. For Rust changes that can break Windows

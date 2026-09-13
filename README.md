@@ -128,7 +128,7 @@ After installation, open a new shell and use `dotfiles` directly.
 | `dotfiles uninstall` | Replaces managed symlinks with local copies and removes managed hooks and the launcher |
 | `dotfiles check` | Checks configuration and runs available script analyzers |
 | `dotfiles tasks` | Lists task selectors and the commands that run them |
-| `dotfiles profiles` | Lists configured role profiles |
+| `dotfiles profiles` | Lists built-in role profiles |
 | `dotfiles log` | Shows saved run logs |
 
 Run `install` after changing your configuration. Add `--no-repo-update` to
@@ -151,8 +151,7 @@ Preview it with `dotfiles uninstall --dry-run`.
 ## Make it yours
 
 - [conf/packages.toml](conf/packages.toml) selects packages by platform and role.
-- [conf/profiles.toml](conf/profiles.toml) defines roles and their included or
-  excluded categories.
+- The CLI provides built-in `base` and `desktop` roles.
 - [conf/symlinks.toml](conf/symlinks.toml) maps files under [symlinks/](symlinks/)
   into your home directory. Edit those source files to change app settings.
 - The remaining [conf/](conf/) files declare Git settings, services, registry

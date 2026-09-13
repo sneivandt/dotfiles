@@ -1,16 +1,16 @@
 ---
 name: profile-system
 description: >
-  Use for conf/profiles.toml, profile resolution in cli/src/app/config/profiles.rs
-  and profiles/, selection precedence/persistence, or active/excluded category
-  computation. Not for ordinary edits to an existing category's package list.
+  Use for profile resolution in cli/src/app/config/profiles.rs and profiles/,
+  selection precedence/persistence, or active category computation. Not for
+  ordinary edits to an existing category's package list.
 ---
 
 # Profile System
 
-Profiles choose role categories; platform capabilities add or exclude platform
-categories. Resolution starts with `base`, adds profile/platform categories,
-then applies exclusions and sorts/deduplicates the resulting sets.
+The CLI has built-in `base` and `desktop` profiles. Resolution starts with
+`base`, adds `desktop` for the desktop profile, then adds detected platform
+categories and sorts/deduplicates the result.
 
 ## Resolution contract
 
@@ -23,8 +23,8 @@ Selection priority is:
 Interactive selection is persisted to repository-local Git config. A persistence
 failure is visible but does not invalidate an otherwise valid selection.
 
-`Profile` carries its name, active categories, and excluded categories.
-Configuration sections match when every hyphen-separated category is active.
+`Profile` carries its name and active categories. Configuration sections match
+when every hyphen-separated category is active.
 
 Non-interactive resolution without a selection is an error, not an implicit
 default profile. An invalid higher-priority selection must not silently fall
@@ -33,14 +33,16 @@ profile or persists a choice.
 
 ## Changing profiles
 
-- Define profiles in `conf/profiles.toml`; do not hardcode the known names into
-  loaders.
+- Keep profile names and descriptions in the built-in inventory in
+  `profiles.rs`; keep category resolution in `profiles/resolution.rs`.
 - Keep platform category detection separate from user profile selection.
 - Preserve selection precedence and non-interactive behavior.
-- Review config sections, validators, docs, and tests that assume the existing
-  profiles.
-- Add resolution, persistence, and category-set tests, including exclusion
-  precedence, custom categories, missing selection, and read-only discovery.
+- Update the preflight category list when adding a built-in category. Custom
+  categories are not supported.
+- Review config sections, validators, docs, completions, and tests that assume
+  the existing profiles.
+- Add resolution, persistence, category-set, missing-selection, and read-only
+  discovery tests.
 
 Start with [profile selection](../../../cli/src/app/config/profiles.rs) and
 [category resolution](../../../cli/src/app/config/profiles/resolution.rs).

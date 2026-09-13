@@ -122,8 +122,8 @@ To inspect a persisted choice:
 git config --local --get dotfiles.profile
 ```
 
-An unknown explicit profile is an error; use a name declared in
-`conf/profiles.toml`.
+An unknown explicit profile is an error. The built-in names are `base` and
+`desktop`.
 
 ## Configuration does not parse
 
@@ -133,8 +133,8 @@ Run:
 dotfiles check --root . --verbose
 ```
 
-Core required files include `profiles.toml`, `symlinks.toml`, and
-`packages.toml`. Common causes include:
+Core required files include `symlinks.toml`, `packages.toml`, and
+`system-files.toml`. Common causes include:
 
 - malformed TOML
 - a value placed under the wrong section

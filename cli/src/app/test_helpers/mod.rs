@@ -34,7 +34,6 @@ pub fn empty_config(root: PathBuf) -> Config {
         profile: Profile {
             name: "test".to_string(),
             active_categories: vec![Category::Base],
-            excluded_categories: vec![],
         },
         packages: vec![],
         symlinks: vec![],

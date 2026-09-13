@@ -54,7 +54,7 @@ explicitly bypassing GitHub provenance verification for that invocation.
 | `uninstall` | Removes managed integrations while preserving user files and broader machine state |
 | `check` | Validates configuration and runs available script analyzers |
 | `tasks` | Lists visible task selectors, labels, and command membership |
-| `profiles` | Lists role profiles configured in `conf/profiles.toml` |
+| `profiles` | Lists the built-in role profiles |
 | `log` | Lists retained run logs or prints one of them |
 | `completions <shell>` | Hidden support command that emits shell completion definitions |
 

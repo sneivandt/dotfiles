@@ -62,7 +62,7 @@ Packages, services, registry values, shell selection, and overlay script effects
     /// List task selectors and command membership
     Tasks(TasksOpts),
 
-    /// List configured role profiles
+    /// List built-in role profiles
     Profiles(ProfilesOpts),
 
     /// Show a retained run log
@@ -235,11 +235,7 @@ pub struct TasksOpts {
 
 /// Options for the `profiles` command.
 #[derive(Args, Debug, Clone)]
-pub struct ProfilesOpts {
-    /// Use PATH as the dotfiles repository
-    #[arg(long, value_name = "PATH")]
-    pub root: Option<std::path::PathBuf>,
-}
+pub struct ProfilesOpts;
 
 /// Options passed to the task engine after command-specific parsing.
 #[derive(Debug, Clone)]
@@ -510,7 +506,7 @@ mod tests {
             "uninstall  Remove managed integrations while preserving user files",
             "check      Validate configuration and run repository checks",
             "tasks      List task selectors and command membership",
-            "profiles   List configured role profiles",
+            "profiles   List built-in role profiles",
             "log        Show a retained run log",
             "dotfiles check",
         ] {
@@ -615,7 +611,7 @@ mod tests {
         assert_eq!(opts.repository.profile.as_deref(), Some("base"));
         assert_eq!(opts.format, DiscoveryFormat::Json);
 
-        let profiles = Cli::parse_from(["dotfiles", "profiles", "--root", "/repo"]);
+        let profiles = Cli::parse_from(["dotfiles", "profiles"]);
         assert!(matches!(profiles.command, Command::Profiles(_)));
     }
 

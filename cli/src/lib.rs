@@ -18,7 +18,7 @@
 //! Cross-platform tool for declarative dotfile installation: symlinks,
 //! packages, permissions, systemd units, registry entries, VS Code extensions,
 //! AI plugin manifests (via Microsoft APM), and privileged system files.
-//! Profile-selectable desired state comes from TOML files in `conf/`.
+//! Profile-selectable desired state comes from category sections in `conf/`.
 //!
 //! The stable public API is intentionally small: [`run`] executes the CLI.
 //! Engine internals remain crate-private so implementation details can evolve

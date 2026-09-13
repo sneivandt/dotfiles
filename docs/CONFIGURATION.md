@@ -8,7 +8,6 @@ shared handles.
 
 | File | Shape | Consumer |
 |---|---|---|
-| `profiles.toml` | Named role profiles with include/exclude categories | Profile resolver |
 | `symlinks.toml` | Category sections containing home-relative source paths | Symlink tasks |
 | `packages.toml` | Category sections containing package strings or AUR records | Package tasks |
 | `git-config.toml` | Category sections containing key/value settings | Git configuration |
@@ -62,31 +61,17 @@ symlinks = ["config/hypr/hyprland.lua"]
 
 A hyphenated section uses AND semantics. `[arch-desktop]` is active only
 when both `arch` and `desktop` are active. It does not mean either category.
-Category tags must be built in or declared by a profile; misspelled tags are
-configuration errors.
+The accepted tags are `base`, `desktop`, `linux`, `windows`, `arch`, and `wsl`.
+Misspelled or custom tags are configuration errors.
 
 `base` is always active. Platform categories are detected by the CLI; role
 categories come from the selected profile. See [Profiles](PROFILES.md).
 
 ## Profiles
 
-`profiles.toml` maps a selectable role to category changes:
-
-```toml
-[base]
-description = "Core shell environment, no desktop GUI"
-include = []
-exclude = ["desktop"]
-
-[desktop]
-description = "Full desktop/workstation setup with GUI tools"
-include = ["desktop"]
-exclude = []
-```
-
-The selected role is combined with detected `linux`, `windows`, `arch`, and `wsl`
-categories. Profile names and category names are related but distinct: a
-profile controls a set of categories.
+The CLI has two built-in profiles. `base` activates the `base` category, while
+`desktop` activates both `base` and `desktop`. The CLI combines the selected
+profile with detected `linux`, `windows`, `arch`, and `wsl` categories.
 
 ## System files
 
@@ -472,20 +457,14 @@ including files for inactive platforms. An unrecognized or misspelled key
 aborts loading. The error includes the file, line, column, and accepted keys:
 
 ```text
-ERROR Invalid TOML syntax in conf/profiles.toml: TOML parse error at line 13, column 1
-13 | excludee = ["desktop"]
-unknown field `excludee`, expected one of `description`, `include`, `exclude`
+ERROR Invalid syntax in conf/symlinks.toml: unknown field `symlink`, expected `symlinks`
 ```
 
-This applies to section fields such as `symlink` instead of `symlinks`, keys
-inside table entries such as `targett` instead of `target`, and profile
-definitions. Typos do not fall back to defaults. For example, `excludee` in
-`profiles.toml` once produced an empty exclude list, causing the `base` profile
-to stop excluding desktop categories.
+This applies to section fields such as `symlink` instead of `symlinks` and keys
+inside table entries such as `targett` instead of `target`.
 
-Section category tags are checked too. Built-in tags are `base`, `desktop`,
-`linux`, `windows`, `arch`, and `wsl`; custom tags must appear in a profile's
-`include` or `exclude` list before another config file can use them.
+Section category tags are checked too. The accepted tags are `base`, `desktop`,
+`linux`, `windows`, `arch`, and `wsl`.
 
 Entries that accept either a bare string or a table (symlinks, packages,
 systemd units) are also strict in both forms: a value that is neither a string

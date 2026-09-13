@@ -33,8 +33,9 @@ items = ["example"]
 ```
 
 Every category must be active. Do not use dotted names; TOML interprets them as
-nested tables. Custom tags must be declared in `profiles.toml`; preflight rejects
-unknown, empty, and repeated tags. Do not hardcode only today's profile names.
+nested tables. The built-in tags are `base`, `desktop`, `linux`, `windows`,
+`arch`, and `wsl`; preflight rejects unknown, empty, and repeated tags. Add a
+new tag to the profile resolver and preflight inventory before using it in TOML.
 
 Prefer `config_section!` and `SectionLoader` for ordinary category-filtered,
 overlay-aware lists. Loaders return typed desired state and contain no task

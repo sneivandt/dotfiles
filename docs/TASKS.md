@@ -328,9 +328,9 @@ The required main files are:
 - `conf/chmod.toml`
 - `conf/git-config.toml`
 - `conf/packages.toml`
-- `conf/profiles.toml`
 - `conf/registry.toml`
 - `conf/symlinks.toml`
+- `conf/system-files.toml`
 - `conf/systemd-units.toml`
 - `conf/vscode-extensions.toml`
 

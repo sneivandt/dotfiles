@@ -40,7 +40,6 @@ fn setup_load(
     let profile = profiles::Profile {
         name: "base".to_string(),
         active_categories: vec![Category::Base],
-        excluded_categories: vec![Category::Desktop],
     };
     (dir, profile, platform)
 }
@@ -163,7 +162,7 @@ fn load_checks_only_active_desired_state_for_conflicts() {
 }
 
 #[test]
-fn load_keeps_profile_excluded_sources_and_origins_for_validation() {
+fn load_keeps_inactive_profile_sources_and_origins_for_validation() {
     let (dir, profile, platform) = setup_load(
         linux(),
         &[

@@ -6,10 +6,10 @@ categories.
 
 ## Built-in role profiles
 
-| Profile | Includes | Excludes | Intended use |
-|---|---|---|---|
-| `base` | No optional role category | `desktop` | Servers, WSL, and minimal shell environments |
-| `desktop` | `desktop` | Nothing | Workstations with GUI packages and configuration |
+| Profile | Active role categories | Intended use |
+|---|---|---|
+| `base` | `base` | Servers, WSL, and minimal shell environments |
+| `desktop` | `base`, `desktop` | Workstations with GUI packages and configuration |
 
 `base` configuration is always active regardless of the selected role.
 
@@ -20,6 +20,7 @@ categories.
 | `linux` | The CLI is running on Linux |
 | `windows` | The CLI is running on Windows |
 | `arch` | The Linux distribution is Arch Linux |
+| `wsl` | The CLI is running inside Windows Subsystem for Linux |
 
 The CLI detects these categories. They are not selectable profiles.
 
@@ -57,7 +58,7 @@ An explicitly supplied unknown profile is an error. During interactive
 selection, the chosen profile is persisted to repository-local Git config for
 future runs.
 
-List configured profiles without selecting or persisting one:
+List the built-in profiles without selecting or persisting one:
 
 ```bash
 dotfiles profiles
@@ -72,12 +73,12 @@ $env:DOTFILES_PROFILE = "base"
 .\dotfiles.ps1 install
 ```
 
-## Adding a profile or category
+## Changing profiles or categories
 
-1. Add the role definition to `conf/profiles.toml`.
-2. Add category sections to relevant configuration files.
-3. Run `dotfiles check`.
-4. Preview the new profile with `--dry-run`.
+Profile names, descriptions, and category membership are built into the Rust
+CLI under `cli/src/app/config/profiles/`. Adding a profile or category requires
+updating that code, the category preflight list, relevant configuration
+sections, tests, and this document.
 
-Keep categories independent and limited in number. Compose a new profile from
-categories instead of duplicating large configuration lists.
+Run `dotfiles check` and preview both profiles with `--dry-run` after changing
+profile or category behavior.

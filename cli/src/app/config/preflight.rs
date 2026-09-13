@@ -36,7 +36,7 @@ const OVERLAY_CATEGORY_CONFIG_FILES: &[&str] = &[
 pub(super) fn validate(
     root: &Path,
     overlay_root: Option<&Path>,
-    configured_categories: &[Category],
+    known_categories: &[Category],
 ) -> Result<()> {
     let conf = root.join("conf");
     for file in REQUIRED_CONFIG_FILES {
@@ -44,7 +44,7 @@ pub(super) fn validate(
         drop(toml_loader::load_required_config::<toml::Value>(&path)?);
     }
     for file in CATEGORY_CONFIG_FILES {
-        validate_category_sections(&conf.join(file), configured_categories)?;
+        validate_category_sections(&conf.join(file), known_categories)?;
     }
 
     if let Some(overlay_root) = overlay_root {
@@ -52,7 +52,7 @@ pub(super) fn validate(
         for file in OVERLAY_CATEGORY_CONFIG_FILES {
             let path = overlay_conf.join(file);
             if path.exists() {
-                validate_category_sections(&path, configured_categories).with_context(|| {
+                validate_category_sections(&path, known_categories).with_context(|| {
                     format!("Invalid configuration in overlay {}", path.display())
                 })?;
             }
@@ -70,7 +70,7 @@ pub(super) fn validate(
     Ok(())
 }
 
-fn validate_category_sections(path: &Path, configured_categories: &[Category]) -> Result<()> {
+fn validate_category_sections(path: &Path, known_categories: &[Category]) -> Result<()> {
     let sections: BTreeMap<String, toml::Value> = toml_loader::load_required_config(path)?;
     for section in sections.keys() {
         let mut seen = Vec::new();
@@ -83,9 +83,9 @@ fn validate_category_sections(path: &Path, configured_categories: &[Category]) -
                 );
             }
             let category = Category::from_tag(tag);
-            if !configured_categories.contains(&category) {
+            if !known_categories.contains(&category) {
                 bail!(
-                    "{} section [{section}] uses unknown category '{tag}'; declare custom categories in profiles.toml",
+                    "{} section [{section}] uses unknown category '{tag}'; expected one of base, desktop, linux, windows, arch, or wsl",
                     path.display()
                 );
             }
@@ -150,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_profile_declared_custom_category() {
+    fn rejects_custom_category() {
         let dir = complete_repo();
         std::fs::write(
             dir.path().join("conf").join("packages.toml"),
@@ -158,11 +158,8 @@ mod tests {
         )
         .expect("write packages");
 
-        validate(
-            dir.path(),
-            None,
-            &[Category::Base, Category::Other("work".to_string())],
-        )
-        .expect("declared custom category should pass");
+        let error = validate(dir.path(), None, super::super::profiles::KNOWN_CATEGORIES)
+            .expect_err("custom categories are not supported");
+        assert!(error.to_string().contains("unknown category 'work'"));
     }
 }

@@ -418,9 +418,6 @@ mod root_tests {
     #[test]
     fn profile_precedence_and_prompt_policy_use_the_same_runtime_environment() {
         let root = tempfile::tempdir().unwrap();
-        let conf = root.path().join("conf");
-        std::fs::create_dir(&conf).unwrap();
-        std::fs::write(conf.join("profiles.toml"), "[base]\n[desktop]\n").unwrap();
         let repo = git2::Repository::init(root.path()).unwrap();
         repo.config()
             .unwrap()

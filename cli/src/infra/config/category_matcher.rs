@@ -4,8 +4,8 @@ use std::fmt;
 /// A profile category tag used for configuration filtering.
 ///
 /// Categories are used to group configuration items and determine which ones
-/// are active for a given profile and platform. Known categories correspond to
-/// well-understood filtering axes; custom categories are supported via [`Category::Other`].
+/// are active for a given profile and platform. Unknown tags parse as
+/// [`Category::Other`] so preflight can report their original names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Category {
     /// Core configuration included in all profiles.
@@ -20,7 +20,7 @@ pub enum Category {
     Wsl,
     /// Desktop/GUI configuration.
     Desktop,
-    /// A custom or user-defined category not covered by the known variants.
+    /// An unrecognized category rejected by configuration preflight.
     Other(String),
 }
 

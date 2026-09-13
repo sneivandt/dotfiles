@@ -79,7 +79,6 @@ pub(crate) fn assert_task_catalog_contract(catalog: &str, tasks: &[Box<dyn Task>
 /// into `root`.
 ///
 /// Creates:
-/// - `conf/profiles.toml`          — base and desktop profile definitions
 /// - `conf/symlinks.toml`           — empty symlink list
 /// - `conf/packages.toml`           — empty package list
 /// - `conf/chmod.toml`              — empty chmod list
@@ -95,12 +94,6 @@ pub(crate) fn setup_minimal_repo(root: &Path) {
     std::fs::create_dir_all(&conf).expect("create conf dir");
     std::fs::create_dir_all(root.join("symlinks")).expect("create symlinks dir");
     std::fs::create_dir_all(root.join("hooks")).expect("create hooks dir");
-
-    std::fs::write(
-        conf.join("profiles.toml"),
-        "[base]\ninclude = []\nexclude = [\"desktop\"]\n\n[desktop]\ninclude = [\"desktop\"]\nexclude = []\n",
-    )
-    .expect("write profiles.toml");
 
     for file in &[
         "symlinks.toml",
@@ -142,9 +135,7 @@ impl IntegrationTestContext {
     /// Load configuration for the given profile using the current platform.
     pub(crate) fn load_config(&self, profile_name: &str) -> Config {
         let platform = Platform::detect();
-        let conf_dir = self.root.path().join("conf");
-        let profile =
-            profiles::resolve(profile_name, &conf_dir, platform).expect("resolve profile");
+        let profile = profiles::resolve(profile_name, platform).expect("resolve profile");
         Config::load(self.root.path(), &profile, platform, None).expect("load config")
     }
 
@@ -158,9 +149,7 @@ impl IntegrationTestContext {
         profile_name: &str,
         platform: Platform,
     ) -> Config {
-        let conf_dir = self.root.path().join("conf");
-        let profile =
-            profiles::resolve(profile_name, &conf_dir, platform).expect("resolve profile");
+        let profile = profiles::resolve(profile_name, platform).expect("resolve profile");
         Config::load(self.root.path(), &profile, platform, None).expect("load config")
     }
 }

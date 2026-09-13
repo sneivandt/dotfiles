@@ -57,7 +57,6 @@ pub(crate) const REQUIRED_CONFIG_FILES: &[&str] = &[
     "agent-settings.toml",
     "git-config.toml",
     "packages.toml",
-    "profiles.toml",
     "registry.toml",
     "symlinks.toml",
     "system-files.toml",
@@ -247,8 +246,7 @@ impl Config {
         platform: Platform,
         overlay: Option<&Path>,
     ) -> Result<Self> {
-        let configured_categories = profiles::configured_categories(&root.join("conf"))?;
-        preflight::validate(root, overlay, &configured_categories)?;
+        preflight::validate(root, overlay, profiles::KNOWN_CATEGORIES)?;
         let sections = SectionLoader::new(root, overlay, profile);
 
         // Collect each section with its overlay in one call; validation lists

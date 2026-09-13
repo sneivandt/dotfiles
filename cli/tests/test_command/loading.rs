@@ -61,7 +61,7 @@ fn config_rejects_missing_main_config_file() {
     std::fs::remove_file(conf.join("agent-settings.toml")).expect("remove agent-settings.toml");
 
     let platform = Platform::detect();
-    let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
+    let profile = profiles::resolve("base", platform).expect("resolve profile");
     let error = Config::load(ctx.root_path(), &profile, platform, None)
         .expect_err("missing config should fail");
     assert!(error.to_string().contains("agent-settings.toml"));
@@ -71,16 +71,13 @@ fn config_rejects_missing_main_config_file() {
 // Profile resolution
 // ---------------------------------------------------------------------------
 
-/// Both `base` and `desktop` profiles must resolve successfully from the
-/// minimal `profiles.toml` written by `setup_minimal_repo`.
+/// Both built-in profiles must resolve successfully.
 #[test]
-fn both_profiles_resolve_from_minimal_repo() {
-    let ctx = common::IntegrationTestContext::new();
-    let conf_dir = ctx.root_path().join("conf");
+fn both_builtin_profiles_resolve() {
     let platform = Platform::detect();
 
-    let base = profiles::resolve("base", &conf_dir, platform);
-    let desktop = profiles::resolve("desktop", &conf_dir, platform);
+    let base = profiles::resolve("base", platform);
+    let desktop = profiles::resolve("desktop", platform);
 
     assert!(base.is_ok(), "base profile should resolve");
     assert!(desktop.is_ok(), "desktop profile should resolve");
@@ -89,11 +86,9 @@ fn both_profiles_resolve_from_minimal_repo() {
 /// Requesting a non-existent profile must return an error.
 #[test]
 fn unknown_profile_returns_error() {
-    let ctx = common::IntegrationTestContext::new();
-    let conf_dir = ctx.root_path().join("conf");
     let platform = Platform::detect();
 
-    let result = profiles::resolve("nonexistent", &conf_dir, platform);
+    let result = profiles::resolve("nonexistent", platform);
     assert!(
         result.is_err(),
         "resolving an unknown profile should return an error"
@@ -301,13 +296,6 @@ fn config_load_returns_error_on_invalid_toml() {
     let conf = dir.path().join("conf");
     std::fs::create_dir_all(&conf).expect("create conf dir");
 
-    // Write a valid profiles.toml.
-    std::fs::write(
-        conf.join("profiles.toml"),
-        "[base]\ninclude = []\nexclude = [\"desktop\"]\n",
-    )
-    .expect("write profiles.toml");
-
     // Write an intentionally invalid symlinks.toml.
     std::fs::write(conf.join("symlinks.toml"), "this is not valid toml ][[")
         .expect("write invalid symlinks.toml");
@@ -325,7 +313,7 @@ fn config_load_returns_error_on_invalid_toml() {
     }
 
     let platform = Platform::detect();
-    let profile = profiles::resolve("base", &conf, platform).expect("resolve profile");
+    let profile = profiles::resolve("base", platform).expect("resolve profile");
     let result = Config::load(dir.path(), &profile, platform, None);
     assert!(
         result.is_err(),
@@ -346,8 +334,7 @@ fn config_load_error_context_includes_filename() {
         .build();
 
     let platform = Platform::detect();
-    let conf_dir = ctx.root_path().join("conf");
-    let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
+    let profile = profiles::resolve("base", platform).expect("resolve profile");
     let result = Config::load(ctx.root_path(), &profile, platform, None);
 
     assert!(result.is_err(), "should fail on invalid packages.toml");
@@ -371,35 +358,12 @@ fn config_load_returns_error_on_type_mismatch() {
         .build();
 
     let platform = Platform::detect();
-    let conf_dir = ctx.root_path().join("conf");
-    let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
+    let profile = profiles::resolve("base", platform).expect("resolve profile");
     let result = Config::load(ctx.root_path(), &profile, platform, None);
 
     assert!(
         result.is_err(),
         "Config::load should return Err on type mismatch, got Ok"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Config loading: invalid profiles.toml returns Err
-// ---------------------------------------------------------------------------
-
-/// Malformed profiles.toml should return an error during profile resolution.
-#[test]
-fn config_load_returns_error_on_invalid_profiles_toml() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let conf = dir.path().join("conf");
-    std::fs::create_dir_all(&conf).expect("create conf dir");
-
-    std::fs::write(conf.join("profiles.toml"), "[base\ninclude = []\n")
-        .expect("write invalid profiles.toml");
-
-    let platform = Platform::detect();
-    let result = profiles::resolve("base", &conf, platform);
-    assert!(
-        result.is_err(),
-        "invalid profiles.toml should cause resolve to fail"
     );
 }
 
@@ -417,8 +381,7 @@ fn expect_load_error(file: &str, content: &str) -> String {
         .build();
 
     let platform = Platform::detect();
-    let conf_dir = ctx.root_path().join("conf");
-    let profile = profiles::resolve("base", &conf_dir, platform).expect("resolve profile");
+    let profile = profiles::resolve("base", platform).expect("resolve profile");
     let error = Config::load(ctx.root_path(), &profile, platform, None)
         .expect_err("a config with an unknown key must not load");
     format!("{error:#}")
@@ -475,31 +438,5 @@ fn config_load_rejects_unknown_section_field() {
     assert!(
         message.contains("symlink"),
         "error should name the unknown field, got: {message}"
-    );
-}
-
-/// A misspelled key in `profiles.toml` must fail profile resolution.
-///
-/// Regression: `ProfileDef` marked every field `#[serde(default)]` without
-/// `deny_unknown_fields`, so `excludee` produced an empty `exclude` list and
-/// the `base` profile silently stopped excluding the `desktop` category.
-#[test]
-fn profile_resolution_rejects_unknown_key() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let conf = dir.path().join("conf");
-    std::fs::create_dir_all(&conf).expect("create conf dir");
-    std::fs::write(
-        conf.join("profiles.toml"),
-        "[base]\ninclude = []\nexcludee = [\"desktop\"]\n",
-    )
-    .expect("write profiles.toml");
-
-    let error = profiles::resolve("base", &conf, Platform::detect())
-        .expect_err("a misspelled profile key must not resolve");
-
-    let message = format!("{error:#}");
-    assert!(
-        message.contains("excludee"),
-        "error should name the unknown key, got: {message}"
     );
 }

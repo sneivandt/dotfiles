@@ -26,10 +26,10 @@ pub(super) fn reject_conflicts(
     Ok(())
 }
 
-/// Errors that arise from configuration loading and profile resolution.
+/// Errors that arise from profile resolution.
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    /// The requested profile name is not defined in `conf/profiles.toml`.
+    /// The requested profile name is not built into the CLI.
     #[error("Invalid profile '{name}' (available: {available})")]
     InvalidProfile {
         /// The profile name that was requested.
@@ -37,30 +37,10 @@ pub enum ConfigError {
         /// Comma-separated list of valid profile names.
         available: String,
     },
-
-    /// The TOML file contains a syntax error that prevents parsing.
-    #[error("Invalid TOML syntax in {path}: {source}")]
-    TomlParse {
-        /// Path to the file that could not be parsed.
-        path: String,
-        /// Underlying TOML parse error.
-        source: toml::de::Error,
-    },
-
-    /// An I/O error occurred while reading a config file.
-    #[error("I/O error reading config file {path}: {source}")]
-    Io {
-        /// Path to the file that could not be read.
-        path: String,
-        /// Underlying I/O error.
-        source: std::io::Error,
-    },
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-
     use super::*;
 
     #[test]
@@ -73,21 +53,6 @@ mod tests {
             error.to_string(),
             "Invalid profile 'unknown' (available: base, desktop)"
         );
-    }
-
-    #[test]
-    fn io_preserves_source_and_path() {
-        use std::error::Error as _;
-
-        let error = ConfigError::Io {
-            path: "/conf/packages.toml".to_string(),
-            source: io::Error::new(io::ErrorKind::NotFound, "no such file"),
-        };
-        assert_eq!(
-            error.to_string(),
-            "I/O error reading config file /conf/packages.toml: no such file"
-        );
-        assert_eq!(error.source().unwrap().to_string(), "no such file");
     }
 
     #[test]

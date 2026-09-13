@@ -51,8 +51,8 @@ source captures in number; do not assume general shell glob syntax or recursive
 
 1. Add the real source under `symlinks/`.
 2. Add it to the correct `conf/symlinks.toml` section.
-3. Check the selected and excluded profiles and add config-drift coverage where
-   needed; do not enable a platform-specific config in an incompatible profile.
+3. Check both built-in profiles and add config-drift coverage where needed; do
+   not enable a platform-specific config in an incompatible profile.
 
 Read [source and target validation](../../../cli/src/domains/files/config/symlinks.rs)
 and [materialization](../../../cli/src/domains/files/resources/symlink/materialize.rs).

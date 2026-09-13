@@ -32,15 +32,6 @@ test_zsh_completion()
   zsh -c "autoload -Uz compinit; compinit -u; source '$completion' && typeset -f _dotfiles >/dev/null" 2>&1 || { printf "%sERROR: _dotfiles not defined%s\n" "${RED}" "${NC}" >&2; return 1; }
   log_verbose "Completion functions defined"
 
-  # Check profile count matches profiles.toml
-  expected=$(list_available_profiles | wc -l)
-  loaded=$(zsh -c "
-    count=0
-    while IFS= read -r l; do [[ \$l =~ '^\[([^]]+)\]\$' ]] && count=\$((count+1)); done < '$DIR/conf/profiles.toml'
-    echo \$count
-  ")
-  [ "$loaded" -eq "$expected" ] || { printf "%sERROR: profile count mismatch: %d vs %d%s\n" "${RED}" "$loaded" "$expected" "${NC}" >&2; return 1; }
-  log_verbose "Loaded $loaded profiles"
 )}
 
 test_zsh_history()

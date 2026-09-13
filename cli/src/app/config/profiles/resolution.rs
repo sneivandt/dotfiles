@@ -1,60 +1,39 @@
-//! Profile category resolution.
-
-use std::collections::HashMap;
-use std::path::Path;
-
-use anyhow::Result;
+//! Built-in profile category resolution.
 
 use crate::app::config::error::ConfigError;
 use crate::infra::config::category_matcher::Category;
 use crate::infra::platform::Platform;
 
-use super::definitions::ProfileDef;
-use super::definitions::load_definitions;
-
-/// A resolved profile with its active and excluded categories.
+/// A resolved profile with its active categories.
 #[derive(Debug, Clone)]
 pub struct Profile {
     /// The profile name.
     pub name: String,
     /// Categories that are active for this profile.
     pub active_categories: Vec<Category>,
-    /// Categories that are excluded for this profile.
-    pub excluded_categories: Vec<Category>,
 }
 
-/// Resolve a profile by name.
+/// Resolve a built-in profile by name.
 ///
 /// # Errors
 ///
-/// Returns an error if the profile is unknown or its definitions cannot be loaded.
-pub fn resolve(name: &str, conf_dir: &Path, platform: Platform) -> Result<Profile, ConfigError> {
-    let definitions = load_definitions(&conf_dir.join("profiles.toml"))?;
-    resolve_with_defs(name, &definitions, platform)
-}
-
-pub(super) fn resolve_with_defs(
-    name: &str,
-    definitions: &HashMap<String, ProfileDef>,
-    platform: Platform,
-) -> Result<Profile, ConfigError> {
-    let mut available_names: Vec<&str> = definitions.keys().map(String::as_str).collect();
-    available_names.sort_unstable();
-    let available = available_names.join(", ");
-    let definition = definitions
-        .get(name)
-        .ok_or_else(|| ConfigError::InvalidProfile {
-            name: name.to_string(),
-            available,
-        })?;
+/// Returns an error if the profile is unknown.
+pub fn resolve(name: &str, platform: Platform) -> Result<Profile, ConfigError> {
+    let desktop = match name {
+        "base" => false,
+        "desktop" => true,
+        _ => {
+            return Err(ConfigError::InvalidProfile {
+                name: name.to_string(),
+                available: "base, desktop".to_string(),
+            });
+        }
+    };
 
     let mut active = vec![Category::Base];
-    active.extend(definition.include.iter().map(|tag| Category::from_tag(tag)));
-    let mut excluded: Vec<Category> = definition
-        .exclude
-        .iter()
-        .map(|tag| Category::from_tag(tag))
-        .collect();
+    if desktop {
+        active.push(Category::Desktop);
+    }
 
     for category in [
         Category::Linux,
@@ -62,24 +41,16 @@ pub(super) fn resolve_with_defs(
         Category::Arch,
         Category::Wsl,
     ] {
-        if platform.excludes_category(&category) {
-            if !excluded.contains(&category) {
-                excluded.push(category);
-            }
-        } else {
+        if !platform.excludes_category(&category) {
             active.push(category);
         }
     }
 
-    active.retain(|category| !excluded.contains(category));
     active.sort();
     active.dedup();
-    excluded.sort();
-    excluded.dedup();
 
     Ok(Profile {
         name: name.to_string(),
         active_categories: active,
-        excluded_categories: excluded,
     })
 }

@@ -35,9 +35,3 @@ is_shell_script() {
   esac
   return 1
 }
-
-# List profile names (top-level section headers) from profiles.toml.
-list_available_profiles() {
-  [ -f "$DIR/conf/profiles.toml" ] || return 1
-  grep -E '^\[.+\]$' "$DIR/conf/profiles.toml" | tr -d '[]'
-}

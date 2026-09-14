@@ -182,14 +182,9 @@ pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Option<PathBuf> {
 /// Return a platform-specific reason for skipping APM work when `apm` is absent.
 pub(super) fn missing_apm_reason(ctx: &Context) -> String {
     let platform = ctx.platform();
-    let hint = if platform.is_wsl() {
-        Some(
-            "install the Windows package with `winget.exe install Microsoft.APM` and re-open your \
-             WSL shell",
-        )
-    } else if platform.is_windows() {
+    let hint = if platform.is_windows() {
         Some("install it with `winget install Microsoft.APM`")
-    } else if platform.supports_aur() {
+    } else if platform.is_arch_linux() {
         Some("install it with `paru -S apm-bin`")
     } else {
         None
@@ -299,5 +294,39 @@ mod tests {
         let targets = ApmTargets::detect(&ctx).expect("detect targets");
 
         assert!(!targets.includes(CopilotTarget::Cowork));
+    }
+
+    #[test]
+    fn missing_apm_reason_recommends_aur_on_arch_wsl() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let ctx = make_context_with_home(
+            dir.path(),
+            Platform {
+                os: Os::Linux,
+                is_arch: true,
+                is_wsl: true,
+            },
+            MockExecutor::new(),
+        );
+
+        assert_eq!(
+            missing_apm_reason(&ctx),
+            "apm not found in PATH; install it with `paru -S apm-bin`"
+        );
+    }
+
+    #[test]
+    fn missing_apm_reason_recommends_winget_only_on_windows() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let ctx = make_context_with_home(
+            dir.path(),
+            Platform::new(Os::Windows, false),
+            MockExecutor::new(),
+        );
+
+        assert_eq!(
+            missing_apm_reason(&ctx),
+            "apm not found in PATH; install it with `winget install Microsoft.APM`"
+        );
     }
 }

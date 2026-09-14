@@ -84,10 +84,10 @@
                 "source": "Windows.Terminal.VisualStudio"
             },
             {
-                "guid": "{2c4de342-38b7-51cf-b940-2309a097f518}",
+                "guid": "{a0a6474d-0a7a-5ed0-8e50-5df9271f6bc7}",
                 "hidden": false,
-                "name": "Ubuntu",
-                "source": "Windows.Terminal.Wsl",
+                "name": "Arch Linux",
+                "source": "Microsoft.WSL",
                 "startingDirectory": "~"
             },
             {

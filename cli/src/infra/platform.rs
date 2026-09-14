@@ -134,13 +134,13 @@ impl Platform {
     /// Returns whether this platform uses pacman as the primary package manager.
     #[must_use]
     pub const fn uses_pacman(&self) -> bool {
-        self.os.is_unix_like() && self.is_arch && !self.is_wsl
+        self.os.is_unix_like() && self.is_arch
     }
 
     /// Returns whether this platform supports AUR packages.
     #[must_use]
     pub const fn supports_aur(&self) -> bool {
-        self.is_arch && !self.is_wsl
+        self.is_arch
     }
 
     /// Returns a display-friendly description of the platform.
@@ -164,7 +164,7 @@ impl Platform {
         match category {
             Category::Linux => self.os != Os::Linux,
             Category::Windows => self.os != Os::Windows,
-            Category::Arch => !self.is_arch_linux() || self.is_wsl(),
+            Category::Arch => !self.is_arch_linux(),
             Category::Wsl => !self.is_wsl(),
             Category::Base | Category::Desktop | Category::Other(_) => false,
         }
@@ -302,7 +302,7 @@ mod tests {
             (true, true, false, true, "Arch Linux"),
             (false, false, false, false, "Windows"),
             (true, false, true, false, "Linux"),
-            (true, true, true, false, "Arch Linux"),
+            (true, true, true, true, "Arch Linux"),
         ];
         assert_eq!(platforms().len(), expected.len(), "cover every platform");
         for (platform, (posix, arch, wsl, arch_packages, label)) in
@@ -342,7 +342,7 @@ mod tests {
             [false, true, false, true, false, false, false],
             [true, false, true, true, false, false, false],
             [false, true, true, false, false, false, false],
-            [false, true, true, false, false, false, false],
+            [false, true, false, false, false, false, false],
         ];
         assert_eq!(platforms().len(), expected.len(), "cover every platform");
         for (platform, exclusions) in platforms().into_iter().zip(expected) {

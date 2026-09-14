@@ -246,6 +246,26 @@ mod tests {
     }
 
     #[test]
+    fn resolve_desktop_on_arch_wsl_activates_arch_and_wsl() {
+        let profile = resolve(
+            "desktop",
+            Platform {
+                os: Os::Linux,
+                is_arch: true,
+                is_wsl: true,
+            },
+        )
+        .unwrap();
+
+        assert!(profile.active_categories.contains(&Category::Base));
+        assert!(profile.active_categories.contains(&Category::Desktop));
+        assert!(profile.active_categories.contains(&Category::Linux));
+        assert!(profile.active_categories.contains(&Category::Arch));
+        assert!(profile.active_categories.contains(&Category::Wsl));
+        assert!(!profile.active_categories.contains(&Category::Windows));
+    }
+
+    #[test]
     fn resolve_desktop_on_windows() {
         let profile = resolve("desktop", windows_platform()).unwrap();
         assert!(profile.active_categories.contains(&Category::Base));

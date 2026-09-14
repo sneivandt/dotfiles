@@ -338,6 +338,66 @@ packages = ["Git.Git"]
     );
 }
 
+#[test]
+fn arch_wsl_selects_both_arch_and_wsl_state() {
+    let repo = common::TestContextBuilder::new()
+        .with_config_file(
+            "symlinks.toml",
+            r#"[base]
+symlinks = ["base-file"]
+
+[linux]
+symlinks = ["linux-file"]
+
+[arch]
+symlinks = ["arch-file"]
+
+[wsl]
+symlinks = ["wsl-file"]
+"#,
+        )
+        .with_config_file(
+            "packages.toml",
+            r#"[arch]
+packages = ["git", { name = "paru-bin", aur = true }]
+"#,
+        )
+        .with_symlink_source("base-file")
+        .with_symlink_source("linux-file")
+        .with_symlink_source("arch-file")
+        .with_symlink_source("wsl-file")
+        .build();
+    let arch_wsl = repo.load_config_for_platform(
+        "base",
+        Platform {
+            os: Os::Linux,
+            is_arch: true,
+            is_wsl: true,
+        },
+    );
+    let sources: Vec<&str> = arch_wsl
+        .symlinks
+        .iter()
+        .map(|symlink| symlink.source.as_str())
+        .collect();
+    let packages: Vec<(&str, bool)> = arch_wsl
+        .packages
+        .iter()
+        .map(|package| (package.name.as_str(), package.is_aur))
+        .collect();
+
+    assert_eq!(
+        sources,
+        vec!["arch-file", "base-file", "linux-file", "wsl-file"],
+        "Arch WSL should include Linux, Arch, and WSL state"
+    );
+    assert_eq!(
+        packages,
+        vec![("git", false), ("paru-bin", true)],
+        "Arch WSL should include native and AUR packages from the Arch layer"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn symlink_round_trip_verifies_every_declared_target() {

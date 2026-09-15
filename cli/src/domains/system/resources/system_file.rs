@@ -125,7 +125,7 @@ impl SystemFileResource {
 
 impl Resource for SystemFileResource {
     fn description(&self) -> String {
-        format!("system file {}", self.entry.target.display())
+        self.entry.target.display().to_string()
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
@@ -474,6 +474,18 @@ mod tests {
             merge,
             origin: Some(root.to_path_buf()),
         }
+    }
+
+    #[test]
+    fn description_is_the_target_path() {
+        let root = tempfile::tempdir().unwrap();
+        let target = Path::new("/etc/pacman.conf");
+        let resource = SystemFileResource::new(
+            entry(root.path(), target, "pacman.conf", MergeStrategy::Ini),
+            Arc::new(MockExecutor::new()),
+        );
+
+        assert_eq!(resource.description(), target.display().to_string());
     }
 
     #[test]

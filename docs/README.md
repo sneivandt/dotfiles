@@ -40,6 +40,7 @@ workflows for maintaining a configured machine.
 - `.agents/skills/*/SKILL.md` contains narrow agent procedures and subsystem
   gotchas.
 - `conf/` contains declarative desired state.
+- `system/` contains tracked fragments selected by `conf/system-files.toml`.
 - `cli/src/app/catalog.rs` contains the static install and uninstall task
   catalogs.
 - `cli/src/app/commands/check.rs` contains the validation task list.

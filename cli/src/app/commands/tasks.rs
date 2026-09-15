@@ -91,6 +91,11 @@ fn collect_listings(
         }
     })?;
 
+    let update_only_tasks = crate::app::catalog::update_only_install_tasks(store);
+    add_tasks(&mut listings, &update_only_tasks, |listing, _| {
+        listing.include(TaskCommand::InstallUpdatePins);
+    })?;
+
     let overlay_tasks = overlay.map_or_else(Vec::new, |root| {
         crate::domains::overlay::scripts::overlay_script_tasks(&store.scripts.read(), root)
     });
@@ -217,6 +222,8 @@ fn command_membership(listing: &TaskListing) -> String {
 mod tests {
     use super::*;
     use crate::engine::{Context, TaskMeta, TaskResult};
+    use crate::test_helpers::empty_config;
+    use std::path::PathBuf;
 
     struct VisibleTask;
 
@@ -259,6 +266,18 @@ mod tests {
 
         assert_eq!(listings.len(), 1);
         assert_eq!(command_membership(&listings[0]), "install, uninstall");
+    }
+
+    #[test]
+    fn apm_lists_ordinary_and_update_pins_membership() {
+        let store = ConfigStore::from_config(empty_config(PathBuf::from("/tmp")));
+        let listings = collect_listings(&store, None).expect("collect task listings");
+        let apm = listings
+            .iter()
+            .find(|listing| listing.selector == "apm")
+            .expect("APM task listing");
+
+        assert_eq!(command_membership(apm), "install, install --update-pins");
     }
 
     #[test]

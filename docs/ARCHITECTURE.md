@@ -38,6 +38,7 @@ dotfiles.sh / dotfiles.ps1
 | `cli/src/infra/` | Platform detection and concrete system adapters |
 | `conf/` | Declarative desired state |
 | `symlinks/` | Versioned files linked into the user's home directory |
+| `system/` | Versioned fragments merged into administrator-owned files below `/etc` |
 | `hooks/` | Repository-maintained Git hooks and checks |
 | `.github/workflows/` | CI and release publishing |
 

@@ -61,7 +61,7 @@ The Rust integration tests under `cli/tests/` cover distinct boundaries:
 | Test target | Focus |
 |---|---|
 | `behavioral_ci` | Cross-cutting behaviors that protect CI assumptions |
-| `config_drift` | Alignment among real configuration, symlink, and catalog state |
+| `config_drift` | Cross-file invariants among real configuration and managed sources |
 | `domain_boundaries` | Architectural dependency boundaries |
 | `e2e_apply` | End-to-end convergence against controlled state |
 | `install_command` | Install selection and command composition |

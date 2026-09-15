@@ -15,7 +15,7 @@ use super::manifest::{
 use super::skip;
 use super::targets::missing_apm_reason;
 use super::update::preview_apm_update;
-use crate::engine::{Context, Task, TaskResult, TaskStats, task_metadata};
+use crate::engine::{Context, Task, TaskMeta, TaskResult, TaskStats};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 
@@ -61,9 +61,10 @@ impl InstallApmPackages {
 }
 
 impl Task for InstallApmPackages {
-    task_metadata! {
-        name: "APM packages",
-        selector: "apm",
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("APM packages")
+            .with_selector("apm")
+            .with_update_only(self.mode == ApmPackageMode::UpdatePins)
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

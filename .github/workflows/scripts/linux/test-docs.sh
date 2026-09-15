@@ -124,10 +124,11 @@ docs_links()
   [ "$failures" -eq 0 ] || log_error "$failures broken documentation link(s) or anchor(s)"
 )}
 
-# Verify every task selector documented in docs/TASKS.md still exists in the CLI.
+# Verify that the static public task selectors and docs/TASKS.md agree.
 #
-# Selectors are declared either through the task macros (`selector: "name"`) or
-# by overriding `fn selector`, so both forms are collected.
+# Domain tasks and app-owned validation tasks declare selectors through the task
+# macros or TaskMeta builders. Dynamic overlay selectors are documented by
+# convention because their concrete values come from overlay configuration.
 docs_task_selectors()
 {(
   tasks_doc="$DIR/docs/TASKS.md"
@@ -142,16 +143,24 @@ docs_task_selectors()
   documented_selectors="$(mktemp)"
   trap 'rm -f "$code_selectors" "$documented_selectors"' EXIT HUP INT TERM
 
-  # Selectors are declared three ways: the `task_metadata!` macro field, a
-  # `TaskMeta::new(..).with_selector("..")` builder call, and (legacy) a
-  # hand-written `fn selector` override.
+  # Public static tasks live in domains, except for app-owned validation tasks.
+  # Stop at each file's inline test module so fixture selectors do not enter
+  # the inventory. Test-only imports may appear earlier in a production file.
   {
-    grep -rhoE 'selector: "[a-z0-9-]+"' "$DIR/cli/src" | sed 's/.*"\(.*\)"/\1/'
-    grep -rhoE 'with_selector\("[a-z0-9-]+"\)' "$DIR/cli/src" --include='*.rs' \
-      | sed 's/.*"\(.*\)".*/\1/'
-    grep -rhA2 'fn selector' "$DIR/cli/src" --include='*.rs' \
-      | grep -oE '^[[:space:]]+"[a-z0-9-]+"' | tr -d ' "'
-  } | sort -u > "$code_selectors"
+    find "$DIR/cli/src/domains" -name '*.rs' -type f -print
+    printf '%s\n' "$DIR/cli/src/app/validation/checks.rs"
+  } | while IFS= read -r source; do
+    awk '
+      previous == "#[cfg(test)]" && /^mod tests \{/ { exit }
+      { print; previous = $0 }
+    ' "$source"
+  done | {
+    grep -E 'selector: "[a-z0-9-]+"|with_selector\("[a-z0-9-]+"\)' || true
+  } | sed 's/.*"\([a-z0-9-]*\)".*/\1/' | sort -u > "$code_selectors"
+
+  if [ ! -s "$code_selectors" ]; then
+    log_error "No public task selectors found in CLI sources"
+  fi
 
   # Selector column of the catalog tables: rows beginning with | `selector` |
   grep -oE '^\| `[a-z0-9-]+`' "$tasks_doc" | tr -d '|` ' | sort -u > "$documented_selectors"
@@ -164,8 +173,15 @@ docs_task_selectors()
     fi
   done < "$documented_selectors"
 
-  log_verbose "Checked $(wc -l < "$documented_selectors" | tr -d ' ') documented selectors"
-  [ "$failures" -eq 0 ] || log_error "$failures documented selector(s) no longer exist"
+  while IFS= read -r selector || [ -n "$selector" ]; do
+    if ! grep -qx "$selector" "$documented_selectors"; then
+      printf "   docs/TASKS.md is missing public selector: %s\n" "$selector"
+      failures=$((failures + 1))
+    fi
+  done < "$code_selectors"
+
+  log_verbose "Compared $(wc -l < "$documented_selectors" | tr -d ' ') documented selectors with $(wc -l < "$code_selectors" | tr -d ' ') public selectors"
+  [ "$failures" -eq 0 ] || log_error "$failures task selector documentation mismatch(es)"
 )}
 
 # Execute one or more tests when run directly: sh test-docs.sh <function_name>...

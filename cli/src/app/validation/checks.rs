@@ -1,9 +1,8 @@
 //! Validation tasks for the `check` command.
 //!
 //! These tasks verify configuration integrity and run linters on shell and
-//! `PowerShell` scripts.  They are used by [`crate::app::commands::check::run`] but
-//! live in the `tasks` module so they follow the same `Task` trait pattern
-//! as all other tasks and are independently testable.
+//! `PowerShell` scripts. They live in the app-owned validation module and use
+//! the same [`Task`] contract as domain tasks.
 use anyhow::{Context as _, Result};
 
 use crate::app::config::Config;

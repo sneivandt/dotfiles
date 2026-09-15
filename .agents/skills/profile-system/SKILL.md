@@ -1,7 +1,8 @@
 ---
 name: profile-system
 description: >
-  Use for profile resolution in cli/src/app/config/profiles.rs and profiles/,
+  Use for profile resolution in cli/src/app/config/profiles.rs and
+  cli/src/app/config/profiles/,
   selection precedence/persistence, or active category computation. Not for
   ordinary edits to an existing category's package list.
 ---

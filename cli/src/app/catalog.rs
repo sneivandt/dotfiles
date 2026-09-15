@@ -119,6 +119,16 @@ pub fn all_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     install_tasks_for_run(store, &repo_updated, ApmPackageMode::Install)
 }
 
+/// Tasks whose update-mode instances run only with `install --update-pins`.
+#[must_use]
+pub(crate) fn update_only_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
+    let repo_updated = RepositoryUpdateSignal::new();
+    install_tasks_for_run(store, &repo_updated, ApmPackageMode::UpdatePins)
+        .into_iter()
+        .filter(|task| task.update_only())
+        .collect()
+}
+
 #[must_use]
 pub(crate) fn install_tasks_for_run(
     store: &ConfigStore,
@@ -285,6 +295,13 @@ mod tests {
             tasks.iter().filter(|task| task.selector() == "apm").count(),
             1,
             "update mode should select one mode-aware APM task"
+        );
+        assert!(
+            tasks
+                .iter()
+                .find(|task| task.selector() == "apm")
+                .is_some_and(|task| task.update_only()),
+            "the update-mode APM task should declare update-only membership"
         );
     }
 }

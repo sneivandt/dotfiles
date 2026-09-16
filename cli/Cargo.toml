@@ -18,7 +18,7 @@ path = "src/main.rs"
 anyhow = "1"
 base64 = "0.23"
 clap = { version = "4", features = ["derive"] }
-clap_complete = "4"
+clap_complete = { version = "4", features = ["unstable-dynamic"] }
 ctrlc = "3.5"
 dunce = "1"
 thiserror = "2"

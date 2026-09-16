@@ -8,6 +8,7 @@
 pub mod catalog;
 pub mod cli;
 pub mod commands;
+pub mod completion;
 pub mod config;
 pub mod filter;
 pub mod interrupt;

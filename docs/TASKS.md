@@ -46,7 +46,7 @@ contract itself.
 | `git` | Git settings | install | Applies declared global Git settings |
 | `agent-settings` | Agent settings | install | Converges selected harness settings |
 | `git-hooks` | Git hooks | install, uninstall | Installs or removes repository-maintained hooks |
-| `completions` | Shell completions | install | Installs generated shell completions |
+| `completions` | Shell completions | install | Installs runtime shell completion registration |
 | `packages` | System packages | install | Installs non-AUR packages through pacman or winget |
 | `paru` | Paru package manager | install | Bootstraps the `paru` AUR helper |
 | `aur-packages` | AUR packages | install | Installs package entries marked `aur = true` |
@@ -118,10 +118,11 @@ Git checkout or when hook sources are absent.
 
 #### Shell completions
 
-The application generates completions from the current Clap command definition
-after **Dotfiles repository** runs. Linux writes Zsh completions beneath the
-managed `symlinks/config/zsh/completions` tree. Windows writes PowerShell
-completions to `~/.config/powershell/profile.d`.
+The application installs runtime completion registration after **Dotfiles
+repository** runs. Linux writes Zsh registration beneath the managed
+`symlinks/config/zsh/completions` tree. Windows writes PowerShell registration
+to `~/.config/powershell/profile.d`. The shell asks the current binary for
+profile names, log commands, and configuration-aware task selectors.
 
 #### Report overlay scripts
 

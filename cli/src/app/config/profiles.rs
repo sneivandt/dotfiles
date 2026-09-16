@@ -28,7 +28,7 @@ fn selected_profile_name(
         .or_else(|| read_persisted(root))
 }
 
-/// One built-in role profile shown by `dotfiles profiles`.
+/// One built-in role profile used by selection prompts and completions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProfileInfo {
     /// Profile name used with `--profile`.
@@ -118,7 +118,7 @@ pub fn resolve_read_only(
     env: &dyn crate::infra::env::Env,
 ) -> Result<Profile> {
     let name = selected_profile_name(cli_profile, root, env).ok_or_else(|| {
-        anyhow::anyhow!("profile selection is required; pass --profile or run 'dotfiles profiles'")
+        anyhow::anyhow!("profile selection is required; pass --profile <base|desktop>")
     })?;
     resolve(&name, platform).map_err(Into::into)
 }

@@ -8,9 +8,6 @@
 
 use std::any::TypeId;
 
-use clap::CommandFactory as _;
-
-use crate::app::cli::Cli;
 use crate::app::config::store::ConfigStore;
 use crate::domains::ai::agent_settings::ConfigureAgentSettings;
 use crate::domains::ai::apm::{ApmPackageMode, InstallApmPackages};
@@ -31,20 +28,6 @@ use crate::domains::system::registry::ApplyRegistry;
 use crate::domains::system::system_files::ConfigureSystemFiles;
 use crate::domains::system::systemd_units::ConfigureSystemd;
 use crate::engine::{Task, TaskId, TaskWithExtraDeps};
-
-const POWERSHELL_DOT_COMPLETER: &str = r"
-Register-ArgumentCompleter -CommandName 'dot' -ParameterName 'Arguments' -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-
-    $expandedLine = [regex]::Replace(
-        $commandAst.ToString(),
-        '^dot(?=\s|$)',
-        'dotfiles',
-        1
-    )
-    (TabExpansion2 -InputScript $expandedLine -CursorColumn $expandedLine.Length).CompletionMatches
-}
-";
 
 /// The `TaskId` of a static task type.
 const fn id<T: 'static>() -> TaskId {
@@ -73,10 +56,7 @@ fn with_dependencies(inner: impl Task, blocking: &[TaskId], ordering: &[TaskId])
 /// stays free of any CLI dependency.
 #[must_use]
 pub fn generate_zsh_completions() -> String {
-    let mut buf = Vec::new();
-    let mut cmd = Cli::command();
-    clap_complete::generate(clap_complete::Shell::Zsh, &mut cmd, "dotfiles", &mut buf);
-    String::from_utf8(buf).unwrap_or_default()
+    crate::app::completion::registration(clap_complete::Shell::Zsh)
 }
 
 /// Generate the PowerShell completion script for the CLI and its `dot` function.
@@ -86,16 +66,7 @@ pub fn generate_zsh_completions() -> String {
 /// delegates to the generated `dotfiles` native completer.
 #[must_use]
 pub fn generate_powershell_completions() -> String {
-    let mut buf = Vec::new();
-    let mut cmd = Cli::command();
-    clap_complete::generate(
-        clap_complete::Shell::PowerShell,
-        &mut cmd,
-        "dotfiles",
-        &mut buf,
-    );
-    buf.extend_from_slice(POWERSHELL_DOT_COMPLETER.as_bytes());
-    String::from_utf8(buf).unwrap_or_default()
+    crate::app::completion::registration(clap_complete::Shell::PowerShell)
 }
 
 /// The complete set of tasks run by the uninstall command.
@@ -197,17 +168,12 @@ mod tests {
     }
 
     #[test]
-    fn powershell_completions_register_cli_and_alias() {
+    fn powershell_completions_register_runtime_cli_and_alias() {
         let script = generate_powershell_completions();
 
-        assert_eq!(
-            script.matches("Register-ArgumentCompleter").count(),
-            2,
-            "PowerShell should register the CLI and function completers"
-        );
         assert!(
-            script.contains("-CommandName 'dotfiles'"),
-            "PowerShell completions should register dotfiles"
+            script.contains("DOTFILES_COMPLETE = 'powershell'"),
+            "PowerShell should load runtime dotfiles completion"
         );
         assert!(
             script.contains("-CommandName 'dot' -ParameterName 'Arguments'"),

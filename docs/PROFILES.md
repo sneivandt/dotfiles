@@ -58,12 +58,6 @@ An explicitly supplied unknown profile is an error. During interactive
 selection, the chosen profile is persisted to repository-local Git config for
 future runs.
 
-List the built-in profiles without selecting or persisting one:
-
-```bash
-dotfiles profiles
-```
-
 ```bash
 dotfiles install --profile desktop
 ```

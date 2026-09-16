@@ -54,9 +54,8 @@ explicitly bypassing GitHub provenance verification for that invocation.
 | `uninstall` | Removes managed integrations while preserving user files and broader machine state |
 | `check` | Validates configuration and runs available script analyzers |
 | `tasks` | Lists visible task selectors, labels, and command membership |
-| `profiles` | Lists the built-in role profiles |
 | `log` | Lists retained run logs or prints one of them |
-| `completions <shell>` | Hidden support command that emits shell completion definitions |
+| `completions <shell>` | Hidden support command that emits runtime shell completion registration |
 
 `update` remains a hidden compatibility alias for `install --update-pins`, and
 `test` remains an alias for `check`.
@@ -174,12 +173,6 @@ Task discovery is read-only. It does not create a run log, acquire the run lock,
 or persist a profile or overlay selection. If no profile was passed, set through
 `DOTFILES_PROFILE`, or previously persisted, the command asks for `--profile`
 instead of opening the interactive profile prompt.
-
-List the available role profiles without selecting one:
-
-```bash
-dotfiles profiles
-```
 
 ## Pin updates
 
@@ -375,6 +368,15 @@ Logs live in a platform state directory, resolved in this order:
 
 Files are named `<utc-timestamp>-<command>-<pid>.log`. Logs written by earlier
 versions under the cache directory are removed on the next run.
+
+## Shell completions
+
+Installed Zsh and PowerShell completions ask the current `dotfiles` binary for
+candidates. They complete the built-in values accepted by `--profile`, the
+canonical commands accepted by `dotfiles log --command`, and task selectors
+accepted by `--only` and `--skip`. Task completion uses the same read-only
+configuration discovery as `dotfiles tasks` and carries forward `--profile`,
+`--root`, and `--overlay` from the command being completed.
 
 ## Repository and overlay paths
 

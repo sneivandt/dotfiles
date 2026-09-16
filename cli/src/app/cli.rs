@@ -62,9 +62,6 @@ Packages, services, registry values, shell selection, and overlay script effects
     /// List task selectors and command membership
     Tasks(TasksOpts),
 
-    /// List built-in role profiles
-    Profiles(ProfilesOpts),
-
     /// Show a retained run log
     Log(LogOpts),
 
@@ -77,7 +74,12 @@ Packages, services, registry values, shell selection, and overlay script effects
 #[derive(Args, Debug, Clone, Default)]
 pub struct RepositoryOpts {
     /// Use a specific profile
-    #[arg(short, long, value_name = "PROFILE")]
+    #[arg(
+        short,
+        long,
+        value_name = "PROFILE",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::profile_candidates)
+    )]
     pub profile: Option<String>,
 
     /// Use PATH as the dotfiles repository
@@ -232,10 +234,6 @@ pub struct TasksOpts {
     #[arg(long, value_enum, default_value_t)]
     pub format: DiscoveryFormat,
 }
-
-/// Options for the `profiles` command.
-#[derive(Args, Debug, Clone)]
-pub struct ProfilesOpts;
 
 /// Options passed to the task engine after command-specific parsing.
 #[derive(Debug, Clone)]
@@ -401,11 +399,21 @@ impl EngineCommand {
 #[derive(Args, Debug, Clone, Default)]
 pub struct InstallOpts {
     /// Skip task selectors; repeat the option or separate values with commas
-    #[arg(long, value_delimiter = ',', value_name = "SELECTOR")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "SELECTOR",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
+    )]
     pub skip: Vec<String>,
 
     /// Run only task selectors; repeat the option or separate values with commas
-    #[arg(long, value_delimiter = ',', value_name = "SELECTOR")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "SELECTOR",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
+    )]
     pub only: Vec<String>,
 
     /// Include the dependency closure of tasks selected by `--only`
@@ -444,7 +452,12 @@ pub struct LogOpts {
     pub list: bool,
 
     /// Only consider runs of this command
-    #[arg(short, long, value_name = "COMMAND")]
+    #[arg(
+        short,
+        long,
+        value_name = "COMMAND",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::log_command_candidates)
+    )]
     pub command: Option<String>,
 
     /// Include diagnostic lines
@@ -506,7 +519,6 @@ mod tests {
             "uninstall  Remove managed integrations while preserving user files",
             "check      Validate configuration and run repository checks",
             "tasks      List task selectors and command membership",
-            "profiles   List built-in role profiles",
             "log        Show a retained run log",
             "dotfiles check",
         ] {
@@ -603,16 +615,13 @@ mod tests {
     }
 
     #[test]
-    fn tasks_and_profiles_have_discovery_options() {
+    fn tasks_have_discovery_options() {
         let tasks = Cli::parse_from(["dotfiles", "tasks", "--profile", "base", "--format", "json"]);
         let Command::Tasks(opts) = tasks.command else {
             panic!("expected tasks command");
         };
         assert_eq!(opts.repository.profile.as_deref(), Some("base"));
         assert_eq!(opts.format, DiscoveryFormat::Json);
-
-        let profiles = Cli::parse_from(["dotfiles", "profiles"]);
-        assert!(matches!(profiles.command, Command::Profiles(_)));
     }
 
     #[test]
@@ -687,10 +696,9 @@ mod tests {
                     assert!(!global.no_repo_update);
                     (global, verbose)
                 }
-                Command::Tasks(_)
-                | Command::Profiles(_)
-                | Command::Log(_)
-                | Command::Completions(_) => panic!("expected engine command"),
+                Command::Tasks(_) | Command::Log(_) | Command::Completions(_) => {
+                    panic!("expected engine command")
+                }
             };
             let runtime = crate::app::commands::RuntimePolicy::new(
                 &global,

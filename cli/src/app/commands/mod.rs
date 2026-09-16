@@ -3,7 +3,6 @@
 pub mod check;
 pub mod install;
 pub mod log;
-pub mod profiles;
 pub mod tasks;
 pub mod uninstall;
 

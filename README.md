@@ -128,7 +128,6 @@ After installation, open a new shell and use `dotfiles` directly.
 | `dotfiles uninstall` | Replaces managed symlinks with local copies and removes managed hooks and the launcher |
 | `dotfiles check` | Checks configuration and runs available script analyzers |
 | `dotfiles tasks` | Lists task selectors and the commands that run them |
-| `dotfiles profiles` | Lists built-in role profiles |
 | `dotfiles log` | Shows saved run logs |
 
 Run `install` after changing your configuration. Add `--no-repo-update` to

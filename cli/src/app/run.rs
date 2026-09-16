@@ -12,7 +12,7 @@ use clap::{CommandFactory, Parser};
 
 use crate::infra::{elevation, logging};
 
-use super::{catalog, cli, commands, interrupt};
+use super::{cli, commands, interrupt};
 use crate::infra::logging::records::RunOutcome;
 use crate::infra::logging::{Output as _, OutputExt as _};
 
@@ -23,6 +23,9 @@ use crate::infra::logging::{Output as _, OutputExt as _};
 /// cancellation, elevation handling, and command dispatch live in one place.
 #[must_use]
 pub fn run() -> ExitCode {
+    clap_complete::CompleteEnv::with_factory(cli::Cli::command)
+        .var(super::completion::environment_variable())
+        .complete();
     drop(enable_ansi_support::enable_ansi_support()); // best-effort; no-op on non-Windows
     let args = cli::Cli::parse();
 
@@ -31,13 +34,8 @@ pub fn run() -> ExitCode {
     // here keeps the engine dispatch in `run_engine` total.
     let command = match args.command {
         cli::Command::Completions(opts) => {
-            if matches!(opts.shell, clap_complete::Shell::PowerShell) {
-                let script = catalog::generate_powershell_completions();
-                drop(std::io::stdout().lock().write_all(script.as_bytes()));
-            } else {
-                let mut cmd = cli::Cli::command();
-                clap_complete::generate(opts.shell, &mut cmd, "dotfiles", &mut std::io::stdout());
-            }
+            let script = super::completion::registration(opts.shell);
+            drop(std::io::stdout().lock().write_all(script.as_bytes()));
             return ExitCode::SUCCESS;
         }
         // Log viewing is read-only: do not initialize the tracing subscriber or
@@ -53,9 +51,6 @@ pub fn run() -> ExitCode {
         }
         cli::Command::Tasks(opts) => {
             return standalone(commands::tasks::run(&opts));
-        }
-        cli::Command::Profiles(opts) => {
-            return standalone(commands::profiles::run(&opts));
         }
         cli::Command::Install(opts) => install_command(opts, false),
         cli::Command::Update(opts) => install_command(opts, true),

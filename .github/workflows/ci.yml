@@ -347,11 +347,16 @@ jobs:
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
+      # Full tests build target/ci/dotfiles.exe for Rust changes. Non-Rust
+      # changes still need an artifact for the downstream Windows jobs.
       - name: Build CI binary
+        if: needs.classify-changes.outputs.run_rust_checks != 'true'
         run: cargo build --profile ci
       - name: Clippy
+        if: needs.classify-changes.outputs.run_rust_checks == 'true'
         run: cargo clippy --profile ci --all-targets -- -D warnings
       - name: Tests
+        if: needs.classify-changes.outputs.run_rust_checks == 'true'
         run: cargo test --profile ci
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

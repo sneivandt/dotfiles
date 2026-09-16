@@ -149,10 +149,18 @@ debug = 0
 
 [profile.ci]
 inherits = "dev"
-opt-level = 1
+# The CLI is compiled several times for build, lint, test, and coverage jobs.
+# Its tests spend little time executing, so optimizing the workspace crate adds
+# compile and link time without helping CI throughput.
+opt-level = 0
 lto = false
 codegen-units = 256
 debug = 0
+
+[profile.ci.package."*"]
+# Keep dependencies optimized enough that subprocess and integration tests stay
+# fast. Cargo's wildcard package override does not apply to workspace members.
+opt-level = 1
 
 [profile.release]
 strip = true

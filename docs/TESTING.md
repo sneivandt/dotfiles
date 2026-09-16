@@ -213,6 +213,12 @@ The Linux and Windows coverage jobs run all Cargo targets and upload HTML
 reports. Coverage is informational and intentionally does not gate
 `ci-success`.
 
+The Windows build job runs Clippy and the full Rust suite only for Rust-related
+changes. `cargo test` also produces the executable uploaded for downstream jobs,
+so the job does not compile the same Rust change with a separate `cargo build`.
+Configuration-only and wrapper-only changes still run `cargo build` because
+their downstream Windows jobs need the executable.
+
 Pull requests also run changed-code mutation testing when Rust code changes and
 upload the `cargo-mutants` report. Mutation results are informational and do not
 gate `ci-success`.

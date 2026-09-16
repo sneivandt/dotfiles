@@ -29,8 +29,8 @@ skip = [
     # consolidation. Re-evaluate periodically and remove when possible.
     { crate = "getrandom@0.2.17", reason = "ring still pins getrandom 0.2" },
     { crate = "getrandom@0.3.4", reason = "jobserver still pins getrandom 0.3" },
+    { crate = "shlex@2.0.1", reason = "clap_complete requires shlex 2 while native build dependencies require shlex 1" },
     { crate = "windows-sys@0.52.0", reason = "ring still pins windows-sys 0.52" },
-    { crate = "syn", reason = "derive ecosystem currently spans syn 2 and syn 3" },
 ]
 
 [sources]

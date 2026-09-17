@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::domains::files::config::symlinks::Symlink;
+use crate::domains::files::config::symlinks::{Symlink, default_target};
 use crate::domains::files::resources::symlink::SymlinkResource;
 use crate::engine::{
     Context, IntrinsicState as _, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
@@ -140,7 +140,7 @@ impl Task for UninstallSymlinks {
 /// `AppData/` or `Documents/`), use an explicit `target` field in
 /// `conf/symlinks.toml` rather than relying on naming conventions.
 fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
-    home.join(format!(".{source}"))
+    home.join(default_target(source))
 }
 
 #[cfg(windows)]
@@ -174,7 +174,7 @@ const fn git_symlink_placeholder_reason(_source: &Path, _repo_root: &Path) -> Op
 mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
-    use crate::engine::Resource as _;
+    use crate::engine::{RemovableResource as _, Resource as _, ResourceChange};
     use crate::test_helpers::{empty_config, make_linux_context};
     use std::path::PathBuf;
 
@@ -206,6 +206,64 @@ mod tests {
         let home = PathBuf::from("/home/user");
         let target = compute_target(&home, "config/git/config");
         assert_eq!(target, PathBuf::from("/home/user/.config/git/config"));
+    }
+
+    #[test]
+    fn default_target_normalizes_current_directory_components() {
+        let home = PathBuf::from("/home/user");
+        for (source, expected) in [
+            ("./bashrc", ".bashrc"),
+            ("././bashrc", ".bashrc"),
+            ("./config/./git//config", ".config/git/config"),
+            ("config//git/config", ".config/git/config"),
+            (".hidden", "..hidden"),
+        ] {
+            let target = compute_target(&home, source);
+            assert_eq!(target, home.join(expected), "{source}");
+            assert!(
+                !target
+                    .components()
+                    .any(|component| component == std::path::Component::ParentDir),
+                "{source}: {target:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_target_uses_native_separator_semantics() {
+        let home = PathBuf::from("/home/user");
+        let expected = if cfg!(windows) {
+            ".config/git/config"
+        } else {
+            r"..\config\.\git\config"
+        };
+        assert_eq!(
+            compute_target(&home, r".\config\.\git\config"),
+            home.join(expected)
+        );
+    }
+
+    #[test]
+    fn resource_with_dot_prefixed_source_stays_inside_home() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("repo");
+        let home = fixture.path().join("home");
+        std::fs::create_dir_all(root.join("symlinks")).unwrap();
+        std::fs::create_dir(&home).unwrap();
+        std::fs::write(root.join("symlinks/bashrc"), "source").unwrap();
+        let outside = fixture.path().join("bashrc");
+        std::fs::write(&outside, "must survive").unwrap();
+        let ctx = make_linux_context(empty_config(root.clone())).with_home(home.clone());
+        let resource = build_resource(&sym("./bashrc", None), &root, &home, &ctx.executor_arc());
+
+        assert_eq!(resource.target, home.join(".bashrc"));
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+        assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+        assert_eq!(
+            std::fs::read_to_string(home.join(".bashrc")).unwrap(),
+            "source"
+        );
+        assert_eq!(std::fs::read_to_string(outside).unwrap(), "must survive");
     }
 
     #[test]

@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 use crate::engine::{Context, Task, TaskId};
 use crate::infra::logging::{Logger, OutputExt as _};
 
-use super::error::TaskFailures;
+use super::error::{CommandInterrupted, TaskFailures};
 mod elevation;
 
 use elevation::ElevationBroker;
@@ -82,7 +82,7 @@ impl<'a> RunCoordinator<'a> {
     ///
     /// # Errors
     ///
-    /// Returns an error if graph validation fails or one or more tasks fail.
+    /// Returns an error if graph validation fails, tasks fail, or work is interrupted.
     pub(crate) fn execute(&self, mut plan: ExecutionPlan<'_>) -> Result<()> {
         self.log
             .add_task_total(visible_count(plan.tasks.iter().copied()));
@@ -93,7 +93,7 @@ impl<'a> RunCoordinator<'a> {
             Some(run_task_graph(&mut plan.tasks, self.ctx, self.log, None)?)
         };
 
-        summary.map_or(Ok(()), |summary| finish_run(self.log, &summary))
+        summary.map_or(Ok(()), |summary| finish_run(self.ctx, self.log, &summary))
     }
 
     fn execute_with_restart(
@@ -115,13 +115,16 @@ impl<'a> RunCoordinator<'a> {
                 .collect::<Vec<_>>();
             summary.merge(run_task_graph(&mut prefix, self.ctx, self.log, None)?);
 
+            if self.ctx.is_cancelled() || summary.was_interrupted() {
+                return Ok(Some(summary));
+            }
             let boundary_satisfied = matches!(
                 summary.outcome(&restart.boundary),
                 Some(crate::engine::TaskOutcome::Satisfied)
             );
-            let restart_requested = !self.ctx.is_cancelled() && (restart.requested)();
+            let restart_requested = (restart.requested)();
             if restart_requested {
-                if boundary_satisfied {
+                if boundary_satisfied && summary.failure_count() == 0 && !self.ctx.is_cancelled() {
                     (restart.action)();
                     return Ok(None);
                 }
@@ -268,6 +271,7 @@ fn resolve_task_graph(
 }
 
 fn finish_run(
+    ctx: &Context,
     log: &Arc<Logger>,
     summary: &crate::engine::scheduler::ExecutionSummary,
 ) -> Result<()> {
@@ -275,6 +279,9 @@ fn finish_run(
     let count = summary.failure_count();
     if count > 0 {
         return Err(TaskFailures::new(count).into());
+    }
+    if ctx.is_cancelled() || summary.was_interrupted() {
+        return Err(CommandInterrupted.into());
     }
     Ok(())
 }

@@ -107,19 +107,19 @@ if ($Build)
         Write-Error "cargo not found. Install Rust to use --build mode."
         exit 1
     }
-    Push-Location (Join-Path $DotfilesRoot "cli")
+    Push-Location -LiteralPath (Join-Path $DotfilesRoot "cli")
     try
     {
         cargo build --profile dev-opt
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "dev-opt" $BinaryName)))
-        & $BuildBinary @CliArgs
-        exit $LASTEXITCODE
     }
     finally
     {
         Pop-Location
     }
+    $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "dev-opt" $BinaryName)))
+    & $BuildBinary @CliArgs
+    exit $LASTEXITCODE
 }
 
 # Production mode: bootstrap binary if not present.
@@ -215,12 +215,12 @@ function Get-Binary
     $assetName = Get-TargetAssetName
     $url = "$releaseBaseUrl/$assetName"
 
-    if (-not (Test-Path $BinDir))
+    if (-not (Test-Path -LiteralPath $BinDir))
     {
         New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
     }
     $stagedBinary = "$Binary.download-$PID"
-    if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+    if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
 
     Write-Output "Bootstrap · dotfiles $tag · $($assetName -replace '^dotfiles-', '' -replace '\.exe$', '')"
     try
@@ -229,12 +229,12 @@ function Get-Binary
     }
     catch
     {
-        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+        if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
         Write-Error "Failed to download dotfiles binary. Check your internet connection or use --build to build from source."
         exit 1
     }
 
-    if (-not (Test-Path $stagedBinary))
+    if (-not (Test-Path -LiteralPath $stagedBinary))
     {
         Write-Error "Download did not produce a binary at '$stagedBinary'. Check your internet connection or use --build to build from source."
         exit 1
@@ -256,28 +256,28 @@ function Get-Binary
     }
     catch
     {
-        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+        if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
         Write-Error "Failed to download checksum file: $($_.Exception.Message)"
         exit 1
     }
     $expected = Get-ChecksumForAsset -ChecksumContent $checksumContent -AssetName $assetName
     if ([string]::IsNullOrWhiteSpace($expected))
     {
-        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+        if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
         Write-Error "Checksum not found in checksum file for $assetName."
         exit 1
     }
-    $actual = (Get-FileHash -Path $stagedBinary -Algorithm SHA256).Hash.ToLower()
+    $actual = (Get-FileHash -LiteralPath $stagedBinary -Algorithm SHA256).Hash.ToLower()
     if ($expected -ne $actual)
     {
-        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+        if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
         Write-Error "Checksum verification failed!"
         exit 1
     }
 
     if (-not (Test-Attestation -Path $stagedBinary))
     {
-        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+        if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
         Write-Error "Build provenance verification failed for $assetName."
         exit 1
     }
@@ -288,7 +288,7 @@ function Get-Binary
         chmod +x $stagedBinary
         if ($LASTEXITCODE -ne 0)
         {
-            if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+            if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
             Write-Error "Failed to make binary executable"
             exit 1
         }
@@ -300,7 +300,7 @@ function Get-Binary
     }
     catch
     {
-        if (Test-Path $stagedBinary) { Remove-Item $stagedBinary -Force }
+        if (Test-Path -LiteralPath $stagedBinary) { Remove-Item -LiteralPath $stagedBinary -Force }
         Write-Error "Failed to install downloaded binary: $($_.Exception.Message)"
         exit 1
     }
@@ -309,7 +309,7 @@ function Get-Binary
 }
 
 # Bootstrap: download the latest binary only if no binary is present.
-if (-not (Test-Path $Binary))
+if (-not (Test-Path -LiteralPath $Binary))
 {
     Get-Binary
 }

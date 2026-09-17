@@ -21,6 +21,8 @@ const SYMLINK_SOURCE_MISSING: DiagnosticCode = DiagnosticCode::new("symlink", "s
 /// Diagnostic code: `symlink.source-outside-root`.
 const SYMLINK_SOURCE_OUTSIDE_ROOT: DiagnosticCode =
     DiagnosticCode::new("symlink", "source-outside-root");
+const SYMLINK_ROOT_SOURCE: DiagnosticCode = DiagnosticCode::new("symlink", "root-source");
+const SYMLINK_ROOT_TARGET: DiagnosticCode = DiagnosticCode::new("symlink", "root-target");
 
 mod glob_expansion;
 mod target_capture;
@@ -145,6 +147,9 @@ fn validate_relative_config_path(kind: &str, path: &str) -> Result<()> {
     if has_parent_component(path) {
         bail!("{kind} path '{path}' must not contain '..' components");
     }
+    if points_to_root(path) {
+        bail!("{kind} path '{path}' must name a file or directory below its root");
+    }
     Ok(())
 }
 
@@ -200,6 +205,23 @@ fn has_parent_component(path: &str) -> bool {
         || path.split(['/', '\\']).any(|segment| segment == "..")
 }
 
+fn points_to_root(path: &str) -> bool {
+    Path::new(path)
+        .components()
+        .all(|component| matches!(component, Component::CurDir))
+}
+
+/// Compute the home-relative default before comparing or creating targets.
+pub(crate) fn default_target(source: &str) -> String {
+    let normalized = Path::new(source)
+        .components()
+        .filter(|component| !matches!(component, Component::CurDir))
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    format!(".{normalized}")
+}
+
 pub(super) fn path_segments(path: &str) -> Vec<String> {
     path.split(['/', '\\'])
         .filter(|segment| !segment.is_empty())
@@ -232,6 +254,11 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
                             SYMLINK_PARENT_IN_TARGET,
                             "target path must not contain '..' components",
                         ),
+                        check_error(
+                            points_to_root(t),
+                            SYMLINK_ROOT_TARGET,
+                            "target must name a file or directory below $HOME",
+                        ),
                     ]
                 });
                 let mut checks: Vec<CheckItem> = vec![
@@ -249,6 +276,11 @@ pub fn validate(symlinks: &[Symlink], root: &Path) -> Vec<Diagnostic> {
                         has_parent_component(&s.source),
                         SYMLINK_PARENT_IN_SOURCE,
                         "source path must not contain '..' components",
+                    ),
+                    check_error(
+                        points_to_root(&s.source),
+                        SYMLINK_ROOT_SOURCE,
+                        "source must name a file or directory below symlinks/",
                     ),
                     check_error(
                         containment_error.is_some(),
@@ -441,6 +473,68 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
             warnings.iter().any(|w| w.message.contains("'..'")),
             "expected traversal warning, got: {warnings:?}"
         );
+    }
+
+    #[test]
+    fn validation_rejects_paths_that_only_name_their_root() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("symlinks")).unwrap();
+        std::fs::write(root.path().join("symlinks/file"), "content").unwrap();
+
+        for path in ["", ".", "./", "././"] {
+            for (source, target, code) in [
+                (path, ".safe", "symlink.root-source"),
+                ("file", path, "symlink.root-target"),
+            ] {
+                let entry = Symlink {
+                    source: source.to_string(),
+                    target: Some(target.to_string()),
+                    origin: None,
+                };
+                assert!(validate_paths(&entry).is_err(), "{entry:?}");
+                let diagnostics = validate(&[entry], root.path());
+                assert_eq!(diagnostics.len(), 1, "{path:?}: {diagnostics:?}");
+                assert_eq!(diagnostics[0].code.to_string(), code);
+                assert_eq!(diagnostics[0].source, SYMLINKS_TOML);
+                assert_eq!(diagnostics[0].item, source);
+                assert_eq!(
+                    diagnostics[0].severity,
+                    crate::infra::config::Severity::Error
+                );
+                assert!(diagnostics[0].message.contains("must name"));
+            }
+        }
+    }
+
+    #[test]
+    fn validation_accepts_named_dot_relative_paths_but_not_parents() {
+        for (source, target) in [
+            ("./bashrc", "./.bashrc"),
+            ("./config/./git/config", ".config/./git/config"),
+            (".hidden", "..hidden"),
+        ] {
+            validate_paths(&Symlink {
+                source: source.to_string(),
+                target: Some(target.to_string()),
+                origin: None,
+            })
+            .unwrap();
+        }
+        for (source, target) in [
+            ("./../outside", ".safe"),
+            ("file", "./../outside"),
+            ("file", r".\..\outside"),
+        ] {
+            assert!(
+                validate_paths(&Symlink {
+                    source: source.to_string(),
+                    target: Some(target.to_string()),
+                    origin: None,
+                })
+                .is_err(),
+                "{source} -> {target}"
+            );
+        }
     }
 
     #[test]

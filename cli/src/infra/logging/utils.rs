@@ -239,7 +239,6 @@ fn log_dir_from(
 ///
 /// Mirrors the layout produced by [`dotfiles_log_dir`] under an explicit base
 /// path so tests can isolate the run log without touching the environment.
-#[cfg(test)]
 pub(super) fn dotfiles_log_subdir(base: &std::path::Path) -> Option<PathBuf> {
     let dir = base.join("dotfiles").join("logs");
     fs::create_dir_all(&dir).ok()?;

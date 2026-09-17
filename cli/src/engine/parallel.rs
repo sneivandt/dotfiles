@@ -3,6 +3,7 @@
 use anyhow::Result;
 
 use super::apply::{process_single, remove_single};
+use super::batch::BatchProgress;
 use super::context::Context;
 use super::mode::ProcessOpts;
 use super::stats::TaskStats;
@@ -20,11 +21,10 @@ pub(super) fn process_apply_parallel<T: Send, R: Resource + Send>(
     opts: &ProcessOpts,
     get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync + Send,
 ) -> Result<super::stats::TaskResult> {
-    let stats = collect_parallel_stats(ctx, items, |item| {
+    collect_parallel_stats(ctx, items, |item| {
         let (resource, current) = get_resource_state(item)?;
         process_single(ctx, &resource, &current, opts)
-    })?;
-    Ok(stats.finish())
+    })
 }
 
 /// Remove resources in parallel using Rayon.
@@ -33,20 +33,17 @@ pub(super) fn process_remove_parallel<R: IntrinsicState + RemovableResource + Se
     resources: Vec<R>,
     verb: &'static str,
 ) -> Result<super::stats::TaskResult> {
-    let stats = collect_parallel_stats(ctx, resources, |resource| {
+    collect_parallel_stats(ctx, resources, |resource| {
         let current = resource.current_state()?;
         remove_single(ctx, &resource, &current, verb)
-    })?;
-    Ok(stats.finish())
+    })
 }
 
 /// Accumulate per-item [`TaskStats`] deltas in parallel using Rayon.
 ///
-/// Runs `work` on each item concurrently using Rayon's `try_fold` /
-/// `try_reduce` pattern: each thread accumulates a local `TaskStats` without
-/// any synchronisation, and the per-thread results are merged in a tree
-/// reduction at the end.  This avoids the contention of a shared
-/// `Mutex<TaskStats>` without changing observable behaviour.
+/// Each worker retains its outcomes even if another fails. A local stop flag
+/// prevents new dispatch after an error without cancelling independent tasks;
+/// work already in flight is joined and included in the final report.
 ///
 /// The diagnostic thread name is captured once before dispatching and re-set
 /// on each iteration so the log timeline remains accurate even when Rayon
@@ -61,25 +58,29 @@ fn collect_parallel_stats<T: Send>(
     ctx: &Context,
     items: Vec<T>,
     work: impl Fn(T) -> Result<TaskStats> + Sync + Send,
-) -> Result<TaskStats> {
+) -> Result<super::stats::TaskResult> {
     use rayon::prelude::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     let task_name = log_thread_name();
     let cancel_notice = std::sync::Once::new();
+    let stopped = AtomicBool::new(false);
     items
         .into_par_iter()
-        .try_fold(TaskStats::default, |mut acc, item| {
+        .fold(BatchProgress::default, |mut progress, item| {
             set_log_thread_name(&task_name);
             if ctx.is_cancelled() {
                 cancel_notice.call_once(|| {
                     ctx.log().warn("cancelled — stopping before next resource");
                 });
-                return Ok(acc);
+                progress.omit(1);
+            } else if stopped.load(Ordering::Acquire) {
+                progress.omit(1);
+            } else if progress.record(work(item)) {
+                stopped.store(true, Ordering::Release);
             }
-            acc.merge(&work(item)?);
-            Ok(acc)
+            progress
         })
-        .try_reduce(TaskStats::default, |mut a, b| {
-            a.merge(&b);
-            Ok(a)
-        })
+        .reduce(BatchProgress::default, BatchProgress::merge)
+        .finish()
 }

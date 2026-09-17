@@ -74,6 +74,36 @@ fn standard_no_op_has_only_no_changes_line() {
 }
 
 #[test]
+fn interrupted_partial_work_is_not_reported_as_no_changes() {
+    for dry_run in [false, true] {
+        let mut task = task_entry(
+            "partial batch",
+            TaskStatus::Interrupted,
+            Some("interrupted"),
+        );
+        task.duration = Some(Duration::from_secs(1));
+        task.actions = ActionCounts {
+            applied: u32::from(!dry_run),
+            planned: u32::from(dry_run),
+            not_attempted: 2,
+            ..ActionCounts::default()
+        };
+        let counts = SummaryCounts::from_tasks(&[task]);
+        assert_eq!(counts.actions.not_attempted, 2);
+        assert_eq!(
+            format_summary_lines(
+                counts,
+                SummaryMode::Standard,
+                dry_run,
+                "1.0s",
+                StyleChoice::plain(),
+            ),
+            ["1 interrupted · 1.0s"],
+        );
+    }
+}
+
+#[test]
 fn standard_error_summary_starts_with_failed_count() {
     let lines = format_summary_lines(
         SummaryCounts {
@@ -107,6 +137,7 @@ fn standard_summary_groups_task_and_action_counts() {
                 planned: 0,
                 skipped: 2,
                 failed: 1,
+                ..ActionCounts::default()
             },
         },
         SummaryMode::Standard,

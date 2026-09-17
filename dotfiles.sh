@@ -44,8 +44,7 @@ if [ "$BUILD_MODE" = true ]; then
     echo "ERROR: cargo not found. Install Rust to use --build mode." >&2
     exit 1
   fi
-  cd "$DOTFILES_ROOT/cli"
-  cargo build --profile dev-opt
+  (cd "$DOTFILES_ROOT/cli" && cargo build --profile dev-opt)
   exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" "$@"
 fi
 

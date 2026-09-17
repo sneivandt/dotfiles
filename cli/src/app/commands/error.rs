@@ -2,6 +2,11 @@
 
 use thiserror::Error;
 
+/// Command execution stopped before all selected work could complete.
+#[derive(Error, Debug)]
+#[error("command interrupted")]
+pub(crate) struct CommandInterrupted;
+
 /// Aggregate failure reported after one or more tasks already logged their
 /// individual errors.
 #[derive(Error, Debug)]

@@ -50,6 +50,14 @@ impl ExecutionSummary {
         self.failed_tasks
     }
 
+    /// Whether any scheduled task was stopped by cancellation.
+    #[must_use]
+    pub(crate) fn was_interrupted(&self) -> bool {
+        self.tasks
+            .values()
+            .any(|task| task.outcome == TaskOutcome::Cancelled)
+    }
+
     /// Merge another execution phase into this summary.
     pub(crate) fn merge(&mut self, other: Self) {
         self.failed_tasks = self.failed_tasks.saturating_add(other.failed_tasks);

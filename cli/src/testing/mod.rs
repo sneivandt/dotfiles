@@ -5,8 +5,8 @@
 //! It is compiled unconditionally: gating it behind a feature required the
 //! package to depend on itself as a dev-dependency, which gave `cargo build`
 //! and `cargo test` different feature sets and made them evict each other's
-//! cached build of this crate. Everything here is a re-export, so the linker
-//! drops it from the release binary.
+//! cached build of this crate. The facade's test-only entry points are unused
+//! by the release binary and can be dropped by the linker.
 
 pub mod cli {
     pub use crate::app::cli::{CheckOpts, GlobalOpts, InstallOpts};
@@ -48,7 +48,8 @@ pub mod config {
 
 pub mod engine {
     pub use crate::engine::{
-        CancellationToken, Context, ContextOpts, ProcessOpts, process_resources,
+        BatchCompletion, BatchReport, CancellationToken, Context, ContextOpts, ProcessOpts,
+        process_resources,
     };
 
     pub mod graph {
@@ -80,6 +81,12 @@ pub mod error {
 
 pub mod logging {
     pub use crate::infra::logging::{Log, Logger};
+
+    /// Create a silent logger whose persistent records stay inside a fixture.
+    #[must_use]
+    pub fn isolated_logger(command: &str, base_dir: &std::path::Path) -> Logger {
+        Logger::new_in(command, base_dir)
+    }
 }
 
 pub mod tasks {

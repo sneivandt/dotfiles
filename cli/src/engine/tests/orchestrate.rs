@@ -660,9 +660,8 @@ fn process_resources_stops_on_cancellation() {
     ];
     let opts = default_opts();
 
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    // Finishes with zero stats (no resources processed)
-    assert!(is_success(&result));
+    let error = process_resources(&ctx, resources, &opts).unwrap_err();
+    assert_unstarted_batch(&error, 2);
 }
 
 // -----------------------------------------------------------------------
@@ -685,8 +684,8 @@ fn process_precomputed_states_stops_on_cancellation() {
     ];
     let opts = default_opts();
 
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_success(&result));
+    let error = process_precomputed_states(&ctx, resource_states, &opts).unwrap_err();
+    assert_unstarted_batch(&error, 2);
 }
 
 // -----------------------------------------------------------------------
@@ -703,8 +702,20 @@ fn process_resources_remove_stops_on_cancellation() {
         MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
     ];
 
-    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(is_success(&result));
+    let error = process_resources_remove(&ctx, resources, "unlink").unwrap_err();
+    assert_unstarted_batch(&error, 2);
+}
+
+fn assert_unstarted_batch(error: &anyhow::Error, count: u32) {
+    let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+    assert_eq!(
+        report.completion(),
+        crate::engine::BatchCompletion::Interrupted
+    );
+    assert_eq!(report.stats().changed_count(), 0);
+    assert_eq!(report.stats().failed_count(), 0);
+    assert_eq!(report.interrupted_count(), 0);
+    assert_eq!(report.not_attempted_count(), count);
 }
 
 // -----------------------------------------------------------------------

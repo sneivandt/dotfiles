@@ -273,6 +273,52 @@ EOF
   fi
 )}
 
+test_wrapper_preserves_runtime_context()
+{(
+  log_stage "Testing cached and build-mode cwd, exact arguments, and failures"
+  tmpdir=$(mktemp -d)
+  trap 'rm -rf "$tmpdir"' EXIT
+  cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
+  mkdir -p "$tmpdir/cli/target/dev-opt" "$tmpdir/bin" "$tmpdir/fake-bin" "$tmpdir/caller dir"
+  cat > "$tmpdir/fake-bin/cargo" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$PWD" > "$DOTFILES_ROOT/cargo-cwd"
+exit "${WRAPPER_CARGO_EXIT:-0}"
+EOF
+  cat > "$tmpdir/bin/dotfiles" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$PWD" > "$DOTFILES_ROOT/child-cwd"
+printf '%s\n' "$@" > "$DOTFILES_ROOT/child-args"
+printf 'child stdout\n'
+printf 'child stderr\n' >&2
+exit 7
+EOF
+  cp "$tmpdir/bin/dotfiles" "$tmpdir/cli/target/dev-opt/dotfiles"
+  chmod +x "$tmpdir/fake-bin/cargo" "$tmpdir/bin/dotfiles" "$tmpdir/cli/target/dev-opt/dotfiles"
+  PATH="$tmpdir/fake-bin:$PATH"
+  export PATH
+  cd "$tmpdir/caller dir"
+  for mode in cached build; do
+    set --
+    [ "$mode" != build ] || set -- --build
+    status=0
+    "$tmpdir/dotfiles.sh" "$@" install --root . --overlay "../overlay dir" "" -- "literal value" \
+      > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
+    [ "$status" -eq 7 ] || log_error "$mode wrapper lost the child exit code"
+    [ "$(cat "$tmpdir/child-cwd")" = "$PWD" ] || log_error "$mode wrapper changed the child cwd"
+    expected=$(printf '%s\n' install --root . --overlay "../overlay dir" "" -- "literal value")
+    [ "$(cat "$tmpdir/child-args")" = "$expected" ] || log_error "$mode wrapper changed arguments"
+    [ "$(cat "$tmpdir/stdout")" = 'child stdout' ] || log_error "$mode wrapper changed stdout"
+    [ "$(cat "$tmpdir/stderr")" = 'child stderr' ] || log_error "$mode wrapper changed stderr"
+  done
+  [ "$(cat "$tmpdir/cargo-cwd")" = "$tmpdir/cli" ] || log_error "Cargo did not run from cli/"
+  rm "$tmpdir/child-cwd"
+  status=0
+  WRAPPER_CARGO_EXIT=23 "$tmpdir/dotfiles.sh" --build --version || status=$?
+  [ "$status" -eq 23 ] || log_error "Wrapper lost the build failure exit code"
+  [ ! -e "$tmpdir/child-cwd" ] || log_error "Wrapper ran the child after a failed build"
+)}
+
 test_wrapper_chmod_after_checksum()
 {(
   log_stage "Testing chmod +x occurs after checksum verification"
@@ -422,12 +468,19 @@ test_wrapper_release_pinned_urls()
 # Run all tests when executed directly
 case "$0" in
   *test-shell-wrapper.sh)
+    if [ "$#" -gt 0 ]; then
+      for test_name in "$@"; do
+        "$test_name"
+      done
+      exit 0
+    fi
     test_wrapper_build_mode
     test_wrapper_uses_local_binary
     test_wrapper_forwarded_args
     test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args
     test_wrapper_forwards_advanced_flags
+    test_wrapper_preserves_runtime_context
     test_wrapper_chmod_after_checksum
     test_wrapper_attestation_verification
     test_wrapper_release_pinned_urls

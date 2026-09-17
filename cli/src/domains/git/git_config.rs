@@ -1,6 +1,7 @@
 //! Task: configure global git settings.
 
 use anyhow::Result;
+use std::path::PathBuf;
 
 use crate::domains::git::config::git_config::GitSetting;
 use crate::domains::git::resources::git_config::GitConfigResource;
@@ -11,6 +12,7 @@ use crate::infra::ConfigHandle;
 #[derive(Debug)]
 pub struct ConfigureGit {
     config: ConfigHandle<Vec<GitSetting>>,
+    config_path: Option<PathBuf>,
 }
 
 const NAME: &str = "Git settings";
@@ -19,7 +21,22 @@ impl ConfigureGit {
     /// Create the task with a handle to its configuration slice.
     #[must_use]
     pub const fn new(config: ConfigHandle<Vec<GitSetting>>) -> Self {
-        Self { config }
+        Self {
+            config,
+            config_path: None,
+        }
+    }
+
+    /// Create the task with all settings scoped to one explicit config file.
+    #[must_use]
+    pub const fn with_config_path(
+        config: ConfigHandle<Vec<GitSetting>>,
+        config_path: PathBuf,
+    ) -> Self {
+        Self {
+            config,
+            config_path: Some(config_path),
+        }
     }
 }
 
@@ -46,7 +63,13 @@ impl Task for ConfigureGit {
         run_resource_task(
             ctx,
             resources,
-            |resource, _ctx| resource,
+            |resource, _ctx| {
+                if let Some(path) = &self.config_path {
+                    resource.using_config_path(path.clone())
+                } else {
+                    resource
+                }
+            },
             &ProcessOpts::strict("configure").sequential(),
         )
     }

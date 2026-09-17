@@ -65,6 +65,7 @@ The Rust integration tests under `cli/tests/` cover distinct boundaries:
 | `domain_boundaries` | Architectural dependency boundaries |
 | `e2e_apply` | End-to-end convergence against controlled state |
 | `install_command` | Install selection and command composition |
+| `lifecycle_contracts` | Shared real-task dry-run, apply/repeat, failure/retry, and conservative-removal contracts on isolated fixtures |
 | `task_execution` | Filesystem-backed task execution, resource convergence, and dry-run safety |
 | `task_output` | Visible task outcomes, missing-tool reasons, and command exit status |
 | `test_command` | Validation task construction and outcomes |
@@ -102,6 +103,22 @@ rejection cases. Judge test cleanup by the branches and contracts retained,
 not the number of registered tests. Derived equality, cloning, and simple
 field copies alone do not need independent tests; shared ownership,
 cancellation propagation, and observable formatting still do.
+
+The reusable [`lifecycle.rs`](../cli/tests/common/lifecycle.rs) harness drives
+real symlink, Git-hook, and Git-setting tasks using isolated roots, homes, and
+injected adapters. Cases in
+[`lifecycle_contracts.rs`](../cli/tests/lifecycle_contracts.rs) compare managed
+filesystem state, use fresh contexts between runs, and assert exact logical
+resource actions and counts rather than message membership. Keep
+platform-specific cases explicit instead of gating the whole suite on Unix.
+
+Engine [`batch_reports.rs`](../cli/src/engine/tests/batch_reports.rs) and
+[`parallel.rs`](../cli/src/engine/tests/parallel.rs) cover strict partial failure,
+state-discovery errors, cancellation, in-flight worker completion, and
+sequential/parallel action cardinality. Logging tests ensure interrupted changes
+are not labelled "No changes". Run
+`cargo test --profile ci --test lifecycle_contracts` for the shared real-task
+contracts.
 
 ## Desktop shell
 
@@ -182,12 +199,32 @@ sh hooks/pre-commit
 DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
 ```
 
+`check-rust.sh` validates an exported snapshot of the staged index, not the
+working tree. Unstaged and untracked content is excluded, the working tree
+remains untouched, and Cargo's target cache is reused.
+
+Run the isolated hook-input and wrapper-context regressions from the repository
+root without installing hooks or running a real bootstrap:
+
+```bash
+sh .github/workflows/scripts/linux/test-hook-inputs.sh
+sh .github/workflows/scripts/linux/test-shell-wrapper.sh test_wrapper_preserves_runtime_context
+```
+
+On Windows, load the wrapper test functions and run the isolated path fixture:
+
+```powershell
+. .\.github\workflows\scripts\windows\Test-ShellWrapper.ps1
+Test-IsolatedWrapperPath
+```
+
 The full hook integration script creates real commits and refuses to run in a
 dirty checkout. Run it in a fresh scratch repository:
 
 ```bash
 mkdir -p /tmp/hooktest/hooks && cp -a hooks/. /tmp/hooktest/hooks/
 cd /tmp/hooktest && git init -q
+git -c user.name=Test -c user.email=test@test.local commit --allow-empty -qm baseline
 ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit
 DIR=/path/to/dotfiles sh /path/to/dotfiles/.github/workflows/scripts/linux/test-git-hooks.sh
 ```
@@ -275,3 +312,9 @@ outside any repository. Installation removes the obsolete managed
 
 Escalate to the full suite when shared engine behavior, catalog composition, or
 configuration loading changes.
+
+Executor regressions run with `cargo test --profile ci infra::exec::`.
+Native Windows cases use isolated subprocess jobs and cover timeout,
+cancellation, and output draining after the process leader exits. Their ignored
+child fixture is invoked by those tests; it is not a standalone test to run
+with `--ignored`.

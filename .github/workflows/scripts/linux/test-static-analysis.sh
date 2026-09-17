@@ -46,13 +46,13 @@ test_shellcheck()
   fi
   log_stage "Running shellcheck"
 
-  scripts="$DIR/dotfiles.sh"
+  set -- "$DIR/dotfiles.sh"
 
   # Collect .sh files from key directories
   for search_dir in "$DIR"/.github "$DIR"/hooks; do
     [ -d "$search_dir" ] || continue
     while IFS= read -r f; do
-      is_shell_script "$f" && scripts="$scripts $f"
+      is_shell_script "$f" && set -- "$@" "$f"
     done <<EOF
 $(find "$search_dir" -type f -name "*.sh")
 EOF
@@ -61,20 +61,19 @@ EOF
   # Add shell scripts from symlinks/
   if [ -d "$DIR/symlinks" ]; then
     while IFS= read -r f; do
-      is_shell_script "$f" && scripts="$scripts $f"
+      is_shell_script "$f" && set -- "$@" "$f"
     done <<EOF
 $(find "$DIR/symlinks" -type f -name "*.sh" 2>/dev/null)
 EOF
   fi
 
-  log_verbose "Checking: $scripts"
-  # shellcheck disable=SC2086  # intentional word splitting
+  log_verbose "Checking $# shell scripts"
   shellcheck \
     --severity=warning \
     --shell=sh \
     --exclude=SC1090,SC1091,SC3043,SC2154 \
     --enable=avoid-nullary-conditions \
-    $scripts
+    "$@"
 )}
 
 # Execute a specific test when run directly: sh test-static-analysis.sh <function_name>

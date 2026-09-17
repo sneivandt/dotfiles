@@ -100,7 +100,7 @@ impl ManagedTargets {
         ctx: &Context,
         command: ApmCommand,
     ) -> Result<ManagedCommandResult> {
-        let mut changed = remove_legacy_cowork_lock_deployments(ctx.home())?;
+        let mut changed = remove_legacy_cowork_lock_deployments(ctx)?;
         let primary_result = match run_apm_invocation(ctx, command, command.args())? {
             result @ ApmCommandResult::Success(_) => result,
             result @ ApmCommandResult::AuthSkipped(_) => {

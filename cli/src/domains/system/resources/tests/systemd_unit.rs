@@ -233,6 +233,116 @@ fn current_state_incorrect_when_disabled_unit_is_enabled() {
 }
 
 #[test]
+fn static_enablement_still_checks_the_requested_runtime_state() {
+    for (enabled, active, correct) in [
+        (false, "inactive", true),
+        (false, "failed", true),
+        (false, "active", false),
+        (false, "activating", false),
+        (true, "active", true),
+        (true, "inactive", false),
+    ] {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "static.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("static\n")));
+        expect_runtime(
+            &mut mock,
+            "static.service",
+            UnitScope::System,
+            &format!("ActiveState={active}\n"),
+        );
+        let mut resource =
+            SystemdUnitResource::new("static.service", UnitScope::System, Arc::new(mock));
+        resource.enabled = enabled;
+
+        let state = resource.current_state().unwrap();
+        assert_eq!(
+            matches!(state, ResourceState::Correct),
+            correct,
+            "enabled={enabled}, active={active}: {state:?}"
+        );
+        if !correct {
+            assert!(matches!(state, ResourceState::Incorrect { .. }));
+        }
+    }
+}
+
+#[test]
+fn disabling_a_static_unit_converges_after_stopping_it() {
+    let mut sequence = mockall::Sequence::new();
+    let mut mock = MockExecutor::new();
+    for active in ["active", "inactive", "inactive"] {
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == ["is-enabled", "static.service"]
+                    && !spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("static\n")));
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(|spec| {
+                spec.program() == "systemctl"
+                    && spec.arguments() == [
+                        "show",
+                        "--property=ActiveState,Type,Result,ExecMainStartTimestampMonotonic,ConditionResult",
+                        "static.service",
+                    ]
+                    && !spec.is_checked()
+            })
+            .returning(move |_| Ok(ExecResult::success(format!("ActiveState={active}\n"))));
+        if active == "active" {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(|spec| {
+                    spec.program() == "sudo"
+                        && spec.arguments() == ["systemctl", "disable", "--now", "static.service"]
+                        && !spec.is_checked()
+                })
+                .returning(|_| Ok(ExecResult::success("")));
+        }
+    }
+    let mut resource =
+        SystemdUnitResource::new("static.service", UnitScope::System, Arc::new(mock));
+    resource.enabled = false;
+
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Incorrect { .. }
+    ));
+    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+}
+
+#[test]
+fn failed_static_probe_is_not_treated_as_disabled() {
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(|spec| spec.arguments() == ["is-enabled", "static.service"])
+        .returning(|_| Ok(ExecResult::failure("static\n", "probe failed", Some(1))));
+    let mut resource =
+        SystemdUnitResource::new("static.service", UnitScope::System, Arc::new(mock));
+    resource.enabled = false;
+
+    assert!(matches!(
+        resource.current_state().unwrap(),
+        ResourceState::Unknown { .. }
+    ));
+}
+
+#[test]
 fn current_state_correct_when_disabled_unit_is_not_installed() {
     let mut mock = MockExecutor::new();
     mock.expect_execute().once().returning(|_| {

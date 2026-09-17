@@ -66,6 +66,7 @@ syn = { version = "3", default-features = false, features = ["full", "parsing", 
 proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
 
 [target.'cfg(windows)'.dependencies]
+process-wrap = { version = "10", default-features = false, features = ["std", "job-object"] }
 winreg = "0.56"
 
 [target.'cfg(unix)'.dependencies]

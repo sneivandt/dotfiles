@@ -14,6 +14,7 @@
 
 /// Single-resource processing: check state, apply or remove one resource.
 pub mod apply;
+mod batch;
 /// Shared execution context for tasks.
 pub mod context;
 /// Task dependency graph and cycle detection.
@@ -33,6 +34,7 @@ pub mod resource;
 pub mod task;
 
 pub use crate::infra::cancellation::CancellationToken;
+pub use batch::{BatchCompletion, BatchReport};
 pub use context::Context;
 pub use context::ContextOpts;
 pub use mode::ProcessMode;

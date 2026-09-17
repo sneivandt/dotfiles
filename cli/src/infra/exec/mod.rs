@@ -5,7 +5,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -27,7 +27,7 @@ use output::{failure_output, log_command_output};
     target_os = "linux"
 ))]
 use process::child_exited_without_reaping;
-use process::{terminate_child, wait_after_terminate};
+use process::{Child, terminate_child, wait_after_terminate};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_mins(30);
 const TOOL_TIMEOUT: Duration = Duration::from_mins(2);
@@ -608,16 +608,24 @@ fn execute_unchecked(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = command.spawn().map_err(|source| ExecError::Spawn {
+    let child = process::spawn(command).map_err(|source| ExecError::Spawn {
         command: label.to_string(),
         source,
     })?;
-    let stdout = child.stdout.take().ok_or_else(|| ExecError::Io {
+    collect_child(child, label, settings)
+}
+
+fn collect_child(
+    mut child: Child,
+    label: &str,
+    settings: &CommandSettings,
+) -> std::result::Result<ExecResult, ExecError> {
+    let stdout = process::take_stdout(&mut child).ok_or_else(|| ExecError::Io {
         command: label.to_string(),
         operation: "capturing stdout",
         source: io::Error::other("child stdout pipe was unavailable"),
     })?;
-    let stderr = child.stderr.take().ok_or_else(|| ExecError::Io {
+    let stderr = process::take_stderr(&mut child).ok_or_else(|| ExecError::Io {
         command: label.to_string(),
         operation: "capturing stderr",
         source: io::Error::other("child stderr pipe was unavailable"),
@@ -672,11 +680,13 @@ fn execute_unchecked(
             target_os = "haiku",
             target_os = "linux"
         )))]
-        if let Some(status) = child.try_wait().map_err(|source| ExecError::Io {
-            command: label.to_string(),
-            operation: "waiting for child",
-            source,
-        })? {
+        if pipes_closed
+            && let Some(status) = child.try_wait().map_err(|source| ExecError::Io {
+                command: label.to_string(),
+                operation: "waiting for child",
+                source,
+            })?
+        {
             break status;
         }
 
@@ -885,3 +895,6 @@ pub(crate) fn run_tool_unchecked(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, windows))]
+mod tests_windows;

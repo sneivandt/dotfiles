@@ -1,4 +1,5 @@
 mod apply_tests;
+mod batch_reports;
 mod failure_paths;
 mod graph_invariants;
 mod orchestrate;

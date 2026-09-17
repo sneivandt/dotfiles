@@ -19,6 +19,7 @@ use crate::infra::logging::OutputExt as _;
 
 const COWORK_TARGET: &str = "copilot-cowork";
 const COWORK_URI_PREFIX: &str = "cowork://";
+const OWNERSHIP_FILE: &str = ".dotfiles-apm-skills.json";
 
 /// Reconcile APM's shared skill deployment into Cowork's protected skill tree.
 ///
@@ -28,65 +29,87 @@ const COWORK_URI_PREFIX: &str = "cowork://";
 /// state, or a managed file cannot be read or written.
 pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
     let (source, target) = cowork_skill_paths(ctx)?;
+    let mut changed = remove_legacy_cowork_lock_deployments(ctx)?;
     let desired = desired_cowork_skill_names(ctx.home())?;
-    let mut changed = !target.exists();
+    let mut owned = read_owned_skills(&target)?;
+    changed |= !target.exists();
     std::fs::create_dir_all(&target)
         .with_context(|| format!("creating Copilot Cowork skill target {}", target.display()))?;
 
-    for entry in
-        std::fs::read_dir(&source).with_context(|| format!("reading {}", source.display()))?
-    {
-        let entry = entry.with_context(|| format!("reading entry in {}", source.display()))?;
-        if !entry
-            .file_type()
-            .with_context(|| format!("reading type for {}", entry.path().display()))?
-            .is_dir()
-        {
-            continue;
-        }
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let target_skill = target.join(&name);
-        if desired.contains(&name) {
-            if skill_files_match(&entry.path(), &target_skill)? {
-                continue;
-            }
-            copy_dir_recursive(&entry.path(), &target_skill, false).with_context(|| {
+    for name in &desired {
+        let source_skill = source.join(name);
+        let target_skill = target.join(name);
+        anyhow::ensure!(
+            source_skill.is_dir(),
+            "APM shared skill {} is missing",
+            source_skill.display()
+        );
+        if !skill_files_match(&source_skill, &target_skill)? {
+            copy_dir_recursive(&source_skill, &target_skill, false).with_context(|| {
                 format!(
                     "reconciling APM skill {name} into Copilot Cowork at {}",
                     target_skill.display()
                 )
             })?;
+            anyhow::ensure!(
+                skill_files_match(&source_skill, &target_skill)?,
+                "Copilot Cowork skill {name} did not converge at {}",
+                target_skill.display()
+            );
             changed = true;
             ctx.log()
                 .info(format!("updated: Copilot Cowork skill {name}"));
-        } else if remove_skill_entry_point(&target_skill)? {
+        }
+        if owned.insert(name.clone()) {
+            // Record each completed copy before another skill can fail.
+            write_owned_skills(&target, &owned)?;
+            changed = true;
+        }
+    }
+
+    for name in owned.difference(&desired) {
+        if remove_skill_entry_point(&target.join(name))? {
             changed = true;
             ctx.log()
                 .info(format!("removed: Copilot Cowork skill {name}"));
         }
     }
-
-    for entry in
-        std::fs::read_dir(&target).with_context(|| format!("reading {}", target.display()))?
-    {
-        let entry = entry.with_context(|| format!("reading entry in {}", target.display()))?;
-        if entry
-            .file_type()
-            .with_context(|| format!("reading type for {}", entry.path().display()))?
-            .is_dir()
-            && !desired.contains(&entry.file_name().to_string_lossy().into_owned())
-            && remove_skill_entry_point(&entry.path())?
-        {
-            changed = true;
-            ctx.log().info(format!(
-                "removed: Copilot Cowork skill {}",
-                entry.file_name().to_string_lossy()
-            ));
-        }
+    if owned != desired {
+        write_owned_skills(&target, &desired)?;
+        changed = true;
     }
 
-    changed |= remove_legacy_cowork_lock_deployments(ctx.home())?;
     Ok(changed)
+}
+
+fn read_owned_skills(target: &Path) -> Result<BTreeSet<String>> {
+    let path = target.join(OWNERSHIP_FILE);
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("reading {}", path.display()));
+        }
+    };
+    let names: BTreeSet<String> =
+        serde_json::from_slice(&bytes).with_context(|| format!("parsing {}", path.display()))?;
+    anyhow::ensure!(
+        names.iter().all(|name| valid_skill_name(name)),
+        "invalid skill name in {}",
+        path.display()
+    );
+    Ok(names)
+}
+
+fn write_owned_skills(target: &Path, names: &BTreeSet<String>) -> Result<()> {
+    let path = target.join(OWNERSHIP_FILE);
+    let content = serde_json::to_string_pretty(names).context("serializing Cowork ownership")?;
+    write_atomic(&path, format!("{content}\n"))
+        .with_context(|| format!("writing {}", path.display()))
+}
+
+fn valid_skill_name(name: &str) -> bool {
+    !name.is_empty() && !matches!(name, "." | "..") && !name.contains(['/', '\\', ':'])
 }
 
 /// Compare only APM-owned source entries; preserve Cowork-owned extra files.
@@ -129,7 +152,8 @@ fn skill_files_match(source: &Path, target: &Path) -> Result<bool> {
 ///
 /// Dotfiles owns the ACL-sensitive Cowork copy. Leaving `cowork://` records in
 /// APM's ledger makes later installs retry directory replacement.
-pub(super) fn remove_legacy_cowork_lock_deployments(home: &Path) -> Result<bool> {
+pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<bool> {
+    let home = ctx.home();
     let lock_path = home.join(".apm").join("apm.lock.yaml");
     let text = match std::fs::read_to_string(&lock_path) {
         Ok(text) => text,
@@ -144,8 +168,23 @@ pub(super) fn remove_legacy_cowork_lock_deployments(home: &Path) -> Result<bool>
     }
     let mut lock: Value = serde_yaml_ng::from_str(&text)
         .with_context(|| format!("parsing APM lockfile {}", lock_path.display()))?;
-    if !strip_legacy_cowork_deployments(&mut lock) {
+    let mut legacy_skills = BTreeSet::new();
+    if !strip_legacy_cowork_deployments(&mut lock, &mut legacy_skills) {
         return Ok(false);
+    }
+    if let Some(target) = copilot_cowork_skills_path(ctx)
+        && target
+            .try_exists()
+            .with_context(|| format!("checking {}", target.display()))?
+    {
+        let mut owned = read_owned_skills(&target)?;
+        let before = owned.clone();
+        owned.extend(legacy_skills);
+        if owned != before {
+            // Preserve explicit native deployment ownership before APM rewrites
+            // the lock. Shared .agents entries alone are not Cowork ownership.
+            write_owned_skills(&target, &owned)?;
+        }
     }
     let serialized = serde_yaml_ng::to_string(&lock)
         .with_context(|| format!("serializing APM lockfile {}", lock_path.display()))?;
@@ -154,7 +193,7 @@ pub(super) fn remove_legacy_cowork_lock_deployments(home: &Path) -> Result<bool>
     Ok(true)
 }
 
-fn strip_legacy_cowork_deployments(lock: &mut Value) -> bool {
+fn strip_legacy_cowork_deployments(lock: &mut Value, names: &mut BTreeSet<String>) -> bool {
     let Some(root) = lock.as_mapping_mut() else {
         return false;
     };
@@ -173,7 +212,7 @@ fn strip_legacy_cowork_deployments(lock: &mut Value) -> bool {
                 .and_then(Value::as_sequence_mut)
             {
                 let before = files.len();
-                files.retain(|file| !is_cowork_uri(file));
+                files.retain(|file| !record_legacy_cowork_uri(file, names));
                 changed |= files.len() != before;
             }
             if let Some(hashes) = dependency
@@ -187,6 +226,7 @@ fn strip_legacy_cowork_deployments(lock: &mut Value) -> bool {
                     .collect::<Vec<_>>();
                 changed |= !keys.is_empty();
                 for key in keys {
+                    record_legacy_cowork_uri(&key, names);
                     hashes.remove(&key);
                 }
             }
@@ -197,13 +237,13 @@ fn strip_legacy_cowork_deployments(lock: &mut Value) -> bool {
         match deployments {
             Value::Sequence(records) => {
                 let before = records.len();
-                records.retain(|record| !is_cowork_deployment(record));
+                records.retain(|record| !record_legacy_cowork_deployment(record, names));
                 changed |= records.len() != before;
             }
             Value::Mapping(by_owner) => {
                 for records in by_owner.values_mut().filter_map(Value::as_sequence_mut) {
                     let before = records.len();
-                    records.retain(|record| !is_cowork_deployment(record));
+                    records.retain(|record| !record_legacy_cowork_deployment(record, names));
                     changed |= records.len() != before;
                 }
             }
@@ -216,6 +256,28 @@ fn strip_legacy_cowork_deployments(lock: &mut Value) -> bool {
     }
 
     changed
+}
+
+fn record_legacy_cowork_deployment(value: &Value, names: &mut BTreeSet<String>) -> bool {
+    if record_legacy_cowork_uri(value, names) {
+        return true;
+    }
+    if let Some(uri) = value.get("value") {
+        record_legacy_cowork_uri(uri, names);
+    }
+    is_cowork_deployment(value)
+}
+
+fn record_legacy_cowork_uri(value: &Value, names: &mut BTreeSet<String>) -> bool {
+    if let Some(path) = value
+        .as_str()
+        .and_then(|uri| uri.strip_prefix("cowork://skills/"))
+        && let Some(name) = path.split(['/', '\\']).next()
+        && valid_skill_name(name)
+    {
+        names.insert(name.to_string());
+    }
+    is_cowork_uri(value)
 }
 
 fn is_cowork_deployment(value: &Value) -> bool {
@@ -256,11 +318,6 @@ fn remove_skill_entry_point(target_skill: &Path) -> Result<bool> {
 
 fn cowork_skill_paths(ctx: &Context) -> Result<(PathBuf, PathBuf)> {
     let source = ctx.home().join(".agents").join("skills");
-    anyhow::ensure!(
-        source.is_dir(),
-        "APM shared skill target {} is missing",
-        source.display()
-    );
     let target = copilot_cowork_skills_path(ctx).context(
         "Copilot Cowork skills path is not configured; set \
          APM_COPILOT_COWORK_SKILLS_DIR or `apm config set copilot-cowork-skills-dir`",
@@ -300,8 +357,11 @@ fn desired_cowork_skill_names(home: &Path) -> Result<BTreeSet<String>> {
             let normalized = deployed_file.replace('\\', "/");
             if let Some(path) = normalized.strip_prefix(".agents/skills/")
                 && let Some(name) = path.split('/').next()
-                && !name.is_empty()
             {
+                anyhow::ensure!(
+                    valid_skill_name(name),
+                    "invalid APM skill path {deployed_file}"
+                );
                 names.insert(name.to_owned());
             }
         }
@@ -365,21 +425,135 @@ mod tests {
     #[test]
     fn reconcile_removes_entry_point_when_package_excludes_cowork() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
-        std::fs::write(target_skill.join("SKILL.md"), "old").expect("write target");
+        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+        reconcile_cowork_skills(&ctx).expect("establish ownership");
         std::fs::write(target_skill.join("placeholder.txt"), "preserved")
             .expect("write placeholder");
+        std::fs::write(
+            dir.path().join(".apm").join("apm.lock.yaml"),
+            "dependencies:\n  - deployed_files:\n      - .agents/skills/example/SKILL.md\n\
+             \x20   target_subset: [agent-skills]\n",
+        )
+        .expect("exclude Cowork");
 
-        reconcile_cowork_skills(&ctx).expect("reconcile skills");
+        assert!(reconcile_cowork_skills(&ctx).expect("reconcile skills"));
 
         assert!(!target_skill.join("SKILL.md").exists());
         assert!(target_skill.join("placeholder.txt").exists());
+        assert!(!reconcile_cowork_skills(&ctx).expect("repeat reconciliation"));
+    }
+
+    #[test]
+    fn reconcile_preserves_unmanaged_skills_including_excluded_shared_names() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
+        std::fs::write(target_skill.join("SKILL.md"), "independent example")
+            .expect("write independent skill");
+        let personal = target_skill.parent().unwrap().join("personal");
+        std::fs::create_dir_all(&personal).expect("create personal skill");
+        std::fs::write(personal.join("SKILL.md"), "independent personal")
+            .expect("write personal skill");
+
+        assert!(!reconcile_cowork_skills(&ctx).expect("reconcile skills"));
+        assert_eq!(
+            std::fs::read_to_string(target_skill.join("SKILL.md")).unwrap(),
+            "independent example"
+        );
+        assert_eq!(
+            std::fs::read_to_string(personal.join("SKILL.md")).unwrap(),
+            "independent personal"
+        );
+        assert!(!target_skill.parent().unwrap().join(OWNERSHIP_FILE).exists());
+    }
+
+    #[test]
+    fn reconcile_removes_owned_skills_after_shared_source_and_lock_entry_disappear() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let (source_skill, target_skill, ctx) =
+            setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+        assert!(reconcile_cowork_skills(&ctx).expect("install skill"));
+        assert!(!reconcile_cowork_skills(&ctx).expect("repeat install"));
+        std::fs::remove_dir_all(source_skill.parent().unwrap()).expect("remove shared skills");
+        std::fs::write(
+            dir.path().join(".apm").join("apm.lock.yaml"),
+            "dependencies: []\n",
+        )
+        .expect("remove dependency");
+
+        assert!(reconcile_cowork_skills(&ctx).expect("remove owned skill"));
+        assert!(!target_skill.join("SKILL.md").exists());
+        assert!(target_skill.is_dir());
+        assert!(!reconcile_cowork_skills(&ctx).expect("repeat removal"));
+    }
+
+    #[test]
+    fn reconcile_keeps_ownership_of_completed_copies_when_a_later_skill_fails() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+        std::fs::write(
+            dir.path().join(".apm").join("apm.lock.yaml"),
+            "dependencies:\n  - deployed_files:\n      - .agents/skills/example/SKILL.md\n\
+             \x20     - .agents/skills/z-missing/SKILL.md\n",
+        )
+        .expect("write missing source dependency");
+
+        let error = reconcile_cowork_skills(&ctx).expect_err("missing source must fail");
+        assert!(error.to_string().contains("z-missing"));
+        assert_eq!(
+            read_owned_skills(target_skill.parent().unwrap()).unwrap(),
+            BTreeSet::from(["example".to_string()])
+        );
+        assert!(target_skill.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn reconcile_rejects_corrupt_or_unsafe_ownership_without_mutating_skills() {
+        for inventory in ["not json", "[\"..\"]", "[\"../personal\"]"] {
+            let dir = tempfile::tempdir().expect("create temp dir");
+            let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
+            std::fs::write(target_skill.join("SKILL.md"), "preserve").unwrap();
+            std::fs::write(
+                target_skill.parent().unwrap().join(OWNERSHIP_FILE),
+                inventory,
+            )
+            .unwrap();
+
+            assert!(reconcile_cowork_skills(&ctx).is_err());
+            assert_eq!(
+                std::fs::read_to_string(target_skill.join("SKILL.md")).unwrap(),
+                "preserve"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_ownership_comes_only_from_explicit_cowork_deployment_records() {
+        for record in [
+            "dependencies:\n- deployed_files: [cowork://skills/example/SKILL.md]\n",
+            "dependencies:\n- deployed_file_hashes:\n    cowork://skills/example/SKILL.md: old\n",
+            "deployments:\n- target: copilot-cowork\n  value: cowork://skills/example/SKILL.md\n",
+            "deployments:\n  owner:\n  - target: copilot-cowork\n    value: cowork://skills/example/SKILL.md\n",
+        ] {
+            let mut lock: Value = serde_yaml_ng::from_str(record).unwrap();
+            let mut names = BTreeSet::new();
+            assert!(strip_legacy_cowork_deployments(&mut lock, &mut names));
+            assert_eq!(names, BTreeSet::from(["example".to_string()]));
+        }
+        let mut lock: Value = serde_yaml_ng::from_str(
+            "dependencies:\n- deployed_files: [.agents/skills/personal/SKILL.md]\n\
+             deployments:\n- value: cowork://skills/../SKILL.md\n",
+        )
+        .unwrap();
+        let mut names = BTreeSet::new();
+        assert!(strip_legacy_cowork_deployments(&mut lock, &mut names));
+        assert!(names.is_empty());
     }
 
     #[test]
     fn removes_legacy_cowork_lock_entries() {
         let dir = tempfile::tempdir().expect("create temp dir");
-        std::fs::create_dir_all(dir.path().join(".apm")).expect("create APM directory");
+        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
+        std::fs::write(target_skill.join("SKILL.md"), "legacy deployment").unwrap();
         std::fs::write(
             dir.path().join(".apm").join("apm.lock.yaml"),
             "dependencies:\n\
@@ -394,10 +568,58 @@ mod tests {
         )
         .expect("write lock");
 
-        assert!(remove_legacy_cowork_lock_deployments(dir.path()).expect("remove legacy records"));
+        assert!(remove_legacy_cowork_lock_deployments(&ctx).expect("remove legacy records"));
         let lock = std::fs::read_to_string(dir.path().join(".apm").join("apm.lock.yaml"))
             .expect("read lock");
         assert!(!lock.contains("cowork://"));
         assert!(lock.contains(".agents/skills/example/SKILL.md"));
+        assert_eq!(
+            read_owned_skills(target_skill.parent().unwrap()).unwrap(),
+            BTreeSet::from(["example".to_string()])
+        );
+        assert!(!remove_legacy_cowork_lock_deployments(&ctx).expect("repeat migration"));
+
+        std::fs::write(
+            dir.path().join(".apm").join("apm.lock.yaml"),
+            "dependencies: []\n",
+        )
+        .expect("simulate native removal of dependency");
+        assert!(reconcile_cowork_skills(&ctx).expect("remove legacy skill"));
+        assert!(!target_skill.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn legacy_migration_does_not_discard_lock_evidence_if_inventory_cannot_be_written() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
+        let lock = "dependencies:\n  - deployed_files:\n      - cowork://skills/example/SKILL.md\n";
+        let lock_path = dir.path().join(".apm").join("apm.lock.yaml");
+        std::fs::write(&lock_path, lock).unwrap();
+        std::fs::create_dir(target_skill.parent().unwrap().join(OWNERSHIP_FILE)).unwrap();
+
+        assert!(remove_legacy_cowork_lock_deployments(&ctx).is_err());
+        assert_eq!(std::fs::read_to_string(lock_path).unwrap(), lock);
+    }
+
+    #[test]
+    fn reconcile_migrates_legacy_records_created_by_the_native_command() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills]");
+        let lock_path = dir.path().join(".apm").join("apm.lock.yaml");
+        std::fs::write(
+            &lock_path,
+            "dependencies:\n  - deployed_files:\n      - cowork://skills/example/SKILL.md\n",
+        )
+        .unwrap();
+        std::fs::write(target_skill.join("SKILL.md"), "legacy").unwrap();
+
+        assert!(reconcile_cowork_skills(&ctx).expect("migrate and reconcile"));
+        assert!(
+            !std::fs::read_to_string(lock_path)
+                .unwrap()
+                .contains("cowork://")
+        );
+        assert!(!target_skill.join("SKILL.md").exists());
+        assert!(!reconcile_cowork_skills(&ctx).expect("repeat reconciliation"));
     }
 }

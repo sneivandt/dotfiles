@@ -272,6 +272,8 @@ struct ProbeTask {
     dependencies: Vec<TaskId>,
     trace: Trace,
     fails: bool,
+    cancels: bool,
+    interrupts: bool,
 }
 
 impl ProbeTask {
@@ -282,6 +284,8 @@ impl ProbeTask {
             dependencies: Vec::new(),
             trace: Arc::clone(trace),
             fails: false,
+            cancels: false,
+            interrupts: false,
         }
     }
 
@@ -292,6 +296,16 @@ impl ProbeTask {
 
     const fn failing(mut self) -> Self {
         self.fails = true;
+        self
+    }
+
+    const fn cancelling(mut self) -> Self {
+        self.cancels = true;
+        self
+    }
+
+    const fn interrupted(mut self) -> Self {
+        self.interrupts = true;
         self
     }
 }
@@ -313,20 +327,33 @@ impl Task for ProbeTask {
         true
     }
 
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
         self.trace
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(self.name.clone());
+        if self.cancels {
+            ctx.cancellation_token().cancel();
+        }
         if self.fails {
             anyhow::bail!("{} failed", self.name);
+        }
+        if self.interrupts {
+            return Err(cancelled_command().into());
         }
         Ok(TaskResult::Ok)
     }
 }
 
+fn cancelled_command() -> crate::infra::exec::ExecError {
+    crate::infra::exec::ExecError::Cancelled {
+        command: "fixture command".into(),
+        result: crate::infra::exec::ExecResult::success(""),
+    }
+}
+
 fn sequential_context() -> (Context, Arc<Logger>) {
-    let (ctx, log) = make_static_context(empty_config(std::path::PathBuf::from("/tmp")));
+    let (ctx, log) = make_static_context(empty_config(std::path::PathBuf::from("fixture-root")));
     // Sequential execution keeps the recorded trace deterministic, so
     // ordering assertions describe dependency edges rather than thread
     // scheduling luck.
@@ -583,19 +610,184 @@ fn run_rejects_a_cyclic_graph_before_executing_anything() {
 }
 
 #[test]
-fn run_is_a_no_op_when_already_cancelled() {
-    let trace = trace();
-    let tasks = vec![ProbeTask::new("a", 1, &trace)];
-    let (ctx, log) = sequential_context();
-    ctx.cancellation_token().cancel();
+fn run_reports_interruption_without_dispatch_when_already_cancelled() {
+    for parallel in [false, true] {
+        let trace = trace();
+        let tasks = vec![ProbeTask::new("a", 1, &trace)];
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_parallel(parallel);
+        ctx.cancellation_token().cancel();
 
-    run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
-        .expect("cancellation is not itself a failure");
+        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+            .expect_err("cancelled work must not succeed");
+
+        assert!(error.is::<CommandInterrupted>(), "{error:#}");
+        assert!(
+            entries(&trace).is_empty(),
+            "cancellation before dispatch must skip every task"
+        );
+    }
+}
+
+#[test]
+fn typed_task_cancellation_interrupts_the_command_without_a_global_signal() {
+    for parallel in [false, true] {
+        let trace = trace();
+        let tasks = vec![
+            ProbeTask::new("interrupted", 1, &trace).interrupted(),
+            ProbeTask::new("dependent", 2, &trace).depends_on(&[1]),
+        ];
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_parallel(parallel);
+
+        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+            .expect_err("typed interruption must reach command completion");
+
+        assert!(error.is::<CommandInterrupted>(), "{error:#}");
+        assert!(!ctx.is_cancelled(), "no global token was set");
+        assert_eq!(entries(&trace), ["interrupted"]);
+    }
+}
+
+#[test]
+fn partial_batch_cancellation_reaches_command_completion_with_its_counts() {
+    use crate::engine::{
+        ProcessOpts, Resource, ResourceChange, ResourceResult, ResourceState,
+        process_resources_with_cache,
+    };
+    use crate::infra::logging::{ActionCounts, TaskStatus};
+
+    struct BatchResource {
+        index: u8,
+        trace: Trace,
+    }
+    impl Resource for BatchResource {
+        fn description(&self) -> String {
+            format!("resource {}", self.index)
+        }
+
+        fn apply(&self) -> ResourceResult<ResourceChange> {
+            self.trace.lock().unwrap().push(self.description());
+            if self.index == 1 {
+                Err(cancelled_command().into())
+            } else {
+                Ok(ResourceChange::Applied)
+            }
+        }
+    }
+
+    struct BatchTask(Trace);
+    impl Task for BatchTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("batch")
+        }
+
+        fn run(&self, ctx: &Context) -> Result<TaskResult> {
+            process_resources_with_cache(
+                ctx,
+                (0..3).map(|index| BatchResource {
+                    index,
+                    trace: Arc::clone(&self.0),
+                }),
+                &(),
+                |_, ()| Ok(ResourceState::Missing),
+                &ProcessOpts::strict("install").sequential(),
+            )
+            .map_err(|error| error.context("processing batch"))
+        }
+    }
+
+    for parallel in [false, true] {
+        let trace = trace();
+        let task = BatchTask(Arc::clone(&trace));
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_parallel(parallel);
+        let task_ref: &dyn Task = &task;
+
+        let error = run_tasks_to_completion([task_ref], &ctx, &log).unwrap_err();
+
+        assert!(error.is::<CommandInterrupted>(), "{error:#}");
+        assert!(!ctx.is_cancelled(), "the typed error must stand on its own");
+        assert_eq!(entries(&trace), ["resource 0", "resource 1"]);
+        let recorded = log.task_entries();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].status, TaskStatus::Interrupted);
+        assert_eq!(
+            recorded[0].actions,
+            ActionCounts {
+                applied: 1,
+                interrupted: 1,
+                not_attempted: 1,
+                ..ActionCounts::default()
+            }
+        );
+    }
+}
+
+#[test]
+fn real_failures_win_over_cancellation_without_counting_it_as_failure() {
+    for parallel in [false, true] {
+        let trace = trace();
+        let tasks = vec![
+            ProbeTask::new("failed", 1, &trace).failing(),
+            ProbeTask::new("interrupted", 2, &trace).interrupted(),
+        ];
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_parallel(parallel);
+
+        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+            .expect_err("a failure and an interruption cannot succeed");
+
+        assert!(error.is::<TaskFailures>(), "{error:#}");
+        assert_eq!(error.to_string(), "1 task(s) failed");
+        assert_eq!(entries(&trace).len(), 2);
+    }
+}
+
+#[test]
+fn cancellation_does_not_hide_an_unrelated_failure_from_the_same_task() {
+    let trace = trace();
+    let tasks = vec![ProbeTask::new("failed", 1, &trace).cancelling().failing()];
+    let (ctx, log) = sequential_context();
+
+    let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+        .expect_err("a real failure still wins when the token is set");
+
+    assert!(error.is::<TaskFailures>(), "{error:#}");
+    assert_eq!(error.to_string(), "1 task(s) failed");
+}
+
+#[test]
+fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
+    let trace = trace();
+    let task = ProbeTask::new("completed", 1, &trace).cancelling();
+    let (ctx, log) = sequential_context();
+    let mut tasks: Vec<&dyn Task> = vec![&task];
+
+    let summary = run_task_graph(&mut tasks, &ctx, &log, None).unwrap();
+
+    assert_eq!(
+        summary.outcome(&task.task_id()),
+        Some(TaskOutcome::Satisfied)
+    );
+    assert!(!summary.was_interrupted());
+    assert_eq!(summary.failure_count(), 0);
+    let error = finish_run(&ctx, &log, &summary).unwrap_err();
+    assert!(error.is::<CommandInterrupted>(), "{error:#}");
+}
+
+#[test]
+fn completion_uses_scheduler_outcomes_even_without_presentation_records() {
+    let (ctx, log) = sequential_context();
+    let mut summary = crate::engine::scheduler::ExecutionSummary::default();
+    summary.record(TaskId::Dynamic(1), "internal task", TaskOutcome::Cancelled);
 
     assert!(
-        entries(&trace).is_empty(),
-        "cancellation before dispatch must skip every task"
+        !log.has_interrupted_tasks(),
+        "the logger has no task records"
     );
+    let error = finish_run(&ctx, &log, &summary).unwrap_err();
+    assert!(error.is::<CommandInterrupted>(), "{error:#}");
 }
 
 #[test]
@@ -603,6 +795,16 @@ fn run_accepts_an_empty_task_list() {
     let (ctx, log) = sequential_context();
     run_tasks_to_completion(Vec::<&dyn Task>::new(), &ctx, &log)
         .expect("an empty graph is a successful no-op");
+}
+
+#[test]
+fn cancelled_empty_plan_is_interrupted() {
+    let (ctx, log) = sequential_context();
+    ctx.cancellation_token().cancel();
+
+    let error = run_tasks_to_completion(Vec::<&dyn Task>::new(), &ctx, &log).unwrap_err();
+
+    assert!(error.is::<CommandInterrupted>(), "{error:#}");
 }
 
 // ── run_tasks_to_completion_with_restart ──────────────
@@ -738,15 +940,86 @@ fn cancellation_suppresses_restart() {
     let (ctx, log) = sequential_context();
     ctx.cancellation_token().cancel();
 
-    run_tasks_to_completion_with_restart(
+    let error = run_tasks_to_completion_with_restart(
         as_dyn(&tasks),
         &ctx,
         &log,
         TaskId::Dynamic(1),
-        || true,
+        || panic!("a cancelled run must not inspect restart inputs"),
         || panic!("a cancelled run must not trigger restart"),
     )
-    .expect("cancellation is not itself a failure");
+    .expect_err("a cancelled run must be interrupted");
 
+    assert!(error.is::<CommandInterrupted>(), "{error:#}");
     assert!(entries(&trace).is_empty());
+}
+
+#[test]
+fn typed_interruption_stops_the_next_phase_and_suppresses_restart() {
+    let trace = trace();
+    let tasks = vec![
+        ProbeTask::new("boundary", 1, &trace).interrupted(),
+        ProbeTask::new("independent", 2, &trace),
+    ];
+    let (ctx, log) = sequential_context();
+
+    let error = run_tasks_to_completion_with_restart(
+        as_dyn(&tasks),
+        &ctx,
+        &log,
+        TaskId::Dynamic(1),
+        || panic!("an interrupted phase must not inspect restart inputs"),
+        || panic!("an interrupted phase must not restart"),
+    )
+    .unwrap_err();
+
+    assert!(error.is::<CommandInterrupted>(), "{error:#}");
+    assert!(!ctx.is_cancelled());
+    assert_eq!(entries(&trace), ["boundary"]);
+}
+
+#[test]
+fn cancellation_after_boundary_completion_suppresses_restart() {
+    let trace = trace();
+    let tasks = vec![
+        ProbeTask::new("boundary", 1, &trace).cancelling(),
+        ProbeTask::new("independent", 2, &trace),
+    ];
+    let (ctx, log) = sequential_context();
+
+    let error = run_tasks_to_completion_with_restart(
+        as_dyn(&tasks),
+        &ctx,
+        &log,
+        TaskId::Dynamic(1),
+        || panic!("a cancelled phase must not inspect restart inputs"),
+        || panic!("a completed boundary must not restart a cancelled command"),
+    )
+    .unwrap_err();
+
+    assert!(error.is::<CommandInterrupted>(), "{error:#}");
+    assert_eq!(entries(&trace), ["boundary"]);
+}
+
+#[test]
+fn cancellation_during_restart_check_suppresses_the_action() {
+    let trace = trace();
+    let tasks = vec![ProbeTask::new("boundary", 1, &trace)];
+    let (ctx, log) = sequential_context();
+
+    let error = run_tasks_to_completion_with_restart(
+        as_dyn(&tasks),
+        &ctx,
+        &log,
+        TaskId::Dynamic(1),
+        || {
+            ctx.cancellation_token().cancel();
+            true
+        },
+        || panic!("a late cancellation must still suppress restart"),
+    )
+    .unwrap_err();
+
+    assert!(error.is::<CommandInterrupted>(), "{error:#}");
+    assert_eq!(entries(&trace), ["boundary"]);
 }

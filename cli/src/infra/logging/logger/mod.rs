@@ -27,13 +27,11 @@ use super::runlog::RunLog;
 use super::types::{
     LogEvent, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
 };
-#[cfg(test)]
 use super::utils::dotfiles_log_subdir;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ConsoleOutput {
     Enabled,
-    #[cfg(test)]
     Disabled,
 }
 
@@ -122,7 +120,6 @@ impl Logger {
     /// instead of reading the log directory from the environment.  Intended
     /// for tests that need an isolated logger without mutating process-global
     /// state.
-    #[cfg(test)]
     #[must_use]
     pub(crate) fn new_in(command: &str, base_dir: &std::path::Path) -> Self {
         let start = Instant::now();
@@ -250,7 +247,8 @@ impl Logger {
         self.run_log.as_deref().is_some_and(RunLog::is_healthy)
     }
 
-    /// Presentation fact used by run history, never by command success policy.
+    /// Whether a started task recorded an interruption, for presentation tests.
+    #[cfg(test)]
     pub(crate) fn has_interrupted_tasks(&self) -> bool {
         self.lock_tasks()
             .iter()
@@ -599,6 +597,7 @@ mod tests {
             planned: 0,
             skipped: 1,
             failed: 0,
+            ..ActionCounts::default()
         };
 
         log.record_task(task_entry("symlinks", TaskStatus::Changed, None, actions));

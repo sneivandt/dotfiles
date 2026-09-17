@@ -57,6 +57,13 @@ impl GitConfigResource {
         }
     }
 
+    /// Scope either setting or removal to an explicit file.
+    #[must_use]
+    pub(crate) fn using_config_path(mut self, path: PathBuf) -> Self {
+        self.config_path = Some(path);
+        self
+    }
+
     fn open_config(&self) -> Result<git2::Config> {
         self.config_path.as_deref().map_or_else(
             || {

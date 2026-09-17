@@ -93,7 +93,7 @@ pub(super) fn format_standard_totals(
         ));
     } else if counts.changed > 0 {
         parts.push(style.paint(TextStyle::Green, &format!("{} changed", counts.changed)));
-    } else if counts.failed == 0 {
+    } else if counts.failed == 0 && counts.actions.applied == 0 && counts.actions.planned == 0 {
         parts.push("No changes".to_string());
     }
     push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);

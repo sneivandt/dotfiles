@@ -309,6 +309,33 @@ fn install_removes_legacy_cowork_records_without_a_detectable_cowork_path() {
 }
 
 #[test]
+fn cowork_dry_run_preserves_legacy_lock_skills_and_ownership() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    write_current_manifest_and_lock(dir.path());
+    let lock = "dependencies:\n  - deployed_files:\n      - cowork://skills/example/SKILL.md\n";
+    let lock_path = dir.path().join(".apm").join("apm.lock.yaml");
+    std::fs::write(&lock_path, lock).unwrap();
+    let target = dir
+        .path()
+        .join("OneDrive - Test")
+        .join("Documents")
+        .join("Cowork")
+        .join("skills");
+    std::fs::create_dir_all(target.join("example")).unwrap();
+    std::fs::write(target.join("example").join("SKILL.md"), "legacy").unwrap();
+    let ctx = make_windows_cowork_context(dir.path(), MockExecutor::new()).with_dry_run(true);
+
+    assert_task_changed(&install_task().run(&ctx).expect("preview install"));
+
+    assert_eq!(std::fs::read_to_string(lock_path).unwrap(), lock);
+    assert_eq!(
+        std::fs::read_to_string(target.join("example").join("SKILL.md")).unwrap(),
+        "legacy"
+    );
+    assert!(!target.join(".dotfiles-apm-skills.json").exists());
+}
+
+#[test]
 fn update_delegates_directly_and_reports_exact_lock_changes() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());

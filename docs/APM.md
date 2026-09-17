@@ -81,7 +81,11 @@ If the APM manifest is already current, the primary native install still runs.
 After APM finishes, the task restores `autopilot` mode, enabled state, and
 `next_run_at` for any dotfiles-managed workflow that drifted. This includes
 custom cron schedules, which the App stores as `interval: manual` plus a
-`cron_expression`.
+`cron_expression`. Duplicate rows are collapsed only within the same managed
+workflow ID. Legacy `apm--unknown--<package>--<prompt>` rows are removed only
+when the corresponding managed `apm--_local--<package>--<prompt>` exists and
+its definition, including any cron expression, matches. Independent IDs and
+foreign workflows are preserved even when their visible definitions match.
 
 Cowork remains an experimental APM target and is disabled by default. When a
 Cowork skills path is available, dotfiles re-asserts the feature with:
@@ -102,13 +106,20 @@ those directories, so dotfiles must not invoke the native `copilot-cowork`
 target yet. Instead, after the primary install, it reads each locked
 dependency's `target_subset`, selects packages with no filter or a filter
 containing `copilot-cowork`, and copies their resolved skills from
-`~/.agents/skills` file-by-file. It removes `SKILL.md` from excluded or removed
-skills but preserves Cowork-owned placeholders, directories, and ACLs.
+`~/.agents/skills` file-by-file. Successful reconciliation records each managed
+skill in `.dotfiles-apm-skills.json` inside that Cowork skills directory.
+It removes `SKILL.md` from excluded or removed skills only when that inventory
+establishes ownership, preserving unrelated skills, Cowork-owned placeholders,
+directories, and ACLs. An older unrecorded copy is not assumed to be managed
+solely because a same-named skill exists under `~/.agents/skills`.
 
 Reconciliation removes legacy `cowork://` deployment records before native APM
-convergence. Otherwise, unrelated APM commands can retry directory deletion
-that OneDrive blocks. Dry-run reports the planned file-level reconciliation
-without modifying Cowork or the lockfile.
+convergence. Explicit legacy skill deployment records are first retained in the
+ownership inventory when their configured Cowork directory exists, so stale
+managed skills can still be removed after APM rewrites the lockfile. Otherwise,
+unrelated APM commands can retry directory deletion that OneDrive blocks.
+Dry-run reports the planned file-level reconciliation without modifying Cowork,
+the ownership inventory, or the lockfile.
 
 These compatibility paths are not redundant with native APM. The
 [v0.29.1 skill integrator](https://github.com/microsoft/apm/blob/v0.29.1/src/apm_cli/integration/skill_integrator.py)

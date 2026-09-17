@@ -73,7 +73,7 @@ fn a_failing_executor_call_aborts_the_batch_it_belongs_to() {
     let err = process_resources(&ctx, systemd_units(4, &executor), &bail_opts())
         .expect_err("a failing state check must surface");
     assert!(
-        err.to_string().contains("injected failure"),
+        format!("{err:#}").contains("injected failure"),
         "unexpected error: {err}"
     );
     assert_eq!(
@@ -172,7 +172,10 @@ fn a_strict_batch_stops_at_the_first_failure() {
 
     let err = process_resources(&ctx, resources, &bail_opts())
         .expect_err("strict mode must surface the failure");
-    assert!(err.to_string().contains("first"), "unexpected error: {err}");
+    assert!(
+        format!("{err:#}").contains("first"),
+        "unexpected error: {err:#}"
+    );
 }
 
 #[test]

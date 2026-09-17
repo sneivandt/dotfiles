@@ -341,6 +341,9 @@ test_release_workflow_guards
 printf "Testing hook portability...\n"
 test_sensitive_scan_without_paste
 
+printf "Testing staged and whitespace-safe hook inputs...\n"
+sh "$(dirname "$0")/test-hook-inputs.sh"
+
 printf "Testing pre-push protection...\n"
 test_pre_push_protection
 

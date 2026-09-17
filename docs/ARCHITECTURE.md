@@ -149,6 +149,14 @@ applied, already correct, skipped, invalid, or unknown. A skipped outcome
 records whether the skip is harmless or leaves work unfinished. Unfinished work
 can still fail the run. Tasks turn these outcomes into user-facing summaries.
 
+Stopped resource batches return an error carrying a typed `BatchReport`. It
+retains completed `TaskStats`, in-flight interruption counts, and items not
+attempted; the original typed error remains downcastable. Sequential processing
+stops before the next resource, while parallel processing joins and counts work
+already in flight. Lenient failures remain failures even when later work is
+cancelled. Task recording preserves this accounting instead of replacing it
+with an unquantified failure.
+
 ## Operations
 
 An `Operation` models a whole workflow that converges as a unit rather than a
@@ -238,6 +246,11 @@ results. Process requests use owned `CommandSpec` values, and typed `ExecError`
 variants preserve cancellation, timeout, spawn, I/O, and non-zero-exit
 failures through task and resource boundaries.
 
+Command deadlines and cancellation remain active until the child exits and
+both captured output pipes close. Unix process groups and Windows job objects
+allow termination of descendants that retain those pipes after the leader
+exits. Windows commands are assigned to their job before they begin running.
+
 The logger records stages, structured results, actions, warnings, summaries, and
 diagnostics. Internal orchestration remains in diagnostic and file logs but does
 not appear in normal task rows or totals.
@@ -248,9 +261,10 @@ Engine presentation and persistent records use `Task::log_key()` rather than
 display name. This key contains the implementation type name and any dynamic
 instance key; task decorators forward it. Scheduler dependencies still use
 `TaskId`. Dynamic tasks with the same label retain separate status, detail,
-and duration records. Command success policy consumes the scheduler's
-`ExecutionSummary`;
-logger counters are presentation data only.
+and duration records. Command completion consumes the scheduler's
+`ExecutionSummary`, not logger counters. Interruption exits with code 130 and is
+persisted as `Interrupted`; a genuine task failure takes precedence and exits
+with code 1. Cancelled execution does not restart the process or imply rollback.
 
 Visible rows use `✓`, `~`, `⊘`, and `✗`, plus the verbose-only `○` and `⁃`.
 `--no-symbols` uses ASCII words instead. A task's reason follows a `·`

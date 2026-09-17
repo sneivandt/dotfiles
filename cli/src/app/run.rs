@@ -127,28 +127,40 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
         }
     };
 
-    if let Some(run) = log.run_log() {
-        let outcome = if result.is_err() {
-            RunOutcome::Failed
-        } else if token.is_cancelled() || log.has_interrupted_tasks() {
-            RunOutcome::Interrupted
-        } else {
-            RunOutcome::Succeeded
-        };
-        run.finish(outcome, i32::from(result.is_err()));
-    }
-    if let Err(e) = result {
+    if result.is_err() {
         log.separate_from_startup();
-        report_failure(&e, &*log);
-        elevation::wait_if_elevated();
-        return ExitCode::FAILURE;
     }
-
+    let exit_code = finish_engine_run(&result, token.is_cancelled(), &*log);
     elevation::wait_if_elevated();
-    ExitCode::SUCCESS
+    exit_code
+}
+
+fn finish_engine_run(
+    result: &anyhow::Result<()>,
+    cancelled: bool,
+    log: &dyn logging::Output,
+) -> ExitCode {
+    let (outcome, code) = match result {
+        Err(error) if error.is::<commands::error::CommandInterrupted>() => {
+            (RunOutcome::Interrupted, 130_u8)
+        }
+        Err(_) => (RunOutcome::Failed, 1),
+        Ok(()) if cancelled => (RunOutcome::Interrupted, 130),
+        Ok(()) => (RunOutcome::Succeeded, 0),
+    };
+    if let Some(run) = log.run_log() {
+        run.finish(outcome, i32::from(code));
+    }
+    if let Err(error) = result {
+        report_failure(error, log);
+    }
+    ExitCode::from(code)
 }
 
 fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
+    if error.is::<commands::error::CommandInterrupted>() {
+        return;
+    }
     if error
         .downcast_ref::<commands::error::TaskFailures>()
         .is_none()
@@ -256,5 +268,116 @@ mod tests {
         report_failure(&anyhow::anyhow!("configuration failed"), &log);
         assert!(log.startup.lock().unwrap().is_empty());
         assert_eq!(*log.errors.lock().unwrap(), ["configuration failed"]);
+    }
+
+    #[test]
+    fn exit_code_and_persistent_run_outcome_agree() {
+        use crate::infra::logging::records::{Record, StoredRecord};
+
+        for (name, result, cancelled, outcome, code) in [
+            ("success", Ok(()), false, RunOutcome::Succeeded, 0_u8),
+            (
+                "late cancellation",
+                Ok(()),
+                true,
+                RunOutcome::Interrupted,
+                130,
+            ),
+            (
+                "typed interruption",
+                Err(anyhow::Error::new(commands::error::CommandInterrupted)
+                    .context("install did not complete")),
+                false,
+                RunOutcome::Interrupted,
+                130,
+            ),
+            (
+                "typed interruption with token",
+                Err(commands::error::CommandInterrupted.into()),
+                true,
+                RunOutcome::Interrupted,
+                130,
+            ),
+            (
+                "task failure",
+                Err(commands::error::TaskFailures::new(1).into()),
+                false,
+                RunOutcome::Failed,
+                1,
+            ),
+            (
+                "task failure with cancellation",
+                Err(commands::error::TaskFailures::new(1).into()),
+                true,
+                RunOutcome::Failed,
+                1,
+            ),
+            (
+                "unexpected failure with cancellation",
+                Err(anyhow::anyhow!("configuration failed")),
+                true,
+                RunOutcome::Failed,
+                1,
+            ),
+        ] {
+            let root = tempfile::tempdir_in(".").unwrap();
+            let log = CapturingOutput {
+                logger: Some(logging::Logger::new_in("install", root.path())),
+                ..CapturingOutput::default()
+            };
+            let run = log.run_log().unwrap();
+            run.start_run("install", None);
+
+            let actual = finish_engine_run(&result, cancelled, &log);
+
+            assert_eq!(actual, ExitCode::from(code), "{name}: process exit code");
+            let contents = std::fs::read_to_string(run.path()).unwrap();
+            let finishes = contents
+                .lines()
+                .filter_map(StoredRecord::from_line)
+                .filter_map(|record| {
+                    if let Record::RunFinish {
+                        outcome: recorded_outcome,
+                        exit_code,
+                        ..
+                    } = record.record
+                    {
+                        Some((recorded_outcome, exit_code))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                finishes,
+                [(outcome, i32::from(code))],
+                "{name}: persistent finish must match process exit"
+            );
+            if outcome == RunOutcome::Interrupted {
+                assert!(
+                    log.errors.lock().unwrap().is_empty(),
+                    "{name}: interruption is not a failure-shaped error"
+                );
+                assert!(
+                    log.startup.lock().unwrap().is_empty(),
+                    "{name}: interruption must not offer a failure-log hint"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn interruption_exit_does_not_require_a_persistent_log() {
+        let log = CapturingOutput::default();
+
+        let exit_code = finish_engine_run(
+            &Err(commands::error::CommandInterrupted.into()),
+            false,
+            &log,
+        );
+
+        assert_eq!(exit_code, ExitCode::from(130));
+        assert!(log.errors.lock().unwrap().is_empty());
+        assert!(log.startup.lock().unwrap().is_empty());
     }
 }

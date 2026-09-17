@@ -49,10 +49,28 @@ fi
 # Renames are included (lowercase 'd' excludes only deletions) so that a file
 # renamed with edits still gets formatted, linted, and tested.
 STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
+# Deletions and renames away from .rs can also break the crate.
+RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- '*.rs')
+
+# Check an exported index rather than temporarily replacing the working tree.
+if [ -z "$RUST_CHANGED" ] && ! printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1)$'; then
+  exit 0
+fi
+REPO_ROOT=$(git rev-parse --show-toplevel)
+CHECK_ROOT=$(mktemp -d)
+trap 'rm -rf "$CHECK_ROOT"' EXIT
+trap 'exit 1' HUP INT TERM
+git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
+case "${CARGO_TARGET_DIR:-}" in
+  '') CARGO_TARGET_DIR="$REPO_ROOT/cli/target" ;;
+  /*|?:/*|?:\\*) ;;
+  *) CARGO_TARGET_DIR="$REPO_ROOT/cli/$CARGO_TARGET_DIR" ;;
+esac
+export CARGO_TARGET_DIR
 
 # ── Rust checks ────────────────────────────────────────
-if printf '%s\n' "$STAGED" | grep -q '\.rs$'; then
-  CLI_ROOT=$(git rev-parse --show-toplevel)/cli
+if [ -n "$RUST_CHANGED" ]; then
+  CLI_ROOT="$CHECK_ROOT/cli"
   MANIFEST="$CLI_ROOT/Cargo.toml"
 
   printf "Running cargo fmt --check...\n"
@@ -110,11 +128,10 @@ fi
 if printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1)$'; then
   if command -v pwsh >/dev/null 2>&1; then
     printf "Running PSScriptAnalyzer...\n"
-    REPO_ROOT=$(git rev-parse --show-toplevel)
-    PS_FILES=$(printf '%s\n' "$STAGED" | grep -E '\.(ps1|psm1)$' | sed "s|^|$REPO_ROOT/|" | tr '\n' ';')
+    PS_FILES=$(printf '%s\n' "$STAGED" | grep -E '\.(ps1|psm1)$' | tr '\n' ';')
     export PS_FILES
     # shellcheck disable=SC2016  # PowerShell variables are expanded by pwsh.
-    if ! pwsh -NoProfile -Command '
+    if ! (cd "$CHECK_ROOT" && pwsh -NoProfile -Command '
       $ErrorActionPreference = "Stop"
       if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
         throw "PSScriptAnalyzer module is not installed"
@@ -129,7 +146,7 @@ if printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1)$'; then
         }
       }
       if ($hasErrors) { exit 1 }
-    ' 2>&1; then
+    ' 2>&1); then
       printf '\n%s======================================================%s\n' "$RED" "$NC"
       printf '%sCommit aborted: PSScriptAnalyzer reported issues.%s\n' "$RED" "$NC"
       printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"

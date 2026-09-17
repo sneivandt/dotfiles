@@ -1,11 +1,54 @@
 //! Cross-platform child process-tree termination.
 
-use std::process::Child;
+use std::io;
+use std::process::{ChildStderr, ChildStdout, Command};
 use std::time::{Duration, Instant};
 
 use super::POLL_INTERVAL;
 
 const TERMINATION_GRACE: Duration = Duration::from_secs(2);
+
+#[cfg(unix)]
+pub(super) use std::process::Child;
+#[cfg(windows)]
+pub(super) type Child = Box<dyn process_wrap::std::ChildWrapper>;
+
+pub(super) fn spawn(command: Command) -> io::Result<Child> {
+    #[cfg(unix)]
+    {
+        let mut command = command;
+        command.spawn()
+    }
+    #[cfg(windows)]
+    {
+        use process_wrap::std::{CommandWrap, JobObject};
+
+        // Assign the suspended leader before it can spawn descendants, so the
+        // job still owns their pipes and processes after the leader exits.
+        let mut wrapped = CommandWrap::from(command);
+        wrapped.wrap(JobObject).spawn()
+    }
+}
+
+#[cfg(unix)]
+pub(super) const fn take_stdout(child: &mut Child) -> Option<ChildStdout> {
+    child.stdout.take()
+}
+
+#[cfg(windows)]
+pub(super) fn take_stdout(child: &mut Child) -> Option<ChildStdout> {
+    child.stdout().take()
+}
+
+#[cfg(unix)]
+pub(super) const fn take_stderr(child: &mut Child) -> Option<ChildStderr> {
+    child.stderr.take()
+}
+
+#[cfg(windows)]
+pub(super) fn take_stderr(child: &mut Child) -> Option<ChildStderr> {
+    child.stderr().take()
+}
 
 #[cfg(unix)]
 pub(super) fn terminate_child(child: &Child) {
@@ -14,11 +57,8 @@ pub(super) fn terminate_child(child: &Child) {
 
 #[cfg(windows)]
 pub(super) fn terminate_child(child: &mut Child) {
-    terminate_process_tree(child);
-    if let Err(err) = child.kill()
-        && err.kind() != std::io::ErrorKind::InvalidInput
-    {
-        tracing::debug!(target: "dotfiles::exec", "failed to kill child: {err}");
+    if let Err(err) = child.start_kill() {
+        tracing::debug!(target: "dotfiles::exec", "failed to terminate child job: {err}");
     }
 }
 
@@ -106,33 +146,11 @@ fn terminate_process_tree(child: &Child) {
     signal_process_group(child, nix::sys::signal::Signal::SIGTERM);
 }
 
-#[cfg(windows)]
-fn terminate_process_tree(child: &Child) {
-    use std::process::{Command, Stdio};
-
-    let pid = child.id().to_string();
-    match Command::new("taskkill")
-        .args(["/PID", &pid, "/T", "/F"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-    {
-        Ok(status) if status.success() => {}
-        Ok(status) => {
-            tracing::debug!(target: "dotfiles::exec", "taskkill failed with status {status}");
-        }
-        Err(err) => {
-            tracing::debug!(target: "dotfiles::exec", "failed to run taskkill: {err}");
-        }
-    }
-}
-
 #[cfg(unix)]
 fn force_kill_child(child: &mut Child) {
     signal_process_group(child, nix::sys::signal::Signal::SIGKILL);
     if let Err(err) = child.kill()
-        && err.kind() != std::io::ErrorKind::InvalidInput
+        && err.kind() != io::ErrorKind::InvalidInput
     {
         tracing::debug!(target: "dotfiles::exec", "failed to force-kill child: {err}");
     }
@@ -140,12 +158,7 @@ fn force_kill_child(child: &mut Child) {
 
 #[cfg(windows)]
 fn force_kill_child(child: &mut Child) {
-    terminate_process_tree(child);
-    if let Err(err) = child.kill()
-        && err.kind() != std::io::ErrorKind::InvalidInput
-    {
-        tracing::debug!(target: "dotfiles::exec", "failed to force-kill child: {err}");
-    }
+    terminate_child(child);
 }
 
 #[cfg(unix)]

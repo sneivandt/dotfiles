@@ -101,6 +101,10 @@ files = [
 ]
 ```
 
+Targets must be absolute paths strictly below `/etc`. Neither source nor target
+may contain `..` components, even when the resulting path would remain below
+its root.
+
 `toml` recursively overlays fragment tables. `ini` converges assigned keys and
 bare flags within sections, which also covers Pacman options. `pam` replaces
 matching module rules and inserts them after the final rule in each facility
@@ -110,7 +114,9 @@ stack. All three preserve unrelated content.
 
 `symlinks.toml` entries are paths relative to `symlinks/`. Their home target is
 the same path prefixed with a dot, so `config/git/config` links to
-`~/.config/git/config`:
+`~/.config/git/config`. Current-directory components are removed before adding
+the prefix: `./bashrc` also maps to `~/.bashrc`. A source or target that names
+only its root (such as `.`) is rejected:
 
 ```toml
 [base]
@@ -135,6 +141,9 @@ The same canonical source may appear more than once if each entry has a
 different target. Multiple applications can then share one configuration
 without forwarding files or symlink chains inside the repository. The loader
 rejects a source that resolves outside its owning `symlinks/` tree.
+Target collision and parent/child overlap checks ignore `.` components and
+redundant separators. They also compare case-insensitively on Windows, matching
+the managed-target path policy.
 
 Overlay symlinks resolve from the overlay's own `symlinks/` tree, not the main
 repository.
@@ -287,6 +296,9 @@ A bare string uses `user` scope and defaults to `enabled = true`. Use a table
 to select `user` or `system` scope or to keep a conflicting unit disabled.
 User unit files are normally delivered through managed symlinks before the task
 enables and starts them. Changing a system unit uses `sudo`.
+With a live service manager, a static unit has no enablement links to disable,
+but `enabled = false` still requires its runtime state to be stopped. This does
+not mask the unit or prevent other units from starting it as a dependency.
 
 Without a user service manager, the task enables user units for the next login.
 It looks first in `~/.config/systemd/user`, then `/etc/systemd/user`,

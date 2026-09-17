@@ -14,6 +14,12 @@ pub struct ActionCounts {
     pub skipped: u32,
     /// Actions that failed.
     pub failed: u32,
+    /// Actions interrupted after dispatch.
+    #[serde(default)]
+    pub interrupted: u32,
+    /// Items not dispatched because processing stopped.
+    #[serde(default)]
+    pub not_attempted: u32,
 }
 
 impl ActionCounts {
@@ -23,6 +29,8 @@ impl ActionCounts {
         self.planned = self.planned.saturating_add(other.planned);
         self.skipped = self.skipped.saturating_add(other.skipped);
         self.failed = self.failed.saturating_add(other.failed);
+        self.interrupted = self.interrupted.saturating_add(other.interrupted);
+        self.not_attempted = self.not_attempted.saturating_add(other.not_attempted);
     }
 }
 
@@ -479,12 +487,16 @@ mod tests {
             planned: 1,
             skipped: 2,
             failed: 3,
+            interrupted: u32::MAX,
+            not_attempted: 7,
         };
         counts.merge(ActionCounts {
             applied: 1,
             planned: 4,
             skipped: 5,
             failed: 6,
+            interrupted: 1,
+            not_attempted: 8,
         });
 
         assert_eq!(
@@ -494,6 +506,22 @@ mod tests {
                 planned: 5,
                 skipped: 7,
                 failed: 9,
+                interrupted: u32::MAX,
+                not_attempted: 15,
+            }
+        );
+    }
+
+    #[test]
+    fn legacy_action_counts_default_unfinished_items_to_zero() {
+        let counts: ActionCounts =
+            serde_json::from_str(r#"{"applied":2,"planned":0,"skipped":1,"failed":0}"#).unwrap();
+        assert_eq!(
+            counts,
+            ActionCounts {
+                applied: 2,
+                skipped: 1,
+                ..ActionCounts::default()
             }
         );
     }

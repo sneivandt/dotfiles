@@ -15,7 +15,10 @@
 //! avoid that, the fixup reads the exact set of workflow ids this install
 //! deployed from APM's lockfile (`~/.apm/apm.lock.yaml`), where each deployed
 //! workflow is recorded as a `copilot-app-db://workflows/<id>` entry under its
-//! dependency's `deployed_files`, and scopes every query to that id set.  When
+//! dependency's `deployed_files`, and scopes state updates to that id set.
+//! Duplicate cleanup additionally recognizes an `unknown`-owner legacy id
+//! only when its package/prompt suffix and definition match a managed `_local`
+//! workflow. Equal definitions under other ids do not establish ownership. When
 //! the lockfile lists no workflows (the common case: the deps ship only
 //! agents/skills) or is missing, the fixup does nothing.
 //!

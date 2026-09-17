@@ -54,6 +54,7 @@ fn stats(result: &TaskResult) -> (u32, u32, u32) {
 #[derive(Debug, Default)]
 struct RecordingLog {
     messages: Mutex<Vec<String>>,
+    actions: Mutex<Vec<(String, String, bool)>>,
 }
 
 impl RecordingLog {
@@ -66,6 +67,13 @@ impl RecordingLog {
 }
 
 impl Output for RecordingLog {
+    fn action(&self, verb: &str, subject: &str, planned: bool, _message: &str) {
+        self.actions
+            .lock()
+            .unwrap()
+            .push((verb.into(), subject.into(), planned));
+    }
+
     fn emit(&self, _kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
         self.messages
             .lock()
@@ -269,7 +277,7 @@ fn parallel_apply_propagates_the_first_failure_in_strict_mode() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn cancellation_mid_batch_stops_dispatching_new_apply_work() {
+fn cancellation_mid_batch_stops_dispatching_new_remove_work() {
     let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
     let token = CancellationToken::new();
     let ctx = ctx.with_cancellation(token.clone());
@@ -286,10 +294,21 @@ fn cancellation_mid_batch_stops_dispatching_new_apply_work() {
         })
         .collect();
 
-    let result = process_resources_remove(&ctx, resources, "remove")
-        .expect("cancellation is cooperative, not an error");
+    let error = process_resources_remove(&ctx, resources, "remove")
+        .expect_err("unfinished work must be reported as interrupted");
+    let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
 
-    let (changed, _already_ok, failed) = stats(&result);
+    let changed = report.stats().changed_count();
+    let failed = report.stats().failed_count();
+    assert_eq!(
+        report.completion(),
+        crate::engine::BatchCompletion::Interrupted
+    );
+    assert_eq!(report.interrupted_count(), 0);
+    assert_eq!(
+        changed + report.not_attempted_count(),
+        u32::try_from(BATCH).unwrap()
+    );
     assert_eq!(failed, 0, "cancellation must not be reported as a failure");
     assert!(
         changed < u32::try_from(BATCH).expect("batch fits in u32"),
@@ -326,12 +345,18 @@ fn cancellation_before_dispatch_performs_no_work() {
         .map(|idx| FailingResource::new(format!("resource-{idx}"), FailAt::Always))
         .collect();
 
-    let result = process_resources(&ctx, resources, &bail_opts())
-        .expect("an already-cancelled run should short-circuit cleanly");
+    let error = process_resources(&ctx, resources, &bail_opts())
+        .expect_err("an already-cancelled batch must report unfinished work");
+    let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
 
-    let (changed, _already_ok, failed) = stats(&result);
-    assert_eq!(changed, 0);
-    assert_eq!(failed, 0);
+    assert_eq!(
+        report.completion(),
+        crate::engine::BatchCompletion::Interrupted
+    );
+    assert_eq!(report.stats().changed_count(), 0);
+    assert_eq!(report.stats().failed_count(), 0);
+    assert_eq!(report.interrupted_count(), 0);
+    assert_eq!(report.not_attempted_count(), u32::try_from(BATCH).unwrap());
 }
 
 // ---------------------------------------------------------------------------
@@ -339,28 +364,50 @@ fn cancellation_before_dispatch_performs_no_work() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn parallel_apply_emits_one_message_per_resource_without_dropping_any() {
-    let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
-    let recorder = Arc::new(RecordingLog::default());
-    let log: Arc<dyn crate::infra::logging::Log> = Arc::<RecordingLog>::clone(&recorder);
-    let ctx = ctx.with_log(log);
-
-    let resources: Vec<FailingResource> = (0..BATCH)
-        .map(|idx| FailingResource::new(format!("resource-{idx:03}"), FailAt::Never))
-        .collect();
-
-    let result = process_resources(&ctx, resources, &ProcessOpts::lenient("install"))
-        .expect("parallel apply should succeed");
-    let (changed, _already_ok, failed) = stats(&result);
-    assert_eq!(changed, u32::try_from(BATCH).expect("batch fits in u32"));
-    assert_eq!(failed, 0);
-
-    let messages = recorder.messages();
-    for idx in 0..BATCH {
-        let needle = format!("resource-{idx:03}");
-        assert!(
-            messages.iter().any(|msg| msg.contains(&needle)),
-            "no message mentioned {needle}"
-        );
+fn processing_emits_exactly_one_action_per_changed_resource() {
+    for parallel in [false, true] {
+        for dry_run in [false, true] {
+            for (verb, remove) in [("install", false), ("remove", true)] {
+                let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+                let recorder = Arc::new(RecordingLog::default());
+                let log: Arc<dyn crate::infra::logging::Log> =
+                    Arc::<RecordingLog>::clone(&recorder);
+                let ctx = ctx
+                    .with_log(log)
+                    .with_parallel(parallel)
+                    .with_dry_run(dry_run);
+                let resources: Vec<FailingResource> = (0..BATCH)
+                    .map(|idx| {
+                        let resource =
+                            FailingResource::new(format!("resource-{idx:03}"), FailAt::Never);
+                        if (idx % 2 == 0) == remove {
+                            resource.with_state(ResourceState::Correct)
+                        } else {
+                            resource
+                        }
+                    })
+                    .collect();
+                let result = if remove {
+                    process_resources_remove(&ctx, resources, verb)
+                } else {
+                    process_resources(&ctx, resources, &ProcessOpts::lenient(verb))
+                }
+                .expect("resource processing should succeed");
+                let (changed, already_ok, failed) = stats(&result);
+                assert_eq!(changed, u32::try_from(BATCH / 2).unwrap());
+                assert_eq!(already_ok, u32::try_from(BATCH / 2).unwrap());
+                assert_eq!(failed, 0);
+                let mut actions = recorder.actions.lock().unwrap().clone();
+                actions.sort();
+                let expected: Vec<_> = (0..BATCH)
+                    .step_by(2)
+                    .map(|idx| (verb.into(), format!("resource-{idx:03}"), dry_run))
+                    .collect();
+                assert_eq!(
+                    actions, expected,
+                    "{verb}, parallel={parallel}, dry_run={dry_run}"
+                );
+            }
+        }
     }
 }

@@ -4,7 +4,8 @@
 //! [`Task`](super::Task) trait object it decides applicability, runs the task,
 //! and records the outcome into the logger.
 
-use crate::engine::{Context, TaskResult};
+use crate::engine::batch::is_interrupted;
+use crate::engine::{BatchCompletion, BatchReport, Context, TaskResult, TaskStats};
 use crate::infra::exec::ExecError;
 use crate::infra::logging::{
     ActionCounts, LogEvent, TaskEntry, TaskStatus, format_elapsed, log_task_context,
@@ -222,22 +223,16 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
                 )
             }
         },
-        Err(error)
-            if error.chain().any(|cause| {
-                cause
-                    .downcast_ref::<ExecError>()
-                    .is_some_and(ExecError::is_cancelled)
-                    || cause
-                        .downcast_ref::<crate::engine::resource::ResourceError>()
-                        .is_some_and(crate::engine::resource::ResourceError::is_cancelled)
-            }) =>
-        {
-            TaskExecution::new(
-                record_interrupted(task, task_id, ctx, task.name(), ActionCounts::default()),
-                TaskOutcome::Cancelled,
-            )
-        }
         Err(e) => {
+            if let Some(report) = e.downcast_ref::<BatchReport>() {
+                return record_stopped_batch(task, task_id, ctx, &e, report);
+            }
+            if is_interrupted(&e) {
+                return TaskExecution::new(
+                    record_interrupted(task, task_id, ctx, task.name(), ActionCounts::default()),
+                    TaskOutcome::Cancelled,
+                );
+            }
             let message = format!("{e:#}");
             ctx.log()
                 .run_task_event(LogEvent::TaskFail, &task.log_key(), &message);
@@ -246,6 +241,48 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
             TaskExecution::new(rec(TaskStatus::Failed, Some(&summary)), TaskOutcome::Failed)
         }
     }
+}
+
+fn record_stopped_batch(
+    task: &dyn Task,
+    task_id: &str,
+    ctx: &Context,
+    error: &anyhow::Error,
+    report: &BatchReport,
+) -> TaskExecution {
+    let failed = report.completion() == BatchCompletion::Failed;
+    let status = if failed {
+        TaskStatus::Failed
+    } else {
+        TaskStatus::Interrupted
+    };
+    let mut actions = batch_actions(report.stats(), ctx.dry_run());
+    actions.interrupted = report.interrupted_count();
+    actions.not_attempted = report.not_attempted_count();
+    let summary = report.summary(ctx.dry_run());
+    let message = if failed {
+        format!("{summary}; {}", concise_failure(error))
+    } else {
+        format!("interrupted: {summary}")
+    };
+    ctx.log().run_task_event(
+        if failed {
+            LogEvent::TaskFail
+        } else {
+            LogEvent::TaskSkip
+        },
+        task_id,
+        &format!("{message}\n{error:#}"),
+    );
+    ctx.log().warn(&message);
+    TaskExecution::new(
+        record(task, task_id, ctx, status, Some(&message), actions),
+        if failed {
+            TaskOutcome::Failed
+        } else {
+            TaskOutcome::Cancelled
+        },
+    )
 }
 
 /// Keep the task context and first useful child diagnostic on the console.
@@ -299,25 +336,12 @@ fn record_batch_outcome(
     task: &dyn Task,
     task_id: &str,
     ctx: &Context,
-    stats: &crate::engine::TaskStats,
+    stats: &TaskStats,
 ) -> TaskStatus {
     let message = stats
         .message()
         .map_or_else(|| stats.summary(ctx.dry_run()), str::to_string);
-    let actions = ActionCounts {
-        applied: if ctx.dry_run() {
-            0
-        } else {
-            stats.changed_count()
-        },
-        planned: if ctx.dry_run() {
-            stats.changed_count()
-        } else {
-            0
-        },
-        skipped: stats.skipped_count(),
-        failed: stats.failed_count(),
-    };
+    let actions = batch_actions(stats, ctx.dry_run());
     let outcome = if stats.failed_count() > 0 {
         TaskStatus::Failed
     } else if ctx.dry_run() && stats.changed_count() > 0 {
@@ -352,16 +376,22 @@ fn record_batch_outcome(
     )
 }
 
+fn batch_actions(stats: &TaskStats, dry_run: bool) -> ActionCounts {
+    ActionCounts {
+        applied: if dry_run { 0 } else { stats.changed_count() },
+        planned: if dry_run { stats.changed_count() } else { 0 },
+        skipped: stats.skipped_count(),
+        failed: stats.failed_count(),
+        ..ActionCounts::default()
+    }
+}
+
 /// The reason shown on a batch task's status row.
 ///
 /// A skipped batch always states why it did nothing: the aggregate counters are
 /// the only reason available once per-item detail has been filtered out, and a
 /// bare `SKIPPED` row is the outcome users most often have to ask about.
-fn batch_reason(
-    stats: &crate::engine::TaskStats,
-    outcome: TaskStatus,
-    message: &str,
-) -> Option<String> {
+fn batch_reason(stats: &TaskStats, outcome: TaskStatus, message: &str) -> Option<String> {
     if let Some(custom) = stats.message() {
         return Some(custom.to_string());
     }

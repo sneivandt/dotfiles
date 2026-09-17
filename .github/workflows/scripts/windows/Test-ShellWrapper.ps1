@@ -403,6 +403,116 @@ function Test-ErrorHandling {
     }
 }
 
+function Test-IsolatedWrapperPath {
+    Write-TestStage "Testing literal paths, runtime cwd, arguments, and bootstrap cleanup"
+    $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+    $repo = Join-Path $fixture 'repo [literal]'
+    $caller = Join-Path $fixture 'caller directory'
+    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
+    $binaryName = if ($isWindowsPlatform) { 'dotfiles.exe' } else { 'dotfiles' }
+    $binary = Join-Path $repo "bin/$binaryName"
+    $buildBinary = Join-Path $repo "cli/target/dev-opt/$binaryName"
+    $wrapper = Join-Path $repo 'dotfiles.ps1'
+    $originalLocation = Get-Location
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION',
+            'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
+    try {
+        [void][System.IO.Directory]::CreateDirectory((Split-Path $binary))
+        [void][System.IO.Directory]::CreateDirectory((Split-Path $buildBinary))
+        [void][System.IO.Directory]::CreateDirectory($caller)
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\..\..\..\dotfiles.ps1') -Destination $wrapper
+        [System.IO.File]::WriteAllText($binary, 'fixture')
+        [System.IO.File]::WriteAllText($buildBinary, 'fixture')
+        $child = {
+            [pscustomobject]@{ Cwd = (Get-Location).Path; Arguments = @($args) } |
+                ConvertTo-Json -Compress
+            $global:LASTEXITCODE = 7
+        }
+        Set-Item -LiteralPath "Function:$binary" -Value $child
+        Set-Item -LiteralPath "Function:$buildBinary" -Value $child
+        Set-Item Function:cargo -Value {
+            [System.IO.File]::WriteAllText(
+                (Join-Path $env:DOTFILES_ROOT 'cargo-cwd'), (Get-Location).Path)
+            $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_BUILD_EXIT
+        }
+        Set-Item Function:gh -Value {
+            $global:LASTEXITCODE = 0
+        }
+        Set-Item Function:Invoke-WebRequest -Value {
+            param([string]$Uri, [string]$OutFile)
+            if ($Uri.EndsWith('/releases/latest')) {
+                return @{ Content = '{"tag_name":"v2026.09.17-1"}' }
+            }
+            if ($Uri.EndsWith('/checksums.sha256')) {
+                $download = "$Binary.download-$PID"
+                $hash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash
+                if ($env:WRAPPER_TEST_BAD_CHECKSUM -eq '1') { $hash = '0' * 64 }
+                return @{ Content = "$hash  $(Get-TargetAssetName)" }
+            }
+            if ($OutFile) {
+                [System.IO.File]::WriteAllText($OutFile, 'fixture')
+                return
+            }
+            throw "Unexpected fixture request: $Uri"
+        }
+        $env:DOTFILES_SKIP_ATTESTATION = '0'
+        $env:WRAPPER_TEST_BUILD_EXIT = '0'
+        $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
+        Set-Location -LiteralPath $caller
+        $arguments = @('install', '--root', '.', '--overlay', '../overlay dir', '', '--', 'literal value')
+        foreach ($mode in @('cached', 'build', 'bootstrap')) {
+            $wrapperArguments = $arguments
+            if ($mode -eq 'build') { $wrapperArguments = @('--build') + $arguments }
+            if ($mode -eq 'bootstrap') { Remove-Item -LiteralPath $binary }
+            $output = @(& $wrapper @wrapperArguments)
+            if ($LASTEXITCODE -ne 7) { throw "$mode lost the child exit code" }
+            $actual = $output[-1] | ConvertFrom-Json
+            if ($actual.Cwd -ne $caller) { throw "$mode changed the child working directory" }
+            if (($actual.Arguments | ConvertTo-Json -Compress) -cne ($arguments | ConvertTo-Json -Compress)) {
+                throw "$mode changed the forwarded arguments"
+            }
+            if (-not (Test-Path -LiteralPath $binary)) { throw "$mode did not preserve the cached binary" }
+        }
+        if ([System.IO.File]::ReadAllText((Join-Path $repo 'cargo-cwd')) -ne (Join-Path $repo 'cli')) {
+            throw 'Cargo did not run from cli/'
+        }
+        $env:WRAPPER_TEST_BUILD_EXIT = '23'
+        $output = @(& $wrapper --build --version)
+        if ($LASTEXITCODE -ne 23 -or $output.Count -ne 0) {
+            throw 'Wrapper ran the child or lost the build failure exit code'
+        }
+        if ((Get-Location).Path -ne $caller) { throw 'Build failure changed the caller location' }
+
+        Remove-Item -LiteralPath $binary
+        $env:WRAPPER_TEST_BAD_CHECKSUM = '1'
+        $rejected = $false
+        try {
+            & $wrapper --version | Out-Null
+        } catch {
+            if ($_ -notmatch 'Checksum verification failed') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Wrapper accepted a mismatched checksum' }
+        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath "$binary.download-$PID")) {
+            throw 'Rejected download was not removed from the literal path'
+        }
+        Write-TestPass 'Wrappers preserve literal paths, cwd, arguments, exit codes, and failed-download cleanup'
+        return $true
+    } catch {
+        Write-TestFail "Isolated wrapper regression failed: $_"
+        return $false
+    } finally {
+        Set-Location -LiteralPath $originalLocation.Path
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Run All Tests
 # ---------------------------------------------------------------------------
@@ -422,6 +532,7 @@ function Invoke-TestSuite {
     $results += Test-AttestationVerification
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
+    $results += Test-IsolatedWrapperPath
 
     $passed = ($results | Where-Object { $_ -eq $true }).Count
     $total = $results.Count

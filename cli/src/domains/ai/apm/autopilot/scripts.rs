@@ -44,7 +44,8 @@ pub(in crate::domains::ai::apm) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
 ///
 /// Invoked as `python -c <script> <db_path> <id>...` where the trailing
 /// arguments are the dotfiles-managed workflow ids. It first removes duplicate
-/// rows for those visible workflow definitions, keeping the newest managed row,
+/// rows for each managed id, keeping the newest row, and removes matching legacy
+/// `unknown`-owner rows only for that same local package and prompt,
 /// then prints two space-separated integers -- the number of those rows present
 /// and the number it actually updated -- then, one per line, the id of every
 /// such row now in the desired state. [`parse_autopilot_result`] reads both

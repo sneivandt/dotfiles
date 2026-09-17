@@ -11,7 +11,8 @@
 # as query parameters in an IN (...) clause so the change is scoped to exactly the
 # workflows this install deployed, and the IS NOT comparisons are NULL-safe.
 #
-# It also removes duplicate rows for each managed workflow id before arming the
+# It also removes duplicate rows for each managed workflow id and matching
+# legacy unknown-owner rows for the same local package/prompt before arming the
 # scheduler by setting `next_run_at` when it is unset or overdue, so the Copilot
 # App shows one automation card per APM workflow and actually fires it on schedule.
 # Custom cron schedules are stored as interval='manual' plus cron_expression and
@@ -157,28 +158,34 @@ def dedupe_managed_workflows(connection, workflow_ids, placeholders):
         workflow_ids + workflow_ids,
     )
 
-    # Then collapse cross-id duplicates for the same visible automation
-    # definition. This handles older APM rows such as apm--unknown--... that
-    # predate the current _local id but render as the same card in the app.
-    managed_defs = connection.execute(
-        "SELECT name, prompt, interval, schedule_hour, schedule_minute, schedule_day "
-        "FROM workflows WHERE id IN (" + placeholders + ")",
-        workflow_ids,
-    ).fetchall()
-    for definition in managed_defs:
-        rows = connection.execute(
-            "SELECT rowid, id FROM workflows "
-            "WHERE name IS ? AND prompt IS ? AND interval IS ? AND schedule_hour IS ? "
-            "AND schedule_minute IS ? AND schedule_day IS ?",
-            definition,
-        ).fetchall()
-        if len(rows) <= 1:
+    # Only the old owner spelling of the same local package/prompt establishes
+    # a migration relationship. Equal visible definitions do not prove ownership.
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(workflows)")}
+    definition_columns = [
+        "name", "prompt", "interval", "schedule_hour", "schedule_minute", "schedule_day"
+    ]
+    if "cron_expression" in columns:
+        definition_columns.append("cron_expression")
+    selected = ", ".join(definition_columns)
+    matches = " AND ".join(column + " IS ?" for column in definition_columns)
+    for workflow_id in workflow_ids:
+        prefix = "apm--_local--"
+        if not workflow_id.startswith(prefix):
             continue
-        managed_rows = [row for row in rows if row[1] in workflow_ids]
-        keep = max(managed_rows or rows, key=lambda row: row[0])
-        for rowid, _workflow_id in rows:
-            if rowid != keep[0]:
-                connection.execute("DELETE FROM workflows WHERE rowid=?", (rowid,))
+        suffix = workflow_id[len(prefix):]
+        if "--" not in suffix:
+            continue
+        legacy_id = "apm--unknown--" + suffix
+        if legacy_id in workflow_ids:
+            continue
+        definition = connection.execute(
+            "SELECT " + selected + " FROM workflows WHERE id=?", (workflow_id,)
+        ).fetchone()
+        if definition is not None:
+            connection.execute(
+                "DELETE FROM workflows WHERE id=? AND " + matches,
+                (legacy_id, *definition),
+            )
 
 con = sqlite3.connect(sys.argv[1], timeout=5)
 con.execute("PRAGMA busy_timeout=5000")

@@ -89,7 +89,9 @@ impl SystemdUnitResource {
     fn state_from_is_enabled(&self, result: &crate::infra::exec::ExecResult) -> ResourceState {
         let output = command_output(result);
         if result.success {
-            return if self.enabled {
+            // Static units have no enablement links to disable. Their runtime
+            // state still needs checking, even though is-enabled exits zero.
+            return if self.enabled || result.stdout.trim() == "static" {
                 ResourceState::Correct
             } else {
                 ResourceState::Incorrect {

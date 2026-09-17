@@ -4,6 +4,7 @@
 use anyhow::Result;
 
 use super::apply;
+use super::batch::BatchProgress;
 use super::context::Context;
 use super::mode::ProcessOpts;
 use super::parallel;
@@ -14,21 +15,25 @@ use crate::infra::logging::OutputExt as _;
 /// Run `process_one` over `items` sequentially, honouring cancellation.
 ///
 /// Centralises the cancellation-aware fold used by every sequential code path.
-/// `process_one` returns the per-item [`TaskStats`] delta (or an error that is
-/// propagated immediately).
+/// Errors stop dispatch while retaining the earlier items' outcomes.
 fn run_sequential<T, F>(ctx: &Context, items: Vec<T>, mut process_one: F) -> Result<TaskResult>
 where
     F: FnMut(&Context, T) -> Result<TaskStats>,
 {
-    let mut stats = TaskStats::new();
-    for item in items {
+    let mut progress = BatchProgress::default();
+    let mut items = items.into_iter();
+    while let Some(item) = items.next() {
         if ctx.is_cancelled() {
             ctx.log().warn("cancelled — stopping before next resource");
+            progress.omit(items.len().saturating_add(1));
             break;
         }
-        stats.merge(&process_one(ctx, item)?);
+        if progress.record(process_one(ctx, item)) {
+            progress.omit(items.len());
+            break;
+        }
     }
-    Ok(stats.finish())
+    progress.finish()
 }
 
 fn process_apply_items<T, R>(

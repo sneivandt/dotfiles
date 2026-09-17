@@ -274,6 +274,16 @@ yellow for skipped, blocked, or interrupted, and red for failed. For example:
 `5 would change · 8 current · 3 skipped · 0.7s`, or
 `6 passed · 1 skipped · 1.4s`.
 
+If resource processing fails or is interrupted, the task row retains its
+completed changes or dry-run plans and reports work interrupted in flight
+separately from items not attempted. Parallel workers already in flight are
+allowed to finish, and their results remain counted. Cancellation does not roll
+back completed changes; rerun the command to converge the remaining state.
+
+An interrupted run exits with code `130`, not success. If any task genuinely
+failed as well, failure takes precedence and the command exits with code `1`.
+The retained run log records the same outcome and exit code.
+
 ## Uninstall
 
 ```bash

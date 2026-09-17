@@ -200,10 +200,13 @@ con.execute("CREATE TABLE workflows (id TEXT, name TEXT, prompt TEXT, mode TEXT,
 con.executemany(
     "INSERT INTO workflows VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
-        ("apm--unknown--a", "PR Triage", "prompt-a", "autopilot", 1, "hourly", 9, 0, 1, "2099-01-01T00:00:00.000Z"),
-        ("apm--a", "PR Triage", "prompt-a", "autopilot", 1, "hourly", 9, 0, 1, "2099-01-01T00:00:00.000Z"),
-        ("apm--a", "PR Triage", "prompt-a", "interactive", 0, "hourly", 9, 0, 1, None),
+        ("apm--unknown--fixture--triage", "PR Triage", "prompt-a", "autopilot", 1, "hourly", 9, 0, 1, "2099-01-01T00:00:00.000Z"),
+        ("apm--_local--fixture--triage", "PR Triage", "prompt-a", "autopilot", 1, "hourly", 9, 0, 1, "2099-01-01T00:00:00.000Z"),
+        ("apm--_local--fixture--triage", "PR Triage", "prompt-a", "interactive", 0, "hourly", 9, 0, 1, None),
         ("apm--b", "PR Review", "prompt-b", "interactive", 0, "daily", 9, 0, 1, None),
+        ("personal-copy", "PR Triage", "prompt-a", "interactive", 0, "hourly", 9, 0, 1, None),
+        ("apm--foreign--fixture--triage", "PR Triage", "prompt-a", "interactive", 0, "hourly", 9, 0, 1, None),
+        ("apm--unknown--other--triage", "PR Triage", "prompt-a", "interactive", 0, "hourly", 9, 0, 1, None),
         ("foreign--workflow", "Foreign", "prompt-foreign", "interactive", 0, "hourly", 9, 0, 1, None),
         ("foreign--workflow", "Foreign", "prompt-foreign", "interactive", 0, "hourly", 9, 0, 1, None),
     ],
@@ -218,7 +221,11 @@ con.commit()
         String::from_utf8_lossy(&setup.stderr)
     );
 
-    let fixup = run_python_script(python, WORKFLOW_AUTOPILOT_SCRIPT, &[db, "apm--a", "apm--b"]);
+    let fixup = run_python_script(
+        python,
+        WORKFLOW_AUTOPILOT_SCRIPT,
+        &[db, "apm--_local--fixture--triage", "apm--b"],
+    );
     assert!(
         fixup.status.success(),
         "fixup failed: {}",
@@ -228,7 +235,7 @@ con.commit()
         String::from_utf8(fixup.stdout)
             .expect("stdout utf-8")
             .replace("\r\n", "\n"),
-        "3 2\napm--a\napm--b\n"
+        "3 2\napm--_local--fixture--triage\napm--b\n"
     );
 
     let query = run_python_script(
@@ -250,8 +257,84 @@ for row in con.execute("SELECT id, COUNT(*), MIN(mode), MIN(enabled) FROM workfl
         String::from_utf8(query.stdout)
             .expect("stdout utf-8")
             .replace("\r\n", "\n"),
-        "apm--a|1|autopilot|1\napm--b|1|autopilot|1\nforeign--workflow|2|interactive|0\n"
+        "apm--_local--fixture--triage|1|autopilot|1\napm--b|1|autopilot|1\n\
+         apm--foreign--fixture--triage|1|interactive|0\n\
+         apm--unknown--other--triage|1|interactive|0\n\
+         foreign--workflow|2|interactive|0\npersonal-copy|1|interactive|0\n"
     );
+}
+
+#[test]
+fn workflow_deduplication_preserves_distinct_ids_and_cron_schedules() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let db_path = dir.path().join("data.db");
+    let db = db_path.to_str().expect("db path utf-8");
+    let setup = run_python_script(
+        python,
+        r#"
+import sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+con.execute("CREATE TABLE workflows (id TEXT PRIMARY KEY, name TEXT, prompt TEXT, mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT, cron_expression TEXT)")
+rows = [
+    ("apm--_local--fixture--morning", "0 9 * * 1-5"),
+    ("apm--_local--fixture--afternoon", "0 15 * * 1-5"),
+    ("apm--_local--fixture--same-schedule", "0 9 * * 1-5"),
+    ("apm--unknown--fixture--morning", "0 15 * * 1-5"),
+    ("apm--unknown--fixture--same-schedule", "0 9 * * 1-5"),
+]
+for wid, cron in rows:
+    con.execute("INSERT INTO workflows VALUES (?, 'Review', 'prompt', 'autopilot', 1, 'manual', 9, 0, 1, '2099-01-01T00:00:00.000Z', ?)", (wid, cron))
+con.commit()
+"#,
+        &[db],
+    );
+    assert!(
+        setup.status.success(),
+        "{}",
+        String::from_utf8_lossy(&setup.stderr)
+    );
+
+    let args = [
+        db,
+        "apm--_local--fixture--morning",
+        "apm--_local--fixture--afternoon",
+        "apm--_local--fixture--same-schedule",
+        "apm--unknown--fixture--same-schedule",
+    ];
+    for _ in 0..2 {
+        let fixup = run_python_script(python, WORKFLOW_AUTOPILOT_SCRIPT, &args);
+        assert!(
+            fixup.status.success(),
+            "{}",
+            String::from_utf8_lossy(&fixup.stderr)
+        );
+        let query = run_python_script(
+            python,
+            r#"
+import sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+for wid, cron in con.execute("SELECT id, cron_expression FROM workflows ORDER BY id"):
+    print(wid + "|" + cron)
+"#,
+            &[db],
+        );
+        assert!(
+            query.status.success(),
+            "{}",
+            String::from_utf8_lossy(&query.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&query.stdout).replace("\r\n", "\n"),
+            "apm--_local--fixture--afternoon|0 15 * * 1-5\n\
+             apm--_local--fixture--morning|0 9 * * 1-5\n\
+             apm--_local--fixture--same-schedule|0 9 * * 1-5\n\
+             apm--unknown--fixture--morning|0 15 * * 1-5\n\
+             apm--unknown--fixture--same-schedule|0 9 * * 1-5\n"
+        );
+    }
 }
 
 #[test]

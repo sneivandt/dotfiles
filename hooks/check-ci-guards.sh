@@ -121,8 +121,13 @@ run_shell_guards() {
     if [ -z "$shell_files" ]; then
       return 0
     fi
-    # shellcheck disable=SC2086  # intentional word splitting of newline-free paths
-    if ! shellcheck --severity=warning --shell=sh $shell_files; then
+    set --
+    while IFS= read -r file; do
+      set -- "$@" "$file"
+    done <<EOF
+$shell_files
+EOF
+    if ! shellcheck --severity=warning --shell=sh "$@"; then
       abort_with_hint \
         "ShellCheck reported issues." \
         "shellcheck --severity=warning --shell=sh <staged shell files>"

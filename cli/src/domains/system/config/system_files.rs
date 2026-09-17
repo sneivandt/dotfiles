@@ -97,9 +97,13 @@ pub(crate) fn validate_entries(files: &[SystemFile]) -> Result<()> {
         if !file.target.is_absolute()
             || !file.target.starts_with("/etc")
             || file.target == Path::new("/etc")
+            || file
+                .target
+                .components()
+                .any(|component| matches!(component, Component::ParentDir))
         {
             bail!(
-                "system file target {} must be an absolute path below /etc",
+                "system file target {} must be an absolute path below /etc without '..' components",
                 file.target.display()
             );
         }
@@ -200,6 +204,7 @@ mod tests {
         assert_eq!(files[1].target, PathBuf::from("/etc/custom.toml"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn validation_rejects_unsafe_and_duplicate_paths() {
         let file = |target: &str, source: &str| SystemFile {
@@ -208,8 +213,43 @@ mod tests {
             merge: MergeStrategy::Toml,
             origin: None,
         };
-        assert!(validate_entries(&[file("relative", "x")]).is_err());
-        assert!(validate_entries(&[file("/etc/x", "../x")]).is_err());
+        for target in [
+            "relative",
+            "/etc",
+            "/etc/.",
+            "/etc-other/x",
+            "/home/user/x",
+            "/etc/../home/user/x",
+            "/etc/./../home/user/x",
+            "/etc/sub/../../home/user/x",
+            "/etc/sub/../x",
+        ] {
+            let error = validate_entries(&[file(target, "x")]).unwrap_err();
+            assert!(error.to_string().contains("target"), "{target}: {error}");
+            assert!(error.to_string().contains("below /etc"), "{error}");
+        }
+        for source in ["", "/absolute", "../x", "./../x", "sub/../../x"] {
+            let error = validate_entries(&[file("/etc/x", source)]).unwrap_err();
+            assert!(error.to_string().contains("source"), "{source}: {error}");
+        }
+        for target in ["/etc/x", "/etc/sub/x", "/etc/./sub/x"] {
+            validate_entries(&[file(target, "sub/x")]).unwrap();
+        }
         assert!(validate_entries(&[file("/etc/x", "x"), file("/etc/x", "y")]).is_err());
+        assert!(validate_entries(&[file("/etc/sub/x", "x"), file("/etc/./sub/x", "y")]).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn validation_does_not_treat_windows_targets_as_linux_etc_paths() {
+        for target in ["/etc/x", r"C:\etc\x", r"C:\etc\..\home\x", r"\\host\etc\x"] {
+            let file = SystemFile {
+                target: PathBuf::from(target),
+                source: PathBuf::from("x"),
+                merge: MergeStrategy::Toml,
+                origin: None,
+            };
+            assert!(validate_entries(&[file]).is_err(), "{target}");
+        }
     }
 }

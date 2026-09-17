@@ -30,6 +30,7 @@ skip = [
     { crate = "getrandom@0.2.17", reason = "ring still pins getrandom 0.2" },
     { crate = "getrandom@0.3.4", reason = "jobserver still pins getrandom 0.3" },
     { crate = "shlex@2.0.1", reason = "clap_complete requires shlex 2 while native build dependencies require shlex 1" },
+    { crate = "syn@2.0.119", reason = "process-wrap's windows-implement and windows-interface require syn 2 while production derive dependencies require syn 3" },
     { crate = "windows-sys@0.52.0", reason = "ring still pins windows-sys 0.52" },
 ]
 

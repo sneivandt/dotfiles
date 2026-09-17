@@ -33,7 +33,8 @@ description: >
   contrast; context, reasons, and timing stay dim. `No changes` is bold in the
   default foreground. Plain output preserves spacing without ANSI styling.
 - Non-verbose mode shows reportable outcomes; verbose mode also shows current
-  and not-applicable tasks plus elapsed time.
+  tasks plus elapsed time. Not-applicable tasks stay out of console output in
+  both modes but remain in persistent run records and progress accounting.
 - A task reason stays on its status row after ` · `. Indented lines are actions
   or planned actions and must not restate the row.
 - Emit resource actions with `Output::action(verb, subject, planned, message)`.

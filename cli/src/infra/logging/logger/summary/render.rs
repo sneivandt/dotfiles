@@ -18,7 +18,7 @@ pub(super) struct RowOpts {
     pub(super) mode: SummaryMode,
     pub(super) style: StyleChoice,
     pub(super) symbols: bool,
-    /// Verbose rows show every task, per-task timing, and uncapped details.
+    /// Verbose rows show every applicable task, per-task timing, and uncapped details.
     pub(super) verbose: bool,
 }
 
@@ -73,9 +73,9 @@ fn indented(text: &str, style: StyleChoice) -> String {
 
 /// Whether a task produces a console row.
 ///
-/// Non-verbose runs report only outcomes that need attention. Verbose runs
-/// account for every task that ran, including the ones that had nothing to do,
-/// so "why did this task not act?" is answerable from the console alone.
+/// Non-verbose runs report only outcomes that need attention. Verbose runs also
+/// report current tasks, but tasks that do not apply to this host stay out of
+/// the console in both modes.
 pub(super) const fn should_emit_task_result(status: TaskStatus, verbose: bool) -> bool {
     match status {
         TaskStatus::Changed
@@ -85,7 +85,8 @@ pub(super) const fn should_emit_task_result(status: TaskStatus, verbose: bool) -
         | TaskStatus::Interrupted
         | TaskStatus::DryRun
         | TaskStatus::Failed => true,
-        TaskStatus::Ok | TaskStatus::NotApplicable => verbose,
+        TaskStatus::Ok => verbose,
+        TaskStatus::NotApplicable => false,
     }
 }
 

@@ -242,11 +242,10 @@ No changes · 15 current · 1.3s
 output and terminals with `NO_COLOR` set omit styling but keep the same spacing.
 
 Normal output includes only tasks that changed state or need attention.
-`--verbose` includes every task, including current and non-applicable tasks. It
-adds elapsed time to each task that ran and shows the resource decisions behind
-each outcome. `⁃` rows have no elapsed time because nothing ran. Internal
-orchestration remains in the run log but does not appear in console rows or
-totals.
+`--verbose` also includes current tasks. It adds elapsed time to each task that
+ran and shows the resource decisions behind each outcome. Non-applicable tasks
+stay out of console output. Internal orchestration remains in the run log but
+does not appear in console rows or totals.
 
 Before the scheduler starts, an installed binary checks for a newer release. The
 check draws a transient status line while it runs and erases it afterwards; a

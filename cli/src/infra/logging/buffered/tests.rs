@@ -358,7 +358,10 @@ fn flush_and_complete_replays_stage_after_progress_clear() {
 
 #[test]
 fn verbose_flush_keeps_not_applicable_task_output_off_console() {
-    let (buf, log, _tmp, _guard) = buffered_fixture();
+    let (mut log, _tmp, _guard) = isolated_logger();
+    log.set_verbose(true);
+    let log = Arc::new(log);
+    let buf = BufferedLog::new(Arc::clone(&log));
     buf.task_stage("windows-only-task");
     buf.debug("not applicable: requires Windows");
 

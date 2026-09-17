@@ -509,16 +509,16 @@ fn task_result_lines_include_all_details() {
 
 #[test]
 fn task_row_golden_matrix() {
-    for (status, glyph, word, color, verbose_only) in [
-        (TaskStatus::Changed, "✓", "CHANGE", "32", false),
-        (TaskStatus::Passed, "✓", "PASSED", "32", false),
-        (TaskStatus::DryRun, "~", "DRYRUN", "35", false),
-        (TaskStatus::Skipped, "⊘", "SKIPPED", "33", false),
-        (TaskStatus::Failed, "✗", "FAILED", "31", false),
-        (TaskStatus::Blocked, "⊘", "BLOCKED", "33", false),
-        (TaskStatus::Interrupted, "⊘", "INTERRUPTED", "33", false),
-        (TaskStatus::Ok, "○", "OK", "2", true),
-        (TaskStatus::NotApplicable, "⁃", "N/A", "2", true),
+    for (status, glyph, word, color) in [
+        (TaskStatus::Changed, "✓", "CHANGE", "32"),
+        (TaskStatus::Passed, "✓", "PASSED", "32"),
+        (TaskStatus::DryRun, "~", "DRYRUN", "35"),
+        (TaskStatus::Skipped, "⊘", "SKIPPED", "33"),
+        (TaskStatus::Failed, "✗", "FAILED", "31"),
+        (TaskStatus::Blocked, "⊘", "BLOCKED", "33"),
+        (TaskStatus::Interrupted, "⊘", "INTERRUPTED", "33"),
+        (TaskStatus::Ok, "○", "OK", "2"),
+        (TaskStatus::NotApplicable, "⁃", "N/A", "2"),
     ] {
         let mut task = task_entry("task", status, Some("reason"));
         task.duration = Some(Duration::from_millis(1500));
@@ -547,10 +547,18 @@ fn task_row_golden_matrix() {
                                 " · 1.5s"
                             });
                         }
-                        let expected: Vec<_> = (!verbose_only || verbose)
-                            .then_some(row)
-                            .into_iter()
-                            .collect();
+                        let visible = match status {
+                            TaskStatus::Ok => verbose,
+                            TaskStatus::NotApplicable => false,
+                            TaskStatus::Changed
+                            | TaskStatus::Passed
+                            | TaskStatus::Skipped
+                            | TaskStatus::Blocked
+                            | TaskStatus::Interrupted
+                            | TaskStatus::DryRun
+                            | TaskStatus::Failed => true,
+                        };
+                        let expected: Vec<_> = visible.then_some(row).into_iter().collect();
                         assert_eq!(
                             task_result_lines(
                                 &task,

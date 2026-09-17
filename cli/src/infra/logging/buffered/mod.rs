@@ -94,9 +94,9 @@ impl BufferedLog {
         let message = task_message.as_deref();
         if !visible {
             // Internal task: the entries live in the run log only.
-        } else if self.inner.is_verbose() {
-            // Verbose accounts for every task, including the ones with nothing
-            // to do, and replays the per-resource decisions behind that outcome.
+        } else if self.inner.is_verbose() && status != TaskStatus::NotApplicable {
+            // Verbose accounts for every applicable task, including the ones
+            // with nothing to do, and replays the decisions behind that outcome.
             self.inner.emit_recorded_task_status(task_id);
             for entry in &entries {
                 entry.replay_verbose(&self.inner, message);

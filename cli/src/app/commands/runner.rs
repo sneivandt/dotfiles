@@ -293,28 +293,24 @@ fn load_config(
 ) -> Result<Config> {
     tracing::debug!("loading configuration");
     let config = Config::load(root, profile, platform, overlay)?;
-
-    // One line rather than nine: the counts are context for the run that
-    // follows, and empty sections say nothing worth a row of their own.
-    let sections: Vec<String> = config
-        .section_counts()
-        .iter()
-        .filter(|section| section.count > 0)
-        .map(|section| format!("{} {}", section.count, section.label()))
-        .collect();
-    log.debug(if sections.is_empty() {
-        "Loaded configuration".to_string()
-    } else {
-        format!(
-            "Loaded configuration \u{00b7} {}",
-            sections.join(" \u{00b7} ")
-        )
-    });
+    emit_config_summary(log, &config);
 
     let warnings = config.validate(platform);
     crate::app::validation::display_diagnostics(&warnings, log);
 
     Ok(config)
+}
+
+/// Emit the verbose-only configuration header and its non-empty section counts.
+pub(super) fn emit_config_summary(log: &dyn crate::infra::logging::Output, config: &Config) {
+    log.task_stage("Loaded configuration");
+    for section in config
+        .section_counts()
+        .iter()
+        .filter(|section| section.count > 0)
+    {
+        log.debug(format!("{} {}", section.count, section.label()));
+    }
 }
 
 #[cfg(test)]

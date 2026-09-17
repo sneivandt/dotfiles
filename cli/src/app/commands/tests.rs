@@ -140,7 +140,7 @@ mod reexec_tests {
 
 #[cfg(test)]
 mod startup_log_tests {
-    use super::runner::{emit_startup_context, startup_context_line};
+    use super::runner::{emit_config_summary, emit_startup_context, startup_context_line};
     use crate::infra::logging::{MsgKind, Output};
     use crate::infra::platform::{Os, Platform};
     use std::borrow::Cow;
@@ -190,6 +190,26 @@ mod startup_log_tests {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             vec![(MsgKind::Startup, context.to_string())]
+        );
+    }
+
+    #[test]
+    fn configuration_summary_uses_a_header_and_one_line_per_nonempty_section() {
+        let output = CapturingOutput::default();
+        let mut config = crate::test_helpers::empty_config("/repo".into());
+        config.vscode_extensions = vec!["one".to_string(), "two".to_string()];
+
+        emit_config_summary(&output, &config);
+
+        assert_eq!(
+            *output
+                .messages
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            vec![
+                (MsgKind::TaskStage, "Loaded configuration".to_string()),
+                (MsgKind::Debug, "2 vscode extensions".to_string()),
+            ]
         );
     }
 

@@ -266,13 +266,14 @@ and duration records. Command completion consumes the scheduler's
 persisted as `Interrupted`; a genuine task failure takes precedence and exits
 with code 1. Cancelled execution does not restart the process or imply rollback.
 
-Visible rows use `✓`, `~`, `⊘`, and `✗`, plus the verbose-only `○` and `⁃`.
+Visible rows use `✓`, `~`, `⊘`, and `✗`, plus the verbose-only `○`.
 `--no-symbols` uses ASCII words instead. A task's reason follows a `·`
 separator. Indented lines are actions the task took or planned.
 
 Normal output includes only tasks that changed state or need attention, with no
-detail truncation. Verbose output includes every task, elapsed time for tasks
-that ran, and each resource decision behind the result. Standard summaries
+detail truncation. Verbose output also includes current tasks, elapsed time for
+tasks that ran, and each resource decision behind the result. Non-applicable
+tasks stay out of console output. Standard summaries
 report changed or would-change tasks alongside current, skipped, blocked,
 interrupted, and failed tasks as applicable. Check summaries report passed,
 skipped, blocked, interrupted, and failed tasks. Both omit status glyphs and

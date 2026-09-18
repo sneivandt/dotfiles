@@ -61,12 +61,22 @@ mod reexec_tests {
 
     #[test]
     fn repository_re_exec_sets_shared_and_repository_guards() {
+        use crate::infra::env::MapEnv;
+
         let args = vec![
             "update".to_string(),
             "--only".to_string(),
             "repository".to_string(),
         ];
         let command = build_repository_reexec_command(Path::new("/repo/bin/dotfiles"), &args);
+        assert_eq!(command.get_program(), "/repo/bin/dotfiles");
+        assert_eq!(
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            args
+        );
         let env = command
             .get_envs()
             .map(|(key, value)| (key.to_owned(), value.map(std::ffi::OsStr::to_owned)))
@@ -82,29 +92,40 @@ mod reexec_tests {
         );
         assert!(
             !env.contains_key(std::ffi::OsStr::new(SELF_UPDATE_REEXEC_GUARD_VAR)),
-            "repository re-exec must remain eligible for one self-update check"
+            "repository re-exec must not claim that the binary was replaced"
+        );
+
+        let child_env = command
+            .get_envs()
+            .fold(MapEnv::new(), |child, (key, value)| {
+                child.with(
+                    key.to_str().expect("restart guard names must be Unicode"),
+                    value.expect("restart guards must be set"),
+                )
+            });
+        let global = global(&[]);
+        let runtime = RuntimePolicy::new(&global, false, child_env.into_handle(), true, true);
+        assert!(
+            !should_check_self_update(&runtime),
+            "repository restart must not retry the initial self-update preflight, regardless of its outcome"
         );
     }
 
     #[test]
     fn self_update_policy_handles_all_guard_combinations() {
-        use crate::domains::dotfiles::self_update::CachePolicy::{Refresh, Use};
         use crate::infra::env::MapEnv;
 
         let global = global(&[]);
         for (guards, expected) in [
-            (vec![], Some(Use)),
-            (vec![REEXEC_GUARD_VAR], None),
-            (vec![REPOSITORY_REEXEC_GUARD_VAR], Some(Refresh)),
-            (
-                vec![REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR],
-                Some(Refresh),
-            ),
-            (vec![SELF_UPDATE_REEXEC_GUARD_VAR], None),
-            (vec![REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR], None),
+            (vec![], true),
+            (vec![REEXEC_GUARD_VAR], false),
+            (vec![REPOSITORY_REEXEC_GUARD_VAR], false),
+            (vec![REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR], false),
+            (vec![SELF_UPDATE_REEXEC_GUARD_VAR], false),
+            (vec![REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR], false),
             (
                 vec![REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR],
-                None,
+                false,
             ),
             (
                 vec![
@@ -112,7 +133,7 @@ mod reexec_tests {
                     REPOSITORY_REEXEC_GUARD_VAR,
                     SELF_UPDATE_REEXEC_GUARD_VAR,
                 ],
-                None,
+                false,
             ),
         ] {
             // Empty guards still count as present, unlike the elevation marker.
@@ -120,7 +141,7 @@ mod reexec_tests {
                 .iter()
                 .fold(MapEnv::new(), |env, guard| env.with(guard, ""));
             let runtime = RuntimePolicy::new(&global, false, env.clone().into_handle(), true, true);
-            assert_eq!(self_update_check_policy(&runtime), expected, "{guards:?}");
+            assert_eq!(should_check_self_update(&runtime), expected, "{guards:?}");
             let elevated = RuntimePolicy::new(
                 &global,
                 false,
@@ -129,11 +150,7 @@ mod reexec_tests {
                 true,
                 true,
             );
-            assert_eq!(
-                self_update_check_policy(&elevated),
-                None,
-                "elevated: {guards:?}"
-            );
+            assert!(!should_check_self_update(&elevated), "elevated: {guards:?}");
         }
     }
 }

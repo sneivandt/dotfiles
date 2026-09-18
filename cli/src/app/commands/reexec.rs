@@ -7,7 +7,7 @@ use crate::infra::logging::Output;
 use super::{RuntimePolicy, runner};
 use crate::infra::logging::OutputExt as _;
 
-/// Environment variable set before re-exec so the child does not reacquire the run lock.
+/// Environment variable set before re-exec to skip self-update and run-lock reacquisition.
 pub(super) const REEXEC_GUARD_VAR: &str = "DOTFILES_REEXEC_GUARD";
 /// Environment variable set when self-update replaced the running binary.
 pub(super) const SELF_UPDATE_REEXEC_GUARD_VAR: &str = "DOTFILES_SELF_UPDATE_REEXEC_GUARD";
@@ -109,21 +109,11 @@ pub(super) fn build_repository_reexec_command(
     command
 }
 
-pub(super) const fn self_update_check_policy(
-    runtime: &RuntimePolicy<'_>,
-) -> Option<crate::domains::dotfiles::self_update::CachePolicy> {
-    if runtime.execution.elevated_child
-        || runtime.self_update_child
-        || (runtime.reexec_guarded && !runtime.repository_child)
-    {
-        return None;
-    }
-
-    Some(if runtime.repository_child {
-        crate::domains::dotfiles::self_update::CachePolicy::Refresh
-    } else {
-        crate::domains::dotfiles::self_update::CachePolicy::Use
-    })
+pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> bool {
+    !runtime.execution.elevated_child
+        && !runtime.self_update_child
+        && !runtime.reexec_guarded
+        && !runtime.repository_child
 }
 
 /// Run the shared self-update preflight and re-exec if the binary changed.
@@ -137,9 +127,9 @@ pub(crate) fn prepare_self_update(
     log: &std::sync::Arc<crate::infra::logging::Logger>,
 ) -> Result<Option<crate::infra::run_lock::RunLock>> {
     let run_lock = runner::CommandRunner::acquire_run_lock(runtime, log)?;
-    let Some(cache_policy) = self_update_check_policy(runtime) else {
+    if !should_check_self_update(runtime) {
         return Ok(run_lock);
-    };
+    }
 
     let root = runner::resolve_root(runtime)?;
     if crate::domains::dotfiles::self_update::pre_update(
@@ -147,7 +137,6 @@ pub(crate) fn prepare_self_update(
         &**log,
         runtime.execution.dry_run,
         runtime.global.skip_attestation,
-        cache_policy,
     )? {
         re_exec(&root, &**log);
     }

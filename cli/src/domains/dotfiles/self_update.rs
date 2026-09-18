@@ -87,15 +87,6 @@ fn github_token(env: &dyn Env) -> Option<String> {
         .find_map(|key| env.var(key).filter(|value| !value.is_empty()))
 }
 
-/// Whether the release lookup may use the persistent version cache.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CachePolicy {
-    /// Use a fresh cache entry when one is available.
-    Use,
-    /// Query the release service even when the cache is fresh.
-    Refresh,
-}
-
 /// Result of checking for an available update.
 enum UpdateCheck {
     /// Could not reach GitHub.
@@ -144,19 +135,17 @@ fn update_check_failure_message(error: &anyhow::Error) -> String {
 fn check_for_update(
     root: &std::path::Path,
     client: &dyn HttpClient,
-    cache_policy: CachePolicy,
     github_token: Option<&str>,
 ) -> Result<UpdateCheck> {
     let raw_version =
         option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
-    check_for_update_with_current(root, client, raw_version, cache_policy, github_token)
+    check_for_update_with_current(root, client, raw_version, github_token)
 }
 
 fn check_for_update_with_current(
     root: &std::path::Path,
     client: &dyn HttpClient,
     raw_version: &str,
-    cache_policy: CachePolicy,
     github_token: Option<&str>,
 ) -> Result<UpdateCheck> {
     let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
@@ -164,8 +153,7 @@ fn check_for_update_with_current(
         tracing::debug!("dev build ({current}), skipping update check");
         return Ok(UpdateCheck::DevBuild);
     }
-    if matches!(cache_policy, CachePolicy::Use)
-        && let Some(latest) = read_fresh_cache(root)
+    if let Some(latest) = read_fresh_cache(root)
         && is_release_version(&latest)
     {
         return Ok(classify_update(&current, latest));
@@ -232,7 +220,6 @@ pub fn pre_update(
     log: &dyn Output,
     dry_run: bool,
     skip_attestation: bool,
-    cache_policy: CachePolicy,
 ) -> Result<bool> {
     if self_update_skipped(&SystemEnv) {
         tracing::debug!("self-update skipped by {SKIP_SELF_UPDATE_ENV}");
@@ -244,7 +231,7 @@ pub fn pre_update(
     let client = default_http_client();
     let token = github_token(&SystemEnv);
     let check = with_status(log, "Checking for updates", || {
-        check_for_update(root, &client, cache_policy, token.as_deref())
+        check_for_update(root, &client, token.as_deref())
     })?;
     match check {
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
@@ -315,14 +302,8 @@ mod tests {
         write_cache(dir.path(), "v9999.12.31-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result = check_for_update_with_current(
-            dir.path(),
-            &client,
-            "v2026.07.25-1",
-            CachePolicy::Use,
-            None,
-        )
-        .unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
 
         match result {
             UpdateCheck::UpdateAvailable { latest, .. } => {
@@ -340,14 +321,8 @@ mod tests {
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(
-            dir.path(),
-            &client,
-            "v2026.07.25-1",
-            CachePolicy::Use,
-            None,
-        )
-        .unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
         assert!(
@@ -363,14 +338,8 @@ mod tests {
         // GitHub reports an older release than the running binary.
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(
-            dir.path(),
-            &client,
-            "v2026.07.25-9",
-            CachePolicy::Use,
-            None,
-        )
-        .unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-9", None).unwrap();
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
@@ -396,38 +365,27 @@ mod tests {
         .unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(
-            dir.path(),
-            &client,
-            "v2026.07.25-1",
-            CachePolicy::Use,
-            None,
-        )
-        .unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
     }
 
     #[test]
-    fn refresh_policy_ignores_a_fresh_cache_entry() {
+    fn fresh_cache_matching_current_skips_network() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         write_cache(dir.path(), "v2026.07.25-1").unwrap();
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
+        let client = MockHttpClient::new(vec![]);
 
-        let result = check_for_update_with_current(
-            dir.path(),
-            &client,
-            "v2026.07.25-1",
-            CachePolicy::Refresh,
-            None,
-        )
-        .unwrap();
+        let result =
+            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
 
-        assert!(matches!(
-            result,
-            UpdateCheck::UpdateAvailable { ref latest, .. } if latest == "v9999.12.31-1"
-        ));
+        assert!(matches!(result, UpdateCheck::AlreadyCurrent));
+        assert!(
+            client.request_headers().is_empty(),
+            "a fresh version cache must avoid a redundant release lookup"
+        );
     }
 
     #[test]

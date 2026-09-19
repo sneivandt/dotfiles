@@ -13,8 +13,9 @@ activating every skill being reviewed.
 - This checkout may be the live source of home-directory symlinks. Edit tracked
   sources, not installed copies, and account for applications that auto-reload.
 - A code change is not permission to run a real install/uninstall, update packages,
-  deploy agent plugins, request elevation, or restart the desktop. Use isolated
-  fixtures and scoped checks; ask before unrequested machine changes.
+  deploy agent plugins, restart the desktop, or make privileged changes to the
+  host. Use isolated fixtures and scoped checks. Ask before machine changes
+  outside the user's authorized scope.
 - Never include private overlay content, credentials, or unsanitized machine logs
   in public code, fixtures, skills, or remote requests.
 
@@ -37,5 +38,5 @@ activating every skill being reviewed.
 - [Architecture](docs/ARCHITECTURE.md) describes layers and runtime contracts.
 - [Testing](docs/TESTING.md) owns validation commands and CI coverage.
 - Skills contain only task-specific procedures and subsystem gotchas.
-- Follow executable source when guidance has drifted; correct the affected
-  guidance rather than changing working code to match stale instructions.
+- When code and guidance disagree, check tests and the intended behavior.
+  Update stale guidance; fix code that violates an established requirement.

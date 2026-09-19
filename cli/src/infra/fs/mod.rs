@@ -4,7 +4,7 @@
 //!
 //! - [`FileSystemOps`] / [`SystemFileSystemOps`] — injectable trait for
 //!   tasks that need to be unit-tested without touching the real filesystem.
-//! - [`ensure_parent_dir`] / [`remove_existing`] / [`copy_dir_recursive`] —
+//! - [`ensure_parent_dir`] / [`copy_dir_recursive`] —
 //!   shared helper functions for resource `apply()` methods.
 //! - [`write_atomic`] / [`rename_into_place`] —
 //!   shared staging and rename mechanics for resources that replace an
@@ -98,18 +98,6 @@ pub fn symlink_metadata_optional(path: &Path, action: &str) -> Result<Option<std
 #[must_use]
 pub fn missing_source_reason(path: &Path) -> Option<String> {
     (!path.exists()).then(|| format!("source does not exist: {}", path.display()))
-}
-
-/// Prepare a target for replacement by creating its parent and removing any
-/// existing file, symlink, or empty directory.
-///
-/// # Errors
-///
-/// Returns an error if the parent directory cannot be created or the existing
-/// target cannot be removed.
-pub fn prepare_target(path: &Path) -> Result<()> {
-    ensure_parent_dir(path)?;
-    remove_existing(path)
 }
 
 /// Read a file as bytes with consistent path context.
@@ -217,28 +205,6 @@ pub fn canonicalize(path: &Path) -> Result<PathBuf> {
     dunce::canonicalize(path).with_context(|| format!("canonicalizing {}", path.display()))
 }
 
-/// Remove an existing file, symlink, or empty directory at `path`.
-///
-/// This is a shared helper for resource `apply()` methods that need to
-/// replace an existing target.  Does nothing if `path` does not exist.
-/// Non-empty directories still return an error instead of being removed
-/// recursively.
-///
-/// # Errors
-///
-/// Returns an error if the path exists but cannot be removed.
-pub fn remove_existing(path: &Path) -> Result<()> {
-    let metadata = match path.symlink_metadata() {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(error).with_context(|| format!("stat existing: {}", path.display()));
-        }
-    };
-
-    remove_entry(path, &metadata).with_context(|| format!("remove existing: {}", path.display()))
-}
-
 /// Returns `true` when `meta` describes an entry that must be removed with
 /// [`std::fs::remove_dir`] rather than [`std::fs::remove_file`].
 ///
@@ -294,23 +260,6 @@ pub fn create_native_symlink(
             std::io::ErrorKind::Unsupported,
             "symbolic links are unsupported on this platform",
         ))
-    }
-}
-
-/// Remove the entry at `path` described by `meta`, picking the removal call
-/// that the platform requires for that entry kind.
-///
-/// `meta` must come from [`std::fs::symlink_metadata`] so links are removed
-/// rather than followed. Non-empty directories are not removed recursively.
-///
-/// # Errors
-///
-/// Returns an error if the entry cannot be removed.
-pub fn remove_entry(path: &Path, meta: &std::fs::Metadata) -> std::io::Result<()> {
-    if is_dir_like(meta) {
-        std::fs::remove_dir(path)
-    } else {
-        std::fs::remove_file(path)
     }
 }
 

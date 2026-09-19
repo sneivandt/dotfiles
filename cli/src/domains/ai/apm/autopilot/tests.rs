@@ -2,14 +2,14 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::engine::Task;
-use crate::infra::exec::{ExecResult, MockExecutor};
-use crate::test_helpers::{assert_task_changed, assert_task_ok};
+use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+use crate::test_helpers::{assert_task_changed, assert_task_ok, task_skipped};
 
 use super::super::test_fixture::{
     expect_apm_install, expect_apm_update, expect_copilot_app_enable,
-    expect_copilot_app_workflow_install, expect_which_apm, install_task,
-    make_home_context_with_executor, update_task, write_copilot_app_db,
-    write_current_manifest_and_lock, write_home_fragment,
+    expect_copilot_app_workflow_install, expect_cowork_enable, expect_which_apm, install_task,
+    make_home_context_with_executor, make_windows_cowork_context, update_task,
+    write_copilot_app_db, write_current_manifest_and_lock, write_home_fragment,
 };
 use super::DesiredApmWorkflows;
 use super::lockfile::parse_deployed_workflow_ids;
@@ -510,6 +510,118 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = install_task().run(&ctx).expect("run should not error");
     assert_task_changed(&result);
+}
+
+#[test]
+fn run_restores_workflows_when_cowork_reconciliation_fails() {
+    for update in [false, true] {
+        let dir = tempfile::tempdir_in(".").expect("create fixture directory");
+        let home = dir.path().canonicalize().expect("resolve fixture home");
+        write_current_manifest_and_lock(&home);
+        write_copilot_app_db(&home);
+        std::fs::write(
+            home.join(".apm").join("apm.lock.yaml"),
+            "dependencies:\n- deployed_files:\n  - copilot-app-db://workflows/apm--a\n  \
+             - .agents/skills/missing/SKILL.md\n",
+        )
+        .unwrap();
+
+        let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
+        expect_which_apm(&mut mock, true);
+        expect_python3(&mut mock, 2, true);
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|spec| {
+                assert_eq!(spec.program(), "python3");
+                assert_eq!(spec.arguments()[1], WORKFLOW_DESIRED_IDS_SCRIPT);
+                Ok(ExecResult::success("apm--a\n"))
+            });
+        if update {
+            expect_apm_update(&mut mock, &mut seq, "updated\n");
+            expect_copilot_app_enable(&mut mock, &mut seq);
+            expect_copilot_app_workflow_install(&mut mock, &mut seq);
+        } else {
+            expect_apm_install(&mut mock, &mut seq, &home);
+        }
+        expect_cowork_enable(&mut mock, &mut seq);
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|spec| {
+                assert_eq!(spec.program(), "python3");
+                assert!(!spec.is_checked());
+                assert_eq!(spec.arguments()[1], WORKFLOW_AUTOPILOT_SCRIPT);
+                assert_eq!(spec.arguments()[3..], ["apm--a"]);
+                Ok(ExecResult::success("1 1\napm--a\n"))
+            });
+        let ctx = make_windows_cowork_context(&home, mock);
+        let task = if update {
+            update_task()
+        } else {
+            install_task()
+        };
+
+        let error = task
+            .run(&ctx)
+            .expect_err("Cowork failure must still propagate");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("APM shared skill") && message.contains("missing"),
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn run_restores_workflows_without_masking_native_failure_outcomes() {
+    for auth_failure in [false, true] {
+        let dir = tempfile::tempdir_in(".").expect("create fixture directory");
+        write_autopilot_fixture(dir.path(), &["apm--a"]);
+        let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
+        expect_which_apm(&mut mock, true);
+        expect_python3(&mut mock, 2, true);
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|spec| {
+                assert_eq!(spec.arguments()[1], WORKFLOW_DESIRED_IDS_SCRIPT);
+                Ok(ExecResult::success("apm--a\n"))
+            });
+        let message = if auth_failure {
+            "authentication failed"
+        } else {
+            "deployment failed"
+        };
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |spec| {
+                assert_eq!(spec.arguments(), ["install", "-g"]);
+                Err(ExecError::non_zero(
+                    "apm",
+                    ExecResult::failure("", message, Some(1)),
+                ))
+            });
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|spec| {
+                assert_eq!(spec.arguments()[1], WORKFLOW_AUTOPILOT_SCRIPT);
+                assert_eq!(spec.arguments()[3..], ["apm--a"]);
+                Ok(ExecResult::success("1 1\napm--a\n"))
+            });
+        let ctx = make_home_context_with_executor(dir.path(), mock);
+        let result = install_task().run(&ctx);
+
+        if auth_failure {
+            assert!(task_skipped(&result.unwrap()).contains("GitHub authentication"));
+        } else {
+            assert!(format!("{:#}", result.unwrap_err()).contains(message));
+        }
+    }
 }
 
 #[test]

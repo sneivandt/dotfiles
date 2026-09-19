@@ -34,10 +34,10 @@ fn finish_reexec(log: &dyn Output, code: i32) {
     if let Some(run) = log.run_log() {
         use crate::infra::logging::records::RunOutcome;
         run.finish(
-            if code == 0 {
-                RunOutcome::Succeeded
-            } else {
-                RunOutcome::Failed
+            match code {
+                0 => RunOutcome::Succeeded,
+                130 => RunOutcome::Interrupted,
+                _ => RunOutcome::Failed,
             },
             code,
         );
@@ -152,4 +152,47 @@ pub(crate) fn prepare_self_update(
 /// is always the binary that was just replaced.
 pub(super) fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
     crate::domains::dotfiles::self_update::installed_binary_path(root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
+
+    #[test]
+    fn parent_run_preserves_the_restarted_childs_outcome() {
+        for (code, expected) in [
+            (0, RunOutcome::Succeeded),
+            (1, RunOutcome::Failed),
+            (130, RunOutcome::Interrupted),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let log = crate::infra::logging::Logger::new_in("install", dir.path());
+            let run = log.run_log().unwrap();
+            run.start_run("install", None);
+
+            finish_reexec(&log, code);
+
+            let contents = std::fs::read_to_string(run.path()).unwrap();
+            let finishes = contents
+                .lines()
+                .filter_map(StoredRecord::from_line)
+                .filter_map(|stored| {
+                    if let Record::RunFinish {
+                        outcome, exit_code, ..
+                    } = stored.record
+                    {
+                        Some((outcome, exit_code))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                finishes,
+                [(expected, code)],
+                "the parent must not label an interrupted child as failed"
+            );
+        }
+    }
 }

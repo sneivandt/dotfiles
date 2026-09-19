@@ -397,6 +397,14 @@ Overlay rules:
 When an overlay is active, its resolved path is reported as the final
 ` · overlay <path>` section of the startup header line.
 
+Selection precedence is `--overlay`, then `DOTFILES_OVERLAY`, then
+repository-local Git config `dotfiles.overlay`. Relative paths are resolved
+against the invoking process's current directory, not the dotfiles root.
+An explicit `--overlay` selection is saved as an absolute path so later runs
+from another directory use the same overlay. Previously saved relative paths
+still use the invoking directory until replaced with an explicit selection.
+Read-only task discovery resolves the path without saving it.
+
 When `--overlay` points to a linked Git worktree, the CLI asks before using and
 persisting that path. The `[y/N]` prompt defaults to no. A non-interactive
 invocation rejects the new worktree path. Normal checkouts have a `.git`

@@ -66,7 +66,11 @@ impl Logger {
     }
 
     pub(in crate::infra::logging) fn remove_active_task_locked(&self, name: &str) {
-        self.lock_active_tasks().retain(|n| n != name);
+        let mut active = self.lock_active_tasks();
+        // Dynamic task instances can share a display name.
+        if let Some(index) = active.iter().position(|active_name| active_name == name) {
+            active.remove(index);
+        }
     }
 
     /// Build the status-line text for the currently active tasks.
@@ -408,6 +412,27 @@ mod tests {
             1,
             "progress_rows should still be 1 when task-b is still active"
         );
+    }
+
+    #[test]
+    fn completing_one_task_keeps_another_with_the_same_display_name_active() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.notify_task_start_with_progress("shared name", true);
+        log.notify_task_start_with_progress("shared name", true);
+
+        log.notify_task_done_with_progress("shared name", true);
+
+        assert_eq!(log.active_task_summary().as_deref(), Some("shared name"));
+        assert_eq!(
+            log.progress_rows_count(),
+            1,
+            "the other same-name task is still running"
+        );
+
+        log.notify_task_done_with_progress("shared name", true);
+
+        assert!(log.active_task_summary().is_none());
+        assert_eq!(log.progress_rows_count(), 0);
     }
 
     #[test]

@@ -122,8 +122,8 @@ contracts.
 
 ## Desktop shell
 
-Workspace layout regressions use the Qt 6 Quick Test runner. On Arch, run them
-offscreen without switching real workspaces:
+Workspace layout and queued network-refresh regressions use the Qt 6 Quick
+Test runner. On Arch, run them offscreen without switching real workspaces:
 
 ```bash
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
@@ -138,6 +138,10 @@ adapter:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s symlinks/config/quickshell -p network_helper_test.py
 ```
+
+On Windows, use `python -B` in place of the environment-variable prefix and
+`python3`. The native GLib integration case is skipped when its runtime is
+unavailable; the mocked network cases still run.
 
 ## CLI validation
 
@@ -199,9 +203,9 @@ sh hooks/pre-commit
 DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
 ```
 
-`check-rust.sh` validates an exported snapshot of the staged index, not the
-working tree. Unstaged and untracked content is excluded, the working tree
-remains untouched, and Cargo's target cache is reused.
+`check-rust.sh` and `check-ci-guards.sh` validate an exported snapshot of the
+staged index, not the working tree. Unstaged and untracked content is excluded,
+the working tree remains untouched, and Cargo's target cache is reused.
 
 Run the isolated hook-input and wrapper-context regressions from the repository
 root without installing hooks or running a real bootstrap:
@@ -210,6 +214,10 @@ root without installing hooks or running a real bootstrap:
 sh .github/workflows/scripts/linux/test-hook-inputs.sh
 sh .github/workflows/scripts/linux/test-shell-wrapper.sh test_wrapper_preserves_runtime_context
 ```
+
+Pass `test_staged_ci_guards` or `test_ci_change_classification` to
+`test-hook-inputs.sh` to focus on staged-content isolation or rename-aware CI
+classification. With no target, it runs all hook-input regressions.
 
 On Windows, load the wrapper test functions and run the isolated path fixture:
 

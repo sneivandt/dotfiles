@@ -154,7 +154,7 @@ fn get_installed_winget_ignores_separator_and_extra_columns() {
         "Windows Terminal              Microsoft.WindowsTerminal    1.21.2361.0             winget\n",
     );
 
-    let installed = parse_winget_ids(stdout);
+    let installed = parse_winget_ids(stdout).unwrap();
     assert!(installed.contains("Git.Git"));
     assert!(installed.contains("Microsoft.WindowsTerminal"));
     assert_eq!(installed.len(), 2, "only package IDs should be collected");
@@ -177,7 +177,7 @@ fn get_installed_winget_handles_unicode_in_name_column() {
         "Ünïcödé App                   Unicode.Accented             3.0.0\n",
     );
 
-    let installed = parse_winget_ids(stdout);
+    let installed = parse_winget_ids(stdout).unwrap();
     assert!(
         installed.contains("Unicode.App"),
         "should extract ID from row with CJK characters in Name"

@@ -54,6 +54,29 @@ fn copies_git_directory_when_flag_not_set() {
     );
 }
 
+#[cfg(any(unix, windows))]
+#[test]
+fn fails_when_a_symlink_cannot_be_recreated() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::create_dir(&target).unwrap();
+    let original = root.path().join("original");
+    std::fs::write(&original, "source content").unwrap();
+    create_native_symlink(&original, &source.join("link"), false).unwrap();
+    std::fs::write(target.join("link"), "keep existing content").unwrap();
+
+    let error = copy_dir_recursive(&source, &target, false).unwrap_err();
+
+    assert!(format!("{error:#}").contains("creating symlink"));
+    assert_eq!(
+        std::fs::read_to_string(target.join("link")).unwrap(),
+        "keep existing content"
+    );
+    assert_eq!(std::fs::read_to_string(original).unwrap(), "source content");
+}
+
 #[cfg(unix)]
 #[test]
 fn recreates_symlinks_in_destination() {
@@ -172,66 +195,7 @@ fn ensure_parent_dir_noop_when_parent_exists() {
 }
 
 // -----------------------------------------------------------------------
-// remove_existing
-// -----------------------------------------------------------------------
-
-#[test]
-fn remove_existing_removes_regular_file() {
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("target");
-    std::fs::write(&file, "content").unwrap();
-    remove_existing(&file).unwrap();
-    assert!(!file.exists());
-}
-
-#[test]
-fn remove_existing_removes_empty_directory() {
-    let dir = tempfile::tempdir().unwrap();
-    let target_dir = dir.path().join("target");
-    std::fs::create_dir(&target_dir).unwrap();
-    remove_existing(&target_dir).unwrap();
-    assert!(!target_dir.exists());
-}
-
-#[test]
-fn remove_existing_noop_when_path_absent() {
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("nonexistent");
-    remove_existing(&file).unwrap();
-}
-
-#[cfg(unix)]
-#[test]
-fn remove_existing_removes_broken_symlink() {
-    let dir = tempfile::tempdir().unwrap();
-    let link = dir.path().join("link");
-    std::os::unix::fs::symlink("/nonexistent/target", &link).unwrap();
-    assert!(link.symlink_metadata().is_ok());
-    remove_existing(&link).unwrap();
-    assert!(link.symlink_metadata().is_err());
-}
-
-#[cfg(unix)]
-#[test]
-fn remove_existing_removes_symlink_to_directory_without_touching_it() {
-    let dir = tempfile::tempdir().unwrap();
-    let real_dir = dir.path().join("real");
-    std::fs::create_dir(&real_dir).unwrap();
-    std::fs::write(real_dir.join("keep.txt"), "keep").unwrap();
-    let link = dir.path().join("link");
-    std::os::unix::fs::symlink(&real_dir, &link).unwrap();
-
-    remove_existing(&link).unwrap();
-
-    assert!(link.symlink_metadata().is_err(), "the link must be gone");
-    assert!(
-        real_dir.join("keep.txt").exists(),
-        "the link target must survive"
-    );
-}
-
-// -----------------------------------------------------------------------
-// remove_entry / is_dir_like
+// is_dir_like
 // -----------------------------------------------------------------------
 
 #[test]
@@ -257,17 +221,6 @@ fn is_dir_like_reports_false_for_symlinks() {
         !is_dir_like(&link.symlink_metadata().unwrap()),
         "a Unix symlink is removed as a file even when it points at a directory"
     );
-}
-
-#[test]
-fn remove_entry_removes_empty_directory() {
-    let dir = tempfile::tempdir().unwrap();
-    let target = dir.path().join("target");
-    std::fs::create_dir(&target).unwrap();
-
-    remove_entry(&target, &target.symlink_metadata().unwrap()).unwrap();
-
-    assert!(!target.exists());
 }
 
 // -----------------------------------------------------------------------

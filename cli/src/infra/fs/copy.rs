@@ -8,16 +8,16 @@ use std::path::Path;
 ///
 /// Symlinks within the source tree are **not followed**: each symlink is
 /// recreated in `dst` pointing to the same link target.  On Unix this always
-/// succeeds; on Windows it requires Developer Mode or elevated privileges and
-/// logs a warning (rather than failing) when the privilege check is not met.
+/// succeeds; on Windows it requires Developer Mode or elevated privileges.
+/// Failure to recreate a link fails the copy rather than silently omitting it.
 /// This prevents unexpected traversal of symlinks that point outside the
 /// intended source tree.
 ///
 /// # Errors
 ///
 /// Returns an error if the destination directory cannot be created, a source
-/// entry cannot be read, a file cannot be copied, or (on Unix) a symlink
-/// cannot be recreated or directory permissions cannot be preserved.
+/// entry cannot be read, a file cannot be copied, a symlink cannot be recreated,
+/// or (on Unix) directory permissions cannot be preserved.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
     copy_dir_recursive_inner(src, dst, skip_git)
 }
@@ -54,35 +54,14 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
             // traversal of symlinks that point outside the intended source tree.
             let link_target = std::fs::read_link(&src_path)
                 .with_context(|| format!("reading symlink {}", src_path.display()))?;
-            let result =
-                super::create_native_symlink(&link_target, &dst_path, super::is_dir_like(&meta));
-            #[cfg(unix)]
-            result.with_context(|| {
-                format!(
-                    "creating symlink {} -> {}",
-                    dst_path.display(),
-                    link_target.display()
-                )
-            })?;
-            #[cfg(windows)]
-            {
-                if let Err(e) = result {
-                    tracing::warn!(
-                        "skipping symlink {} -> {}: {e} (enable Developer Mode or run as administrator)",
+            super::create_native_symlink(&link_target, &dst_path, super::is_dir_like(&meta))
+                .with_context(|| {
+                    format!(
+                        "creating symlink {} -> {}",
                         dst_path.display(),
-                        link_target.display(),
-                    );
-                }
-            }
-            #[cfg(not(any(unix, windows)))]
-            {
-                let _ = result;
-                tracing::warn!(
-                    "skipping symlink entry {} while copying to {}: symlink creation is unsupported on this platform",
-                    src_path.display(),
-                    dst_path.display()
-                );
-            }
+                        link_target.display()
+                    )
+                })?;
         } else if meta.is_dir() {
             if skip_git && entry.file_name() == ".git" {
                 continue;

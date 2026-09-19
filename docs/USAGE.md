@@ -207,7 +207,6 @@ may appear in a different order between runs. Statuses distinguish the outcome:
 | `⊘` | The task was skipped, blocked by a prerequisite, or interrupted; the reason explains which |
 | `✗` | The task failed |
 | `○` | The task was already up to date (verbose only) |
-| `⁃` | The task does not apply to this platform or configuration (verbose only) |
 
 Use `--no-symbols` to restore the ASCII status words for terminals or pipelines
 that cannot render the glyphs. Skipped, blocked, and interrupted tasks use
@@ -281,7 +280,8 @@ back completed changes; rerun the command to converge the remaining state.
 
 An interrupted run exits with code `130`, not success. If any task genuinely
 failed as well, failure takes precedence and the command exits with code `1`.
-The retained run log records the same outcome and exit code.
+The retained run log records the same outcome and exit code, including the
+parent log when a restarted child is interrupted.
 
 ## Uninstall
 

@@ -48,13 +48,16 @@ pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
 ///
 /// When the overlay path is obtained from a CLI argument, it is persisted
 /// to the repository's local git config so future runs use it automatically.
+/// Relative selections are made absolute against the invocation directory
+/// before use or persistence.
 ///
 /// Returns `None` if no overlay is configured.
 ///
 /// # Errors
 ///
 /// Returns an error if a linked Git worktree is declined as the overlay or its
-/// confirmation prompt cannot be read.
+/// confirmation prompt cannot be read, or the selected path cannot be made
+/// absolute.
 pub fn resolve_from_args(
     cli_overlay: Option<&Path>,
     root: &Path,
@@ -71,22 +74,27 @@ pub fn resolve_from_args(
 /// # Errors
 ///
 /// Returns an error if a linked worktree is declined or its confirmation
-/// prompt cannot be read.
+/// prompt cannot be read, or the selected path cannot be made absolute.
 pub fn resolve_read_only(
     cli_overlay: Option<&Path>,
     root: &Path,
     env: &dyn crate::infra::env::Env,
 ) -> Result<Option<PathBuf>> {
     if let Some(path) = cli_overlay {
-        if is_linked_worktree(path) && !confirm_linked_worktree(path)? {
+        let path = absolute_overlay_path(path)?;
+        if is_linked_worktree(&path) && !confirm_linked_worktree(&path)? {
             bail!(
                 "overlay path {} is a linked Git worktree; selection cancelled",
                 path.display()
             );
         }
-        return Ok(Some(path.to_path_buf()));
+        return Ok(Some(path));
     }
-    Ok(read_from_env(env).or_else(|| read_persisted(root)))
+    read_from_env(env)
+        .or_else(|| read_persisted(root))
+        .as_deref()
+        .map(absolute_overlay_path)
+        .transpose()
 }
 
 #[allow(
@@ -100,24 +108,28 @@ fn resolve_from_args_with_confirmation(
     confirm: impl FnOnce(&Path) -> Result<bool>,
 ) -> Result<Option<PathBuf>> {
     if let Some(path) = cli_overlay {
-        if is_linked_worktree(path) && !confirm(path)? {
+        let path = absolute_overlay_path(path)?;
+        if is_linked_worktree(&path) && !confirm(&path)? {
             bail!(
                 "overlay path {} is a linked Git worktree; selection cancelled",
                 path.display()
             );
         }
-        let path = path.to_path_buf();
         if let Err(e) = persist(root, &path) {
             eprintln!("warning: could not persist overlay path to git config: {e}");
         }
         return Ok(Some(path));
     }
 
-    if let Some(path) = read_from_env(env) {
-        return Ok(Some(path));
-    }
+    read_from_env(env)
+        .or_else(|| read_persisted(root))
+        .as_deref()
+        .map(absolute_overlay_path)
+        .transpose()
+}
 
-    Ok(read_persisted(root))
+fn absolute_overlay_path(path: &Path) -> Result<PathBuf> {
+    std::path::absolute(path).with_context(|| format!("resolving overlay path: {}", path.display()))
 }
 
 fn is_linked_worktree(path: &Path) -> bool {
@@ -222,7 +234,7 @@ mod tests {
     #[test]
     fn resolve_from_args_prefers_cli_arg() {
         let (dir, root) = init_test_repo();
-        let cli_path = PathBuf::from("/cli/overlay");
+        let cli_path = std::path::absolute("cli-overlay").expect("absolute CLI path");
         let result = resolve_from_args(Some(&cli_path), &root, &crate::infra::env::MapEnv::new())
             .expect("ordinary overlay should resolve");
         assert_eq!(result, Some(cli_path.clone()));
@@ -243,7 +255,7 @@ mod tests {
     #[test]
     fn read_only_resolution_does_not_persist_an_explicit_overlay() {
         let (dir, root) = init_test_repo();
-        let overlay = PathBuf::from("/temporary/overlay");
+        let overlay = std::path::absolute("discovery-overlay").expect("absolute overlay path");
 
         let result = resolve_read_only(Some(&overlay), &root, &crate::infra::env::MapEnv::new())
             .expect("read-only overlay resolution");
@@ -256,12 +268,114 @@ mod tests {
     #[test]
     fn resolve_from_args_falls_back_to_persisted() {
         let (dir, root) = init_test_repo();
-        let overlay = PathBuf::from("/persisted/overlay");
+        let overlay = std::path::absolute("persisted-overlay").expect("absolute overlay path");
         persist(&root, &overlay).expect("persist");
         let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new())
             .expect("persisted overlay should resolve");
         assert_eq!(result, Some(overlay));
         drop(dir);
+    }
+
+    #[test]
+    fn relative_cli_overlay_is_absolute_before_use_and_persistence() {
+        let repo = tempfile::tempdir_in(".").expect("fixture repository");
+        git2::Repository::init(repo.path()).expect("git init");
+        let path = Path::new("relative-overlay");
+        let expected = std::path::absolute(path).expect("absolute overlay path");
+
+        let selected =
+            resolve_from_args(Some(path), repo.path(), &crate::infra::env::MapEnv::new())
+                .expect("resolve relative overlay");
+
+        assert_eq!(selected, Some(expected.clone()));
+        assert_eq!(read_persisted(repo.path()), Some(expected));
+    }
+
+    #[test]
+    fn relative_overlay_scripts_are_not_resolved_twice_after_changing_child_directory() {
+        use crate::domains::overlay::config::scripts::ScriptEntry;
+        use crate::domains::overlay::resources::script::ScriptResource;
+        use crate::engine::{IntrinsicState as _, RemovableResource as _, Resource as _};
+        use crate::infra::exec::{ExecResult, MockExecutor};
+
+        let repo = tempfile::tempdir_in(".").expect("fixture repository");
+        git2::Repository::init(repo.path()).expect("git init");
+        let overlay = repo.path().join("overlay");
+        std::fs::create_dir(&overlay).expect("fixture overlay");
+        std::fs::write(overlay.join("script.sh"), "#!/bin/sh\n").expect("fixture script");
+        let selected = resolve_from_args(
+            Some(&overlay),
+            repo.path(),
+            &crate::infra::env::MapEnv::new(),
+        )
+        .unwrap()
+        .expect("selected overlay");
+        let expected_script = std::path::absolute(overlay.join("script.sh")).unwrap();
+        let expected_root = std::path::absolute(&overlay).unwrap();
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .times(4)
+            .withf(move |spec| {
+                spec.program() == "sh"
+                    && spec.working_dir() == Some(expected_root.as_path())
+                    && spec
+                        .arguments()
+                        .first()
+                        .is_some_and(|argument| argument == expected_script.as_os_str())
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        let entry = ScriptEntry {
+            name: "Fixture".to_string(),
+            path: "script.sh".to_string(),
+            description: None,
+        };
+        let resource = ScriptResource::from_entry(&entry, &selected, std::sync::Arc::new(mock))
+            .expect("script resource");
+
+        assert_eq!(
+            resource.current_state().unwrap(),
+            crate::engine::ResourceState::Correct
+        );
+        resource.apply().unwrap();
+        resource.preview_with_output().unwrap();
+        resource.remove().unwrap();
+    }
+
+    #[test]
+    fn all_resolvers_anchor_relative_selections_without_changing_precedence() {
+        let repo = tempfile::tempdir_in(".").expect("fixture repository");
+        git2::Repository::init(repo.path()).expect("git init");
+        let env = crate::infra::env::MapEnv::new().with("DOTFILES_OVERLAY", "env-overlay");
+        persist(repo.path(), Path::new("persisted-overlay")).expect("persist legacy path");
+
+        for resolver in [resolve_from_args, resolve_read_only] {
+            let expected_env =
+                std::path::absolute("env-overlay").expect("absolute environment path");
+            assert_eq!(
+                resolver(None, repo.path(), &env).unwrap(),
+                Some(expected_env),
+                "environment must override persisted selection"
+            );
+            let expected_persisted =
+                std::path::absolute("persisted-overlay").expect("absolute saved path");
+            assert_eq!(
+                resolver(None, repo.path(), &crate::infra::env::MapEnv::new()).unwrap(),
+                Some(expected_persisted),
+                "legacy relative persisted selections must be usable by subprocesses"
+            );
+        }
+
+        let expected_cli = std::path::absolute("cli-overlay").expect("absolute CLI path");
+        assert_eq!(
+            resolve_read_only(Some(Path::new("cli-overlay")), repo.path(), &env).unwrap(),
+            Some(expected_cli),
+            "explicit selection must override the environment"
+        );
+        assert_eq!(
+            read_persisted(repo.path()),
+            Some(PathBuf::from("persisted-overlay")),
+            "read-only discovery must not rewrite persisted state"
+        );
     }
 
     #[test]

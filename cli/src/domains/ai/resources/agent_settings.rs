@@ -52,7 +52,8 @@ impl AgentSettingResource {
     fn read_json_document(&self) -> Result<Value> {
         match std::fs::read_to_string(&self.path) {
             Ok(ref contents) if contents.trim().is_empty() => Ok(Value::Object(Map::new())),
-            Ok(contents) => serde_json::from_str(&contents)
+            Ok(contents) => serde_json::from_str::<Map<String, Value>>(&contents)
+                .map(Value::Object)
                 .with_context(|| format!("parsing {}", self.path.display())),
             Err(ref error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Ok(Value::Object(Map::new()))
@@ -126,10 +127,6 @@ impl AgentSettingResource {
         let Some((last, parents)) = segments.split_last() else {
             return Ok(());
         };
-
-        if !document.is_object() {
-            *document = Value::Object(Map::new());
-        }
 
         let mut node = document;
         for segment in parents {
@@ -305,6 +302,33 @@ mod tests {
         let mut document = serde_json::json!({ "footer": 42 });
         let resource = json_resource("footer.showBranch", toml::Value::Boolean(true));
         assert!(resource.set_in_json_document(&mut document).is_err());
+    }
+
+    #[test]
+    fn non_object_json_documents_are_rejected_without_discarding_content() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let path = dir.path().join("settings.json");
+        let resource = AgentSettingResource::new(
+            "copilot".to_string(),
+            "model".to_string(),
+            toml::Value::String("fixture-model".to_string()),
+            SettingsFormat::Json,
+            path.clone(),
+        );
+
+        for contents in [
+            "null",
+            "[]",
+            r#"[{"keepMe":"value"}]"#,
+            "true",
+            "42",
+            r#""text""#,
+        ] {
+            std::fs::write(&path, contents).unwrap();
+            assert!(resource.current_state().is_err(), "{contents}");
+            assert!(resource.apply().is_err(), "{contents}");
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), contents);
+        }
     }
 
     #[test]

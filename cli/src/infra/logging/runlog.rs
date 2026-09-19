@@ -60,15 +60,24 @@ fn run_log_file_name(command: &str, stamp: &str, pid: u32) -> String {
 /// Parse a run-log file name, or return `None` if it is not one.
 ///
 /// Command names never contain `-`, so splitting into exactly three parts is
-/// unambiguous. Files that do not match are ignored rather than pruned or
-/// listed, so unrelated files in the log directory are left alone.
+/// unambiguous. The stamp must match the fixed-width `YYYYMMDDTHHMMSSZ` format.
+/// Files that do not match are ignored rather than pruned or listed, so
+/// unrelated files in the log directory are left alone.
 pub(crate) fn parse_run_log_file_name(name: &str) -> Option<RunLogName<'_>> {
     let stem = name.strip_suffix(".log")?;
     let mut parts = stem.split('-');
     let stamp = parts.next()?;
     let command = parts.next()?;
     let pid = parts.next()?;
-    if parts.next().is_some() || stamp.is_empty() || command.is_empty() {
+    if parts.next().is_some()
+        || command.is_empty()
+        || stamp.len() != 16
+        || !stamp.bytes().enumerate().all(|(index, byte)| match index {
+            8 => byte == b'T',
+            15 => byte == b'Z',
+            _ => byte.is_ascii_digit(),
+        })
+    {
         return None;
     }
     pid.parse::<u32>().ok()?;
@@ -442,6 +451,12 @@ mod tests {
         for name in [
             "install.log",
             "notes.txt",
+            "backup-notes-1.log",
+            "20260731T15421Z-install-1.log",
+            "20260731T1542100Z-install-1.log",
+            "20260731X154210Z-install-1.log",
+            "20260731T154210X-install-1.log",
+            "2026073aT154210Z-install-1.log",
             "20260731T154210Z-install.log",
             "20260731T154210Z-install-notapid.log",
             "20260731T154210Z-install-1-extra.log",
@@ -496,6 +511,7 @@ mod tests {
     fn prune_ignores_files_that_are_not_run_logs() {
         let tmp = tempfile::tempdir().expect("tempdir");
         fs::write(tmp.path().join("notes.txt"), "keep me").expect("write note");
+        fs::write(tmp.path().join("backup-notes-1.log"), "keep me").expect("write backup");
         fs::write(tmp.path().join("install.log"), "legacy").expect("write legacy log");
         fs::write(
             tmp.path()
@@ -508,7 +524,11 @@ mod tests {
 
         assert_eq!(
             run_log_names(tmp.path()),
-            vec!["install.log".to_string(), "notes.txt".to_string()],
+            vec![
+                "backup-notes-1.log".to_string(),
+                "install.log".to_string(),
+                "notes.txt".to_string(),
+            ],
             "only run logs should be pruned"
         );
     }

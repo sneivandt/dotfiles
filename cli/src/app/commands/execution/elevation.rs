@@ -313,8 +313,8 @@ const fn prepare_elevation(
 
 /// Rewrite this run's arguments so the elevated child runs only `selectors`.
 ///
-/// Existing `--only` / `--skip` filters are dropped because the parent has
-/// already resolved the child's exact scope. `--no-parallel` is
+/// Existing `--only` / `--skip` filters and `--with-deps` are dropped because the
+/// parent has already resolved the child's exact scope. `--no-parallel` is
 /// forced so output stays readable in the separate console `Start-Process`
 /// opens. Every other flag is preserved.
 #[cfg_attr(
@@ -343,7 +343,10 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
         {
             continue;
         }
-        if arg == "--no-parallel" || arg == "--elevated-child" {
+        if matches!(
+            arg.as_str(),
+            "--no-parallel" | "--elevated-child" | "--with-deps"
+        ) {
             continue;
         }
         out.push(arg.clone());

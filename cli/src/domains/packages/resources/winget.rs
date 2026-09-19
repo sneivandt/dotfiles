@@ -70,7 +70,7 @@ fn slice_by_display_range(line: &str, start: usize, end: usize) -> String {
     out
 }
 
-pub(super) fn parse_winget_ids(stdout: &str) -> HashSet<String> {
+pub(super) fn parse_winget_ids(stdout: &str) -> Result<HashSet<String>> {
     let mut ids = HashSet::new();
     let mut id_range: Option<(usize, usize)> = None;
 
@@ -99,7 +99,11 @@ pub(super) fn parse_winget_ids(stdout: &str) -> HashSet<String> {
         }
     }
 
-    ids
+    if id_range.is_none() {
+        anyhow::bail!("could not parse winget list output: package Id column not found");
+    }
+
+    Ok(ids)
 }
 
 /// Winget exit codes this provider reacts to.
@@ -225,7 +229,7 @@ impl PackageProvider for WingetProvider {
             );
         }
 
-        Ok(parse_winget_ids(&result.stdout))
+        parse_winget_ids(&result.stdout)
     }
 
     /// Install `name`, preferring a per-user installer.
@@ -310,7 +314,7 @@ mod tests {
         );
         let stdout = format!("{header}\n{}\n{row}\n", "-".repeat(73));
 
-        let ids = parse_winget_ids(&stdout);
+        let ids = parse_winget_ids(&stdout).unwrap();
 
         assert!(ids.contains("Microsoft.VisualStudioCode.Insiders"));
         assert_eq!(ids.len(), 1);
@@ -327,17 +331,31 @@ mod tests {
         );
         let stdout = format!("{header}\n{}\n{row}\n", "-".repeat(70));
 
-        let ids = parse_winget_ids(&stdout);
+        let ids = parse_winget_ids(&stdout).unwrap();
 
         assert!(ids.contains("Microsoft.APM"));
         assert_eq!(ids.len(), 1);
     }
 
     #[test]
-    fn parse_winget_ids_returns_empty_without_id_header() {
-        let ids = parse_winget_ids("Name  Version\nGit   2.51.0\n");
+    fn parse_winget_ids_rejects_unrecognized_output() {
+        for stdout in [
+            "",
+            "Name  Version\nGit   2.51.0\n",
+            "unexpected status message\n",
+        ] {
+            let error = parse_winget_ids(stdout).expect_err("missing table must not mean empty");
+            assert!(error.to_string().contains("package Id column not found"));
+        }
+    }
 
-        assert!(ids.is_empty());
+    #[test]
+    fn parse_winget_ids_accepts_a_recognized_empty_table() {
+        assert!(
+            parse_winget_ids("Name  Id       Version\n----------------------\n")
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -348,7 +366,8 @@ mod tests {
             "\n",
             "                                  \n",
             "Git              Git.Git   2.51.0\n",
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(ids.len(), 1);
         assert!(ids.contains("Git.Git"));

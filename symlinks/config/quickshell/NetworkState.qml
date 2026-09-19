@@ -40,8 +40,7 @@ Scope {
     }
 
     function refresh() {
-        if (!statusQuery.running && !actionProcess.running)
-            statusQuery.running = true;
+        refreshQueue.request();
     }
 
     function refreshOnOpen() {
@@ -119,6 +118,13 @@ Scope {
     }
 
     Component.onCompleted: refresh()
+
+    RefreshQueue {
+        id: refreshQueue
+
+        blocked: statusQuery.running || actionProcess.running
+        onReady: statusQuery.running = true
+    }
 
     Process {
         id: statusQuery

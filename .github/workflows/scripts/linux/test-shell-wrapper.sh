@@ -276,7 +276,8 @@ EOF
 test_wrapper_preserves_runtime_context()
 {(
   log_stage "Testing cached and build-mode cwd, exact arguments, and failures"
-  tmpdir=$(mktemp -d)
+  tmpdir="$DIR/.wrapper-context-$$"
+  mkdir "$tmpdir"
   trap 'rm -rf "$tmpdir"' EXIT
   cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
   mkdir -p "$tmpdir/cli/target/dev-opt" "$tmpdir/bin" "$tmpdir/fake-bin" "$tmpdir/caller dir"
@@ -288,6 +289,8 @@ EOF
   cat > "$tmpdir/bin/dotfiles" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$PWD" > "$DOTFILES_ROOT/child-cwd"
+printf '%s\n' "$DOTFILES_ROOT" "$DOTFILES_WRAPPER" "$DOTFILES_REEXEC_GUARD" > "$DOTFILES_ROOT/child-context"
+printf '%s\n' "$#" > "$DOTFILES_ROOT/child-argc"
 printf '%s\n' "$@" > "$DOTFILES_ROOT/child-args"
 printf 'child stdout\n'
 printf 'child stderr\n' >&2
@@ -296,17 +299,20 @@ EOF
   cp "$tmpdir/bin/dotfiles" "$tmpdir/cli/target/dev-opt/dotfiles"
   chmod +x "$tmpdir/fake-bin/cargo" "$tmpdir/bin/dotfiles" "$tmpdir/cli/target/dev-opt/dotfiles"
   PATH="$tmpdir/fake-bin:$PATH"
-  export PATH
+  DOTFILES_REEXEC_GUARD=1
+  export PATH DOTFILES_REEXEC_GUARD
   cd "$tmpdir/caller dir"
   for mode in cached build; do
     set --
     [ "$mode" != build ] || set -- --build
     status=0
-    "$tmpdir/dotfiles.sh" "$@" install --root . --overlay "../overlay dir" "" -- "literal value" \
+    "$tmpdir/dotfiles.sh" "$@" install --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "" \
       > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
     [ "$status" -eq 7 ] || log_error "$mode wrapper lost the child exit code"
     [ "$(cat "$tmpdir/child-cwd")" = "$PWD" ] || log_error "$mode wrapper changed the child cwd"
-    expected=$(printf '%s\n' install --root . --overlay "../overlay dir" "" -- "literal value")
+    [ "$(cat "$tmpdir/child-context")" = "$(printf '%s\n' "$tmpdir" sh 1)" ] || log_error "$mode wrapper changed runtime context"
+    expected=$(printf '%s\n' install --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "")
+    [ "$(cat "$tmpdir/child-argc")" -eq 12 ] || log_error "$mode wrapper changed the argument count"
     [ "$(cat "$tmpdir/child-args")" = "$expected" ] || log_error "$mode wrapper changed arguments"
     [ "$(cat "$tmpdir/stdout")" = 'child stdout' ] || log_error "$mode wrapper changed stdout"
     [ "$(cat "$tmpdir/stderr")" = 'child stderr' ] || log_error "$mode wrapper changed stderr"

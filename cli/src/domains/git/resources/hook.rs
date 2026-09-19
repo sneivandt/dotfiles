@@ -31,11 +31,21 @@ impl Resource for HookFileResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        crate::infra::fs::prepare_target(&self.target)?;
-        crate::infra::fs::copy_file(&self.source, &self.target)?;
+        crate::infra::fs::ensure_parent_dir(&self.target)?;
+        let parent = self
+            .target
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let (mut staged, file) =
+            crate::infra::fs::TempGuard::create_unique_file(parent, ".dotfiles-hook", "tmp")?;
+        drop(file);
+        crate::infra::fs::copy_file(&self.source, staged.path())?;
 
         #[cfg(unix)]
-        crate::infra::fs::set_executable(&self.target)?;
+        crate::infra::fs::set_executable(staged.path())?;
+
+        crate::infra::fs::rename_into_place(staged.path(), &self.target)?;
+        staged.persist();
 
         Ok(ResourceChange::Applied)
     }
@@ -191,6 +201,77 @@ mod tests {
             std::fs::read_to_string(&dst).unwrap(),
             std::fs::read_to_string(&src).unwrap()
         );
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn apply_preserves_existing_hook_when_source_copy_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source-directory");
+        let target = dir.path().join("pre-commit");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(&target, "working hook").unwrap();
+        let resource = HookFileResource::new(source, target.clone());
+
+        assert!(resource.apply().is_err());
+
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "working hook");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn apply_replaces_existing_hook_and_converges() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("pre-commit");
+        std::fs::write(&source, "new hook").unwrap();
+        std::fs::write(&target, "old hook").unwrap();
+        let resource = HookFileResource::new(source, target.clone());
+
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "new hook");
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn apply_preserves_target_when_publication_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("pre-commit");
+        std::fs::write(&source, "new hook").unwrap();
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("keep"), "user content").unwrap();
+        let resource = HookFileResource::new(source, target.clone());
+
+        assert!(resource.apply().is_err());
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("keep")).unwrap(),
+            "user content"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_replaces_hook_symlink_without_writing_through_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("pre-commit");
+        let unrelated = dir.path().join("unrelated");
+        std::fs::write(&source, "new hook").unwrap();
+        std::fs::write(&unrelated, "user content").unwrap();
+        std::os::unix::fs::symlink(&unrelated, &target).unwrap();
+        let resource = HookFileResource::new(source, target.clone());
+
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+
+        assert!(!target.symlink_metadata().unwrap().is_symlink());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "new hook");
+        assert_eq!(std::fs::read_to_string(unrelated).unwrap(), "user content");
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[test]

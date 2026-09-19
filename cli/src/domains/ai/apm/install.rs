@@ -156,13 +156,16 @@ impl ApmInstallPlan {
             write_merged_manifest(&self.manifest_path, &self.merged)?;
         }
 
-        let command = self.targets.run_apm_command(ctx, self.mode.command())?;
+        let command = self.targets.run_apm_command(ctx, self.mode.command());
+        // A later target can fail after APM reset Copilot App workflows.
+        // Restore retained policy before propagating any convergence failure.
+        let autopilot_changed = self.targets.finish(ctx, &target_snapshot);
+        let command = command?;
         if let ApmCommandResult::AuthSkipped(reason) = command.outcome {
             return Ok(TaskResult::unmet(reason));
         }
 
         let lock_after = read_lock_snapshot(&self.lock_path)?;
-        let autopilot_changed = self.targets.finish(ctx, &target_snapshot);
         let lock_changed = lock_before != lock_after;
         let dependency_changes =
             describe_lock_changes(lock_before.as_deref(), lock_after.as_deref());

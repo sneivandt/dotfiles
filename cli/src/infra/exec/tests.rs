@@ -276,6 +276,26 @@ fn command_spec_builds_owned_request() {
 }
 
 #[test]
+fn cancelled_executor_does_not_attempt_to_spawn_commands() {
+    let token = CancellationToken::new();
+    token.cancel();
+    let executor = ProcessExecutor::managed(token);
+    let error = executor
+        .execute(CommandSpec::new(
+            "dotfiles-this-program-does-not-exist-12345",
+        ))
+        .unwrap_err();
+
+    let ExecError::Cancelled { result, .. } = error else {
+        panic!("pre-cancelled commands must not reach process spawning: {error}");
+    };
+    assert!(result.stdout.is_empty());
+    assert!(result.stderr.is_empty());
+    assert!(!result.success);
+    assert_eq!(result.code, None, "no process should have been started");
+}
+
+#[test]
 fn command_diagnostic_label_includes_safe_arguments_and_working_directory() {
     let spec = CommandSpec::new("systemctl")
         .args(&["--user", "daemon-reload"])

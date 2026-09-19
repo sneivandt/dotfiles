@@ -4,6 +4,7 @@ import ctypes
 import io
 import json
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -74,6 +75,36 @@ class NetworkTests(unittest.TestCase):
         for text in ("unterminated\\", "ssid\nwith\nnewlines"):
             with self.assertRaises(network.NetworkError):
                 network.records(text, 6)
+
+    def test_security_kinds_preserve_specific_wpa3_modes(self):
+        for security, expected in (
+            ("WPA1 WPA2", "personal"),
+            ("WPA3", "personal"),
+            ("WPA2 WPA3 802.1X", "enterprise"),
+            ("WPA3 EAP", "enterprise"),
+            ("WPA3 OWE", "owe"),
+            ("WPA3 OWE-TM", "owe"),
+            ("OWE", "owe"),
+            ("WEP", "legacy"),
+            ("--", "open"),
+            ("", "open"),
+            ("unknown", "unknown"),
+        ):
+            with self.subTest(security=security):
+                self.assertEqual(network.security_kind(security), expected)
+
+    def test_wpa3_owe_matches_saved_profile_without_password(self):
+        entries = network.build_networks(
+            [["", "Enhanced Open", "AA:BB", "90", "WPA3 OWE", "wlan0"]],
+            [{"name": "wlan0", "managed": True}],
+            [profile(ssid="Enhanced Open", key="owe")],
+            {},
+        )
+        self.assertEqual(len(entries), 1)
+        self.assertTrue(entries[0]["saved"])
+        self.assertTrue(entries[0]["available"])
+        self.assertFalse(entries[0]["protected"])
+        self.assertFalse(entries[0]["advanced"])
 
     @patch("network_helper.query")
     def test_empty_optional_profile_fields_preserve_literal_ssid(self, query):
@@ -221,6 +252,17 @@ class NetworkTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["stdin"], "private-value\n")
         self.assertNotIn("private-value", repr(result))
 
+    @patch("network_helper.nmcli")
+    def test_saved_password_uses_octal_utf8_stdin_only(self, run):
+        run.return_value = subprocess.CompletedProcess([], 0, "", "")
+        password = " é\\"
+        network.action({"operation": "connect", "network": access_point(uuid="saved-uuid"), "password": password})
+        args = run.call_args.args[0]
+        self.assertEqual(args[-2:], ["passwd-file", "/dev/stdin"])
+        self.assertEqual(run.call_args.kwargs["stdin"], "802-11-wireless-security.psk:\\040\\303\\251\\134\n")
+        self.assertNotIn(password, args)
+
+    @unittest.skipUnless(sys.platform == "linux", "Requires native Linux GLib password-file decoding")
     @patch("network_helper.nmcli")
     def test_saved_password_uses_password_file_stdin_only(self, run):
         run.return_value = subprocess.CompletedProcess([], 0, "", "")

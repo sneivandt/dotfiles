@@ -53,9 +53,7 @@ pub(super) fn report_fixup_execution(ctx: &Context, execution: FixupExecution) {
             ));
         }
         FixupExecution::Failed(FixupFailure::Other(stderr)) => {
-            ctx.log().warn(format!(
-                "autopilot fixup failed (the apm operation still succeeded): {stderr}"
-            ));
+            ctx.log().warn(format!("autopilot fixup failed: {stderr}"));
         }
     }
 }

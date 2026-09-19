@@ -24,13 +24,32 @@ else
 fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
+WORKTREE_ROOT="$REPO_ROOT"
 # Renames are included (lowercase 'd' excludes only deletions) so that renaming
 # a conf/ or symlinks/ file still triggers configuration validation.
 STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
+CHECK_ROOT=""
+trap '[ -z "$CHECK_ROOT" ] || rm -rf "$CHECK_ROOT"' EXIT
+trap 'exit 1' HUP INT TERM
+
+prepare_staged_tree() {
+  [ -z "$CHECK_ROOT" ] || return 0
+  check_dir="$(git rev-parse --absolute-git-dir)/dotfiles-ci-guards-$$"
+  (umask 077 && mkdir "$check_dir")
+  CHECK_ROOT="$check_dir"
+  git -C "$REPO_ROOT" checkout-index --all --prefix="$CHECK_ROOT/"
+  HOOK_CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$REPO_ROOT/cli/target"}
+  case "$HOOK_CARGO_TARGET_DIR" in
+    /*|?:/*|?:\\*) ;;
+    *) HOOK_CARGO_TARGET_DIR="$REPO_ROOT/cli/$HOOK_CARGO_TARGET_DIR" ;;
+  esac
+  REPO_ROOT="$CHECK_ROOT"
+  MANIFEST="$REPO_ROOT/cli/Cargo.toml"
+}
 
 run_cargo() {
-  (cd "$REPO_ROOT/cli" && cargo "$@")
+  (cd "$REPO_ROOT/cli" && CARGO_TARGET_DIR="$HOOK_CARGO_TARGET_DIR" cargo "$@")
 }
 
 full_checks_enabled() {
@@ -71,6 +90,7 @@ run_config_validation() {
     return
   fi
 
+  prepare_staged_tree
   printf "Running typed config validation...\n"
   if ! run_cargo run --quiet --profile ci --manifest-path "$MANIFEST" -- \
     check --root "$REPO_ROOT" -p desktop \
@@ -93,6 +113,7 @@ run_config_validation() {
 }
 
 run_dependency_guards() {
+  prepare_staged_tree
   if grep -nE '=[[:space:]]*"\*"' "$MANIFEST"; then
     abort_with_hint \
       "Cargo.toml contains a wildcard dependency." \
@@ -116,6 +137,7 @@ run_dependency_guards() {
 
 run_shell_guards() {
   if command -v shellcheck >/dev/null 2>&1; then
+    prepare_staged_tree
     printf "Running ShellCheck...\n"
     shell_files="$(staged_shell_files)"
     if [ -z "$shell_files" ]; then
@@ -138,13 +160,14 @@ EOF
 }
 
 run_wrapper_guards() {
+  prepare_staged_tree
   printf "Running Linux shell wrapper tests...\n"
   export DIR="$REPO_ROOT"
   if [ -z "${BINARY_PATH:-}" ]; then
-    if [ -x "$REPO_ROOT/cli/target/dev-opt/dotfiles" ]; then
-      BINARY_PATH="$REPO_ROOT/cli/target/dev-opt/dotfiles"
-    elif [ -x "$REPO_ROOT/cli/target/ci/dotfiles" ]; then
-      BINARY_PATH="$REPO_ROOT/cli/target/ci/dotfiles"
+    if [ -x "$WORKTREE_ROOT/cli/target/dev-opt/dotfiles" ]; then
+      BINARY_PATH="$WORKTREE_ROOT/cli/target/dev-opt/dotfiles"
+    elif [ -x "$WORKTREE_ROOT/cli/target/ci/dotfiles" ]; then
+      BINARY_PATH="$WORKTREE_ROOT/cli/target/ci/dotfiles"
     else
       BINARY_PATH=""
     fi

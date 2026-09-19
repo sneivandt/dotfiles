@@ -604,6 +604,17 @@ fn execute_unchecked(
     label: &str,
     settings: &CommandSettings,
 ) -> std::result::Result<ExecResult, ExecError> {
+    if settings.is_cancelled() {
+        return Err(ExecError::Cancelled {
+            command: label.to_string(),
+            result: ExecResult {
+                stdout: String::new(),
+                stderr: String::new(),
+                success: false,
+                code: None,
+            },
+        });
+    }
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -820,7 +831,10 @@ impl ProcessExecutor {
         }
     }
 
-    /// Create an executor whose spawned commands honour `cancellation`.
+    /// Create an executor whose commands honour `cancellation`.
+    ///
+    /// A cancellation requested before execution prevents the command from
+    /// being spawned; an in-flight command is terminated and its output retained.
     #[must_use]
     pub const fn managed(cancellation: CancellationToken) -> Self {
         Self {

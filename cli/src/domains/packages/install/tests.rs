@@ -871,7 +871,7 @@ fn install_packages_winget_installs_per_package() {
         is_aur: false,
     });
     // which("winget") → true
-    // run_unchecked("winget", ["list", ...]) → empty (nothing installed)
+    // run_unchecked("winget", ["list", ...]) → empty package table
     // run_unchecked("winget", ["install", ...]) → success
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
@@ -879,7 +879,7 @@ fn install_packages_winget_installs_per_package() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
-        .returning(|_| Ok(ExecResult::success("")));
+        .returning(|_| Ok(ExecResult::success("Name  Id       Version\n")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -892,4 +892,42 @@ fn install_packages_winget_installs_per_package() {
         stats.changed_count() == 1 && stats.already_ok_count() == 0 && stats.failed_count() == 0,
         "expected changed package task result after winget per-package install, got {result:?}"
     );
+}
+
+#[test]
+fn winget_discovery_parse_failure_never_attempts_installation() {
+    for dry_run in [false, true] {
+        let config = empty_config(PathBuf::from("fixture-repository"));
+        let packages = ConfigHandle::new(vec![Package {
+            name: "Git.Git".to_string(),
+            is_aur: false,
+        }]);
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "winget")
+            .returning(|_| true);
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "winget"
+                    && spec
+                        .arguments()
+                        .first()
+                        .is_some_and(|argument| argument == "list")
+                    && !spec.is_checked()
+            })
+            .returning(|_| {
+                Ok(ExecResult::success(
+                    "Name  Identifier  Version\nGit   Git.Git     2.51.0\n",
+                ))
+            });
+        let ctx = make_package_context(config, Os::Windows, false, mock).with_dry_run(dry_run);
+
+        let error = InstallPackages::new(packages)
+            .run(&ctx)
+            .expect_err("unknown inventory must not plan every package for installation");
+
+        assert!(error.to_string().contains("could not parse winget list"));
+    }
 }

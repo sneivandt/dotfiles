@@ -405,7 +405,8 @@ function Test-ErrorHandling {
 
 function Test-IsolatedWrapperPath {
     Write-TestStage "Testing literal paths, runtime cwd, arguments, and bootstrap cleanup"
-    $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+    $fixture = Join-Path (Join-Path $PSScriptRoot '..\..\..\..') ".wrapper-context-$([guid]::NewGuid())"
+    $fixture = [System.IO.Path]::GetFullPath($fixture)
     $repo = Join-Path $fixture 'repo [literal]'
     $caller = Join-Path $fixture 'caller directory'
     $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
@@ -415,7 +416,7 @@ function Test-IsolatedWrapperPath {
     $wrapper = Join-Path $repo 'dotfiles.ps1'
     $originalLocation = Get-Location
     $savedEnvironment = @{}
-    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION',
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION', 'DOTFILES_REEXEC_GUARD',
             'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
@@ -427,7 +428,13 @@ function Test-IsolatedWrapperPath {
         [System.IO.File]::WriteAllText($binary, 'fixture')
         [System.IO.File]::WriteAllText($buildBinary, 'fixture')
         $child = {
-            [pscustomobject]@{ Cwd = (Get-Location).Path; Arguments = @($args) } |
+            [pscustomobject]@{
+                Cwd = (Get-Location).Path
+                Arguments = @($args)
+                Root = $env:DOTFILES_ROOT
+                Wrapper = $env:DOTFILES_WRAPPER
+                Guard = $env:DOTFILES_REEXEC_GUARD
+            } |
                 ConvertTo-Json -Compress
             $global:LASTEXITCODE = 7
         }
@@ -459,10 +466,11 @@ function Test-IsolatedWrapperPath {
             throw "Unexpected fixture request: $Uri"
         }
         $env:DOTFILES_SKIP_ATTESTATION = '0'
+        $env:DOTFILES_REEXEC_GUARD = '1'
         $env:WRAPPER_TEST_BUILD_EXIT = '0'
         $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
         Set-Location -LiteralPath $caller
-        $arguments = @('install', '--root', '.', '--overlay', '../overlay dir', '', '--', 'literal value')
+        $arguments = @('install', '--dry-run', '--root', '.', '--overlay', '../overlay dir', '', '--BUILD', '--', 'literal value', '--build', '')
         foreach ($mode in @('cached', 'build', 'bootstrap')) {
             $wrapperArguments = $arguments
             if ($mode -eq 'build') { $wrapperArguments = @('--build') + $arguments }
@@ -471,6 +479,9 @@ function Test-IsolatedWrapperPath {
             if ($LASTEXITCODE -ne 7) { throw "$mode lost the child exit code" }
             $actual = $output[-1] | ConvertFrom-Json
             if ($actual.Cwd -ne $caller) { throw "$mode changed the child working directory" }
+            if ($actual.Root -ne $repo -or $actual.Wrapper -cne 'pwsh' -or $actual.Guard -cne '1') {
+                throw "$mode changed runtime context"
+            }
             if (($actual.Arguments | ConvertTo-Json -Compress) -cne ($arguments | ConvertTo-Json -Compress)) {
                 throw "$mode changed the forwarded arguments"
             }

@@ -24,15 +24,17 @@ $Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
 $TransferTimeout = 120  # seconds — total transfer timeout
 $Build = $false
+$EndOfOptions = $false
 $CliArgs = @()
 foreach ($arg in $args)
 {
-    if ($arg -eq '--build')
+    if (-not $EndOfOptions -and $arg -ceq '--build')
     {
         $Build = $true
         continue
     }
 
+    if ($arg -ceq '--') { $EndOfOptions = $true }
     $CliArgs += $arg
 }
 

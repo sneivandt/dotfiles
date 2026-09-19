@@ -57,6 +57,11 @@ DOTFILES_HOOKS_FULL=1 git commit
 Use full mode when changing workflow triggers, publishing guards, permissions,
 the `ci-success` dependency list, or artifact behavior.
 
+CI guards validate an exported staged index for configuration, dependency,
+ShellCheck, and wrapper checks. Unstaged fixes, unstaged deletions, and untracked
+files cannot hide or replace the content being committed. The snapshot is
+removed after the checks; Cargo's target cache is reused from the checkout.
+
 ## Installation and removal
 
 **Git hooks** depends on repository update so it uses current hook sources. The

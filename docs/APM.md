@@ -25,6 +25,11 @@ Codex settings in `~/.codex/config.toml` are shared by its CLI, IDE extension,
 and agent inside the ChatGPT desktop app; app-only preferences remain in the
 desktop app.
 
+Settings documents must be JSON objects or TOML tables. Invalid documents are
+reported without replacing their contents. Removing a setting from
+`conf/agent-settings.toml` stops managing that key; it does not delete the user's
+stored value.
+
 ## Configuration fragments
 
 The source fragments are stored under:
@@ -86,6 +91,10 @@ workflow ID. Legacy `apm--unknown--<package>--<prompt>` rows are removed only
 when the corresponding managed `apm--_local--<package>--<prompt>` exists and
 its definition, including any cron expression, matches. Independent IDs and
 foreign workflows are preserved even when their visible definitions match.
+Workflow restoration is also attempted after failed APM or Cowork convergence:
+a later failure must not leave workflows disabled by an earlier APM step.
+The original convergence error remains the task's outcome; restoration is
+best-effort and reports its own failures separately.
 
 Cowork remains an experimental APM target and is disabled by default. When a
 Cowork skills path is available, dotfiles re-asserts the feature with:
@@ -146,7 +155,9 @@ This order makes the APM executable and repository-managed fragments available
 before convergence. The task:
 
 1. Discovers active main and overlay fragments from their configured symlink
-   sources, while preserving unmanaged home fragments.
+   sources, while preserving unmanaged home fragments. Managed sources mask the
+   corresponding home entries before metadata checks, so dry-run can preview
+   replacement of stale or broken managed links without first repairing them.
 2. Produces the merged manifest in deterministic order.
 3. Writes the generated manifest only when its content changed.
 4. Runs `apm install -g` during ordinary installation, or `apm update -g --yes`
@@ -157,6 +168,10 @@ before convergence. The task:
    resolved state. Changed tasks list each added, removed, or updated dependency
    and show ref, commit, content, deployment-file, or target changes when APM's
    lockfile records them.
+
+If no managed or unmanaged fragments remain, the task is inapplicable. Removing
+the last fragment does not by itself run native cleanup or delete the existing
+generated manifest and deployments.
 
 Re-running `dotfiles install` should not advance pinned dependency versions.
 Native APM owns idempotency through its lockfile. **APM packages** can therefore

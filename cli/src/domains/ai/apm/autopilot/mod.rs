@@ -24,9 +24,10 @@
 //!
 //! The global lockfile is authoritative here: this task regenerates
 //! `~/.apm/apm.yml` from the repo's fragments and runs `apm install -g`
-//! immediately before the fixup, so at fixup time the lockfile reflects exactly
-//! the dotfiles-managed manifest.  Workflows dropped from the manifest fall out
-//! of the lockfile and are intentionally left untouched rather than disabled.
+//! immediately before the fixup, so the lockfile records this task's managed
+//! deployments, including any retained state after a partial failure. Workflows
+//! dropped from the manifest fall out of the lockfile and are intentionally left
+//! untouched rather than disabled.
 
 use std::collections::HashSet;
 
@@ -74,19 +75,20 @@ fn run_workflow_script(
 /// `mode='interactive'` and `enabled=0`, so a freshly installed automation
 /// will not fire until a human re-enables it in the App's Workflows tab.  For
 /// the dotfiles-managed workflows that is undesirable -- they are meant to be
-/// hands-off -- so after a successful `apm install` or `apm update` we
+/// hands-off -- so after an `apm install` or `apm update` attempt we
 /// flip exactly those rows to `mode='autopilot'` and `enabled=1`.
 ///
 /// The set of dotfiles-managed workflow ids is read fresh from
 /// `~/.apm/apm.lock.yaml` (see [`lockfile::read_deployed_workflow_ids`]) -- the
-/// lockfile the apm operation we just ran regenerated -- so workflows belonging
+/// lockfile the apm operation just updated or retained -- so workflows belonging
 /// to other manifests are never touched.  When the lockfile records no
 /// workflows (or is missing), there is nothing to do and the fixup returns
 /// quietly.
 ///
-/// This is strictly best-effort and never fails the task: APM has already done
-/// the real work by the time we get here.  The most common failure is a locked
-/// database, which means the Copilot App is currently open and holding the
+/// This is strictly best-effort and never replaces the APM task's outcome. It
+/// also runs after failed convergence because APM may have already reset the
+/// workflows before a later deployment failed. The most common failure is a
+/// locked database, which means the Copilot App is currently open and holding the
 /// lock; we surface that loudly so the user knows to close the App (or just
 /// toggle the workflows by hand).  The update runs through Python's stdlib
 /// `sqlite3` module so we do not need a `SQLite` binary on PATH or a Rust
@@ -113,9 +115,8 @@ pub(super) fn apply_workflow_autopilot_fixup(ctx: &Context, pre: &DesiredApmWork
             changed
         }
         Err(e) => {
-            ctx.log().warn(format!(
-                "autopilot fixup could not run {python} (the apm operation still succeeded): {e:#}"
-            ));
+            ctx.log()
+                .warn(format!("autopilot fixup could not run {python}: {e:#}"));
             false
         }
     }

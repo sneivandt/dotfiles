@@ -23,15 +23,19 @@ CONNECT_TIMEOUT=10   # seconds — TCP connect timeout
 TRANSFER_TIMEOUT=120 # seconds — total transfer timeout
 
 BUILD_MODE=false
+END_OF_OPTIONS=false
 argc=$#
 i=0
 while [ "$i" -lt "$argc" ]; do
   arg=$1
   shift
   i=$((i + 1))
-  if [ "$arg" = "--build" ]; then
+  if [ "$END_OF_OPTIONS" = false ] && [ "$arg" = "--build" ]; then
     BUILD_MODE=true
   else
+    if [ "$arg" = "--" ]; then
+      END_OF_OPTIONS=true
+    fi
     set -- "$@" "$arg"
   fi
 done

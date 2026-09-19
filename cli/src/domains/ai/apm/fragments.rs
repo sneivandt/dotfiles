@@ -45,15 +45,22 @@ pub(super) fn discover_effective_fragment_files(
     home: &Path,
     managed: &[ApmFragmentSource],
 ) -> Result<Vec<PathBuf>> {
-    let mut fragments = BTreeMap::new();
-    for path in discover_fragment_files(home)? {
+    if managed.is_empty() {
+        return discover_fragment_files(home);
+    }
+
+    let mut fragments: BTreeMap<_, _> = managed
+        .iter()
+        .map(|fragment| (fragment.target_name.clone(), fragment.source.clone()))
+        .collect();
+    let home_fragments = discover_yaml_files_filtered(&home.join(".apm").join("config"), |path| {
+        path.file_name()
+            .is_some_and(|name| fragments.contains_key(name))
+    })?;
+    for path in home_fragments {
         if let Some(name) = path.file_name() {
             fragments.insert(name.to_os_string(), path);
         }
-    }
-
-    for fragment in managed {
-        fragments.insert(fragment.target_name.clone(), fragment.source.clone());
     }
 
     Ok(fragments.into_values().collect())
@@ -61,6 +68,13 @@ pub(super) fn discover_effective_fragment_files(
 
 /// Discover YAML files in an APM fragment directory.
 pub(super) fn discover_yaml_files(config_dir: &Path) -> Result<Vec<PathBuf>> {
+    discover_yaml_files_filtered(config_dir, |_| false)
+}
+
+fn discover_yaml_files_filtered(
+    config_dir: &Path,
+    skip: impl Fn(&Path) -> bool,
+) -> Result<Vec<PathBuf>> {
     let entries = match std::fs::read_dir(config_dir) {
         Ok(entries) => entries,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
@@ -75,7 +89,7 @@ pub(super) fn discover_yaml_files(config_dir: &Path) -> Result<Vec<PathBuf>> {
         let entry = entry
             .with_context(|| format!("reading directory entry in {}", config_dir.display()))?;
         let path = entry.path();
-        if !is_yaml_fragment(&path) {
+        if !is_yaml_fragment(&path) || skip(&path) {
             continue;
         }
         let metadata = std::fs::metadata(&path).with_context(|| {
@@ -354,6 +368,37 @@ mod tests {
         assert_eq!(files.len(), 2);
         assert!(files[0].ends_with("base.yaml"));
         assert!(files[1].ends_with("work.yml"));
+    }
+
+    #[test]
+    fn effective_fragments_replace_broken_managed_links_before_metadata_checks() {
+        let dir = tempfile::tempdir_in(".").expect("create fixture directory");
+        let home = crate::infra::fs::canonicalize(dir.path()).expect("resolve fixture home");
+        let config = home.join(".apm").join("config");
+        std::fs::create_dir_all(&config).expect("create fragment directory");
+        let stale_link = config.join("base.yml");
+        let missing = home.join("removed-source.yml");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&missing, &stale_link).expect("create stale fragment link");
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_file(&missing, &stale_link).is_err() {
+            return;
+        }
+
+        let source = home.join("new-source.yml");
+        std::fs::write(&source, "description: replacement\n").expect("write active source");
+        let unmanaged = config.join("user.yml");
+        std::fs::write(&unmanaged, "description: user\n").expect("write unmanaged fragment");
+
+        assert!(discover_effective_fragment_files(&home, &[]).is_err());
+        let effective = discover_effective_fragment_files(
+            &home,
+            &[ApmFragmentSource::new(source.clone(), "base.yml".into())],
+        )
+        .expect("managed source must mask the stale home entry");
+
+        assert_eq!(effective, [source, unmanaged]);
+        assert_eq!(std::fs::read_link(&stale_link).unwrap(), missing);
     }
 
     #[test]

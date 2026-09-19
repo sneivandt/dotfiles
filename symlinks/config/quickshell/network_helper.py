@@ -98,10 +98,10 @@ def security_kind(security):
         return "enterprise"
     if "WEP" in security:
         return "legacy"
-    if "WPA" in security:
-        return "personal"
     if "OWE" in security:
         return "owe"
+    if "WPA" in security:
+        return "personal"
     if security in ("", "--"):
         return "open"
     return "unknown"

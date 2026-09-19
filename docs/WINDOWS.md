@@ -76,10 +76,14 @@ Every other Windows task writes to user scope and never elevates.
 When a task needs elevation, the CLI names the affected tasks and opens one UAC
 prompt. It runs a short-lived elevated child restricted to those tasks with
 `--only <selectors> --no-parallel`. The child gets a separate console window
-and run log. The parent remains unelevated and continues.
+and run log. Parent task filters and `--with-deps` are not forwarded: dependency
+expansion must not add tasks to the elevated child's exact scope. The parent
+remains unelevated and continues.
 
-Declining the prompt is not fatal. Those tasks are recorded as skipped and the
-rest of the run proceeds, so a converged machine never sees a prompt at all.
+Declining the prompt skips those tasks and blocks their dependent tasks while
+independent work proceeds. With `--fail-on-skip`, unavailable elevation fails
+the command. A failed elevated child also fails the command and blocks its
+dependents. A converged machine never sees a prompt at all.
 
 In CI and other non-interactive sessions, the CLI does not open a prompt. It
 skips tasks that need elevation and records the reason.
@@ -103,7 +107,9 @@ packages = [
 ```
 
 Only missing packages are installed. AUR and paru tasks are not applicable on
-Windows.
+Windows. If winget's installed-package output is unrecognized, discovery fails
+before any installation is attempted, including during a dry run. It is not
+treated as an empty inventory.
 
 The CLI prints each package ID before installation, so long downloads can be
 identified. It tries `--scope user` first, then retries without a scope only when

@@ -7,6 +7,174 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lib/test-helpers.sh"
 DIR=${DIR:-$(CDPATH='' cd -- "$SCRIPT_DIR/../../../.." && pwd)}
 
+init_fixture_repository() {
+  fixture_repo=$(pwd)
+  fixture_git_root="$fixture_repo"
+  if command -v cygpath >/dev/null 2>&1; then
+    fixture_git_root=$(cygpath -m "$fixture_repo")
+  fi
+  # Hooks can inherit the caller's Git context; pin every subprocess to this
+  # fixture before issuing any Git command, including init and configuration.
+  unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG GIT_CONFIG_PARAMETERS
+  GIT_DIR="$fixture_git_root/.git"
+  GIT_COMMON_DIR="$GIT_DIR"
+  GIT_WORK_TREE="$fixture_git_root"
+  GIT_INDEX_FILE="$GIT_DIR/index"
+  GIT_CONFIG_NOSYSTEM=1
+  GIT_CONFIG_COUNT=0
+  GIT_CONFIG_GLOBAL="$fixture_git_root/.empty-gitconfig"
+  : > "$GIT_CONFIG_GLOBAL"
+  export GIT_DIR GIT_COMMON_DIR GIT_WORK_TREE GIT_INDEX_FILE
+  export GIT_CONFIG_NOSYSTEM GIT_CONFIG_COUNT GIT_CONFIG_GLOBAL
+  git init -q --template= "$fixture_repo"
+  actual_root=$(CDPATH='' cd -- "$(git rev-parse --show-toplevel)" && pwd)
+  [ "$actual_root" = "$fixture_repo" ] ||
+    log_error "Git escaped the fixture repository: expected '$fixture_repo', got '$actual_root'"
+  git config core.autocrlf false
+}
+
+test_fixture_git_context()
+{(
+  log_stage "Checking fixture isolation from an inherited Git repository and index"
+  fixture="$DIR/.ci-git-context-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir "$fixture/caller" "$fixture/child"
+  cd "$fixture/caller"
+  init_fixture_repository
+  printf 'caller\n' > marker
+  git add marker
+  caller_tree=$(git write-tree)
+  (
+    cd "$fixture/child"
+    init_fixture_repository
+    printf 'child\n' > marker
+    git add marker
+    [ "$(git show :marker)" = child ] || log_error "Child fixture used the caller index"
+  )
+  [ "$(git write-tree)" = "$caller_tree" ] || log_error "Child fixture changed the caller index"
+)}
+
+test_staged_ci_guards()
+{(
+  log_stage "Checking CI guards use staged shell, manifest, and config content"
+  fixture="$DIR/.ci-guard-inputs-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+  mkdir -p "$fixture/mock-bin" "$fixture/repo [literal]/hooks" "$fixture/repo [literal]/cli" "$fixture/repo [literal]/conf"
+  cat > "$fixture/mock-bin/shellcheck" <<'EOF'
+#!/bin/sh
+set -eu
+for file do
+  case "$file" in --*) continue ;; esac
+  [ "$(cat "$file")" = valid-staged ]
+done
+printf 'shellcheck\n' >> "$HOOK_INPUT_LOG"
+EOF
+  cat > "$fixture/mock-bin/cargo" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$1" = run ]
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = --root ]; then
+    shift
+    [ "$(cat "$1/conf/fixture.toml")" = staged-config ]
+    [ ! -e "$1/conf/untracked.toml" ]
+    exit 0
+  fi
+  shift
+done
+exit 1
+EOF
+  chmod +x "$fixture/mock-bin/"*
+  PATH="$fixture/mock-bin:$PATH"
+  HOOK_INPUT_LOG="$fixture/checks.log"
+  export PATH HOOK_INPUT_LOG
+  cd "$fixture/repo [literal]"
+  init_fixture_repository
+  printf 'valid-staged\n' > 'hooks/script with spaces.sh'
+  printf '[dependencies]\nexample = "1"\n' > cli/Cargo.toml
+  printf 'staged-config\n' > conf/fixture.toml
+  git add hooks cli conf
+  printf 'invalid-unstaged\n' > 'hooks/script with spaces.sh'
+  printf 'unstaged-config\n' > conf/fixture.toml
+  printf 'untracked-config\n' > conf/untracked.toml
+  sh "$DIR/hooks/check-ci-guards.sh"
+  [ "$(cat "$HOOK_INPUT_LOG")" = shellcheck ] || log_error "Staged script was not checked"
+
+  printf 'invalid-staged\n' > 'hooks/script with spaces.sh'
+  git add hooks
+  printf 'valid-staged\n' > 'hooks/script with spaces.sh'
+  if sh "$DIR/hooks/check-ci-guards.sh" > "$fixture/output" 2>&1; then
+    log_error "CI guards accepted invalid staged shell content"
+  fi
+  grep -q 'ShellCheck reported issues' "$fixture/output" || log_error "Unexpected staged shell failure"
+  git add hooks
+  rm 'hooks/script with spaces.sh'
+  printf 'staged-config\n' > conf/fixture.toml
+  : > "$HOOK_INPUT_LOG"
+  sh "$DIR/hooks/check-ci-guards.sh"
+  [ "$(cat "$HOOK_INPUT_LOG")" = shellcheck ] || log_error "Unstaged deletion hid a staged script"
+
+  printf 'invalid-staged\n' > conf/fixture.toml
+  git add conf/fixture.toml
+  printf 'staged-config\n' > conf/fixture.toml
+  if sh "$DIR/hooks/check-ci-guards.sh" > "$fixture/output" 2>&1; then
+    log_error "CI guards accepted invalid staged config hidden by an unstaged fix"
+  fi
+  grep -q 'configuration validation failed' "$fixture/output" || log_error "Unexpected staged config failure"
+  git add conf/fixture.toml
+
+  printf '[dependencies]\nexample = "*"\n' > cli/Cargo.toml
+  git add cli
+  printf '[dependencies]\nexample = "1"\n' > cli/Cargo.toml
+  if sh "$DIR/hooks/check-ci-guards.sh" > "$fixture/output" 2>&1; then
+    log_error "CI guards accepted a staged wildcard dependency hidden by an unstaged fix"
+  fi
+  grep -q 'wildcard dependency' "$fixture/output" || log_error "Unexpected staged manifest failure"
+)}
+
+test_ci_change_classification()
+{(
+  log_stage "Checking classification of renames across CI scopes"
+  fixture="$DIR/.ci-classification-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+  mkdir -p "$fixture/repo/cli/src" "$fixture/repo/docs"
+  cd "$fixture/repo"
+  init_fixture_repository
+  printf 'fn main() {}\n' > cli/src/main.rs
+  git add cli
+  BASE_SHA=$(git write-tree)
+  git mv cli/src/main.rs docs/example.md
+  HEAD_SHA=$(git write-tree)
+  GITHUB_OUTPUT="$fixture/outputs"
+  export BASE_SHA HEAD_SHA GITHUB_OUTPUT
+  DIR="$PWD" GITHUB_EVENT_NAME=pull_request sh "$SCRIPT_DIR/classify-ci-changes.sh"
+  grep -qx 'run_rust_checks=true' "$GITHUB_OUTPUT" ||
+    log_error "Renaming Rust into docs skipped Rust checks"
+  grep -qx 'docs_only=false' "$GITHUB_OUTPUT" ||
+    log_error "Renaming Rust into docs was treated as docs-only"
+
+  BASE_SHA=$HEAD_SHA
+  printf 'Documentation update\n' >> docs/example.md
+  git add docs
+  HEAD_SHA=$(git write-tree)
+  : > "$GITHUB_OUTPUT"
+  DIR="$PWD" GITHUB_EVENT_NAME=pull_request sh "$SCRIPT_DIR/classify-ci-changes.sh"
+  grep -qx 'docs_only=true' "$GITHUB_OUTPUT" || log_error "Docs-only changes lost their fast path"
+  grep -qx 'run_rust_checks=false' "$GITHUB_OUTPUT" || log_error "Docs-only changes ran Rust checks"
+)}
+
+if [ "$#" -gt 0 ]; then
+  for test_name do
+    "$test_name"
+  done
+  exit 0
+fi
+
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 export GIT_CONFIG_NOSYSTEM=1
@@ -51,7 +219,7 @@ export HOOK_INPUT_LOG
 log_stage "Checking index-only Rust and PowerShell hook inputs"
 (
   cd "$fixture/index repo"
-  git -c init.templateDir= init -q
+  init_fixture_repository
   printf '[package]\nname = "fixture"\nversion = "0.1.0"\n' > cli/Cargo.toml
   printf 'invalid-staged\n' > cli/src/lib.rs
   printf 'valid-staged\n' > 'script with spaces.ps1'
@@ -86,7 +254,7 @@ log_stage "Checking ShellCheck paths containing spaces and glob characters"
 mkdir -p "$fixture/shell repo [literal]/hooks" "$fixture/shell repo [literal]/symlinks"
 (
   cd "$fixture/shell repo [literal]"
-  git -c init.templateDir= init -q
+  init_fixture_repository
   printf '#!/bin/sh\nexit 0\n' > 'hooks/one file.sh'
   printf '#!/bin/sh\nexit 0\n' > 'hooks/glob[script].sh'
   cp 'hooks/one file.sh' dotfiles.sh
@@ -111,3 +279,6 @@ mkdir -p "$fixture/shell repo [literal]/hooks" "$fixture/shell repo [literal]/sy
   fi
 )
 log_verbose "Hook input regression tests passed"
+test_fixture_git_context
+test_staged_ci_guards
+test_ci_change_classification

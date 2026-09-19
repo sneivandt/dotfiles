@@ -84,6 +84,52 @@ fn elevated_child_args_drop_inherited_task_filters() {
 }
 
 #[test]
+fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
+    use clap::Parser as _;
+
+    let built = build_elevated_child_args(
+        &args(&[
+            "install",
+            "--only",
+            "symlinks",
+            "--with-deps",
+            "--skip",
+            "developer-mode",
+        ]),
+        &["symlinks"],
+    );
+    let parsed =
+        crate::app::cli::Cli::try_parse_from(std::iter::once("dotfiles".to_string()).chain(built))
+            .expect("elevated arguments must remain valid CLI input");
+    let crate::app::cli::Command::Install(opts) = parsed.command else {
+        panic!("elevation must preserve the install command");
+    };
+    let store = crate::app::config::store::ConfigStore::from_config(empty_config(
+        std::path::PathBuf::from("fixture-root"),
+    ));
+    let tasks = crate::app::catalog::all_install_tasks(&store);
+    let log = Logger::new("test");
+    let selected = crate::app::filter::apply_task_filters(
+        &tasks,
+        &[],
+        &opts.tasks.only,
+        &opts.tasks.skip,
+        opts.tasks.with_deps,
+        &log,
+    )
+    .expect("child task selection must succeed");
+
+    assert_eq!(
+        selected
+            .iter()
+            .map(|task| task.selector())
+            .collect::<Vec<_>>(),
+        ["symlinks"],
+        "only the parent's exact delegated tasks may run elevated"
+    );
+}
+
+#[test]
 fn elevated_child_args_do_not_duplicate_repeated_flags() {
     let built = build_elevated_child_args(
         &args(&["install", "--no-parallel", "--elevated-child"]),

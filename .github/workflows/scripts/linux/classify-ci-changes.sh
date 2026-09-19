@@ -56,12 +56,10 @@ if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
   exit 0
 fi
 
-changed_files_file="$(mktemp)"
-trap 'rm -f "$changed_files_file"' EXIT HUP INT TERM
+# Classify both sides of a rename so moving code into docs still runs its checks.
+changed_files=$(git -C "$DIR" diff --name-only --no-renames "$BASE_SHA" "$HEAD_SHA")
 
-git -C "$DIR" diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$changed_files_file"
-
-if [ ! -s "$changed_files_file" ]; then
+if [ -z "$changed_files" ]; then
   log_stage "No changed files detected: running full CI"
   write_full_outputs
   exit 0
@@ -70,7 +68,9 @@ fi
 log_stage "Changed files"
 while IFS= read -r changed_file || [ -n "$changed_file" ]; do
   printf " - %s\n" "$changed_file"
-done < "$changed_files_file"
+done <<EOF
+$changed_files
+EOF
 
 docs_only=1
 run_full=0
@@ -113,7 +113,9 @@ while IFS= read -r changed_file || [ -n "$changed_file" ]; do
       run_full=1
       ;;
   esac
-done < "$changed_files_file"
+done <<EOF
+$changed_files
+EOF
 
 if [ "$docs_only" -eq 1 ]; then
   log_stage "Docs-only or agent-doc-only change: skipping expensive CI jobs"

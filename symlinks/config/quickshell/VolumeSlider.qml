@@ -32,14 +32,14 @@ Slider {
             width: parent.width / 3
             height: parent.height
             radius: height / 2
-            color: Theme.yellowSoft
+            color: Theme.purpleSoft
         }
 
         Rectangle {
             width: root.visualPosition * parent.width
             height: parent.height
             radius: height / 2
-            color: root.value > 1 ? Theme.yellow : Theme.blue
+            color: root.value > 1 ? Theme.purple : Theme.blue
         }
 
         Rectangle {
@@ -47,7 +47,7 @@ Slider {
             y: -4
             width: 2
             height: parent.height + 8
-            color: Theme.yellow
+            color: Theme.cyan
         }
     }
 
@@ -59,7 +59,7 @@ Slider {
         radius: width / 2
         color: Theme.foreground
         border.width: 2
-        border.color: root.value > 1 ? Theme.yellow : Theme.blue
+        border.color: root.value > 1 ? Theme.purple : Theme.blue
 
         Rectangle {
             anchors.fill: parent

@@ -3,10 +3,14 @@
 import ctypes
 import io
 import json
+from pathlib import Path
 import subprocess
 import sys
 import unittest
 from unittest.mock import patch
+
+QUICKSHELL_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(QUICKSHELL_DIR))
 
 import network_helper as network
 

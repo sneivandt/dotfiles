@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import ".." as Shell
+import "../.." as Shell
 
 Item {
     width: 800

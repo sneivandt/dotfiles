@@ -17,22 +17,29 @@ ShellPopup {
     function batteryIcon() {
         if (charging)
             return "\uf0e7";
+
         if (!available)
             return "\uf128";
+
         if (charge <= 0.15)
             return "\uf244";
+
         if (charge <= 0.35)
             return "\uf243";
+
         if (charge <= 0.6)
             return "\uf242";
+
         if (charge <= 0.85)
             return "\uf241";
+
         return "\uf240";
     }
 
     function stateLabel() {
         if (!available)
             return "Battery unavailable";
+
         switch (battery.state) {
         case UPowerDeviceState.Charging:
             return "Charging";
@@ -57,18 +64,23 @@ ShellPopup {
         const minutes = totalMinutes % 60;
         if (hours === 0)
             return minutes + "m";
+
         if (minutes === 0)
             return hours + "h";
+
         return hours + "h " + minutes + "m";
     }
 
     function timeSummary() {
         if (!available)
             return "";
+
         if (charging && battery.timeToFull > 0)
             return duration(battery.timeToFull) + " until full";
+
         if (battery.state === UPowerDeviceState.Discharging && battery.timeToEmpty > 0)
             return duration(battery.timeToEmpty) + " remaining";
+
         return "";
     }
 
@@ -84,7 +96,7 @@ ShellPopup {
             title: "Battery"
             subtitle: root.stateLabel()
             accentColor: root.accentColor
-            accentBackground: "transparent"
+            accentBackground: !root.available ? Theme.raised : (root.charging || root.fullyCharged ? Theme.greenSoft : (root.charge <= 0.15 ? Theme.redSoft : (root.charge <= 0.3 ? Theme.yellowSoft : Theme.blueSoft)))
         }
 
         Flickable {
@@ -100,7 +112,6 @@ ShellPopup {
             activeFocusOnTab: contentHeight > height
             Keys.onDownPressed: contentY = Math.min(Math.max(0, contentHeight - height), contentY + 40)
             Keys.onUpPressed: contentY = Math.max(0, contentY - 40)
-            ScrollBar.vertical: ShellScrollBar {}
 
             ColumnLayout {
                 id: batteryContent
@@ -132,8 +143,8 @@ ShellPopup {
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.spacing
                     Layout.bottomMargin: Theme.spacing
-                    implicitHeight: 6
-                    radius: 3
+                    implicitHeight: 10
+                    radius: 5
                     color: Theme.borderSubtle
                     visible: root.available
 
@@ -143,15 +154,35 @@ ShellPopup {
                         radius: parent.radius
                         color: root.accentColor
 
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width > 8 ? 4 : 0
+                            height: parent.height - 4
+                            radius: 2
+                            color: Theme.foreground
+                            opacity: 0.75
+                        }
+
                         Behavior on width {
                             NumberAnimation {
                                 duration: Theme.animationNormal
                                 easing.type: Easing.OutCubic
                             }
+
                         }
+
                     }
+
                 }
+
             }
+
+            ScrollBar.vertical: ShellScrollBar {
+            }
+
         }
+
     }
+
 }

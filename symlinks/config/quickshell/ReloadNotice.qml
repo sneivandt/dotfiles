@@ -16,18 +16,20 @@ PanelWindow {
     function showResult(errorString) {
         autoHide.stop();
         const focused = Hyprland.focusedMonitor;
-        const output = Quickshell.screens.find(screen => focused && screen.name === focused.name);
+        const output = Quickshell.screens.find((screen) => {
+            return focused && screen.name === focused.name;
+        });
         if (output)
             root.screen = output;
         else if (!root.screen && Quickshell.screens.length > 0)
             root.screen = Quickshell.screens[0];
-
         errorMessage = errorString || "";
         errorScroll.contentY = 0;
         errorText.deselect();
         visible = true;
         if (!hasError)
             autoHide.restart();
+
     }
 
     function dismiss() {
@@ -44,10 +46,12 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "quickshell-reload-notice"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+
     anchors {
         top: true
         right: true
     }
+
     margins {
         top: Theme.barHeight + Theme.spacing
         right: Theme.spacing
@@ -81,12 +85,14 @@ PanelWindow {
                 subtitle: root.hasError ? "" : "Configuration is up to date."
                 icon: root.hasError ? "\uf071" : "\uf00c"
                 accentColor: root.hasError ? Theme.red : Theme.green
-                accentBackground: "transparent"
+                accentBackground: root.hasError ? Theme.redSoft : Theme.greenSoft
+
                 trailingItem: MenuIconButton {
                     glyph: "\uf00d"
                     tooltip: "Close reload notice"
                     onTriggered: root.dismiss()
                 }
+
             }
 
             Text {
@@ -114,7 +120,6 @@ PanelWindow {
                 flickableDirection: Flickable.VerticalFlick
                 Keys.onDownPressed: contentY = Math.min(Math.max(0, contentHeight - height), contentY + 40)
                 Keys.onUpPressed: contentY = Math.max(0, contentY - 40)
-                ScrollBar.vertical: ShellScrollBar {}
 
                 TextEdit {
                     id: errorText
@@ -135,13 +140,18 @@ PanelWindow {
                     Accessible.name: "Reload error details"
                     onCursorRectangleChanged: {
                         if (!activeFocus)
-                            return;
+                            return ;
+
                         if (cursorRectangle.y < errorScroll.contentY)
                             errorScroll.contentY = cursorRectangle.y;
                         else if (cursorRectangle.y + cursorRectangle.height > errorScroll.contentY + errorScroll.height)
                             errorScroll.contentY = cursorRectangle.y + cursorRectangle.height - errorScroll.height;
                     }
                 }
+
+                ScrollBar.vertical: ShellScrollBar {
+                }
+
             }
 
             MenuButton {
@@ -154,6 +164,9 @@ PanelWindow {
                 showChevron: false
                 onTriggered: Quickshell.reload(false)
             }
+
         }
+
     }
+
 }

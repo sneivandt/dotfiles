@@ -14,14 +14,21 @@ RowLayout {
 
     spacing: 12
 
-    Text {
+    Rectangle {
         visible: root.icon.length > 0
-        Layout.preferredWidth: 20
-        text: root.icon
-        color: root.accentColor
-        font.family: Theme.iconFont
-        font.pixelSize: 17
-        horizontalAlignment: Text.AlignHCenter
+        Layout.preferredWidth: 36
+        Layout.preferredHeight: 36
+        radius: Theme.itemRadius
+        color: root.accentBackground
+
+        Text {
+            anchors.centerIn: parent
+            text: root.icon
+            color: root.accentColor
+            font.family: Theme.iconFont
+            font.pixelSize: 16
+        }
+
     }
 
     ColumnLayout {
@@ -49,6 +56,7 @@ RowLayout {
             font.pixelSize: Theme.textSmall
             elide: Text.ElideRight
         }
+
     }
 
     Item {
@@ -57,4 +65,5 @@ RowLayout {
         implicitWidth: childrenRect.width
         implicitHeight: childrenRect.height
     }
+
 }

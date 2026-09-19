@@ -2,7 +2,10 @@
 // QML's eight-digit color notation is AARRGGBB.
 var background = "transparent"
 var backgroundSolid = "#1a1b26"
-var menuBackground = "#171a26"
+var barSurfaceTop = "#781f2333"
+var barSurfaceBottom = "#70171a26"
+var menuBackground = "#f2171a26"
+var menuBackgroundTop = "#f5222638"
 var tooltipBackground = "#171a26"
 var textShadow = "#e6171a26"
 var raised = "#66252a40"
@@ -11,6 +14,8 @@ var pressed = "#88393f5c"
 var selected = "#70293d60"
 var borderSubtle = "#54565f89"
 var border = "#80565f89"
+var panelBorder = "#a0414868"
+var shadow = "#40000000"
 var highlight = "#38c0caf5"
 var foreground = "#e6e9ff"
 var muted = "#565f89"
@@ -29,7 +34,7 @@ var cyan = "#7dcfff"
 var cyanSoft = "#267dcfff"
 
 var menuRadius = 12
-var itemRadius = 8
+var itemRadius = 10
 var controlRadius = 8
 var animationFast = 90
 var animationNormal = 160

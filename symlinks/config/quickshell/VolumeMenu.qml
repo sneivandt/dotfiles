@@ -39,7 +39,7 @@ ShellPopup {
             Text {
                 Layout.fillWidth: true
                 text: root.audio.available ? Math.round(outputSlider.value * 100) + "%" : "--"
-                color: outputSlider.value > 1 ? Theme.yellow : Theme.foreground
+                color: outputSlider.value > 1 ? Theme.purple : Theme.foreground
                 font.family: Theme.font
                 font.pixelSize: 30
                 font.weight: Font.DemiBold
@@ -48,7 +48,7 @@ ShellPopup {
 
             Text {
                 text: root.audio.muted ? "Muted" : outputSlider.value > 1 ? "Boost" : ""
-                color: root.audio.muted ? Theme.red : Theme.yellow
+                color: root.audio.muted ? Theme.red : Theme.purple
                 font.family: Theme.font
                 font.pixelSize: Theme.textBody
             }
@@ -93,7 +93,7 @@ ShellPopup {
             Text {
                 x: outputSlider.leftPadding + outputSlider.handle.width / 2 + (outputSlider.availableWidth - outputSlider.handle.width) * 2 / 3 - width / 2
                 text: "100%"
-                color: Theme.yellow
+                color: Theme.cyan
                 font.family: Theme.font
                 font.pixelSize: Theme.textSmall
             }

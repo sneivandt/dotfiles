@@ -18,7 +18,8 @@ AbstractButton {
     property bool showChevron: true
     property color accentColor: danger ? Theme.red : Theme.blue
     property color accentBackground: danger ? Theme.redSoft : Theme.blueSoft
-    signal triggered
+
+    signal triggered()
 
     implicitHeight: detail.length > 0 || trailingDetail.length > 0 ? 58 : 48
     implicitWidth: 180
@@ -28,39 +29,82 @@ AbstractButton {
     opacity: enabled ? 1 : 0.45
     Accessible.name: label
     Accessible.description: detail
-    onClicked: if (clickable)
-        triggered()
-    Keys.onReturnPressed: if (clickable && enabled)
-        triggered()
-    Keys.onEnterPressed: if (clickable && enabled)
-        triggered()
+    onClicked: {
+        if (clickable) {
+            triggered();
+        }
+    }
+    Keys.onReturnPressed: {
+        if (clickable && enabled) {
+            triggered();
+        }
+    }
+    Keys.onEnterPressed: {
+        if (clickable && enabled) {
+            triggered();
+        }
+    }
+
+    HoverHandler {
+        cursorShape: root.clickable ? Qt.PointingHandCursor : Qt.ArrowCursor
+    }
 
     background: Rectangle {
         radius: Theme.itemRadius
         color: root.clickable && root.down ? Theme.pressed : (root.clickable && root.hovered ? Theme.hover : (root.selected ? root.accentBackground : "transparent"))
         border.width: root.visualFocus ? 1 : 0
         border.color: root.accentColor
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            width: root.selected ? 3 : 0
+            height: root.selected ? Math.max(16, parent.height - 20) : 0
+            radius: 2
+            color: root.accentColor
+
+            Behavior on width {
+                NumberAnimation {
+                    duration: Theme.animationFast
+                }
+
+            }
+
+        }
+
         Behavior on color {
             ColorAnimation {
                 duration: Theme.animationFast
             }
+
         }
+
     }
 
     contentItem: RowLayout {
         spacing: 12
-        Text {
+
+        Rectangle {
             visible: root.glyph.length > 0
-            Layout.preferredWidth: 20
-            text: root.glyph
-            color: root.danger || root.selected ? root.accentColor : Theme.mutedStrong
-            font.family: Theme.iconFont
-            font.pixelSize: 15
-            horizontalAlignment: Text.AlignHCenter
+            Layout.preferredWidth: 28
+            Layout.preferredHeight: 28
+            radius: Theme.controlRadius
+            color: root.danger || root.selected ? root.accentBackground : Theme.raised
+
+            Text {
+                anchors.centerIn: parent
+                text: root.glyph
+                color: root.danger || root.selected ? root.accentColor : Theme.mutedStrong
+                font.family: Theme.iconFont
+                font.pixelSize: 13
+            }
+
         }
+
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 3
+
             Text {
                 Layout.fillWidth: true
                 text: root.label
@@ -71,6 +115,7 @@ AbstractButton {
                 font.weight: root.selected ? Font.DemiBold : Font.Normal
                 elide: Text.ElideRight
             }
+
             Text {
                 visible: root.detail.length > 0
                 Layout.fillWidth: true
@@ -81,10 +126,13 @@ AbstractButton {
                 font.pixelSize: Theme.textSmall
                 elide: Text.ElideRight
             }
+
         }
+
         ColumnLayout {
             visible: root.trailing.length > 0 || root.trailingDetail.length > 0
             spacing: 3
+
             Text {
                 visible: root.trailing.length > 0
                 Layout.alignment: Qt.AlignRight
@@ -94,6 +142,7 @@ AbstractButton {
                 font.family: Theme.font
                 font.pixelSize: Theme.textBody
             }
+
             Text {
                 visible: root.trailingDetail.length > 0
                 Layout.alignment: Qt.AlignRight
@@ -103,7 +152,9 @@ AbstractButton {
                 font.family: Theme.font
                 font.pixelSize: Theme.textSmall
             }
+
         }
+
         Text {
             visible: root.showChevron && root.clickable
             text: "\uf105"
@@ -111,9 +162,7 @@ AbstractButton {
             font.family: Theme.iconFont
             font.pixelSize: 11
         }
+
     }
 
-    HoverHandler {
-        cursorShape: root.clickable ? Qt.PointingHandCursor : Qt.ArrowCursor
-    }
 }

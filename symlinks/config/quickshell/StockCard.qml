@@ -11,7 +11,7 @@ FocusScope {
     property real expansionProgress: expanded ? 1 : 0
     readonly property color accentColor: Number(quote.change) === 0 ? Theme.mutedStrong : (quote.change > 0 ? Theme.green : Theme.red)
 
-    signal triggered
+    signal triggered()
 
     function price(value) {
         return Number(value).toLocaleString(Qt.locale("en_US"), "f", 2);
@@ -37,18 +37,24 @@ FocusScope {
         Accessible.name: root.quote.symbol + ", " + root.quote.prefix + root.price(root.quote.price) + ", " + root.percent(root.quote.change)
         Accessible.description: root.expanded ? "Hide price history" : "Show price history"
         onClicked: root.triggered()
-        Keys.onReturnPressed: event => {
+        Keys.onReturnPressed: (event) => {
             if (!event.isAutoRepeat)
                 root.triggered();
+
         }
-        Keys.onEnterPressed: event => {
+        Keys.onEnterPressed: (event) => {
             if (!event.isAutoRepeat)
                 root.triggered();
+
+        }
+
+        HoverHandler {
+            cursorShape: Qt.PointingHandCursor
         }
 
         background: Rectangle {
             radius: Theme.itemRadius
-            color: summary.down ? Theme.pressed : (summary.hovered ? Theme.hover : (root.expanded ? Theme.blueSoft : "transparent"))
+            color: summary.down ? Theme.pressed : (summary.hovered ? Theme.hover : (root.expanded ? Theme.blueSoft : Theme.raised))
             border.width: summary.visualFocus ? 1 : 0
             border.color: Theme.blue
         }
@@ -79,6 +85,7 @@ FocusScope {
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                 }
+
             }
 
             ColumnLayout {
@@ -100,6 +107,7 @@ FocusScope {
                     font.family: Theme.font
                     font.pixelSize: Theme.textSmall
                 }
+
             }
 
             Text {
@@ -109,11 +117,9 @@ FocusScope {
                 font.pixelSize: Theme.textSmall
                 rotation: root.expansionProgress * 180
             }
+
         }
 
-        HoverHandler {
-            cursorShape: Qt.PointingHandCursor
-        }
     }
 
     StockDetails {
@@ -133,5 +139,7 @@ FocusScope {
             duration: Theme.animationNormal
             easing.type: Easing.OutCubic
         }
+
     }
+
 }

@@ -11,25 +11,12 @@ ColumnLayout {
     required property date currentDate
     property real availableContentHeight: 600
     property int monthOffset: 0
-    property bool useUtc: false
-    readonly property date referenceDate: dateInZone(useUtc)
+    readonly property date referenceDate: currentDate
     readonly property date shownMonth: new Date(referenceDate.getFullYear(), referenceDate.getMonth() + monthOffset, 1, 12)
     readonly property int firstWeekday: (shownMonth.getDay() + 6) % 7
 
-    function dateInZone(utc) {
-        // Calendar arithmetic uses local noon, including for the UTC date.
-        return utc ? new Date(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 12) : currentDate;
-    }
-
-    function timeInZone(utc) {
-        if (!utc)
-            return Qt.formatTime(currentDate, "HH:mm");
+    function utcTime() {
         return String(currentDate.getUTCHours()).padStart(2, "0") + ":" + String(currentDate.getUTCMinutes()).padStart(2, "0");
-    }
-
-    function selectTimezone(utc) {
-        useUtc = utc;
-        monthOffset = 0;
     }
 
     function dateForCell(index) {
@@ -42,50 +29,33 @@ ColumnLayout {
 
     spacing: Theme.spacing
 
-    GridLayout {
+    RowLayout {
         id: clockRow
 
         Layout.fillWidth: true
-        columns: root.width >= 240 ? 2 : 1
-        columnSpacing: Theme.spacing
-        rowSpacing: 4
+        spacing: Theme.spacing
+        Accessible.role: Accessible.StaticText
+        Accessible.name: Qt.formatDate(root.currentDate, "dddd, MMMM d, yyyy") + ", " + Qt.formatTime(root.currentDate, "HH:mm") + ", UTC " + root.utcTime()
 
-        MenuButton {
-            objectName: "localTimezone"
+        Text {
+            objectName: "localClock"
             Layout.fillWidth: true
-            Layout.preferredWidth: 1
-            implicitWidth: 0
-            implicitHeight: 32
-            padding: 6
-            label: "Local"
-            trailing: root.timeInZone(false)
-            selected: !root.useUtc
-            showChevron: false
-            Accessible.role: Accessible.RadioButton
-            Accessible.checkable: true
-            Accessible.checked: selected
-            Accessible.name: "Local time " + trailing + ", " + Qt.formatDate(root.dateInZone(false), "dddd, MMMM d, yyyy")
-            Accessible.description: "Show calendar dates in local time"
-            onTriggered: root.selectTimezone(false)
+            Layout.minimumWidth: 0
+            Layout.alignment: Qt.AlignVCenter
+            text: Qt.formatTime(root.currentDate, "HH:mm")
+            color: Theme.foreground
+            font.family: Theme.font
+            font.pixelSize: 24
+            font.weight: Font.DemiBold
         }
 
-        MenuButton {
-            objectName: "utcTimezone"
-            Layout.fillWidth: true
-            Layout.preferredWidth: 1
-            implicitWidth: 0
-            implicitHeight: 32
-            padding: 6
-            label: "UTC"
-            trailing: root.timeInZone(true)
-            selected: root.useUtc
-            showChevron: false
-            Accessible.role: Accessible.RadioButton
-            Accessible.checkable: true
-            Accessible.checked: selected
-            Accessible.name: "UTC time " + trailing + ", " + Qt.formatDate(root.dateInZone(true), "dddd, MMMM d, yyyy")
-            Accessible.description: "Show calendar dates in Coordinated Universal Time"
-            onTriggered: root.selectTimezone(true)
+        Text {
+            objectName: "utcClock"
+            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+            text: root.utcTime() + " UTC"
+            color: Theme.cyan
+            font.family: Theme.font
+            font.pixelSize: Theme.textSmall
         }
     }
 
@@ -227,7 +197,7 @@ ColumnLayout {
 
                         contentItem: Text {
                             text: day.cellDate.getDate()
-                            color: day.today ? Theme.blue : (day.inMonth ? Theme.foreground : Theme.mutedStrong)
+                            color: day.today ? Theme.backgroundSolid : (day.inMonth ? Theme.foreground : Theme.mutedStrong)
                             font.family: Theme.font
                             font.pixelSize: Theme.textBody
                             font.weight: day.today ? Font.DemiBold : Font.Normal
@@ -237,7 +207,7 @@ ColumnLayout {
 
                         background: Rectangle {
                             radius: Theme.controlRadius
-                            color: day.today ? Theme.blueSoft : (day.down ? Theme.pressed : (day.hovered ? Theme.hover : "transparent"))
+                            color: day.today ? Theme.blue : (day.down ? Theme.pressed : (day.hovered ? Theme.hover : "transparent"))
                             border.width: day.visualFocus ? 1 : 0
                             border.color: Theme.blue
                         }

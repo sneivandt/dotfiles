@@ -127,7 +127,7 @@ Test runner. On Arch, run them offscreen without switching real workspaces:
 
 ```bash
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
-  /usr/lib/qt6/bin/qmltestrunner -input symlinks/config/quickshell/tests
+  /usr/lib/qt6/bin/qmltestrunner -input symlinks/config/quickshell/tests/qml
 ```
 
 The Quickshell network helper uses Python's standard-library test runner. Its
@@ -136,7 +136,7 @@ adapter:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
-  -s symlinks/config/quickshell -p network_helper_test.py
+  -s symlinks/config/quickshell/tests/python -p 'test_*.py'
 ```
 
 On Windows, use `python -B` in place of the environment-variable prefix and

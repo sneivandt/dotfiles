@@ -103,6 +103,8 @@ PopupWindow {
         id: contentFocus
         anchors.fill: parent
         opacity: root.reveal
+        scale: 0.985 + root.reveal * 0.015
+        transformOrigin: Item.TopRight
         transform: Translate {
             y: -5 * (1 - root.reveal)
         }
@@ -112,13 +114,13 @@ PopupWindow {
         }
 
         Repeater {
-            model: 4
+            model: 3
             Rectangle {
                 required property int index
                 anchors.fill: panel
-                anchors.margins: -(index + 1) * 2
-                radius: Theme.menuRadius + (index + 1) * 2
-                color: "#09000000"
+                anchors.margins: -(index + 1) * 3
+                radius: Theme.menuRadius + (index + 1) * 3
+                color: index === 0 ? Theme.shadow : "#18000000"
             }
         }
 

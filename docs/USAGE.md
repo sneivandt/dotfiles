@@ -150,9 +150,10 @@ substrings, action-prefix removal, or the first word of a label.
 For example, `repository` and `dotfiles-repository` both match **Dotfiles
 repository**, but `dotfiles` does not.
 Internal orchestration tasks are omitted from discovery and cannot be selected.
-By default, filtering out a prerequisite warns and assumes it is already
-satisfied. Add `--with-deps` to include the dependency closure of `--only`
-selectors. A subsequent `--skip` can still remove a dependency and produce the
+By default, filtering out a blocking prerequisite warns and assumes it is
+already satisfied. Ordering-only edges do not warn when either task is filtered
+out. Add `--with-deps` to include the dependency closure of `--only` selectors.
+A subsequent `--skip` can still remove a blocking dependency and produce the
 warning.
 
 ## Discover tasks

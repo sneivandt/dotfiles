@@ -49,7 +49,7 @@ pub(crate) fn apply_task_filters<'a>(
         })
         .map(Box::as_ref)
         .collect();
-    let omitted_dependencies = omitted_dependencies(&known_task_refs, &filtered);
+    let omitted_dependencies = omitted_blocking_dependencies(&known_task_refs, &filtered);
 
     if !log.is_verbose() && !omitted_dependencies.is_empty() {
         log.separate_from_startup();
@@ -142,7 +142,7 @@ pub fn task_matches_filter(task: &dyn Task, filter: &str) -> bool {
         || normalized_filter == normalize_task_filter(task.name())
 }
 
-fn omitted_dependencies<'a>(
+fn omitted_blocking_dependencies<'a>(
     all_tasks: &[&'a dyn Task],
     filtered: &[&'a dyn Task],
 ) -> Vec<(&'a str, &'a str)> {
@@ -157,11 +157,7 @@ fn omitted_dependencies<'a>(
     let mut omitted = Vec::new();
 
     for task in filtered {
-        for dependency in task
-            .dependencies()
-            .iter()
-            .chain(task.ordering_dependencies())
-        {
+        for dependency in task.dependencies() {
             let Some(dependency_task) = known.get(dependency) else {
                 continue;
             };
@@ -250,6 +246,23 @@ mod tests {
         }
 
         fn dependencies(&self) -> &[TaskId] {
+            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<SampleTask>())];
+            DEPS
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct OrderingDependentTask;
+
+    impl Task for OrderingDependentTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Ordering dependent").with_selector("ordering-dependent")
+        }
+
+        fn ordering_dependencies(&self) -> &[TaskId] {
             const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<SampleTask>())];
             DEPS
         }
@@ -403,8 +416,10 @@ mod tests {
             "targeted execution should retain its existing non-expanding semantics"
         );
 
-        let dependencies =
-            omitted_dependencies(&all.iter().map(Box::as_ref).collect::<Vec<_>>(), &filtered);
+        let dependencies = omitted_blocking_dependencies(
+            &all.iter().map(Box::as_ref).collect::<Vec<_>>(),
+            &filtered,
+        );
         warn_omitted_dependencies(&dependencies, &log);
         assert_eq!(
             log.warnings(),
@@ -412,6 +427,30 @@ mod tests {
                 "task 'Dependent' will run without filtered prerequisite 'Home symlinks'; assuming it is already satisfied"
                     .to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn omitted_ordering_dependencies_do_not_warn() {
+        let all: Vec<Box<dyn Task>> = vec![Box::new(SampleTask), Box::new(OrderingDependentTask)];
+        let filtered = apply_task_filters(
+            &all,
+            &[],
+            &["ordering-dependent".to_string()],
+            &[],
+            false,
+            &Logger::new("test"),
+        )
+        .expect("valid filter");
+
+        let dependencies = omitted_blocking_dependencies(
+            &all.iter().map(Box::as_ref).collect::<Vec<_>>(),
+            &filtered,
+        );
+
+        assert!(
+            dependencies.is_empty(),
+            "an ordering-only edge should not be treated as an omitted prerequisite"
         );
     }
 

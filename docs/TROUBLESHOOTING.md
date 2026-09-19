@@ -16,7 +16,7 @@ elevated processes. `unfinished` means no finish record was written, which can
 also mean the process is still running.
 
 Failed-command output is visible in the default viewer. Use `--verbose` for
-other diagnostics, `--task <TASK_ID>` to isolate a task, and `--raw` for the
+other diagnostics, `--task <SELECTOR>` to isolate a task, and `--raw` for the
 original records. Successful stdout is omitted unless the command requests full
 capture. If persistent logging is unavailable, the CLI warns and does not offer
 a log command for that failure.

@@ -53,8 +53,9 @@ explicitly bypassing GitHub provenance verification for that invocation.
 | `install --update-pins` | Runs normal convergence and advances pinned dependency versions |
 | `uninstall` | Removes managed integrations while preserving user files and broader machine state |
 | `check` | Validates configuration and runs available script analyzers |
-| `tasks` | Lists visible task selectors, labels, and command membership |
+| `tasks` | Lists available task selectors, labels, and command membership |
 | `log` | Lists retained run logs or prints one of them |
+| `help [command]` | Prints top-level or command-specific help |
 | `completions <shell>` | Hidden support command that emits runtime shell completion registration |
 
 `update` remains a hidden compatibility alias for `install --update-pins`, and
@@ -78,9 +79,9 @@ usage error.
 | `--fail-on-skip` | Fail when applicable work cannot be completed |
 | `--non-interactive` | Disable prompts and fail when input is required |
 | `--no-symbols` | Use ASCII words instead of status symbols |
-| `--only <SELECTOR>` | Run matching tasks; repeat the option or separate selectors with commas; `install` and `check` only |
-| `--skip <SELECTOR>` | Exclude matching tasks; repeat the option or separate selectors with commas; `install` and `check` only |
-| `--with-deps` | Include dependencies of tasks selected by `--only`; `install` and `check` only |
+| `--only <SELECTOR>` | Run matching tasks; repeat the option or separate selectors with commas; `install`, `uninstall`, and `check` only |
+| `--skip <SELECTOR>` | Exclude matching tasks; repeat the option or separate selectors with commas; `install`, `uninstall`, and `check` only |
+| `--with-deps` | Include blocking and ordering predecessors of tasks selected by `--only`; `install` only |
 | `--update-pins` | Advance pinned dependencies after normal convergence; `install` only |
 | `--skip-attestation` | Skip provenance verification for self-updates; `install` and `uninstall` only |
 
@@ -145,14 +146,16 @@ dotfiles install --skip "systemd,registry"
 ```
 
 Both options can be used together. `--only` limits the candidate set, then
-`--skip` removes matches. Matching does not use Rust type names, arbitrary
+`--skip` removes matches. A combination that selects no tasks is an error.
+Matching does not use Rust type names, arbitrary
 substrings, action-prefix removal, or the first word of a label.
 For example, `repository` and `dotfiles-repository` both match **Dotfiles
 repository**, but `dotfiles` does not.
 Internal orchestration tasks are omitted from discovery and cannot be selected.
 By default, filtering out a blocking prerequisite warns and assumes it is
 already satisfied. Ordering-only edges do not warn when either task is filtered
-out. Add `--with-deps` to include the dependency closure of `--only` selectors.
+out. Add `--with-deps` to include both blocking and ordering predecessors of
+`--only` selectors.
 A subsequent `--skip` can still remove a blocking dependency and produce the
 warning.
 
@@ -164,7 +167,10 @@ dotfiles tasks --profile desktop --format plain
 dotfiles tasks --profile desktop --format json
 ```
 
-The output contains `SELECTOR`, `TASK`, and `COMMANDS` columns. It combines
+The output contains `SELECTOR`, `TASK`, and `COMMANDS` columns. It lists
+available selectors rather than predicting whether each task will apply on the
+current machine. Platform, configuration, and tool checks occur when a command
+runs. The listing combines
 install, pin-update, uninstall, check, and active overlay-script tasks, while
 hiding internal orchestration. Rows retain catalog/discovery order; the command
 does not sort them. A selector is rejected if it maps to conflicting display
@@ -298,6 +304,9 @@ Uninstall performs three actions:
 2. Removes installed repository Git hooks.
 3. Removes the installed CLI wrapper.
 
+Use `--only` or `--skip` with the uninstall memberships from `dotfiles tasks`
+to remove a subset. An explicit filter that selects no uninstall tasks fails.
+
 It does **not** uninstall packages, revert registry values, disable systemd
 units, undo shell selection, or reverse arbitrary overlay scripts. See
 [Uninstall tasks](TASKS.md#uninstall-tasks).
@@ -327,19 +336,23 @@ runs keep their compact console summary.
 ```bash
 dotfiles log                          # newest run
 dotfiles log --list                   # history with outcome, duration, profile and ID
+dotfiles log --list --format json     # machine-readable history
 dotfiles log 2                        # third-newest run
 dotfiles log -c install               # newest install run
 dotfiles log --id 20260907T100000Z-install-1234 -v
-# Copy an exact task identity from a log's context column:
-dotfiles log --task dotfiles_cli::domains::files::symlinks::InstallSymlinks
+dotfiles log --task symlinks          # filter by stable public selector
 dotfiles log --raw                    # original stored records, including diagnostics
 ```
 
 An index shifts when another run is recorded. `--id` selects a stable filename
-stem and fails if that run is no longer retained. `--command` filters the list
-before indexing, so `dotfiles log -c install 1` selects the second-newest install.
-`--task` selects an exact task identity within the selected run; it can be
-combined with `--id`, `--verbose`, or `--raw`.
+stem and fails if that run is no longer retained. Run indexes, `--id`, and
+`--list` are mutually exclusive. `--command` filters the list before indexing,
+so `dotfiles log -c install 1` selects the second-newest install. It accepts
+`install`, `uninstall`, and `check`; legacy `update` and `test` values map to
+their canonical command families. `--task` selects a stable public task selector
+within the selected run. Exact stored identities remain accepted for older
+diagnostic workflows. Task filtering can be combined with `--id`, `--verbose`,
+or `--raw`.
 
 History distinguishes succeeded, failed, and interrupted runs. A run with a
 start record but no finish record is `unfinished`; it may still be running or
@@ -349,11 +362,11 @@ in the history list. Each process keeps its own duration and exit result.
 
 Logs preserve event order with sequence numbers, elapsed microseconds, UTC
 timestamps, context, event kind, and message. Versioned JSON records alongside
-text diagnostics store run lifecycle, task identity and outcome, exact duration,
-resource actions, and command results. Task identities use the implementation
-type name and any dynamic instance key, so changing a display label or rebuilding
-the same code does not change them. Renaming an implementation or instance key
-does change its identity. Multiline messages retain line breaks and indentation.
+text diagnostics store run lifecycle, task selector, task identity and outcome,
+exact duration, resource actions, and command results. The internal identity
+uses the implementation type name and any dynamic instance key. Renaming an
+implementation or instance key changes that internal identity. Multiline
+messages retain line breaks and indentation.
 
 The viewer renders these records as readable text. Failed-command output and
 successful stderr are visible without `--verbose`. Other diagnostic messages
@@ -382,8 +395,8 @@ versions under the cache directory are removed on the next run.
 ## Shell completions
 
 Installed Zsh and PowerShell completions ask the current `dotfiles` binary for
-candidates. They complete the built-in values accepted by `--profile`, the
-canonical commands accepted by `dotfiles log --command`, and task selectors
+candidates. They complete the built-in values accepted by `--profile` and
+`dotfiles log --command`, and task selectors
 accepted by `--only` and `--skip`. Task completion uses the same read-only
 configuration discovery as `dotfiles tasks` and carries forward `--profile`,
 `--root`, and `--overlay` from the command being completed.

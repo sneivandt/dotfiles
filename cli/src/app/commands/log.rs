@@ -1,15 +1,18 @@
 //! Log command implementation.
 
 use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
+use std::collections::HashSet;
 use std::io::BufRead as _;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
+use serde::Serialize;
 
-use crate::app::cli::LogOpts;
+use crate::app::cli::{DiscoveryFormat, LogOpts};
 use crate::infra::logging::parse_run_log_file_name;
 
 const NO_LOG_FOUND: &str = "No dotfiles log found yet.";
+const NO_MATCHING_LOG: &str = "No retained runs match the requested filters.";
 const LIST_HINT: &str = "Run 'dotfiles log --list' to see retained runs.";
 
 /// A retained run log discovered in the log directory.
@@ -70,18 +73,23 @@ fn run_in_dir(
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
     let mut runs = discover_runs(log_dir)?;
-    if let Some(command) = opts.command.as_deref() {
-        runs.retain(|run| run.command == command);
-    }
+    let logs_exist = !runs.is_empty();
 
     if let Some(id) = &opts.id {
         runs.retain(|run| run.id() == *id);
         if runs.is_empty() {
             anyhow::bail!("No retained run with ID {id}. {LIST_HINT}");
         }
+    } else if let Some(command) = opts.command {
+        runs.retain(|run| command.matches(&run.command));
     }
     if runs.is_empty() {
-        writeln!(out, "{NO_LOG_FOUND}").context("writing log output")?;
+        let message = if logs_exist {
+            NO_MATCHING_LOG
+        } else {
+            NO_LOG_FOUND
+        };
+        writeln!(out, "{message}").context("writing log output")?;
         return Ok(());
     }
 
@@ -89,7 +97,7 @@ fn run_in_dir(
         for run in &mut runs {
             read_run_metadata(run)?;
         }
-        return write_run_list(&runs, out);
+        return write_run_list(&runs, opts.format.unwrap_or(DiscoveryFormat::Table), out);
     }
 
     let index = opts.run.unwrap_or(0);
@@ -112,17 +120,41 @@ fn write_selected_contents(
     task: Option<&str>,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
+    let selected_task_ids = task.map(|requested| {
+        let mut identities = HashSet::from([requested.to_string()]);
+        let normalized = crate::app::filter::normalize_task_filter(requested);
+        for line in contents.lines() {
+            let Some(stored) = StoredRecord::from_line(line) else {
+                continue;
+            };
+            if let Record::TaskResult {
+                task_id,
+                selector: Some(selector),
+                ..
+            } = stored.record
+                && crate::app::filter::normalize_task_filter(&selector) == normalized
+            {
+                identities.insert(task_id);
+            }
+        }
+        identities
+    });
+    let mut wrote_line = false;
     for line in contents.lines() {
         let record = StoredRecord::from_line(line);
         let context = record
             .as_ref()
             .map(|r| r.context.as_str())
             .or_else(|| line_context(line));
-        if task.is_some_and(|task| context != Some(task)) {
+        if selected_task_ids
+            .as_ref()
+            .is_some_and(|identities| context.is_none_or(|value| !identities.contains(value)))
+        {
             continue;
         }
         if raw {
             writeln!(out, "{line}").context("writing log output")?;
+            wrote_line = true;
             continue;
         }
         if let Some(stored) = record {
@@ -131,11 +163,16 @@ fn write_selected_contents(
                     .split_once(" [record] ")
                     .map_or("", |(prefix, _)| prefix);
                 writeln!(out, "{prefix} [{event}] {message}").context("writing log output")?;
+                wrote_line = true;
             }
         } else if verbose || line_event(line) != Some("debug") {
             // Old logs and unknown schemas remain readable rather than disappearing.
             writeln!(out, "{line}").context("writing log output")?;
+            wrote_line = true;
         }
+    }
+    if task.is_some() && !wrote_line {
+        anyhow::bail!("No records match the requested task selector or identity");
     }
     Ok(())
 }
@@ -175,6 +212,7 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
         ),
         Record::TaskResult {
             task_id: _,
+            selector: _,
             name,
             status,
             reason,
@@ -251,7 +289,19 @@ fn line_event(line: &str) -> Option<&str> {
         .map(|(event, _)| event)
 }
 
-fn write_run_list(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()> {
+fn write_run_list(
+    runs: &[RunEntry],
+    format: DiscoveryFormat,
+    out: &mut dyn std::io::Write,
+) -> Result<()> {
+    match format {
+        DiscoveryFormat::Table => write_run_table(runs, out),
+        DiscoveryFormat::Plain => write_run_plain(runs, out),
+        DiscoveryFormat::Json => write_run_json(runs, out),
+    }
+}
+
+fn write_run_table(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()> {
     let command_width = runs
         .iter()
         .map(|run| run.command.len())
@@ -282,6 +332,58 @@ fn write_run_list(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()>
         .context("writing log output")?;
     }
     Ok(())
+}
+
+fn write_run_plain(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()> {
+    for (index, run) in runs.iter().enumerate() {
+        writeln!(
+            out,
+            "{index}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            format_stamp(&run.stamp),
+            run.command,
+            run.outcome_label(),
+            run.elapsed_us.map_or_else(|| "-".into(), format_duration),
+            run.profile.as_deref().unwrap_or("-"),
+            run.size,
+            run.id(),
+            run.parent_run_id.as_deref().unwrap_or("-"),
+        )
+        .context("writing log output")?;
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct RunListing<'a> {
+    index: usize,
+    when: String,
+    command: &'a str,
+    outcome: &'static str,
+    duration_us: Option<u64>,
+    profile: Option<&'a str>,
+    size_bytes: u64,
+    id: String,
+    parent_id: Option<&'a str>,
+}
+
+fn write_run_json(runs: &[RunEntry], out: &mut dyn std::io::Write) -> Result<()> {
+    let listings = runs
+        .iter()
+        .enumerate()
+        .map(|(index, run)| RunListing {
+            index,
+            when: format_stamp(&run.stamp),
+            command: &run.command,
+            outcome: run.outcome_label(),
+            duration_us: run.elapsed_us,
+            profile: run.profile.as_deref(),
+            size_bytes: run.size,
+            id: run.id(),
+            parent_id: run.parent_run_id.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    serde_json::to_writer_pretty(&mut *out, &listings).context("writing log output")?;
+    writeln!(out).context("writing log output")
 }
 
 /// Render `YYYYMMDDTHHMMSSZ` as `YYYY-MM-DD HH:MM:SSZ`.
@@ -411,6 +513,7 @@ mod tests {
             task: None,
             raw: false,
             list: false,
+            format: None,
             command: None,
             verbose: false,
         }
@@ -471,17 +574,39 @@ mod tests {
     }
 
     #[test]
-    fn filters_by_command() {
+    fn filters_by_command_family() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let dir = tmp.path();
         write_run(dir, "20260731T154210Z-install-1.log", "install run\n");
         write_run(dir, "20260731T154902Z-update-2.log", "update run\n");
 
         let filtered = LogOpts {
-            command: Some("install".to_string()),
+            command: Some(crate::app::cli::LogCommand::Install),
             ..opts()
         };
-        assert_eq!(capture(dir, &filtered, false), "install run\n");
+        assert_eq!(capture(dir, &filtered, false), "update run\n");
+    }
+
+    #[test]
+    fn canonical_command_filters_include_legacy_aliases() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path();
+        write_run(dir, "20260731T154210Z-check-1.log", "check run\n");
+        write_run(dir, "20260731T154902Z-test-2.log", "test run\n");
+
+        let filtered = LogOpts {
+            command: Some(crate::app::cli::LogCommand::Check),
+            ..opts()
+        };
+        assert_eq!(capture(dir, &filtered, false), "test run\n");
+
+        let listed = LogOpts {
+            list: true,
+            ..filtered
+        };
+        let output = capture(dir, &listed, false);
+        assert!(output.contains("check"), "{output}");
+        assert!(output.contains("test"), "{output}");
     }
 
     #[test]
@@ -506,6 +631,55 @@ mod tests {
             lines[2].starts_with("  1  2026-07-31 15:42:10Z  install"),
             "{output}"
         );
+    }
+
+    #[test]
+    fn lists_runs_as_plain_text_and_json() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path();
+        write_run(dir, "20260731T154210Z-install-1.log", "a");
+
+        let plain = capture(
+            dir,
+            &LogOpts {
+                list: true,
+                format: Some(DiscoveryFormat::Plain),
+                ..opts()
+            },
+            false,
+        );
+        assert!(
+            plain.starts_with("0\t2026-07-31 15:42:10Z\tinstall\t"),
+            "{plain}"
+        );
+
+        let json = capture(
+            dir,
+            &LogOpts {
+                list: true,
+                format: Some(DiscoveryFormat::Json),
+                ..opts()
+            },
+            false,
+        );
+        let value: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(value[0]["command"], "install");
+        assert_eq!(value[0]["size_bytes"], 1);
+    }
+
+    #[test]
+    fn distinguishes_absent_logs_from_an_empty_filter_result() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        write_run(tmp.path(), "20260731T154210Z-install-1.log", "a");
+        let output = capture(
+            tmp.path(),
+            &LogOpts {
+                command: Some(crate::app::cli::LogCommand::Check),
+                ..opts()
+            },
+            false,
+        );
+        assert_eq!(output, "No retained runs match the requested filters.\n");
     }
 
     #[test]
@@ -662,6 +836,40 @@ mod tests {
         let selected = String::from_utf8(selected).unwrap();
         assert!(selected.contains("cause"));
         assert!(!selected.contains("warning"));
+    }
+
+    #[test]
+    fn task_selector_resolves_to_the_stored_stable_identity() {
+        let task_id = "dotfiles_cli::domains::files::symlinks::InstallSymlinks";
+        let content = record(
+            task_id,
+            Record::Message {
+                event: "info".into(),
+                text: "selected detail".into(),
+            },
+        ) + &record(
+            task_id,
+            Record::TaskResult {
+                task_id: task_id.into(),
+                selector: Some("symlinks".into()),
+                name: "Home symlinks".into(),
+                status: crate::infra::logging::TaskStatus::Changed,
+                reason: None,
+                actions: crate::infra::logging::ActionCounts::default(),
+            },
+        ) + &record(
+            "other-task",
+            Record::Message {
+                event: "info".into(),
+                text: "other detail".into(),
+            },
+        );
+        let mut selected = Vec::new();
+        write_selected_contents(&content, false, false, Some("symlinks"), &mut selected).unwrap();
+        let selected = String::from_utf8(selected).unwrap();
+        assert!(selected.contains("selected detail"), "{selected}");
+        assert!(selected.contains("Home symlinks"), "{selected}");
+        assert!(!selected.contains("other detail"), "{selected}");
     }
 
     #[test]

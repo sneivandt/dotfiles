@@ -127,7 +127,6 @@ fn check_command_fails_on_config_warnings() {
     let opts = test_api::cli::CheckOpts {
         skip: vec![],
         only: vec![],
-        with_deps: false,
     };
     let log = Arc::new(Logger::new("test-command"));
     let runtime = test_api::commands::RuntimePolicy::new(

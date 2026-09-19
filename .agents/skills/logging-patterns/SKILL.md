@@ -75,7 +75,7 @@ description: >
   Do not offer a hint when the persistent sink is unavailable or degraded.
 - Preserve multiline messages and command streams in storage. Normal log viewing
   includes failed command diagnostics and successful stderr. `--raw` reads stored
-  records; `--task` filters by exact identity.
+  records; `--task` filters by stable public selector or exact stored identity.
 - Test lifecycle and parent linkage, stable selection after newer runs,
   task filtering, legacy/unknown records, output retention, and multiline parity.
 

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::RuntimePolicy;
 use crate::app::cli::InstallOpts;
-use crate::app::filter::apply_task_filters;
+use crate::app::filter::{apply_task_filters, task_matches_filter};
 use crate::domains::ai::apm::ApmPackageMode;
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::engine::{Task, TaskId};
@@ -80,8 +80,17 @@ pub(crate) fn run_pipeline(
     // Version-advancing tasks are scheduled only with `--update-pins`. Filter
     // membership before user filters so warnings reflect eligible tasks.
     all_tasks.retain(|task| mode.includes_task(task.as_ref()));
+    let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
+    let mut effective_skip = opts.skip.clone();
     if runtime.global.no_repo_update {
-        let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
+        let repository = all_tasks
+            .iter()
+            .find(|task| task.task_id() == repository_task)
+            .map(Box::as_ref);
+        reject_disabled_repository_selection(repository, &opts.only)?;
+        if let Some(repository) = repository {
+            effective_skip.retain(|selector| !task_matches_filter(repository, selector));
+        }
         all_tasks.retain(|task| task.task_id() != repository_task);
         log.debug("repository update disabled — using the current checkout");
     }
@@ -92,7 +101,7 @@ pub(crate) fn run_pipeline(
         &all_tasks,
         &startup_overlay_tasks,
         &opts.only,
-        &opts.skip,
+        &effective_skip,
         opts.with_deps,
         log,
     )?;
@@ -105,6 +114,19 @@ pub(crate) fn run_pipeline(
         move || runtime.restart_after_repository_update(repository_update.was_updated()),
         || super::re_exec_after_repository_update(&**log),
     )
+}
+
+fn reject_disabled_repository_selection(
+    repository: Option<&dyn Task>,
+    only: &[String],
+) -> Result<()> {
+    if repository.is_some_and(|task| {
+        only.iter()
+            .any(|selector| task_matches_filter(task, selector))
+    }) {
+        anyhow::bail!("--only cannot select 'repository' when --no-repo-update is set");
+    }
+    Ok(())
 }
 
 fn omit_repository_task(tasks: &mut Vec<&dyn Task>, repository_child: bool) {
@@ -135,5 +157,17 @@ mod tests {
 
         assert!(!RunMode::Install.includes_task(&UpdateOnly));
         assert!(RunMode::Update.includes_task(&UpdateOnly));
+    }
+
+    #[test]
+    fn no_repository_update_rejects_selecting_the_repository_task() {
+        let repository = UpdateRepository::new(RepositoryUpdateSignal::new());
+        let error =
+            reject_disabled_repository_selection(Some(&repository), &["repository".to_string()])
+                .expect_err("disabled repository task should not look like an unknown selector");
+        assert_eq!(
+            error.to_string(),
+            "--only cannot select 'repository' when --no-repo-update is set"
+        );
     }
 }

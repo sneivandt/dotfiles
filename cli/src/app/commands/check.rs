@@ -25,7 +25,7 @@ pub fn run(
 ) -> Result<()> {
     let runner = super::CommandRunner::new(runtime, log, token)?;
     let tasks = validation_tasks(runner.config_handle());
-    let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, opts.with_deps, log)?;
+    let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, false, log)?;
     runner.run(filtered)
 }
 

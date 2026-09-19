@@ -329,6 +329,7 @@ impl Logger {
                 &task.task_id,
                 super::records::Record::TaskResult {
                     task_id: task.task_id.clone(),
+                    selector: task.selector.clone(),
                     name: task.name.clone(),
                     status: task.status,
                     reason: task.message.clone(),

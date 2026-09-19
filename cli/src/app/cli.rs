@@ -9,7 +9,6 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     about = "Manage system configuration from this dotfiles repository",
     version = option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION"))),
     disable_version_flag = true,
-    disable_help_subcommand = true,
     after_help = "\
 Examples:
   dotfiles install
@@ -59,7 +58,7 @@ Packages, services, registry values, shell selection, and overlay script effects
     #[command(hide = true)]
     Test(CheckCommandOpts),
 
-    /// List task selectors and command membership
+    /// List available task selectors and command membership
     Tasks(TasksOpts),
 
     /// Show a retained run log
@@ -198,6 +197,10 @@ pub struct UninstallCommandOpts {
     #[command(flatten)]
     pub execution: ExecutionOpts,
 
+    /// Task selection.
+    #[command(flatten)]
+    pub tasks: UninstallOpts,
+
     /// Preview changes without applying them
     #[arg(short = 'n', long)]
     pub dry_run: bool,
@@ -211,7 +214,7 @@ pub struct UninstallCommandOpts {
     pub elevated_child: bool,
 }
 
-/// Output format for discovery commands.
+/// Output format for tabular listing commands.
 #[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq, Eq)]
 pub enum DiscoveryFormat {
     /// Aligned columns with headings.
@@ -325,7 +328,7 @@ impl UninstallCommandOpts {
             elevated_child: self.elevated_child,
             ..GlobalOpts::from_execution(self.repository, &self.execution)
         };
-        (global, UninstallOpts, verbose)
+        (global, self.tasks, verbose)
     }
 }
 
@@ -416,31 +419,78 @@ pub struct InstallOpts {
     )]
     pub only: Vec<String>,
 
-    /// Include the dependency closure of tasks selected by `--only`
+    /// Include blocking and ordering predecessors selected by `--only`
     #[arg(long, requires = "only")]
     pub with_deps: bool,
 }
 
-/// Options for the `check` task set.
-pub type CheckOpts = InstallOpts;
+/// Task filters for non-install commands.
+#[derive(Args, Debug, Clone, Default)]
+pub struct CheckOpts {
+    /// Skip task selectors; repeat the option or separate values with commas
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "SELECTOR",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
+    )]
+    pub skip: Vec<String>,
+
+    /// Run only task selectors; repeat the option or separate values with commas
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "SELECTOR",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
+    )]
+    pub only: Vec<String>,
+}
 
 /// Options for the `uninstall` task set.
-#[derive(Debug, Clone, Copy)]
-pub struct UninstallOpts;
+pub type UninstallOpts = CheckOpts;
+
+/// Canonical command names accepted by `log --command`.
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum LogCommand {
+    /// Installation runs, including legacy `update` runs.
+    #[value(alias = "update")]
+    Install,
+    /// Uninstallation runs.
+    Uninstall,
+    /// Validation runs, including legacy `test` runs.
+    #[value(alias = "test")]
+    Check,
+}
+
+impl LogCommand {
+    /// Whether a stored command belongs to this canonical command family.
+    #[must_use]
+    pub fn matches(self, stored: &str) -> bool {
+        match self {
+            Self::Install => matches!(stored, "install" | "update"),
+            Self::Uninstall => stored == "uninstall",
+            Self::Check => matches!(stored, "check" | "test"),
+        }
+    }
+}
 
 /// Options for the `log` subcommand.
 #[derive(Args, Debug, Clone)]
 pub struct LogOpts {
     /// Run to show, newest first (0 is the latest run)
-    #[arg(value_name = "RUN")]
+    #[arg(value_name = "RUN", conflicts_with = "list")]
     pub run: Option<usize>,
 
     /// Read an exact run identifier from --list or a failure hint
-    #[arg(long, value_name = "ID", conflicts_with_all = ["run", "list"])]
+    #[arg(
+        long,
+        value_name = "ID",
+        conflicts_with_all = ["run", "list", "command"]
+    )]
     pub id: Option<String>,
 
-    /// Only show events for this exact task identity
-    #[arg(long, value_name = "TASK_ID", conflicts_with = "list")]
+    /// Only show events for this task selector or exact stored identity
+    #[arg(long, value_name = "SELECTOR", conflicts_with = "list")]
     pub task: Option<String>,
 
     /// Print original stored records, including diagnostics
@@ -451,17 +501,16 @@ pub struct LogOpts {
     #[arg(short, long)]
     pub list: bool,
 
+    /// Output format for `--list`
+    #[arg(long, value_enum, requires = "list")]
+    pub format: Option<DiscoveryFormat>,
+
     /// Only consider runs of this command
-    #[arg(
-        short,
-        long,
-        value_name = "COMMAND",
-        add = clap_complete::ArgValueCandidates::new(crate::app::completion::log_command_candidates)
-    )]
-    pub command: Option<String>,
+    #[arg(short, long, value_name = "COMMAND", value_enum)]
+    pub command: Option<LogCommand>,
 
     /// Include diagnostic lines
-    #[arg(short, long)]
+    #[arg(short, long, conflicts_with_all = ["list", "raw"])]
     pub verbose: bool,
 }
 
@@ -518,8 +567,9 @@ mod tests {
             "install    Apply dotfiles and system configuration",
             "uninstall  Remove managed integrations while preserving user files",
             "check      Validate configuration and run repository checks",
-            "tasks      List task selectors and command membership",
+            "tasks      List available task selectors and command membership",
             "log        Show a retained run log",
+            "help       Print this message or the help of the given subcommand(s)",
             "dotfiles check",
         ] {
             assert!(
@@ -577,7 +627,8 @@ mod tests {
             &["dotfiles", "log", "--dry-run"][..],
             &["dotfiles", "log", "--profile", "base"][..],
             &["dotfiles", "check", "--skip-attestation"][..],
-            &["dotfiles", "uninstall", "--only", "symlinks"][..],
+            &["dotfiles", "check", "--with-deps"][..],
+            &["dotfiles", "tasks", "--only", "symlinks"][..],
         ] {
             let error = Cli::try_parse_from(args.iter().copied())
                 .expect_err("irrelevant option should fail during parsing");
@@ -629,6 +680,8 @@ mod tests {
         let help = display_output(&["dotfiles", "uninstall", "--help"], ErrorKind::DisplayHelp);
         assert!(help.contains("Packages, services, registry values"));
         assert!(help.contains("-n, --dry-run"));
+        assert!(help.contains("--only <SELECTOR>"));
+        assert!(!help.contains("--with-deps"));
         assert!(!help.contains("--no-repo-update"));
     }
 
@@ -639,8 +692,35 @@ mod tests {
             panic!("expected log command");
         };
         assert_eq!(opts.run, Some(2));
-        assert_eq!(opts.command.as_deref(), Some("install"));
+        assert_eq!(opts.command, Some(LogCommand::Install));
         assert!(opts.verbose);
+    }
+
+    #[test]
+    fn log_selection_modes_and_output_options_reject_ignored_combinations() {
+        for args in [
+            &["dotfiles", "log", "0", "--list"][..],
+            &["dotfiles", "log", "--id", "run-id", "--command", "install"][..],
+            &["dotfiles", "log", "--list", "--verbose"][..],
+            &["dotfiles", "log", "--raw", "--verbose"][..],
+            &["dotfiles", "log", "--format", "json"][..],
+            &["dotfiles", "log", "--command", "unknown"][..],
+        ] {
+            Cli::try_parse_from(args.iter().copied())
+                .expect_err("ignored or invalid log option combinations should fail");
+        }
+
+        let legacy = Cli::parse_from(["dotfiles", "log", "--command", "test"]);
+        let Command::Log(opts) = legacy.command else {
+            panic!("expected log command");
+        };
+        assert_eq!(opts.command, Some(LogCommand::Check));
+    }
+
+    #[test]
+    fn help_subcommand_uses_conventional_clap_behavior() {
+        let help = display_output(&["dotfiles", "help", "install"], ErrorKind::DisplayHelp);
+        assert!(help.contains("Usage: dotfiles install [OPTIONS]"));
     }
 
     #[test]

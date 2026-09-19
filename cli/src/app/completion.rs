@@ -73,18 +73,6 @@ pub fn profile_candidates() -> Vec<CompletionCandidate> {
         .collect()
 }
 
-/// Complete the canonical commands that can own a retained run log.
-pub fn log_command_candidates() -> Vec<CompletionCandidate> {
-    [
-        ("install", "Installation runs"),
-        ("uninstall", "Uninstallation runs"),
-        ("check", "Validation runs"),
-    ]
-    .into_iter()
-    .map(|(name, help)| CompletionCandidate::new(name).help(Some(help.into())))
-    .collect()
-}
-
 /// Complete task selectors from the same read-only discovery path as `dotfiles tasks`.
 pub fn task_candidates() -> Vec<CompletionCandidate> {
     let words = completion_words(std::env::args_os().collect());
@@ -119,6 +107,7 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
     let command = words.iter().find_map(|word| match word.to_str()? {
         "install" => Some("install"),
         "update" => Some("update"),
+        "uninstall" => Some("uninstall"),
         "check" | "test" => Some("check"),
         _ => None,
     });
@@ -128,6 +117,7 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
         }
         Some("install") => &["install"],
         Some("update") => &["install", "install --update-pins"],
+        Some("uninstall") => &["uninstall"],
         Some("check") => &["check"],
         Some(_) | None => &[],
     }
@@ -182,20 +172,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn profile_and_log_candidates_have_descriptions() {
+    fn profile_candidates_have_descriptions() {
         let profiles = profile_candidates();
         assert_eq!(profiles.len(), 2);
         assert_eq!(profiles[0].get_value(), "base");
         assert!(profiles[0].get_help().is_some());
-
-        let commands = log_command_candidates();
-        assert_eq!(
-            commands
-                .iter()
-                .map(CompletionCandidate::get_value)
-                .collect::<Vec<_>>(),
-            ["install", "uninstall", "check"]
-        );
     }
 
     #[test]
@@ -238,6 +219,15 @@ mod tests {
                 ["install", "install --update-pins"]
             );
         }
+    }
+
+    #[test]
+    fn uninstall_completes_uninstall_tasks() {
+        let words = ["dotfiles", "uninstall"]
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>();
+        assert_eq!(task_memberships(&words), ["uninstall"]);
     }
 
     #[test]

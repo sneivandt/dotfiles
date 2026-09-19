@@ -585,6 +585,17 @@ fn install_run_dry_run_with_skip_filter_returns_ok() {
     );
 }
 
+/// `repository` is already excluded by the dry-run helper's
+/// `--no-repo-update`; redundantly skipping it must remain valid.
+#[test]
+fn install_run_ignores_redundant_repository_skip_when_updates_are_disabled() {
+    let result = common::run_install_dry_run(vec!["repository".to_string()], vec![], false);
+    assert!(
+        result.is_ok(),
+        "redundant repository skip should return Ok: {result:?}"
+    );
+}
+
 /// Calling `install::run` with `--only` matching no selector must explain how
 /// to discover valid selectors.
 #[test]
@@ -607,20 +618,17 @@ fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
     );
 }
 
-/// Calling `install::run` with both `--skip` and `--only` simultaneously:
-/// a task must satisfy `--only` and must not match `--skip`.
+/// Calling `install::run` with contradictory `--skip` and `--only` selectors
+/// must fail instead of reporting a successful no-op.
 #[test]
-fn install_run_dry_run_with_skip_and_only_together() {
-    // Matching tasks are still excluded when they also match --skip.
+fn install_run_rejects_filters_that_select_no_tasks() {
     let result = common::run_install_dry_run(
         vec!["symlinks".to_string()],
         vec!["symlinks".to_string()],
         false,
     );
-    assert!(
-        result.is_ok(),
-        "dry-run with --skip and --only should return Ok: {result:?}"
-    );
+    let error = result.expect_err("contradictory task filters should fail");
+    assert!(error.to_string().contains("selected no tasks"));
 }
 
 // ---------------------------------------------------------------------------

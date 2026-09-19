@@ -120,14 +120,17 @@ impl<'a> ElevationBroker<'a> {
             } else {
                 TaskStatus::Skipped
             };
-            self.log.record_task(TaskEntry::new(
-                &task_id,
-                task.name(),
-                status,
-                Some(message.as_str()),
-                ActionCounts::default(),
-                task.visibility(),
-            ));
+            self.log.record_task(
+                TaskEntry::new(
+                    &task_id,
+                    task.name(),
+                    status,
+                    Some(message.as_str()),
+                    ActionCounts::default(),
+                    task.visibility(),
+                )
+                .with_selector(task.selector()),
+            );
             self.log.mark_task_completed(&task_id);
             self.log.emit_task_result_and_redraw(&task_id);
             summary.record(

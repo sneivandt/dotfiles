@@ -71,6 +71,8 @@ impl TaskVisibility {
 pub struct TaskEntry {
     /// Scheduler identity key.
     pub task_id: String,
+    /// Stable public selector, when the entry belongs to a CLI task.
+    pub selector: Option<String>,
     /// Human-readable task name.
     pub name: String,
     /// Final status of the task.
@@ -103,6 +105,7 @@ impl TaskEntry {
     ) -> Self {
         Self {
             task_id: task_id.into(),
+            selector: None,
             name: name.into(),
             status,
             message: message.map(str::to_string),
@@ -111,6 +114,13 @@ impl TaskEntry {
             result_display: TaskResultDisplay::Standard,
             duration: None,
         }
+    }
+
+    /// Attach the stable public selector used by task filters.
+    #[must_use]
+    pub fn with_selector(mut self, selector: impl Into<String>) -> Self {
+        self.selector = Some(selector.into());
+        self
     }
 
     /// Set the console presentation policy for this task result.

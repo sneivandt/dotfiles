@@ -229,6 +229,7 @@ fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str, status: T
             ActionCounts::default(),
             task.visibility(),
         )
+        .with_selector(task.selector())
         .with_result_display(task.result_display()),
     );
 }
@@ -279,6 +280,7 @@ fn run_task_buffered(
                     ActionCounts::default(),
                     task.visibility(),
                 )
+                .with_selector(task.selector())
                 .with_result_display(task.result_display()),
             );
             TaskExecution {

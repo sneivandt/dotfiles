@@ -2,7 +2,7 @@
 
 This page describes the CLI's visible install, pin-update, uninstall,
 validation, and dynamic overlay tasks. Run
-`dotfiles tasks --profile <profile>` for the active selectors, labels, and
+`dotfiles tasks --profile <profile>` for the available selectors, labels, and
 command membership.
 
 Each task has separate metadata for:
@@ -15,8 +15,10 @@ Each task has separate metadata for:
 Selectors are case-insensitive after punctuation and whitespace are normalized
 to hyphens. Matching is exact against either the stable selector or the full
 normalized display label; it does not remove action words, use the first word,
-or perform substring matching. Unknown selectors fail before execution. Add
-`--with-deps` to include the dependency closure selected by `--only`.
+or perform substring matching. Unknown selectors fail before execution. A
+filter combination that selects no tasks also fails. For installation tasks,
+add `--with-deps` to include blocking and ordering predecessors selected by
+`--only`.
 
 ## Scheduling model
 

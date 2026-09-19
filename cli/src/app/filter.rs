@@ -49,6 +49,9 @@ pub(crate) fn apply_task_filters<'a>(
         })
         .map(Box::as_ref)
         .collect();
+    if filtered.is_empty() && (!only.is_empty() || !skip.is_empty()) {
+        bail!("task filters selected no tasks; adjust --only or --skip");
+    }
     let omitted_dependencies = omitted_blocking_dependencies(&known_task_refs, &filtered);
 
     if !log.is_verbose() && !omitted_dependencies.is_empty() {
@@ -179,7 +182,7 @@ fn warn_omitted_dependencies(dependencies: &[(&str, &str)], log: &dyn Output) {
     }
 }
 
-fn normalize_task_filter(value: &str) -> String {
+pub(crate) fn normalize_task_filter(value: &str) -> String {
     normalized_task_tokens(value).join("-")
 }
 
@@ -347,6 +350,23 @@ mod tests {
 
         let skip = vec!["symlinks".to_string()];
         assert!(!task_passes_filters(&task, &only, &skip));
+    }
+
+    #[test]
+    fn explicit_filters_cannot_select_an_empty_task_set() {
+        let all: Vec<Box<dyn Task>> = vec![Box::new(SampleTask)];
+        let error = apply_task_filters(
+            &all,
+            &[],
+            &["symlinks".to_string()],
+            &["symlinks".to_string()],
+            false,
+            &Logger::new("test"),
+        )
+        .err()
+        .expect("contradictory filters should fail");
+
+        assert!(error.to_string().contains("selected no tasks"));
     }
 
     #[test]

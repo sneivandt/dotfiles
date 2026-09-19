@@ -47,8 +47,9 @@ impl TaskListing {
     }
 }
 
-/// List visible task selectors without creating a run log, acquiring the run
-/// lock, or persisting profile and overlay selections.
+/// List available visible task selectors without predicting runtime
+/// applicability, creating a run log, acquiring the run lock, or persisting
+/// profile and overlay selections.
 ///
 /// # Errors
 ///

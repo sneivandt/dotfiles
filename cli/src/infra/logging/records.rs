@@ -68,6 +68,8 @@ pub(crate) enum Record {
     },
     TaskResult {
         task_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selector: Option<String>,
         name: String,
         status: TaskStatus,
         reason: Option<String>,
@@ -128,11 +130,13 @@ impl Record {
             Self::RunFinish { .. } => {}
             Self::TaskResult {
                 task_id,
+                selector,
                 name,
                 reason,
                 ..
             } => {
                 text(task_id);
+                optional(selector);
                 text(name);
                 optional(reason);
             }

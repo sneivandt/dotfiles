@@ -56,6 +56,7 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: 
             ActionCounts::default(),
             task.visibility(),
         )
+        .with_selector(task.selector())
         .with_result_display(task.result_display()),
     );
 }
@@ -126,6 +127,7 @@ fn record(
             actions,
             task.visibility(),
         )
+        .with_selector(task.selector())
         .with_result_display(task.result_display()),
     );
     status

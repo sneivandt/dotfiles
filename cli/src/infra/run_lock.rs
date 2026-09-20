@@ -48,7 +48,7 @@ impl RunLock {
             .open(&path)
             .with_context(|| format!("opening run lock {}", path.display()))?;
 
-        if let Err(error) = fs2::FileExt::try_lock_exclusive(&file) {
+        if let Err(error) = file.try_lock() {
             let owner = std::fs::read_to_string(&path).unwrap_or_default();
             let owner = owner.trim();
             if owner.is_empty() {
@@ -88,7 +88,7 @@ impl RunLock {
 
 impl Drop for RunLock {
     fn drop(&mut self) {
-        drop(fs2::FileExt::unlock(&self.file));
+        drop(self.file.unlock());
     }
 }
 

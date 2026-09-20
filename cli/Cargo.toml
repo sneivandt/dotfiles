@@ -23,7 +23,6 @@ ctrlc = "3.5"
 dunce = "1"
 thiserror = "2"
 enable-ansi-support = "0.3"
-fs2 = "0.4"
 git2 = "0.21.0"
 rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
@@ -33,7 +32,7 @@ strsim = "0.11"
 toml = "1"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 ureq = "3"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = "0.3"
 which = "8.0.3"
 terminal_size = "0.4.4"
 serde_yaml_ng = "0.10.0"

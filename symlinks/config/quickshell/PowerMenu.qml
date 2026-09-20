@@ -131,6 +131,7 @@ ShellPopup {
                 label: actionProcess.running ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
                 danger: true
                 selected: true
+                showSelectionIndicator: false
                 showChevron: false
                 enabled: !actionProcess.running
                 onTriggered: root.run(root.actions[root.confirmation].command)

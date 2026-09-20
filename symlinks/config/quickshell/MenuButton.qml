@@ -14,6 +14,7 @@ AbstractButton {
     property color trailingDetailColor: Theme.mutedStrong
     property bool danger: false
     property bool selected: false
+    property bool showSelectionIndicator: selected
     property bool clickable: true
     property bool showChevron: true
     property color accentColor: danger ? Theme.red : Theme.blue
@@ -56,10 +57,11 @@ AbstractButton {
         border.color: root.accentColor
 
         Rectangle {
+            visible: root.showSelectionIndicator
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            width: root.selected ? 3 : 0
-            height: root.selected ? Math.max(16, parent.height - 20) : 0
+            width: root.showSelectionIndicator ? 3 : 0
+            height: root.showSelectionIndicator ? Math.max(16, parent.height - 20) : 0
             radius: 2
             color: root.accentColor
 

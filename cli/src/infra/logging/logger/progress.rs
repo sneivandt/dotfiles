@@ -22,8 +22,8 @@ fn transient_display_line(line: &str, cols: usize) -> String {
     transient_display_line_with_style(line, cols, stdout_style())
 }
 
-/// Fit a transient row to the terminal, then dim the finished text in one pass.
-/// Applying the style last keeps truncation from dropping the ANSI color.
+/// Fit a transient row to the terminal, then apply its presentation.
+/// Applying styles last keeps ANSI escapes out of terminal-width calculations.
 fn transient_display_line_with_style(line: &str, cols: usize, style: StyleChoice) -> String {
     let plain = strip_ansi(line);
     let display = if plain.width() <= cols {
@@ -45,7 +45,32 @@ fn transient_display_line_with_style(line: &str, cols: usize, style: StyleChoice
         format!("{truncated}{ellipsis}")
     };
 
-    style.paint(TextStyle::Dim, &display)
+    style_transient_line(&display, style)
+}
+
+/// Emphasize the live state without muting the work the user is waiting on.
+/// The remaining count is supporting context; active task names retain the
+/// terminal's normal foreground contrast.
+fn style_transient_line(line: &str, style: StyleChoice) -> String {
+    let Some(rest) = line.strip_prefix("Running") else {
+        return style.clean(line);
+    };
+    let running = style.paint(TextStyle::Bold, "Running");
+    let Some(details) = rest.strip_prefix(" · ") else {
+        return format!("{running}{}", style.clean(rest));
+    };
+    let Some((remaining, active)) = details.split_once(" · ") else {
+        return format!("{running}{}", style.clean(rest));
+    };
+    if !remaining.ends_with(" remaining") {
+        return format!("{running}{}", style.clean(rest));
+    }
+
+    format!(
+        "{running}{}{}",
+        style.paint(TextStyle::Dim, &format!(" · {remaining} · ")),
+        style.clean(active)
+    )
 }
 
 #[allow(clippy::print_stdout, reason = "intentional user-facing output")]
@@ -164,14 +189,38 @@ mod tests {
     }
 
     #[test]
-    fn truncated_transient_line_stays_dim() {
+    fn generic_transient_line_uses_normal_contrast_after_truncation() {
         assert_eq!(
             super::transient_display_line_with_style(
                 "\x1b[32mabcdefghij\x1b[0m",
                 8,
                 StyleChoice::colored()
             ),
-            "\x1b[2mabcdef …\x1b[0m"
+            "abcdef …"
+        );
+    }
+
+    #[test]
+    fn running_line_emphasizes_state_and_keeps_active_tasks_at_normal_contrast() {
+        assert_eq!(
+            super::transient_display_line_with_style(
+                "Running · 4 remaining · Home symlinks, System packages",
+                80,
+                StyleChoice::colored(),
+            ),
+            "\x1b[1mRunning\x1b[0m\x1b[2m · 4 remaining · \x1b[0mHome symlinks, System packages"
+        );
+    }
+
+    #[test]
+    fn running_line_without_a_scheduled_count_keeps_task_name_at_normal_contrast() {
+        assert_eq!(
+            super::transient_display_line_with_style(
+                "Running · task-a",
+                80,
+                StyleChoice::colored(),
+            ),
+            "\x1b[1mRunning\x1b[0m · task-a"
         );
     }
 

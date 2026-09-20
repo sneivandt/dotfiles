@@ -74,8 +74,21 @@ pub(super) fn ui_line_with_style(
         MsgKind::Error => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
         MsgKind::DryRun => Some(format!("  {msg}")),
         MsgKind::Always => Some(msg),
-        MsgKind::Startup => Some(style.paint(TextStyle::Dim, &msg)),
+        MsgKind::Startup => Some(startup_line_with_style(&msg, style)),
     }
+}
+
+/// Give structured startup notices a visible label while keeping their
+/// metadata subdued. Unstructured hints retain the original dim treatment.
+fn startup_line_with_style(msg: &str, style: StyleChoice) -> String {
+    let Some((label, metadata)) = msg.split_once(" · ") else {
+        return style.paint(TextStyle::Dim, msg);
+    };
+    format!(
+        "{}{}",
+        style.paint(TextStyle::Bold, label),
+        style.paint(TextStyle::Dim, &format!(" · {metadata}"))
+    )
 }
 
 pub(in crate::infra::logging) fn visible_line_is_blank(

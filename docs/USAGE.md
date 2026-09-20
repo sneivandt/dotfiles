@@ -196,9 +196,8 @@ configuration before downstream tasks consume it.
 
 ## Console output
 
-Every run starts with a dimmed header. It shows the command, `dry run` for a
-preview, the resolved profile, and the platform. An active overlay adds
-`overlay <path>`.
+Every run starts with a header. Its command label is bold, while `dry run`, the
+resolved profile, the platform, and an optional `overlay <path>` stay dim.
 
 ```text
 Install · dry run · profile desktop · Arch Linux · overlay ~/src/dotfiles-private
@@ -231,8 +230,8 @@ lines use normal text contrast and list every action taken or planned without
 truncation. Details follow their task row immediately. Mutation commands and
 verbose output use one blank line between visible task blocks. Normal `check`
 output keeps consecutive one-line results together, while a check with detail
-rows retains a blank line on both sides. Reasons, timings, and the startup
-header stay dim.
+rows retains a blank line on both sides. Reasons, timings, and startup metadata
+stay dim.
 
 The final totals are separated by one blank line, with the first outcome in
 bold and current counts and elapsed time dimmed. A run with no changes keeps
@@ -254,15 +253,17 @@ stay out of console output. Internal orchestration remains in the run log but
 does not appear in console rows or totals.
 
 Before the scheduler starts, an installed binary checks for a newer release. The
-check draws a transient status line while it runs and erases it afterwards; a
-line is left behind only when a new version was actually installed:
+check draws a normal-contrast transient status line while it runs and erases it
+afterwards. A line is left behind only when a new version was actually
+installed. `Self update` is bold and the version transition is dim:
 
 ```text
 Self update · v2025.01.02-1 → v2025.01.09-1
 ```
 
 While tasks are running, a transient status line reports progress and the
-currently active tasks:
+currently active tasks. `Running` is bold, the remaining count is dim, and the
+active task names use normal contrast:
 
 ```text
 Running · 4 remaining · Home symlinks, System packages

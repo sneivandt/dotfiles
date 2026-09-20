@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::console::console_line_with_style;
 use super::run_log::RunLogLayer;
+use crate::infra::logging::MsgKind;
 use crate::infra::logging::runlog::RunLog;
 use crate::infra::logging::style::StyleChoice;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -109,8 +110,6 @@ fn run_log_layer_omits_empty_messages() {
 
 #[test]
 fn message_presentation_golden_matrix() {
-    use crate::infra::logging::MsgKind;
-
     for (kind, verbose_only, plain, colored) in [
         (MsgKind::Stage, true, "detail", "detail"),
         (MsgKind::TaskStage, true, "detail", "detail"),
@@ -156,6 +155,34 @@ fn message_presentation_golden_matrix() {
             }
         }
     }
+}
+
+#[test]
+fn structured_startup_line_emphasizes_its_label_only() {
+    assert_eq!(
+        super::console::ui_line_with_style(
+            MsgKind::Startup,
+            "Install · profile desktop · Arch Linux",
+            StyleChoice::auto(true, false),
+            false,
+        )
+        .as_deref(),
+        Some("\x1b[1mInstall\x1b[0m\x1b[2m · profile desktop · Arch Linux\x1b[0m")
+    );
+}
+
+#[test]
+fn self_update_remains_a_startup_notice_with_a_dim_version_transition() {
+    assert_eq!(
+        super::console::ui_line_with_style(
+            MsgKind::Startup,
+            "Self update · old → new",
+            StyleChoice::auto(true, false),
+            false,
+        )
+        .as_deref(),
+        Some("\x1b[1mSelf update\x1b[0m\x1b[2m · old → new\x1b[0m")
+    );
 }
 
 #[test]

@@ -61,7 +61,7 @@ pub trait Task: Send + Sync + 'static {
         self.meta().result_display
     }
 
-    /// Whether this task is included only by `install --update-pins`.
+    /// Whether this task is included only by `install --update`.
     ///
     /// Derived from [`Task::meta`]; do not override it.
     fn update_only(&self) -> bool {

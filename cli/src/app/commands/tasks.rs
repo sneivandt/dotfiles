@@ -20,8 +20,8 @@ struct TaskListing {
 enum TaskCommand {
     #[serde(rename = "install")]
     Install,
-    #[serde(rename = "install --update-pins")]
-    InstallUpdatePins,
+    #[serde(rename = "update")]
+    Update,
     #[serde(rename = "uninstall")]
     Uninstall,
     #[serde(rename = "check")]
@@ -32,7 +32,7 @@ impl TaskCommand {
     const fn label(self) -> &'static str {
         match self {
             Self::Install => "install",
-            Self::InstallUpdatePins => "install --update-pins",
+            Self::Update => "update",
             Self::Uninstall => "uninstall",
             Self::Check => "check",
         }
@@ -85,16 +85,15 @@ fn collect_listings(
 
     let install_tasks = crate::app::catalog::all_install_tasks(store);
     add_tasks(&mut listings, &install_tasks, |listing, task| {
-        if task.update_only() {
-            listing.include(TaskCommand::InstallUpdatePins);
-        } else {
+        if !task.update_only() {
             listing.include(TaskCommand::Install);
         }
+        listing.include(TaskCommand::Update);
     })?;
 
     let update_only_tasks = crate::app::catalog::update_only_install_tasks(store);
     add_tasks(&mut listings, &update_only_tasks, |listing, _| {
-        listing.include(TaskCommand::InstallUpdatePins);
+        listing.include(TaskCommand::Update);
     })?;
 
     let overlay_tasks = overlay.map_or_else(Vec::new, |root| {
@@ -102,6 +101,7 @@ fn collect_listings(
     });
     add_tasks(&mut listings, &overlay_tasks, |listing, _| {
         listing.include(TaskCommand::Install);
+        listing.include(TaskCommand::Update);
     })?;
 
     let uninstall_tasks = crate::app::catalog::all_uninstall_tasks(store);
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn apm_lists_ordinary_and_update_pins_membership() {
+    fn apm_lists_install_and_update_membership() {
         let store = ConfigStore::from_config(empty_config(PathBuf::from("/tmp")));
         let listings = collect_listings(&store, None).expect("collect task listings");
         let apm = listings
@@ -278,7 +278,12 @@ mod tests {
             .find(|listing| listing.selector == "apm")
             .expect("APM task listing");
 
-        assert_eq!(command_membership(apm), "install, install --update-pins");
+        assert_eq!(command_membership(apm), "install, update");
+        let symlinks = listings
+            .iter()
+            .find(|listing| listing.selector == "symlinks")
+            .expect("symlink task listing");
+        assert_eq!(command_membership(symlinks), "install, update, uninstall");
     }
 
     #[test]
@@ -297,7 +302,7 @@ mod tests {
         let listings = vec![TaskListing {
             selector: "visible".to_string(),
             task: "Visible task".to_string(),
-            commands: vec![TaskCommand::InstallUpdatePins],
+            commands: vec![TaskCommand::Update],
         }];
 
         let mut table = Vec::new();
@@ -308,13 +313,13 @@ mod tests {
         write_listings(&listings, DiscoveryFormat::Plain, &mut plain).expect("plain output");
         assert_eq!(
             String::from_utf8(plain).unwrap(),
-            "visible\tVisible task\tinstall --update-pins\n"
+            "visible\tVisible task\tupdate\n"
         );
 
         let mut json = Vec::new();
         write_listings(&listings, DiscoveryFormat::Json, &mut json).expect("JSON output");
         let value: serde_json::Value = serde_json::from_slice(&json).expect("valid JSON");
         assert_eq!(value[0]["selector"], "visible");
-        assert_eq!(value[0]["commands"][0], "install --update-pins");
+        assert_eq!(value[0]["commands"][0], "update");
     }
 }

@@ -29,7 +29,7 @@ independent work sequentially but does not guarantee a display order.
 
 Every ordering requirement is an explicit edge. Catalog insertion order is not
 scheduling policy. Tasks marked `update_only` are excluded from `install` and
-included by `install --update-pins`; this metadata controls command membership,
+included by `update`; this metadata controls command membership,
 not ordering.
 
 Built-in mutating tasks are idempotent and dry-run safe. A task may report
@@ -43,25 +43,25 @@ contract itself.
 
 | Selector | Task label | Commands | Purpose |
 |---|---|---|---|
-| `developer-mode` | Windows Developer Mode | install | Enables unprivileged symlink creation |
-| `repository` | Dotfiles repository | install | Synchronizes repository content |
-| `git` | Git settings | install | Applies declared global Git settings |
-| `agent-settings` | Agent settings | install | Converges selected harness settings |
-| `git-hooks` | Git hooks | install, uninstall | Installs or removes repository-maintained hooks |
-| `completions` | Shell completions | install | Installs runtime shell completion registration |
-| `packages` | System packages | install | Installs non-AUR packages through pacman or winget |
-| `paru` | Paru package manager | install | Bootstraps the `paru` AUR helper |
-| `aur-packages` | AUR packages | install | Installs package entries marked `aur = true` |
-| `symlinks` | Home symlinks | install, uninstall | Converges or materializes managed home links |
-| `file-permissions` | File permissions | install | Applies declared Unix modes |
-| `shell` | Default shell | install | Converges the configured login shell |
-| `system-files` | System files | install | Merges selected tracked fragments into administrator-owned files below `/etc` |
-| `systemd` | Systemd units | install | Enables and starts configured units, or enables user units offline during target provisioning |
-| `registry` | Windows registry | install | Converges declared current-user values |
-| `vscode-extensions` | VS Code extensions | install | Installs missing declared extensions, or schedules them for first login during target provisioning |
-| `apm` | APM packages | install, install --update-pins | Converges merged APM manifests and AI tooling, advancing eligible refs with `--update-pins` |
-| `launcher` | Dotfiles launcher | install, uninstall | Installs or removes the platform wrapper |
-| `path` | Shell PATH | install | Ensures the launcher directory is on user PATH |
+| `developer-mode` | Windows Developer Mode | install, update | Enables unprivileged symlink creation |
+| `repository` | Dotfiles repository | install, update | Synchronizes repository content |
+| `git` | Git settings | install, update | Applies declared global Git settings |
+| `agent-settings` | Agent settings | install, update | Converges selected harness settings |
+| `git-hooks` | Git hooks | install, update, uninstall | Installs or removes repository-maintained hooks |
+| `completions` | Shell completions | install, update | Installs runtime shell completion registration |
+| `packages` | System packages | install, update | Installs non-AUR packages through pacman or winget |
+| `paru` | Paru package manager | install, update | Bootstraps the `paru` AUR helper |
+| `aur-packages` | AUR packages | install, update | Installs package entries marked `aur = true` |
+| `symlinks` | Home symlinks | install, update, uninstall | Converges or materializes managed home links |
+| `file-permissions` | File permissions | install, update | Applies declared Unix modes |
+| `shell` | Default shell | install, update | Converges the configured login shell |
+| `system-files` | System files | install, update | Merges selected tracked fragments into administrator-owned files below `/etc` |
+| `systemd` | Systemd units | install, update | Enables and starts configured units, or enables user units offline during target provisioning |
+| `registry` | Windows registry | install, update | Converges declared current-user values |
+| `vscode-extensions` | VS Code extensions | install, update | Installs missing declared extensions, or schedules them for first login during target provisioning |
+| `apm` | APM packages | install, update | Converges merged APM manifests and AI tooling, advancing eligible refs with `--update` |
+| `launcher` | Dotfiles launcher | install, update, uninstall | Installs or removes the platform wrapper |
+| `path` | Shell PATH | install, update | Ensures the launcher directory is on user PATH |
 
 `Report overlay scripts` is an internal orchestration task. It keeps its
 scheduler identity and run-log entry, but does not appear in `dotfiles tasks`,
@@ -105,7 +105,7 @@ fresh immutable configuration snapshot, rebuilds static and overlay tasks,
 omits repository synchronization, and continues with the selected work. The
 parent retains the run lock until the child exits.
 
-Installation synchronizes the repository whether or not `--update-pins` is
+Installation synchronizes the repository whether or not `--update` is
 present. Only tasks explicitly marked update-only require that option.
 With `--no-repo-update`, repository synchronization is omitted and the current
 checkout is treated as the desired source without activating the restart
@@ -255,7 +255,7 @@ generated manifest, lock state, plugins, and skills. It runs after package,
 AUR, and symlink tasks so the APM executable and inputs are available.
 
 The task delegates user-scope convergence and stale-content cleanup to
-`apm install -g` during an ordinary install. With `--update-pins`, it runs
+`apm install -g` during an ordinary install. With `--update`, it runs
 `apm update -g --yes` instead so APM advances eligible refs and converges the
 resulting graph in one pass. Copilot App uses an APM-only pass through its native
 experimental target so manifest-wide MCP dependencies remain with supported
@@ -351,7 +351,7 @@ across the real configuration and source tree.
 dotfiles install --only symlinks --dry-run
 
 # Run package and APM-related update tasks, except AUR tasks
-dotfiles install --update-pins --only "packages,apm" --skip aur-packages
+dotfiles update --only "packages,apm" --skip aur-packages
 
 # Run a dynamic overlay task by its generated stable selector
 dotfiles install --overlay C:\private-dotfiles --only script-private-tools

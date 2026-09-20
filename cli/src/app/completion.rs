@@ -108,15 +108,13 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
         "install" => Some("install"),
         "update" => Some("update"),
         "uninstall" => Some("uninstall"),
-        "check" | "test" => Some("check"),
+        "check" => Some("check"),
         _ => None,
     });
     match command {
-        Some("install") if words.iter().any(|word| word == "--update-pins") => {
-            &["install", "install --update-pins"]
-        }
+        Some("install") if words.iter().any(|word| word == "--update") => &["update"],
         Some("install") => &["install"],
-        Some("update") => &["install", "install --update-pins"],
+        Some("update") => &["update"],
         Some("uninstall") => &["uninstall"],
         Some("check") => &["check"],
         Some(_) | None => &[],
@@ -211,13 +209,10 @@ mod tests {
     fn update_modes_complete_normal_and_update_only_tasks() {
         for words in [
             vec!["dotfiles", "update"],
-            vec!["dotfiles", "install", "--update-pins"],
+            vec!["dotfiles", "install", "--update"],
         ] {
             let words = words.into_iter().map(OsString::from).collect::<Vec<_>>();
-            assert_eq!(
-                task_memberships(&words),
-                ["install", "install --update-pins"]
-            );
+            assert_eq!(task_memberships(&words), ["update"]);
         }
     }
 
@@ -233,9 +228,9 @@ mod tests {
     #[test]
     fn task_candidates_follow_command_membership() {
         let json = br#"[
-            {"selector":"symlinks","task":"Home symlinks","commands":["install","uninstall"]},
+            {"selector":"symlinks","task":"Home symlinks","commands":["install","update","uninstall"]},
             {"selector":"shellcheck","task":"Shellcheck","commands":["check"]},
-            {"selector":"pin-only","task":"Pin updater","commands":["install --update-pins"]}
+            {"selector":"pin-only","task":"Pin updater","commands":["update"]}
         ]"#;
 
         let install = task_candidates_from_json(json, &["install"]);
@@ -246,7 +241,7 @@ mod tests {
             Some("Home symlinks")
         );
 
-        let update = task_candidates_from_json(json, &["install", "install --update-pins"]);
+        let update = task_candidates_from_json(json, &["update"]);
         assert_eq!(update.len(), 2);
         assert_eq!(update[0].get_value(), "symlinks");
         assert_eq!(update[1].get_value(), "pin-only");

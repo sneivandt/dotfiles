@@ -50,7 +50,7 @@ explicitly bypassing GitHub provenance verification for that invocation.
 | Command | Behavior |
 |---|---|
 | `install` | Converges the configured machine state without advancing pinned dependency versions |
-| `install --update-pins` | Runs normal convergence and advances pinned dependency versions |
+| `update` | Runs normal convergence and advances pinned dependency versions |
 | `uninstall` | Removes managed integrations while preserving user files and broader machine state |
 | `check` | Validates configuration and runs available script analyzers |
 | `tasks` | Lists available task selectors, labels, and command membership |
@@ -58,8 +58,7 @@ explicitly bypassing GitHub provenance verification for that invocation.
 | `help [command]` | Prints top-level or command-specific help |
 | `completions <shell>` | Hidden support command that emits runtime shell completion registration |
 
-`update` remains a hidden compatibility alias for `install --update-pins`, and
-`test` remains an alias for `check`.
+`update` is equivalent to `install --update` and accepts the same options.
 
 ## Command options
 
@@ -71,19 +70,19 @@ usage error.
 |---|---|
 | `-v`, `--verbose` | Show additional diagnostic task output, and diagnostic lines in `dotfiles log` |
 | `-p`, `--profile <PROFILE>` | Select a role profile for this run |
-| `-n`, `--dry-run` | Plan and report changes without applying them; `install` and `uninstall` only |
+| `-n`, `--dry-run` | Plan and report changes without applying them; `install`, `update`, and `uninstall` only |
 | `--root <PATH>` | Treat another path as the dotfiles repository |
 | `--overlay <PATH>` | Append configuration from a private overlay repository |
 | `--no-parallel` | Run independent tasks sequentially |
-| `--no-repo-update` | Use the current checkout without synchronizing its repository; `install` only |
+| `--no-repo-update` | Use the current checkout without synchronizing its repository; `install` and `update` only |
 | `--fail-on-skip` | Fail when applicable work cannot be completed |
 | `--non-interactive` | Disable prompts and fail when input is required |
 | `--no-symbols` | Use ASCII words instead of status symbols |
-| `--only <SELECTOR>` | Run matching tasks; repeat the option or separate selectors with commas; `install`, `uninstall`, and `check` only |
-| `--skip <SELECTOR>` | Exclude matching tasks; repeat the option or separate selectors with commas; `install`, `uninstall`, and `check` only |
-| `--with-deps` | Include blocking and ordering predecessors of tasks selected by `--only`; `install` only |
-| `--update-pins` | Advance pinned dependencies after normal convergence; `install` only |
-| `--skip-attestation` | Skip provenance verification for self-updates; `install` and `uninstall` only |
+| `--only <SELECTOR>` | Run matching tasks; repeat the option or separate selectors with commas; `install`, `update`, `uninstall`, and `check` only |
+| `--skip <SELECTOR>` | Exclude matching tasks; repeat the option or separate selectors with commas; `install`, `update`, `uninstall`, and `check` only |
+| `--with-deps` | Include blocking and ordering predecessors of tasks selected by `--only`; `install` and `update` only |
+| `--update` | Advance pinned dependencies during convergence; implied by `update` |
+| `--skip-attestation` | Skip provenance verification for self-updates; `install`, `update`, and `uninstall` only |
 
 `--version` is the sole top-level option. It prints the CLI version, has no
 short alias, and appears before any command.
@@ -181,15 +180,16 @@ or persist a profile or overlay selection. If no profile was passed, set through
 `DOTFILES_PROFILE`, or previously persisted, the command asks for `--profile`
 instead of opening the interactive profile prompt.
 
-## Pin updates
+## Update
 
 ```bash
-dotfiles install --update-pins
-dotfiles install --update-pins --only apm
+dotfiles update
+dotfiles update --only apm
 ```
 
-`--update-pins` enables version-advancing behavior and includes any update-only
-tasks. Normal repeatable convergence should omit the option.
+`update` runs the install pipeline with dependency updates enabled, equivalent
+to `install --update`. It advances pinned versions and includes update-only
+tasks. Use plain `install` to converge without advancing pinned versions.
 Repository synchronization occurs during installation unless
 `--no-repo-update` was passed. If the repository changes, the CLI reloads
 configuration before downstream tasks consume it.
@@ -329,8 +329,8 @@ the validation task set. Command examples and tool behavior are documented under
 
 ## Logs
 
-Each `install`, `uninstall`, and `check` process writes a separate log file. The
-CLI keeps the newest 50. A failed run prints a command that selects its exact
+Each `install`, `update`, `uninstall`, and `check` process writes a separate log
+file. The CLI keeps the newest 50. A failed run prints a command that selects its exact
 log and includes diagnostics, provided the log is still writable. Successful
 runs keep their compact console summary.
 
@@ -349,8 +349,9 @@ An index shifts when another run is recorded. `--id` selects a stable filename
 stem and fails if that run is no longer retained. Run indexes, `--id`, and
 `--list` are mutually exclusive. `--command` filters the list before indexing,
 so `dotfiles log -c install 1` selects the second-newest install. It accepts
-`install`, `uninstall`, and `check`; legacy `update` and `test` values map to
-their canonical command families. `--task` selects a stable public task selector
+`install`, `update`, `uninstall`, and `check`. Both `update` and
+`install --update` record update runs. The `check` filter also includes old
+`test` logs. `--task` selects a stable public task selector
 within the selected run. Exact stored identities remain accepted for older
 diagnostic workflows. Task filtering can be combined with `--id`, `--verbose`,
 or `--raw`.

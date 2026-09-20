@@ -52,7 +52,7 @@ fixup. Native APM owns install/update planning, local-source integrity,
 deployment convergence, and stale/orphan cleanup. Do not reintroduce
 fingerprints, success markers, `apm outdated` parsing, or a separate
 `apm prune`. Keep dependency-ref advancement behind
-`dotfiles install --update-pins` in the command pipeline.
+`dotfiles update` or `dotfiles install --update` in the command pipeline.
 
 Before deleting either compatibility adapter, verify current upstream code and
 exercise the replacement in isolated fixtures across the platform contracts in

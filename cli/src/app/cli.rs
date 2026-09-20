@@ -41,8 +41,8 @@ pub enum Command {
     /// Apply dotfiles and system configuration
     Install(InstallCommandOpts),
 
-    /// Compatibility alias for `install --update-pins`
-    #[command(hide = true)]
+    /// Apply configuration and advance pinned dependencies
+    #[command(after_help = "Equivalent to dotfiles install --update.")]
     Update(InstallCommandOpts),
 
     /// Remove managed integrations while preserving user files
@@ -53,10 +53,6 @@ Packages, services, registry values, shell selection, and overlay script effects
 
     /// Validate configuration and run repository checks
     Check(CheckCommandOpts),
-
-    /// Compatibility alias for `check`
-    #[command(hide = true)]
-    Test(CheckCommandOpts),
 
     /// List available task selectors and command membership
     Tasks(TasksOpts),
@@ -130,7 +126,7 @@ impl Default for ExecutionOpts {
     }
 }
 
-/// Options for the `install` command.
+/// Options shared by the `install` and `update` commands.
 #[derive(Args, Debug, Clone)]
 #[allow(
     clippy::struct_excessive_bools,
@@ -153,8 +149,8 @@ pub struct InstallCommandOpts {
     #[arg(short = 'n', long)]
     pub dry_run: bool,
 
-    /// Advance pinned dependencies after normal convergence
-    #[arg(long)]
+    /// Advance pinned dependencies during convergence
+    #[arg(long = "update")]
     pub update_pins: bool,
 
     /// Use the current checkout without synchronizing its repository
@@ -371,6 +367,9 @@ impl EngineCommand {
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
+            Self::Install {
+                update_pins: true, ..
+            } => "update",
             Self::Install { .. } => "install",
             Self::Uninstall { .. } => "uninstall",
             Self::Check { .. } => "check",
@@ -452,13 +451,13 @@ pub type UninstallOpts = CheckOpts;
 /// Canonical command names accepted by `log --command`.
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
 pub enum LogCommand {
-    /// Installation runs, including legacy `update` runs.
-    #[value(alias = "update")]
+    /// Installation runs.
     Install,
+    /// Configuration and dependency update runs.
+    Update,
     /// Uninstallation runs.
     Uninstall,
     /// Validation runs, including legacy `test` runs.
-    #[value(alias = "test")]
     Check,
 }
 
@@ -467,7 +466,8 @@ impl LogCommand {
     #[must_use]
     pub fn matches(self, stored: &str) -> bool {
         match self {
-            Self::Install => matches!(stored, "install" | "update"),
+            Self::Install => stored == "install",
+            Self::Update => stored == "update",
             Self::Uninstall => stored == "uninstall",
             Self::Check => matches!(stored, "check" | "test"),
         }
@@ -565,6 +565,7 @@ mod tests {
 
         for text in [
             "install    Apply dotfiles and system configuration",
+            "update     Apply configuration and advance pinned dependencies",
             "uninstall  Remove managed integrations while preserving user files",
             "check      Validate configuration and run repository checks",
             "tasks      List available task selectors and command membership",
@@ -577,12 +578,28 @@ mod tests {
                 "top-level help should contain {text:?}"
             );
         }
-        for hidden in ["update     ", "test       ", "--profile"] {
+        for hidden in ["test       ", "--profile"] {
             assert!(
                 !help.contains(hidden),
                 "top-level help should omit {hidden:?}"
             );
         }
+    }
+
+    #[test]
+    fn update_help_documents_equivalence_and_shared_options() {
+        let help = display_output(&["dotfiles", "update", "--help"], ErrorKind::DisplayHelp);
+        for text in [
+            "Usage: dotfiles update",
+            "Equivalent to dotfiles install --update.",
+            "--dry-run",
+            "--only",
+            "--with-deps",
+            "--no-repo-update",
+        ] {
+            assert!(help.contains(text), "update help should contain {text:?}");
+        }
+        assert!(!help.contains("--update-pins"));
     }
 
     #[test]
@@ -593,7 +610,7 @@ mod tests {
             "-p",
             "desktop",
             "-n",
-            "--update-pins",
+            "--update",
             "--no-repo-update",
             "--fail-on-skip",
             "--only",
@@ -614,7 +631,13 @@ mod tests {
 
     #[test]
     fn install_rejects_removed_option_names() {
-        for old in ["-d", "--offline", "--require-complete", "--retry-failed"] {
+        for old in [
+            "-d",
+            "--offline",
+            "--require-complete",
+            "--retry-failed",
+            "--update-pins",
+        ] {
             let error = Cli::try_parse_from(["dotfiles", "install", old])
                 .expect_err("removed option should fail");
             assert_eq!(error.kind(), ErrorKind::UnknownArgument, "{old}");
@@ -637,15 +660,10 @@ mod tests {
     }
 
     #[test]
-    fn compatibility_commands_parse_but_stay_hidden() {
-        assert!(matches!(
-            Cli::parse_from(["dotfiles", "update"]).command,
-            Command::Update(_)
-        ));
-        assert!(matches!(
-            Cli::parse_from(["dotfiles", "test"]).command,
-            Command::Test(_)
-        ));
+    fn removed_test_command_is_rejected() {
+        let error =
+            Cli::try_parse_from(["dotfiles", "test"]).expect_err("test command was removed");
+        assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
     }
 
     #[test]
@@ -710,11 +728,13 @@ mod tests {
                 .expect_err("ignored or invalid log option combinations should fail");
         }
 
-        let legacy = Cli::parse_from(["dotfiles", "log", "--command", "test"]);
-        let Command::Log(opts) = legacy.command else {
+        Cli::try_parse_from(["dotfiles", "log", "--command", "test"])
+            .expect_err("test command filter was removed");
+        let Command::Log(opts) = Cli::parse_from(["dotfiles", "log", "-c", "update"]).command
+        else {
             panic!("expected log command");
         };
-        assert_eq!(opts.command, Some(LogCommand::Check));
+        assert_eq!(opts.command, Some(LogCommand::Update));
     }
 
     #[test]
@@ -735,7 +755,7 @@ mod tests {
 
     #[test]
     fn engine_option_conversion_preserves_command_and_output_flags() {
-        for name in ["install", "update", "uninstall", "check", "test"] {
+        for name in ["install", "update", "uninstall", "check"] {
             let mut args = vec![
                 "dotfiles",
                 name,
@@ -771,7 +791,7 @@ mod tests {
                     assert!(!global.no_repo_update);
                     (global, verbose)
                 }
-                Command::Check(opts) | Command::Test(opts) => {
+                Command::Check(opts) => {
                     let (global, _, verbose) = opts.into_engine_parts();
                     assert!(!global.no_repo_update);
                     (global, verbose)

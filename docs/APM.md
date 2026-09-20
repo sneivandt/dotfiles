@@ -161,7 +161,7 @@ before convergence. The task:
 2. Produces the merged manifest in deterministic order.
 3. Writes the generated manifest only when its content changed.
 4. Runs `apm install -g` during ordinary installation, or `apm update -g --yes`
-   when `--update-pins` is enabled.
+   when `--update` is enabled.
 5. Lets APM verify local sources, converge deployments, and remove stale or
    orphaned user-scope content.
 6. Compares the exact lockfile before and after to report whether APM changed
@@ -188,7 +188,7 @@ dotfiles install --only apm
 
 ## Pin-update behavior
 
-With `dotfiles install --update-pins`, **APM packages** writes the merged
+With `dotfiles update`, **APM packages** writes the merged
 manifest and runs `apm update -g --yes` instead of `apm install -g`. Native APM
 advances matching refs and converges the resulting dependency graph in that one
 pass. No separate `apm outdated` parser or dotfiles success marker is involved.
@@ -205,7 +205,7 @@ manifest, dotfiles reports the prospective manifest write and update command
 without asking APM to plan against the old manifest.
 
 ```bash
-dotfiles install --update-pins --only apm
+dotfiles update --only apm
 ```
 
 ## Overlays
@@ -242,7 +242,7 @@ When changing APM configuration, check:
 2. Add a pinned or policy-compliant package declaration.
 3. If the fragment is conditional, confirm its symlink category.
 4. Follow the APM coverage in [Testing](TESTING.md).
-5. Run install before using `dotfiles install --update-pins` to advance versions.
+5. Run install before using `dotfiles update` to advance versions.
 
 Represent changes in a source fragment. Do not edit generated merged state or
 lock data by hand.

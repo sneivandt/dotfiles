@@ -180,7 +180,7 @@ selector and verbose output:
 dotfiles install --only systemd --dry-run --verbose
 ```
 
-Use `dotfiles install --update-pins` to advance eligible APM package refs.
+Use `dotfiles update` to advance eligible APM package refs.
 
 ## A symlink cannot be created on Windows
 
@@ -285,8 +285,8 @@ The **APM packages** task changes its native command when pin updates are
 enabled:
 
 ```bash
-dotfiles install --update-pins --only apm --dry-run --verbose
-dotfiles install --update-pins --only apm --verbose
+dotfiles update --only apm --dry-run --verbose
+dotfiles update --only apm --verbose
 ```
 
 Apply delegates to `apm update -g --yes` instead of first running

@@ -574,17 +574,22 @@ mod tests {
     }
 
     #[test]
-    fn filters_by_command_family() {
+    fn install_and_update_have_separate_command_filters() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let dir = tmp.path();
         write_run(dir, "20260731T154210Z-install-1.log", "install run\n");
         write_run(dir, "20260731T154902Z-update-2.log", "update run\n");
 
-        let filtered = LogOpts {
+        let install = LogOpts {
             command: Some(crate::app::cli::LogCommand::Install),
             ..opts()
         };
-        assert_eq!(capture(dir, &filtered, false), "update run\n");
+        assert_eq!(capture(dir, &install, false), "install run\n");
+        let update = LogOpts {
+            command: Some(crate::app::cli::LogCommand::Update),
+            ..opts()
+        };
+        assert_eq!(capture(dir, &update, false), "update run\n");
     }
 
     #[test]

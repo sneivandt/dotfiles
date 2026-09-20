@@ -62,7 +62,7 @@ pub fn run() -> ExitCode {
                 verbose,
             }
         }
-        cli::Command::Check(opts) | cli::Command::Test(opts) => {
+        cli::Command::Check(opts) => {
             let (global, opts, verbose) = opts.into_engine_parts();
             cli::EngineCommand::Check {
                 global,
@@ -180,6 +180,51 @@ mod tests {
     use std::sync::{Mutex, PoisonError};
 
     use super::*;
+
+    #[test]
+    fn update_command_and_install_flag_select_the_same_pipeline() {
+        for (args, expected_update) in [
+            (vec!["dotfiles", "install"], false),
+            (vec!["dotfiles", "install", "--update"], true),
+            (vec!["dotfiles", "update"], true),
+        ] {
+            let mut invocation = args.clone();
+            invocation.extend([
+                "--only",
+                "apm",
+                "--with-deps",
+                "--dry-run",
+                "--no-repo-update",
+            ]);
+            let command = match cli::Cli::parse_from(invocation).command {
+                cli::Command::Install(opts) => install_command(opts, false),
+                cli::Command::Update(opts) => install_command(opts, true),
+                cli::Command::Uninstall(_)
+                | cli::Command::Check(_)
+                | cli::Command::Tasks(_)
+                | cli::Command::Log(_)
+                | cli::Command::Completions(_) => panic!("expected install or update"),
+            };
+            assert_eq!(
+                command.name(),
+                if expected_update { "update" } else { "install" }
+            );
+            let cli::EngineCommand::Install {
+                global,
+                opts,
+                update_pins,
+                ..
+            } = command
+            else {
+                panic!("expected shared install pipeline");
+            };
+            assert_eq!(update_pins, expected_update, "{args:?}");
+            assert!(global.dry_run, "{args:?}");
+            assert!(global.no_repo_update, "{args:?}");
+            assert_eq!(opts.only, ["apm"], "{args:?}");
+            assert!(opts.with_deps, "{args:?}");
+        }
+    }
 
     #[derive(Default)]
     struct CapturingOutput {

@@ -115,7 +115,7 @@ identities or closed cycle path. Visible rows retain natural completion order;
 completed work is not sorted or grouped afterward.
 
 `Task::update_only()` is command membership metadata, not an ordering class.
-`install` excludes update-only tasks unless `--update-pins` includes them in
+`install` excludes update-only tasks unless `--update` includes them in
 the same graph as ordinary install tasks.
 
 Dynamic overlay tasks use structured identities containing their concrete task

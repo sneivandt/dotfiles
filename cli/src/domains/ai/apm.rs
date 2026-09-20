@@ -10,7 +10,7 @@
 //! - [`install`] converges the generated manifest and runs the APM command for
 //!   the active install mode.
 //! - [`update`] previews locked dependency advancement for
-//!   `install --update-pins`.
+//!   `install --update`.
 //! - [`commands`] centralizes APM process invocation and common error handling.
 //! - [`managed_targets`] delegates Copilot App to APM, preserves Cowork's
 //!   protected directories, and retains the Copilot App autopilot policy.

@@ -77,7 +77,7 @@ pub(crate) fn run_pipeline(
     let repository_update = RepositoryUpdateSignal::new();
     let mut all_tasks = runner.install_tasks_for_run(&repository_update, mode.apm_mode());
 
-    // Version-advancing tasks are scheduled only with `--update-pins`. Filter
+    // Version-advancing tasks are scheduled only with `--update`. Filter
     // membership before user filters so warnings reflect eligible tasks.
     all_tasks.retain(|task| mode.includes_task(task.as_ref()));
     let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());

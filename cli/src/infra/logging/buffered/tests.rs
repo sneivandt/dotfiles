@@ -69,6 +69,7 @@ fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
             (MsgKind::TaskStage, "stage"),
             (MsgKind::Info, "info"),
             (MsgKind::Debug, "debug"),
+            (MsgKind::Context, "debug"),
             (MsgKind::Trace, "debug"),
             (MsgKind::Warn, "warn"),
             (MsgKind::Error, "error"),
@@ -94,7 +95,7 @@ fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
                 previous = position;
             }
         }
-        assert_eq!(buf.entries.lock().unwrap().len(), 10);
+        assert_eq!(buf.entries.lock().unwrap().len(), 11);
         let before_flush = fs::read_to_string(log.log_path().unwrap()).unwrap();
         buf.flush();
         buf.flush();
@@ -213,6 +214,7 @@ fn buffered_presentation_golden_matrix() {
         (MsgKind::TaskStage, false, false, false),
         (MsgKind::Info, true, false, true),
         (MsgKind::Debug, true, false, false),
+        (MsgKind::Context, true, false, false),
         (MsgKind::Trace, false, false, false),
         (MsgKind::Warn, true, true, false),
         (MsgKind::Error, true, true, false),

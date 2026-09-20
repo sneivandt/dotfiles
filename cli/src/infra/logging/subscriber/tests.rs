@@ -115,6 +115,7 @@ fn message_presentation_golden_matrix() {
         (MsgKind::TaskStage, true, "detail", "detail"),
         (MsgKind::Info, true, "  detail", "  detail"),
         (MsgKind::Debug, true, "  detail", "  detail"),
+        (MsgKind::Context, true, "detail", "\x1b[2mdetail\x1b[0m"),
         (MsgKind::Trace, false, "", ""),
         (
             MsgKind::Warn,

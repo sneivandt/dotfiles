@@ -58,6 +58,7 @@ description: >
 |---|---|
 | `trace` | plumbing that never reaches the console |
 | `debug` | diagnostic item detail |
+| `context` | dim contextual block visible only in verbose output; caller owns indentation |
 | `info` | concise action detail |
 | `warn` / `error` | visible problems |
 | `dry_run` | planned mutation |

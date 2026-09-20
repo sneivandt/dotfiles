@@ -69,6 +69,7 @@ pub(super) fn ui_line_with_style(
     match kind {
         MsgKind::Stage | MsgKind::TaskStage => verbose.then_some(msg),
         MsgKind::Info | MsgKind::Debug => verbose.then(|| format!("  {msg}")),
+        MsgKind::Context => verbose.then(|| style.paint(TextStyle::Dim, &msg)),
         MsgKind::Trace => None,
         MsgKind::Warn => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
         MsgKind::Error => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),

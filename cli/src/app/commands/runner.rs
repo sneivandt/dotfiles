@@ -303,13 +303,13 @@ fn load_config(
 
 /// Emit the verbose-only configuration header and its non-empty section counts.
 pub(super) fn emit_config_summary(log: &dyn crate::infra::logging::Output, config: &Config) {
-    log.task_stage("Loaded configuration");
+    log.context("Loaded configuration");
     for section in config
         .section_counts()
         .iter()
         .filter(|section| section.count > 0)
     {
-        log.debug(format!("{} {}", section.count, section.label()));
+        log.context(format!("  {} {}", section.count, section.label()));
     }
 }
 

@@ -224,8 +224,8 @@ mod startup_log_tests {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
             vec![
-                (MsgKind::TaskStage, "Loaded configuration".to_string()),
-                (MsgKind::Debug, "2 vscode extensions".to_string()),
+                (MsgKind::Context, "Loaded configuration".to_string()),
+                (MsgKind::Context, "  2 vscode extensions".to_string()),
             ]
         );
     }

@@ -60,6 +60,7 @@ impl LogEntry {
             MsgKind::Stage
             | MsgKind::TaskStage
             | MsgKind::Debug
+            | MsgKind::Context
             | MsgKind::Trace
             | MsgKind::Startup
             | MsgKind::Warn

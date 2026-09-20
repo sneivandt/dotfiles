@@ -200,6 +200,7 @@ mod tests {
                 | logging::MsgKind::TaskStage
                 | logging::MsgKind::Info
                 | logging::MsgKind::Debug
+                | logging::MsgKind::Context
                 | logging::MsgKind::Trace
                 | logging::MsgKind::Always
                 | logging::MsgKind::Warn

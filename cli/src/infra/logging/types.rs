@@ -172,6 +172,11 @@ pub enum MsgKind {
     Info,
     /// Diagnostic item detail; rendered on the console in verbose mode.
     Debug,
+    /// De-emphasised context; rendered dim on the console in verbose mode.
+    ///
+    /// The caller owns any indentation so a contextual block can contain both
+    /// a header and indented detail lines.
+    Context,
     /// An internal plumbing message; recorded in the run log only.
     ///
     /// Unlike [`MsgKind::Debug`], this is never shown on the console even with
@@ -203,7 +208,7 @@ impl MsgKind {
         match self {
             Self::Stage | Self::TaskStage => LogEvent::Stage,
             Self::Info | Self::Always | Self::Startup => LogEvent::Info,
-            Self::Debug | Self::Trace => LogEvent::Debug,
+            Self::Debug | Self::Context | Self::Trace => LogEvent::Debug,
             Self::Warn => LogEvent::Warn,
             Self::Error => LogEvent::Error,
             Self::DryRun => LogEvent::DryRun,
@@ -426,6 +431,10 @@ pub trait OutputExt: Output {
     /// Log diagnostic item detail; visible on the console in verbose mode.
     fn debug<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Debug, msg.into());
+    }
+    /// Log de-emphasised context; visible and dim in verbose mode.
+    fn context<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Context, msg.into());
     }
     /// Log an internal plumbing message; recorded in the run log only.
     ///

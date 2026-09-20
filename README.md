@@ -23,11 +23,11 @@ applies changes in dependency order. Settings that already match are skipped.
 
 | Area | Configuration |
 |---|---|
-| Shell | Zsh, Bash, PowerShell, tmux, `PATH`, and completions |
+| Shell | Zsh, Bash, PowerShell, tmux, PATH, and completions |
 | Editors | Vim/Neovim, VS Code settings, and extensions |
 | Terminal | Alacritty and Windows Terminal |
 | Git | Global settings, aliases, and repository hooks |
-| Packages | pacman and AUR packages via `paru`; winget packages on Windows |
+| Packages | paru for Arch Linux packages and winget packages on Windows |
 | Arch desktop | Hyprland, Quickshell, mako, fuzzel, and GTK settings |
 | Services | systemd user and system units |
 | AI tooling | APM packages and plugins, Copilot and Codex settings |
@@ -63,8 +63,6 @@ After installation, `dotfiles` is available directly in a new shell.
 | `dotfiles uninstall` | Replaces managed symlinks with local copies and removes managed hooks and the launcher |
 | `dotfiles check` | Checks configuration and runs available script analyzers |
 | `dotfiles log` | Shows saved run logs |
-
-`update` is equivalent to `install --update`.
 
 Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.

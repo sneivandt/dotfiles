@@ -539,7 +539,7 @@ mod tests {
     fn consecutive_startup_lines_defer_the_separator() {
         let (log, _tmp, _guard) = isolated_logger();
 
-        log.startup("Self update · old → new");
+        log.startup("CLI upgraded · old → new");
         log.startup("Install · profile desktop · Arch Linux");
 
         assert!(

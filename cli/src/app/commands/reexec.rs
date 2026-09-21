@@ -96,7 +96,7 @@ pub(crate) fn re_exec_after_repository_update(log: &dyn Output) -> ! {
         |run| crate::infra::logging::records::child_args(&args, &run.id()),
     );
     let command = build_repository_reexec_command(&exe, &args);
-    log.startup("Repository updated · restarting with refreshed configuration");
+    log.startup("Repository synced · restarting to load configuration");
     run_reexec(command, log)
 }
 

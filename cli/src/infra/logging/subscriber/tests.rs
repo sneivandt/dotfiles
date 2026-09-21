@@ -173,16 +173,16 @@ fn structured_startup_line_emphasizes_its_label_only() {
 }
 
 #[test]
-fn self_update_remains_a_startup_notice_with_a_dim_version_transition() {
+fn cli_upgrade_remains_a_startup_notice_with_a_dim_version_transition() {
     assert_eq!(
         super::console::ui_line_with_style(
             MsgKind::Startup,
-            "Self update · old → new",
+            "CLI upgraded · old → new",
             StyleChoice::auto(true, false),
             false,
         )
         .as_deref(),
-        Some("\x1b[1mSelf update\x1b[0m\x1b[2m · old → new\x1b[0m")
+        Some("\x1b[1mCLI upgraded\x1b[0m\x1b[2m · old → new\x1b[0m")
     );
 }
 

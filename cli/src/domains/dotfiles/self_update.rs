@@ -240,13 +240,13 @@ pub fn pre_update(
                 log.info(format!("update available: {current} \u{2192} {latest}"));
                 return Ok(false);
             }
-            log.stage("Self update");
+            log.stage("CLI upgrade");
             log.debug(format!("updating: {current} \u{2192} {latest}"));
             with_status(log, &format!("Updating to {latest}"), || {
                 download_and_install(root, &latest, &client, skip_attestation)
             })?;
 
-            log.startup(format!("Self update \u{00b7} {current} \u{2192} {latest}"));
+            log.startup(format!("CLI upgraded \u{00b7} {current} \u{2192} {latest}"));
 
             Ok(true)
         }

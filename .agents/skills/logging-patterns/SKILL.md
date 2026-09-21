@@ -29,11 +29,11 @@ description: >
 - Separate visible task blocks by one blank line for mutation commands and in
   verbose output; compact consecutive one-line check rows. A check task with
   details keeps a blank line on both sides. Hidden tasks add no spacing.
-- Task names, structured startup labels, live `Running`, and the first summary
-  outcome are bold. Action details, active task names, and transient self-update
-  work use normal contrast. Startup metadata, progress counts, context, reasons,
-  and timing stay dim. `No changes` is bold in the default foreground. Plain
-  output preserves spacing without ANSI styling.
+- Task names, structured startup labels such as `CLI upgraded`, live `Running`,
+  and the first summary outcome are bold. Action details, active task names, and
+  transient self-update work use normal contrast. Startup metadata, progress
+  counts, context, reasons, and timing stay dim. `No changes` is bold in the
+  default foreground. Plain output preserves spacing without ANSI styling.
 - Non-verbose mode shows reportable outcomes; verbose mode also shows current
   tasks plus elapsed time. Not-applicable tasks stay out of console output in
   both modes but remain in persistent run records and progress accounting.

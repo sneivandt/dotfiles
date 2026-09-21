@@ -255,10 +255,17 @@ does not appear in console rows or totals.
 Before the scheduler starts, an installed binary checks for a newer release. The
 check draws a normal-contrast transient status line while it runs and erases it
 afterwards. A line is left behind only when a new version was actually
-installed. `Self update` is bold and the version transition is dim:
+installed. `CLI upgraded` is bold and the version transition is dim:
 
 ```text
-Self update · v2025.01.02-1 → v2025.01.09-1
+CLI upgraded · v2025.01.02-1 → v2025.01.09-1
+```
+
+When repository synchronization changes the checkout, the CLI announces the
+restart before the replacement process loads the new configuration:
+
+```text
+Repository synced · restarting to load configuration
 ```
 
 While tasks are running, a transient status line reports progress and the

@@ -2,11 +2,11 @@ use std::time::Duration;
 
 use super::render::{RowOpts, format_task_line, task_detail_lines, task_result_lines};
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
-use crate::infra::logging::Logger;
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::StyleChoice;
 use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
 use crate::infra::logging::utils::format_elapsed;
+use crate::infra::logging::{Logger, OutputExt as _};
 
 /// Build a task entry with the fields a row-rendering test cares about.
 fn task_entry(name: &str, status: TaskStatus, message: Option<&str>) -> TaskEntry {
@@ -268,14 +268,14 @@ fn check_summary_uses_check_vocabulary_and_omits_not_run() {
 }
 
 #[test]
-fn no_op_standard_commands_skip_extra_blank() {
-    for command in ["install", "uninstall"] {
+fn no_op_mutation_commands_skip_extra_blank() {
+    for command in ["install", "update", "uninstall"] {
         assert!(
             !should_space_before_totals(command, false),
             "{command} no-op runs should not add an extra separator"
         );
     }
-    assert!(should_space_before_totals("install", true));
+    assert!(should_space_before_totals("update", true));
     assert!(should_space_before_totals("check", false));
 }
 
@@ -686,10 +686,22 @@ fn no_op_install_summary_needs_no_totals_separator() {
     for index in 0..3 {
         record_task(&log, &format!("task-{index}"), TaskStatus::Ok, None);
     }
-
     assert!(
         !log.needs_totals_separator(),
         "runs that printed nothing should not emit a blank line before the totals"
+    );
+}
+
+#[test]
+fn no_op_update_summary_reuses_the_startup_separator() {
+    let (log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("update");
+    log.startup("Update · profile desktop · Arch Linux");
+    log.separate_from_startup();
+
+    assert!(log.console_ends_with_blank_line());
+    assert!(
+        !log.needs_totals_separator(),
+        "the startup separator should be the only blank line before no-op totals"
     );
 }
 

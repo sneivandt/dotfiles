@@ -166,11 +166,9 @@ pub(super) fn format_check_totals(counts: SummaryCounts, style: StyleChoice) -> 
 }
 
 /// Decide whether a blank line should separate the totals from what precedes
-/// it.  The separator is only useful when console output was actually emitted
-/// above the totals, so it is driven by emitted output rather than by recorded
-/// task counts (tasks that were already up to date print nothing).  This holds
-/// in verbose mode too: verbose emits a row per task, which sets
-/// `task_output_emitted`, so it needs no separate carve-out.
+/// it. The separator is only useful when task output was emitted above the
+/// totals. Standard mutation commands hide current task rows, so their no-op
+/// runs reuse the startup separator.
 pub(super) fn should_space_before_totals(command: &str, task_output_emitted: bool) -> bool {
-    task_output_emitted || !matches!(command, "install" | "uninstall")
+    task_output_emitted || !matches!(command, "install" | "update" | "uninstall")
 }

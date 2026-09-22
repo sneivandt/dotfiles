@@ -12,7 +12,7 @@
 [base]
 settings = [
   # Copilot CLI core behaviour
-  { target = "copilot", key = "model",          value = "gpt-5.6-sol" },
+  { target = "copilot", key = "model",          value = "gpt-6-sol"   },
   { target = "copilot", key = "effortLevel",    value = "medium"      },
   { target = "copilot", key = "banner",         value = "never"       },
   { target = "copilot", key = "beep",           value = false         },
@@ -41,7 +41,7 @@ settings = [
   { target = "codex", key = "approvals_reviewer",     value = "auto_review"     },
   { target = "codex", key = "sandbox_mode",           value = "workspace-write" },
   { target = "codex", key = "features.memories",      value = true              },
-  { target = "codex", key = "model",                  value = "gpt-5.6-sol"     },
+  { target = "codex", key = "model",                  value = "gpt-6-sol"       },
   { target = "codex", key = "model_reasoning_effort", value = "medium"          },
   { target = "codex", key = "personality",            value = "pragmatic"       },
   { target = "codex", key = "web_search",             value = "cached"          },

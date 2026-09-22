@@ -232,9 +232,10 @@ behavior in platform category sections.
 ```toml
 [base]
 settings = [
-  { target = "copilot", key = "model", value = "gpt-5.6-sol" },
-  { target = "codex", key = "model", value = "gpt-5.6-sol" },
-  { target = "codex", key = "model_reasoning_effort", value = "high" },
+  { target = "copilot", key = "model", value = "gpt-6-sol" },
+  { target = "copilot", key = "effortLevel", value = "medium" },
+  { target = "codex", key = "model", value = "gpt-6-sol" },
+  { target = "codex", key = "model_reasoning_effort", value = "medium" },
 ]
 ```
 

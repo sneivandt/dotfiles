@@ -457,17 +457,11 @@ impl Logger {
 
 impl Output for Logger {
     fn action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
+        let entry = super::buffered::entry::LogEntry::action(verb, subject, planned, message);
         if let Some(run) = &self.run_log {
-            run.record_action(verb, subject, planned, message);
+            entry.persist(run);
         }
-        self.emit_console(
-            if planned {
-                MsgKind::DryRun
-            } else {
-                MsgKind::Info
-            },
-            message,
-        );
+        entry.replay(self);
     }
 
     fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {

@@ -277,9 +277,12 @@ impl Operation for ParuInstallOperation {
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         match plan {
-            ParuInstallPlan::Install { reason } => ctx
-                .log()
-                .dry_run(format!("install missing paru from AUR source · {reason}")),
+            ParuInstallPlan::Install { reason } => ctx.log().action(
+                "install",
+                "missing paru from AUR source",
+                true,
+                &format!("install missing paru from AUR source · {reason}"),
+            ),
             ParuInstallPlan::Rebuild { path, reason } => ctx.log().dry_run(format!(
                 "rebuild broken paru from AUR source · executable {} · {reason}",
                 path.display()
@@ -364,8 +367,13 @@ impl Operation for PackageInstallOperation {
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         for resource in &plan.missing {
-            ctx.log()
-                .dry_run(format!("install {}", resource.description()));
+            let description = resource.description();
+            ctx.log().action(
+                "install",
+                &description,
+                true,
+                &format!("install {description}"),
+            );
         }
         Ok(plan.preview_stats().finish())
     }
@@ -378,7 +386,10 @@ impl Operation for PackageInstallOperation {
         let missing_refs: Vec<&PackageResource> = plan.missing.iter().collect();
         // Name packages before their batch or individual install starts;
         // slow installs and Windows UAC prompts otherwise hide the active work.
-        let progress = |package: &str| ctx.log().info(format!("install {package}"));
+        let progress = |package: &str| {
+            ctx.log()
+                .action("install", package, false, &format!("install {package}"));
+        };
         let report = match install_missing_packages(
             self.manager,
             &missing_refs,

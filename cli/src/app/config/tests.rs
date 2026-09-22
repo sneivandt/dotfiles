@@ -61,6 +61,72 @@ fn write_overlay_config(overlay: &tempfile::TempDir, file: &str, content: &str) 
 }
 
 #[test]
+fn active_and_validation_views_share_one_decode_per_source() {
+    fn decode_then_remove(
+        document: &ConfigDocument<'_>,
+    ) -> Result<Vec<(String, Vec<symlinks::Symlink>)>> {
+        let items = symlinks::decode(document)?;
+        std::fs::remove_file(document.path)?;
+        Ok(items)
+    }
+
+    let content = "[base]\nsymlinks = [{ source = 'active', target = '.active' }]\n\
+                   [desktop]\nsymlinks = [{ source = 'inactive', target = '.inactive' }]\n";
+    let (main, profile, _) = setup_load(linux(), &[("symlinks.toml", content)]);
+    let overlay = tempfile::tempdir().unwrap();
+    write_overlay_config(&overlay, "symlinks.toml", content);
+    let sections = SectionLoader::new(main.path(), Some(overlay.path()), &profile);
+    let (active, all) = sections
+        .collect_views(
+            symlinks::SYMLINKS_TOML,
+            decode_then_remove,
+            symlinks::set_origin,
+        )
+        .expect("both views must use the decoded snapshot, not reopen either file");
+    assert_eq!(active.len(), 2);
+    assert_eq!(all.len(), 4);
+    for (root, active_index, all_index) in [(main.path(), 0, 0), (overlay.path(), 1, 2)] {
+        assert!(!root.join("conf").join("symlinks.toml").exists());
+        assert_eq!(active[active_index].source, "active");
+        assert_eq!(all[all_index].source, "active");
+        assert_eq!(all[all_index + 1].source, "inactive");
+        assert_eq!(active[active_index].origin.as_deref(), Some(root));
+        assert_eq!(all[all_index + 1].origin.as_deref(), Some(root));
+    }
+}
+
+#[test]
+fn every_main_inventory_file_is_required_by_the_aggregate_loader() {
+    for file in REQUIRED_CONFIG_FILES {
+        let (root, profile, platform) = setup_load(linux(), &[]);
+        std::fs::remove_file(root.path().join("conf").join(file)).unwrap();
+        let error = Config::load(root.path(), &profile, platform, None).unwrap_err();
+        assert!(format!("{error:#}").contains(file), "{file}: {error:#}");
+    }
+}
+
+#[test]
+fn category_errors_retain_main_and_overlay_provenance() {
+    for is_overlay in [false, true] {
+        let (main, profile, platform) = setup_load(linux(), &[]);
+        let overlay = tempfile::tempdir().unwrap();
+        let source = if is_overlay { &overlay } else { &main };
+        let path = write_overlay_config(source, "packages.toml", "[windwos]\npackages = []\n");
+        let error =
+            Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("unknown category 'windwos'"), "{message}");
+        assert!(message.contains(&path.display().to_string()), "{message}");
+        if is_overlay {
+            assert_eq!(
+                error.to_string(),
+                format!("Invalid configuration in overlay {}", path.display())
+            );
+        }
+    }
+}
+
+#[test]
 fn load_appends_equivalent_values_and_rejects_all_conflicts_before_publication() {
     let (dir, profile, platform) = setup_load(
         windows(),

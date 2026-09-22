@@ -244,6 +244,7 @@ mod tests {
                 logging::MsgKind::Stage
                 | logging::MsgKind::TaskStage
                 | logging::MsgKind::Info
+                | logging::MsgKind::Summary
                 | logging::MsgKind::Debug
                 | logging::MsgKind::Context
                 | logging::MsgKind::Trace

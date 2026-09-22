@@ -169,14 +169,21 @@ impl ApmInstallPlan {
         let lock_changed = lock_before != lock_after;
         let dependency_changes =
             describe_lock_changes(lock_before.as_deref(), lock_after.as_deref());
-        for detail in &dependency_changes {
-            ctx.log().info(detail);
+        for (verb, subject) in &dependency_changes {
+            ctx.log()
+                .action(verb, subject, false, &format!("{verb} {subject}"));
         }
         if self.manifest_needs_write {
-            ctx.log().info("updated: generated APM manifest");
+            ctx.log().action(
+                "update",
+                "generated APM manifest",
+                false,
+                "update generated APM manifest",
+            );
         }
         if lock_changed && dependency_changes.is_empty() {
-            ctx.log().info("updated: APM lock state");
+            ctx.log()
+                .action("update", "APM lock state", false, "update APM lock state");
         }
 
         let changed =

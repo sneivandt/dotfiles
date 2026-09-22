@@ -19,7 +19,7 @@ description: >
 - Keep status labels/styles together in `logger/summary/status.rs::presentation`.
   Raw tracing and UI messages share formatting through `ui_line_with_style`;
   raw DEBUG/TRACE remain hidden even when UI debug details are verbose-visible.
-- Reuse `is_redundant_detail` for buffered replay and completed rows, and
+- Reuse `duplicates_task_message` for buffered replay and completed rows, and
   `progress_clear_sequence` for cursor clearing. Do not duplicate these pure
   decisions across sinks.
 
@@ -40,9 +40,13 @@ description: >
 - A task reason stays on its status row after ` · `. Indented lines are actions
   or planned actions and must not restate the row.
 - Emit resource actions with `Output::action(verb, subject, planned, message)`.
-  Typed actions persist once before buffering; legacy messages retain
-  `compact_detail_line` as a fallback. Sort only consecutive action runs and
-  preserve warning/context barriers.
+  Supply the imperative console form in `message`, including contextual suffixes.
+  Typed actions persist once before buffering. Sort only consecutive typed action
+  runs and preserve warning/context barriers; never classify or rephrase messages
+  by their text.
+- Emit generated counters with `summary`, and mark generated task-result reasons
+  with `with_summary_message`. Custom reasons remain visible even if they resemble
+  counter text.
 - Resource descriptions read `subject -> value`; symlinks are `target -> source`.
 - Final summaries count tasks, not detail lines or parsed display text.
 - Progress uses `Running · {remaining} remaining · {active}`. The count covers
@@ -59,7 +63,9 @@ description: >
 | `trace` | plumbing that never reaches the console |
 | `debug` | diagnostic item detail |
 | `context` | dim contextual block visible only in verbose output; caller owns indentation |
-| `info` | concise action detail |
+| `action` | applied or planned item detail with explicit verb and subject |
+| `info` | informational detail, not an inferred action |
+| `summary` | aggregate counters retained only in the run log |
 | `warn` / `error` | visible problems |
 | `dry_run` | planned mutation |
 | `always` | output that must be visible |

@@ -47,17 +47,14 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: 
     let event_detail = reason.unwrap_or("not applicable");
     ctx.log()
         .run_task_event(LogEvent::TaskSkip, &task.log_key(), event_detail);
-    ctx.log().record_task(
-        TaskEntry::new(
-            task_id,
-            task.name(),
-            TaskStatus::NotApplicable,
-            reason,
-            ActionCounts::default(),
-            task.visibility(),
-        )
-        .with_selector(task.selector())
-        .with_result_display(task.result_display()),
+    record(
+        task,
+        task_id,
+        ctx,
+        TaskStatus::NotApplicable,
+        reason,
+        ActionCounts::default(),
+        false,
     );
 }
 
@@ -117,6 +114,7 @@ fn record(
     status: TaskStatus,
     message: Option<&str>,
     actions: ActionCounts,
+    message_is_summary: bool,
 ) -> TaskStatus {
     ctx.log().record_task(
         TaskEntry::new(
@@ -128,7 +126,8 @@ fn record(
             task.visibility(),
         )
         .with_selector(task.selector())
-        .with_result_display(task.result_display()),
+        .with_result_display(task.result_display())
+        .with_summary_message(message_is_summary),
     );
     status
 }
@@ -154,6 +153,7 @@ fn record_interrupted(
         TaskStatus::Interrupted,
         Some("interrupted"),
         actions,
+        false,
     )
 }
 
@@ -163,7 +163,15 @@ fn record_interrupted(
 /// so the summary does not count signal interruptions as real failures.
 fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExecution {
     let rec = |status: TaskStatus, msg: Option<&str>| {
-        record(task, task_id, ctx, status, msg, ActionCounts::default())
+        record(
+            task,
+            task_id,
+            ctx,
+            status,
+            msg,
+            ActionCounts::default(),
+            false,
+        )
     };
     ctx.log().task_stage(task.name());
     match task.run(ctx) {
@@ -278,7 +286,7 @@ fn record_stopped_batch(
     );
     ctx.log().warn(&message);
     TaskExecution::new(
-        record(task, task_id, ctx, status, Some(&message), actions),
+        record(task, task_id, ctx, status, Some(&message), actions, false),
         if failed {
             TaskOutcome::Failed
         } else {
@@ -331,6 +339,7 @@ fn record_failed_outcome(
         TaskStatus::Failed,
         Some(reason),
         actions,
+        false,
     )
 }
 
@@ -364,6 +373,8 @@ fn record_batch_outcome(
     ctx.log().run_task_event(event, &task.log_key(), &message);
     if outcome == TaskStatus::Failed {
         ctx.log().warn(format!("failed: {message}"));
+    } else if stats.message().is_none() {
+        ctx.log().summary(&message);
     } else {
         ctx.log().info(&message);
     }
@@ -375,6 +386,7 @@ fn record_batch_outcome(
         outcome,
         recorded_message.as_deref(),
         actions,
+        stats.message().is_none() && matches!(outcome, TaskStatus::Changed | TaskStatus::Failed),
     )
 }
 

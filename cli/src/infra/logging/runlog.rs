@@ -169,7 +169,6 @@ impl RunLog {
     /// Returns `None` if the log directory or file cannot be created, in
     /// which case the run simply proceeds without a file log.
     pub(super) fn create(command: &str, start: Instant) -> Option<Self> {
-        super::utils::remove_legacy_cache_logs_once();
         Self::new(command, &super::utils::dotfiles_log_dir()?, start)
     }
 

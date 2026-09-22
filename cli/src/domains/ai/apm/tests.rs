@@ -378,7 +378,26 @@ fn update_delegates_directly_and_reports_exact_lock_changes() {
     );
     let contents = std::fs::read_to_string(log.log_path().expect("log path")).expect("read log");
     assert!(
-        contents.contains("[info] updated: example-plugin · commit 1111111 -> 2222222"),
+        contents.lines().any(|line| {
+            let Some(logging::records::StoredRecord {
+                record:
+                    logging::records::Record::Action {
+                        verb,
+                        subject,
+                        planned,
+                        message,
+                        ..
+                    },
+                ..
+            }) = logging::records::StoredRecord::from_line(line)
+            else {
+                return false;
+            };
+            verb == "update"
+                && !planned
+                && subject == "example-plugin · commit 1111111 -> 2222222"
+                && message == "update example-plugin · commit 1111111 -> 2222222"
+        }),
         "APM dependency change should be emitted as task detail: {contents}"
     );
 }

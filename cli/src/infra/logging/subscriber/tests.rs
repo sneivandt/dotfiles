@@ -117,6 +117,7 @@ fn message_presentation_golden_matrix() {
         (MsgKind::Debug, true, "  detail", "  detail"),
         (MsgKind::Context, true, "detail", "\x1b[2mdetail\x1b[0m"),
         (MsgKind::Trace, false, "", ""),
+        (MsgKind::Summary, false, "", ""),
         (
             MsgKind::Warn,
             false,
@@ -140,7 +141,8 @@ fn message_presentation_golden_matrix() {
             (true, true, false),
         ] {
             for verbose in [false, true] {
-                let expected = (kind != MsgKind::Trace && (!verbose_only || verbose))
+                let expected = (!matches!(kind, MsgKind::Trace | MsgKind::Summary)
+                    && (!verbose_only || verbose))
                     .then_some(if ansi { colored } else { plain });
                 assert_eq!(
                     super::console::ui_line_with_style(

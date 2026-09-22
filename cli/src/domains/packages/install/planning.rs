@@ -120,7 +120,7 @@ pub(super) fn build_install_plan(
             resource.state_from_installed(&installed),
             ResourceState::Correct
         ) {
-            ctx.debug_fmt(|| format!("ok: {}", resource.description()));
+            ctx.debug_fmt(|| format!("ok {}", resource.description()));
             already_ok = already_ok.saturating_add(1);
         } else {
             missing.push(resource);

@@ -15,7 +15,6 @@ use serde_yaml_ng::Value;
 use super::targets::copilot_cowork_skills_path;
 use crate::engine::Context;
 use crate::infra::fs::{copy_dir_recursive, write_atomic};
-use crate::infra::logging::OutputExt as _;
 
 const COWORK_TARGET: &str = "copilot-cowork";
 const COWORK_URI_PREFIX: &str = "cowork://";
@@ -57,8 +56,12 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
                 target_skill.display()
             );
             changed = true;
-            ctx.log()
-                .info(format!("updated: Copilot Cowork skill {name}"));
+            ctx.log().action(
+                "update",
+                &format!("Copilot Cowork skill {name}"),
+                false,
+                &format!("update Copilot Cowork skill {name}"),
+            );
         }
         if owned.insert(name.clone()) {
             // Record each completed copy before another skill can fail.
@@ -70,8 +73,12 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
     for name in owned.difference(&desired) {
         if remove_skill_entry_point(&target.join(name))? {
             changed = true;
-            ctx.log()
-                .info(format!("removed: Copilot Cowork skill {name}"));
+            ctx.log().action(
+                "remove",
+                &format!("Copilot Cowork skill {name}"),
+                false,
+                &format!("remove Copilot Cowork skill {name}"),
+            );
         }
     }
     if owned != desired {

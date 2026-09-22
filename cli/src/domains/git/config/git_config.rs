@@ -1,10 +1,12 @@
 //! Git configuration loading.
 use serde::Deserialize;
+#[cfg(test)]
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
 use crate::infra::config::DiagnosticCode;
-use crate::infra::config::category_matcher::{Category, matches, parse_section_key};
+#[cfg(test)]
+use crate::infra::config::category_matcher::Category;
 use crate::infra::config::toml_loader;
 use crate::infra::config::validation::Validator;
 
@@ -41,23 +43,31 @@ struct Section {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be read or parsed.
-pub fn load(path: &Path, active_categories: &[Category]) -> anyhow::Result<Vec<GitSetting>> {
-    let sections = toml_loader::load_section_items(path, |section: Section| section.settings)?;
+#[cfg(test)]
+fn load(path: &Path, active_categories: &[Category]) -> anyhow::Result<Vec<GitSetting>> {
+    Ok(toml_loader::filter_by_categories(
+        toml_loader::with_optional_document(path, decode)?,
+        active_categories,
+    ))
+}
+
+/// Decode settings once, retaining origins before deriving category views.
+pub(crate) fn decode(
+    document: &toml_loader::ConfigDocument<'_>,
+) -> anyhow::Result<Vec<(String, Vec<GitSetting>)>> {
+    let path = &document.path;
+    let sections = document.section_items(|section: Section| section.settings)?;
     Ok(sections
         .into_iter()
-        .filter(|(section, _)| matches(&parse_section_key(section), active_categories))
-        .flat_map(|(section, settings)| {
-            settings
-                .into_iter()
-                .enumerate()
-                .map(move |(index, mut setting)| {
-                    setting.origin = Some(format!(
-                        "{} [{section}] settings entry {}",
-                        path.display(),
-                        index.saturating_add(1)
-                    ));
-                    setting
-                })
+        .map(|(section, mut settings)| {
+            for (index, setting) in settings.iter_mut().enumerate() {
+                setting.origin = Some(format!(
+                    "{} [{section}] settings entry {}",
+                    path.display(),
+                    index.saturating_add(1)
+                ));
+            }
+            (section, settings)
         })
         .collect())
 }

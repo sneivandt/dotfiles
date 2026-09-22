@@ -120,8 +120,14 @@ pub(crate) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub(crate) fn load_all(path: &Path) -> Result<Vec<Symlink>> {
-    crate::infra::config::toml_loader::load_section_unfiltered::<Section>(path)
+#[cfg(test)]
+fn load_all(path: &Path) -> Result<Vec<Symlink>> {
+    Ok(
+        crate::infra::config::toml_loader::with_optional_document(path, decode)?
+            .into_iter()
+            .flat_map(|(_, items)| items)
+            .collect(),
+    )
 }
 
 /// Resolve the symlinks directory for a single entry.

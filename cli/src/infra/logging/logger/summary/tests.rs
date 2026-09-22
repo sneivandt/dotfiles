@@ -307,13 +307,29 @@ fn changed_task_line_uses_symbol_status() {
         "symlinks",
         TaskStatus::Changed,
         Some("3 changed, 8 already ok"),
-    );
+    )
+    .with_summary_message(true);
 
     assert_eq!(
         format_task_line(&task, colored_opts()),
         "\x1b[32m✓\x1b[0m \x1b[1msymlinks\x1b[0m"
     );
     assert_eq!(format_task_line(&task, plain_opts()), "✓ symlinks");
+}
+
+#[test]
+fn summary_row_classification_is_independent_of_message_wording() {
+    for message in ["3 changed, 8 already ok", "aggregate counts"] {
+        let task = task_entry("task", TaskStatus::Changed, Some(message));
+        assert_eq!(
+            format_task_line(&task, plain_opts()),
+            format!("✓ task · {message}")
+        );
+        assert_eq!(
+            format_task_line(&task.with_summary_message(true), plain_opts()),
+            "✓ task"
+        );
+    }
 }
 
 #[test]
@@ -377,23 +393,25 @@ fn verbose_task_line_reports_elapsed_time() {
 }
 
 #[test]
-fn task_detail_lines_filters_generic_stats_summary() {
+fn task_detail_lines_drop_the_recorded_summary_not_summary_shaped_text() {
     let task = task_entry(
         "symlinks",
         TaskStatus::Changed,
         Some("2 changed, 1 already ok"),
-    );
+    )
+    .with_summary_message(true);
     let details = vec![TaskDetailEntry {
         task_id: "symlinks".to_string(),
         lines: vec![
-            "linked: ~/.bashrc".to_string(),
+            "link ~/.bashrc".to_string(),
             "2 changed, 1 already ok".to_string(),
+            "9 changed, 7 already ok".to_string(),
         ],
     }];
 
     assert_eq!(
         task_detail_lines(&details, &task),
-        vec!["linked: ~/.bashrc"]
+        vec!["link ~/.bashrc", "9 changed, 7 already ok"]
     );
 }
 
@@ -427,7 +445,7 @@ fn task_result_lines_are_flat_with_reduced_indent() {
     let task = task_entry("changed-task", TaskStatus::Changed, None);
     let details = vec![TaskDetailEntry {
         task_id: "changed-task".to_string(),
-        lines: vec!["linked: ~/.example".to_string()],
+        lines: vec!["link ~/.example".to_string()],
     }];
 
     assert_eq!(
@@ -448,7 +466,7 @@ fn task_result_lines_omit_success_reason_when_actions_are_listed() {
     );
     let details = vec![TaskDetailEntry {
         task_id: task.task_id.clone(),
-        lines: vec!["updated: cursor/plugins/pstack/skills/unslop".to_string()],
+        lines: vec!["update cursor/plugins/pstack/skills/unslop".to_string()],
     }];
 
     assert_eq!(
@@ -461,7 +479,7 @@ fn task_result_lines_omit_success_reason_when_actions_are_listed() {
 }
 
 #[test]
-fn task_result_lines_abbreviate_symlink_actions() {
+fn task_result_lines_preserve_planned_symlink_actions() {
     let mut task = task_entry("Install symlinks", TaskStatus::DryRun, None);
     task.actions = ActionCounts {
         planned: 1,
@@ -469,7 +487,7 @@ fn task_result_lines_abbreviate_symlink_actions() {
     };
     let details = vec![TaskDetailEntry {
         task_id: task.task_id.clone(),
-        lines: vec!["would link: ~/.bashrc \u{2192} symlinks/bashrc".to_string()],
+        lines: vec!["link ~/.bashrc \u{2192} symlinks/bashrc".to_string()],
     }];
 
     assert_eq!(

@@ -5,7 +5,7 @@
 use super::Logger;
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::style::stdout_style;
-use crate::infra::logging::types::TaskEntry;
+use crate::infra::logging::types::{MsgKind, TaskEntry};
 
 mod render;
 mod status;
@@ -72,7 +72,7 @@ impl Logger {
         self.begin_task_block(has_details);
         self.task_result(status_row);
         for line in detail_rows {
-            self.task_result(line);
+            self.emit_console(MsgKind::Always, line);
         }
         self.end_task_block(has_details);
     }

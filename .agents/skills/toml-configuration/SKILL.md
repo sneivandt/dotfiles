@@ -17,10 +17,10 @@ description: >
 - Structural mistakes fail deserialization. Domain-invalid values that need
   aggregated diagnostics should deserialize to an explicit parsed/invalid form
   and fail semantic validation instead.
-- Preserve the two-layer absence policy: app preflight requires the main config
+- Preserve the two-layer absence policy: the app loader requires the main config
   inventory, while reusable section loaders accept missing optional overlay
-  files. Use `load_required_config()` at a required-file boundary; do not make
-  every domain loader require an overlay file.
+  files. `ConfigLoader` owns this policy through `read_config`; domain decoders
+  consume its already parsed `ConfigDocument` and never reopen a file.
 - Keep deterministic order where output or diagnostics expose it.
 
 ## Category sections
@@ -35,7 +35,7 @@ items = ["example"]
 Every category must be active. Do not use dotted names; TOML interprets them as
 nested tables. The built-in tags are `base`, `desktop`, `linux`, `windows`,
 `arch`, and `wsl`; preflight rejects unknown, empty, and repeated tags. Add a
-new tag to the profile resolver and preflight inventory before using it in TOML.
+new tag to the profile resolver's known categories before using it in TOML.
 
 Prefer `config_section!` and `SectionLoader` for ordinary category-filtered,
 overlay-aware lists. Loaders return typed desired state and contain no task
@@ -44,17 +44,18 @@ behavior.
 ## Extend the schema completely
 
 Follow the [aggregate loader](../../../cli/src/app/config/mod.rs) and
-[preflight inventories](../../../cli/src/app/config/preflight.rs). For a new
-section, update the typed model, required/category inventories where applicable,
+[category validation](../../../cli/src/app/config/preflight.rs). For a new
+section, update the typed model and required inventory where applicable,
 `SectionLoader` collection, config/handle inventory, semantic validation, real
 data, fixtures, and owning task. Do not copy a hand-written public/overlay merge.
 
 Preserve public-then-overlay ordering and per-entry provenance for source paths.
 Overlay lists append; they are not a generic last-writer-wins override. Test
 conflicting desired values rather than silently selecting one.
-Use `SectionLoader::collect` for unfiltered lists and its filtered adapter for
-active categories; both apply post-processing to each originating batch before
-append. Do not rebuild a separate provenance loop for validation-only inputs.
+Use `SectionLoader::collect_views` when both active and unfiltered validation
+inputs are needed. It decodes each source once and stamps origins before deriving
+the views. Use `collect_filtered` for active-only lists and `collect` for registry
+values. Preserve source spans when decoding; do not reparse to recover diagnostics.
 
 Cover unknown fields, malformed types, optional overlay absence, required main
 absence, category inclusion/exclusion, and merged data. Use the TOML checks in

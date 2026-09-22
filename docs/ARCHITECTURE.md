@@ -184,11 +184,14 @@ main TOML load ---- overlay TOML load
          catalog tasks
 ```
 
-Each domain owns its parser and typed records. The app-level loader guarantees
+Each domain owns its typed decoder and records. Each configuration file is read
+and parsed once into a `ConfigDocument`; category validation and typed decoding
+share that parsed tree, including source spans for errors. The app-level loader guarantees
 that supported overlay sections are merged consistently. `SectionLoader::collect`
 appends main then overlay batches and applies provenance with each batch's
-originating root. Filtered task inputs and unfiltered validation inputs share
-this path; overlay-only scripts remain an explicit exception.
+originating root. `collect_views` derives filtered task inputs and unfiltered
+validation inputs from one decoded batch; active symlink globs expand afterward.
+Overlay-only scripts remain an explicit exception.
 
 Structural preflight, conflicting symlink targets, and contradictory active
 Git/registry values fail loading. Other semantic diagnostics remain available
@@ -292,8 +295,11 @@ The append-only log keeps its timestamped text envelope. `record` events contain
 schema-versioned JSON with typed run, task, action, duration, and command facts.
 Multiline messages are encoded as records rather than flattened. The viewer
 renders known records, preserves unknown records, and supports legacy text logs.
-`--raw` exposes stored records. Shared resource mutations emit typed actions;
-older domain messages retain their formatting fallback during migration.
+`--raw` exposes stored records. Resource and domain action producers emit typed
+actions with ready-to-render imperative messages. Only consecutive typed actions
+are sorted; other messages remain ordering barriers. Aggregate counter messages
+and task-result reasons are explicitly classified, not recognized from English
+text. Persistent records remain chronological and retain those counters.
 
 Command capture defaults to retaining failed streams and successful stderr;
 successful stdout gets a byte count. `CommandSpec::output_log` allows full capture
@@ -301,7 +307,9 @@ or omission, independently of argument redaction. Omission also removes streams
 from checked-command errors. Failure rows keep a concise cause while retained
 logs contain the full diagnostic chain. The failure hint names an exact retained
 run and appears only while its log is healthy. The newest 50 process logs are
-retained; log viewing does not create another run.
+retained; log viewing does not create another run. Starting a run no longer deletes
+logs from the obsolete cache location; retention applies only to the current log
+directory.
 
 ## Extending the system
 

@@ -2,6 +2,7 @@
 use anyhow::Result;
 use serde::Deserialize;
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
@@ -76,17 +77,22 @@ struct RegistrySection {
 /// Unlike symlinks, packages, and units, registry entries are **not**
 /// category-filtered: every entry in `registry.toml` is returned regardless of
 /// the active profile or platform categories. This is intentional — the file is
-/// only read on Windows (its sole consumer is the Windows registry task), so a
-/// platform tag would be redundant, and there is currently no need to scope
-/// individual entries by profile. Callers receive the full set and apply it
-/// wholesale.
+/// only applied on Windows, so a platform tag would be redundant, and there is
+/// currently no need to scope individual entries by profile. The app still
+/// decodes the file on other platforms to reject structural mistakes.
 ///
 /// # Errors
 ///
 /// Returns an error if the file exists but cannot be parsed.
-pub fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
-    let config: BTreeMap<String, RegistrySection> = toml_loader::load_optional_config(path)?;
+#[cfg(test)]
+fn load(path: &Path) -> Result<Vec<RegistryEntry>> {
+    toml_loader::with_optional_document(path, decode)
+}
 
+/// Decode registry values from the shared parsed document.
+pub(crate) fn decode(document: &toml_loader::ConfigDocument<'_>) -> Result<Vec<RegistryEntry>> {
+    let path = &document.path;
+    let config: BTreeMap<String, RegistrySection> = document.deserialize()?;
     Ok(config
         .into_iter()
         .flat_map(|(section_name, section)| {

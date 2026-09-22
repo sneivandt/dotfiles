@@ -16,8 +16,9 @@ pub(super) fn preview_apm_update(ctx: &Context, targets: ManagedTargets) -> Resu
                     "use APM's update plan to advance dependencies to their latest matching refs",
                 );
             } else {
-                for detail in plan {
-                    ctx.log().dry_run(detail);
+                for (verb, subject) in plan {
+                    ctx.log()
+                        .action(verb, &subject, true, &format!("{verb} {subject}"));
                 }
             }
             targets.preview(ctx, ManagedTargetPreview::Update);
@@ -27,9 +28,9 @@ pub(super) fn preview_apm_update(ctx: &Context, targets: ManagedTargets) -> Resu
     }
 }
 
-fn describe_update_plan(stdout: &str) -> Vec<String> {
+fn describe_update_plan(stdout: &str) -> Vec<(&'static str, String)> {
     let mut in_plan = false;
-    let mut details: Vec<String> = Vec::new();
+    let mut details: Vec<(&str, String)> = Vec::new();
     for line in stdout.lines().map(str::trim) {
         if line == "[i] Update plan for apm.yml" {
             in_plan = true;
@@ -40,27 +41,23 @@ fn describe_update_plan(stdout: &str) -> Vec<String> {
         }
 
         if let Some(reference) = line.strip_prefix("ref: ") {
-            if let Some(detail) = details.last_mut() {
+            if let Some((_, detail)) = details.last_mut() {
                 detail.push_str(" · ref ");
                 detail.push_str(reference);
             }
             continue;
         }
 
-        let action = [
-            ("[+] ", "would install: "),
-            ("[-] ", "would remove: "),
-            ("[~] ", "would update: "),
-        ]
-        .into_iter()
-        .find_map(|(prefix, action)| line.strip_prefix(prefix).map(|name| (action, name)));
+        let action = [("[+] ", "install"), ("[-] ", "remove"), ("[~] ", "update")]
+            .into_iter()
+            .find_map(|(prefix, action)| line.strip_prefix(prefix).map(|name| (action, name)));
         let Some((action, name)) = action else {
             continue;
         };
         if matches!(name, "updated" | "installed" | "removed") {
             continue;
         }
-        details.push(format!("{action}{name}"));
+        details.push((action, name.to_string()));
     }
     details
 }
@@ -90,10 +87,14 @@ mod tests {
         assert_eq!(
             describe_update_plan(stdout),
             [
-                "would update: cursor/plugins/pstack/skills/unslop · ref - -> main (efa2a53 -> \
-                 93b00b8)",
-                "would install: example/new-plugin",
-                "would remove: example/old-plugin",
+                (
+                    "update",
+                    "cursor/plugins/pstack/skills/unslop · ref - -> main (efa2a53 -> \
+                 93b00b8)"
+                        .to_string()
+                ),
+                ("install", "example/new-plugin".to_string()),
+                ("remove", "example/old-plugin".to_string()),
             ]
         );
     }

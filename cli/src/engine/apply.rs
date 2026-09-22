@@ -25,7 +25,7 @@ pub(super) fn process_single<R: Resource>(
     let mut delta = TaskStats::new();
     match plan.operation() {
         ApplyOperation::Noop => {
-            ctx.debug_fmt(|| format!("ok: {}", plan.description()));
+            ctx.debug_fmt(|| format!("ok {}", plan.description()));
             delta.record(ItemOutcome::AlreadyOk);
         }
         ApplyOperation::Skip { reason, kind } => {

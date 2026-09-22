@@ -18,8 +18,7 @@ fn buffered_fixture() -> (
 }
 /// Build a buffered entry of the given kind for replay assertions.
 fn entry(kind: MsgKind, msg: &str) -> LogEntry {
-    LogEntry {
-        action: false,
+    LogEntry::Message {
         kind,
         msg: msg.to_string(),
     }
@@ -68,6 +67,7 @@ fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
             (MsgKind::Stage, "stage"),
             (MsgKind::TaskStage, "stage"),
             (MsgKind::Info, "info"),
+            (MsgKind::Summary, "info"),
             (MsgKind::Debug, "debug"),
             (MsgKind::Context, "debug"),
             (MsgKind::Trace, "debug"),
@@ -95,7 +95,7 @@ fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
                 previous = position;
             }
         }
-        assert_eq!(buf.entries.lock().unwrap().len(), 11);
+        assert_eq!(buf.entries.lock().unwrap().len(), 12);
         let before_flush = fs::read_to_string(log.log_path().unwrap()).unwrap();
         buf.flush();
         buf.flush();
@@ -116,12 +116,12 @@ fn completion_order_and_action_barriers_survive_buffered_flush() {
         let log = Arc::new(log);
         let alpha = BufferedLog::new(Arc::clone(&log));
         let beta = BufferedLog::new(Arc::clone(&log));
-        alpha.info("linked: z");
-        alpha.info("linked: a");
+        alpha.action("link", "z", false, "link z");
+        alpha.action("link", "a", false, "link a");
         alpha.info("context");
-        alpha.info("installed: z");
-        alpha.info("installed: a");
-        beta.info("configured: b");
+        alpha.action("install", "z", false, "install z");
+        alpha.action("install", "a", false, "install a");
+        beta.action("configure", "b", false, "configure b");
 
         for (buf, name) in [(&beta, "beta"), (&alpha, "alpha")] {
             buf.record_task(task_entry(
@@ -141,24 +141,60 @@ fn completion_order_and_action_barriers_survive_buffered_flush() {
         );
         let details = log.lock_task_details().clone();
         assert_eq!(details[0].task_id, "beta");
-        assert_eq!(details[0].lines, ["configured: b"]);
+        assert_eq!(details[0].lines, ["configure b"]);
         assert_eq!(details[1].task_id, "alpha");
         assert_eq!(
             details[1].lines,
-            [
-                "linked: a",
-                "linked: z",
-                "context",
-                "installed: a",
-                "installed: z"
-            ],
+            ["link a", "link z", "context", "install a", "install z"],
             "only consecutive action runs may be reordered"
         );
         let contents = fs::read_to_string(log.log_path().unwrap()).unwrap();
         assert!(
-            contents.find("linked: z").unwrap() < contents.find("linked: a").unwrap(),
+            contents.find("link z").unwrap() < contents.find("link a").unwrap(),
             "console sorting must not reorder chronological run-log events"
         );
+        for message in ["link z", "link a", "install z", "install a", "configure b"] {
+            assert_eq!(
+                contents.matches(message).count(),
+                1,
+                "{message}: completed-task replay must not duplicate persistent actions"
+            );
+        }
+    }
+}
+
+#[test]
+fn only_typed_actions_sort_and_only_typed_summaries_are_hidden() {
+    let (_buf, log, _tmp, _guard) = buffered_fixture();
+    let mut entries = vec![
+        LogEntry::action("refresh", "z", false, "refresh z"),
+        LogEntry::action("refresh", "a", false, "refresh a"),
+        entry(MsgKind::Info, "installed: z"),
+        entry(MsgKind::Info, "installed: a"),
+        LogEntry::action("link", "z", true, "link z"),
+        entry(MsgKind::Warn, "ordering barrier"),
+        LogEntry::action("link", "a", true, "link a"),
+    ];
+    LogEntry::sort_actions(&mut entries);
+    assert_eq!(
+        entries.iter().map(LogEntry::message).collect::<Vec<_>>(),
+        [
+            "refresh a",
+            "refresh z",
+            "installed: z",
+            "installed: a",
+            "link z",
+            "ordering barrier",
+            "link a"
+        ]
+    );
+    for message in ["3 changed, 1 already ok", "arbitrary counter wording"] {
+        let info = entry(MsgKind::Info, message);
+        assert!(info.replay_verbose(&log, None));
+        assert_eq!(info.detail_line(TaskStatus::Changed), Some(message));
+        let summary = entry(MsgKind::Summary, message);
+        assert!(!summary.replay_verbose(&log, None));
+        assert_eq!(summary.detail_line(TaskStatus::Changed), None);
     }
 }
 
@@ -186,7 +222,8 @@ fn buffered_log_recovers_from_a_poisoned_entry_lock() {
         "poison recovery should preserve new entries"
     );
     assert_eq!(
-        entries[0].msg, "recorded after poison",
+        entries[0].message(),
+        "recorded after poison",
         "the post-poison entry should be buffered"
     );
     drop(entries);
@@ -213,6 +250,7 @@ fn buffered_presentation_golden_matrix() {
         (MsgKind::Stage, false, false, false),
         (MsgKind::TaskStage, false, false, false),
         (MsgKind::Info, true, false, true),
+        (MsgKind::Summary, false, false, false),
         (MsgKind::Debug, true, false, false),
         (MsgKind::Context, true, false, false),
         (MsgKind::Trace, false, false, false),
@@ -258,7 +296,6 @@ fn buffered_presentation_golden_matrix() {
         "skipping: reason",
         "failed: reason",
         "interrupted: reason",
-        "3 changed, 1 already ok",
     ] {
         assert!(
             !entry(MsgKind::Info, message).replay_verbose(&log, Some("reason")),
@@ -308,7 +345,7 @@ fn flush_and_complete_replays_stage_before_info() {
     // execute() calls ctx.log().stage() first, then run() calls ctx.log().info()
     // via stats.finish() before returning Ok.
     buf.stage("install-task");
-    buf.info("0 changed, 37 already ok");
+    buf.summary("0 changed, 37 already ok");
 
     buf.flush_and_complete("install-task", "install-task", TaskStatus::Ok);
 
@@ -341,7 +378,7 @@ fn flush_and_complete_replays_stage_after_progress_clear() {
 
     let buf = BufferedLog::new(Arc::clone(&log));
     buf.stage("parallel-task");
-    buf.info("0 changed, 1 already ok");
+    buf.summary("0 changed, 1 already ok");
 
     buf.flush_and_complete("parallel-task", "parallel-task", TaskStatus::Ok);
 
@@ -384,7 +421,7 @@ fn verbose_flush_keeps_not_applicable_task_output_off_console() {
 fn verbose_flush_keeps_unchanged_task_output_off_console() {
     let (buf, log, _tmp, _guard) = buffered_fixture();
     buf.task_stage("current-task");
-    buf.info("0 changed, 1 already ok");
+    buf.summary("0 changed, 1 already ok");
 
     buf.flush_and_complete("current-task", "current-task", TaskStatus::Ok);
 

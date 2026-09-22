@@ -26,7 +26,10 @@ pub(super) fn read_lock_snapshot(path: &Path) -> Result<Option<Vec<u8>>> {
 /// unchanged packages as state changes. Unknown lock fields remain part of the
 /// comparison so a newer APM can still produce a conservative metadata-change
 /// description instead of silently hiding a dependency change.
-pub(super) fn describe_lock_changes(before: Option<&[u8]>, after: Option<&[u8]>) -> Vec<String> {
+pub(super) fn describe_lock_changes(
+    before: Option<&[u8]>,
+    after: Option<&[u8]>,
+) -> Vec<(&'static str, String)> {
     let Some(before) = parse_locked_dependencies(before) else {
         return Vec::new();
     };
@@ -37,10 +40,10 @@ pub(super) fn describe_lock_changes(before: Option<&[u8]>, after: Option<&[u8]>)
     let keys: BTreeSet<&String> = before.keys().chain(after.keys()).collect();
     keys.into_iter()
         .filter_map(|key| match (before.get(key), after.get(key)) {
-            (None, Some(dependency)) => Some(format!("installed: {}", dependency.display_name())),
-            (Some(dependency), None) => Some(format!("removed: {}", dependency.display_name())),
+            (None, Some(dependency)) => Some(("install", dependency.display_name())),
+            (Some(dependency), None) => Some(("remove", dependency.display_name())),
             (Some(before), Some(after)) if before != after => {
-                Some(describe_dependency_update(before, after))
+                Some(("update", describe_dependency_update(before, after)))
             }
             (Some(_), Some(_)) | (None, None) => None,
         })
@@ -158,16 +161,12 @@ fn describe_dependency_update(before: &LockedDependency, after: &LockedDependenc
     }
     if changes.is_empty() {
         if before.source_identity() != after.source_identity() {
-            return format!("updated: {}", after.display_name());
+            return after.display_name();
         }
         changes.push("lock metadata changed".to_string());
     }
 
-    format!(
-        "updated: {} · {}",
-        after.display_name(),
-        changes.join(" · ")
-    )
+    format!("{} · {}", after.display_name(), changes.join(" · "))
 }
 
 fn display_value(value: Option<&str>) -> &str {
@@ -269,10 +268,12 @@ dependencies:
 
         assert_eq!(
             describe_lock_changes(Some(before), Some(after)),
-            [
-                "updated: cursor/plugins/pstack/skills/unslop · ref - -> main · commit \
+            [(
+                "update",
+                "cursor/plugins/pstack/skills/unslop · ref - -> main · commit \
                  efa2a53 -> 93b00b8"
-            ]
+                    .to_string()
+            )]
         );
     }
 
@@ -302,9 +303,9 @@ dependencies:
 ";
 
         let changes = describe_lock_changes(Some(before), Some(after));
-        assert!(changes.contains(&"removed: old-plugin".to_string()));
-        assert!(changes.contains(&"installed: new-plugin".to_string()));
-        assert!(changes.contains(&"updated: dot-agent · content changed".to_string()));
+        assert!(changes.contains(&("remove", "old-plugin".to_string())));
+        assert!(changes.contains(&("install", "new-plugin".to_string())));
+        assert!(changes.contains(&("update", "dot-agent · content changed".to_string())));
     }
 
     #[test]
@@ -323,7 +324,7 @@ dependencies:
 
         assert_eq!(
             describe_lock_changes(Some(before), Some(after)),
-            ["updated: cursor/plugins/pstack/skills/unslop"]
+            [("update", "cursor/plugins/pstack/skills/unslop".to_string())]
         );
     }
 

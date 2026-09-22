@@ -76,8 +76,14 @@ config_section! {
 }
 
 /// Load every configured entry without applying category selectors.
-pub(crate) fn load_all(path: &Path) -> Result<Vec<SystemFile>> {
-    crate::infra::config::toml_loader::load_section_unfiltered::<Section>(path)
+#[cfg(test)]
+fn load_all(path: &Path) -> Result<Vec<SystemFile>> {
+    Ok(
+        crate::infra::config::toml_loader::with_optional_document(path, decode)?
+            .into_iter()
+            .flat_map(|(_, items)| items)
+            .collect(),
+    )
 }
 
 /// TOML filename that backs this config section.

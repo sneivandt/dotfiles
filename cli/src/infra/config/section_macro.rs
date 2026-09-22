@@ -1,10 +1,9 @@
 //! The [`config_section!`] macro for declaring configuration sections.
 
-/// Define a [`ConfigSection`](helpers::toml_loader::ConfigSection) implementation
-/// and `load()` function with minimal boilerplate.
+/// Define a typed decoder for category-keyed configuration lists.
 ///
-/// Generates an internal section struct, the `ConfigSection` trait impl,
-/// and a public `load()` function that filters by active categories.
+/// Generates an internal section struct, a decoder for parsed documents,
+/// and a test-only path loader that filters by active categories.
 ///
 /// Supports identity mapping (`ty`) and explicit entry-to-item mapping
 /// (`entry`, `item`, `map`) variants.
@@ -48,29 +47,33 @@ macro_rules! config_section {
             entries: Vec<$entry>,
         }
 
-        impl $crate::infra::config::toml_loader::ConfigSection for Section {
-            type Entry = $entry;
-            type Item = $item;
-
-            fn extract(self) -> Vec<$entry> {
-                self.entries
-            }
-
-            fn map($param: $entry) -> $item {
-                $map_expr
-            }
-        }
-
         /// Load items from the TOML config file, filtered by active categories.
         ///
         /// # Errors
         ///
         /// Returns an error if the file exists but cannot be parsed.
-        pub fn load(
+        #[cfg(test)]
+        fn load(
             path: &::std::path::Path,
             active_categories: &[$crate::infra::config::category_matcher::Category],
         ) -> ::anyhow::Result<Vec<$item>> {
-            $crate::infra::config::toml_loader::load_section::<Section>(path, active_categories)
+            Ok($crate::infra::config::toml_loader::filter_by_categories(
+                $crate::infra::config::toml_loader::with_optional_document(path, decode)?,
+                active_categories,
+            ))
+        }
+
+        /// Decode all category sections from the already parsed document.
+        pub(crate) fn decode(
+            document: &$crate::infra::config::toml_loader::ConfigDocument<'_>,
+        ) -> ::anyhow::Result<Vec<(String, Vec<$item>)>> {
+            document.section_items(|section: Section| {
+                section
+                    .entries
+                    .into_iter()
+                    .map(|$param| $map_expr)
+                    .collect()
+            })
         }
     };
 }

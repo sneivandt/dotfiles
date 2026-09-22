@@ -5,10 +5,9 @@
 //! summary details) separate from the buffering and flush orchestration.
 
 use crate::infra::logging::logger::Logger;
+use crate::infra::logging::runlog::RunLog;
 use crate::infra::logging::types::{MsgKind, TaskStatus};
-use crate::infra::logging::utils::{
-    compact_detail_line, duplicates_task_message, is_redundant_detail,
-};
+use crate::infra::logging::utils::duplicates_task_message;
 
 /// A single buffered console entry, replayed when the task completes.
 ///
@@ -16,19 +15,71 @@ use crate::infra::logging::utils::{
 /// already recorded in the run log at the moment it is produced, so replay is
 /// purely a console-rendering concern.
 #[derive(Debug, Clone)]
-pub(super) struct LogEntry {
-    /// What kind of message this is.
-    pub(super) kind: MsgKind,
-    /// The message text, with the caller's allocation taken over.
-    pub(super) msg: String,
-    /// Explicit action classification for new producers; older messages retain their fallback.
-    pub(super) action: bool,
+pub(in crate::infra::logging) enum LogEntry {
+    Message {
+        kind: MsgKind,
+        msg: String,
+    },
+    Action {
+        verb: String,
+        subject: String,
+        planned: bool,
+        message: String,
+    },
 }
 
 impl LogEntry {
+    pub(in crate::infra::logging) fn action(
+        verb: &str,
+        subject: &str,
+        planned: bool,
+        message: &str,
+    ) -> Self {
+        Self::Action {
+            verb: verb.into(),
+            subject: subject.into(),
+            planned,
+            message: message.into(),
+        }
+    }
+
+    pub(in crate::infra::logging) const fn kind(&self) -> MsgKind {
+        match self {
+            Self::Message { kind, .. } => *kind,
+            Self::Action { planned: true, .. } => MsgKind::DryRun,
+            Self::Action { planned: false, .. } => MsgKind::Info,
+        }
+    }
+
+    pub(in crate::infra::logging) fn message(&self) -> &str {
+        match self {
+            Self::Message { msg, .. } => msg,
+            Self::Action { message, .. } => message,
+        }
+    }
+
+    pub(in crate::infra::logging) fn persist(&self, log: &RunLog) {
+        match self {
+            Self::Message { kind, msg } => log.emit(kind.log_event(), msg),
+            Self::Action {
+                verb,
+                subject,
+                planned,
+                message,
+            } => log.record_action(verb, subject, *planned, message),
+        }
+    }
+
+    /// Sort only consecutive actions; messages remain ordering barriers.
+    pub(super) fn sort_actions(entries: &mut [Self]) {
+        for actions in entries.split_mut(|entry| matches!(entry, Self::Message { .. })) {
+            actions.sort_by(|left, right| left.message().cmp(right.message()));
+        }
+    }
+
     /// Replay this entry to the console.
-    pub(super) fn replay(&self, logger: &Logger) {
-        logger.emit_console(self.kind, &self.msg);
+    pub(in crate::infra::logging) fn replay(&self, logger: &Logger) {
+        logger.emit_console(self.kind(), self.message());
     }
 
     /// Replay this entry as verbose task detail, reporting whether it printed.
@@ -38,30 +89,30 @@ impl LogEntry {
     /// its reason (already on the status row) and its aggregate counters
     /// (already implied by the per-item lines around them).
     ///
-    /// Action lines are compacted exactly as the summary compacts them, so a
-    /// verbose run and a non-verbose run describe the same action identically.
+    /// Action messages already have their console form, shared with completed rows.
     pub(super) fn replay_verbose(&self, logger: &Logger, task_message: Option<&str>) -> bool {
         if matches!(
-            self.kind,
-            MsgKind::TaskStage | MsgKind::Stage | MsgKind::Trace
-        ) || is_redundant_detail(&self.msg, task_message)
+            self.kind(),
+            MsgKind::TaskStage | MsgKind::Stage | MsgKind::Trace | MsgKind::Summary
+        ) || duplicates_task_message(self.message(), task_message)
         {
             return false;
         }
-        logger.emit_console(self.kind, &compact_detail_line(&self.msg));
+        logger.emit_console(self.kind(), self.message().trim_start());
         true
     }
 
     /// The summary detail line contributed by this entry, if any.
     pub(super) fn detail_line(&self, status: TaskStatus) -> Option<&str> {
-        match self.kind {
-            MsgKind::Info | MsgKind::DryRun | MsgKind::Always => Some(&self.msg),
-            MsgKind::Warn | MsgKind::Error if status == TaskStatus::Failed => Some(&self.msg),
+        match self.kind() {
+            MsgKind::Info | MsgKind::DryRun | MsgKind::Always => Some(self.message()),
+            MsgKind::Warn | MsgKind::Error if status == TaskStatus::Failed => Some(self.message()),
             MsgKind::Stage
             | MsgKind::TaskStage
             | MsgKind::Debug
             | MsgKind::Context
             | MsgKind::Trace
+            | MsgKind::Summary
             | MsgKind::Startup
             | MsgKind::Warn
             | MsgKind::Error => None,
@@ -81,8 +132,8 @@ impl LogEntry {
         task_message: Option<&str>,
     ) -> bool {
         status != TaskStatus::Failed
-            && matches!(self.kind, MsgKind::Warn | MsgKind::Error)
-            && !duplicates_task_message(&self.msg, task_message)
+            && matches!(self.kind(), MsgKind::Warn | MsgKind::Error)
+            && !duplicates_task_message(self.message(), task_message)
     }
 }
 

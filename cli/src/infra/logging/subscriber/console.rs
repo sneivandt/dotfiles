@@ -70,7 +70,7 @@ pub(super) fn ui_line_with_style(
         MsgKind::Stage | MsgKind::TaskStage => verbose.then_some(msg),
         MsgKind::Info | MsgKind::Debug => verbose.then(|| format!("  {msg}")),
         MsgKind::Context => verbose.then(|| style.paint(TextStyle::Dim, &msg)),
-        MsgKind::Trace => None,
+        MsgKind::Trace | MsgKind::Summary => None,
         MsgKind::Warn => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
         MsgKind::Error => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
         MsgKind::DryRun => Some(format!("  {msg}")),

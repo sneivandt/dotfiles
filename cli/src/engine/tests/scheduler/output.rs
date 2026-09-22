@@ -11,8 +11,9 @@ impl Task for DetailTask {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        ctx.log().info("installed: demo-package");
-        Ok(TaskStats::changed_with_message("1 changed, 0 already ok").finish())
+        ctx.log()
+            .action("install", "demo-package", false, "install demo-package");
+        Ok(TaskStats::changed().finish())
     }
 }
 
@@ -64,7 +65,7 @@ fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
                     );
                 }
                 assert_eq!(
-                    contents.matches("installed: demo-package").count(),
+                    contents.matches("install demo-package").count(),
                     1,
                     "task details must not repeat in the final file summary: {contents}"
                 );

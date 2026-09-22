@@ -8,9 +8,7 @@ use super::totals::SummaryMode;
 use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::{StyleChoice, TextStyle};
 use crate::infra::logging::types::{TaskEntry, TaskResultDisplay, TaskStatus};
-use crate::infra::logging::utils::{
-    compact_detail_line, format_elapsed, is_redundant_detail, is_stats_summary, sort_action_runs,
-};
+use crate::infra::logging::utils::{duplicates_task_message, format_elapsed};
 
 /// Rendering options for a single task row.
 #[derive(Clone, Copy, Debug)]
@@ -53,17 +51,11 @@ pub(super) fn task_result_lines(
 
 /// Render the indented action lines shown beneath a task's status row.
 fn detail_rows(details: &[TaskDetailEntry], task: &TaskEntry, opts: RowOpts) -> Vec<String> {
-    let mut lines: Vec<String> = task_detail_lines(details, task)
+    task_detail_lines(details, task)
         .iter()
         .flat_map(|detail| detail.lines())
         .filter(|line| !line.trim().is_empty())
-        .filter(|line| !is_stats_summary(line))
-        .map(compact_detail_line)
-        .collect();
-    sort_action_runs(&mut lines, String::as_str);
-    lines
-        .iter()
-        .map(|line| indented(line, opts.style))
+        .map(|line| indented(line.trim_start(), opts.style))
         .collect()
 }
 
@@ -133,12 +125,14 @@ fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bo
 /// Later lines of a multi-line message (error chains, for example) stay in the
 /// indented block so the row itself remains one screen line.
 fn row_reason(task: &TaskEntry) -> Option<&str> {
+    if task.message_is_summary {
+        return None;
+    }
     task.message
         .as_deref()
         .map(|message| message.lines().next().unwrap_or(message))
         .map(str::trim)
         .filter(|reason| !reason.is_empty())
-        .filter(|reason| !is_stats_summary(reason))
 }
 
 pub(super) fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<String> {
@@ -147,7 +141,7 @@ pub(super) fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -
         .iter()
         .filter(|entry| entry.task_id == task.task_id)
         .flat_map(|entry| entry.lines.iter())
-        .filter(|line| !is_redundant_detail(line, task_message))
+        .filter(|line| !duplicates_task_message(line, task_message))
         .filter(|line| Some(line.as_str()) != row_reason(task))
         .cloned()
         .collect()

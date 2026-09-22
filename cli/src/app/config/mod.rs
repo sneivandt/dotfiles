@@ -49,6 +49,7 @@ use crate::domains::git::config::git_config;
 use crate::domains::overlay::config::scripts;
 use crate::domains::packages::config::packages;
 use crate::domains::system::config::{registry, system_files, systemd_units};
+use crate::infra::config::toml_loader::{ConfigDocument, filter_by_categories, read_config};
 use crate::infra::config::{Diagnostic, category_matcher};
 use crate::infra::platform::Platform;
 
@@ -77,11 +78,36 @@ struct ConfigLoader<'a> {
 }
 
 impl ConfigLoader<'_> {
-    fn load<T>(&self, file: &str, loader: impl FnOnce(&Path) -> Result<T>) -> Result<T> {
+    fn structural<T>(&self, path: &Path, result: Result<T>) -> Result<T> {
+        match self.source {
+            ConfigSource::Main => result,
+            ConfigSource::Overlay => result
+                .with_context(|| format!("Invalid configuration in overlay {}", path.display())),
+        }
+    }
+
+    fn load<T>(
+        &self,
+        file: &str,
+        loader: impl FnOnce(&ConfigDocument<'_>) -> Result<T>,
+    ) -> Result<T> {
         let path = self.root.join("conf").join(file);
-        loader(&path).with_context(|| match self.source {
-            ConfigSource::Main => format!("Invalid syntax in {}", path.display()),
-            ConfigSource::Overlay => format!("Invalid syntax in overlay {}", path.display()),
+        let content = self.structural(
+            &path,
+            read_config(&path, matches!(self.source, ConfigSource::Main)),
+        )?;
+        let document = self.structural(&path, ConfigDocument::parse(&path, &content))?;
+        if file != registry::REGISTRY_TOML {
+            self.structural(
+                &path,
+                preflight::validate_category_sections(&document, profiles::KNOWN_CATEGORIES),
+            )?;
+        }
+        loader(&document).with_context(|| match self.source {
+            ConfigSource::Main => format!("Invalid syntax in {}", document.path.display()),
+            ConfigSource::Overlay => {
+                format!("Invalid syntax in overlay {}", document.path.display())
+            }
         })
     }
 }
@@ -117,21 +143,30 @@ impl<'a> SectionLoader<'a> {
     fn collect_filtered<T>(
         &self,
         file: &str,
-        load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
+        decode: impl Fn(&ConfigDocument<'_>) -> Result<Vec<(String, Vec<T>)>>,
     ) -> Result<Vec<T>> {
-        self.collect_filtered_post(file, load, |_, _| {})
+        self.collect(
+            file,
+            |document| Ok(filter_by_categories(decode(document)?, self.active)),
+            |_, _| {},
+        )
     }
 
-    /// Like [`collect_filtered`](Self::collect_filtered) but applies `post` to
-    /// each batch using its originating root, so main and overlay items keep
-    /// the correct provenance (used by symlinks to set their origin).
-    fn collect_filtered_post<T>(
+    /// Decode once and derive active and validation views with identical origins.
+    fn collect_views<T: Clone>(
         &self,
         file: &str,
-        load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
+        decode: impl Fn(&ConfigDocument<'_>) -> Result<Vec<(String, Vec<T>)>>,
         post: impl Fn(&mut [T], &Path),
-    ) -> Result<Vec<T>> {
-        self.collect(file, |path| load(path, self.active), post)
+    ) -> Result<(Vec<T>, Vec<T>)> {
+        let sections = self.collect(file, decode, |sections, root| {
+            for (_, items) in sections {
+                post(items, root);
+            }
+        })?;
+        let active = filter_by_categories(sections.clone(), self.active);
+        let all = sections.into_iter().flat_map(|(_, items)| items).collect();
+        Ok((active, all))
     }
 
     /// Append main then overlay items, post-processing each batch with its
@@ -139,7 +174,7 @@ impl<'a> SectionLoader<'a> {
     fn collect<T>(
         &self,
         file: &str,
-        load: impl Fn(&Path) -> Result<Vec<T>>,
+        load: impl Fn(&ConfigDocument<'_>) -> Result<Vec<T>>,
         post: impl Fn(&mut [T], &Path),
     ) -> Result<Vec<T>> {
         let mut items = Vec::new();
@@ -156,11 +191,15 @@ impl<'a> SectionLoader<'a> {
     fn collect_overlay_only<T>(
         &self,
         file: &str,
-        load: fn(&Path, &[category_matcher::Category]) -> Result<Vec<T>>,
+        decode: impl Fn(&ConfigDocument<'_>) -> Result<Vec<(String, Vec<T>)>>,
     ) -> Result<Vec<T>> {
         self.overlay.as_ref().map_or_else(
             || Ok(Vec::new()),
-            |overlay| overlay.load(file, |path| load(path, self.active)),
+            |overlay| {
+                overlay.load(file, |document| {
+                    Ok(filter_by_categories(decode(document)?, self.active))
+                })
+            },
         )
     }
 }
@@ -246,35 +285,31 @@ impl Config {
         platform: Platform,
         overlay: Option<&Path>,
     ) -> Result<Self> {
-        preflight::validate(root, overlay, profiles::KNOWN_CATEGORIES)?;
         let sections = SectionLoader::new(root, overlay, profile);
 
         // Collect each section with its overlay in one call; validation lists
         // retain inactive categories and their source roots.
-        let validation_symlinks = sections.collect(
+        let (symlinks, validation_symlinks) = sections.collect_views(
             symlinks::SYMLINKS_TOML,
-            symlinks::load_all,
+            symlinks::decode,
             symlinks::set_origin,
         )?;
-        let validation_chmod = sections.collect(chmod::CHMOD_TOML, chmod::load_all, |_, _| {})?;
-        let registry = sections.collect(registry::REGISTRY_TOML, registry::load, |_, _| {})?;
+        let (chmod, validation_chmod) =
+            sections.collect_views(chmod::CHMOD_TOML, chmod::decode, |_, _| {})?;
+        let registry = sections.collect(registry::REGISTRY_TOML, registry::decode, |_, _| {})?;
         let units =
-            sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::load)?;
-        let validation_system_files = sections.collect(
+            sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::decode)?;
+        let (system_files, validation_system_files) = sections.collect_views(
             system_files::SYSTEM_FILES_TOML,
-            system_files::load_all,
+            system_files::decode,
             system_files::set_origin,
         )?;
         let mut config = Self {
             root: root.to_path_buf(),
             overlay: overlay.map(Path::to_path_buf),
             profile: profile.clone(),
-            packages: sections.collect_filtered(packages::PACKAGES_TOML, packages::load)?,
-            symlinks: sections.collect_filtered_post(
-                symlinks::SYMLINKS_TOML,
-                symlinks::load,
-                symlinks::set_origin,
-            )?,
+            packages: sections.collect_filtered(packages::PACKAGES_TOML, packages::decode)?,
+            symlinks,
             validation_symlinks,
             registry: if platform.has_registry() {
                 registry
@@ -286,23 +321,19 @@ impl Config {
             } else {
                 Vec::new()
             },
-            system_files: sections.collect_filtered_post(
-                system_files::SYSTEM_FILES_TOML,
-                system_files::load,
-                system_files::set_origin,
-            )?,
+            system_files,
             validation_system_files,
-            chmod: sections.collect_filtered(chmod::CHMOD_TOML, chmod::load)?,
+            chmod,
             validation_chmod,
             vscode_extensions: sections.collect_filtered(
                 vscode_extensions::VSCODE_EXTENSIONS_TOML,
-                vscode_extensions::load,
+                vscode_extensions::decode,
             )?,
             git_settings: sections
-                .collect_filtered(git_config::GIT_CONFIG_TOML, git_config::load)?,
+                .collect_filtered(git_config::GIT_CONFIG_TOML, git_config::decode)?,
             agent_settings: sections
-                .collect_filtered(agent_settings::AGENT_SETTINGS_TOML, agent_settings::load)?,
-            scripts: sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::load)?,
+                .collect_filtered(agent_settings::AGENT_SETTINGS_TOML, agent_settings::decode)?,
+            scripts: sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::decode)?,
         };
 
         config.symlinks = symlinks::expand_glob_patterns(&config.symlinks, root)

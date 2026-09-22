@@ -79,6 +79,8 @@ pub struct TaskEntry {
     pub status: TaskStatus,
     /// Optional detail message (e.g., skip reason or error description).
     pub message: Option<String>,
+    /// The message is aggregate counters, retained in logs but not repeated on the console.
+    pub message_is_summary: bool,
     /// Structured action totals produced by the task.
     pub actions: ActionCounts,
     /// Whether the task contributes to user-facing rows and totals.
@@ -109,6 +111,7 @@ impl TaskEntry {
             name: name.into(),
             status,
             message: message.map(str::to_string),
+            message_is_summary: false,
             actions,
             visibility,
             result_display: TaskResultDisplay::Standard,
@@ -127,6 +130,13 @@ impl TaskEntry {
     #[must_use]
     pub const fn with_result_display(mut self, result_display: TaskResultDisplay) -> Self {
         self.result_display = result_display;
+        self
+    }
+
+    /// Classify a generated counter message independently of its wording.
+    #[must_use]
+    pub const fn with_summary_message(mut self, summary: bool) -> Self {
+        self.message_is_summary = summary;
         self
     }
 
@@ -170,6 +180,8 @@ pub enum MsgKind {
     TaskStage,
     /// An informational message.
     Info,
+    /// Aggregate counters retained in the run log, not repeated on the console.
+    Summary,
     /// Diagnostic item detail; rendered on the console in verbose mode.
     Debug,
     /// De-emphasised context; rendered dim on the console in verbose mode.
@@ -207,7 +219,7 @@ impl MsgKind {
     pub(in crate::infra::logging) const fn log_event(self) -> LogEvent {
         match self {
             Self::Stage | Self::TaskStage => LogEvent::Stage,
-            Self::Info | Self::Always | Self::Startup => LogEvent::Info,
+            Self::Info | Self::Summary | Self::Always | Self::Startup => LogEvent::Info,
             Self::Debug | Self::Context | Self::Trace => LogEvent::Debug,
             Self::Warn => LogEvent::Warn,
             Self::Error => LogEvent::Error,
@@ -385,7 +397,10 @@ pub trait Output: Send + Sync {
         }
     }
 
-    /// Record an action before emitting its established console message.
+    /// Record an action and its ready-to-render console message.
+    ///
+    /// The message includes any contextual suffix; consumers do not infer action
+    /// identity or tense from it. Use the imperative form, such as `install git`.
     fn action(&self, _verb: &str, _subject: &str, planned: bool, message: &str) {
         self.emit(
             if planned {
@@ -416,6 +431,11 @@ pub trait Output: Send + Sync {
 ///
 /// Import it as `use crate::infra::logging::OutputExt as _;`.
 pub trait OutputExt: Output {
+    /// Persist aggregate counters without repeating them in console details.
+    fn summary<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+        self.emit(MsgKind::Summary, msg.into());
+    }
+
     /// Log a stage header (major section).
     fn stage<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Stage, msg.into());

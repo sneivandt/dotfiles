@@ -11,7 +11,7 @@ use crate::infra::logging::utils::duplicates_task_message;
 
 /// A single buffered console entry, replayed when the task completes.
 ///
-/// Only entries that can reach the console are buffered.  Everything is
+/// Messages and typed actions share one buffer. Everything is
 /// already recorded in the run log at the moment it is produced, so replay is
 /// purely a console-rendering concern.
 #[derive(Debug, Clone)]
@@ -82,7 +82,7 @@ impl LogEntry {
         logger.emit_console(self.kind(), self.message());
     }
 
-    /// Replay this entry as verbose task detail, reporting whether it printed.
+    /// Select the message kind and text for verbose task detail.
     ///
     /// Task-name headers are suppressed because the task status line already
     /// names the task, as are lines that only restate the task's own outcome:
@@ -90,20 +90,22 @@ impl LogEntry {
     /// (already implied by the per-item lines around them).
     ///
     /// Action messages already have their console form, shared with completed rows.
-    pub(super) fn replay_verbose(&self, logger: &Logger, task_message: Option<&str>) -> bool {
+    pub(in crate::infra::logging) fn verbose_detail(
+        &self,
+        task_message: Option<&str>,
+    ) -> Option<(MsgKind, &str)> {
         if matches!(
             self.kind(),
             MsgKind::TaskStage | MsgKind::Stage | MsgKind::Trace | MsgKind::Summary
         ) || duplicates_task_message(self.message(), task_message)
         {
-            return false;
+            return None;
         }
-        logger.emit_console(self.kind(), self.message().trim_start());
-        true
+        Some((self.kind(), self.message().trim_start()))
     }
 
     /// The summary detail line contributed by this entry, if any.
-    pub(super) fn detail_line(&self, status: TaskStatus) -> Option<&str> {
+    pub(in crate::infra::logging) fn detail_line(&self, status: TaskStatus) -> Option<&str> {
         match self.kind() {
             MsgKind::Info | MsgKind::DryRun | MsgKind::Always => Some(self.message()),
             MsgKind::Warn | MsgKind::Error if status == TaskStatus::Failed => Some(self.message()),
@@ -126,7 +128,7 @@ impl LogEntry {
     /// the task's own reason are dropped as well: that reason is already on the
     /// task's status row, and printing it again on stderr detaches it from the
     /// task it belongs to.
-    pub(super) fn is_visible_in_non_verbose(
+    pub(in crate::infra::logging) fn is_visible_in_non_verbose(
         &self,
         status: TaskStatus,
         task_message: Option<&str>,
@@ -137,7 +139,7 @@ impl LogEntry {
     }
 }
 
-pub(super) const fn should_record_task_details(status: TaskStatus) -> bool {
+pub(in crate::infra::logging) const fn should_record_task_details(status: TaskStatus) -> bool {
     matches!(
         status,
         TaskStatus::Changed

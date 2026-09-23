@@ -290,7 +290,7 @@ fn run_task_buffered(
         }
     };
 
-    buf.flush_and_complete(&task.log_key(), task.name(), execution.status);
+    buf.flush_and_complete(&task.log_key(), task.name());
     execution
 }
 

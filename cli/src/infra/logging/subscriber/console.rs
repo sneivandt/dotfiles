@@ -1,211 +1,50 @@
-//! Console event formatting and transient progress state.
-
-use std::io::IsTerminal as _;
-use std::io::Write as _;
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+//! Raw tracing diagnostics share the logger's console writer.
+use std::sync::Arc;
 
 use super::event::MessageExtractor;
-use crate::infra::logging::style::{StyleChoice, TextStyle, stderr_style, stdout_style};
+use crate::infra::logging::console::Console;
 use crate::infra::logging::types::MsgKind;
 
-/// Whether verbose console output is enabled.
-///
-/// Set once by `init_subscriber` and checked by [`DotfilesFormatter`] to
-/// decide whether stage headers and plain info messages appear on the console.
-static VERBOSE: AtomicBool = AtomicBool::new(true);
-static TRANSIENT_PROGRESS_ROWS: AtomicU16 = AtomicU16::new(0);
-
-/// Update the global verbose flag.
-///
-/// Called by `Logger::set_verbose` so that the formatter and file layer stay in
-/// sync with the logger.
-pub(in crate::infra::logging) fn set_verbose(verbose: bool) {
-    VERBOSE.store(verbose, Ordering::Relaxed);
+pub(in crate::infra::logging) struct ConsoleLayer {
+    console: Arc<Console>,
 }
 
-pub(in crate::infra::logging) fn set_transient_progress(rows: u16) {
-    TRANSIENT_PROGRESS_ROWS.store(rows, Ordering::Relaxed);
-}
-
-pub(in crate::infra::logging) fn transient_progress_rows() -> u16 {
-    TRANSIENT_PROGRESS_ROWS.load(Ordering::Relaxed)
-}
-
-pub(in crate::infra::logging) fn take_transient_progress_rows() -> u16 {
-    TRANSIENT_PROGRESS_ROWS.swap(0, Ordering::Relaxed)
-}
-
-/// A [`tracing_subscriber::fmt::FormatEvent`] that emits dotfiles-style
-/// console output.
-pub(super) struct DotfilesFormatter;
-
-pub(in crate::infra::logging) fn progress_clear_sequence(rows: u16) -> String {
-    if rows == 0 {
-        return String::new();
-    }
-
-    let mut clear = String::from("\r\x1b[K");
-    for _ in 1..usize::from(rows) {
-        clear.push_str("\x1b[1A\r\x1b[K");
-    }
-    clear
-}
-
-fn clear_transient_console_prefix() -> String {
-    if !std::io::stdout().is_terminal() {
-        return String::new();
-    }
-
-    progress_clear_sequence(take_transient_progress_rows())
-}
-
-pub(super) fn ui_line_with_style(
-    kind: MsgKind,
-    msg: &str,
-    style: StyleChoice,
-    verbose: bool,
-) -> Option<String> {
-    let msg = style.clean(msg);
-    match kind {
-        MsgKind::Stage | MsgKind::TaskStage => verbose.then_some(msg),
-        MsgKind::Info | MsgKind::Debug => verbose.then(|| format!("  {msg}")),
-        MsgKind::Context => verbose.then(|| style.paint(TextStyle::Dim, &msg)),
-        MsgKind::Trace | MsgKind::Summary => None,
-        MsgKind::Warn => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
-        MsgKind::Error => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
-        MsgKind::DryRun => Some(format!("  {msg}")),
-        MsgKind::Always => Some(msg),
-        MsgKind::Startup => Some(startup_line_with_style(&msg, style)),
+impl ConsoleLayer {
+    pub(in crate::infra::logging) const fn new(console: Arc<Console>) -> Self {
+        Self { console }
     }
 }
 
-/// Give structured startup notices a visible label while keeping their
-/// metadata subdued. Unstructured hints retain the original dim treatment.
-fn startup_line_with_style(msg: &str, style: StyleChoice) -> String {
-    let Some((label, metadata)) = msg.split_once(" · ") else {
-        return style.paint(TextStyle::Dim, msg);
-    };
-    format!(
-        "{}{}",
-        style.paint(TextStyle::Bold, label),
-        style.paint(TextStyle::Dim, &format!(" · {metadata}"))
-    )
-}
-
-pub(in crate::infra::logging) fn visible_line_is_blank(
-    kind: MsgKind,
-    msg: &str,
-    verbose: bool,
-) -> Option<bool> {
-    ui_line_with_style(kind, msg, StyleChoice::auto(false, true), verbose)
-        .map(|line| line.trim().is_empty())
-}
-
-/// Render a user-facing logger message without routing it through `tracing`.
-pub(in crate::infra::logging) fn emit_console(kind: MsgKind, msg: &str, verbose: bool) {
-    let is_error = matches!(kind, MsgKind::Warn | MsgKind::Error);
-    let style = if is_error {
-        stderr_style()
-    } else {
-        stdout_style()
-    };
-    let Some(line) = ui_line_with_style(kind, msg, style, verbose) else {
-        return;
-    };
-    let prefix = clear_transient_console_prefix();
-    if is_error {
-        let mut stream = std::io::stderr().lock();
-        drop(writeln!(stream, "{prefix}{line}"));
-    } else {
-        let mut stream = std::io::stdout().lock();
-        drop(writeln!(stream, "{prefix}{line}"));
+const fn message_kind(level: tracing::Level) -> Option<MsgKind> {
+    match level {
+        tracing::Level::ERROR => Some(MsgKind::Error),
+        tracing::Level::WARN => Some(MsgKind::Warn),
+        tracing::Level::INFO => Some(MsgKind::Info),
+        tracing::Level::DEBUG | tracing::Level::TRACE => None,
     }
 }
 
-/// Render a compact task result line.
-pub(in crate::infra::logging) fn emit_task_result(msg: &str) {
-    let line = stdout_style().clean(msg);
-    let prefix = clear_transient_console_prefix();
-    let mut stream = std::io::stdout().lock();
-    drop(writeln!(stream, "{prefix}{line}"));
-}
-
-fn console_style(level: tracing::Level) -> StyleChoice {
-    if matches!(level, tracing::Level::ERROR | tracing::Level::WARN) {
-        stderr_style()
-    } else {
-        stdout_style()
-    }
-}
-
-fn console_line(level: tracing::Level, target: &str, msg: &str) -> Option<String> {
-    console_line_with_style(
-        level,
-        target,
-        msg,
-        console_style(level),
-        VERBOSE.load(Ordering::Relaxed),
-    )
-}
-
-pub(super) fn console_line_with_style(
-    level: tracing::Level,
-    _target: &str,
-    msg: &str,
-    style: StyleChoice,
-    verbose: bool,
-) -> Option<String> {
-    let kind = match level {
-        tracing::Level::ERROR => MsgKind::Error,
-        tracing::Level::WARN => MsgKind::Warn,
-        tracing::Level::INFO => MsgKind::Info,
-        tracing::Level::DEBUG | tracing::Level::TRACE => return None,
-    };
-    ui_line_with_style(kind, msg, style, verbose)
-}
-
-impl<S, N> tracing_subscriber::fmt::FormatEvent<S, N> for DotfilesFormatter
-where
-    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
-    N: for<'a> tracing_subscriber::fmt::FormatFields<'a> + 'static,
-{
-    fn format_event(
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for ConsoleLayer {
+    fn on_event(
         &self,
-        _ctx: &tracing_subscriber::fmt::FmtContext<'_, S, N>,
-        mut writer: tracing_subscriber::fmt::format::Writer<'_>,
         event: &tracing::Event<'_>,
-    ) -> std::fmt::Result {
-        let metadata = event.metadata();
-        let level = *metadata.level();
-        let target = metadata.target();
-
-        let mut extractor = MessageExtractor::default();
-        event.record(&mut extractor);
-        let msg = &extractor.message;
-
-        let Some(line) = console_line(level, target, msg) else {
-            return Ok(());
-        };
-        write!(writer, "{}", clear_transient_console_prefix())?;
-        writeln!(writer, "{line}")
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        if let Some(kind) = message_kind(*event.metadata().level()) {
+            let mut extractor = MessageExtractor::default();
+            event.record(&mut extractor);
+            self.console.emit(kind, &extractor.message);
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn progress_clear_sequences_cover_each_row_once() {
-        for (rows, expected) in [
-            (0, ""),
-            (1, "\r\x1b[K"),
-            (2, "\r\x1b[K\x1b[1A\r\x1b[K"),
-            (3, "\r\x1b[K\x1b[1A\r\x1b[K\x1b[1A\r\x1b[K"),
-        ] {
-            assert_eq!(
-                super::progress_clear_sequence(rows),
-                expected,
-                "{rows} rows"
-            );
-        }
-    }
+pub(super) fn console_line_with_style(
+    level: tracing::Level,
+    _target: &str,
+    msg: &str,
+    style: crate::infra::logging::style::StyleChoice,
+    verbose: bool,
+) -> Option<String> {
+    crate::infra::logging::console::ui_line_with_style(message_kind(level)?, msg, style, verbose)
 }

@@ -9,47 +9,20 @@ mod tests;
 
 use std::sync::Arc;
 
-use console::DotfilesFormatter;
-pub(in crate::infra::logging) use console::{
-    emit_console, emit_task_result, progress_clear_sequence, set_transient_progress, set_verbose,
-    take_transient_progress_rows, transient_progress_rows, visible_line_is_blank,
-};
+use super::{console::Console, runlog::RunLog};
+pub(in crate::infra::logging) use console::ConsoleLayer;
 pub(in crate::infra::logging) use run_log::RunLogLayer;
 
-use super::runlog::RunLog;
-
-/// Initialise the global [`tracing`] subscriber.
-///
-/// Installs the console layer for raw `tracing` diagnostics, plus a bridge that
-/// records those events from `infra` and `domains` into `run_log`. `Logger`
-/// renders its own user-facing messages directly.
-///
-/// Must be called once at program startup, before any logging.
-pub(in crate::infra::logging) fn init_subscriber(verbose: bool, run_log: Option<Arc<RunLog>>) {
-    use tracing_subscriber::fmt::writer::MakeWriterExt as _;
+/// Capture raw diagnostics in the same console and run log used by `Logger`.
+pub(in crate::infra::logging) fn init_subscriber(
+    console: Arc<Console>,
+    run_log: Option<Arc<RunLog>>,
+) {
     use tracing_subscriber::{
-        Layer as _, filter::LevelFilter, fmt, layer::SubscriberExt as _,
-        util::SubscriberInitExt as _,
+        Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
     };
-
-    set_verbose(verbose);
-
-    let make_writer = std::io::stderr
-        .with_max_level(tracing::Level::WARN)
-        .and(std::io::stdout.with_min_level(tracing::Level::INFO));
-
-    let console_layer = fmt::layer()
-        .event_format(DotfilesFormatter)
-        .with_writer(make_writer)
-        .with_filter(if verbose {
-            // Verbose lets raw diagnostic information reach the formatter.
-            LevelFilter::DEBUG
-        } else {
-            LevelFilter::INFO
-        });
-
+    let console_layer = ConsoleLayer::new(console).with_filter(LevelFilter::INFO);
     let run_log_layer = run_log.map(|log| RunLogLayer::new(log).with_filter(LevelFilter::DEBUG));
-
     tracing_subscriber::registry()
         .with(console_layer)
         .with(run_log_layer)

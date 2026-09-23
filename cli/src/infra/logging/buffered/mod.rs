@@ -4,10 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use super::logger::{Logger, stdout_supports_progress};
 use super::runlog::RunLog;
-use super::types::{MsgKind, Output, TaskRecorder, TaskStatus};
+use super::types::{MsgKind, Output, TaskRecorder};
 pub(in crate::infra::logging) mod entry;
 
-use entry::{LogEntry, should_record_task_details};
+use entry::LogEntry;
 
 /// Buffered logger for parallel task execution.
 ///
@@ -43,7 +43,9 @@ impl BufferedLog {
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         );
         for entry in &entries {
-            if self.inner.is_verbose() || entry.is_visible_in_non_verbose(TaskStatus::Ok, None) {
+            if self.inner.is_verbose()
+                || entry.is_visible_in_non_verbose(super::types::TaskStatus::Ok, None)
+            {
                 entry.replay(&self.inner);
             }
         }
@@ -58,7 +60,7 @@ impl BufferedLog {
     ///
     /// Entries are already present in the run log, so anything not replayed
     /// here is simply not shown on the console.
-    pub fn flush_and_complete(&self, task_id: &str, task_name: &str, status: TaskStatus) {
+    pub fn flush_and_complete(&self, task_id: &str, task_name: &str) {
         let mut entries = {
             let mut guard = self
                 .entries
@@ -69,52 +71,14 @@ impl BufferedLog {
         // Parallel resource processing finishes in a nondeterministic order, so
         // sort the action lines before they reach either console path.
         LogEntry::sort_actions(&mut entries);
-        if should_record_task_details(status) {
-            let detail_lines: Vec<String> = entries
-                .iter()
-                .filter_map(|entry| entry.detail_line(status))
-                .map(ToString::to_string)
-                .collect();
-            self.inner.record_task_details(task_id, detail_lines);
-        }
-
         let show_progress = stdout_supports_progress();
         let _guard = self.inner.lock_flush();
         if show_progress {
             self.inner.clear_progress();
         }
-        let visible = self.inner.task_is_visible(task_id);
-        let task_message = self.inner.recorded_task_message(task_id);
-        let message = task_message.as_deref();
-        if !visible {
-            // Internal task: the entries live in the run log only.
-        } else if self.inner.is_verbose() && status != TaskStatus::NotApplicable {
-            // Verbose accounts for every applicable task, including the ones
-            // with nothing to do, and replays the decisions behind that outcome.
-            self.inner.emit_recorded_task_status(task_id);
-            for entry in &entries {
-                entry.replay_verbose(&self.inner, message);
-            }
-        }
+        self.inner.emit_recorded_task_result(task_id, &entries);
         self.inner.remove_active_task_locked(task_name);
         self.inner.mark_task_completed(task_id);
-        if visible && !self.inner.is_verbose() && status != TaskStatus::NotApplicable {
-            let has_followup_rows = status != TaskStatus::Ok
-                && entries
-                    .iter()
-                    .any(|entry| entry.is_visible_in_non_verbose(status, message));
-            self.inner
-                .emit_recorded_task_result(task_id, has_followup_rows);
-            // Keep warnings inside their task's block, after its status and
-            // actions, so the next separator belongs to the next task.
-            if status != TaskStatus::Ok {
-                for entry in &entries {
-                    if entry.is_visible_in_non_verbose(status, message) {
-                        entry.replay(&self.inner);
-                    }
-                }
-            }
-        }
         self.inner.redraw_active_status_locked(show_progress);
     }
 }

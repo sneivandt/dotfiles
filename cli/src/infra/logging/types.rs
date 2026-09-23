@@ -303,43 +303,6 @@ impl LogEvent {
     }
 }
 
-/// A typed event delivered to the persistent execution-log sink.
-#[derive(Debug)]
-pub(in crate::infra::logging) struct ExecutionEvent<'a> {
-    /// Semantic event kind.
-    pub(in crate::infra::logging) kind: LogEvent,
-    /// Optional explicit task or thread context.
-    pub(in crate::infra::logging) context: Option<Cow<'a, str>>,
-    /// Human-readable event message.
-    pub(in crate::infra::logging) message: Cow<'a, str>,
-}
-
-impl<'a> ExecutionEvent<'a> {
-    /// Build an event using the current task or thread context.
-    #[must_use]
-    pub const fn message(kind: LogEvent, message: Cow<'a, str>) -> Self {
-        Self {
-            kind,
-            context: None,
-            message,
-        }
-    }
-
-    /// Build an event attributed to an explicit context.
-    #[must_use]
-    pub const fn with_context(
-        kind: LogEvent,
-        context: Cow<'a, str>,
-        message: Cow<'a, str>,
-    ) -> Self {
-        Self {
-            kind,
-            context: Some(context),
-            message,
-        }
-    }
-}
-
 /// User-facing output sink.
 ///
 /// This trait covers display-oriented logging: stage headers, informational

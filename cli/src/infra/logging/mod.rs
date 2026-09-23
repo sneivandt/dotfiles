@@ -8,9 +8,12 @@
 //!   buffering keeps parallel output readable.
 //!
 //! `Logger` writes to both sinks directly. Raw `tracing` calls elsewhere in the
-//! crate reach the run log and diagnostic console through the subscriber.
+//! crate reach the same run log and console writer through the subscriber. The
+//! console writer owns spacing and transient progress state; completed task
+//! buffers are rendered once and then discarded.
 
 mod buffered;
+mod console;
 mod logger;
 pub(crate) mod records;
 mod runlog;
@@ -45,7 +48,7 @@ pub fn init(verbose: bool, symbols: bool, command: &str) -> Logger {
     let mut log = Logger::new(command);
     log.set_verbose(verbose);
     log.set_symbols(symbols);
-    subscriber::init_subscriber(verbose, log.run_log_handle());
+    subscriber::init_subscriber(std::sync::Arc::clone(&log.console), log.run_log_handle());
     log
 }
 
@@ -110,7 +113,11 @@ pub(crate) fn isolated_logger_for(command: &str) -> (Logger, tempfile::TempDir, 
     let log = Logger::new_in(command, tmp.path());
     let run_log_layer =
         subscriber::RunLogLayer::new(log.run_log_handle().expect("run log should be created"));
-    let subscriber = tracing_subscriber::registry().with(run_log_layer);
+    let subscriber = tracing_subscriber::registry()
+        .with(subscriber::ConsoleLayer::new(std::sync::Arc::clone(
+            &log.console,
+        )))
+        .with(run_log_layer);
     let dispatch = tracing::Dispatch::new(subscriber);
     let guard = test_dispatch_guard(&dispatch);
     (log, tmp, guard)

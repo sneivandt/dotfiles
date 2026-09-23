@@ -1,4 +1,4 @@
-use super::super::types::OutputExt as _;
+use super::super::types::{OutputExt as _, TaskStatus};
 use super::*;
 use crate::infra::logging::isolated_logger;
 use crate::infra::logging::{ActionCounts, TaskEntry, TaskVisibility};
@@ -129,7 +129,7 @@ fn completion_order_and_action_barriers_survive_buffered_flush() {
                 TaskStatus::Changed,
                 ActionCounts::default(),
             ));
-            buf.flush_and_complete(name, name, TaskStatus::Changed);
+            buf.flush_and_complete(name, name);
         }
         assert_eq!(
             log.task_entries()
@@ -139,14 +139,28 @@ fn completion_order_and_action_barriers_survive_buffered_flush() {
             ["beta", "alpha"],
             "task results retain completion order rather than task-name order"
         );
-        let details = log.lock_task_details().clone();
-        assert_eq!(details[0].task_id, "beta");
-        assert_eq!(details[0].lines, ["configure b"]);
-        assert_eq!(details[1].task_id, "alpha");
+        let output = log.captured_lines();
+        let actions: Vec<_> = output
+            .iter()
+            .map(|line| line.trim())
+            .filter(|line| {
+                line.starts_with("link ")
+                    || line.starts_with("install ")
+                    || line.starts_with("configure ")
+                    || *line == "context"
+            })
+            .collect();
         assert_eq!(
-            details[1].lines,
-            ["link a", "link z", "context", "install a", "install z"],
-            "only consecutive action runs may be reordered"
+            actions,
+            [
+                "configure b",
+                "link a",
+                "link z",
+                "context",
+                "install a",
+                "install z"
+            ],
+            "completion order and action barriers must survive rendering"
         );
         let contents = fs::read_to_string(log.log_path().unwrap()).unwrap();
         assert!(
@@ -165,7 +179,6 @@ fn completion_order_and_action_barriers_survive_buffered_flush() {
 
 #[test]
 fn only_typed_actions_sort_and_only_typed_summaries_are_hidden() {
-    let (_buf, log, _tmp, _guard) = buffered_fixture();
     let mut entries = vec![
         LogEntry::action("refresh", "z", false, "refresh z"),
         LogEntry::action("refresh", "a", false, "refresh a"),
@@ -190,10 +203,10 @@ fn only_typed_actions_sort_and_only_typed_summaries_are_hidden() {
     );
     for message in ["3 changed, 1 already ok", "arbitrary counter wording"] {
         let info = entry(MsgKind::Info, message);
-        assert!(info.replay_verbose(&log, None));
+        assert!(info.verbose_detail(None).is_some());
         assert_eq!(info.detail_line(TaskStatus::Changed), Some(message));
         let summary = entry(MsgKind::Summary, message);
-        assert!(!summary.replay_verbose(&log, None));
+        assert!(summary.verbose_detail(None).is_none());
         assert_eq!(summary.detail_line(TaskStatus::Changed), None);
     }
 }
@@ -235,7 +248,7 @@ fn flush_and_complete_clears_progress_rows() {
     let log = Arc::new(log);
     log.notify_task_start("update");
     let buf = BufferedLog::new(Arc::clone(&log));
-    buf.flush_and_complete("update", "update", TaskStatus::Ok);
+    buf.flush_and_complete("update", "update");
     assert_eq!(
         log.progress_rows_count(),
         0,
@@ -245,7 +258,6 @@ fn flush_and_complete_clears_progress_rows() {
 
 #[test]
 fn buffered_presentation_golden_matrix() {
-    let (_buf, log, _tmp, _guard) = buffered_fixture();
     for (kind, verbose, warning, detail) in [
         (MsgKind::Stage, false, false, false),
         (MsgKind::TaskStage, false, false, false),
@@ -261,9 +273,9 @@ fn buffered_presentation_golden_matrix() {
         (MsgKind::Startup, true, false, false),
     ] {
         let entry = entry(kind, "detail");
-        assert_eq!(entry.replay_verbose(&log, None), verbose, "{kind:?}");
+        assert_eq!(entry.verbose_detail(None).is_some(), verbose, "{kind:?}");
         assert!(
-            !entry.replay_verbose(&log, Some("detail")),
+            entry.verbose_detail(Some("detail")).is_none(),
             "{kind:?}: duplicate reason"
         );
         for status in [
@@ -298,7 +310,9 @@ fn buffered_presentation_golden_matrix() {
         "interrupted: reason",
     ] {
         assert!(
-            !entry(MsgKind::Info, message).replay_verbose(&log, Some("reason")),
+            entry(MsgKind::Info, message)
+                .verbose_detail(Some("reason"))
+                .is_none(),
             "{message}"
         );
     }
@@ -322,7 +336,7 @@ fn buffered_flush_and_complete_with_remaining_task() {
     log.notify_task_start("task-a");
     log.notify_task_start("task-b");
     let buf = BufferedLog::new(Arc::clone(&log));
-    buf.flush_and_complete("task-a", "task-a", TaskStatus::Ok);
+    buf.flush_and_complete("task-a", "task-a");
     let active = log.active_tasks.lock().unwrap();
     assert!(
         active.contains(&"task-b".to_string()),
@@ -347,7 +361,7 @@ fn flush_and_complete_replays_stage_before_info() {
     buf.stage("install-task");
     buf.summary("0 changed, 37 already ok");
 
-    buf.flush_and_complete("install-task", "install-task", TaskStatus::Ok);
+    buf.flush_and_complete("install-task", "install-task");
 
     let path = log.log_path().expect("log path");
     let contents = fs::read_to_string(path).unwrap();
@@ -380,7 +394,7 @@ fn flush_and_complete_replays_stage_after_progress_clear() {
     buf.stage("parallel-task");
     buf.summary("0 changed, 1 already ok");
 
-    buf.flush_and_complete("parallel-task", "parallel-task", TaskStatus::Ok);
+    buf.flush_and_complete("parallel-task", "parallel-task");
 
     let path = log.log_path().expect("log path");
     let contents = fs::read_to_string(path).unwrap();
@@ -401,14 +415,15 @@ fn verbose_flush_keeps_not_applicable_task_output_off_console() {
     log.set_verbose(true);
     let log = Arc::new(log);
     let buf = BufferedLog::new(Arc::clone(&log));
+    buf.record_task(task_entry(
+        "windows-only-task",
+        TaskStatus::NotApplicable,
+        ActionCounts::default(),
+    ));
     buf.task_stage("windows-only-task");
     buf.debug("not applicable: requires Windows");
 
-    buf.flush_and_complete(
-        "windows-only-task",
-        "windows-only-task",
-        TaskStatus::NotApplicable,
-    );
+    buf.flush_and_complete("windows-only-task", "windows-only-task");
 
     assert!(!log.task_console_output_emitted());
     let path = log.log_path().expect("log path");
@@ -418,12 +433,20 @@ fn verbose_flush_keeps_not_applicable_task_output_off_console() {
 }
 
 #[test]
-fn verbose_flush_keeps_unchanged_task_output_off_console() {
-    let (buf, log, _tmp, _guard) = buffered_fixture();
+fn non_verbose_flush_keeps_unchanged_task_output_off_console() {
+    let (mut log, _tmp, _guard) = isolated_logger();
+    log.set_verbose(false);
+    let log = Arc::new(log);
+    let buf = BufferedLog::new(Arc::clone(&log));
+    buf.record_task(task_entry(
+        "current-task",
+        TaskStatus::Ok,
+        ActionCounts::default(),
+    ));
     buf.task_stage("current-task");
     buf.summary("0 changed, 1 already ok");
 
-    buf.flush_and_complete("current-task", "current-task", TaskStatus::Ok);
+    buf.flush_and_complete("current-task", "current-task");
 
     assert!(!log.task_console_output_emitted());
     let path = log.log_path().expect("log path");
@@ -439,17 +462,18 @@ fn non_verbose_dry_run_flush_keeps_detail_in_persistent_log() {
     let log = Arc::new(log);
     let buf = BufferedLog::new(Arc::clone(&log));
 
+    buf.record_task(task_entry(
+        "Configure Copilot",
+        TaskStatus::DryRun,
+        ActionCounts::default(),
+    ));
     buf.dry_run("would configure beep = true");
-    buf.flush_and_complete("Configure Copilot", "Configure Copilot", TaskStatus::DryRun);
+    buf.flush_and_complete("Configure Copilot", "Configure Copilot");
 
-    let details = log
-        .task_details
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone();
-    assert_eq!(details.len(), 1);
-    assert_eq!(details[0].task_id, "Configure Copilot");
-    assert_eq!(details[0].lines, ["would configure beep = true"]);
+    assert_eq!(
+        log.captured_lines(),
+        ["", "~ Configure Copilot", "  would configure beep = true"]
+    );
 
     let path = log.log_path().expect("log path");
     let contents = fs::read_to_string(path).unwrap();
@@ -490,4 +514,110 @@ fn typed_actions_persist_once_before_flush_with_arbitrary_verbs() {
     assert_eq!(subjects, ["z-item", "b-item", "a-item"]);
     buf.flush();
     assert_eq!(fs::read_to_string(log.log_path().unwrap()).unwrap(), before);
+}
+
+#[test]
+fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
+    use crate::infra::logging::{OutputExt as _, isolated_logger_for};
+    for command in ["install", "check"] {
+        for verbose in [false, true] {
+            let (mut log, _tmp, _guard) = isolated_logger_for(command);
+            log.set_verbose(verbose);
+            log.set_symbols(false);
+            log.startup("Run · fixture");
+            let log = Arc::new(log);
+            for (name, status) in [
+                ("first", TaskStatus::Passed),
+                ("second", TaskStatus::Passed),
+                ("actions", TaskStatus::Changed),
+                ("hidden", TaskStatus::NotApplicable),
+                ("current", TaskStatus::Ok),
+                ("last", TaskStatus::Passed),
+            ] {
+                let buf = BufferedLog::new(Arc::clone(&log));
+                buf.task_stage(name);
+                if name == "actions" {
+                    buf.action("link", "z", false, "link z");
+                    buf.action("link", "a", false, "link a");
+                    buf.warn("check permissions");
+                    buf.action("link", "b", false, "link b");
+                    buf.summary("3 changed");
+                }
+                buf.record_task(task_entry(name, status, ActionCounts::default()));
+                buf.flush_and_complete(name, name);
+            }
+            let changed = if command == "check" {
+                "PASSED"
+            } else {
+                "CHANGE"
+            };
+            let compact = command == "check" && !verbose;
+            let mut expected = vec![
+                "Run · fixture".to_string(),
+                String::new(),
+                "PASSED first".into(),
+            ];
+            if !compact {
+                expected.push(String::new());
+            }
+            expected.extend([
+                "PASSED second".into(),
+                String::new(),
+                format!("{changed} actions"),
+                "  link a".into(),
+                "  link z".into(),
+            ]);
+            if verbose {
+                expected.extend([
+                    "WARN  check permissions".into(),
+                    "  link b".into(),
+                    String::new(),
+                    "OK current".into(),
+                ]);
+            } else {
+                expected.extend(["  link b".into(), "WARN  check permissions".into()]);
+            }
+            expected.extend([String::new(), "PASSED last".into()]);
+            assert_eq!(
+                log.captured_lines(),
+                expected,
+                "{command}, verbose={verbose}"
+            );
+        }
+    }
+}
+
+#[test]
+fn failed_task_transcript_keeps_reason_once_and_preserves_diagnostics() {
+    for verbose in [false, true] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(verbose);
+        log.set_symbols(false);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        buf.warn("cannot link");
+        buf.error("permission denied");
+        let mut task = task_entry("links", TaskStatus::Failed, ActionCounts::default());
+        task.message = Some("cannot link".into());
+        buf.record_task(task);
+        buf.flush_and_complete("links", "links");
+        let diagnostic = if verbose {
+            "ERROR permission denied"
+        } else {
+            "  permission denied"
+        };
+        assert_eq!(
+            log.captured_lines(),
+            ["", "FAILED links · cannot link", diagnostic]
+        );
+        let writes = log.console.lock().captured.clone();
+        assert_eq!(
+            writes.last().unwrap().0,
+            verbose,
+            "verbose errors use stderr; normal details use stdout"
+        );
+        let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert_eq!(stored.matches("[warn] cannot link").count(), 1);
+        assert_eq!(stored.matches("[error] permission denied").count(), 1);
+    }
 }

@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use super::render::{RowOpts, format_task_line, task_detail_lines, task_result_lines};
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
-use crate::infra::logging::logger::TaskDetailEntry;
 use crate::infra::logging::style::StyleChoice;
 use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
 use crate::infra::logging::utils::format_elapsed;
@@ -400,14 +399,11 @@ fn task_detail_lines_drop_the_recorded_summary_not_summary_shaped_text() {
         Some("2 changed, 1 already ok"),
     )
     .with_summary_message(true);
-    let details = vec![TaskDetailEntry {
-        task_id: "symlinks".to_string(),
-        lines: vec![
-            "link ~/.bashrc".to_string(),
-            "2 changed, 1 already ok".to_string(),
-            "9 changed, 7 already ok".to_string(),
-        ],
-    }];
+    let details = vec![
+        "link ~/.bashrc".to_string(),
+        "2 changed, 1 already ok".to_string(),
+        "9 changed, 7 already ok".to_string(),
+    ];
 
     assert_eq!(
         task_detail_lines(&details, &task),
@@ -418,13 +414,10 @@ fn task_detail_lines_drop_the_recorded_summary_not_summary_shaped_text() {
 #[test]
 fn task_detail_lines_drops_lines_restating_the_row_reason() {
     let task = task_entry("skip-task", TaskStatus::Skipped, Some("dependency failed"));
-    let details = vec![TaskDetailEntry {
-        task_id: "skip-task".to_string(),
-        lines: vec![
-            "skipped: dependency failed".to_string(),
-            "dependency failed".to_string(),
-        ],
-    }];
+    let details = vec![
+        "skipped: dependency failed".to_string(),
+        "dependency failed".to_string(),
+    ];
 
     assert!(task_detail_lines(&details, &task).is_empty());
 }
@@ -443,10 +436,7 @@ fn task_detail_lines_are_empty_when_the_task_only_has_a_message() {
 #[test]
 fn task_result_lines_are_flat_with_reduced_indent() {
     let task = task_entry("changed-task", TaskStatus::Changed, None);
-    let details = vec![TaskDetailEntry {
-        task_id: "changed-task".to_string(),
-        lines: vec!["link ~/.example".to_string()],
-    }];
+    let details = vec!["link ~/.example".to_string()];
 
     assert_eq!(
         task_result_lines(&task, &details, colored_opts()),
@@ -464,10 +454,7 @@ fn task_result_lines_omit_success_reason_when_actions_are_listed() {
         TaskStatus::Changed,
         Some("updated 2 APM dependencies"),
     );
-    let details = vec![TaskDetailEntry {
-        task_id: task.task_id.clone(),
-        lines: vec!["update cursor/plugins/pstack/skills/unslop".to_string()],
-    }];
+    let details = vec!["update cursor/plugins/pstack/skills/unslop".to_string()];
 
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
@@ -485,10 +472,7 @@ fn task_result_lines_preserve_planned_symlink_actions() {
         planned: 1,
         ..ActionCounts::default()
     };
-    let details = vec![TaskDetailEntry {
-        task_id: task.task_id.clone(),
-        lines: vec!["link ~/.bashrc \u{2192} symlinks/bashrc".to_string()],
-    }];
+    let details = vec!["link ~/.bashrc \u{2192} symlinks/bashrc".to_string()];
 
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
@@ -502,15 +486,12 @@ fn task_result_lines_preserve_planned_symlink_actions() {
 #[test]
 fn task_result_lines_include_all_details() {
     let task = task_entry("large-plan", TaskStatus::DryRun, None);
-    let details = vec![TaskDetailEntry {
-        task_id: "large-plan".to_string(),
-        lines: vec![
-            (1..=11)
-                .map(|index| format!("item {index}"))
-                .collect::<Vec<String>>()
-                .join("\n"),
-        ],
-    }];
+    let details = vec![
+        (1..=11)
+            .map(|index| format!("item {index}"))
+            .collect::<Vec<String>>()
+            .join("\n"),
+    ];
 
     let lines = task_result_lines(&task, &details, plain_opts());
 
@@ -688,13 +669,13 @@ fn print_summary_clears_visible_progress() {
     record_task(&log, "changed-task", TaskStatus::Changed, None);
     log.notify_task_start_with_progress("active-task", true);
 
-    assert!(log.has_transient_rows());
-    assert!(log.has_status_row());
+    assert!(log.progress_rows_count() > 0);
+    assert!(log.status_row_visible());
 
     log.print_summary();
 
-    assert!(!log.has_transient_rows());
-    assert!(!log.has_status_row());
+    assert_eq!(log.progress_rows_count(), 0);
+    assert!(!log.status_row_visible());
 }
 
 #[test]

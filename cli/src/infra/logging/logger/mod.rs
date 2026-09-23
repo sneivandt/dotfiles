@@ -17,23 +17,13 @@ pub(in crate::infra::logging) use progress::stdout_supports_progress;
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicU16;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::runlog::RunLog;
-use super::types::{
-    LogEvent, MsgKind, Output, OutputExt as _, TaskEntry, TaskRecorder, TaskStatus,
-};
+use super::types::{LogEvent, MsgKind, Output, TaskEntry, TaskRecorder, TaskStatus};
 use super::utils::dotfiles_log_subdir;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ConsoleOutput {
-    Enabled,
-    Disabled,
-}
 
 /// Structured logger with dry-run awareness and summary collection.
 ///
@@ -43,27 +33,14 @@ enum ConsoleOutput {
 /// stripped, regardless of the verbose flag.
 #[derive(Debug)]
 pub struct Logger {
+    pub(in crate::infra::logging) console: Arc<super::console::Console>,
     /// Command currently being executed (`install`, `update`, etc.).
     pub(super) command: String,
     pub(super) tasks: Mutex<Vec<TaskEntry>>,
-    pub(super) task_details: Mutex<Vec<TaskDetailEntry>>,
     /// Serializes console output from parallel task flushes.
     pub(super) flush_lock: Mutex<()>,
     /// Names of tasks currently executing in parallel.
     pub(super) active_tasks: Mutex<Vec<String>>,
-    /// Number of transient rows currently displayed.
-    ///
-    /// The transient status area is redrawn from whole rows. Each row is
-    /// truncated to fit the terminal, avoiding wrapped-row cursor arithmetic.
-    pub(super) progress_rows: AtomicU16,
-    /// Whether the bottom row in the transient status area is the active-task row.
-    pub(super) status_row_visible: AtomicBool,
-    /// Whether any completed task has emitted durable console output.
-    pub(super) task_console_output_emitted: AtomicBool,
-    /// Whether the last visible task block included detail rows.
-    pub(super) last_task_block_had_details: AtomicBool,
-    /// Whether the most recent durable console line is blank.
-    pub(super) console_ends_with_blank_line: AtomicBool,
     /// Number of tasks scheduled for this run, used as the progress denominator.
     pub(super) task_total: AtomicUsize,
     /// Number of tasks that have finished, used as the progress numerator.
@@ -75,28 +52,10 @@ pub struct Logger {
     pub(super) run_log: Option<Arc<RunLog>>,
     /// Instant when the logger was created, used for elapsed time in summary.
     pub(super) start: Instant,
-    /// Whether verbose output is enabled (show applicable task statuses and details).
-    pub(super) verbose: bool,
     /// Whether console task rows use compact status glyphs.
     pub(super) symbols: bool,
     /// Whether the current command is previewing changes without applying them.
     pub(super) dry_run: bool,
-    /// Whether user-facing output is written to the process console.
-    ///
-    /// Production loggers enable this. Isolated test loggers disable it so unit
-    /// tests can exercise recording without writing to the test harness streams.
-    console_output: ConsoleOutput,
-    /// Whether the separator after startup metadata has been emitted.
-    startup_separator_emitted: AtomicBool,
-}
-
-/// Buffered user-facing detail lines emitted by a completed task.
-#[derive(Debug, Clone)]
-pub(in crate::infra::logging) struct TaskDetailEntry {
-    /// Scheduler identity key for the owning task.
-    pub(super) task_id: String,
-    /// Detail lines emitted by the task while it ran.
-    pub(super) lines: Vec<String>,
 }
 
 impl Logger {
@@ -111,7 +70,7 @@ impl Logger {
         if run_log.is_none() {
             super::runlog::warn_degraded("the log directory or file could not be created");
         }
-        Self::build(command, run_log, start, ConsoleOutput::Enabled)
+        Self::build(command, run_log, start, true)
     }
 
     /// Create a new logger using an explicit base directory.
@@ -129,45 +88,33 @@ impl Logger {
         if run_log.is_none() {
             super::runlog::warn_degraded("the log directory or file could not be created");
         }
-        Self::build(command, run_log, start, ConsoleOutput::Disabled)
+        Self::build(command, run_log, start, false)
     }
 
     fn build(
         command: &str,
         run_log: Option<Arc<RunLog>>,
         start: Instant,
-        console_output: ConsoleOutput,
+        console_output: bool,
     ) -> Self {
         Self {
+            console: Arc::new(super::console::Console::new(console_output)),
             command: command.to_string(),
             tasks: Mutex::new(Vec::new()),
-            task_details: Mutex::new(Vec::new()),
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
-            progress_rows: AtomicU16::new(0),
-            status_row_visible: AtomicBool::new(false),
-            task_console_output_emitted: AtomicBool::new(false),
-            last_task_block_had_details: AtomicBool::new(false),
-            console_ends_with_blank_line: AtomicBool::new(false),
             task_total: AtomicUsize::new(0),
             tasks_completed: AtomicUsize::new(0),
             run_log,
             start,
-            verbose: true,
             symbols: true,
             dry_run: false,
-            console_output,
-            startup_separator_emitted: AtomicBool::new(false),
         }
     }
 
-    /// Set the verbose mode on this logger.
-    ///
-    /// Also updates the global [`subscriber`](super::subscriber) flag so the
-    /// console formatter stays in sync.
+    /// Set verbosity for both logger messages and raw tracing diagnostics.
     pub fn set_verbose(&mut self, verbose: bool) {
-        self.verbose = verbose;
-        super::subscriber::set_verbose(verbose);
+        self.console.lock().verbose = verbose;
     }
 
     /// Set whether console task rows use compact status glyphs.
@@ -214,17 +161,6 @@ impl Logger {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Acquire the per-task detail lines, recovering from poisoning.
-    ///
-    /// Same reasoning as [`Logger::lock_tasks`].
-    pub(in crate::infra::logging) fn lock_task_details(
-        &self,
-    ) -> std::sync::MutexGuard<'_, Vec<TaskDetailEntry>> {
-        self.task_details
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
     /// Acquire the active-task list, recovering from poisoning.
     ///
     /// Same reasoning as [`Logger::lock_tasks`].
@@ -256,8 +192,8 @@ impl Logger {
     }
 
     /// Return whether verbose output mode is enabled.
-    pub const fn is_verbose(&self) -> bool {
-        self.verbose
+    pub fn is_verbose(&self) -> bool {
+        self.console.lock().verbose
     }
 
     /// Return the sentence-case title of the current command.
@@ -284,19 +220,19 @@ impl Logger {
     /// Return the current value of `progress_rows` (test-only).
     #[cfg(test)]
     pub(crate) fn progress_rows_count(&self) -> u16 {
-        self.progress_rows.load(Ordering::Relaxed)
+        self.console.lock().progress_rows
     }
 
     /// Return whether the active-task status row is currently displayed (test-only).
     #[cfg(test)]
     pub(crate) fn status_row_visible(&self) -> bool {
-        self.status_row_visible.load(Ordering::Relaxed)
+        self.console.lock().progress_rows > 0
     }
 
     /// Return whether task console output has been emitted (test-only).
     #[cfg(test)]
     pub(crate) fn task_console_output_emitted(&self) -> bool {
-        self.task_console_output_emitted.load(Ordering::Relaxed)
+        self.console.lock().task_output_emitted
     }
 
     /// Log a compact task-result line.
@@ -304,22 +240,17 @@ impl Logger {
         if let Some(run_log) = &self.run_log {
             run_log.emit(LogEvent::Info, msg);
         }
-        self.console_ends_with_blank_line
-            .store(msg.trim().is_empty(), Ordering::Relaxed);
-        if self.console_output == ConsoleOutput::Enabled {
-            super::subscriber::emit_task_result(msg);
-        }
+        self.console.task_result(msg);
     }
 
-    /// Render one message directly to the console without recording it again.
+    /// Render a message without recording it again.
     pub(in crate::infra::logging) fn emit_console(&self, kind: MsgKind, msg: &str) {
-        if let Some(is_blank) = super::subscriber::visible_line_is_blank(kind, msg, self.verbose) {
-            self.console_ends_with_blank_line
-                .store(is_blank, Ordering::Relaxed);
-        }
-        if self.console_output == ConsoleOutput::Enabled {
-            super::subscriber::emit_console(kind, msg, self.verbose);
-        }
+        self.console.emit(kind, msg);
+    }
+
+    #[cfg(test)]
+    pub(in crate::infra::logging) fn captured_lines(&self) -> Vec<String> {
+        self.console.captured_lines()
     }
 
     /// Record a task result for the summary.
@@ -404,34 +335,6 @@ impl Logger {
         })
     }
 
-    pub(in crate::infra::logging) fn task_is_visible(&self, task_id: &str) -> bool {
-        self.lock_tasks()
-            .iter()
-            .rev()
-            .find(|task| task.task_id == task_id)
-            .is_none_or(|task| task.visibility.is_visible())
-    }
-
-    /// Return the recorded outcome message for a scheduler identity.
-    pub(in crate::infra::logging) fn recorded_task_message(&self, task_id: &str) -> Option<String> {
-        self.lock_tasks()
-            .iter()
-            .rev()
-            .find(|task| task.task_id == task_id)
-            .and_then(|task| task.message.clone())
-    }
-
-    /// Record buffered user-facing detail lines for a completed task.
-    pub(in crate::infra::logging) fn record_task_details(&self, task_id: &str, lines: Vec<String>) {
-        if lines.is_empty() {
-            return;
-        }
-        self.lock_task_details().push(TaskDetailEntry {
-            task_id: task_id.to_string(),
-            lines,
-        });
-    }
-
     /// Count the number of failed tasks.
     #[must_use]
     pub fn failure_count(&self) -> usize {
@@ -447,11 +350,7 @@ impl Logger {
     /// consecutive startup lines remain a compact header. The guard is
     /// idempotent for paths that emit before — or without — a header.
     pub fn separate_from_startup(&self) {
-        if !self.startup_separator_emitted.swap(true, Ordering::Relaxed)
-            && !self.console_ends_with_blank_line.load(Ordering::Relaxed)
-        {
-            self.always("");
-        }
+        self.console.lock().separate_from_startup();
     }
 }
 
@@ -503,6 +402,7 @@ impl TaskRecorder for Logger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::logging::OutputExt as _;
     use crate::infra::logging::isolated_logger;
     use crate::infra::logging::types::{ActionCounts, Log, TaskVisibility};
     use std::fs;
@@ -537,7 +437,7 @@ mod tests {
         log.startup("Install · profile desktop · Arch Linux");
 
         assert!(
-            !log.startup_separator_emitted.load(Ordering::Relaxed),
+            !log.console.lock().startup_separator_emitted,
             "startup lines should remain contiguous until details begin"
         );
     }
@@ -550,7 +450,7 @@ mod tests {
         log.print_summary();
 
         assert!(
-            log.startup_separator_emitted.load(Ordering::Relaxed),
+            log.console.lock().startup_separator_emitted,
             "a run without visible task rows still needs one separator before totals"
         );
     }

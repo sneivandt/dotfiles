@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 use super::records::{Record, RunOutcome, StoredRecord, elapsed_us};
-use super::types::{ExecutionEvent, LogEvent};
+use super::types::LogEvent;
 use super::utils::{format_utc_compact, format_utc_datetime_us, strip_ansi};
 
 /// Number of run logs retained in the log directory.
@@ -264,34 +264,21 @@ impl RunLog {
     /// from the current task context when one is set, otherwise from the OS
     /// thread name when available (e.g. `"main"`). Blank messages are omitted.
     pub fn emit(&self, event: LogEvent, message: &str) {
-        self.emit_event(&ExecutionEvent::message(event, message.into()));
+        self.emit_task(event, &log_thread_name(), message);
     }
 
-    /// Emit an event with an explicit context name.
-    fn emit_with_context(&self, event: LogEvent, context: &str, message: &str) {
-        self.emit_event(&ExecutionEvent::with_context(
-            event,
-            context.into(),
-            message.into(),
-        ));
-    }
-
-    /// Deliver one typed execution event to the persistent sink.
-    pub(in crate::infra::logging) fn emit_event(&self, event: &ExecutionEvent<'_>) {
-        let context = event
-            .context
-            .as_deref()
-            .map_or_else(log_thread_name, str::to_string);
-        if event.message.contains(['\n', '\r']) {
+    /// Emit an event with an explicit task context, preserving multiline text.
+    pub fn emit_task(&self, event: LogEvent, context: &str, message: &str) {
+        if message.contains(['\n', '\r']) {
             self.record_in_context(
-                &context,
+                context,
                 Record::Message {
-                    event: event.kind.name().into(),
-                    text: strip_ansi(&event.message),
+                    event: event.name().into(),
+                    text: strip_ansi(message),
                 },
             );
-        } else if let Some(formatted_message) = format_log_message(&event.message) {
-            self.write_event(event.kind, &context, &formatted_message);
+        } else if let Some(formatted_message) = format_log_message(message) {
+            self.write_event(event, context, &formatted_message);
         }
     }
 
@@ -314,11 +301,6 @@ impl RunLog {
         if let Err(error) = f.write_all(line.as_bytes()) {
             self.mark_degraded(&format!("write failed: {error}"));
         }
-    }
-
-    /// Emit an event with an explicit task name context.
-    pub fn emit_task(&self, event: LogEvent, task: &str, message: &str) {
-        self.emit_with_context(event, task, message);
     }
 
     /// Whether the persistent sink has remained writable.
@@ -641,13 +623,9 @@ mod tests {
     }
 
     #[test]
-    fn typed_event_preserves_explicit_context() {
+    fn explicit_task_event_preserves_context() {
         let (run_log, _tmp) = isolated_run_log();
-        run_log.emit_event(&ExecutionEvent::with_context(
-            LogEvent::TaskDone,
-            "typed-task".into(),
-            "complete".into(),
-        ));
+        run_log.emit_task(LogEvent::TaskDone, "typed-task", "complete");
         let contents = fs::read_to_string(run_log.path()).unwrap();
         assert!(contents.contains("[typed-task] [task_done] complete"));
     }

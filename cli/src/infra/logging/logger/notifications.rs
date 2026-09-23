@@ -41,17 +41,7 @@ impl Logger {
             return;
         };
         let line = self.format_status_line(&names);
-        if self.has_status_row() {
-            self.replace_status_line(&line);
-        } else {
-            // Keep the startup separator durable so clearing the transient
-            // status row leaves the final summary at the same visual level.
-            self.separate_from_startup();
-            self.append_status_line(
-                &line,
-                self.has_transient_rows() || !self.console_ends_with_blank_line(),
-            );
-        }
+        self.draw_active_status(&line);
     }
 
     /// Emit a completed task result selected by scheduler identity.
@@ -61,7 +51,7 @@ impl Logger {
         if show_progress {
             self.clear_progress();
         }
-        self.emit_recorded_task_result(task_id, false);
+        self.emit_recorded_task_result(task_id, &[]);
         self.redraw_active_status_locked(show_progress);
     }
 
@@ -113,7 +103,7 @@ impl Logger {
     /// In verbose mode every task name is listed. Otherwise the first three
     /// active task names are shown, followed by a count of any remaining tasks.
     fn format_active(&self, active: &[String]) -> String {
-        if self.verbose {
+        if self.is_verbose() {
             return active.join(", ");
         }
         let mut names = active
@@ -136,7 +126,6 @@ impl Logger {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::Ordering;
 
     use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
     use crate::infra::logging::{OutputExt as _, isolated_logger};
@@ -286,7 +275,7 @@ mod tests {
     #[test]
     fn format_active_names_single_task() {
         let (mut log, _tmp, _guard) = isolated_logger();
-        log.verbose = false;
+        log.set_verbose(false);
         assert_eq!(
             log.format_active(&["only-task".to_string()]),
             "only-task",
@@ -297,7 +286,7 @@ mod tests {
     #[test]
     fn format_active_names_multiple_tasks() {
         let (mut log, _tmp, _guard) = isolated_logger();
-        log.verbose = false;
+        log.set_verbose(false);
         assert_eq!(
             log.format_active(&["task-a".to_string(), "task-b".to_string()]),
             "task-a, task-b",
@@ -308,7 +297,7 @@ mod tests {
     #[test]
     fn format_active_names_first_three_then_remaining_count() {
         let (mut log, _tmp, _guard) = isolated_logger();
-        log.verbose = false;
+        log.set_verbose(false);
         assert_eq!(
             log.format_active(&[
                 "task-a".to_string(),
@@ -326,7 +315,7 @@ mod tests {
     fn notify_task_start_separates_the_first_progress_row_from_startup() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.progress_rows_count(), 0, "progress_rows starts at 0");
-        assert!(!log.startup_separator_emitted.load(Ordering::Relaxed));
+        assert!(!log.console.lock().startup_separator_emitted);
 
         log.notify_task_start_with_progress("task-a", true);
 
@@ -336,7 +325,7 @@ mod tests {
             "the durable separator should not count as a transient progress row"
         );
         assert!(
-            log.startup_separator_emitted.load(Ordering::Relaxed),
+            log.console.lock().startup_separator_emitted,
             "the first running row should be separated from startup output"
         );
     }

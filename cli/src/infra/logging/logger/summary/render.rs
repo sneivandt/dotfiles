@@ -1,13 +1,13 @@
-//! Per-task line rendering for the end-of-run summary.
+//! Completed-task console rendering.
 //!
 //! Converts a recorded task plus its buffered detail lines into the console
-//! rows shown beneath (or in place of) the aggregate totals.
+//! rows emitted when that task finishes.
 
 use super::status;
 use super::totals::SummaryMode;
-use crate::infra::logging::logger::TaskDetailEntry;
+use crate::infra::logging::buffered::entry::{LogEntry, should_record_task_details};
 use crate::infra::logging::style::{StyleChoice, TextStyle};
-use crate::infra::logging::types::{TaskEntry, TaskResultDisplay, TaskStatus};
+use crate::infra::logging::types::{MsgKind, TaskEntry, TaskResultDisplay, TaskStatus};
 use crate::infra::logging::utils::{duplicates_task_message, format_elapsed};
 
 /// Rendering options for a single task row.
@@ -20,9 +20,61 @@ pub(super) struct RowOpts {
     pub(super) verbose: bool,
 }
 
+/// A completed task's status and ordered details, ready for console output.
+pub(super) struct TaskBlock {
+    pub(super) status: Option<String>,
+    pub(super) details: Vec<(MsgKind, String)>,
+    pub(super) expanded: bool,
+}
+
+pub(super) fn task_block(task: &TaskEntry, entries: &[LogEntry], opts: RowOpts) -> TaskBlock {
+    let mut block = TaskBlock {
+        status: None,
+        details: Vec::new(),
+        expanded: opts.verbose,
+    };
+    if !task.visibility.is_visible() || task.status == TaskStatus::NotApplicable {
+        return block;
+    }
+    let message = task.message.as_deref();
+    if opts.verbose {
+        if !task.is_unstarted_interruption() {
+            block.status = Some(format_task_line(task, opts));
+        }
+        block.details = entries
+            .iter()
+            .filter_map(|entry| entry.verbose_detail(message))
+            .map(|(kind, text)| (kind, text.to_string()))
+            .collect();
+    } else {
+        let details = if should_record_task_details(task.status) {
+            entries
+                .iter()
+                .filter_map(|entry| entry.detail_line(task.status))
+                .map(str::to_string)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut rows = task_result_lines(task, &details, opts).into_iter();
+        block.status = rows.next();
+        block.details = rows.map(|row| (MsgKind::Always, row)).collect();
+        if task.status != TaskStatus::Ok {
+            block.details.extend(
+                entries
+                    .iter()
+                    .filter(|entry| entry.is_visible_in_non_verbose(task.status, message))
+                    .map(|entry| (entry.kind(), entry.message().to_string())),
+            );
+        }
+        block.expanded = !block.details.is_empty();
+    }
+    block
+}
+
 pub(super) fn task_result_lines(
     task: &TaskEntry,
-    details: &[TaskDetailEntry],
+    details: &[String],
     opts: RowOpts,
 ) -> Vec<String> {
     if !task.visibility.is_visible()
@@ -50,7 +102,7 @@ pub(super) fn task_result_lines(
 }
 
 /// Render the indented action lines shown beneath a task's status row.
-fn detail_rows(details: &[TaskDetailEntry], task: &TaskEntry, opts: RowOpts) -> Vec<String> {
+fn detail_rows(details: &[String], task: &TaskEntry, opts: RowOpts) -> Vec<String> {
     task_detail_lines(details, task)
         .iter()
         .flat_map(|detail| detail.lines())
@@ -135,12 +187,10 @@ fn row_reason(task: &TaskEntry) -> Option<&str> {
         .filter(|reason| !reason.is_empty())
 }
 
-pub(super) fn task_detail_lines(details: &[TaskDetailEntry], task: &TaskEntry) -> Vec<String> {
+pub(super) fn task_detail_lines(details: &[String], task: &TaskEntry) -> Vec<String> {
     let task_message = task.message.as_deref();
     details
         .iter()
-        .filter(|entry| entry.task_id == task.task_id)
-        .flat_map(|entry| entry.lines.iter())
         .filter(|line| !duplicates_task_message(line, task_message))
         .filter(|line| Some(line.as_str()) != row_reason(task))
         .cloned()

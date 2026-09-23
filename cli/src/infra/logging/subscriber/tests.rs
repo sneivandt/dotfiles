@@ -145,7 +145,7 @@ fn message_presentation_golden_matrix() {
                     && (!verbose_only || verbose))
                     .then_some(if ansi { colored } else { plain });
                 assert_eq!(
-                    super::console::ui_line_with_style(
+                    crate::infra::logging::console::ui_line_with_style(
                         kind,
                         "detail",
                         StyleChoice::auto(terminal, no_color),
@@ -163,7 +163,7 @@ fn message_presentation_golden_matrix() {
 #[test]
 fn structured_startup_line_emphasizes_its_label_only() {
     assert_eq!(
-        super::console::ui_line_with_style(
+        crate::infra::logging::console::ui_line_with_style(
             MsgKind::Startup,
             "Install · profile desktop · Arch Linux",
             StyleChoice::auto(true, false),
@@ -177,7 +177,7 @@ fn structured_startup_line_emphasizes_its_label_only() {
 #[test]
 fn cli_upgrade_remains_a_startup_notice_with_a_dim_version_transition() {
     assert_eq!(
-        super::console::ui_line_with_style(
+        crate::infra::logging::console::ui_line_with_style(
             MsgKind::Startup,
             "CLI upgraded · old → new",
             StyleChoice::auto(true, false),
@@ -248,4 +248,59 @@ fn console_line_plain_stderr_warning_has_no_ansi() {
 
     assert_eq!(line, "WARN  careful");
     assert!(!line.contains("\x1b["));
+}
+
+#[test]
+fn raw_diagnostics_and_task_progress_share_one_console_state() {
+    use crate::infra::logging::{OutputExt as _, isolated_logger_for};
+    let (log, _tmp, _guard) = isolated_logger_for("install");
+    log.startup("Install · fixture");
+    log.notify_task_start_with_progress("first", true);
+    tracing::debug!("stored only");
+    tracing::warn!("raw warning");
+    assert_eq!(log.progress_rows_count(), 0);
+    log.notify_task_start_with_progress("second", true);
+    log.always("durable message");
+    log.notify_task_start_with_progress("third", true);
+    log.clear_status();
+    log.clear_status();
+
+    let writes = log.console.lock().captured.clone();
+    let expected = [
+        (false, "Install · fixture\n"),
+        (false, "\n"),
+        (false, "Running · first"),
+        (true, "\r\x1b[KWARN  raw warning\n"),
+        (false, "\nRunning · first, second"),
+        (false, "\r\x1b[K\x1b[1A\r\x1b[Kdurable message\n"),
+        (false, "\nRunning · first, second, third"),
+        (false, "\r\x1b[K\x1b[1A\r\x1b[K"),
+    ];
+    assert_eq!(
+        writes,
+        expected.map(|(error, text)| (error, text.to_string()))
+    );
+    let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
+    assert_eq!(stored.matches("[debug] stored only").count(), 1);
+    assert_eq!(stored.matches("[warn] raw warning").count(), 1);
+    assert!(!stored.contains("Running"));
+}
+
+#[test]
+fn another_logger_cannot_change_the_active_subscribers_verbosity() {
+    use crate::infra::logging::isolated_logger;
+    let (mut log, tmp, _guard) = isolated_logger();
+    log.set_verbose(false);
+    let mut other = crate::infra::logging::Logger::new_in("check", tmp.path());
+    other.set_verbose(true);
+    tracing::info!("hidden info");
+    tracing::warn!("visible warning");
+    assert_eq!(log.captured_lines(), ["WARN  visible warning"]);
+    assert!(other.captured_lines().is_empty());
+    log.set_verbose(true);
+    tracing::info!("verbose info");
+    assert_eq!(
+        log.captured_lines(),
+        ["WARN  visible warning", "  verbose info"]
+    );
 }

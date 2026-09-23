@@ -287,7 +287,7 @@ fn script_task_execute_records_changed_status_and_stdout() {
 
     let status = execute(&task, &ctx);
     assert_eq!(status, TaskStatus::Changed);
-    buffered.flush_and_complete(&task.log_key(), task.name(), status);
+    buffered.flush_and_complete(&task.log_key(), task.name());
 
     let entries = logger.task_entries();
     assert_eq!(entries.len(), 1);

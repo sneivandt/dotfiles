@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use proptest::prelude::*;
 
 use crate::engine::{TaskAssessment, TaskMeta, TaskOutcome, TaskResult};
-use crate::test_helpers::{empty_config, make_static_context};
+use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
 
 use super::*;
 
@@ -159,16 +159,16 @@ fn blocked_dependents_cascades_to_transitive_dependents() {
     let indirect = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
     let unrelated = ProbeTask::new("Registry settings", 4, &trace);
     let tasks: Vec<&dyn Task> = vec![&root, &direct, &indirect, &unrelated];
-    let roots = HashMap::from([(TaskId::Dynamic(1), "Home symlinks")]);
+    let roots = HashMap::from([(numeric_task_id(1), "Home symlinks")]);
 
     let blocked = blocked_dependents(&tasks, &roots);
 
     // The reason names the root so the message stays actionable, rather
     // than pointing at the intermediate hop.
-    assert_eq!(blocked.get(&TaskId::Dynamic(2)), Some(&"Home symlinks"));
-    assert_eq!(blocked.get(&TaskId::Dynamic(3)), Some(&"Home symlinks"));
-    assert!(!blocked.contains_key(&TaskId::Dynamic(4)));
-    assert!(!blocked.contains_key(&TaskId::Dynamic(1)));
+    assert_eq!(blocked.get(&numeric_task_id(2)), Some(&"Home symlinks"));
+    assert_eq!(blocked.get(&numeric_task_id(3)), Some(&"Home symlinks"));
+    assert!(!blocked.contains_key(&numeric_task_id(4)));
+    assert!(!blocked.contains_key(&numeric_task_id(1)));
 }
 
 #[test]
@@ -180,11 +180,11 @@ fn blocked_dependents_is_independent_of_slice_order() {
     let direct = ProbeTask::new("APM packages", 2, &trace).depends_on(&[1]);
     let indirect = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
     let tasks: Vec<&dyn Task> = vec![&indirect, &direct, &root];
-    let roots = HashMap::from([(TaskId::Dynamic(1), "Home symlinks")]);
+    let roots = HashMap::from([(numeric_task_id(1), "Home symlinks")]);
 
     let blocked = blocked_dependents(&tasks, &roots);
 
-    assert_eq!(blocked.get(&TaskId::Dynamic(3)), Some(&"Home symlinks"));
+    assert_eq!(blocked.get(&numeric_task_id(3)), Some(&"Home symlinks"));
     assert_eq!(blocked.len(), 2);
 }
 
@@ -193,7 +193,7 @@ fn blocked_dependents_ignores_dependencies_absent_from_the_slice() {
     let trace = trace();
     let orphan = ProbeTask::new("Registry settings", 2, &trace).depends_on(&[99]);
     let tasks: Vec<&dyn Task> = vec![&orphan];
-    let roots = HashMap::from([(TaskId::Dynamic(1), "Home symlinks")]);
+    let roots = HashMap::from([(numeric_task_id(1), "Home symlinks")]);
 
     assert!(blocked_dependents(&tasks, &roots).is_empty());
 }
@@ -310,7 +310,7 @@ fn entries(trace: &Trace) -> Vec<String> {
 
 /// A task with a runtime-supplied identity, dependency list, and outcome.
 ///
-/// [`TaskId::Dynamic`] lets a test build an arbitrary graph shape, which
+/// [`TaskId::dynamic`] lets a test build an arbitrary graph shape, which
 /// type-derived ids cannot express.
 struct ProbeTask {
     name: String,
@@ -326,7 +326,7 @@ impl ProbeTask {
     fn new(name: &str, id: u64, trace: &Trace) -> Self {
         Self {
             name: name.to_string(),
-            id: TaskId::Dynamic(id),
+            id: numeric_task_id(id),
             dependencies: Vec::new(),
             trace: Arc::clone(trace),
             fails: false,
@@ -336,7 +336,7 @@ impl ProbeTask {
     }
 
     fn depends_on(mut self, ids: &[u64]) -> Self {
-        self.dependencies = ids.iter().copied().map(TaskId::Dynamic).collect();
+        self.dependencies = ids.iter().copied().map(numeric_task_id).collect();
         self
     }
 
@@ -417,7 +417,7 @@ fn closure_is_empty_when_boundary_is_not_present() {
     let trace = trace();
     let tasks = vec![ProbeTask::new("a", 1, &trace)];
     assert!(
-        dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(99))
+        dependency_closure(&as_dyn(&tasks), numeric_task_id(99))
             .expect("valid graph")
             .is_empty(),
         "a filtered-out boundary must produce an empty closure so the \
@@ -435,7 +435,7 @@ fn closure_contains_boundary_and_transitive_dependencies() {
         ProbeTask::new("after", 4, &trace).depends_on(&[3]),
     ];
 
-    let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(3)).expect("valid graph");
+    let closure = dependency_closure(&as_dyn(&tasks), numeric_task_id(3)).expect("valid graph");
 
     assert_eq!(
         closure.len(),
@@ -444,12 +444,12 @@ fn closure_contains_boundary_and_transitive_dependencies() {
     );
     for id in [1, 2, 3] {
         assert!(
-            closure.contains(&TaskId::Dynamic(id)),
+            closure.contains(&numeric_task_id(id)),
             "closure should contain dynamic id {id}"
         );
     }
     assert!(
-        !closure.contains(&TaskId::Dynamic(4)),
+        !closure.contains(&numeric_task_id(4)),
         "a dependent of the boundary must not be pulled into the prefix"
     );
 }
@@ -461,11 +461,11 @@ fn closure_ignores_dependencies_absent_from_the_task_list() {
     // dependency while keeping its dependent.
     let tasks = vec![ProbeTask::new("boundary", 3, &trace).depends_on(&[42])];
 
-    let closure = dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(3)).expect("valid graph");
+    let closure = dependency_closure(&as_dyn(&tasks), numeric_task_id(3)).expect("valid graph");
 
     assert_eq!(
         closure,
-        HashSet::from([TaskId::Dynamic(3)]),
+        HashSet::from([numeric_task_id(3)]),
         "an unmatched dependency id must not enter the closure"
     );
 }
@@ -475,7 +475,7 @@ fn closure_rejects_self_referential_dependencies() {
     let trace = trace();
     let tasks = vec![ProbeTask::new("boundary", 1, &trace).depends_on(&[1])];
 
-    assert!(dependency_closure(&as_dyn(&tasks), TaskId::Dynamic(1)).is_err());
+    assert!(dependency_closure(&as_dyn(&tasks), numeric_task_id(1)).is_err());
 }
 
 proptest! {
@@ -530,15 +530,11 @@ proptest! {
                 break;
             }
         }
-        let boundary = TaskId::Dynamic(u64::try_from(size).expect("small graph size"));
+        let boundary = numeric_task_id(size);
         let closure = dependency_closure(&task_refs, boundary)
             .expect("valid generated graph");
         for (index, expected) in expected_dependencies.iter().copied().enumerate() {
-            let id = TaskId::Dynamic(
-                u64::try_from(index)
-                    .expect("small graph index")
-                    .saturating_add(1),
-            );
+            let id = numeric_task_id(index.saturating_add(1));
             prop_assert_eq!(closure.contains(&id), expected);
         }
 
@@ -564,14 +560,10 @@ proptest! {
                 break;
             }
         }
-        let roots = HashMap::from([(TaskId::Dynamic(1), "task-1")]);
+        let roots = HashMap::from([(numeric_task_id(1), "task-1")]);
         let blocked = blocked_dependents(&task_refs, &roots);
         for (index, expected) in expected_blocked.iter().copied().enumerate().skip(1) {
-            let id = TaskId::Dynamic(
-                u64::try_from(index)
-                    .expect("small graph index")
-                    .saturating_add(1),
-            );
+            let id = numeric_task_id(index.saturating_add(1));
             prop_assert_eq!(blocked.contains_key(&id), expected);
         }
     }
@@ -826,7 +818,7 @@ fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
 fn completion_uses_scheduler_outcomes_even_without_presentation_records() {
     let (ctx, log) = sequential_context();
     let mut summary = crate::engine::scheduler::ExecutionSummary::default();
-    summary.record(TaskId::Dynamic(1), "internal task", TaskOutcome::Cancelled);
+    summary.record(numeric_task_id(1), "internal task", TaskOutcome::Cancelled);
 
     assert!(
         !log.has_interrupted_tasks(),
@@ -871,7 +863,7 @@ fn restart_runs_after_the_boundary_closure_and_stops_the_parent() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(2),
+        numeric_task_id(2),
         || true,
         move || action_flag.store(true, std::sync::atomic::Ordering::SeqCst),
     )
@@ -898,7 +890,7 @@ fn unsatisfied_restart_condition_runs_the_remaining_graph() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(1),
+        numeric_task_id(1),
         || false,
         || panic!("restart action must not run"),
     )
@@ -920,7 +912,7 @@ fn missing_boundary_falls_back_to_one_graph_without_restart() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(404),
+        numeric_task_id(404),
         || true,
         || panic!("a filtered boundary must not trigger restart"),
     )
@@ -942,7 +934,7 @@ fn failed_boundary_suppresses_restart() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(1),
+        numeric_task_id(1),
         || true,
         || panic!("a failed boundary must not trigger restart"),
     )
@@ -965,7 +957,7 @@ fn failed_boundary_stops_independent_tasks_when_it_changed_restart_inputs() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(1),
+        numeric_task_id(1),
         || true,
         || panic!("a failed update must be reported before a re-exec is attempted"),
     )
@@ -990,7 +982,7 @@ fn cancellation_suppresses_restart() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(1),
+        numeric_task_id(1),
         || panic!("a cancelled run must not inspect restart inputs"),
         || panic!("a cancelled run must not trigger restart"),
     )
@@ -1013,7 +1005,7 @@ fn typed_interruption_stops_the_next_phase_and_suppresses_restart() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(1),
+        numeric_task_id(1),
         || panic!("an interrupted phase must not inspect restart inputs"),
         || panic!("an interrupted phase must not restart"),
     )
@@ -1037,7 +1029,7 @@ fn cancellation_after_boundary_completion_suppresses_restart() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(1),
+        numeric_task_id(1),
         || panic!("a cancelled phase must not inspect restart inputs"),
         || panic!("a completed boundary must not restart a cancelled command"),
     )
@@ -1057,7 +1049,7 @@ fn cancellation_during_restart_check_suppresses_the_action() {
         as_dyn(&tasks),
         &ctx,
         &log,
-        TaskId::Dynamic(1),
+        numeric_task_id(1),
         || {
             ctx.cancellation_token().cancel();
             true

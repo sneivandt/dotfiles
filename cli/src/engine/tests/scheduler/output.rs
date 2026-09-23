@@ -34,11 +34,7 @@ fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
                     .iter()
                     .map(|&(name, count)| {
                         TestTask::new(name).returning(Behavior::Return(
-                            TaskStats {
-                                already_ok: count,
-                                ..TaskStats::default()
-                            }
-                            .finish(),
+                            TaskStats::from_counts(0, count, 0, 0).finish(),
                         ))
                     })
                     .collect();

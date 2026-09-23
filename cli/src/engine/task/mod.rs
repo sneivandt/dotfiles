@@ -109,7 +109,6 @@ pub trait Task: Send + Sync + 'static {
         let kind = std::any::type_name::<Self>();
         match self.task_id() {
             TaskId::Type(_) => kind.into(),
-            TaskId::Dynamic(value) => format!("{kind}#dynamic:{value}"),
             TaskId::NamedDynamic { key, .. } => format!("{kind}#named:{key}"),
         }
     }

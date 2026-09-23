@@ -4,7 +4,7 @@ use crate::engine::{
 };
 use crate::infra::ConfigHandle;
 use crate::infra::logging::{ActionCounts, TaskStatus};
-use crate::test_helpers::{empty_config, make_static_context};
+use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
 use anyhow::Result;
 use std::any::TypeId;
 use std::cell::Cell;
@@ -215,7 +215,7 @@ impl Task for DelegatedTask {
     }
 
     fn task_id(&self) -> TaskId {
-        TaskId::Dynamic(17)
+        numeric_task_id(17)
     }
 
     fn dependencies(&self) -> &[TaskId] {
@@ -263,7 +263,7 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     assert_eq!(task.selector(), "delegated");
     assert_eq!(task.visibility(), TaskVisibility::Internal);
     assert!(task.update_only());
-    assert_eq!(task.task_id(), TaskId::Dynamic(17));
+    assert_eq!(task.task_id(), numeric_task_id(17));
     assert_eq!(task.dependencies(), &[existing, additional]);
     assert!(task.should_run(&ctx));
     assert!(task.needs_elevation(&ctx));
@@ -296,7 +296,7 @@ fn task_with_extra_deps_merges_both_edge_kinds() {
 
     assert_eq!(task.dependencies(), &[blocking]);
     assert_eq!(task.ordering_dependencies(), &[existing, additional]);
-    assert_eq!(task.task_id(), TaskId::Dynamic(17));
+    assert_eq!(task.task_id(), numeric_task_id(17));
 }
 
 #[test]
@@ -413,13 +413,7 @@ fn execute_records_batch_action_counts() {
     let task = MockTask {
         name: "batch-task",
         should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats {
-            changed: 3,
-            already_ok: 5,
-            skipped: 2,
-            failed: 0,
-            message: None,
-        })),
+        result: Ok(TaskResult::Batch(TaskStats::from_counts(3, 5, 2, 0))),
     };
 
     assert_eq!(execute(&task, &ctx), TaskStatus::Changed);
@@ -439,13 +433,7 @@ fn execute_records_dry_run_batch_as_planned_actions() {
     let task = MockTask {
         name: "batch-task",
         should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats {
-            changed: 4,
-            already_ok: 1,
-            skipped: 0,
-            failed: 0,
-            message: None,
-        })),
+        result: Ok(TaskResult::Batch(TaskStats::from_counts(4, 1, 0, 0))),
     };
 
     assert_eq!(execute(&task, &ctx), TaskStatus::DryRun);
@@ -479,13 +467,7 @@ fn execute_records_failed_batch_and_preserves_action_counts() {
     let task = MockTask {
         name: "batch-task",
         should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats {
-            changed: 1,
-            already_ok: 0,
-            skipped: 2,
-            failed: 3,
-            message: None,
-        })),
+        result: Ok(TaskResult::Batch(TaskStats::from_counts(1, 0, 2, 3))),
     };
 
     assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
@@ -503,13 +485,7 @@ fn execute_records_skipped_only_batch_as_skipped() {
     let task = MockTask {
         name: "batch-task",
         should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats {
-            changed: 0,
-            already_ok: 2,
-            skipped: 3,
-            failed: 0,
-            message: None,
-        })),
+        result: Ok(TaskResult::Batch(TaskStats::from_counts(0, 2, 3, 0))),
     };
 
     assert_eq!(execute(&task, &ctx), TaskStatus::Skipped);
@@ -524,13 +500,7 @@ fn execute_preserves_batch_failure_when_cancellation_was_requested_separately() 
     let task = MockTask {
         name: "batch-task",
         should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats {
-            changed: 0,
-            already_ok: 0,
-            skipped: 0,
-            failed: 1,
-            message: None,
-        })),
+        result: Ok(TaskResult::Batch(TaskStats::from_counts(0, 0, 0, 1))),
     };
 
     assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
@@ -811,10 +781,11 @@ fn persistent_task_identity_preserves_dynamic_kind_and_wrapper_identity() {
     let named = IdentityTask {
         id: TaskId::dynamic::<IdentityTask>("5"),
     };
-    let numbered = IdentityTask {
-        id: TaskId::Dynamic(5),
+    let other_key = IdentityTask {
+        id: TaskId::dynamic::<IdentityTask>("6"),
     };
-    assert_ne!(named.log_key(), numbered.log_key());
+    assert_ne!(named.task_id(), numeric_task_id(5));
+    assert_ne!(named.log_key(), other_key.log_key());
     assert_eq!(
         named.log_key(),
         format!("{}#named:5", std::any::type_name::<IdentityTask>())

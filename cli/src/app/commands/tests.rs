@@ -278,7 +278,7 @@ mod startup_log_tests {
 mod task_graph_tests {
     use super::execution::{run_tasks_to_completion, run_tasks_to_completion_with_restart};
     use crate::engine::{Context, Task, TaskId, TaskMeta, TaskResult, task_deps};
-    use crate::test_helpers::{empty_config, make_static_context};
+    use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
     use anyhow::Result;
     use std::path::PathBuf;
     use std::sync::{
@@ -588,7 +588,7 @@ mod task_graph_tests {
             tasks,
             &ctx,
             &log,
-            TaskId::Dynamic(42),
+            numeric_task_id(42),
             || true,
             || panic!("a filtered boundary must not trigger restart"),
         )

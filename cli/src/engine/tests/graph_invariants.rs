@@ -14,10 +14,11 @@ use anyhow::Result;
 
 use crate::engine::graph::{GraphError, ResolvedTaskGraph};
 use crate::engine::{Context, Task, TaskId, TaskMeta, TaskResult};
+use crate::test_helpers::numeric_task_id;
 
 /// A task whose identity and dependencies are supplied at construction time.
 ///
-/// [`TaskId::Dynamic`] makes it possible to build arbitrary graph shapes at
+/// [`TaskId::dynamic`] makes it possible to build arbitrary graph shapes at
 /// runtime, which type-derived ids cannot express.
 struct GeneratedTask {
     name: String,
@@ -78,11 +79,11 @@ fn generate_dag(seed: u64, size: usize, edge_chance: u32) -> Vec<GeneratedTask> 
     for idx in 0..size {
         let dependencies = (0..idx)
             .filter(|_| rng.chance(edge_chance))
-            .map(|dep| TaskId::Dynamic(u64::try_from(dep).expect("index fits in u64")))
+            .map(numeric_task_id)
             .collect();
         tasks.push(GeneratedTask {
             name: format!("task-{idx}"),
-            id: TaskId::Dynamic(u64::try_from(idx).expect("index fits in u64")),
+            id: numeric_task_id(idx),
             dependencies,
         });
     }
@@ -197,14 +198,12 @@ fn adding_a_back_edge_always_produces_a_cycle() {
         // Force a path from the first task to the last, then close it with a
         // back edge from the first task to the last.
         for (idx, task) in tasks.iter_mut().enumerate().skip(1) {
-            let dep = TaskId::Dynamic(u64::try_from(idx - 1).expect("index fits in u64"));
+            let dep = numeric_task_id(idx - 1);
             if !task.dependencies.contains(&dep) {
                 task.dependencies.push(dep);
             }
         }
-        tasks[0].dependencies.push(TaskId::Dynamic(
-            u64::try_from(size - 1).expect("index fits in u64"),
-        ));
+        tasks[0].dependencies.push(numeric_task_id(size - 1));
 
         assert!(
             matches!(
@@ -220,8 +219,8 @@ fn adding_a_back_edge_always_produces_a_cycle() {
 fn a_self_dependency_is_a_cycle() {
     let tasks = vec![GeneratedTask {
         name: "self".to_string(),
-        id: TaskId::Dynamic(0),
-        dependencies: vec![TaskId::Dynamic(0)],
+        id: numeric_task_id(0),
+        dependencies: vec![numeric_task_id(0)],
     }];
     assert!(matches!(
         ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
@@ -236,7 +235,7 @@ fn duplicate_ids_are_rejected_regardless_of_shape() {
             continue;
         }
         let mut tasks = generate_dag(seed, size, edge_chance);
-        tasks[size - 1].id = TaskId::Dynamic(0);
+        tasks[size - 1].id = numeric_task_id(0);
 
         assert!(
             matches!(
@@ -255,13 +254,13 @@ fn dependencies_outside_the_filtered_slice_are_ignored() {
     let tasks = vec![
         GeneratedTask {
             name: "present".to_string(),
-            id: TaskId::Dynamic(0),
-            dependencies: vec![TaskId::Dynamic(99)],
+            id: numeric_task_id(0),
+            dependencies: vec![numeric_task_id(99)],
         },
         GeneratedTask {
             name: "dependent".to_string(),
-            id: TaskId::Dynamic(1),
-            dependencies: vec![TaskId::Dynamic(0), TaskId::Dynamic(99)],
+            id: numeric_task_id(1),
+            dependencies: vec![numeric_task_id(0), numeric_task_id(99)],
         },
     ];
 

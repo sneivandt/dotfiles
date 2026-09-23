@@ -32,11 +32,6 @@ pub enum TaskId {
     ///
     /// Produced automatically by the default `task_id()` implementation.
     Type(TypeId),
-    /// Collision-free instance identifier for dynamically created tasks.
-    ///
-    /// Used when multiple instances of the same struct appear in the task
-    /// list (e.g. one `OverlayScriptTask` per configured script).
-    Dynamic(u64),
     /// Structured identity for dynamically discovered tasks.
     NamedDynamic {
         /// Concrete task type, preventing keys from different dynamic task
@@ -62,7 +57,6 @@ impl TaskId {
     pub fn record_key(&self) -> String {
         match self {
             Self::Type(kind) => format!("type:{kind:?}"),
-            Self::Dynamic(value) => format!("dynamic:{value}"),
             Self::NamedDynamic { kind, key } => format!("named:{kind:?}:{key}"),
         }
     }
@@ -80,15 +74,6 @@ pub enum Applicability {
     },
 }
 
-/// Privilege requirement predicted while assessing a task.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ElevationRequirement {
-    /// The task can run without elevated privileges.
-    None,
-    /// The task predicts that its pending mutation requires elevation.
-    Required,
-}
-
 /// Immutable task eligibility and privilege assessment for one execution phase.
 ///
 /// The coordinator computes this once before elevation planning and scheduling,
@@ -98,7 +83,7 @@ pub struct TaskAssessment {
     /// Eligibility for this run.
     applicability: Applicability,
     /// Predicted privilege requirement.
-    elevation: ElevationRequirement,
+    requires_elevation: bool,
 }
 
 impl TaskAssessment {
@@ -107,7 +92,7 @@ impl TaskAssessment {
     pub const fn applicable() -> Self {
         Self {
             applicability: Applicability::Applicable,
-            elevation: ElevationRequirement::None,
+            requires_elevation: false,
         }
     }
 
@@ -118,18 +103,14 @@ impl TaskAssessment {
             applicability: Applicability::NotApplicable {
                 reason: reason.map(Into::into),
             },
-            elevation: ElevationRequirement::None,
+            requires_elevation: false,
         }
     }
 
     /// Set whether this task requires elevation.
     #[must_use]
     pub const fn with_elevation(mut self, required: bool) -> Self {
-        self.elevation = if required {
-            ElevationRequirement::Required
-        } else {
-            ElevationRequirement::None
-        };
+        self.requires_elevation = required;
         self
     }
 
@@ -151,7 +132,7 @@ impl TaskAssessment {
     /// Whether this task predicts an elevated mutation.
     #[must_use]
     pub const fn requires_elevation(&self) -> bool {
-        matches!(self.elevation, ElevationRequirement::Required)
+        self.requires_elevation
     }
 }
 

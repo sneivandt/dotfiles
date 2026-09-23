@@ -186,7 +186,7 @@ fn process_single_warns_before_destructive_apply() {
     )
     .unwrap();
 
-    assert_eq!(stats.changed, 1);
+    assert_eq!(stats.changed_count(), 1);
     assert_eq!(
         events.lock().unwrap().as_slice(),
         ["warn: existing data will be replaced", "apply",]
@@ -215,7 +215,7 @@ fn process_single_dry_run_neither_warns_nor_applies() {
     )
     .unwrap();
 
-    assert_eq!(stats.changed, 1);
+    assert_eq!(stats.changed_count(), 1);
     assert!(
         events.lock().unwrap().is_empty(),
         "dry-run must not enter the mutation boundary"
@@ -379,7 +379,7 @@ fn remove_single_dry_run_does_not_call_remove() {
     let resource =
         MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into()));
     let stats = apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink").unwrap();
-    assert_eq!(stats.changed, 1);
+    assert_eq!(stats.changed_count(), 1);
 }
 
 #[test]
@@ -467,5 +467,5 @@ fn process_single_uses_resource_description() {
 
     // Should succeed — verifies description doesn't interfere with processing
     let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
-    assert_eq!(stats.changed, 1);
+    assert_eq!(stats.changed_count(), 1);
 }

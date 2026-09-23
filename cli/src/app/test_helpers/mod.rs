@@ -13,7 +13,17 @@ use crate::infra::exec::{Executor, MockExecutor};
 use crate::infra::logging::Logger;
 use crate::infra::platform::Platform;
 
-use crate::engine::{Context, TaskResult, TaskStats};
+use crate::engine::{Context, TaskId, TaskResult, TaskStats};
+
+/// Give numeric graph fixtures the same structured identity as production dynamic tasks.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "test graph builders pass both usize indices and u64 fixture keys"
+)]
+pub fn numeric_task_id(key: impl ToString) -> TaskId {
+    struct NumericTestTask;
+    TaskId::dynamic::<NumericTestTask>(key.to_string())
+}
 
 mod failure;
 mod scripted;

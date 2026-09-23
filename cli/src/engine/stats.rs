@@ -107,30 +107,15 @@ impl TaskResult {
 #[derive(Debug, Clone, Default)]
 pub struct TaskStats {
     /// Number of items changed or applied.
-    #[cfg(not(test))]
     changed: u32,
-    #[cfg(test)]
-    pub(super) changed: u32,
     /// Number of items already in the correct state.
-    #[cfg(not(test))]
     already_ok: u32,
-    #[cfg(test)]
-    pub(super) already_ok: u32,
     /// Number of items deliberately skipped due to inapplicability.
-    #[cfg(not(test))]
     skipped: u32,
-    #[cfg(test)]
-    pub(super) skipped: u32,
     /// Number of items that failed without aborting the enclosing task.
-    #[cfg(not(test))]
     failed: u32,
-    #[cfg(test)]
-    pub(super) failed: u32,
     /// Optional domain-specific summary for this batch.
-    #[cfg(not(test))]
     message: Option<String>,
-    #[cfg(test)]
-    pub(super) message: Option<String>,
 }
 
 impl TaskStats {

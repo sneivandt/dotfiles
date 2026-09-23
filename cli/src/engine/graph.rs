@@ -1,4 +1,9 @@
 //! Task dependency graph utilities.
+#![allow(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "resolved graph indices and topological in-degrees are validated by graph construction"
+)]
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -80,9 +85,7 @@ impl ResolvedTaskGraph {
             if let Some(&first_idx) = id_to_idx.get(&id) {
                 return Err(GraphError::DuplicateId {
                     id,
-                    first: tasks
-                        .get(first_idx)
-                        .map_or_else(String::new, |first| first.name().to_string()),
+                    first: tasks[first_idx].name().to_string(),
                     second: task.name().to_string(),
                 });
             }
@@ -111,9 +114,7 @@ impl ResolvedTaskGraph {
         let mut dependents: Vec<Vec<usize>> = vec![Vec::new(); tasks.len()];
         for (task_idx, deps) in dependencies.iter().enumerate() {
             for &dep_idx in deps {
-                if let Some(reverse) = dependents.get_mut(dep_idx) {
-                    reverse.push(task_idx);
-                }
+                dependents[dep_idx].push(task_idx);
             }
         }
 
@@ -155,9 +156,7 @@ impl ResolvedTaskGraph {
                 DependencyEdges::All => self.dependencies(task_idx),
             };
             for &dependency_idx in dependencies {
-                let Some(dependency_id) = self.ids.get(dependency_idx) else {
-                    continue;
-                };
+                let dependency_id = &self.ids[dependency_idx];
                 if selected.insert(dependency_id.clone()) {
                     pending.push(dependency_idx);
                 }
@@ -180,7 +179,7 @@ impl ResolvedTaskGraph {
                 let cause = self
                     .blocking_dependencies(task_idx)
                     .iter()
-                    .filter_map(|dependency_idx| self.ids.get(*dependency_idx))
+                    .map(|dependency_idx| &self.ids[*dependency_idx])
                     .find_map(|dependency_id| {
                         roots
                             .get(dependency_id)
@@ -201,19 +200,17 @@ impl ResolvedTaskGraph {
     /// Task indices this task depends on.
     #[must_use]
     pub(crate) fn dependencies(&self, task_idx: usize) -> &[usize] {
-        self.dependencies.get(task_idx).map_or(&[], Vec::as_slice)
+        &self.dependencies[task_idx]
     }
 
     fn blocking_dependencies(&self, task_idx: usize) -> &[usize] {
-        self.blocking_dependencies
-            .get(task_idx)
-            .map_or(&[], Vec::as_slice)
+        &self.blocking_dependencies[task_idx]
     }
 
     /// Task indices that depend on this task.
     #[must_use]
     pub(crate) fn dependents(&self, task_idx: usize) -> &[usize] {
-        self.dependents.get(task_idx).map_or(&[], Vec::as_slice)
+        &self.dependents[task_idx]
     }
 
     /// Whether failure of `dependency_idx` blocks `task_idx`.
@@ -260,14 +257,11 @@ fn topological_order(dependencies: &[Vec<usize>], dependents: &[Vec<usize>]) -> 
 
     while let Some(idx) = queue.pop_front() {
         order.push(idx);
-        if let Some(task_dependents) = dependents.get(idx) {
-            for &dependent_idx in task_dependents {
-                if let Some(count) = in_degree.get_mut(dependent_idx) {
-                    *count = count.saturating_sub(1);
-                    if *count == 0 {
-                        queue.push_back(dependent_idx);
-                    }
-                }
+        for &dependent_idx in &dependents[idx] {
+            let count = &mut in_degree[dependent_idx];
+            *count -= 1;
+            if *count == 0 {
+                queue.push_back(dependent_idx);
             }
         }
     }
@@ -275,6 +269,11 @@ fn topological_order(dependencies: &[Vec<usize>], dependents: &[Vec<usize>]) -> 
     (order.len() == dependencies.len()).then_some(order)
 }
 
+#[allow(
+    clippy::expect_used,
+    clippy::unreachable,
+    reason = "the DFS stack and state values are established by this traversal"
+)]
 fn find_cycle_path(dependencies: &[Vec<usize>], tasks: &[&dyn Task]) -> Vec<String> {
     fn visit(
         node: usize,
@@ -282,12 +281,10 @@ fn find_cycle_path(dependencies: &[Vec<usize>], tasks: &[&dyn Task]) -> Vec<Stri
         states: &mut [u8],
         stack: &mut Vec<usize>,
     ) -> Option<Vec<usize>> {
-        if let Some(state) = states.get_mut(node) {
-            *state = 1;
-        }
+        states[node] = 1;
         stack.push(node);
-        for &dependency in dependencies.get(node).map_or(&[][..], Vec::as_slice) {
-            match states.get(dependency).copied().unwrap_or(2) {
+        for &dependency in &dependencies[node] {
+            match states[dependency] {
                 0 => {
                     if let Some(path) = visit(dependency, dependencies, states, stack) {
                         return Some(path);
@@ -297,30 +294,29 @@ fn find_cycle_path(dependencies: &[Vec<usize>], tasks: &[&dyn Task]) -> Vec<Stri
                     let start = stack
                         .iter()
                         .position(|&item| item == dependency)
-                        .unwrap_or(0);
-                    let mut path = stack.get(start..).unwrap_or_default().to_vec();
+                        .expect("active dependency must be on the DFS stack");
+                    let mut path = stack[start..].to_vec();
                     path.push(dependency);
                     return Some(path);
                 }
-                _ => {}
+                2 => {}
+                _ => unreachable!("DFS state must be unvisited, active, or complete"),
             }
         }
         stack.pop();
-        if let Some(state) = states.get_mut(node) {
-            *state = 2;
-        }
+        states[node] = 2;
         None
     }
 
     let mut states = vec![0; dependencies.len()];
     let mut stack = Vec::new();
     for node in 0..dependencies.len() {
-        if states.get(node) == Some(&0)
+        if states[node] == 0
             && let Some(path) = visit(node, dependencies, &mut states, &mut stack)
         {
             return path
                 .into_iter()
-                .filter_map(|idx| tasks.get(idx).map(|task| task.name().to_string()))
+                .map(|idx| tasks[idx].name().to_string())
                 .collect();
         }
     }

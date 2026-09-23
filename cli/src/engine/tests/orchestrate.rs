@@ -800,7 +800,7 @@ fn batch_discovery_loads_once_and_uses_the_shared_cache_in_both_modes() {
                 panic!("expected batch statistics");
             };
             assert_eq!(stats.changed_count(), 1);
-            assert_eq!(stats.already_ok, 1);
+            assert_eq!(stats.already_ok_count(), 1);
             assert_eq!(stats.failed_count(), 0);
             assert_eq!(loads.load(Ordering::SeqCst), 1);
             assert_eq!(checks.load(Ordering::SeqCst), 2);

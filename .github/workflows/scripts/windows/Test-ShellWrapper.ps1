@@ -443,6 +443,11 @@ function Test-IsolatedWrapperPath {
         Set-Item Function:cargo -Value {
             [System.IO.File]::WriteAllText(
                 (Join-Path $env:DOTFILES_ROOT 'cargo-cwd'), (Get-Location).Path)
+            @{
+                reason = 'compiler-artifact'
+                target = @{ name = 'dotfiles' }
+                executable = Join-Path $env:DOTFILES_ROOT "cli/target/dev-opt/$binaryName"
+            } | ConvertTo-Json -Compress
             $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_BUILD_EXIT
         }
         Set-Item Function:gh -Value {
@@ -524,6 +529,96 @@ function Test-IsolatedWrapperPath {
     }
 }
 
+function Test-CargoArtifactPath {
+    Write-TestStage 'Testing Cargo output directories and stale-artifact rejection'
+    $fixture = Join-Path (Join-Path $PSScriptRoot '..\..\..\..') ".wrapper-artifact-$([guid]::NewGuid())"
+    $fixture = [System.IO.Path]::GetFullPath($fixture)
+    $wrapper = Join-Path $fixture 'dotfiles.ps1'
+    $binaryName = if ($IsWindows) { 'dotfiles.exe' } else { 'dotfiles' }
+    $stale = Join-Path $fixture "cli/target/dev-opt/$binaryName"
+    $caller = Join-Path $fixture 'caller directory'
+    $originalLocation = Get-Location
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'CARGO_TARGET_DIR')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
+    try {
+        [void][System.IO.Directory]::CreateDirectory((Split-Path $stale))
+        [void][System.IO.Directory]::CreateDirectory((Join-Path $fixture 'cli/.cargo'))
+        [void][System.IO.Directory]::CreateDirectory($caller)
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\..\..\..\dotfiles.ps1') -Destination $wrapper
+        [System.IO.File]::WriteAllText($stale, 'stale')
+        Set-Item -LiteralPath "Function:$stale" -Value { throw 'Stale default-target binary executed' }
+        $child = {
+            @{ Cwd = (Get-Location).Path; Arguments = @($args) } | ConvertTo-Json -Compress
+            $global:LASTEXITCODE = 7
+        }
+        Set-Item Function:cargo -Value {
+            if (($args -join ' ') -ne 'build --profile dev-opt --bin dotfiles --message-format=json-render-diagnostics') {
+                throw "Unexpected Cargo arguments: $args"
+            }
+            $targetDirectory = $env:CARGO_TARGET_DIR
+            if (-not $targetDirectory) {
+                $config = Get-Content -LiteralPath '.cargo/config.toml' -Raw
+                if ($config -notmatch 'target-dir = "([^"]+)"') { throw 'Missing configured target directory' }
+                $targetDirectory = Join-Path (Get-Location) $Matches[1]
+            }
+            $artifact = Join-Path $targetDirectory "custom-triple/dev-opt/$binaryName"
+            @{
+                reason = 'compiler-artifact'
+                target = @{ name = 'dotfiles' }
+                executable = $artifact
+            } | ConvertTo-Json -Compress
+            '{"reason":"build-finished","success":true}'
+            $global:LASTEXITCODE = 0
+        }
+        Set-Location -LiteralPath $caller
+        foreach ($mode in @('environment', 'config')) {
+            $env:CARGO_TARGET_DIR = $null
+            if ($mode -eq 'environment') {
+                $target = Join-Path $fixture 'environment output'
+                $env:CARGO_TARGET_DIR = $target
+            } else {
+                $target = Join-Path $fixture 'cli/configured output'
+                [System.IO.File]::WriteAllText(
+                    (Join-Path $fixture 'cli/.cargo/config.toml'), "[build]`ntarget-dir = `"configured output`"`n")
+            }
+            $artifact = Join-Path $target "custom-triple/dev-opt/$binaryName"
+            [void][System.IO.Directory]::CreateDirectory((Split-Path $artifact))
+            [System.IO.File]::WriteAllText($artifact, 'new')
+            Set-Item -LiteralPath "Function:$artifact" -Value $child
+            $arguments = @('--version', 'space value', '')
+            $output = @(& $wrapper --build @arguments)
+            if ($LASTEXITCODE -ne 7 -or $output.Count -ne 1) { throw "$mode did not run only the reported artifact" }
+            $actual = $output[0] | ConvertFrom-Json
+            if ($actual.Cwd -ne $caller) { throw "$mode changed the caller cwd" }
+            if (($actual.Arguments | ConvertTo-Json -Compress) -cne ($arguments | ConvertTo-Json -Compress)) {
+                throw "$mode changed child arguments"
+            }
+        }
+        Set-Item Function:cargo -Value { '{"reason":"build-finished","success":true}'; $global:LASTEXITCODE = 0 }
+        $rejected = $false
+        try {
+            & $wrapper --build --version | Out-Null
+        } catch {
+            if ($_ -notmatch 'Cargo did not report') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Missing Cargo artifact did not fail' }
+        Write-TestPass 'Build mode executes the reported Cargo artifact and rejects missing artifacts'
+        return $true
+    } catch {
+        Write-TestFail "Cargo artifact regression failed: $_"
+        return $false
+    } finally {
+        Set-Location -LiteralPath $originalLocation.Path
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Run All Tests
 # ---------------------------------------------------------------------------
@@ -544,6 +639,7 @@ function Invoke-TestSuite {
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
     $results += Test-IsolatedWrapperPath
+    $results += Test-CargoArtifactPath
 
     $passed = ($results | Where-Object { $_ -eq $true }).Count
     $total = $results.Count

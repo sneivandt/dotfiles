@@ -89,7 +89,14 @@ function Prompt
 
     if ($Global:GitExists)
     {
-        $branchName = git rev-parse --abbrev-ref HEAD 2> $null
+        try
+        {
+            $branchName = git rev-parse --abbrev-ref HEAD 2> $null
+        }
+        finally
+        {
+            $global:LASTEXITCODE = $origLastExitCode
+        }
         if (-not [string]::IsNullOrWhiteSpace($branchName))
         {
             $promptLine += "${foreground} ${branchName}${reset}"
@@ -105,7 +112,6 @@ function Prompt
         $promptSuffix = "${blue}$ ${reset}"
     }
 
-    $LASTEXITCODE = $origLastExitCode
     return "$promptLine`n$promptSuffix"
 }
 

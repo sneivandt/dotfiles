@@ -33,7 +33,7 @@ pub use types::{
 };
 // Only the in-crate unit tests reach these types from outside the `logging`
 // module; production code uses the `super::types` path directly.
-pub(crate) use runlog::parse_run_log_file_name;
+pub(crate) use runlog::{parse_run_log_file_name, run_log_sort_stamp};
 #[cfg(test)]
 pub use types::{MsgKind, TaskRecorder};
 pub(crate) use utils::{dotfiles_log_dir_readonly, format_elapsed};

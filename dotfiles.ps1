@@ -109,17 +109,31 @@ if ($Build)
         Write-Error "cargo not found. Install Rust to use --build mode."
         exit 1
     }
+    $BuildBinary = $null
     Push-Location -LiteralPath (Join-Path $DotfilesRoot "cli")
     try
     {
-        cargo build --profile dev-opt
+        cargo build --profile dev-opt --bin dotfiles --message-format=json-render-diagnostics |
+            ForEach-Object {
+                $message = $_ | ConvertFrom-Json
+                if ($message.reason -eq 'compiler-artifact' -and
+                    $message.target.name -eq 'dotfiles' -and $message.executable)
+                {
+                    if ($BuildBinary) { throw 'Cargo reported more than one dotfiles executable.' }
+                    $BuildBinary = $message.executable
+                }
+            }
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     finally
     {
         Pop-Location
     }
-    $BuildBinary = Join-Path $DotfilesRoot (Join-Path "cli" (Join-Path "target" (Join-Path "dev-opt" $BinaryName)))
+    if (-not $BuildBinary)
+    {
+        Write-Error "Cargo did not report a dotfiles executable."
+        exit 1
+    }
     & $BuildBinary @CliArgs
     exit $LASTEXITCODE
 }

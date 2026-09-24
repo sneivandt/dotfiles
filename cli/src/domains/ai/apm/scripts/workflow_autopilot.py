@@ -198,7 +198,9 @@ cur = con.execute("UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN 
 # overdue (<= now), so the app fires them on schedule. A valid future next_run_at
 # is left untouched to avoid rescheduling on every install; manual rows without a
 # custom cron expression are skipped.
-now_local = datetime.now().astimezone()
+# Keep local wall time naive: astimezone() on each future candidate must resolve
+# that date's local offset, not retain today's fixed UTC offset across DST.
+now_local = datetime.now()
 now_utc = datetime.now(timezone.utc)
 columns = {row[1] for row in con.execute("PRAGMA table_info(workflows)")}
 cron_column = "cron_expression" if "cron_expression" in columns else "NULL"

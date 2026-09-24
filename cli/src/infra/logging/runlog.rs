@@ -6,7 +6,7 @@
 //! needs to know about verbosity, styling, or terminal state.
 use std::cell::RefCell;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead as _, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -40,10 +40,8 @@ pub(super) fn warn_degraded(reason: &str) {
 /// Components of a run-log file name.
 ///
 /// Names are `<stamp>-<command>-<pid>.log`, e.g.
-/// `20260731T154210Z-install-48213.log`. The stamp is fixed width so lexical
-/// ordering matches chronological ordering, and the pid disambiguates runs
-/// that start within the same second — notably the elevated child process
-/// spawned on Windows, which is a second process for one logical run.
+/// `20260731T154210Z-install-48213.log`. The pid disambiguates runs that start
+/// within the same second; the header's microsecond timestamp orders them.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct RunLogName<'a> {
     /// Compact UTC start stamp, `YYYYMMDDTHHMMSSZ`.
@@ -82,6 +80,41 @@ pub(crate) fn parse_run_log_file_name(name: &str) -> Option<RunLogName<'_>> {
     }
     pid.parse::<u32>().ok()?;
     Some(RunLogName { stamp, command })
+}
+
+/// Sortable start timestamp, using the precise header when available.
+///
+/// Legacy, incomplete, or unreadable logs fall back to their filename stamp.
+/// Never use modification times: an older run may still be writing its log.
+pub(crate) fn run_log_sort_stamp(path: &Path, filename_stamp: &str) -> String {
+    precise_header_stamp(path)
+        .unwrap_or_else(|| format!("{}.000000Z", filename_stamp.trim_end_matches('Z')))
+}
+
+fn precise_header_stamp(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    let mut header = String::new();
+    // A damaged or legacy first line must not require reading the whole log.
+    std::io::BufReader::new(file.take(512))
+        .read_line(&mut header)
+        .ok()?;
+    let stamp = header
+        .strip_prefix("# Dotfiles ")?
+        .split_whitespace()
+        .next_back()?;
+    if stamp.len() != 27
+        || !stamp.bytes().enumerate().all(|(index, byte)| match index {
+            4 | 7 => byte == b'-',
+            10 => byte == b'T',
+            13 | 16 => byte == b':',
+            19 => byte == b'.',
+            26 => byte == b'Z',
+            _ => byte.is_ascii_digit(),
+        })
+    {
+        return None;
+    }
+    Some(stamp.replace(['-', ':'], ""))
 }
 
 thread_local! {
@@ -362,21 +395,20 @@ fn prune_run_logs(dir: &Path, keep: usize) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
-    let mut names: Vec<String> = entries
+    let mut runs: Vec<(String, String)> = entries
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
-            parse_run_log_file_name(&name).is_some().then_some(name)
+            let parsed = parse_run_log_file_name(&name)?;
+            Some((run_log_sort_stamp(&entry.path(), parsed.stamp), name))
         })
         .collect();
-    let excess = names.len().saturating_sub(keep);
+    let excess = runs.len().saturating_sub(keep);
     if excess == 0 {
         return;
     }
-    // Names start with a fixed-width UTC stamp, so ascending lexical order is
-    // oldest first.
-    names.sort_unstable();
-    for name in names.into_iter().take(excess) {
+    runs.sort_unstable();
+    for (_, name) in runs.into_iter().take(excess) {
         drop(fs::remove_file(dir.join(name)));
     }
 }
@@ -485,6 +517,58 @@ mod tests {
                 "20260731T154212Z-install-1.log".to_string(),
             ],
             "the oldest run should be pruned first"
+        );
+    }
+
+    #[test]
+    fn prune_orders_same_second_runs_by_precise_start_time() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let older = "20260731T154210Z-install-900.log";
+        let newer = "20260731T154210Z-install-1000.log";
+        fs::write(
+            tmp.path().join(older),
+            "# Dotfiles test 2026-07-31T15:42:10.000001Z\n",
+        )
+        .expect("write older log");
+        fs::write(
+            tmp.path().join(newer),
+            "# Dotfiles test 2026-07-31T15:42:10.000002Z\n",
+        )
+        .expect("write newer log");
+
+        prune_run_logs(tmp.path(), 1);
+
+        assert_eq!(
+            run_log_names(tmp.path()),
+            vec![newer],
+            "retention must use start time rather than command name or PID"
+        );
+    }
+
+    #[test]
+    fn run_log_sort_stamp_preserves_legacy_and_incomplete_logs() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("fixture.log");
+        let fallback = concat!("20260731T154210", ".000000Z");
+        for contents in [
+            "",
+            "legacy log content\n",
+            "# Dotfiles test 2026-07-31T15:42:10Z\n",
+            "# Dotfiles test 2026-07-31T15:42:10.notnumZ\n",
+            "# Dotfiles test incomplete\n",
+        ] {
+            fs::write(&path, contents).expect("write legacy log");
+            assert_eq!(
+                run_log_sort_stamp(&path, "20260731T154210Z"),
+                fallback,
+                "unsupported headers must preserve filename ordering: {contents:?}"
+            );
+        }
+        fs::remove_file(&path).expect("remove fixture");
+        assert_eq!(
+            run_log_sort_stamp(&path, "20260731T154210Z"),
+            fallback,
+            "a concurrently removed log must not fail discovery"
         );
     }
 

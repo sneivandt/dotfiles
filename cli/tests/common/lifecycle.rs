@@ -148,6 +148,20 @@ impl Run {
         assert_counts(stats, changed, current, 0);
     }
 
+    pub(crate) fn assert_no_resources(&self) {
+        match self.result.as_ref().expect("task must complete") {
+            TaskResult::Ok => {}
+            TaskResult::Batch(stats) => assert_counts(stats, 0, 0, 0),
+            result @ (TaskResult::DryRun
+            | TaskResult::CheckPassed
+            | TaskResult::NotApplicable(_)
+            | TaskResult::Skipped { .. }
+            | TaskResult::Failed(_)) => {
+                panic!("expected an empty successful task, got {result:?}");
+            }
+        }
+    }
+
     pub(crate) fn assert_partial_failure(&self, changed: u32, not_attempted: u32) {
         let error = self.result.as_ref().expect_err("Nth resource must fail");
         let report = error

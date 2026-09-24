@@ -35,14 +35,14 @@ fn main() {
 /// - **HEAD** lives in the per-worktree git directory (`git rev-parse
 ///   --absolute-git-dir`), which may be a `worktrees/<name>/` subdirectory of
 ///   the main `.git/` directory rather than `.git/` itself.
-/// - **refs/tags/** and **packed-refs** live in the common git directory (`git
-///   rev-parse --git-common-dir`), which is the same as the git dir for
-///   non-worktree clones but points to the shared root for worktrees.
+/// - The branch referenced by **HEAD**, **refs/tags/**, and **packed-refs** live in
+///   the common git directory (`git rev-parse --git-common-dir`). This is the
+///   normal git directory for regular clones and the shared root for worktrees.
 ///
-/// Only `refs/tags/` is tracked, not all of `refs/`. Cargo resolves a directory
-/// trigger to the newest mtime anywhere beneath it, and `git describe --tags`
-/// reads only HEAD and tags. Watching all of `refs/` meant that branch updates,
-/// fetches, and any tool writing its own refs namespace under `refs/` rebuilt
+/// Only the current branch and `refs/tags/` are tracked, not all of `refs/`.
+/// Cargo resolves a directory trigger to the newest mtime anywhere beneath it.
+/// Watching all of `refs/` meant that unrelated branch updates, fetches,
+/// and any tool writing its own refs namespace under `refs/` rebuilt
 /// this crate from scratch, because a build-script rerun invalidates every
 /// dependent unit.
 ///
@@ -72,8 +72,12 @@ fn register_git_rerun_triggers() {
         println!("cargo:rerun-if-changed=../.git/HEAD");
     }
 
-    // refs/tags/ and packed-refs are shared across all worktrees.
+    // Branch refs, refs/tags/, and packed-refs are shared across worktrees.
     let refs_base = git_common_dir.as_deref().or(git_dir.as_deref());
+    if let Some(head_ref) = git_output(&["symbolic-ref", "--quiet", "HEAD"]) {
+        let dir = refs_base.unwrap_or("../.git");
+        println!("cargo:rerun-if-changed={dir}/{head_ref}");
+    }
     if let Some(dir) = refs_base {
         println!("cargo:rerun-if-changed={dir}/refs/tags/");
         println!("cargo:rerun-if-changed={dir}/packed-refs");

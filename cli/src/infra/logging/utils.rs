@@ -189,9 +189,8 @@ pub(super) fn format_utc_datetime_us() -> String {
 
 /// Format the current UTC time as `YYYYMMDDTHHMMSSZ` (second precision).
 ///
-/// Used for run-log file names. The fixed-width, zero-padded form means
-/// lexical ordering of file names equals chronological ordering, so run
-/// selection never depends on file modification times.
+/// Used for stable run-log file names. Headers provide the subsecond precision
+/// used for ordering runs without depending on file modification times.
 pub(super) fn format_utc_compact() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

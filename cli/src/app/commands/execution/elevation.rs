@@ -73,7 +73,7 @@ impl<'a> ElevationBroker<'a> {
 
         let names: Vec<&str> = elevating.iter().map(|task| task.name()).collect();
         let selectors: Vec<&str> = elevating.iter().map(|task| task.selector()).collect();
-        let plan = prepare_elevation(self.ctx, self.log, &names, &selectors, tasks.len());
+        let plan = prepare_elevation(self.ctx, self.log, &names, &selectors);
 
         // Delegation is not degradation: the tasks really ran, just in the
         // elevated child, so their dependents must still run here. Only an
@@ -164,18 +164,35 @@ const fn elevation_plan_disposition(plan: ElevationPlan) -> (Option<&'static str
 
 /// Arrange privilege for `names`, or report that it is unavailable.
 ///
-/// Unix keeps the existing behaviour: prime the `sudo` credential cache once so
-/// parallel tasks do not interleave password prompts, and let sequential runs
-/// prompt inline as they always have.
+/// Prime credentials in the foreground: executor commands run in their own
+/// process groups and cannot safely prompt through the controlling terminal.
 #[cfg(unix)]
 fn prepare_elevation(
     ctx: &Context,
     log: &Arc<Logger>,
     names: &[&str],
     _selectors: &[&str],
-    task_count: usize,
 ) -> ElevationPlan {
-    if !crate::infra::elevation::sudo_available(ctx.executor()) {
+    prepare_sudo_elevation(
+        ctx,
+        log,
+        names,
+        crate::infra::elevation::sudo_available(ctx.executor()),
+        crate::infra::elevation::sudo_credentials_cached,
+        crate::infra::elevation::prime_sudo_credentials,
+    )
+}
+
+#[cfg(any(unix, test))]
+fn prepare_sudo_elevation(
+    ctx: &Context,
+    log: &Arc<Logger>,
+    names: &[&str],
+    sudo_available: bool,
+    credentials_cached: impl FnOnce() -> bool,
+    prime_credentials: impl FnOnce() -> std::io::Result<bool>,
+) -> ElevationPlan {
+    if !sudo_available {
         log.separate_from_startup();
         log.warn("sudo not found on PATH");
         return ElevationPlan::Unavailable {
@@ -184,7 +201,7 @@ fn prepare_elevation(
     }
     log.debug("priming sudo credential cache");
 
-    if crate::infra::elevation::sudo_credentials_cached() {
+    if credentials_cached() {
         log.debug("sudo credentials already cached");
         return ElevationPlan::Ready;
     }
@@ -199,17 +216,11 @@ fn prepare_elevation(
         };
     }
 
-    // A single task, or a sequential run, can prompt inline without garbling
-    // output, so there is nothing else to arrange up front.
-    if !ctx.parallel() || task_count <= 1 {
-        return ElevationPlan::Ready;
-    }
-
     log.separate_from_startup();
     log.always(format!("sudo is required for: {}", names.join(", ")));
     drop(std::io::Write::flush(&mut std::io::stdout()));
 
-    match crate::infra::elevation::prime_sudo_credentials() {
+    match prime_credentials() {
         Ok(true) => ElevationPlan::Ready,
         Ok(false) => {
             log.separate_from_startup();
@@ -240,7 +251,6 @@ fn prepare_elevation(
     log: &Arc<Logger>,
     names: &[&str],
     selectors: &[&str],
-    _task_count: usize,
 ) -> ElevationPlan {
     use crate::infra::elevation::{ElevationOutcome, run_elevated_child};
 
@@ -309,7 +319,6 @@ const fn prepare_elevation(
     _log: &Arc<Logger>,
     _names: &[&str],
     _selectors: &[&str],
-    _task_count: usize,
 ) -> ElevationPlan {
     ElevationPlan::Ready
 }
@@ -365,6 +374,104 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::{empty_config, make_static_context};
+
+    #[test]
+    fn sudo_primes_foreground_credentials_for_single_and_sequential_tasks() {
+        let cases: &[(&str, bool, &[&str])] = &[
+            ("single parallel", true, &["System files"]),
+            ("single sequential", false, &["System files"]),
+            ("multiple sequential", false, &["System files", "Packages"]),
+            ("multiple parallel", true, &["System files", "Packages"]),
+        ];
+        for &(case, parallel, names) in cases {
+            let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+            let ctx = ctx.with_parallel(parallel).with_non_interactive(false);
+            let primed = std::cell::Cell::new(false);
+            let plan = prepare_sudo_elevation(
+                &ctx,
+                &log,
+                names,
+                true,
+                || false,
+                || {
+                    primed.set(true);
+                    Ok(true)
+                },
+            );
+
+            assert_eq!(plan, ElevationPlan::Ready, "{case}");
+            assert!(
+                primed.get(),
+                "{case}: uncached credentials must be primed before executor commands run"
+            );
+        }
+    }
+
+    #[test]
+    fn sudo_does_not_prompt_when_cached_or_non_interactive() {
+        for (cached, non_interactive, expected) in [
+            (true, false, ElevationPlan::Ready),
+            (true, true, ElevationPlan::Ready),
+            (
+                false,
+                true,
+                ElevationPlan::Unavailable {
+                    reason: "sudo credentials unavailable in a non-interactive session",
+                },
+            ),
+        ] {
+            let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+            let ctx = ctx.with_non_interactive(non_interactive);
+            let plan = prepare_sudo_elevation(
+                &ctx,
+                &log,
+                &["System files"],
+                true,
+                || cached,
+                || panic!("cached or non-interactive runs must not prompt"),
+            );
+            assert_eq!(
+                plan, expected,
+                "cached={cached}, non_interactive={non_interactive}"
+            );
+        }
+    }
+
+    #[test]
+    fn sudo_unavailable_does_not_check_credentials_or_prompt() {
+        let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+        let plan = prepare_sudo_elevation(
+            &ctx,
+            &log,
+            &["System files"],
+            false,
+            || panic!("missing sudo must not be invoked"),
+            || panic!("missing sudo must not prompt"),
+        );
+        assert_eq!(
+            plan,
+            ElevationPlan::Unavailable {
+                reason: "sudo credentials unavailable",
+            }
+        );
+    }
+
+    #[test]
+    fn sudo_priming_failure_leaves_elevation_unavailable() {
+        for result in [Ok(false), Err(std::io::Error::other("fixture failure"))] {
+            let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+            let ctx = ctx.with_parallel(false).with_non_interactive(false);
+            let plan =
+                prepare_sudo_elevation(&ctx, &log, &["System files"], true, || false, || result);
+            assert_eq!(
+                plan,
+                ElevationPlan::Unavailable {
+                    reason: "sudo credentials unavailable",
+                }
+            );
+        }
+    }
 
     #[test]
     fn failed_elevated_run_is_not_treated_as_optional_unavailability() {

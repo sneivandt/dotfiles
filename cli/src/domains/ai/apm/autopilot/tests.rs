@@ -184,6 +184,104 @@ fn run_python_script(python: &str, script: &str, args: &[&str]) -> std::process:
 }
 
 #[test]
+fn workflow_autopilot_script_uses_scheduled_date_timezone() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let output = run_python_script(
+        python,
+        r#"
+import contextlib, io, sqlite3, struct, sys
+from datetime import datetime, timezone
+from unittest.mock import patch
+from zoneinfo import ZoneInfo
+
+# A self-contained TZif fixture: US Pacific transitions in 2026. No system
+# zoneinfo database, tzdata package, process TZ mutation, or time.tzset needed.
+transitions = [
+    int(datetime(2026, 3, 8, 10, tzinfo=timezone.utc).timestamp()),
+    int(datetime(2026, 11, 1, 9, tzinfo=timezone.utc).timestamp()),
+]
+tzif = (
+    b"TZif\0" + b"\0" * 15 + struct.pack(">6l", 0, 0, 0, 2, 2, 8)
+    + struct.pack(">2l", *transitions) + bytes([1, 0])
+    + struct.pack(">lbb", -8 * 3600, 0, 0)
+    + struct.pack(">lbb", -7 * 3600, 1, 4)
+    + b"PST\0PDT\0"
+)
+local_zone = ZoneInfo.from_file(io.BytesIO(tzif))
+
+class LocalDateTime(datetime):
+    current = None
+
+    @classmethod
+    def now(cls, tz=None):
+        value = cls(*cls.current)
+        return value if tz is None else value.astimezone(tz)
+
+    def astimezone(self, tz=None):
+        value = self if self.tzinfo is not None else self.replace(tzinfo=local_zone)
+        result = datetime.astimezone(value, local_zone if tz is None else tz)
+        # Python's no-argument astimezone returns a fixed-offset local timezone.
+        return result.replace(tzinfo=timezone(result.utcoffset())) if tz is None else result
+
+source = sys.argv[1]
+for name, current, expected in [
+    ("spring", (2026, 3, 7, 9, 1), "2026-03-08T16:00:00.000Z"),
+    ("fall", (2026, 10, 31, 9, 1), "2026-11-01T17:00:00.000Z"),
+]:
+    LocalDateTime.current = current
+    assert type(LocalDateTime.now().astimezone().tzinfo) is timezone
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE workflows (id TEXT PRIMARY KEY, name TEXT, prompt TEXT, "
+        "mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, "
+        "schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT, cron_expression TEXT)"
+    )
+    rows = [
+        ("apm--daily", "daily", None, None),
+        ("apm--weekly", "weekly", None, None),
+        ("apm--cron", "manual", "0 9 * * *", None),
+        ("apm--manual", "manual", None, None),
+        ("apm--future", "daily", None, "2099-01-01T00:00:00.000Z"),
+    ]
+    for wid, interval, cron, next_run in rows:
+        connection.execute(
+            "INSERT INTO workflows VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (wid, wid, "prompt", "interactive", 0, interval, 9, 0, 0, next_run, cron),
+        )
+    connection.commit()
+    with (
+        patch("datetime.datetime", LocalDateTime),
+        patch("sqlite3.connect", return_value=connection),
+        patch.object(sys, "argv", ["workflow_autopilot", ":memory:"] + [row[0] for row in rows]),
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        exec(compile(source, "workflow_autopilot.py", "exec"), {})
+    for wid in ["apm--daily", "apm--weekly", "apm--cron"]:
+        actual = connection.execute(
+            "SELECT mode, enabled, next_run_at FROM workflows WHERE id=?", (wid,)
+        ).fetchone()
+        assert actual == ("autopilot", 1, expected), (name, wid, actual, expected)
+    assert connection.execute(
+        "SELECT next_run_at FROM workflows WHERE id='apm--manual'"
+    ).fetchone()[0] is None
+    assert connection.execute(
+        "SELECT next_run_at FROM workflows WHERE id='apm--future'"
+    ).fetchone()[0] == "2099-01-01T00:00:00.000Z"
+    connection.close()
+print("spring and fall schedule repairs passed")
+"#,
+        &[WORKFLOW_AUTOPILOT_SCRIPT],
+    );
+    assert!(
+        output.status.success(),
+        "deterministic timezone regression failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn workflow_autopilot_script_deduplicates_managed_rows() {
     let Some(python) = python_for_script_tests() else {
         return;

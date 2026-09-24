@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use serde::Serialize;
 
 use crate::app::cli::{DiscoveryFormat, LogOpts};
-use crate::infra::logging::parse_run_log_file_name;
+use crate::infra::logging::{parse_run_log_file_name, run_log_sort_stamp};
 
 const NO_LOG_FOUND: &str = "No dotfiles log found yet.";
 const NO_MATCHING_LOG: &str = "No retained runs match the requested filters.";
@@ -20,6 +20,8 @@ const LIST_HINT: &str = "Run 'dotfiles log --list' to see retained runs.";
 struct RunEntry {
     /// Compact UTC start stamp, `YYYYMMDDTHHMMSSZ`.
     stamp: String,
+    /// Start timestamp with subsecond precision when available in the header.
+    sort_stamp: String,
     /// Command that produced the run.
     command: String,
     /// Path to the log file.
@@ -448,6 +450,7 @@ fn discover_runs(log_dir: &Path) -> Result<Vec<RunEntry>> {
         let size = entry.metadata().map_or(0, |meta| meta.len());
         let run = RunEntry {
             stamp: parsed.stamp.to_string(),
+            sort_stamp: run_log_sort_stamp(&entry.path(), parsed.stamp),
             command: parsed.command.to_string(),
             path: entry.path(),
             size,
@@ -460,18 +463,17 @@ fn discover_runs(log_dir: &Path) -> Result<Vec<RunEntry>> {
         runs.push(run);
     }
 
-    // Stamps are fixed width, so descending lexical order is newest first.
-    // The file name breaks ties between runs that started in the same second.
+    // File names remain a deterministic fallback for indistinguishable starts.
     runs.sort_unstable_by(|a, b| {
-        b.stamp
-            .cmp(&a.stamp)
+        b.sort_stamp
+            .cmp(&a.sort_stamp)
             .then_with(|| b.path.file_name().cmp(&a.path.file_name()))
     });
     Ok(runs)
 }
 
 fn read_run_metadata(run: &mut RunEntry) -> Result<()> {
-    // Only history listing scans metadata; selecting one run reads only that file.
+    // Discovery reads headers; only history listing scans every run's records.
     let file = std::fs::File::open(&run.path)
         .with_context(|| format!("reading dotfiles log {}", run.path.display()))?;
     for line in std::io::BufReader::new(file).lines() {
@@ -538,6 +540,65 @@ mod tests {
         write_run(dir, "20260731T154902Z-update-2.log", "newer\n");
 
         assert_eq!(capture(dir, &opts(), false), "newer\n");
+    }
+
+    #[test]
+    fn latest_run_uses_microsecond_start_time_instead_of_filename_order() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path();
+        let older = "20260731T154210Z-update-900.log";
+        let newer = "20260731T154210Z-install-1000.log";
+        write_run(
+            dir,
+            older,
+            "# Dotfiles test 2026-07-31T15:42:10.000001Z\nolder\n",
+        );
+        write_run(
+            dir,
+            newer,
+            "# Dotfiles test 2026-07-31T15:42:10.000002Z\nnewer\n",
+        );
+        // Older runs can finish after newer ones without becoming the latest run.
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(dir.join(older))
+            .and_then(|mut file| std::io::Write::write_all(&mut file, b"older finished last\n"))
+            .expect("append older run");
+
+        let runs = discover_runs(dir).expect("discover runs");
+        assert_eq!(runs.first().unwrap().path, dir.join(newer));
+        assert!(capture(dir, &opts(), false).ends_with("newer\n"));
+        let previous = LogOpts {
+            run: Some(1),
+            ..opts()
+        };
+        assert!(
+            capture(dir, &previous, false).ends_with("older\nolder finished last\n"),
+            "indexed history must use the same precise ordering"
+        );
+    }
+
+    #[test]
+    fn legacy_and_precise_logs_remain_selectable_together() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path();
+        let legacy_id = "20260731T154210Z-update-900";
+        write_run(dir, &format!("{legacy_id}.log"), "legacy\n");
+        write_run(
+            dir,
+            "20260731T154210Z-install-1000.log",
+            "# Dotfiles test 2026-07-31T15:42:10.000001Z\nprecise\n",
+        );
+        assert!(capture(dir, &opts(), false).ends_with("precise\n"));
+        let legacy = LogOpts {
+            id: Some(legacy_id.to_string()),
+            ..opts()
+        };
+        assert_eq!(
+            capture(dir, &legacy, false),
+            "legacy\n",
+            "legacy IDs and headerless contents must remain supported"
+        );
     }
 
     #[test]

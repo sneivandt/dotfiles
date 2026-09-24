@@ -100,6 +100,29 @@ jobs:
           DIR: ${{ github.workspace }}
         run: sh .github/workflows/scripts/linux/test-static-analysis.sh ${{ matrix.test_function }}
 
+  managed-script-regressions:
+    name: "Regression: Managed scripts (${{ matrix.name }})"
+    runs-on: ${{ matrix.os }}
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_build_artifacts == 'true' || needs.classify-changes.outputs.run_lint == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: Windows
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check PowerShell prompt exit-status preservation
+        shell: pwsh
+        run: ./symlinks/config/powershell/tests/Test-Prompt.ps1
+      - name: Check session lock behavior
+        run: python -B -m unittest discover -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
+      - name: Check desktop network and power actions
+        run: python -B -m unittest discover -s symlinks/config/quickshell/tests/python -p 'test_*.py'
+
   # ── Documentation Consistency ─────────────────────────
   docs:
     name: "Docs: Consistency"
@@ -200,6 +223,8 @@ jobs:
         run: cargo clippy --profile ci --all-targets -- -D warnings
       - name: Tests
         run: cargo test --profile ci
+      - name: Test build-version Git dependencies
+        run: sh ../.github/workflows/scripts/linux/test-hook-inputs.sh test_build_version_ref_triggers
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dotfiles-linux
@@ -583,6 +608,7 @@ jobs:
       - classify-changes
       - rust-fmt
       - lint
+      - managed-script-regressions
       - docs
       - validate-config
       - audit

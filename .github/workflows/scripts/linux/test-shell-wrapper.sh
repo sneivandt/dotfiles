@@ -199,6 +199,7 @@ test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args()
 
   cat > "$tmpdir/fake-bin/cargo" <<'EOF'
 #!/bin/sh
+printf '{"reason":"compiler-artifact","target":{"name":"dotfiles"},"executable":"%s/cli/target/dev-opt/dotfiles"}\n' "$DOTFILES_ROOT"
 exit 0
 EOF
   chmod +x "$tmpdir/fake-bin/cargo"
@@ -241,6 +242,7 @@ test_wrapper_forwards_advanced_flags()
 
   cat > "$tmpdir/fake-bin/cargo" <<'EOF'
 #!/bin/sh
+printf '{"reason":"compiler-artifact","target":{"name":"dotfiles"},"executable":"%s/cli/target/dev-opt/dotfiles"}\n' "$DOTFILES_ROOT"
 exit 0
 EOF
   chmod +x "$tmpdir/fake-bin/cargo"
@@ -284,6 +286,7 @@ test_wrapper_preserves_runtime_context()
   cat > "$tmpdir/fake-bin/cargo" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$PWD" > "$DOTFILES_ROOT/cargo-cwd"
+printf '{"reason":"compiler-artifact","target":{"name":"dotfiles"},"executable":"%s/cli/target/dev-opt/dotfiles"}\n' "$DOTFILES_ROOT"
 exit "${WRAPPER_CARGO_EXIT:-0}"
 EOF
   cat > "$tmpdir/bin/dotfiles" <<'EOF'
@@ -323,6 +326,68 @@ EOF
   WRAPPER_CARGO_EXIT=23 "$tmpdir/dotfiles.sh" --build --version || status=$?
   [ "$status" -eq 23 ] || log_error "Wrapper lost the build failure exit code"
   [ ! -e "$tmpdir/child-cwd" ] || log_error "Wrapper ran the child after a failed build"
+)}
+
+test_wrapper_uses_cargo_artifact()
+{(
+  log_stage "Testing build-mode Cargo output directories and stale-artifact rejection"
+  fixture="$DIR/.wrapper-artifact-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  cp "$DIR/dotfiles.sh" "$fixture/dotfiles.sh"
+  mkdir -p "$fixture/cli/.cargo" "$fixture/cli/target/dev-opt" "$fixture/fake-bin" "$fixture/caller dir"
+  cat > "$fixture/cli/target/dev-opt/dotfiles" <<'EOF'
+#!/bin/sh
+echo "ERROR: stale default-target binary executed" >&2
+exit 91
+EOF
+  cat > "$fixture/fake-bin/cargo" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$*" = 'build --profile dev-opt --bin dotfiles --message-format=json-render-diagnostics' ]
+target=${CARGO_TARGET_DIR:-$(sed -n 's/^target-dir = "\(.*\)"$/\1/p' .cargo/config.toml)}
+case "$target" in /*) ;; *) target="$PWD/$target" ;; esac
+executable="$target/custom-triple/dev-opt/dotfiles"
+mkdir -p "$(dirname "$executable")"
+cat > "$executable" <<'BIN'
+#!/bin/sh
+printf '%s\n' "$PWD" > "$DOTFILES_ROOT/child-cwd"
+printf '%s\n' "$@" > "$DOTFILES_ROOT/child-args"
+exit 7
+BIN
+chmod +x "$executable"
+if [ "${WRAPPER_NO_ARTIFACT:-0}" != 1 ]; then
+  escaped=$(printf '%s' "$executable" | sed 's/\\/\\\\/g; s/"/\\"/g; s,/,\\u002f,g; s/ /\\u0020/g')
+  printf '{"reason":"compiler-artifact","target":{"name":"dotfiles"},"executable":"%s"}\n' "$escaped"
+fi
+printf '{"reason":"build-finished","success":true}\n'
+EOF
+  chmod +x "$fixture/fake-bin/cargo" "$fixture/cli/target/dev-opt/dotfiles"
+  PATH="$fixture/fake-bin:$PATH"
+  export PATH
+  cd "$fixture/caller dir"
+  for mode in environment config; do
+    unset CARGO_TARGET_DIR
+    if [ "$mode" = environment ]; then
+      CARGO_TARGET_DIR="$fixture/environment output"
+      export CARGO_TARGET_DIR
+    else
+      printf '[build]\ntarget-dir = "configured output"\n' > "$fixture/cli/.cargo/config.toml"
+    fi
+    status=0
+    "$fixture/dotfiles.sh" --build --version 'space value' '' > "$fixture/stdout" 2> "$fixture/stderr" || status=$?
+    [ "$status" -eq 7 ] || log_error "$mode did not execute Cargo artifact: $(cat "$fixture/stderr")"
+    [ "$(cat "$fixture/child-cwd")" = "$PWD" ] || log_error "$mode changed the caller cwd"
+    [ "$(cat "$fixture/child-args")" = "$(printf '%s\n' --version 'space value' '')" ] ||
+      log_error "$mode changed child arguments"
+    [ ! -s "$fixture/stdout" ] || log_error "$mode leaked Cargo JSON to stdout"
+  done
+  rm "$fixture/child-cwd"
+  if WRAPPER_NO_ARTIFACT=1 "$fixture/dotfiles.sh" --build --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Missing Cargo artifact did not fail"
+  fi
+  [ ! -e "$fixture/child-cwd" ] || log_error "Missing artifact executed a child"
+  grep -q 'Cargo did not report' "$fixture/stderr" || log_error "Missing artifact failure was not explained"
 )}
 
 test_wrapper_chmod_after_checksum()
@@ -487,6 +552,7 @@ case "$0" in
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args
     test_wrapper_forwards_advanced_flags
     test_wrapper_preserves_runtime_context
+    test_wrapper_uses_cargo_artifact
     test_wrapper_chmod_after_checksum
     test_wrapper_attestation_verification
     test_wrapper_release_pinned_urls

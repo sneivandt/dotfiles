@@ -151,6 +151,96 @@ mod chmod {
         ));
     }
 
+    #[test]
+    fn invalid_chmod_paths_cannot_mutate_home() {
+        use crate::domains::files::config::chmod::ChmodEntry;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path().join("home");
+        std::fs::create_dir(&home).unwrap();
+        let secret = home.join("secret");
+        std::fs::write(&secret, "private content").unwrap();
+        let home_permissions = std::fs::metadata(&home).unwrap().permissions();
+        let secret_permissions = std::fs::metadata(&secret).unwrap().permissions();
+        let paths = [
+            "", " ", ".", "./", "././", ".//.//", "ssh/..", ".ssh/..", "../home", "/",
+        ];
+        for path in paths {
+            let resource = ChmodResource::from_entry(&ChmodEntry::new("755", path), &home);
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { .. }
+                ),
+                "{path:?}"
+            );
+            assert!(
+                resource.apply().is_err(),
+                "{path:?}: direct apply must also be guarded"
+            );
+            assert_eq!(
+                std::fs::metadata(&home).unwrap().permissions(),
+                home_permissions
+            );
+            assert_eq!(
+                std::fs::metadata(&secret).unwrap().permissions(),
+                secret_permissions
+            );
+            assert_eq!(std::fs::read_to_string(&secret).unwrap(), "private content");
+        }
+    }
+
+    #[test]
+    fn chmod_rejects_home_root_directory_alias() {
+        use crate::domains::files::config::chmod::ChmodEntry;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path().join("home");
+        std::fs::create_dir(&home).unwrap();
+        let alias = home.join(".alias");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(std::fs::canonicalize(&home).unwrap(), &alias).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(std::fs::canonicalize(&home).unwrap(), &alias)
+            .expect("native symlinks require a symlink-capable test worker");
+        let before = std::fs::metadata(&home).unwrap().permissions();
+        let resource = ChmodResource::from_entry(&ChmodEntry::new("755", "alias"), &home);
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Invalid { reason } if reason.contains("$HOME itself")
+        ));
+        assert!(resource.apply().is_err());
+        assert_eq!(std::fs::metadata(&home).unwrap().permissions(), before);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn chmod_rejects_windows_root_spellings() {
+        use crate::domains::files::config::chmod::ChmodEntry;
+
+        for path in [
+            r".\",
+            r".\.\",
+            r"\",
+            r"C:\",
+            r"C:relative",
+            r"\\server\share",
+        ] {
+            let resource = ChmodResource::from_entry(
+                &ChmodEntry::new("755", path),
+                std::path::Path::new(r"C:\home"),
+            );
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { .. }
+                ),
+                "{path:?}"
+            );
+            assert!(resource.apply().is_err(), "{path:?}");
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn ensure_dir_execute_bits_adds_x_for_read() {

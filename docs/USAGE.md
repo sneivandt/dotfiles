@@ -34,6 +34,10 @@ installed. Use the wrapper-only `--build` option to compile with Cargo:
 .\dotfiles.ps1 --build check
 ```
 
+Source builds execute the artifact reported by Cargo, including when
+`CARGO_TARGET_DIR`, Cargo configuration, or a configured target triple changes
+its output location.
+
 After installation, `~/.local/bin/dotfiles` is the normal entry point.
 Installed binaries check for a newer release before running a mutating command. Set
 `DOTFILES_SKIP_SELF_UPDATE=1` for a single invocation that must use the current
@@ -362,6 +366,10 @@ so `dotfiles log -c install 1` selects the second-newest install. It accepts
 within the selected run. Exact stored identities remain accepted for older
 diagnostic workflows. Task filtering can be combined with `--id`, `--verbose`,
 or `--raw`.
+
+History ordering uses the recorded start time, including fractional seconds
+when available, rather than command names or process IDs. Older logs without a
+precise start record retain deterministic filename-based ordering.
 
 History distinguishes succeeded, failed, and interrupted runs. A run with a
 start record but no finish record is `unfinished`; it may still be running or

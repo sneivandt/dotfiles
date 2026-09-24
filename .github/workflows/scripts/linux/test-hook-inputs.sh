@@ -166,6 +166,148 @@ test_ci_change_classification()
   DIR="$PWD" GITHUB_EVENT_NAME=pull_request sh "$SCRIPT_DIR/classify-ci-changes.sh"
   grep -qx 'docs_only=true' "$GITHUB_OUTPUT" || log_error "Docs-only changes lost their fast path"
   grep -qx 'run_rust_checks=false' "$GITHUB_OUTPUT" || log_error "Docs-only changes ran Rust checks"
+  grep -qx 'run_lint=false' "$GITHUB_OUTPUT" || log_error "Docs-only changes enabled managed-script checks through lint"
+  grep -qx 'run_build_artifacts=false' "$GITHUB_OUTPUT" || log_error "Docs-only changes enabled managed-script checks through builds"
+
+  for path in \
+    symlinks/config/powershell/tests/Test-Prompt.ps1 \
+    symlinks/config/hypr/scripts/tests/test_lock_screen.py \
+    symlinks/config/quickshell/tests/python/test_power_menu.py; do
+    BASE_SHA=$HEAD_SHA
+    mkdir -p "$(dirname "$path")"
+    printf 'managed-script fixture\n' > "$path"
+    git add -- "$path"
+    HEAD_SHA=$(git write-tree)
+    : > "$GITHUB_OUTPUT"
+    DIR="$PWD" GITHUB_EVENT_NAME=pull_request sh "$SCRIPT_DIR/classify-ci-changes.sh"
+    grep -qx 'docs_only=false' "$GITHUB_OUTPUT" || log_error "$path was classified as documentation"
+    grep -qx 'run_lint=true' "$GITHUB_OUTPUT" || log_error "$path did not enable managed-script checks through lint"
+    grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path did not enable managed-script checks through builds"
+  done
+)}
+
+test_staged_ci_guard_deletions()
+{(
+  log_stage "Checking full CI guards classify staged deletions and both rename paths"
+  fixture="$DIR/.ci-guard-deletions-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir -p "$fixture/mock-bin" "$fixture/repo/cli" "$fixture/repo/conf" "$fixture/repo/symlinks" "$fixture/repo/docs" "$fixture/repo/hooks"
+  cat > "$fixture/mock-bin/cargo" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$1" = run ]
+printf 'config\n' >> "$HOOK_INPUT_LOG"
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = --root ]; then
+    shift
+    [ -f "$1/conf/required.toml" ] && [ -f "$1/symlinks/required" ]
+    exit $?
+  fi
+  shift
+done
+exit 1
+EOF
+  cat > "$fixture/mock-bin/shellcheck" <<'EOF'
+#!/bin/sh
+echo "Deleted-only scripts must not be sent to ShellCheck" >&2
+exit 1
+EOF
+  chmod +x "$fixture/mock-bin/"*
+  PATH="$fixture/mock-bin:$PATH"
+  HOOK_INPUT_LOG="$fixture/checks.log"
+  DOTFILES_HOOKS_FULL=1
+  export PATH HOOK_INPUT_LOG DOTFILES_HOOKS_FULL
+  cd "$fixture/repo"
+  init_fixture_repository
+  printf '[package]\nname = "fixture"\nversion = "0.1.0"\n' > cli/Cargo.toml
+  printf 'required\n' > conf/required.toml
+  printf 'required\n' > symlinks/required
+  printf '#!/bin/sh\nexit 0\n' > hooks/removed.sh
+  git add cli conf symlinks hooks
+  git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null \
+    commit -qm baseline
+
+  for change in delete-config rename-config rename-source; do
+    git reset --hard -q HEAD
+    mkdir -p docs
+    case "$change" in
+      delete-config)
+        git rm -q conf/required.toml
+        # An unstaged restoration must not conceal the staged deletion.
+        mkdir -p conf
+        printf 'required\n' > conf/required.toml
+        ;;
+      rename-config) git mv conf/required.toml docs/required.md ;;
+      rename-source) git mv symlinks/required docs/required.txt ;;
+    esac
+    : > "$HOOK_INPUT_LOG"
+    if sh "$DIR/hooks/check-ci-guards.sh" > "$fixture/output" 2>&1; then
+      log_error "Full guards accepted $change"
+    fi
+    [ "$(cat "$HOOK_INPUT_LOG")" = config ] || log_error "$change did not run config validation"
+    grep -q 'configuration validation failed' "$fixture/output" ||
+      log_error "$change failed for an unexpected reason"
+  done
+
+  git reset --hard -q HEAD
+  git rm -q hooks/removed.sh
+  sh "$DIR/hooks/check-ci-guards.sh"
+)}
+
+test_build_version_ref_triggers()
+{(
+  log_stage "Checking build-version inputs for attached, detached, and linked-worktree HEAD"
+  toolchain=$(sed -n 's/^channel = "\(.*\)"$/\1/p' "$DIR/cli/rust-toolchain.toml")
+  if ! command -v rustup >/dev/null 2>&1 ||
+    ! compiler=$(rustup which --toolchain "$toolchain" rustc 2>/dev/null); then
+    log_verbose "Skipping build-version regression: pinned Rust compiler is not installed"
+    return 0
+  fi
+  if command -v cygpath >/dev/null 2>&1; then
+    compiler=$(cygpath -u "$compiler")
+  fi
+  fixture="$DIR/.build-version-inputs-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  # Compile only the std-only build script, without Cargo or dependency builds.
+  "$compiler" --edition=2024 "$DIR/cli/build.rs" -o "$fixture/build-script.exe"
+  mkdir "$fixture/repo"
+  cd "$fixture/repo"
+  init_fixture_repository
+  git symbolic-ref HEAD refs/heads/main
+  git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null \
+    commit --allow-empty -qm baseline
+  main_git_dir=$(git rev-parse --absolute-git-dir)
+  unset DOTFILES_VERSION
+  "$fixture/build-script.exe" > "$fixture/attached"
+  grep -Fqx "cargo:rerun-if-changed=$main_git_dir/refs/heads/main" "$fixture/attached" ||
+    log_error "Attached HEAD did not watch its branch ref"
+  grep -Fqx "cargo:rerun-if-changed=$main_git_dir/HEAD" "$fixture/attached" ||
+    log_error "Attached HEAD did not watch branch switches"
+  if grep -Fqx "cargo:rerun-if-changed=$main_git_dir/refs/" "$fixture/attached"; then
+    log_error "Build version watches unrelated refs"
+  fi
+
+  git worktree add -qb fixture-branch "$fixture/worktree"
+  (
+    unset GIT_DIR GIT_COMMON_DIR GIT_WORK_TREE GIT_INDEX_FILE
+    cd "$fixture/worktree"
+    "$fixture/build-script.exe" > "$fixture/linked"
+    worktree_git_dir=$(git rev-parse --absolute-git-dir)
+    grep -Fqx "cargo:rerun-if-changed=$worktree_git_dir/HEAD" "$fixture/linked" ||
+      log_error "Linked worktree did not watch its own HEAD"
+    grep -Fqx "cargo:rerun-if-changed=$main_git_dir/refs/heads/fixture-branch" "$fixture/linked" ||
+      log_error "Linked worktree branch was not resolved in the common Git directory"
+  )
+
+  git checkout --detach -q
+  "$fixture/build-script.exe" > "$fixture/detached"
+  grep -Fqx "cargo:rerun-if-changed=$main_git_dir/HEAD" "$fixture/detached" ||
+    log_error "Detached HEAD is not watched"
+  if grep -q 'cargo:rerun-if-changed=.*refs/heads/' "$fixture/detached"; then
+    log_error "Detached HEAD retained an unrelated branch dependency"
+  fi
 )}
 
 if [ "$#" -gt 0 ]; then
@@ -282,3 +424,5 @@ log_verbose "Hook input regression tests passed"
 test_fixture_git_context
 test_staged_ci_guards
 test_ci_change_classification
+test_staged_ci_guard_deletions
+test_build_version_ref_triggers

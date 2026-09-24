@@ -34,8 +34,8 @@ more expensive Rust checks.
 
 ## Scan scope
 
-The staged-change scripts use `--diff-filter=d`, which excludes only deletions.
-They still scan renames because a renamed file can also add a secret. The diff
+Sensitive-data scanning uses `--diff-filter=d`, which excludes only deletions.
+It still scans renames because a renamed file can also add a secret. The diff
 includes the old and new paths so Git can pair the rename, while the scanner
 reports only added lines.
 
@@ -61,6 +61,8 @@ CI guards validate an exported staged index for configuration, dependency,
 ShellCheck, and wrapper checks. Unstaged fixes, unstaged deletions, and untracked
 files cannot hide or replace the content being committed. The snapshot is
 removed after the checks; Cargo's target cache is reused from the checkout.
+Scope classification includes deleted paths and both sides of renames, so
+removing required configuration still triggers validation of the staged snapshot.
 
 ## Installation and removal
 
@@ -74,6 +76,10 @@ dotfiles uninstall --dry-run
 
 If `hooks/` is absent, repository validation reports a warning rather than
 treating the whole configuration as invalid.
+
+When `core.hooksPath` points directly at the repository's source hooks, uninstall
+preserves those sources rather than treating them as installed copies. This also
+applies when the hook directory is reached through a filesystem alias.
 
 ## Running checks manually
 

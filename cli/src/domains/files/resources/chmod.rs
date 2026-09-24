@@ -4,8 +4,7 @@ use anyhow::Context as _;
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::domains::files::config::chmod::OctalMode;
-#[cfg(unix)]
+use crate::domains::files::config::chmod::{OctalMode, validate_path};
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
@@ -19,6 +18,8 @@ pub struct ChmodResource {
     /// Target file path (absolute).
     pub target: PathBuf,
     pub(super) mode: Result<OctalMode, String>,
+    home: Option<PathBuf>,
+    validation_error: Option<String>,
 }
 
 impl ChmodResource {
@@ -29,6 +30,8 @@ impl ChmodResource {
         Self {
             target,
             mode: Ok(mode),
+            home: None,
+            validation_error: None,
         }
     }
 
@@ -43,7 +46,23 @@ impl ChmodResource {
         Self {
             target,
             mode: entry.parsed_mode().clone(),
+            home: Some(home.to_path_buf()),
+            validation_error: validate_path(&entry.path).err(),
         }
+    }
+
+    fn invalid_path_reason(&self) -> ResourceResult<Option<String>> {
+        if let Some(reason) = &self.validation_error {
+            return Ok(Some(reason.clone()));
+        }
+        if let Some(home) = &self.home
+            && self.target.try_exists()?
+            && crate::infra::fs::canonicalize(&self.target)?
+                == crate::infra::fs::canonicalize(home)?
+        {
+            return Ok(Some("chmod target resolves to $HOME itself".into()));
+        }
+        Ok(None)
     }
 }
 
@@ -59,6 +78,13 @@ impl Resource for ChmodResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        if let Some(reason) = self.invalid_path_reason()? {
+            return Err(ResourceError::conflicting_state(
+                self.target.display().to_string(),
+                "a file or directory beneath $HOME",
+                reason,
+            ));
+        }
         #[cfg(unix)]
         {
             let mode = self.mode.as_ref().map_err(|reason| {
@@ -94,6 +120,9 @@ impl Resource for ChmodResource {
 
 impl IntrinsicState for ChmodResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
+        if let Some(reason) = self.invalid_path_reason()? {
+            return Ok(ResourceState::Invalid { reason });
+        }
         if let Err(reason) = &self.mode {
             return Ok(ResourceState::Invalid {
                 reason: reason.clone(),

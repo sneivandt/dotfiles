@@ -260,7 +260,9 @@ permissions = [
 
 Paths are relative to the home directory and modes are Unix octal strings. For
 directory trees, traversal access is preserved while ordinary files do not
-inherit execute bits unless explicitly targeted.
+inherit execute bits unless explicitly targeted. Paths must name a descendant
+of the home directory; empty paths and paths that resolve to the home directory
+itself are rejected before permissions can be changed.
 
 ## Registry
 

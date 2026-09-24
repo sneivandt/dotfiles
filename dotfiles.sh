@@ -48,8 +48,59 @@ if [ "$BUILD_MODE" = true ]; then
     echo "ERROR: cargo not found. Install Rust to use --build mode." >&2
     exit 1
   fi
-  (cd "$DOTFILES_ROOT/cli" && cargo build --profile dev-opt)
-  exec "$DOTFILES_ROOT/cli/target/dev-opt/dotfiles" "$@"
+  build_output=$(cd "$DOTFILES_ROOT/cli" &&
+    cargo build --profile dev-opt --bin dotfiles --message-format=json-render-diagnostics)
+  # Cargo reports the actual executable, including configured target directories
+  # and target triples. Decode its JSON string without adding a build dependency.
+  if ! build_binary=$(printf '%s\n' "$build_output" | awk '
+    function decode(value, result, i, c, hex, j, n, digit) {
+      result = ""
+      for (i = 2; i < length(value); i++) {
+        c = substr(value, i, 1)
+        if (c == "\\") {
+          c = substr(value, ++i, 1)
+          if (c == "n") c = "\n"
+          else if (c == "r") c = "\r"
+          else if (c == "t") c = "\t"
+          else if (c == "b") c = sprintf("%c", 8)
+          else if (c == "f") c = sprintf("%c", 12)
+          else if (c == "u") {
+            hex = tolower(substr(value, i + 1, 4))
+            n = 0
+            for (j = 1; j <= 4; j++) {
+              digit = substr(hex, j, 1)
+              if (digit ~ /^[a-f]$/) digit = index("abcdef", digit) + 9
+              else if (digit !~ /^[0-9]$/) exit 1
+              n = n * 16 + digit
+            }
+            # serde_json emits non-ASCII paths as UTF-8, not Unicode escapes.
+            if (n == 0 || n > 127) exit 1
+            c = sprintf("%c", n)
+            i += 4
+          } else if (c != "\\" && c != "\"" && c != "/") exit 1
+        }
+        result = result c
+      }
+      return result
+    }
+    /"reason"[[:space:]]*:[[:space:]]*"compiler-artifact"/ &&
+    /"name"[[:space:]]*:[[:space:]]*"dotfiles"/ {
+      if (match($0, /"executable"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"/)) {
+        value = substr($0, RSTART, RLENGTH)
+        sub(/^"executable"[[:space:]]*:[[:space:]]*/, "", value)
+        executable = decode(value)
+        count++
+      }
+    }
+    END {
+      if (count != 1 || executable == "") exit 1
+      print executable
+    }
+  '); then
+    echo "ERROR: Cargo did not report a unique dotfiles executable." >&2
+    exit 1
+  fi
+  exec "$build_binary" "$@"
 fi
 
 # --------------------------------------------------------------------------- #

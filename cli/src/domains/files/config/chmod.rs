@@ -12,6 +12,8 @@ const CHMOD_INVALID_MODE: DiagnosticCode = DiagnosticCode::new("chmod", "invalid
 const CHMOD_ABSOLUTE_PATH: DiagnosticCode = DiagnosticCode::new("chmod", "absolute-path");
 /// Diagnostic code: `chmod.parent-in-path`.
 const CHMOD_PARENT_IN_PATH: DiagnosticCode = DiagnosticCode::new("chmod", "parent-in-path");
+/// Diagnostic code: `chmod.home-root`.
+const CHMOD_HOME_ROOT: DiagnosticCode = DiagnosticCode::new("chmod", "home-root");
 /// Diagnostic code: `chmod.platform-unsupported`.
 const CHMOD_PLATFORM_UNSUPPORTED: DiagnosticCode =
     DiagnosticCode::new("chmod", "platform-unsupported");
@@ -143,6 +145,38 @@ impl ChmodEntry {
 
 config_section!(field: "permissions", ty: ChmodEntry);
 
+fn is_home_root_path(path: &str) -> bool {
+    path.trim().is_empty()
+        || Path::new(path)
+            .components()
+            .all(|component| component == std::path::Component::CurDir)
+}
+
+fn has_root_or_prefix(path: &str) -> bool {
+    Path::new(path).components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Prefix(_) | std::path::Component::RootDir
+        )
+    })
+}
+
+pub(crate) fn validate_path(path: &str) -> Result<(), String> {
+    if is_home_root_path(path) {
+        return Err("path must name a file or directory beneath $HOME, not $HOME itself".into());
+    }
+    if has_root_or_prefix(path) {
+        return Err("path must be relative to $HOME directory".into());
+    }
+    if Path::new(path)
+        .components()
+        .any(|component| component == std::path::Component::ParentDir)
+    {
+        return Err("path must not contain '..' components".into());
+    }
+    Ok(())
+}
+
 /// Load every chmod entry without category filtering.
 ///
 /// # Errors
@@ -165,7 +199,7 @@ pub fn validate(
     platform: crate::infra::platform::Platform,
 ) -> Vec<Diagnostic> {
     use crate::infra::config::Severity;
-    use crate::infra::config::validation::{Validator, check, check_error};
+    use crate::infra::config::validation::{Validator, check_error};
 
     Validator::new(CHMOD_TOML)
         .warn_if(
@@ -183,10 +217,10 @@ pub fn validate(
                         .as_ref()
                         .err()
                         .map(|message| (CHMOD_INVALID_MODE, Severity::Warning, message.clone())),
-                    check(
-                        Path::new(&e.path).is_absolute() || e.path.starts_with('/'),
+                    check_error(
+                        has_root_or_prefix(&e.path),
                         CHMOD_ABSOLUTE_PATH,
-                        "path should be relative to $HOME directory",
+                        "path must be relative to $HOME directory",
                     ),
                     check_error(
                         Path::new(&e.path)
@@ -194,6 +228,11 @@ pub fn validate(
                             .any(|c| c == std::path::Component::ParentDir),
                         CHMOD_PARENT_IN_PATH,
                         "path must not contain '..' components",
+                    ),
+                    check_error(
+                        is_home_root_path(&e.path),
+                        CHMOD_HOME_ROOT,
+                        "path must name a file or directory beneath $HOME, not $HOME itself",
                     ),
                 ]
             },
@@ -296,6 +335,63 @@ permissions = [{ path = "config/volume/init-volume.sh", mode = "755" }]
         let warnings = validate(&entries, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("'..'"));
+    }
+
+    #[test]
+    fn validate_rejects_empty_and_home_root_paths() {
+        use crate::infra::config::Severity;
+        use crate::infra::platform::{Os, Platform};
+
+        for path in ["", " ", ".", "./", "././", ".//.//"] {
+            let diagnostics = validate(
+                &[ChmodEntry::new("755", path)],
+                Platform::new(Os::Linux, false),
+            );
+            assert_eq!(diagnostics.len(), 1, "{path:?}");
+            let diagnostic = &diagnostics[0];
+            assert_eq!(diagnostic.code, CHMOD_HOME_ROOT, "{path:?}");
+            assert_eq!(diagnostic.severity, Severity::Error, "{path:?}");
+            assert_eq!(diagnostic.source, CHMOD_TOML);
+            assert_eq!(diagnostic.item, path);
+            assert!(diagnostic.message.contains("not $HOME itself"));
+            assert!(validate_path(path).is_err(), "{path:?}");
+        }
+        for path in ["ssh/config", ".ssh/config"] {
+            assert!(validate_path(path).is_ok(), "{path:?}");
+            assert!(
+                validate(
+                    &[ChmodEntry::new("600", path)],
+                    Platform::new(Os::Linux, false)
+                )
+                .is_empty(),
+                "{path:?}"
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn validate_rejects_windows_root_spellings() {
+        use crate::infra::config::Severity;
+        use crate::infra::platform::{Os, Platform};
+
+        for (path, code) in [
+            (r".\", CHMOD_HOME_ROOT),
+            (r".\.\", CHMOD_HOME_ROOT),
+            (r"\", CHMOD_ABSOLUTE_PATH),
+            (r"C:\", CHMOD_ABSOLUTE_PATH),
+            (r"C:relative", CHMOD_ABSOLUTE_PATH),
+            (r"\\server\share", CHMOD_ABSOLUTE_PATH),
+        ] {
+            let diagnostics = validate(
+                &[ChmodEntry::new("755", path)],
+                Platform::new(Os::Linux, false),
+            );
+            assert_eq!(diagnostics.len(), 1, "{path:?}");
+            assert_eq!(diagnostics[0].code, code, "{path:?}");
+            assert_eq!(diagnostics[0].severity, Severity::Error, "{path:?}");
+            assert!(validate_path(path).is_err(), "{path:?}");
+        }
     }
 
     #[test]

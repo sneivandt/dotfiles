@@ -20,6 +20,17 @@ impl HookFileResource {
     pub const fn new(source: PathBuf, target: PathBuf) -> Self {
         Self { source, target }
     }
+
+    pub(crate) fn targets_source(&self) -> ResourceResult<bool> {
+        if self.source == self.target {
+            return Ok(true);
+        }
+        if !self.source.try_exists()? || !self.target.try_exists()? {
+            return Ok(false);
+        }
+        Ok(crate::infra::fs::canonicalize(&self.source)?
+            == crate::infra::fs::canonicalize(&self.target)?)
+    }
 }
 
 impl Resource for HookFileResource {
@@ -31,6 +42,9 @@ impl Resource for HookFileResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        if self.targets_source()? {
+            return Ok(ResourceChange::AlreadyCorrect);
+        }
         crate::infra::fs::ensure_parent_dir(&self.target)?;
         let parent = self
             .target
@@ -53,6 +67,9 @@ impl Resource for HookFileResource {
 
 impl RemovableResource for HookFileResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
+        if self.targets_source()? {
+            return Ok(ResourceChange::AlreadyCorrect);
+        }
         if crate::infra::fs::remove_file_if_present(&self.target, "stat hook")? {
             Ok(ResourceChange::Applied)
         } else {
@@ -292,6 +309,46 @@ mod tests {
             HookFileResource::new(dir.path().join("src"), dir.path().join("nonexistent"));
         let result = resource.remove().unwrap();
         assert_eq!(result, ResourceChange::AlreadyCorrect);
+    }
+
+    #[test]
+    fn source_targets_are_preserved_by_apply_and_remove() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let source = dir.path().join("pre-commit");
+        std::fs::write(&source, "uncommitted hook content").unwrap();
+        for target in [source.clone(), dir.path().join(".").join("pre-commit")] {
+            let resource = HookFileResource::new(source.clone(), target);
+            assert!(resource.targets_source().unwrap());
+            assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+            assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
+            assert_eq!(
+                std::fs::read_to_string(&source).unwrap(),
+                "uncommitted hook content"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_directory_alias_preserves_source_hook() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let hooks = dir.path().join("hooks");
+        std::fs::create_dir(&hooks).unwrap();
+        let source = hooks.join("pre-commit");
+        std::fs::write(&source, "uncommitted hook content").unwrap();
+        let alias = dir.path().join("alias");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(std::fs::canonicalize(&hooks).unwrap(), &alias).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(std::fs::canonicalize(&hooks).unwrap(), &alias)
+            .expect("native symlinks require a symlink-capable test worker");
+        let resource = HookFileResource::new(source.clone(), alias.join("pre-commit"));
+        assert!(resource.targets_source().unwrap());
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(resource.remove().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(
+            std::fs::read_to_string(source).unwrap(),
+            "uncommitted hook content"
+        );
     }
 
     #[cfg(unix)]

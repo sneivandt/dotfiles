@@ -12,7 +12,7 @@ ShellPopup {
     readonly property var actions: ({
             logout: {
                 label: "Log out",
-                command: ["hyprctl", "dispatch", "hl.dsp.exit()"]
+                command: ["uwsm", "stop"]
             },
             reboot: {
                 label: "Restart",

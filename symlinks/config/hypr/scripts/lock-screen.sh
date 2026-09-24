@@ -2,7 +2,7 @@
 set -o errexit
 set -o nounset
 
-if pidof hyprlock >/dev/null 2>&1 || systemctl --user --quiet is-active hyprlock.service; then
+if pgrep -u "$(id -u)" -x hyprlock >/dev/null 2>&1 || systemctl --user --quiet is-active hyprlock.service; then
   exit 0
 fi
 

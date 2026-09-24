@@ -25,9 +25,9 @@ fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 WORKTREE_ROOT="$REPO_ROOT"
-# Renames are included (lowercase 'd' excludes only deletions) so that renaming
-# a conf/ or symlinks/ file still triggers configuration validation.
-STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
+# Scope classification includes deletions and both sides of renames. Individual
+# file checks below select only paths still present in the exported index.
+STAGED=$(git diff --cached --name-only --no-renames "$against")
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
 CHECK_ROOT=""
 trap '[ -z "$CHECK_ROOT" ] || rm -rf "$CHECK_ROOT"' EXIT
@@ -68,7 +68,9 @@ staged_shell_files() {
   printf '%s\n' "$STAGED" \
     | grep -E '(^dotfiles\.sh$|^install\.sh$|\.sh$|^hooks/pre-commit$|^hooks/[^/]+\.sh$)' \
     | while IFS= read -r file; do
-        [ -f "$REPO_ROOT/$file" ] && printf '%s\n' "$REPO_ROOT/$file"
+        if [ -f "$REPO_ROOT/$file" ]; then
+          printf '%s\n' "$REPO_ROOT/$file"
+        fi
       done
 }
 

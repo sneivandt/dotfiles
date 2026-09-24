@@ -96,6 +96,10 @@ a later failure must not leave workflows disabled by an earlier APM step.
 The original convergence error remains the task's outcome; restoration is
 best-effort and reports its own failures separately.
 
+When repairing a scheduled workflow's next run, local daily, weekly, and cron
+times use the UTC offset for the scheduled date, including daylight-saving
+transitions.
+
 Cowork remains an experimental APM target and is disabled by default. When a
 Cowork skills path is available, dotfiles re-asserts the feature with:
 

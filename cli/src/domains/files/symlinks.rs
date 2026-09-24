@@ -24,16 +24,16 @@ fn build_resource(
         || compute_target(home, &s.source),
         |explicit| home.join(explicit),
     );
+    let source_root = s.origin.as_deref().unwrap_or(repo_root);
     let validation_error = crate::domains::files::config::symlinks::validate_paths(s)
         .and_then(|()| {
             crate::domains::files::config::symlinks::validate_source_containment(s, repo_root)
         })
         .err()
         .map(|e| e.to_string())
-        .or_else(|| git_symlink_placeholder_reason(&source, repo_root));
-    let display_root = s.origin.as_deref().unwrap_or(repo_root);
+        .or_else(|| git_symlink_placeholder_reason(&source, source_root));
     SymlinkResource::new(source, target, Arc::clone(executor))
-        .with_display_roots(home, display_root)
+        .with_display_roots(home, source_root)
         .with_validation_error(validation_error)
 }
 
@@ -283,6 +283,59 @@ mod tests {
             resource.description(),
             "~/.config/example \u{2192} symlinks/config/example"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn git_symlink_placeholders_are_rejected_in_main_and_overlay() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().join("repo");
+        let overlay = fixture.path().join("overlay");
+        let home = fixture.path().join("home");
+        std::fs::create_dir(&home).unwrap();
+        for source_root in [&root, &overlay] {
+            let repository = git2::Repository::init(source_root).unwrap();
+            let sources = source_root.join("symlinks");
+            std::fs::create_dir(&sources).unwrap();
+            std::fs::write(sources.join("placeholder"), "real-config").unwrap();
+            std::fs::write(sources.join("real-config"), "actual configuration").unwrap();
+            let mut index = repository.index().unwrap();
+            let path = Path::new("symlinks").join("placeholder");
+            index.add_path(&path).unwrap();
+            let mut entry = index.get_path(&path, 0).unwrap();
+            entry.mode = 0o120_000;
+            index.add(&entry).unwrap();
+            index.write().unwrap();
+        }
+        let ctx = make_linux_context(empty_config(root.clone())).with_home(home.clone());
+        for origin in [None, Some(overlay)] {
+            let symlink = Symlink {
+                source: "placeholder".into(),
+                target: Some(".configuration".into()),
+                origin,
+            };
+            let resource = build_resource(&symlink, &root, &home, &ctx.executor_arc());
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { reason } if reason.contains("Git records it as a symlink")
+                ),
+                "{symlink:?}"
+            );
+            assert!(!home.join(".configuration").exists());
+
+            let ordinary = Symlink {
+                source: "real-config".into(),
+                ..symlink
+            };
+            assert_eq!(
+                build_resource(&ordinary, &root, &home, &ctx.executor_arc())
+                    .current_state()
+                    .unwrap(),
+                ResourceState::Missing,
+                "ordinary source files must remain installable"
+            );
+        }
     }
 
     #[test]

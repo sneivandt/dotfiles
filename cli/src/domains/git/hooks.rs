@@ -42,7 +42,11 @@ fn discover_hooks(ctx: &Context, fs_ops: &Arc<dyn FileSystemOps>) -> Result<Vec<
             continue;
         };
         if fs_ops.is_file(&path) && path.extension().is_none() {
-            resources.push(HookFileResource::new(path, hooks_dst.join(file_name)));
+            let resource = HookFileResource::new(path, hooks_dst.join(file_name));
+            // A user-owned hooksPath can execute the tracked sources directly.
+            if !resource.targets_source()? {
+                resources.push(resource);
+            }
         }
     }
     Ok(resources)

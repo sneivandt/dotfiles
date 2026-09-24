@@ -294,6 +294,43 @@ fn git_hooks_preview_apply_repeat_and_conservative_uninstall() {
     }
 }
 
+#[test]
+fn git_hooks_preserve_direct_source_hooks_path() {
+    for hooks_path in ["hooks", "./hooks", "hooks/../hooks", "hook-alias"] {
+        let fixture = hook_fixture();
+        if hooks_path == "hook-alias" {
+            let source = fixture.repo.join("hooks");
+            let alias = fixture.repo.join("hook-alias");
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(source, alias).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_dir(source, alias)
+                .expect("native symlinks require a symlink-capable test worker");
+        }
+        git2::Repository::open(&fixture.repo)
+            .unwrap()
+            .config()
+            .unwrap()
+            .set_str("core.hooksPath", hooks_path)
+            .unwrap();
+        let before = fixture.snapshot();
+        for dry_run in [true, false, false] {
+            let install = fixture.run(dry_run, false, |_| Box::new(InstallGitHooks::new()));
+            install.assert_no_resources();
+            install.assert_actions("install", &[], dry_run);
+            let uninstall = fixture.run(dry_run, false, |_| Box::new(UninstallGitHooks::new()));
+            uninstall.assert_no_resources();
+            uninstall.assert_actions("remove", &[], dry_run);
+            assert_eq!(
+                fixture.snapshot(),
+                before,
+                "{hooks_path}: preserve source tree"
+            );
+        }
+        assert_eq!(fixture.command_count(), 0);
+    }
+}
+
 const fn platform(os: Os) -> Platform {
     Platform {
         os,

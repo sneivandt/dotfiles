@@ -143,6 +143,19 @@ On Windows, use `python -B` in place of the environment-variable prefix and
 `python3`. The native GLib integration case is skipped when its runtime is
 unavailable; the mocked network cases still run.
 
+Session-lock regressions mock process and service checks without locking the
+desktop. The power-menu regression is included in the Quickshell Python suite.
+The prompt regression runs an isolated PowerShell host without loading the
+installed profile:
+
+```powershell
+python -B -m unittest discover -s symlinks\config\hypr\scripts\tests -p 'test_*.py'
+pwsh -NoProfile -File symlinks\config\powershell\tests\Test-Prompt.ps1
+```
+
+The managed-script regression jobs run these cases and the Quickshell Python
+suite on Linux and Windows, and gate `ci-success`.
+
 ## CLI validation
 
 `dotfiles check` is the user-facing repository validator. It checks:
@@ -219,11 +232,19 @@ Pass `test_staged_ci_guards` or `test_ci_change_classification` to
 `test-hook-inputs.sh` to focus on staged-content isolation or rename-aware CI
 classification. With no target, it runs all hook-input regressions.
 
+The selectors `test_staged_ci_guard_deletions` and
+`test_build_version_ref_triggers` cover deleted/renamed configuration and Git
+branch-ref invalidation of build metadata. The latter requires the repository's
+pinned Rust compiler and runs in the Linux build job.
+`test_wrapper_uses_cargo_artifact` checks configured Cargo output paths without
+building or executing the real CLI.
+
 On Windows, load the wrapper test functions and run the isolated path fixture:
 
 ```powershell
 . .\.github\workflows\scripts\windows\Test-ShellWrapper.ps1
 Test-IsolatedWrapperPath
+Test-CargoArtifactPath
 ```
 
 The full hook integration script creates real commits and refuses to run in a
@@ -283,6 +304,7 @@ validated on Windows.
 | Application: git | yes | yes | Windows also asserts the `core.autocrlf` override |
 | Application: zsh, vim, nvim | yes | n/a | Excluded from the Windows profile |
 | Application: volume initialization | yes | n/a | PipeWire/PulseAudio integration is Linux-only |
+| Managed-script regressions | yes | yes | Isolated prompt host and mocked lock/network/power actions; not native desktop integration |
 | Git hook sensitive-data check | yes | no | Hooks are POSIX `sh`; not run on Windows |
 | ShellCheck, PSScriptAnalyzer | yes | n/a | Both run on the Linux runner |
 | `cargo audit`, `cargo deny`, MSRV | yes | n/a | Platform-independent |

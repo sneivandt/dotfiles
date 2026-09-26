@@ -218,6 +218,13 @@ run_release_workflow_guards() {
   require_workflow_pattern 'gh attestation verify "\$artifact" --repo "\$GITHUB_REPOSITORY"' "the attestation discoverability check"
   require_workflow_pattern 'target_commitish:[[:space:]]+\$\{\{ needs\.version\.outputs\.sha \}\}' "the exact tested release tag target"
 
+  retention_count=$(printf '%s\n' "$workflow_contents" | grep -Ec '^[[:space:]]+retention-days:[[:space:]]+1[[:space:]]*$' || true)
+  if [ "$retention_count" -ne 2 ]; then
+    abort_with_hint \
+      "release handoff artifacts are not limited to one-day retention." \
+      "set retention-days: 1 on both release artifact upload steps"
+  fi
+
   attest_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Attest build provenance' | head -n 1 | cut -d: -f1)
   verify_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Verify attestation discoverability' | head -n 1 | cut -d: -f1)
   release_line=$(printf '%s\n' "$workflow_contents" | grep -nF -- '- name: Create release' | head -n 1 | cut -d: -f1)

@@ -110,6 +110,7 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
+          retention-days: 1
 
   build-windows:
     name: Build Windows x86_64
@@ -140,6 +141,7 @@ jobs:
         with:
           name: dotfiles-windows-x86_64
           path: dotfiles-windows-x86_64.exe
+          retention-days: 1
 
   release:
     name: Create Release

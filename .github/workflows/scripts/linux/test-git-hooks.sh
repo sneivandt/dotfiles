@@ -234,6 +234,19 @@ test_release_workflow_guards() {
     pass "Release workflow guards require tags to target the tested commit"
   fi
 
+  sed '/^[[:space:]]*retention-days:[[:space:]]*1[[:space:]]*$/d' \
+    "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
+  git -C "$repo" add .github/workflows/release.yml
+
+  if (
+    cd "$repo"
+    sh hooks/check-ci-guards.sh >/dev/null 2>&1
+  ); then
+    fail "Release workflow guards accepted long-lived handoff artifacts"
+  else
+    pass "Release workflow guards require one-day handoff artifact retention"
+  fi
+
   sed '/^[[:space:]]*group:[[:space:]]*release[[:space:]]*$/d' \
     "$repo_root/.github/workflows/release.yml" > "$repo/.github/workflows/release.yml"
   git -C "$repo" add .github/workflows/release.yml

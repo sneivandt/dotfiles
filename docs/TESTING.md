@@ -29,7 +29,7 @@ jobs, coverage, or mutation testing.
 | `test` | `cargo test` |
 | `config` | `dotfiles check --root .` (repository validator) |
 | `docs` | Relative Markdown links and heading anchors resolve; documented task selectors exist (Linux script only) |
-| `ci` | Required CI jobs remain in the aggregate success gate (Linux script only) |
+| `ci` | Required CI jobs remain in the aggregate success gate and retain their scheduling conditions (Linux script only) |
 | `shell` | ShellCheck over wrappers, hooks, and CI scripts |
 | `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
 | `audit` | `cargo audit` |

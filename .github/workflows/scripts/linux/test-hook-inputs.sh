@@ -155,6 +155,10 @@ test_ci_change_classification()
   DIR="$PWD" GITHUB_EVENT_NAME=pull_request sh "$SCRIPT_DIR/classify-ci-changes.sh"
   grep -qx 'run_rust_checks=true' "$GITHUB_OUTPUT" ||
     log_error "Renaming Rust into docs skipped Rust checks"
+  grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" ||
+    log_error "Renaming Rust into docs skipped builds"
+  grep -qx 'run_profile_integration=true' "$GITHUB_OUTPUT" ||
+    log_error "Renaming Rust into docs skipped integration checks"
   grep -qx 'docs_only=false' "$GITHUB_OUTPUT" ||
     log_error "Renaming Rust into docs was treated as docs-only"
 
@@ -165,6 +169,7 @@ test_ci_change_classification()
   : > "$GITHUB_OUTPUT"
   DIR="$PWD" GITHUB_EVENT_NAME=pull_request sh "$SCRIPT_DIR/classify-ci-changes.sh"
   grep -qx 'docs_only=true' "$GITHUB_OUTPUT" || log_error "Docs-only changes lost their fast path"
+  grep -qx 'run_docs_checks=true' "$GITHUB_OUTPUT" || log_error "Docs-only changes skipped docs checks"
   grep -qx 'run_rust_checks=false' "$GITHUB_OUTPUT" || log_error "Docs-only changes ran Rust checks"
   grep -qx 'run_lint=false' "$GITHUB_OUTPUT" || log_error "Docs-only changes enabled managed-script checks through lint"
   grep -qx 'run_build_artifacts=false' "$GITHUB_OUTPUT" || log_error "Docs-only changes enabled managed-script checks through builds"
@@ -183,6 +188,7 @@ test_ci_change_classification()
     grep -qx 'docs_only=false' "$GITHUB_OUTPUT" || log_error "$path was classified as documentation"
     grep -qx 'run_lint=true' "$GITHUB_OUTPUT" || log_error "$path did not enable managed-script checks through lint"
     grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path did not enable managed-script checks through builds"
+    grep -qx 'run_app_tests=true' "$GITHUB_OUTPUT" || log_error "$path skipped application tests"
   done
 
   for path in conf/packages.toml dotfiles.sh dotfiles.ps1 hooks/pre-commit .github/workflows/ci.yml; do
@@ -198,13 +204,16 @@ test_ci_change_classification()
       conf/*)
         grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path skipped builds"
         grep -qx 'run_profile_integration=true' "$GITHUB_OUTPUT" || log_error "$path skipped profile integration"
+        grep -qx 'run_validate_config=true' "$GITHUB_OUTPUT" || log_error "$path skipped config validation"
         grep -qx 'run_rust_checks=false' "$GITHUB_OUTPUT" || log_error "$path enabled Rust-only checks"
         ;;
       dotfiles.sh)
+        grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path skipped builds"
         grep -qx 'run_wrapper_linux=true' "$GITHUB_OUTPUT" || log_error "$path skipped the Linux wrapper"
         grep -qx 'run_wrapper_windows=false' "$GITHUB_OUTPUT" || log_error "$path enabled the Windows wrapper"
         ;;
       dotfiles.ps1)
+        grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path skipped builds"
         grep -qx 'run_wrapper_windows=true' "$GITHUB_OUTPUT" || log_error "$path skipped the Windows wrapper"
         grep -qx 'run_wrapper_linux=false' "$GITHUB_OUTPUT" || log_error "$path enabled the Linux wrapper"
         ;;
@@ -215,6 +224,7 @@ test_ci_change_classification()
       .github/workflows/*)
         grep -qx 'run_git_hooks=true' "$GITHUB_OUTPUT" || log_error "$path did not enable full CI"
         grep -qx 'run_rust_checks=true' "$GITHUB_OUTPUT" || log_error "$path did not enable full CI"
+        grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path did not enable builds"
         ;;
     esac
   done

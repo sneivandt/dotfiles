@@ -29,6 +29,7 @@ jobs, coverage, or mutation testing.
 | `test` | `cargo test` |
 | `config` | `dotfiles check --root .` (repository validator) |
 | `docs` | Relative Markdown links and heading anchors resolve; documented task selectors exist (Linux script only) |
+| `ci` | Required CI jobs remain in the aggregate success gate (Linux script only) |
 | `shell` | ShellCheck over wrappers, hooks, and CI scripts |
 | `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
 | `audit` | `cargo audit` |
@@ -43,8 +44,7 @@ sh .github/workflows/scripts/linux/check.sh --list
 sh .github/workflows/scripts/linux/check.sh --all
 ```
 
-The Windows script has no `docs` stage. CI runs documentation consistency on
-Linux.
+The Windows script has no `docs` or `ci` stage. CI runs those checks on Linux.
 
 Run Cargo directly when you need one Rust check:
 
@@ -338,7 +338,7 @@ outside any repository. Installation removes the obsolete managed
 | Hook | hook script and Git hook integration test |
 | Cross-platform Rust | tests/check on the host plus the repository's cross-platform sequence |
 | Documentation | `check.sh docs` (link and task-selector consistency) |
-| CI workflow | local script or narrow command used by the changed job |
+| CI workflow | `check.sh ci` plus the narrow command used by the changed job |
 
 Escalate to the full suite when shared engine behavior, catalog composition, or
 configuration loading changes.

@@ -23,35 +23,13 @@ pub(crate) fn apply_task_filters<'a>(
         .chain(additional_known_tasks)
         .map(Box::as_ref)
         .collect();
-    let unmatched_only = unmatched_filters(&known_task_refs, only);
-    let unmatched_skip = unmatched_filters(&known_task_refs, skip);
-    reject_unmatched_filters(&known_task_refs, &unmatched_only, "--only")?;
-    reject_unmatched_filters(&known_task_refs, &unmatched_skip, "--skip")?;
-
-    let mut selected = all_tasks
-        .iter()
-        .chain(additional_known_tasks)
-        .filter(|task| task_passes_filters(task.as_ref(), only, &[]))
-        .map(|task| task.task_id())
-        .collect::<HashSet<_>>();
-    if with_dependencies {
-        ResolvedTaskGraph::resolve(&known_task_refs)?
-            .extend_dependency_closure(&mut selected, DependencyEdges::All);
-    }
+    let selected = selected_task_ids(&known_task_refs, only, skip, with_dependencies)?;
     let filtered: Vec<&dyn Task> = all_tasks
         .iter()
         .chain(additional_known_tasks)
-        .filter(|task| {
-            selected.contains(&task.task_id())
-                && !skip
-                    .iter()
-                    .any(|filter| task_matches_filter(task.as_ref(), filter))
-        })
+        .filter(|task| selected.contains(&task.task_id()))
         .map(Box::as_ref)
         .collect();
-    if filtered.is_empty() && (!only.is_empty() || !skip.is_empty()) {
-        bail!("task filters selected no tasks; adjust --only or --skip");
-    }
     let omitted_dependencies = omitted_blocking_dependencies(&known_task_refs, &filtered);
 
     if !log.is_verbose() && !omitted_dependencies.is_empty() {
@@ -73,6 +51,39 @@ pub(crate) fn apply_task_filters<'a>(
     }
 
     Ok(filtered)
+}
+
+/// Resolve the same selector set used by executing commands, without logging.
+pub(crate) fn selected_task_ids(
+    tasks: &[&dyn Task],
+    only: &[String],
+    skip: &[String],
+    with_dependencies: bool,
+) -> Result<HashSet<TaskId>> {
+    let unmatched_only = unmatched_filters(tasks, only);
+    let unmatched_skip = unmatched_filters(tasks, skip);
+    reject_unmatched_filters(tasks, &unmatched_only, "--only")?;
+    reject_unmatched_filters(tasks, &unmatched_skip, "--skip")?;
+
+    let mut selected = tasks
+        .iter()
+        .filter(|task| task_passes_filters(**task, only, &[]))
+        .map(|task| task.task_id())
+        .collect::<HashSet<_>>();
+    if with_dependencies {
+        ResolvedTaskGraph::resolve(tasks)?
+            .extend_dependency_closure(&mut selected, DependencyEdges::All);
+    }
+    selected.retain(|task_id| {
+        tasks.iter().any(|task| {
+            task.task_id() == *task_id
+                && !skip.iter().any(|filter| task_matches_filter(*task, filter))
+        })
+    });
+    if selected.is_empty() && (!only.is_empty() || !skip.is_empty()) {
+        bail!("task filters selected no tasks; adjust --only or --skip");
+    }
+    Ok(selected)
 }
 
 /// Return filters that do not match any known task.

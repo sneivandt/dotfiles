@@ -168,6 +168,9 @@ warning.
 dotfiles tasks --profile desktop
 dotfiles tasks --profile desktop --format plain
 dotfiles tasks --profile desktop --format json
+dotfiles tasks --profile desktop --graph install
+dotfiles tasks --profile desktop --graph update --format json
+dotfiles tasks --profile desktop --graph install --only symlinks --with-deps
 ```
 
 The output contains `SELECTOR`, `TASK`, and `COMMANDS` columns. It lists
@@ -178,6 +181,11 @@ install, pin-update, uninstall, check, and active overlay-script tasks, while
 hiding internal orchestration. Rows retain catalog/discovery order; the command
 does not sort them. A selector is rejected if it maps to conflicting display
 labels.
+
+With `--graph`, the output instead lists the selected command's dependency
+graph, including internal tasks and their blocking and ordering predecessors.
+Filter options mark the resulting selection without hiding other graph nodes.
+It remains read-only and does not predict current machine applicability.
 
 Task discovery is read-only. It does not create a run log, acquire the run lock,
 or persist a profile or overlay selection. If no profile was passed, set through

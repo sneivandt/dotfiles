@@ -58,6 +58,8 @@ jobs:
           BASE_SHA: ${{ steps.range.outputs.base_sha }}
           HEAD_SHA: ${{ steps.range.outputs.head_sha }}
         run: sh .github/workflows/scripts/linux/classify-ci-changes.sh
+      - name: Check CI job gate
+        run: python3 .github/workflows/scripts/linux/check-ci-contract.py
 
   # ── Rust Format Check ──────────────────────────────────
   rust-fmt:
@@ -314,7 +316,7 @@ jobs:
     timeout-minutes: 30
     continue-on-error: true
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_rust_checks == 'true' && github.event_name == 'pull_request'
+    if: needs.classify-changes.outputs.run_rust_checks == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     defaults:
       run:
         working-directory: cli
@@ -322,23 +324,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Build changed-code diff
+        id: diff
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "No comparison base for changed-code mutation testing"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --relative=cli --unified=0 "$BASE_SHA" "$HEAD_SHA" -- src > mutants.diff
+          if [[ -s mutants.diff ]]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No changed Rust source; skipping mutation tooling"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install Rust toolchain
+        if: steps.diff.outputs.has_changes == 'true'
         run: rustup show
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: steps.diff.outputs.has_changes == 'true'
         with:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Install cargo-mutants
+        if: steps.diff.outputs.has_changes == 'true'
         uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
         with:
           tool: cargo-mutants
-      - name: Build changed-code diff
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git diff --relative=cli --unified=0 "$BASE_SHA..$HEAD_SHA" -- src > mutants.diff
       - name: Test changed-code mutants
+        if: steps.diff.outputs.has_changes == 'true'
         run: cargo mutants --in-place --no-shuffle --in-diff mutants.diff
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()

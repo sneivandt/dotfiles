@@ -27,7 +27,7 @@ cd "$REPO_ROOT/cli" || exit 1
 CARGO_PROFILE=ci
 
 # Stages run when no stage arguments are given.
-DEFAULT_STAGES="fmt clippy test config docs shell powershell audit deny"
+DEFAULT_STAGES="fmt clippy test config docs ci shell powershell audit deny"
 
 # Stages only run when explicitly requested or via --all. `msrv` downloads a
 # second toolchain, which is too slow for the default loop.
@@ -129,6 +129,12 @@ stage_docs()
 {
   DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-docs.sh" \
     docs_links docs_task_selectors
+}
+
+stage_ci()
+{
+  have python3 || { note "python3 not installed; skipping"; return 2; }
+  python3 "$REPO_ROOT/.github/workflows/scripts/linux/check-ci-contract.py"
 }
 
 stage_shell()

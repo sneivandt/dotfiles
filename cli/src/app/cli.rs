@@ -222,6 +222,19 @@ pub enum DiscoveryFormat {
     Json,
 }
 
+/// Command whose task dependency graph is shown by `tasks --graph`.
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+pub enum TaskGraphCommand {
+    /// Normal installation.
+    Install,
+    /// Installation with pinned dependency updates.
+    Update,
+    /// Removal of managed integrations.
+    Uninstall,
+    /// Repository validation.
+    Check,
+}
+
 /// Options for the `tasks` command.
 #[derive(Args, Debug, Clone)]
 pub struct TasksOpts {
@@ -232,6 +245,32 @@ pub struct TasksOpts {
     /// Output format
     #[arg(long, value_enum, default_value_t)]
     pub format: DiscoveryFormat,
+
+    /// Show the dependency graph for one command, including internal tasks
+    #[arg(long, value_enum, value_name = "COMMAND")]
+    pub graph: Option<TaskGraphCommand>,
+
+    /// Show selection for these task selectors in the graph
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "SELECTOR",
+        requires = "graph"
+    )]
+    pub only: Vec<String>,
+
+    /// Exclude these task selectors from the graph selection
+    #[arg(
+        long,
+        value_delimiter = ',',
+        value_name = "SELECTOR",
+        requires = "graph"
+    )]
+    pub skip: Vec<String>,
+
+    /// Include predecessors of tasks selected by `--only`
+    #[arg(long, requires = "only")]
+    pub with_deps: bool,
 }
 
 /// Options passed to the task engine after command-specific parsing.
@@ -651,7 +690,6 @@ mod tests {
             &["dotfiles", "log", "--profile", "base"][..],
             &["dotfiles", "check", "--skip-attestation"][..],
             &["dotfiles", "check", "--with-deps"][..],
-            &["dotfiles", "tasks", "--only", "symlinks"][..],
         ] {
             let error = Cli::try_parse_from(args.iter().copied())
                 .expect_err("irrelevant option should fail during parsing");
@@ -691,6 +729,30 @@ mod tests {
         };
         assert_eq!(opts.repository.profile.as_deref(), Some("base"));
         assert_eq!(opts.format, DiscoveryFormat::Json);
+        assert_eq!(opts.graph, None);
+    }
+
+    #[test]
+    fn tasks_accept_graph_command() {
+        let cli = Cli::parse_from([
+            "dotfiles",
+            "tasks",
+            "--graph",
+            "update",
+            "--format",
+            "json",
+            "--only",
+            "symlinks",
+            "--with-deps",
+        ]);
+        let Command::Tasks(opts) = cli.command else {
+            panic!("expected tasks command");
+        };
+        assert_eq!(opts.graph, Some(TaskGraphCommand::Update));
+        assert_eq!(opts.format, DiscoveryFormat::Json);
+        assert_eq!(opts.only, ["symlinks"]);
+        assert!(opts.with_deps);
+        assert!(Cli::try_parse_from(["dotfiles", "tasks", "--only", "symlinks"]).is_err());
     }
 
     #[test]

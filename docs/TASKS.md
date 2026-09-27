@@ -4,6 +4,7 @@ This page describes the CLI's visible install, pin-update, uninstall,
 validation, and dynamic overlay tasks. Run
 `dotfiles tasks --profile <profile>` for the available selectors, labels, and
 command membership.
+Use `dotfiles tasks --graph install` to inspect the resolved dependency graph.
 
 Each task has separate metadata for:
 
@@ -31,6 +32,19 @@ Every ordering requirement is an explicit edge. Catalog insertion order is not
 scheduling policy. Tasks marked `update_only` are excluded from `install` and
 included by `update`; this metadata controls command membership,
 not ordering.
+
+`dotfiles tasks --graph <install|update|uninstall|check>` lists every task in
+dependency-safe order, including internal orchestration tasks. `BLOCKING`
+contains predecessors whose failure blocks the task; `AFTER` contains
+ordering-only predecessors. `INTERNAL` marks tasks hidden from normal
+discovery. `--format json` emits the same graph as structured data. The graph
+uses the selected profile and overlay, but does not probe the machine or
+predict task applicability.
+Add `--only <selector>`, `--skip <selector>`, and, for install or update,
+`--with-deps` to inspect the same selector rules used by execution. The
+`SELECTION` column distinguishes default, requested, dependency, filtered,
+and skipped tasks. Edges remain visible even when a filter removes their
+predecessor.
 
 Built-in mutating tasks are idempotent and dry-run safe. A task may report
 current, skipped, or not applicable without performing work. Overlay scripts

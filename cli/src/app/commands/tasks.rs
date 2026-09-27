@@ -2,11 +2,16 @@
 
 use anyhow::{Result, bail};
 use serde::Serialize;
+use std::collections::HashSet;
 
-use crate::app::cli::{DiscoveryFormat, TasksOpts};
+use crate::app::cli::{DiscoveryFormat, TaskGraphCommand, TasksOpts};
 use crate::app::config::Config;
 use crate::app::config::store::ConfigStore;
-use crate::engine::{Task, TaskVisibility};
+use crate::app::filter::{selected_task_ids, task_matches_filter};
+use crate::domains::ai::apm::ApmPackageMode;
+use crate::domains::repository::update::RepositoryUpdateSignal;
+use crate::engine::graph::ResolvedTaskGraph;
+use crate::engine::{Task, TaskId, TaskVisibility};
 use crate::infra::platform::Platform;
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
@@ -14,6 +19,26 @@ struct TaskListing {
     selector: String,
     task: String,
     commands: Vec<TaskCommand>,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct GraphListing {
+    selector: String,
+    task: String,
+    internal: bool,
+    blocking: Vec<String>,
+    after: Vec<String>,
+    selection: GraphSelection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum GraphSelection {
+    Default,
+    Requested,
+    Dependency,
+    Filtered,
+    Skipped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -72,9 +97,148 @@ pub fn run(opts: &TasksOpts) -> Result<()> {
     )?;
     let config = Config::load(&root, &profile, platform, overlay.as_deref())?;
     let store = ConfigStore::from_config(config);
-    let listings = collect_listings(&store, overlay.as_deref())?;
     let stdout = std::io::stdout();
-    write_listings(&listings, opts.format, &mut stdout.lock())
+    if let Some(command) = opts.graph {
+        if opts.with_deps
+            && !matches!(
+                command,
+                TaskGraphCommand::Install | TaskGraphCommand::Update
+            )
+        {
+            bail!("--with-deps is only available for install and update graphs");
+        }
+        let tasks = graph_tasks(&store, overlay.as_deref(), command);
+        let listings = collect_graph(&tasks, &opts.only, &opts.skip, opts.with_deps)?;
+        write_graph(&listings, opts.format, &mut stdout.lock())
+    } else {
+        let listings = collect_listings(&store, overlay.as_deref())?;
+        write_listings(&listings, opts.format, &mut stdout.lock())
+    }
+}
+
+fn graph_tasks(
+    store: &ConfigStore,
+    overlay: Option<&std::path::Path>,
+    command: TaskGraphCommand,
+) -> Vec<Box<dyn Task>> {
+    match command {
+        TaskGraphCommand::Install | TaskGraphCommand::Update => {
+            let mode = if command == TaskGraphCommand::Update {
+                ApmPackageMode::UpdatePins
+            } else {
+                ApmPackageMode::Install
+            };
+            let mut tasks = crate::app::catalog::install_tasks_for_run(
+                store,
+                &RepositoryUpdateSignal::new(),
+                mode,
+            );
+            if command == TaskGraphCommand::Install {
+                tasks.retain(|task| !task.update_only());
+            }
+            if let Some(root) = overlay {
+                tasks.extend(crate::domains::overlay::scripts::overlay_script_tasks(
+                    &store.scripts.read(),
+                    root,
+                ));
+            }
+            tasks
+        }
+        TaskGraphCommand::Uninstall => crate::app::catalog::all_uninstall_tasks(store),
+        TaskGraphCommand::Check => super::check::validation_tasks(store.aggregate.clone()),
+    }
+}
+
+#[allow(
+    clippy::indexing_slicing,
+    reason = "resolved graph indices refer to the task slice used to construct the graph"
+)]
+fn collect_graph(
+    tasks: &[Box<dyn Task>],
+    only: &[String],
+    skip: &[String],
+    with_deps: bool,
+) -> Result<Vec<GraphListing>> {
+    let task_refs = tasks.iter().map(Box::as_ref).collect::<Vec<_>>();
+    let graph = ResolvedTaskGraph::resolve(&task_refs)?;
+    let selected = selected_task_ids(&task_refs, only, skip, with_deps)?;
+    Ok(graph
+        .execution_order()
+        .map(|index| {
+            let task = task_refs[index];
+            let mut blocking = Vec::new();
+            let mut after = Vec::new();
+            for &dependency in graph.dependencies(index) {
+                let selector = task_refs[dependency].selector().to_string();
+                if graph.blocks_on_failure(index, dependency) {
+                    blocking.push(selector);
+                } else {
+                    after.push(selector);
+                }
+            }
+            GraphListing {
+                selector: task.selector().to_string(),
+                task: task.name().to_string(),
+                internal: task.visibility() == TaskVisibility::Internal,
+                blocking,
+                after,
+                selection: selection_reason(task, &selected, only, skip),
+            }
+        })
+        .collect())
+}
+
+fn selection_reason(
+    task: &dyn Task,
+    selected: &HashSet<TaskId>,
+    only: &[String],
+    skip: &[String],
+) -> GraphSelection {
+    if skip.iter().any(|filter| task_matches_filter(task, filter)) {
+        GraphSelection::Skipped
+    } else if !selected.contains(&task.task_id()) {
+        GraphSelection::Filtered
+    } else if only.is_empty() {
+        GraphSelection::Default
+    } else if only.iter().any(|filter| task_matches_filter(task, filter)) {
+        GraphSelection::Requested
+    } else {
+        GraphSelection::Dependency
+    }
+}
+
+fn write_graph(
+    listings: &[GraphListing],
+    format: DiscoveryFormat,
+    out: &mut dyn std::io::Write,
+) -> Result<()> {
+    if format == DiscoveryFormat::Json {
+        serde_json::to_writer_pretty(&mut *out, listings)?;
+        writeln!(out)?;
+        return Ok(());
+    }
+    if format == DiscoveryFormat::Table {
+        writeln!(out, "SELECTOR\tTASK\tBLOCKING\tAFTER\tINTERNAL\tSELECTION")?;
+    }
+    for listing in listings {
+        writeln!(
+            out,
+            "{}\t{}\t{}\t{}\t{}\t{}",
+            listing.selector,
+            listing.task,
+            listing.blocking.join(","),
+            listing.after.join(","),
+            listing.internal,
+            match listing.selection {
+                GraphSelection::Default => "default",
+                GraphSelection::Requested => "requested",
+                GraphSelection::Dependency => "dependency",
+                GraphSelection::Filtered => "filtered",
+                GraphSelection::Skipped => "skipped",
+            }
+        )?;
+    }
+    Ok(())
 }
 
 fn collect_listings(
@@ -222,7 +386,7 @@ fn command_membership(listing: &TaskListing) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Context, TaskMeta, TaskResult};
+    use crate::engine::{Context, TaskId, TaskMeta, TaskResult};
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
 
@@ -245,6 +409,28 @@ mod tests {
             TaskMeta::new("Internal task")
                 .with_selector("internal")
                 .with_visibility(TaskVisibility::Internal)
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct DependentTask;
+
+    impl Task for DependentTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Dependent task").with_selector("dependent")
+        }
+
+        fn dependencies(&self) -> &[TaskId] {
+            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<VisibleTask>())];
+            DEPS
+        }
+
+        fn ordering_dependencies(&self) -> &[TaskId] {
+            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<InternalTask>())];
+            DEPS
         }
 
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
@@ -321,5 +507,34 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&json).expect("valid JSON");
         assert_eq!(value[0]["selector"], "visible");
         assert_eq!(value[0]["commands"][0], "update");
+    }
+
+    #[test]
+    fn graph_shows_blocking_and_ordering_edges_in_dependency_order() {
+        let tasks: Vec<Box<dyn Task>> = vec![
+            Box::new(DependentTask),
+            Box::new(InternalTask),
+            Box::new(VisibleTask),
+        ];
+        let graph =
+            collect_graph(&tasks, &["dependent".into()], &[], true).expect("valid task graph");
+        let dependent = graph.last().expect("dependent follows its predecessors");
+        assert_eq!(dependent.selector, "dependent");
+        assert_eq!(dependent.blocking, ["visible"]);
+        assert_eq!(dependent.after, ["internal"]);
+        assert_eq!(dependent.selection, GraphSelection::Requested);
+        assert!(
+            graph
+                .iter()
+                .any(|task| task.selector == "internal" && task.internal)
+        );
+        assert!(graph.iter().all(|task| {
+            task.selector == "dependent" || task.selection == GraphSelection::Dependency
+        }));
+
+        let mut output = Vec::new();
+        write_graph(&graph, DiscoveryFormat::Json, &mut output).expect("graph JSON");
+        let json: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON");
+        assert_eq!(json[2]["blocking"][0], "visible");
     }
 }

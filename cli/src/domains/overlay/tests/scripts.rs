@@ -142,6 +142,92 @@ fn overlay_script_tasks_creates_one_per_entry() {
 }
 
 #[test]
+fn removal_task_checks_then_runs_remove_with_output() {
+    let (overlay, entry, script_arg) = shell_script_fixture();
+    let check_arg = script_arg.clone();
+    let remove_arg = script_arg;
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| {
+            spec.program() == "sh"
+                && spec.arguments() == [check_arg.as_str(), "--check"]
+                && !spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("")));
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| {
+            spec.program() == "sh"
+                && spec.arguments() == [remove_arg.as_str(), "--remove"]
+                && spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("removed\n")));
+
+    let ctx = context_with_executor(overlay.path(), mock);
+    let task =
+        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
+    assert_task_changed(&task.run(&ctx).unwrap());
+}
+
+#[test]
+fn removal_task_skips_when_script_reports_absent_state() {
+    let (overlay, entry, script_arg) = shell_script_fixture();
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| spec.arguments() == [script_arg.as_str(), "--check"])
+        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
+
+    let ctx = context_with_executor(overlay.path(), mock);
+    let task =
+        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
+    assert!(matches!(task.run(&ctx).unwrap(), TaskResult::Ok));
+}
+
+#[test]
+fn removal_dry_run_does_not_execute_remove() {
+    let (overlay, entry, script_arg) = shell_script_fixture();
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| spec.arguments() == [script_arg.as_str(), "--check"])
+        .returning(|_| Ok(ExecResult::success("")));
+
+    let ctx = context_with_executor(overlay.path(), mock).with_dry_run(true);
+    let task =
+        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
+    assert_task_changed(&task.run(&ctx).unwrap());
+}
+
+#[test]
+fn removal_task_propagates_remove_failure() {
+    let (overlay, entry, script_arg) = shell_script_fixture();
+    let check_arg = script_arg.clone();
+    let remove_arg = script_arg;
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| spec.arguments() == [check_arg.as_str(), "--check"])
+        .returning(|_| Ok(ExecResult::success("")));
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| spec.arguments() == [remove_arg.as_str(), "--remove"])
+        .returning(|_| {
+            Err(crate::infra::exec::ExecError::NonZero {
+                command: "sh script.sh --remove".to_string(),
+                result: ExecResult::failure("", "remove failed", Some(2)),
+            })
+        });
+
+    let ctx = context_with_executor(overlay.path(), mock);
+    let task =
+        OverlayScriptTask::with_mode(entry, overlay.path().to_path_buf(), ScriptTaskMode::Remove);
+    let error = task.run(&ctx).unwrap_err().to_string();
+    assert!(error.contains("removing script"), "{error}");
+}
+
+#[test]
 fn overlay_script_tasks_have_unique_task_ids() {
     // Multiple OverlayScriptTask instances must produce distinct TaskIds so
     // the parallel scheduler does not report a false "dependency cycle".

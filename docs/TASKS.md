@@ -303,10 +303,11 @@ A missing configured script or a check exit other than 0 or 1 fails the task
 and remains visible in normal output. Exit 0 means current; exit 1 means apply
 is needed.
 
-The engine passes `--check` and `--dryrun` as needed, but it cannot stop a
-script that ignores the contract from changing state. The underlying resource
-supports `--remove`; dynamic script tasks are not registered in the current
-uninstall catalog.
+The engine passes `--check` and, for install dry runs, `--dryrun` as needed, but
+it cannot stop a script that ignores the contract from changing state.
+Uninstall runs each active script's `--remove` action when its check reports
+managed state. An uninstall dry run reports the planned removal without
+executing it.
 
 Scripts are never loaded from the public repository's `conf/` directory. See
 [Overlay scripts](CONFIGURATION.md#overlay-scripts).
@@ -321,9 +322,12 @@ Uninstall reuses the stable selectors and labels shown in discovery:
 | `git-hooks` | Git hooks | Removes hooks installed from this repository |
 | `launcher` | Dotfiles launcher | Removes the installed `~/.local/bin/dotfiles` wrapper |
 
+Active overlay scripts also appear with their `script-<normalized-name>`
+selectors and run `--remove` when their state is present.
+
 **Home symlinks** preserves user-visible files; it does not delete them.
 The uninstall command does not attempt to reverse package-manager, systemd,
-registry, shell, WSL, APM, editor, or overlay-script changes.
+registry, shell, WSL, APM, or editor changes.
 
 ## Validation tasks
 

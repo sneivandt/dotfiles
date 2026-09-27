@@ -60,7 +60,7 @@ After installation, `dotfiles` is available directly in a new shell.
 |---|---|
 | `dotfiles install` | Syncs the repository and applies the selected configuration |
 | `dotfiles update` | Installs the configuration and updates pinned dependencies |
-| `dotfiles uninstall` | Replaces managed symlinks with local copies and removes managed hooks and the launcher |
+| `dotfiles uninstall` | Replaces managed symlinks with local copies, removes managed hooks and the launcher, and runs active overlay scripts with `--remove` |
 | `dotfiles check` | Checks configuration and runs available script analyzers |
 | `dotfiles log` | Shows saved run logs |
 

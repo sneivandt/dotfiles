@@ -98,6 +98,15 @@ impl ScriptResource {
         self.execute(ScriptMode::DryRun)
     }
 
+    /// Remove the script's managed state and return its captured stdout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the script cannot be run or removal fails.
+    pub fn remove_with_output(&self) -> Result<(ResourceChange, String)> {
+        self.execute(ScriptMode::Remove)
+    }
+
     /// Determine the interpreter and complete argument vector for a mode.
     fn command(&self, flag: Option<&str>) -> Result<(&'static str, Vec<String>)> {
         let (interpreter, fixed_args) = interpreter_args_for(&self.script_path, &*self.executor)?;
@@ -178,7 +187,7 @@ impl Resource for ScriptResource {
 
 impl RemovableResource for ScriptResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
-        self.execute(ScriptMode::Remove)
+        self.remove_with_output()
             .map(|(change, _output)| change)
             .map_err(ResourceError::from)
     }

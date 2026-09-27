@@ -184,6 +184,40 @@ test_ci_change_classification()
     grep -qx 'run_lint=true' "$GITHUB_OUTPUT" || log_error "$path did not enable managed-script checks through lint"
     grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path did not enable managed-script checks through builds"
   done
+
+  for path in conf/packages.toml dotfiles.sh dotfiles.ps1 hooks/pre-commit .github/workflows/ci.yml; do
+    BASE_SHA=$HEAD_SHA
+    mkdir -p "$(dirname "$path")"
+    printf 'classification fixture\n' > "$path"
+    git add -- "$path"
+    HEAD_SHA=$(git write-tree)
+    : > "$GITHUB_OUTPUT"
+    DIR="$PWD" GITHUB_EVENT_NAME=pull_request sh "$SCRIPT_DIR/classify-ci-changes.sh"
+    grep -qx 'docs_only=false' "$GITHUB_OUTPUT" || log_error "$path was classified as documentation"
+    case "$path" in
+      conf/*)
+        grep -qx 'run_build_artifacts=true' "$GITHUB_OUTPUT" || log_error "$path skipped builds"
+        grep -qx 'run_profile_integration=true' "$GITHUB_OUTPUT" || log_error "$path skipped profile integration"
+        grep -qx 'run_rust_checks=false' "$GITHUB_OUTPUT" || log_error "$path enabled Rust-only checks"
+        ;;
+      dotfiles.sh)
+        grep -qx 'run_wrapper_linux=true' "$GITHUB_OUTPUT" || log_error "$path skipped the Linux wrapper"
+        grep -qx 'run_wrapper_windows=false' "$GITHUB_OUTPUT" || log_error "$path enabled the Windows wrapper"
+        ;;
+      dotfiles.ps1)
+        grep -qx 'run_wrapper_windows=true' "$GITHUB_OUTPUT" || log_error "$path skipped the Windows wrapper"
+        grep -qx 'run_wrapper_linux=false' "$GITHUB_OUTPUT" || log_error "$path enabled the Linux wrapper"
+        ;;
+      hooks/*)
+        grep -qx 'run_git_hooks=true' "$GITHUB_OUTPUT" || log_error "$path skipped Git hook checks"
+        grep -qx 'run_build_artifacts=false' "$GITHUB_OUTPUT" || log_error "$path enabled builds"
+        ;;
+      .github/workflows/*)
+        grep -qx 'run_git_hooks=true' "$GITHUB_OUTPUT" || log_error "$path did not enable full CI"
+        grep -qx 'run_rust_checks=true' "$GITHUB_OUTPUT" || log_error "$path did not enable full CI"
+        ;;
+    esac
+  done
 )}
 
 test_staged_ci_guard_deletions()

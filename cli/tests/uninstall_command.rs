@@ -92,6 +92,77 @@ fn uninstall_tasks_assess_on_linux_and_windows() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn uninstall_removes_active_overlay_script_state_by_default() {
+    let repo = common::IntegrationTestContext::new();
+    let overlay = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(overlay.path().join("conf")).unwrap();
+    std::fs::create_dir_all(overlay.path().join("scripts")).unwrap();
+    std::fs::write(
+        overlay.path().join("conf/scripts.toml"),
+        "[base]\nscripts = [{ name = 'Private tools', path = 'scripts/tools.sh' }]\n",
+    )
+    .unwrap();
+    std::fs::write(overlay.path().join("state"), "managed\n").unwrap();
+    std::fs::write(
+        overlay.path().join("scripts/tools.sh"),
+        "#!/bin/sh\ncase \"$1\" in\n  --check) test -f state ;;\n  --remove) rm state ;;\n  --dryrun) touch unexpected-dryrun ;;\n  *) exit 2 ;;\nesac\n",
+    )
+    .unwrap();
+
+    let run = |dry_run| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
+        command
+            .args([
+                "uninstall",
+                "--profile",
+                "base",
+                "--only",
+                "script-private-tools",
+                "--non-interactive",
+            ])
+            .arg("--root")
+            .arg(repo.root_path())
+            .arg("--overlay")
+            .arg(overlay.path())
+            .env("HOME", home.path())
+            .env("XDG_STATE_HOME", home.path().join("state"))
+            .env("DOTFILES_LOG_DIR", home.path().join("logs"))
+            .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+            .env_remove("DOTFILES_OVERLAY");
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        command.output().unwrap()
+    };
+
+    let preview = run(true);
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    assert!(overlay.path().join("state").exists());
+    assert!(!overlay.path().join("unexpected-dryrun").exists());
+
+    let removed = run(false);
+    assert!(
+        removed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&removed.stderr)
+    );
+    assert!(!overlay.path().join("state").exists());
+
+    let repeated = run(false);
+    assert!(
+        repeated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&repeated.stderr)
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Idempotency: uninstall → uninstall is a no-op
 // ---------------------------------------------------------------------------

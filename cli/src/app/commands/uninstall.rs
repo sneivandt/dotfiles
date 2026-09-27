@@ -21,6 +21,7 @@ pub fn run(
     let run_lock = super::prepare_self_update(runtime, log)?;
     let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
     let tasks = runner.uninstall_tasks();
-    let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, false, log)?;
+    let overlay_tasks = runner.overlay_script_removal_tasks();
+    let filtered = apply_task_filters(&tasks, &overlay_tasks, &opts.only, &opts.skip, false, log)?;
     runner.run(filtered)
 }

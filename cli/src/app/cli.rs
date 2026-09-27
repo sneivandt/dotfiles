@@ -47,8 +47,9 @@ pub enum Command {
 
     /// Remove managed integrations while preserving user files
     #[command(after_help = "\
-Removes managed home symlinks, repository Git hooks, and the installed launcher.
-Packages, services, registry values, shell selection, and overlay script effects remain.")]
+Removes managed home symlinks, repository Git hooks, the installed launcher,
+and active overlay script state through each script's --remove action.
+Packages, services, registry values, and shell selection remain.")]
     Uninstall(UninstallCommandOpts),
 
     /// Validate configuration and run repository checks

@@ -77,19 +77,28 @@ pub struct OverlayScriptTask {
     entry: ScriptEntry,
     overlay_root: PathBuf,
     selector: String,
+    mode: ScriptTaskMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScriptTaskMode {
+    Apply,
+    Remove,
 }
 
 #[derive(Debug, Clone)]
 struct OverlayScriptOperation {
     entry: ScriptEntry,
     overlay_root: PathBuf,
+    mode: ScriptTaskMode,
 }
 
 impl OverlayScriptOperation {
-    const fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
+    const fn new(entry: ScriptEntry, overlay_root: PathBuf, mode: ScriptTaskMode) -> Self {
         Self {
             entry,
             overlay_root,
+            mode,
         }
     }
 
@@ -103,25 +112,34 @@ impl Operation for OverlayScriptOperation {
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let resource = self.resource(ctx)?;
-        Ok(match resource.current_state()? {
-            ResourceState::Correct => OperationState::Complete,
-            ResourceState::Missing | ResourceState::Incorrect { .. } => {
+        Ok(match (self.mode, resource.current_state()?) {
+            (ScriptTaskMode::Apply, ResourceState::Correct)
+            | (ScriptTaskMode::Remove, ResourceState::Missing) => OperationState::Complete,
+            (ScriptTaskMode::Apply, ResourceState::Missing | ResourceState::Incorrect { .. })
+            | (ScriptTaskMode::Remove, ResourceState::Correct | ResourceState::Incorrect { .. }) => {
                 OperationState::needs_run(())
             }
-            ResourceState::Invalid { reason } | ResourceState::Unknown { reason } => {
+            (_, ResourceState::Invalid { reason } | ResourceState::Unknown { reason }) => {
                 anyhow::bail!(reason)
             }
         })
     }
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        let (_change, output) = self.resource(ctx)?.preview_with_output()?;
-        emit_script_lines(ctx, &output, true);
+        if self.mode == ScriptTaskMode::Remove {
+            ctx.log().dry_run("would remove overlay script state");
+        } else {
+            let (_change, output) = self.resource(ctx)?.preview_with_output()?;
+            emit_script_lines(ctx, &output, true);
+        }
         Ok(TaskStats::changed().finish())
     }
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        let (change, output) = self.resource(ctx)?.apply_with_output()?;
+        let (change, output) = match self.mode {
+            ScriptTaskMode::Apply => self.resource(ctx)?.apply_with_output()?,
+            ScriptTaskMode::Remove => self.resource(ctx)?.remove_with_output()?,
+        };
         emit_script_lines(ctx, &output, false);
         match change {
             ResourceChange::Skipped { reason, kind } => {
@@ -142,11 +160,16 @@ impl OverlayScriptTask {
     /// Create a new overlay script task.
     #[must_use]
     pub fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
+        Self::with_mode(entry, overlay_root, ScriptTaskMode::Apply)
+    }
+
+    fn with_mode(entry: ScriptEntry, overlay_root: PathBuf, mode: ScriptTaskMode) -> Self {
         let selector = overlay_script_selector(&entry.name);
         Self {
             entry,
             overlay_root,
             selector,
+            mode,
         }
     }
 }
@@ -179,7 +202,7 @@ impl Task for OverlayScriptTask {
         }
         process_operation(
             ctx,
-            &OverlayScriptOperation::new(self.entry.clone(), self.overlay_root.clone()),
+            &OverlayScriptOperation::new(self.entry.clone(), self.overlay_root.clone(), self.mode),
         )
     }
 }
@@ -209,13 +232,34 @@ pub fn overlay_script_tasks(
     scripts: &[ScriptEntry],
     overlay_root: &std::path::Path,
 ) -> Vec<Box<dyn Task>> {
+    script_tasks(scripts, overlay_root, ScriptTaskMode::Apply)
+}
+
+/// Create removal tasks for every active overlay script.
+#[must_use]
+pub fn overlay_script_removal_tasks(
+    scripts: &[ScriptEntry],
+    overlay_root: &std::path::Path,
+) -> Vec<Box<dyn Task>> {
+    script_tasks(scripts, overlay_root, ScriptTaskMode::Remove)
+}
+
+fn script_tasks(
+    scripts: &[ScriptEntry],
+    overlay_root: &std::path::Path,
+    mode: ScriptTaskMode,
+) -> Vec<Box<dyn Task>> {
     scripts
         .iter()
         .map(|entry| {
-            let task: Box<dyn Task> = Box::new(OverlayScriptTask::new(
-                entry.clone(),
-                overlay_root.to_path_buf(),
-            ));
+            let task: Box<dyn Task> = Box::new(match mode {
+                ScriptTaskMode::Apply => {
+                    OverlayScriptTask::new(entry.clone(), overlay_root.to_path_buf())
+                }
+                ScriptTaskMode::Remove => {
+                    OverlayScriptTask::with_mode(entry.clone(), overlay_root.to_path_buf(), mode)
+                }
+            });
             task
         })
         .collect()

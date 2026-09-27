@@ -144,7 +144,18 @@ fn graph_tasks(
             }
             tasks
         }
-        TaskGraphCommand::Uninstall => crate::app::catalog::all_uninstall_tasks(store),
+        TaskGraphCommand::Uninstall => {
+            let mut tasks = crate::app::catalog::all_uninstall_tasks(store);
+            if let Some(root) = overlay {
+                tasks.extend(
+                    crate::domains::overlay::scripts::overlay_script_removal_tasks(
+                        &store.scripts.read(),
+                        root,
+                    ),
+                );
+            }
+            tasks
+        }
         TaskGraphCommand::Check => super::check::validation_tasks(store.aggregate.clone()),
     }
 }
@@ -272,6 +283,12 @@ fn collect_listings(
     add_tasks(&mut listings, &uninstall_tasks, |listing, _| {
         listing.include(TaskCommand::Uninstall);
     })?;
+    let removal_tasks = overlay.map_or_else(Vec::new, |root| {
+        crate::domains::overlay::scripts::overlay_script_removal_tasks(&store.scripts.read(), root)
+    });
+    add_tasks(&mut listings, &removal_tasks, |listing, _| {
+        listing.include(TaskCommand::Uninstall);
+    })?;
 
     let check_tasks = super::check::validation_tasks(store.aggregate.clone());
     add_tasks(&mut listings, &check_tasks, |listing, _| {
@@ -386,6 +403,7 @@ fn command_membership(listing: &TaskListing) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::overlay::config::scripts::ScriptEntry;
     use crate::engine::{Context, TaskId, TaskMeta, TaskResult};
     use crate::test_helpers::empty_config;
     use std::path::PathBuf;
@@ -470,6 +488,31 @@ mod tests {
             .find(|listing| listing.selector == "symlinks")
             .expect("symlink task listing");
         assert_eq!(command_membership(symlinks), "install, update, uninstall");
+    }
+
+    #[test]
+    fn overlay_script_is_listed_for_uninstall_and_its_graph() {
+        let mut config = empty_config(PathBuf::from("/tmp"));
+        config.scripts = vec![ScriptEntry {
+            name: "Private tools".to_string(),
+            path: "scripts/tools.sh".to_string(),
+            description: None,
+        }];
+        let store = ConfigStore::from_config(config);
+        let overlay = std::path::Path::new("/tmp/overlay");
+        let listings = collect_listings(&store, Some(overlay)).expect("task discovery");
+        let script = listings
+            .iter()
+            .find(|listing| listing.selector == "script-private-tools")
+            .expect("overlay script listing");
+        assert_eq!(command_membership(script), "install, update, uninstall");
+
+        let graph = graph_tasks(&store, Some(overlay), TaskGraphCommand::Uninstall);
+        assert!(
+            graph
+                .iter()
+                .any(|task| task.selector() == "script-private-tools")
+        );
     }
 
     #[test]

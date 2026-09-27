@@ -440,13 +440,14 @@ The script resource supports four execution intents:
 - preview through `--dryrun`
 - removal through `--remove`
 
-Install invokes check, apply, or preview as appropriate. The resource
-supports removal, but dynamic scripts are not registered in the current
-uninstall catalog, so `dotfiles uninstall` does not invoke `--remove`.
+Install invokes check, apply, or preview as appropriate. Uninstall checks each
+active overlay script and invokes `--remove` when its state is present. An
+uninstall dry run reports planned removals without invoking `--remove`.
 
 Scripts must be idempotent, return nonzero on failure, and avoid printing
-secrets. Dry-run safety depends on the script. The engine supplies `--dryrun`,
-but it cannot prevent a script from changing state. After the reload discovery
+secrets. Install dry runs supply `--dryrun`; uninstall dry runs only supply
+`--check`. Dry-run safety still depends on the script because the engine cannot
+prevent a script from changing state. After the reload discovery
 boundary, each active entry becomes a dynamic task selectable by name.
 
 ## APM configuration

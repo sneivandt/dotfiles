@@ -317,18 +317,20 @@ dotfiles uninstall --dry-run
 dotfiles uninstall
 ```
 
-Uninstall performs three actions:
+Uninstall performs these actions:
 
 1. Replaces managed home-directory symlinks with materialized files or
    directories.
 2. Removes installed repository Git hooks.
 3. Removes the installed CLI wrapper.
+4. Runs `--remove` for each active overlay script whose `--check` reports
+   managed state. Dry runs report these removals without executing them.
 
 Use `--only` or `--skip` with the uninstall memberships from `dotfiles tasks`
 to remove a subset. An explicit filter that selects no uninstall tasks fails.
 
 It does **not** uninstall packages, revert registry values, disable systemd
-units, undo shell selection, or reverse arbitrary overlay scripts. See
+units, or undo shell selection. See
 [Uninstall tasks](TASKS.md#uninstall-tasks).
 
 ## Check

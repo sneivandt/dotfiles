@@ -20,6 +20,3 @@ dependencies:
     # Local plugins
     - ~/.apm/plugins/dot-agent
     - ~/.apm/plugins/dot-skill
-
-    # Referenced skills
-    - cursor/plugins/pstack/skills/unslop

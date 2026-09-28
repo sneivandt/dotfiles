@@ -292,8 +292,10 @@ Configuration-only and wrapper-only changes still run `cargo build` because
 their downstream Windows jobs need the executable.
 
 Pull requests and pushes to `main` run changed-code mutation testing when Rust
-source changes and upload the `cargo-mutants` report. Mutation results are
-informational and do not gate `ci-success`.
+source changes. Eight independent shards cover the complete changed-code mutant
+set using the `ci` Cargo profile and upload separate `cargo-mutants` reports.
+Sharding keeps larger refactors within the job timeout without sampling away
+mutants. Mutation results are informational and do not gate `ci-success`.
 
 ## Platform coverage parity
 

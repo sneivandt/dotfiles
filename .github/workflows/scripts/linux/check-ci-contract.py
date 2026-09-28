@@ -104,6 +104,18 @@ def check(workflow: str) -> None:
         if "classify-changes" not in job_needs(jobs[name]):
             raise ValueError(f"{name} must depend on classify-changes")
 
+    mutation = jobs["mutation"]
+    shards = re.search(r"(?m)^        shard: \[([0-9, ]+)\]$", mutation)
+    partition = re.search(r'--shard "\$MUTATION_SHARD/([0-9]+)"', mutation)
+    if shards is None or partition is None:
+        raise ValueError("mutation testing must declare its complete shard partition")
+    total = int(partition.group(1))
+    indices = [int(index.strip()) for index in shards.group(1).split(",")]
+    if total < 1 or sorted(indices) != list(range(total)):
+        raise ValueError("mutation shard matrix must cover every shard exactly once")
+    if "fail-fast: false" not in mutation or "--cargo-arg=--profile=ci" not in mutation:
+        raise ValueError("mutation shards must all run using the ci Cargo profile")
+
 
 if __name__ == "__main__":
     try:

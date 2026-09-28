@@ -9,26 +9,33 @@ mod common;
 
 #[test]
 fn completions_report_changes_then_current() {
-    let repo = common::TestContextBuilder::new().build();
-    let home = tempfile::tempdir().unwrap();
-    let overlay = tempfile::tempdir().unwrap();
-    let mut command = common::cli_command(
-        repo.root_path(),
-        home.path(),
-        Some(overlay.path()),
-        "install",
-        "completions",
-    );
-    command.arg("--no-symbols");
-    for expected in ["CHANGE Shell completions", "No changes · 1 current"] {
-        let output = command.output().unwrap();
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        assert!(
-            output.status.success(),
-            "{stdout}\n{}",
-            String::from_utf8_lossy(&output.stderr)
+    for repository_child in [false, true] {
+        let repo = common::TestContextBuilder::new().build();
+        let home = tempfile::tempdir().unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        let mut command = common::cli_command(
+            repo.root_path(),
+            home.path(),
+            Some(overlay.path()),
+            "install",
+            "completions",
         );
-        assert!(stdout.contains(expected), "{stdout}");
+        command.arg("--no-symbols");
+        if repository_child {
+            command
+                .env("DOTFILES_REEXEC_GUARD", "1")
+                .env("DOTFILES_REPOSITORY_REEXEC_GUARD", "1");
+        }
+        for expected in ["CHANGE Shell completions", "No changes · 1 current"] {
+            let output = command.output().unwrap();
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert!(
+                output.status.success(),
+                "{repository_child}: {stdout}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(stdout.contains(expected), "{repository_child}: {stdout}");
+        }
     }
 }
 

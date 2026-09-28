@@ -185,22 +185,19 @@ impl TaskWithExtraDeps {
     /// Wrap `inner`, merging application-owned dependency ids with its own.
     #[must_use]
     pub fn new(inner: Box<dyn Task>, extra: &[TaskId], extra_ordering: &[TaskId]) -> Self {
-        let mut deps = Vec::new();
-        for id in inner.dependencies().iter().chain(extra) {
-            if !deps.contains(id) {
-                deps.push(id.clone());
+        let merge = |existing: &[TaskId], additional: &[TaskId]| {
+            let mut merged = Vec::new();
+            for id in existing.iter().chain(additional) {
+                if !merged.contains(id) {
+                    merged.push(id.clone());
+                }
             }
-        }
-        let mut ordering_deps = Vec::new();
-        for id in inner.ordering_dependencies().iter().chain(extra_ordering) {
-            if !ordering_deps.contains(id) {
-                ordering_deps.push(id.clone());
-            }
-        }
+            merged
+        };
         Self {
+            deps: merge(inner.dependencies(), extra),
+            ordering_deps: merge(inner.ordering_dependencies(), extra_ordering),
             inner,
-            deps,
-            ordering_deps,
         }
     }
 

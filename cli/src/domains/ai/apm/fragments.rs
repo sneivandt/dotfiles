@@ -1,6 +1,7 @@
 //! Discovery, merging, and de-duplication of APM YAML config fragments.
 
 use anyhow::{Context as _, Result};
+use serde_yaml_ng::{Mapping, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::io::ErrorKind;
@@ -125,14 +126,11 @@ fn is_yaml_fragment(path: &Path) -> bool {
 /// later scalar replaces an earlier scalar. `name` and `version` remain owned by
 /// dotfiles so the generated manifest identity is stable.
 pub(super) fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
-    use serde_yaml_ng::Value;
-
-    let mut root = serde_yaml_ng::Mapping::new();
+    let mut root = Mapping::new();
     root.insert(Value::from("name"), Value::from("dotfiles"));
     root.insert(Value::from("version"), Value::from("1.0.0"));
 
-    let mut seen_dependencies: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut seen_dev_dependencies: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut seen_dependencies = HashMap::new();
 
     for path in fragments {
         let content = std::fs::read_to_string(path)
@@ -148,24 +146,13 @@ pub(super) fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
         })?;
 
         for (key, fragment_value) in mapping {
-            let Some(key_name) = key.as_str() else {
-                merge_manifest_value(&mut root, key, fragment_value);
-                continue;
-            };
-            match key_name {
-                "name" | "version" => {}
-                "dependencies" => merge_dependency_section(
+            match key.as_str() {
+                Some("name" | "version") => {}
+                Some(section @ ("dependencies" | "devDependencies")) => merge_dependency_section(
                     &mut root,
-                    "dependencies",
+                    section,
                     fragment_value,
-                    &mut seen_dependencies,
-                    path,
-                )?,
-                "devDependencies" => merge_dependency_section(
-                    &mut root,
-                    "devDependencies",
-                    fragment_value,
-                    &mut seen_dev_dependencies,
+                    seen_dependencies.entry(section.to_owned()).or_default(),
                     path,
                 )?,
                 _ => merge_manifest_value(&mut root, key, fragment_value),
@@ -179,11 +166,7 @@ pub(super) fn merge_fragments(fragments: &[PathBuf]) -> Result<String> {
 }
 
 /// Merge a top-level non-dependency manifest field into the generated root.
-fn merge_manifest_value(
-    root: &mut serde_yaml_ng::Mapping,
-    key: &serde_yaml_ng::Value,
-    incoming: &serde_yaml_ng::Value,
-) {
+fn merge_manifest_value(root: &mut Mapping, key: &Value, incoming: &Value) {
     match root.get_mut(key) {
         Some(existing) => merge_layered_value(existing, incoming),
         None => {
@@ -193,9 +176,7 @@ fn merge_manifest_value(
 }
 
 /// Merge one layered YAML value into another.
-fn merge_layered_value(existing: &mut serde_yaml_ng::Value, incoming: &serde_yaml_ng::Value) {
-    use serde_yaml_ng::Value;
-
+fn merge_layered_value(existing: &mut Value, incoming: &Value) {
     match (existing, incoming) {
         (Value::Mapping(existing_map), Value::Mapping(incoming_map)) => {
             for (key, value) in incoming_map {
@@ -213,10 +194,7 @@ fn merge_layered_value(existing: &mut serde_yaml_ng::Value, incoming: &serde_yam
 }
 
 /// Append values from `incoming` that are not already present in `existing`.
-fn append_unique_values(
-    existing: &mut Vec<serde_yaml_ng::Value>,
-    incoming: &[serde_yaml_ng::Value],
-) {
+fn append_unique_values(existing: &mut Vec<Value>, incoming: &[Value]) {
     let mut seen: HashSet<String> = existing.iter().map(value_dedup_key).collect();
     for entry in incoming {
         if seen.insert(value_dedup_key(entry)) {
@@ -227,9 +205,9 @@ fn append_unique_values(
 
 /// Merge one dependency section (`dependencies` or `devDependencies`).
 fn merge_dependency_section(
-    root: &mut serde_yaml_ng::Mapping,
-    section_name: &'static str,
-    section: &serde_yaml_ng::Value,
+    root: &mut Mapping,
+    section_name: &str,
+    section: &Value,
     seen: &mut HashMap<String, HashSet<String>>,
     fragment: &Path,
 ) -> Result<()> {
@@ -267,13 +245,10 @@ fn merge_dependency_section(
 }
 
 /// Return a mapping field, creating it if needed.
-fn ensure_mapping_field<'a>(
-    mapping: &'a mut serde_yaml_ng::Mapping,
-    field: &str,
-) -> Result<&'a mut serde_yaml_ng::Mapping> {
-    let serde_yaml_ng::Value::Mapping(value) = mapping
-        .entry(serde_yaml_ng::Value::from(field))
-        .or_insert_with(|| serde_yaml_ng::Value::Mapping(serde_yaml_ng::Mapping::new()))
+fn ensure_mapping_field<'a>(mapping: &'a mut Mapping, field: &str) -> Result<&'a mut Mapping> {
+    let Value::Mapping(value) = mapping
+        .entry(Value::from(field))
+        .or_insert_with(|| Value::Mapping(Mapping::new()))
     else {
         anyhow::bail!("generated APM manifest field {field} is not a mapping");
     };
@@ -281,48 +256,51 @@ fn ensure_mapping_field<'a>(
 }
 
 /// Return a sequence field, creating it if needed.
-fn ensure_sequence_field<'a>(
-    mapping: &'a mut serde_yaml_ng::Mapping,
-    field: &str,
-) -> Result<&'a mut Vec<serde_yaml_ng::Value>> {
-    let serde_yaml_ng::Value::Sequence(value) = mapping
-        .entry(serde_yaml_ng::Value::from(field))
-        .or_insert_with(|| serde_yaml_ng::Value::Sequence(Vec::new()))
+fn ensure_sequence_field<'a>(mapping: &'a mut Mapping, field: &str) -> Result<&'a mut Vec<Value>> {
+    let Value::Sequence(value) = mapping
+        .entry(Value::from(field))
+        .or_insert_with(|| Value::Sequence(Vec::new()))
     else {
         anyhow::bail!("generated APM manifest dependency group {field} is not a sequence");
     };
     Ok(value)
 }
 
-/// Deduplication key for a dependency entry.
-fn dependency_dedup_key(kind: &str, entry: &serde_yaml_ng::Value) -> String {
+/// Deduplicate MCP entries by name (or serialized shorthand), and other kinds
+/// by their serialized value.
+fn dependency_dedup_key(kind: &str, entry: &Value) -> String {
     if kind == "mcp" {
-        mcp_dedup_key(entry)
+        entry.get("name").and_then(Value::as_str).map_or_else(
+            || format!("@{}", value_dedup_key(entry)),
+            |name| format!("name:{name}"),
+        )
     } else {
         value_dedup_key(entry)
     }
 }
 
 /// Deduplication key for a generic YAML value: its serialized representation.
-fn value_dedup_key(entry: &serde_yaml_ng::Value) -> String {
+fn value_dedup_key(entry: &Value) -> String {
     serde_yaml_ng::to_string(entry).unwrap_or_else(|_| format!("{entry:?}"))
-}
-
-/// Deduplication key for an `mcp` dependency: its `name` field when present,
-/// otherwise its serialized representation (registry string shorthands).
-fn mcp_dedup_key(entry: &serde_yaml_ng::Value) -> String {
-    entry
-        .get("name")
-        .and_then(serde_yaml_ng::Value::as_str)
-        .map_or_else(
-            || format!("@{}", value_dedup_key(entry)),
-            |name| format!("name:{name}"),
-        )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn merge_test_fragments(contents: &[&str]) -> Result<String> {
+        let dir = tempfile::tempdir().expect("create fragment directory");
+        let paths: Vec<_> = contents
+            .iter()
+            .enumerate()
+            .map(|(index, content)| {
+                let path = dir.path().join(format!("{index}.yml"));
+                std::fs::write(&path, content).expect("write fragment");
+                path
+            })
+            .collect();
+        merge_fragments(&paths)
+    }
 
     #[test]
     fn discover_fragment_files_returns_empty_when_dir_missing() {
@@ -396,21 +374,11 @@ mod tests {
 
     #[test]
     fn merge_fragments_concatenates_apm_and_mcp_dependencies() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let a = dir.path().join("a.yml");
-        let b = dir.path().join("b.yml");
-        std::fs::write(
-            &a,
+        let merged = merge_test_fragments(&[
             "name: a\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n",
-        )
-        .expect("write a");
-        std::fs::write(
-            &b,
             "name: b\nversion: 1.0.0\ndependencies:\n  apm:\n    - baz/qux\n  mcp:\n    - server-1\n",
-        )
-        .expect("write b");
-
-        let merged = merge_fragments(&[a, b]).expect("merge");
+        ])
+        .expect("merge");
         assert!(merged.starts_with(GENERATED_HEADER));
         assert!(merged.contains("foo/bar"));
         assert!(merged.contains("baz/qux"));
@@ -420,21 +388,11 @@ mod tests {
 
     #[test]
     fn merge_fragments_deduplicates_apm_and_mcp_entries() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let a = dir.path().join("a.yml");
-        let b = dir.path().join("b.yml");
-        std::fs::write(
-            &a,
+        let merged = merge_test_fragments(&[
             "name: a\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n  mcp:\n    - name: kusto\n      command: agency\n",
-        )
-        .expect("write a");
-        std::fs::write(
-            &b,
             "name: b\nversion: 1.0.0\ndependencies:\n  apm:\n    - foo/bar\n  mcp:\n    - name: kusto\n      command: other\n",
-        )
-        .expect("write b");
-
-        let merged = merge_fragments(&[a, b]).expect("merge");
+        ])
+        .expect("merge");
         assert_eq!(merged.matches("foo/bar").count(), 1);
         assert_eq!(merged.matches("name: kusto").count(), 1);
         // First occurrence wins, so the duplicate's command is dropped.
@@ -443,26 +401,39 @@ mod tests {
     }
 
     #[test]
+    fn merge_fragments_deduplicates_dependency_sections_independently() {
+        let fragment = "\
+dependencies:
+  apm:
+    - example/plugin
+devDependencies:
+  apm:
+    - example/plugin
+";
+        let merged = merge_test_fragments(&[fragment, fragment]).expect("merge");
+        let document: Value = serde_yaml_ng::from_str(&merged).expect("parse merged manifest");
+        for section in ["dependencies", "devDependencies"] {
+            assert_eq!(
+                document[section]["apm"],
+                Value::Sequence(vec![Value::from("example/plugin")]),
+                "{section} must retain its own deduplicated dependency"
+            );
+        }
+    }
+
+    #[test]
     fn merge_fragments_preserves_complex_map_entries() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("complex.yml");
-        std::fs::write(
-            &f,
+        let merged = merge_test_fragments(&[
             "name: x\nversion: 1.0.0\ndependencies:\n  apm:\n    - git: dev.azure.com/org/repo\n      path: services/foo\n",
-        )
-        .expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
+        ])
+        .expect("merge");
         assert!(merged.contains("dev.azure.com/org/repo"));
         assert!(merged.contains("services/foo"));
     }
 
     #[test]
     fn merge_fragments_preserves_newer_manifest_fields() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let a = dir.path().join("a.yml");
-        let b = dir.path().join("b.yml");
-        std::fs::write(
-            &a,
+        let merged = merge_test_fragments(&[
             "\
 name: a
 version: 1.0.0
@@ -483,10 +454,6 @@ devDependencies:
   apm:
     - ./dev/package
 ",
-        )
-        .expect("write a");
-        std::fs::write(
-            &b,
             "\
 name: b
 version: 1.0.0
@@ -506,10 +473,8 @@ devDependencies:
     - name: fixture
       command: fixture-mcp
 ",
-        )
-        .expect("write b");
-
-        let merged = merge_fragments(&[a, b]).expect("merge");
+        ])
+        .expect("merge");
 
         assert!(merged.contains("targets:"));
         assert_eq!(merged.matches("- copilot").count(), 1);
@@ -529,13 +494,11 @@ devDependencies:
 
     #[test]
     fn merge_fragments_replaces_scalar_fields_with_later_fragments() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let a = dir.path().join("a.yml");
-        let b = dir.path().join("b.yml");
-        std::fs::write(&a, "description: base description\n").expect("write a");
-        std::fs::write(&b, "description: overlay description\n").expect("write b");
-
-        let merged = merge_fragments(&[a, b]).expect("merge");
+        let merged = merge_test_fragments(&[
+            "description: base description\n",
+            "description: overlay description\n",
+        ])
+        .expect("merge");
 
         assert!(merged.contains("description: overlay description"));
         assert!(!merged.contains("description: base description"));
@@ -543,11 +506,8 @@ devDependencies:
 
     #[test]
     fn merge_fragments_errors_when_dependency_section_is_not_mapping() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("bad.yml");
-        std::fs::write(&f, "dependencies: []\n").expect("write");
-
-        let err = merge_fragments(&[f]).expect_err("dependencies must be a mapping");
+        let err = merge_test_fragments(&["dependencies: []\n"])
+            .expect_err("dependencies must be a mapping");
 
         assert!(
             format!("{err:#}").contains("dependencies in manifest fragment"),
@@ -557,11 +517,8 @@ devDependencies:
 
     #[test]
     fn merge_fragments_errors_when_dependency_group_is_not_sequence() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("bad.yml");
-        std::fs::write(&f, "dependencies:\n  apm: foo/bar\n").expect("write");
-
-        let err = merge_fragments(&[f]).expect_err("dependencies.apm must be a sequence");
+        let err = merge_test_fragments(&["dependencies:\n  apm: foo/bar\n"])
+            .expect_err("dependencies.apm must be a sequence");
 
         assert!(
             format!("{err:#}").contains("dependencies.apm"),
@@ -571,10 +528,7 @@ devDependencies:
 
     #[test]
     fn merge_fragments_skips_empty_files() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let f = dir.path().join("empty.yml");
-        std::fs::write(&f, "\n\n").expect("write");
-        let merged = merge_fragments(&[f]).expect("merge");
+        let merged = merge_test_fragments(&["\n\n"]).expect("merge");
         assert!(merged.contains("name: dotfiles"));
         assert!(!merged.contains("dependencies:"));
     }

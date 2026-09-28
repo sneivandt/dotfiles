@@ -285,8 +285,8 @@ fn ini_settings(
         if line.is_empty() || line.starts_with(['#', ';']) {
             continue;
         }
-        if line.starts_with('[') && line.ends_with(']') {
-            section = Some(line.to_string());
+        if let Some(header) = ini_section(line) {
+            section = Some(header.to_string());
             continue;
         }
         let (key, value) = if let Some((key, value)) = line.split_once('=') {
@@ -335,12 +335,14 @@ fn merge_ini(current: &str, fragment: &str) -> anyhow::Result<String> {
     Ok(rendered)
 }
 
+fn ini_section(line: &str) -> Option<&str> {
+    let line = line.trim();
+    (line.starts_with('[') && line.ends_with(']')).then_some(line)
+}
+
 fn ini_line_key(line: &str) -> Option<&str> {
     let line = line.trim();
-    if line.is_empty()
-        || line.starts_with(['#', ';'])
-        || (line.starts_with('[') && line.ends_with(']'))
-    {
+    if line.is_empty() || line.starts_with(['#', ';']) || ini_section(line).is_some() {
         return None;
     }
     if let Some((key, _)) = line.split_once('=') {
@@ -350,86 +352,57 @@ fn ini_line_key(line: &str) -> Option<&str> {
 }
 
 fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Option<&str>) {
-    let indices = lines
-        .iter()
-        .enumerate()
-        .filter(|(_, line)| line.trim() == section)
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
-    if let Some(&first) = indices.first() {
-        let first_end = lines
-            .iter()
-            .enumerate()
-            .skip(first.saturating_add(1))
-            .find(|(_, line)| {
-                let line = line.trim();
-                line.starts_with('[') && line.ends_with(']')
-            })
-            .map_or(lines.len(), |(index, _)| index);
-        let insertion_index = lines
-            .iter()
-            .enumerate()
-            .take(first_end)
-            .skip(first.saturating_add(1))
-            .find(|(_, line)| ini_line_key(line) == Some(key))
-            .map_or_else(
-                || {
-                    lines
-                        .iter()
-                        .enumerate()
-                        .take(first_end)
-                        .skip(first.saturating_add(1))
-                        .rfind(|(_, line)| ini_line_key(line).is_some())
-                        .map_or_else(
-                            || first.saturating_add(1),
-                            |(index, _)| index.saturating_add(1),
-                        )
-                },
-                |(index, _)| index,
-            );
-        for &start in indices.iter().rev() {
-            let content_start = start.saturating_add(1);
-            let end = lines
-                .iter()
-                .enumerate()
-                .skip(content_start)
-                .find(|(_, line)| {
-                    let line = line.trim();
-                    line.starts_with('[') && line.ends_with(']')
-                })
-                .map_or(lines.len(), |(index, _)| index);
-            for index in (content_start..end).rev() {
-                if lines.get(index).and_then(|line| ini_line_key(line)) == Some(key) {
-                    lines.remove(index);
-                }
-            }
-        }
-        lines.insert(
-            insertion_index,
-            value.map_or_else(|| key.to_string(), |value| format!("{key}={value}")),
-        );
-    } else {
+    let setting = value.map_or_else(|| key.to_string(), |value| format!("{key}={value}"));
+    let Some(first) = lines.iter().position(|line| line.trim() == section) else {
         if lines.last().is_some_and(|line| !line.is_empty()) {
             lines.push(String::new());
         }
         lines.push(section.to_string());
-        lines.push(value.map_or_else(|| key.to_string(), |value| format!("{key}={value}")));
+        lines.push(setting);
+        return;
+    };
+
+    let mut insertion_index = first.saturating_add(1);
+    for (index, line) in lines
+        .iter()
+        .enumerate()
+        .skip(insertion_index)
+        .take_while(|(_, line)| ini_section(line).is_none())
+    {
+        if let Some(current_key) = ini_line_key(line) {
+            if current_key == key {
+                insertion_index = index;
+                break;
+            }
+            insertion_index = index.saturating_add(1);
+        }
     }
+
+    // No matching key precedes the insertion point, so removing duplicates
+    // across all occurrences of this section leaves that index unchanged.
+    let mut in_section = false;
+    lines.retain(|line| {
+        if let Some(header) = ini_section(line) {
+            in_section = header == section;
+        }
+        !in_section || ini_line_key(line) != Some(key)
+    });
+    lines.insert(insertion_index, setting);
 }
 
-fn pam_rule_identity(line: &str) -> anyhow::Result<(String, String)> {
-    let tokens = line.split_whitespace().collect::<Vec<_>>();
-    let Some(facility) = tokens.first() else {
+fn pam_rule_identity(line: &str) -> anyhow::Result<(&str, &str)> {
+    let mut tokens = line.split_whitespace();
+    let Some(facility) = tokens.clone().next() else {
         bail!("PAM fragment contains an empty rule");
     };
     #[allow(
         clippy::case_sensitive_file_extension_comparisons,
         reason = "PAM module names and Linux file extensions are case-sensitive"
     )]
-    let Some(module) = tokens.iter().find(|token| token.ends_with(".so")) else {
+    let Some(module) = tokens.find(|token| token.ends_with(".so")) else {
         bail!("PAM fragment rule has no module: {line}");
     };
-    Ok(((*facility).to_string(), (*module).to_string()))
+    Ok((facility, module))
 }
 
 fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
@@ -442,13 +415,12 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
         let (facility, module) = pam_rule_identity(rule)?;
         lines.retain(|line| {
             let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
-            let tokens = code.split_whitespace().collect::<Vec<_>>();
-            !(tokens.first().copied() == Some(facility.as_str())
-                && tokens.contains(&module.as_str()))
+            let mut tokens = code.split_whitespace();
+            !(tokens.clone().next() == Some(facility) && tokens.any(|token| token == module))
         });
         let Some(index) = lines
             .iter()
-            .rposition(|line| line.split_whitespace().next() == Some(facility.as_str()))
+            .rposition(|line| line.split_whitespace().next() == Some(facility))
         else {
             bail!("PAM service has no {facility} stack; refusing to synthesize one");
         };
@@ -553,6 +525,54 @@ mod tests {
         assert!(contains_ini(&merged, fragment).unwrap());
         assert!(!contains_ini("[options]\ncolor\n", "[options]\nColor\n").unwrap());
         assert!(merge_ini("[options]\nColor\n", "[options]\nColor enabled\n").is_err());
+    }
+
+    #[test]
+    fn ini_merge_preserves_setting_positions_and_removes_only_managed_duplicates() {
+        for (label, current, expected) in [
+            ("empty file", "", "[options]\nmanaged=new\n"),
+            (
+                "missing section",
+                "[other]\nmanaged=keep\n",
+                "[other]\nmanaged=keep\n\n[options]\nmanaged=new\n",
+            ),
+            (
+                "empty section",
+                "[options]\n# retained comment\n\n[other]\nmanaged=keep\n",
+                "[options]\nmanaged=new\n# retained comment\n\n[other]\nmanaged=keep\n",
+            ),
+            (
+                "missing key follows last setting, not trailing comments",
+                "[options]\n# heading\nkeep=yes\n# trailing\n\n",
+                "[options]\n# heading\nkeep=yes\nmanaged=new\n# trailing\n",
+            ),
+            (
+                "existing key stays before following settings",
+                "[options]\n# heading\nmanaged=old\nkeep=yes\nmanaged=duplicate\n",
+                "[options]\n# heading\nmanaged=new\nkeep=yes\n",
+            ),
+            (
+                "repeated sections retain unmanaged keys",
+                "[options]\nmanaged=old\n[other]\nmanaged=keep\n [options] \nmanaged\nkeep=yes\n",
+                "[options]\nmanaged=new\n[other]\nmanaged=keep\n [options] \nkeep=yes\n",
+            ),
+            (
+                "key moves from later occurrence into first section",
+                "[options]\nkeep=yes\n# trailing\n[options]\nmanaged=old\n",
+                "[options]\nkeep=yes\nmanaged=new\n# trailing\n[options]\n",
+            ),
+            (
+                "bare settings and malformed section-like lines keep their positions",
+                "[options]\n# managed=comment\nBareFlag\n[not-a-section\n; trailing\n",
+                "[options]\n# managed=comment\nBareFlag\n[not-a-section\nmanaged=new\n; trailing\n",
+            ),
+        ] {
+            let fragment = "[options]\nmanaged=new\n";
+            let merged = merge_ini(current, fragment).unwrap();
+            assert_eq!(merged, expected, "{label}");
+            assert!(contains_ini(&merged, fragment).unwrap(), "{label}");
+            assert_eq!(merge_ini(&merged, fragment).unwrap(), merged, "{label}");
+        }
     }
 
     #[test]

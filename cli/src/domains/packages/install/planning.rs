@@ -43,19 +43,16 @@ pub(super) fn select_packages(packages: &[Package], is_aur: bool) -> Vec<Package
 /// Returns `Ok(manager)` when one is usable, or `Err(reason)` describing why
 /// the task should skip.
 pub(super) fn resolve_native_manager(ctx: &Context) -> Result<PackageManager, String> {
-    if ctx.platform().is_linux() {
-        ctx.log().debug("using pacman package manager");
-        if !ctx.which("pacman") {
-            return Err("pacman not found".to_string());
-        }
-        Ok(PackageManager::Pacman)
+    let manager = if ctx.platform().is_linux() {
+        PackageManager::Pacman
     } else {
-        ctx.log().debug("using winget package manager");
-        if !ctx.which("winget") {
-            return Err("winget not found".to_string());
-        }
-        Ok(PackageManager::Winget)
+        PackageManager::Winget
+    };
+    ctx.log().debug(format!("using {manager} package manager"));
+    if !ctx.which(manager.provider().name()) {
+        return Err(format!("{manager} not found"));
     }
+    Ok(manager)
 }
 
 /// Predict whether an install of `packages` via `manager` will require sudo.

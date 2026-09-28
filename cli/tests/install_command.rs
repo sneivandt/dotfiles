@@ -198,126 +198,78 @@ fn install_task_catalog_satisfies_structural_contract() {
 }
 
 // ---------------------------------------------------------------------------
-// --skip filter
+// Task-selector filtering
 // ---------------------------------------------------------------------------
 
-/// Tasks matching the skip selector must be excluded from the filtered list.
 #[test]
-fn skip_filter_excludes_matching_tasks() {
+fn skip_filters_exclude_any_matching_selector_and_preserve_nonmatches() {
     let all_tasks = install_tasks();
-    let skip_keyword = "packages";
-
-    let filtered: Vec<&str> = all_tasks
-        .iter()
-        .filter(|t| !task_matches_filter(t.as_ref(), skip_keyword))
-        .map(|t| t.name())
-        .collect();
-
-    for task in all_tasks
-        .iter()
-        .filter(|task| filtered.contains(&task.name()))
-    {
-        assert!(
-            !task_matches_filter(task.as_ref(), skip_keyword),
-            "task '{}' should have been excluded by --skip {skip_keyword}",
-            task.name(),
-        );
+    let cases: &[(&str, &[&str], bool)] = &[
+        ("single selector", &["packages"], true),
+        ("multiple selectors", &["packages", "registry"], true),
+        ("no match", &["zzznomatch"], false),
+    ];
+    for (case, selectors, removes_tasks) in cases {
+        let filtered: Vec<_> = all_tasks
+            .iter()
+            .filter(|task| {
+                !selectors
+                    .iter()
+                    .any(|selector| task_matches_filter(task.as_ref(), selector))
+            })
+            .collect();
+        for task in &filtered {
+            for selector in *selectors {
+                assert!(
+                    !task_matches_filter(task.as_ref(), selector),
+                    "{case}: '{}' should be excluded by --skip {selector}",
+                    task.name()
+                );
+            }
+        }
+        if *removes_tasks {
+            assert!(
+                filtered.len() < all_tasks.len(),
+                "{case}: nothing was removed"
+            );
+        } else {
+            assert_eq!(filtered.len(), all_tasks.len(), "{case}");
+        }
     }
-    // At least one task was removed
-    assert!(
-        filtered.len() < all_tasks.len(),
-        "--skip packages should remove at least one task"
-    );
 }
 
-/// When the skip keyword does not match any task name the full list is returned.
 #[test]
-fn skip_filter_with_no_match_returns_all_tasks() {
+fn only_filters_use_exact_selectors_and_union_multiple_matches() {
     let all_tasks = install_tasks();
-    let skip_keyword = "zzznomatch";
-    let total = all_tasks.len();
-
-    let filtered_count = all_tasks
-        .iter()
-        .filter(|t| !task_matches_filter(t.as_ref(), skip_keyword))
-        .count();
-
-    assert_eq!(
-        filtered_count, total,
-        "--skip with non-matching keyword should leave task count unchanged"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// --only filter
-// ---------------------------------------------------------------------------
-
-/// Only tasks matching the `--only` selector should remain.
-#[test]
-fn only_filter_includes_only_matching_tasks() {
-    let all_tasks = install_tasks();
-    let only_keyword = "symlinks";
-
-    let filtered: Vec<&str> = all_tasks
-        .iter()
-        .filter(|t| task_matches_filter(t.as_ref(), only_keyword))
-        .map(|t| t.name())
-        .collect();
-
-    assert_eq!(
-        filtered,
-        vec!["Home symlinks"],
-        "--only symlinks should return exactly one task"
-    );
-}
-
-/// Canonical selectors disambiguate similar task names.
-#[test]
-fn only_filter_disambiguates_update_tasks() {
-    let all_tasks = install_tasks();
-    let filtered: Vec<&str> = all_tasks
-        .iter()
-        .filter(|t| task_matches_filter(t.as_ref(), "repository"))
-        .map(|t| t.name())
-        .collect();
-
-    assert_eq!(filtered, vec!["Dotfiles repository"]);
-
-    let unmatched = all_tasks
-        .iter()
-        .any(|t| task_matches_filter(t.as_ref(), "update"));
-
-    assert!(
-        !unmatched,
-        "ambiguous selectors like 'update' should not match any task"
-    );
-}
-
-/// Internal task labels do not create heuristic selectors.
-#[test]
-fn only_filter_does_not_match_internal_report_task_by_keyword() {
-    let all_tasks = install_tasks();
-    let no_match = !all_tasks
-        .iter()
-        .any(|t| task_matches_filter(t.as_ref(), "report"));
-
-    assert!(no_match);
-}
-
-/// When `--only` matches nothing the result is an empty list.
-#[test]
-fn only_filter_with_no_match_returns_empty() {
-    let all_tasks = install_tasks();
-    let only_keyword = "zzznomatch";
-
-    let any_match = all_tasks
-        .iter()
-        .any(|t| task_matches_filter(t.as_ref(), only_keyword));
-
-    assert!(
-        !any_match,
-        "--only with non-matching keyword should return empty list"
-    );
+    let cases: &[(&str, &[&str], &[&str])] = &[
+        ("single selector", &["symlinks"], &["Home symlinks"]),
+        (
+            "repository selector",
+            &["repository"],
+            &["Dotfiles repository"],
+        ),
+        ("ambiguous update label", &["update"], &[]),
+        ("internal report label", &["report"], &[]),
+        ("unknown selector", &["zzznomatch"], &[]),
+        (
+            "union",
+            &["symlinks", "git-hooks"],
+            &["Git hooks", "Home symlinks"],
+        ),
+    ];
+    for (case, selectors, expected) in cases {
+        let mut filtered: Vec<_> = all_tasks
+            .iter()
+            .filter(|task| {
+                selectors
+                    .iter()
+                    .any(|selector| task_matches_filter(task.as_ref(), selector))
+            })
+            .map(|task| task.name())
+            .collect();
+        filtered.sort_unstable();
+        assert_eq!(filtered, *expected, "{case}");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -369,83 +321,6 @@ fn install_task_catalog_contains_required_tasks() {
         assert!(
             selectors.contains(&required),
             "install task catalog is missing required selector '{required}'"
-        );
-    }
-}
-
-// ---------------------------------------------------------------------------
-// --skip filter: multiple keywords
-// ---------------------------------------------------------------------------
-
-/// When multiple keywords are provided, tasks matching any one of them must
-/// be excluded.
-#[test]
-fn skip_with_multiple_keywords_excludes_all_matching() {
-    let all_tasks = install_tasks();
-    let skip_keywords = ["packages", "registry"];
-
-    let filtered: Vec<&str> = all_tasks
-        .iter()
-        .filter(|t| {
-            !skip_keywords
-                .iter()
-                .any(|kw| task_matches_filter(t.as_ref(), kw))
-        })
-        .map(|t| t.name())
-        .collect();
-
-    for task in all_tasks
-        .iter()
-        .filter(|task| filtered.contains(&task.name()))
-    {
-        for kw in &skip_keywords {
-            assert!(
-                !task_matches_filter(task.as_ref(), kw),
-                "task '{}' should have been excluded by --skip {kw}",
-                task.name(),
-            );
-        }
-    }
-    assert!(
-        filtered.len() < all_tasks.len(),
-        "--skip with multiple keywords should remove at least one task"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// --only filter: multiple keywords
-// ---------------------------------------------------------------------------
-
-/// When multiple selectors are provided, tasks matching any one of them must
-/// all be included (union, not intersection).
-#[test]
-fn only_with_multiple_keywords_includes_all_matching() {
-    let all_tasks = install_tasks();
-    let only_keywords = ["symlinks", "git-hooks"];
-
-    let filtered: Vec<&str> = all_tasks
-        .iter()
-        .filter(|t| {
-            only_keywords
-                .iter()
-                .any(|kw| task_matches_filter(t.as_ref(), kw))
-        })
-        .map(|t| t.name())
-        .collect();
-
-    assert!(filtered.contains(&"Home symlinks"));
-    assert!(filtered.contains(&"Git hooks"));
-
-    for task in all_tasks
-        .iter()
-        .filter(|task| filtered.contains(&task.name()))
-    {
-        assert!(
-            only_keywords
-                .iter()
-                .any(|kw| task_matches_filter(task.as_ref(), kw)),
-            "task '{}' should not have been included",
-            task.name()
         );
     }
 }
@@ -517,48 +392,24 @@ fn apply_file_permissions_run_sets_mode_on_unix() {
 // install::run: full dry-run pipeline
 // ---------------------------------------------------------------------------
 
-/// Calling `commands::install::run` with `dry_run: true` must return `Ok(())`
-/// without making any filesystem changes.
 #[test]
-fn install_run_dry_run_returns_ok() {
-    let result = common::run_install_dry_run(vec![], vec![], false);
-    assert!(
-        result.is_ok(),
-        "dry-run install should return Ok: {result:?}"
-    );
-}
-
-/// Calling `install::run` with `--only symlinks` in dry-run mode must return
-/// `Ok(())` and execute only matching tasks.
-#[test]
-fn install_run_dry_run_with_only_filter_returns_ok() {
-    let result = common::run_install_dry_run(vec![], vec!["symlinks".to_string()], false);
-    assert!(
-        result.is_ok(),
-        "dry-run install with --only symlinks should return Ok: {result:?}"
-    );
-}
-
-/// Calling `install::run` with `--skip packages` in dry-run mode must return
-/// `Ok(())` and skip matching tasks.
-#[test]
-fn install_run_dry_run_with_skip_filter_returns_ok() {
-    let result = common::run_install_dry_run(vec!["packages".to_string()], vec![], false);
-    assert!(
-        result.is_ok(),
-        "dry-run install with --skip packages should return Ok: {result:?}"
-    );
-}
-
-/// `repository` is already excluded by the dry-run helper's
-/// `--no-repo-update`; redundantly skipping it must remain valid.
-#[test]
-fn install_run_ignores_redundant_repository_skip_when_updates_are_disabled() {
-    let result = common::run_install_dry_run(vec!["repository".to_string()], vec![], false);
-    assert!(
-        result.is_ok(),
-        "redundant repository skip should return Ok: {result:?}"
-    );
+fn install_run_dry_run_accepts_valid_filters() {
+    let cases: &[(&str, &[&str], &[&str], bool)] = &[
+        ("all tasks", &[], &[], false),
+        ("only symlinks", &[], &["symlinks"], false),
+        ("skip packages", &["packages"], &[], false),
+        // Repository updates are already disabled by the helper.
+        ("redundant repository skip", &["repository"], &[], false),
+        ("parallel symlinks", &[], &["symlinks"], true),
+    ];
+    for (case, skip, only, parallel) in cases {
+        let result = common::run_install_dry_run(
+            skip.iter().map(|selector| (*selector).to_owned()).collect(),
+            only.iter().map(|selector| (*selector).to_owned()).collect(),
+            *parallel,
+        );
+        assert!(result.is_ok(), "{case}: {result:?}");
+    }
 }
 
 /// Calling `install::run` with `--only` matching no selector must explain how
@@ -570,17 +421,6 @@ fn install_run_dry_run_with_only_no_match_returns_an_actionable_error() {
     let message = error.to_string();
     assert!(message.contains("--only did not match a task selector"));
     assert!(message.contains("dotfiles tasks"));
-}
-
-/// Calling `install::run` with `--only symlinks` in parallel dry-run mode
-/// must return `Ok(())`.
-#[test]
-fn install_run_dry_run_with_only_filter_parallel_returns_ok() {
-    let result = common::run_install_dry_run(vec![], vec!["symlinks".to_string()], true);
-    assert!(
-        result.is_ok(),
-        "parallel dry-run with --only symlinks should return Ok: {result:?}"
-    );
 }
 
 /// Calling `install::run` with contradictory `--skip` and `--only` selectors

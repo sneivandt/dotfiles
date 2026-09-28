@@ -78,10 +78,6 @@ struct LockedDependency {
 }
 
 impl LockedDependency {
-    fn match_key(&self) -> String {
-        self.display_name()
-    }
-
     fn source_identity(&self) -> String {
         format!(
             "{}\0{}\0{}\0{}",
@@ -119,7 +115,7 @@ fn parse_locked_dependencies(bytes: Option<&[u8]>) -> Option<BTreeMap<String, Lo
     Some(
         lock.dependencies
             .into_iter()
-            .map(|dependency| (dependency.match_key(), dependency))
+            .map(|dependency| (dependency.display_name(), dependency))
             .collect(),
     )
 }

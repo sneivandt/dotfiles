@@ -9,8 +9,8 @@ use crate::infra::ConfigHandle;
 use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::Os;
 use crate::test_helpers::{
-    assert_task_changed, assert_task_ok, empty_config, make_arch_context, make_linux_context,
-    make_platform_context_with_which, make_windows_context, task_batch, task_skipped,
+    assert_task_changed, assert_task_ok, empty_config, make_platform_context_with_which,
+    task_batch, task_skipped,
 };
 use std::path::PathBuf;
 
@@ -50,105 +50,69 @@ fn aur_preview_uses_package_database_without_requiring_paru() {
     }
 }
 
-// -----------------------------------------------------------------------
-// InstallPackages::should_run
-// -----------------------------------------------------------------------
-
 #[test]
-fn install_packages_should_run_false_when_no_packages() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_linux_context(config);
-    assert!(!InstallPackages::new(packages).should_run(&ctx));
-}
-
-#[test]
-fn install_packages_should_run_false_when_only_aur_packages() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "paru-bin".to_string(),
-        is_aur: true,
-    });
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_arch_context(config);
-    assert!(!InstallPackages::new(packages).should_run(&ctx));
-}
-
-#[test]
-fn install_packages_should_run_true_when_non_aur_packages_present() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_linux_context(config);
-    assert!(InstallPackages::new(packages).should_run(&ctx));
-}
-
-// -----------------------------------------------------------------------
-// InstallAurPackages::should_run
-// -----------------------------------------------------------------------
-
-#[test]
-fn install_aur_packages_should_run_false_on_non_arch() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "paru-bin".to_string(),
-        is_aur: true,
-    });
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_linux_context(config); // not arch
-    assert!(!InstallAurPackages::new(packages).should_run(&ctx));
-}
-
-#[test]
-fn install_aur_packages_should_run_false_when_no_aur_packages() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_arch_context(config);
-    assert!(!InstallAurPackages::new(packages).should_run(&ctx));
-}
-
-#[test]
-fn install_aur_packages_should_run_true_on_arch_with_aur_packages() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "paru-bin".to_string(),
-        is_aur: true,
-    });
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_arch_context(config);
-    assert!(InstallAurPackages::new(packages).should_run(&ctx));
-}
-
-// -----------------------------------------------------------------------
-// InstallParu::should_run
-// -----------------------------------------------------------------------
-
-#[test]
-fn install_paru_should_run_false_on_non_arch_linux() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let ctx = make_linux_context(config);
-    assert!(!InstallParu.should_run(&ctx));
-}
-
-#[test]
-fn install_paru_should_run_false_on_windows() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let ctx = make_windows_context(config);
-    assert!(!InstallParu.should_run(&ctx));
-}
-
-#[test]
-fn install_paru_should_run_true_on_arch_linux() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let ctx = make_arch_context(config);
-    assert!(InstallParu.should_run(&ctx));
+fn package_task_applicability_follows_platform_and_package_kind() {
+    for (label, os, arch, package_kinds, expected) in [
+        (
+            "empty Linux",
+            Os::Linux,
+            false,
+            &[][..],
+            [false, false, false],
+        ),
+        (
+            "AUR on Arch",
+            Os::Linux,
+            true,
+            &[true][..],
+            [false, true, true],
+        ),
+        (
+            "native on Linux",
+            Os::Linux,
+            false,
+            &[false][..],
+            [true, false, false],
+        ),
+        (
+            "AUR on Linux",
+            Os::Linux,
+            false,
+            &[true][..],
+            [false, false, false],
+        ),
+        (
+            "native on Arch",
+            Os::Linux,
+            true,
+            &[false][..],
+            [true, false, true],
+        ),
+        (
+            "empty Windows",
+            Os::Windows,
+            false,
+            &[][..],
+            [false, false, false],
+        ),
+    ] {
+        let mut config = empty_config(PathBuf::from("/repo"));
+        config.packages = package_kinds
+            .iter()
+            .map(|&is_aur| Package {
+                name: if is_aur { "paru-bin" } else { "git" }.to_string(),
+                is_aur,
+            })
+            .collect();
+        let packages = ConfigHandle::new(config.packages.clone());
+        let ctx = make_platform_context_with_which(config, os, arch, false);
+        let actual = [
+            InstallPackages::new(packages.clone()).should_run(&ctx),
+            InstallAurPackages::new(packages).should_run(&ctx),
+            InstallParu.should_run(&ctx),
+        ];
+        assert_eq!(actual, expected, "{label}: [native, AUR, paru]");
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -156,39 +120,22 @@ fn install_paru_should_run_true_on_arch_linux() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn install_packages_run_skips_when_pacman_not_found() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
-    // which_result=false ⇒ pacman not found
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_platform_context_with_which(config, Os::Linux, false, false);
-    let result = InstallPackages::new(packages).run(&ctx).unwrap();
-    let reason = task_skipped(&result);
-    assert!(
-        reason.contains("pacman not found"),
-        "expected 'pacman not found' skip, got {reason:?}"
-    );
-}
-
-#[test]
-fn install_packages_run_skips_when_winget_not_found() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "Git.Git".to_string(),
-        is_aur: false,
-    });
-    // which_result=false ⇒ winget not found
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_platform_context_with_which(config, Os::Windows, false, false);
-    let result = InstallPackages::new(packages).run(&ctx).unwrap();
-    let reason = task_skipped(&result);
-    assert!(
-        reason.contains("winget not found"),
-        "expected 'winget not found' skip, got {reason:?}"
-    );
+fn install_packages_run_reports_the_missing_native_manager() {
+    for (os, package, manager) in [
+        (Os::Linux, "git", "pacman"),
+        (Os::Windows, "Git.Git", "winget"),
+    ] {
+        let mut config = empty_config(PathBuf::from("/repo"));
+        config.packages.push(Package {
+            name: package.to_string(),
+            is_aur: false,
+        });
+        let packages = ConfigHandle::new(config.packages.clone());
+        let ctx = make_platform_context_with_which(config, os, false, false);
+        let result = InstallPackages::new(packages).run(&ctx).unwrap();
+        let reason = task_skipped(&result);
+        assert_eq!(reason, format!("{manager} not found"), "{os:?}");
+    }
 }
 
 #[test]

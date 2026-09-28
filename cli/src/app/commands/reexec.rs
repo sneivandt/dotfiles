@@ -20,14 +20,21 @@ pub(super) const REPOSITORY_REEXEC_GUARD_VAR: &str = "DOTFILES_REPOSITORY_REEXEC
 /// on, so the parent retains the repository run lock until the replacement
 /// process finishes.
 pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let args = log.run_log().map_or_else(
-        || args.clone(),
-        |run| crate::infra::logging::records::child_args(&args, &run.id()),
+    let command = build_reexec_command(
+        &re_exec_path(root),
+        &reexec_args(log),
+        SELF_UPDATE_REEXEC_GUARD_VAR,
     );
-    let exe = re_exec_path(root);
-    let command = build_reexec_command(&exe, &args);
     run_reexec(command, log)
+}
+
+fn reexec_args(log: &dyn Output) -> Vec<String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(run) = log.run_log() {
+        crate::infra::logging::records::child_args(&args, &run.id())
+    } else {
+        args
+    }
 }
 
 fn finish_reexec(log: &dyn Output, code: i32) {
@@ -45,36 +52,33 @@ fn finish_reexec(log: &dyn Output, code: i32) {
 }
 
 fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
-    match command.status() {
+    let code = match command.status() {
         Ok(status) => {
             if status.code().is_none() {
                 log.warn("child process terminated by signal");
             }
-            let code = status.code().unwrap_or(1);
-            finish_reexec(log, code);
-            std::process::exit(code)
+            status.code().unwrap_or(1)
         }
         Err(error) => {
             log.error(format!("failed to re-exec: {error}"));
-            finish_reexec(log, 1);
-            std::process::exit(1);
+            1
         }
-    }
+    };
+    finish_reexec(log, code);
+    std::process::exit(code)
 }
 
 /// Build the replacement process while preserving the original CLI arguments.
 pub(super) fn build_reexec_command(
     exe: &std::path::Path,
     args: &[String],
+    guard: &str,
 ) -> std::process::Command {
-    let mut command = build_guarded_reexec_command(exe, args);
-    command.env(SELF_UPDATE_REEXEC_GUARD_VAR, "1");
-    command
-}
-
-fn build_guarded_reexec_command(exe: &std::path::Path, args: &[String]) -> std::process::Command {
     let mut command = std::process::Command::new(exe);
-    command.args(args).env(REEXEC_GUARD_VAR, "1");
+    command
+        .args(args)
+        .env(REEXEC_GUARD_VAR, "1")
+        .env(guard, "1");
     command
 }
 
@@ -90,23 +94,9 @@ pub(crate) fn re_exec_after_repository_update(log: &dyn Output) -> ! {
             std::process::exit(1);
         }
     };
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let args = log.run_log().map_or_else(
-        || args.clone(),
-        |run| crate::infra::logging::records::child_args(&args, &run.id()),
-    );
-    let command = build_repository_reexec_command(&exe, &args);
+    let command = build_reexec_command(&exe, &reexec_args(log), REPOSITORY_REEXEC_GUARD_VAR);
     log.startup("Repository synced · restarting to load configuration");
     run_reexec(command, log)
-}
-
-pub(super) fn build_repository_reexec_command(
-    exe: &std::path::Path,
-    args: &[String],
-) -> std::process::Command {
-    let mut command = build_guarded_reexec_command(exe, args);
-    command.env(REPOSITORY_REEXEC_GUARD_VAR, "1");
-    command
 }
 
 pub(super) const fn should_check_self_update(runtime: &RuntimePolicy<'_>) -> bool {

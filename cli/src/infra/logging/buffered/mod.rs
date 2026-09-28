@@ -36,12 +36,7 @@ impl BufferedLog {
     /// Replay all buffered entries to the backing [`Logger`].
     #[cfg(test)]
     pub fn flush(&self) {
-        let entries = std::mem::take(
-            &mut *self
-                .entries
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
+        let entries = self.take_entries();
         for entry in &entries {
             if self.inner.is_verbose()
                 || entry.is_visible_in_non_verbose(super::types::TaskStatus::Ok, None)
@@ -61,13 +56,7 @@ impl BufferedLog {
     /// Entries are already present in the run log, so anything not replayed
     /// here is simply not shown on the console.
     pub fn flush_and_complete(&self, task_id: &str, task_name: &str) {
-        let mut entries = {
-            let mut guard = self
-                .entries
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            std::mem::take(&mut *guard)
-        };
+        let mut entries = self.take_entries();
         // Parallel resource processing finishes in a nondeterministic order, so
         // sort the action lines before they reach either console path.
         LogEntry::sort_actions(&mut entries);
@@ -81,11 +70,17 @@ impl BufferedLog {
         self.inner.mark_task_completed(task_id);
         self.inner.redraw_active_status_locked(show_progress);
     }
-}
 
-impl Output for BufferedLog {
-    fn action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
-        let entry = LogEntry::action(verb, subject, planned, message);
+    fn take_entries(&self) -> Vec<LogEntry> {
+        std::mem::take(
+            &mut *self
+                .entries
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    }
+
+    fn push_entry(&self, entry: LogEntry) {
         if let Some(run) = &self.inner.run_log {
             entry.persist(run);
         }
@@ -93,6 +88,12 @@ impl Output for BufferedLog {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(entry);
+    }
+}
+
+impl Output for BufferedLog {
+    fn action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
+        self.push_entry(LogEntry::action(verb, subject, planned, message));
     }
 
     /// Record the message in the run log immediately and buffer it for later
@@ -104,16 +105,10 @@ impl Output for BufferedLog {
     /// console in non-verbose mode and never become task detail lines, but
     /// verbose replays them as the per-resource reasoning behind an outcome.
     fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
-        if let Some(run_log) = &self.inner.run_log {
-            run_log.emit(kind.log_event(), &msg);
-        }
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(LogEntry::Message {
-                kind,
-                msg: msg.into_owned(),
-            });
+        self.push_entry(LogEntry::Message {
+            kind,
+            msg: msg.into_owned(),
+        });
     }
 
     fn run_log(&self) -> Option<&RunLog> {

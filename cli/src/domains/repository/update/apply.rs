@@ -4,10 +4,10 @@ use std::time::Duration;
 use anyhow::Result;
 
 use crate::engine::{Context, TaskResult, TaskStats};
-use crate::infra::exec::{CommandSpec, ExecError};
+use crate::infra::exec::ExecError;
 
-use super::RepositoryUpdateSignal;
 use super::models::{CheckedRepository, RepositoryPlanReadiness, RepositoryUpdatePlan};
+use super::{RepositoryUpdateSignal, git_command};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{log_thread_name, set_log_thread_name};
 
@@ -32,30 +32,22 @@ const TRANSIENT_FETCH_ERROR_MARKERS: &[&str] = &[
     "unexpected disconnect while reading sideband packet",
 ];
 
-fn git_command(root: &std::path::Path, args: &[&str], env: &[(&str, &str)]) -> CommandSpec {
-    CommandSpec::new("git")
-        .args(args)
-        .current_dir(root)
-        .envs(env)
-}
-
 /// Run `git fetch` for every repository, then fast-forward merge those that
 /// have upstream commits.
 pub(super) fn apply_repository_updates(
     ctx: &Context,
     repositories: &[CheckedRepository],
-    git_env: &[(&str, &str)],
     repo_updated: &RepositoryUpdateSignal,
 ) -> Result<TaskResult> {
     // Fetch first so divergence can be evaluated without invoking `git pull`,
     // which fails noisily when the local branch has diverged from upstream.
-    if let Some(reason) = fetch_all(ctx, repositories, git_env)? {
+    if let Some(reason) = fetch_all(ctx, repositories)? {
         return Ok(TaskResult::Failed(reason));
     }
 
     let mut plans = Vec::with_capacity(repositories.len());
     for repository in repositories {
-        match plan_repository_update(ctx, repository, git_env)? {
+        match plan_repository_update(ctx, repository)? {
             RepositoryPlanReadiness::Ready(plan) => plans.push(plan),
             RepositoryPlanReadiness::Skipped(reason) => return Ok(TaskResult::unmet(reason)),
         }
@@ -63,9 +55,9 @@ pub(super) fn apply_repository_updates(
 
     for plan in plans.iter().filter(|plan| plan.needs_update) {
         let result = ctx.executor().execute(git_command(
+            ctx,
             &plan.target.root,
             &["merge", "--ff-only", "@{u}"],
-            git_env,
         ));
         match result {
             Ok(r) => {
@@ -104,7 +96,6 @@ pub(super) fn apply_repository_updates(
 fn fetch_all(
     ctx: &Context,
     repositories: &[CheckedRepository],
-    git_env: &[(&str, &str)],
 ) -> std::result::Result<Option<String>, ExecError> {
     use rayon::prelude::*;
 
@@ -112,7 +103,7 @@ fn fetch_all(
         |repository: &CheckedRepository| -> std::result::Result<Option<String>, ExecError> {
             ctx.log()
                 .debug(format!("pulling from {}", repository.target.root.display()));
-            match fetch_with_retry(ctx, repository, git_env) {
+            match fetch_with_retry(ctx, repository) {
                 Ok(()) => Ok(None),
                 Err(error) if error.is_cancelled() => Err(error),
                 Err(error) => {
@@ -156,12 +147,11 @@ fn fetch_all(
 fn fetch_with_retry(
     ctx: &Context,
     repository: &CheckedRepository,
-    git_env: &[(&str, &str)],
 ) -> std::result::Result<(), ExecError> {
     let mut attempt = 1_u32;
     loop {
         match ctx.executor().execute(
-            git_command(&repository.target.root, &["fetch", "--quiet"], git_env)
+            git_command(ctx, &repository.target.root, &["fetch", "--quiet"])
                 .timeout(Duration::from_mins(5)),
         ) {
             Ok(_) => return Ok(()),
@@ -200,23 +190,22 @@ const fn fetch_retry_delay(_attempt: u32) -> Duration {
 pub(super) fn plan_repository_update(
     ctx: &Context,
     repository: &CheckedRepository,
-    git_env: &[(&str, &str)],
 ) -> Result<RepositoryPlanReadiness> {
     let pre_sha = ctx
         .executor()
         .execute(git_command(
+            ctx,
             &repository.target.root,
             &["rev-parse", "HEAD"],
-            git_env,
         ))?
         .stdout
         .trim()
         .to_string();
 
     let upstream_sha = match ctx.executor().execute(git_command(
+        ctx,
         &repository.target.root,
         &["rev-parse", "@{u}"],
-        git_env,
     )) {
         Ok(r) => r.stdout.trim().to_string(),
         Err(e @ ExecError::NonZero { .. }) => {
@@ -249,9 +238,9 @@ pub(super) fn plan_repository_update(
     let ahead_output = ctx
         .executor()
         .execute(git_command(
+            ctx,
             &repository.target.root,
             &["rev-list", "--count", "@{u}..HEAD"],
-            git_env,
         ))?
         .stdout
         .trim()

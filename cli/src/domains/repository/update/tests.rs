@@ -229,7 +229,7 @@ fn worktree_has_local_changes_ignores_untracked_files() {
         Arc::new(UntrackedAwareExecutor),
     );
 
-    assert!(!worktree_has_local_changes(&ctx, Path::new("/repo"), &[]).unwrap());
+    assert!(!worktree_has_local_changes(&ctx, Path::new("/repo")).unwrap());
 }
 
 #[test]
@@ -519,7 +519,7 @@ fn partial_multi_repository_merge_failure_records_that_the_checkout_changed() {
     let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), executor);
     let signal = UpdateSignal::new();
 
-    let result = apply_repository_updates(&ctx, &repositories, &[], &signal).unwrap();
+    let result = apply_repository_updates(&ctx, &repositories, &signal).unwrap();
 
     assert!(matches!(result, TaskResult::Failed(_)));
     assert!(

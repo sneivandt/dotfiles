@@ -219,14 +219,6 @@ pub fn make_windows_context(config: Config) -> Context {
         .build()
 }
 
-/// Build a [`Context`] with an Arch Linux platform and default [`MockExecutor`].
-///
-/// Convenience shorthand for tests that target Arch-specific behaviour.
-#[must_use]
-pub fn make_arch_context(config: Config) -> Context {
-    ContextBuilder::new(config).arch(true).build()
-}
-
 /// Build a [`Context`] with a default Linux platform and
 /// default [`MockExecutor`], also returning the [`Logger`] so tests can
 /// inspect recorded task state.

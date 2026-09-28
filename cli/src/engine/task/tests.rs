@@ -7,17 +7,9 @@ use crate::infra::logging::{ActionCounts, TaskStatus};
 use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
 use anyhow::Result;
 use std::any::TypeId;
-use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-
-thread_local! {
-    static RESOURCE_TASK_ITEM_EVALS: Cell<usize> = const { Cell::new(0) };
-    static BATCH_TASK_ITEM_EVALS: Cell<usize> = const { Cell::new(0) };
-    static CONFIG_RESOURCE_TASK_ITEM_EVALS: Cell<usize> = const { Cell::new(0) };
-    static CONFIG_BATCH_TASK_ITEM_EVALS: Cell<usize> = const { Cell::new(0) };
-}
 
 #[derive(Debug)]
 struct DummyResource;
@@ -38,9 +30,12 @@ impl IntrinsicState for DummyResource {
     }
 }
 
-/// Test-only task exercising the shared resource-task body.
-#[derive(Debug)]
-struct CountingResourceTask;
+/// Exercise both resource-task bodies with either direct or config-backed items.
+struct CountingResourceTask {
+    config: Option<ConfigHandle<Vec<()>>>,
+    batch: bool,
+    item_evaluations: AtomicUsize,
+}
 
 impl Task for CountingResourceTask {
     task_metadata! {
@@ -48,95 +43,28 @@ impl Task for CountingResourceTask {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-        run_resource_task(
-            ctx,
-            Vec::<()>::new(),
-            |(), _ctx| DummyResource,
-            &ProcessOpts::strict("count"),
-        )
-    }
-}
-
-/// Test-only task exercising the shared batch-resource-task body.
-#[derive(Debug)]
-struct CountingBatchTask;
-
-impl Task for CountingBatchTask {
-    task_metadata! {
-        name: "Counting batch task",
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-        run_batch_resource_task(
-            ctx,
-            Vec::<()>::new(),
-            |(), _ctx| DummyResource,
-            |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
-            |_resource, _cache| Ok(ResourceState::Correct),
-            &ProcessOpts::strict("count"),
-        )
-    }
-}
-
-/// Test-only config-backed task exercising the shared resource-task body.
-#[derive(Debug)]
-struct CountingConfigResourceTask {
-    config: ConfigHandle<Vec<()>>,
-}
-
-impl CountingConfigResourceTask {
-    const fn new(config: ConfigHandle<Vec<()>>) -> Self {
-        Self { config }
-    }
-}
-
-impl Task for CountingConfigResourceTask {
-    task_metadata! {
-        name: "Counting config resource task",
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let items = self.config.read().to_vec();
-        CONFIG_RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-        run_resource_task(
-            ctx,
-            items,
-            |(), _ctx| DummyResource,
-            &ProcessOpts::strict("count"),
-        )
-    }
-}
-
-/// Test-only config-backed task exercising the shared batch body.
-#[derive(Debug)]
-struct CountingConfigBatchTask {
-    config: ConfigHandle<Vec<()>>,
-}
-
-impl CountingConfigBatchTask {
-    const fn new(config: ConfigHandle<Vec<()>>) -> Self {
-        Self { config }
-    }
-}
-
-impl Task for CountingConfigBatchTask {
-    task_metadata! {
-        name: "Counting config batch task",
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let items = self.config.read().to_vec();
-        CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| count.set(count.get().saturating_add(1)));
-        run_batch_resource_task(
-            ctx,
-            items,
-            |(), _ctx| DummyResource,
-            |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
-            |_resource, _cache| Ok(ResourceState::Correct),
-            &ProcessOpts::strict("count"),
-        )
+        let items = self
+            .config
+            .as_ref()
+            .map_or_else(Vec::new, |config| config.read().to_vec());
+        self.item_evaluations.fetch_add(1, Ordering::SeqCst);
+        if self.batch {
+            run_batch_resource_task(
+                ctx,
+                items,
+                |(), _ctx| DummyResource,
+                |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
+                |_resource, _cache| Ok(ResourceState::Correct),
+                &ProcessOpts::strict("count"),
+            )
+        } else {
+            run_resource_task(
+                ctx,
+                items,
+                |(), _ctx| DummyResource,
+                &ProcessOpts::strict("count"),
+            )
+        }
     }
 }
 
@@ -717,49 +645,24 @@ fn precomputed_assessment_is_reused_during_execution() {
 }
 
 #[test]
-fn resource_task_run_evaluates_items_once_when_called_directly() {
-    RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(0));
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
+fn resource_task_bodies_evaluate_items_once() {
+    for (name, batch, config_backed) in [
+        ("direct resource", false, false),
+        ("direct batch", true, false),
+        ("config resource", false, true),
+        ("config batch", true, true),
+    ] {
+        let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+        let task = CountingResourceTask {
+            config: config_backed.then(|| ConfigHandle::new(Vec::new())),
+            batch,
+            item_evaluations: AtomicUsize::new(0),
+        };
 
-    let result = CountingResourceTask.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::NotApplicable(_)));
-    RESOURCE_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
-}
-
-#[test]
-fn batch_task_run_evaluates_items_once() {
-    BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
-
-    let result = CountingBatchTask.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::NotApplicable(_)));
-    BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
-}
-
-#[test]
-fn config_resource_task_run_evaluates_snapshot_items_once() {
-    CONFIG_RESOURCE_TASK_ITEM_EVALS.with(|count| count.set(0));
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
-    let task = CountingConfigResourceTask::new(ConfigHandle::new(Vec::new()));
-
-    let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::NotApplicable(_)));
-    CONFIG_RESOURCE_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
-}
-
-#[test]
-fn config_batch_task_run_evaluates_snapshot_items_once() {
-    CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| count.set(0));
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
-    let task = CountingConfigBatchTask::new(ConfigHandle::new(Vec::new()));
-
-    let result = task.run(&ctx).unwrap();
-    assert!(matches!(result, TaskResult::NotApplicable(_)));
-    CONFIG_BATCH_TASK_ITEM_EVALS.with(|count| assert_eq!(count.get(), 1));
+        let result = task.run(&ctx).unwrap();
+        assert!(matches!(result, TaskResult::NotApplicable(_)), "{name}");
+        assert_eq!(task.item_evaluations.load(Ordering::SeqCst), 1, "{name}");
+    }
 }
 
 #[test]

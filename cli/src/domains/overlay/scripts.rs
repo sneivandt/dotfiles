@@ -86,28 +86,7 @@ enum ScriptTaskMode {
     Remove,
 }
 
-#[derive(Debug, Clone)]
-struct OverlayScriptOperation {
-    entry: ScriptEntry,
-    overlay_root: PathBuf,
-    mode: ScriptTaskMode,
-}
-
-impl OverlayScriptOperation {
-    const fn new(entry: ScriptEntry, overlay_root: PathBuf, mode: ScriptTaskMode) -> Self {
-        Self {
-            entry,
-            overlay_root,
-            mode,
-        }
-    }
-
-    fn resource(&self, ctx: &Context) -> Result<ScriptResource> {
-        ScriptResource::from_entry(&self.entry, &self.overlay_root, ctx.executor_arc())
-    }
-}
-
-impl Operation for OverlayScriptOperation {
+impl Operation for OverlayScriptTask {
     type Plan = ();
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
@@ -160,17 +139,24 @@ impl OverlayScriptTask {
     /// Create a new overlay script task.
     #[must_use]
     pub fn new(entry: ScriptEntry, overlay_root: PathBuf) -> Self {
-        Self::with_mode(entry, overlay_root, ScriptTaskMode::Apply)
-    }
-
-    fn with_mode(entry: ScriptEntry, overlay_root: PathBuf, mode: ScriptTaskMode) -> Self {
         let selector = overlay_script_selector(&entry.name);
         Self {
             entry,
             overlay_root,
             selector,
-            mode,
+            mode: ScriptTaskMode::Apply,
         }
+    }
+
+    fn with_mode(entry: ScriptEntry, overlay_root: PathBuf, mode: ScriptTaskMode) -> Self {
+        Self {
+            mode,
+            ..Self::new(entry, overlay_root)
+        }
+    }
+
+    fn resource(&self, ctx: &Context) -> Result<ScriptResource> {
+        ScriptResource::from_entry(&self.entry, &self.overlay_root, ctx.executor_arc())
     }
 }
 
@@ -200,10 +186,7 @@ impl Task for OverlayScriptTask {
         if let Some(description) = &self.entry.description {
             ctx.log().info(description);
         }
-        process_operation(
-            ctx,
-            &OverlayScriptOperation::new(self.entry.clone(), self.overlay_root.clone(), self.mode),
-        )
+        process_operation(ctx, self)
     }
 }
 
@@ -252,14 +235,11 @@ fn script_tasks(
     scripts
         .iter()
         .map(|entry| {
-            let task: Box<dyn Task> = Box::new(match mode {
-                ScriptTaskMode::Apply => {
-                    OverlayScriptTask::new(entry.clone(), overlay_root.to_path_buf())
-                }
-                ScriptTaskMode::Remove => {
-                    OverlayScriptTask::with_mode(entry.clone(), overlay_root.to_path_buf(), mode)
-                }
-            });
+            let task: Box<dyn Task> = Box::new(OverlayScriptTask::with_mode(
+                entry.clone(),
+                overlay_root.to_path_buf(),
+                mode,
+            ));
             task
         })
         .collect()

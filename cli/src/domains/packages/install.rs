@@ -432,9 +432,10 @@ impl Operation for PackageInstallOperation {
         );
 
         if report.has_failures() {
-            let reason = format!("{} package install(s) failed", report.failures().len());
-            ctx.log().warn(&reason);
-            return Ok(stats.finish());
+            ctx.log().warn(format!(
+                "{} package install(s) failed",
+                report.failures().len()
+            ));
         }
 
         Ok(stats.finish())

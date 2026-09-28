@@ -283,19 +283,16 @@ fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
             .find_map(|(name, value)| (name == key).then_some(value))
     };
     let active = property("ActiveState").unwrap_or("");
-    let completed_oneshot = active == "inactive"
+    let successful_oneshot = active == "inactive"
         && property("Type") == Some("oneshot")
         && property("Result") == Some("success")
-        && property("ExecMainStartTimestampMonotonic")
+        && (property("ExecMainStartTimestampMonotonic")
             .and_then(|value| value.parse::<u64>().ok())
-            .is_some_and(|value| value > 0);
-    let condition_skipped_oneshot = active == "inactive"
-        && property("Type") == Some("oneshot")
-        && property("Result") == Some("success")
-        && property("ConditionResult") == Some("no");
+            .is_some_and(|value| value > 0)
+            || property("ConditionResult") == Some("no"));
     let matches = match active {
         "active" | "reloading" | "refreshing" | "activating" => enabled,
-        "inactive" | "failed" => !enabled || completed_oneshot || condition_skipped_oneshot,
+        "inactive" | "failed" => !enabled || successful_oneshot,
         "deactivating" => false,
         _ => {
             return ResourceState::Unknown {

@@ -12,14 +12,18 @@ use super::stats::{TaskResult, TaskStats};
 use crate::engine::{IntrinsicState, RemovableResource, Resource, ResourceResult, ResourceState};
 use crate::infra::logging::OutputExt as _;
 
-/// Run `process_one` over `items` sequentially, honouring cancellation.
-///
-/// Centralises the cancellation-aware fold used by every sequential code path.
-/// Errors stop dispatch while retaining the earlier items' outcomes.
-fn run_sequential<T, F>(ctx: &Context, items: Vec<T>, mut process_one: F) -> Result<TaskResult>
-where
-    F: FnMut(&Context, T) -> Result<TaskStats>,
-{
+/// Dispatch item processing, retaining completed outcomes when dispatch stops.
+fn process_items<T: Send>(
+    ctx: &Context,
+    items: Vec<T>,
+    sequential: bool,
+    process_one: impl Fn(T) -> Result<TaskStats> + Sync + Send,
+) -> Result<TaskResult> {
+    if ctx.parallel() && !sequential && items.len() > 1 {
+        ctx.trace_fmt(|| format!("processing {} resources in parallel", items.len()));
+        return parallel::collect_parallel_stats(ctx, items, process_one);
+    }
+
     let mut progress = BatchProgress::default();
     let mut items = items.into_iter();
     while let Some(item) = items.next() {
@@ -28,40 +32,12 @@ where
             progress.omit(items.len().saturating_add(1));
             break;
         }
-        if progress.record(process_one(ctx, item)) {
+        if progress.record(process_one(item)) {
             progress.omit(items.len());
             break;
         }
     }
     progress.finish()
-}
-
-fn process_apply_items<T, R>(
-    ctx: &Context,
-    items: Vec<T>,
-    opts: &ProcessOpts,
-    span_kind: &'static str,
-    get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync + Send,
-) -> Result<TaskResult>
-where
-    T: Send,
-    R: Resource + Send,
-{
-    let span = tracing::debug_span!(
-        "process_apply_items",
-        kind = span_kind,
-        verb = opts.verb,
-        count = items.len()
-    );
-    let _enter = span.enter();
-    if ctx.parallel() && !opts.sequential && items.len() > 1 {
-        ctx.trace_fmt(|| format!("processing {} resources in parallel", items.len()));
-        return parallel::process_apply_parallel(ctx, items, opts, get_resource_state);
-    }
-    run_sequential(ctx, items, |ctx, item| {
-        let (resource, current) = get_resource_state(item)?;
-        apply::process_single(ctx, &resource, &current, opts)
-    })
 }
 
 /// Process resources with a state-discovery function.
@@ -87,9 +63,16 @@ where
         return Ok(TaskResult::Ok);
     }
 
-    process_apply_items(ctx, resources, opts, "state_discovery", |resource| {
+    let span = tracing::debug_span!(
+        "process_apply_items",
+        kind = "state_discovery",
+        verb = opts.verb,
+        count = resources.len()
+    );
+    let _enter = span.enter();
+    process_items(ctx, resources, opts.sequential, |resource| {
         let current = state(&resource)?;
-        Ok((resource, current))
+        apply::process_single(ctx, &resource, &current, opts)
     })
 }
 
@@ -151,11 +134,7 @@ pub fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
     let resources: Vec<R> = resources.into_iter().collect();
     let span = tracing::debug_span!("process_resources_remove", verb, count = resources.len());
     let _enter = span.enter();
-    if ctx.parallel() && resources.len() > 1 {
-        ctx.trace_fmt(|| format!("processing {} resources in parallel", resources.len()));
-        return parallel::process_remove_parallel(ctx, resources, verb);
-    }
-    run_sequential(ctx, resources, |ctx, resource| {
+    process_items(ctx, resources, false, |resource| {
         let current = resource.current_state()?;
         apply::remove_single(ctx, &resource, &current, verb)
     })

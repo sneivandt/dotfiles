@@ -189,11 +189,12 @@ impl ApmInstallPlan {
                 (_, true) if self.manifest_needs_write => "updated APM configuration".to_string(),
                 (ApmPackageMode::Install, true) => "updated APM configuration".to_string(),
                 (ApmPackageMode::UpdatePins, true) => "updated APM deployments".to_string(),
-                (ApmPackageMode::Install, false) => {
-                    changed_dependency_summary(dependency_changes.len())
-                }
-                (ApmPackageMode::UpdatePins, false) => {
-                    updated_dependency_summary(dependency_changes.len())
+                (mode, false) => {
+                    let verb = match mode {
+                        ApmPackageMode::Install => "changed",
+                        ApmPackageMode::UpdatePins => "updated",
+                    };
+                    dependency_summary(verb, dependency_changes.len())
                 }
             };
             let summary = match self.mode {
@@ -213,20 +214,13 @@ impl ApmInstallPlan {
     }
 }
 
-fn updated_dependency_summary(count: usize) -> String {
-    if count == 1 {
-        "updated 1 APM dependency".to_string()
+fn dependency_summary(verb: &str, count: usize) -> String {
+    let noun = if count == 1 {
+        "dependency"
     } else {
-        format!("updated {count} APM dependencies")
-    }
-}
-
-fn changed_dependency_summary(count: usize) -> String {
-    if count == 1 {
-        "changed 1 APM dependency".to_string()
-    } else {
-        format!("changed {count} APM dependencies")
-    }
+        "dependencies"
+    };
+    format!("{verb} {count} APM {noun}")
 }
 
 /// Whether an APM task should run on this machine.

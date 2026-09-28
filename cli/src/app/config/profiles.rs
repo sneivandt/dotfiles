@@ -133,14 +133,6 @@ mod tests {
         Platform::new(Os::Linux, false)
     }
 
-    fn arch_platform() -> Platform {
-        Platform::new(Os::Linux, true)
-    }
-
-    fn windows_platform() -> Platform {
-        Platform::new(Os::Windows, false)
-    }
-
     #[test]
     fn non_interactive_resolution_fails_instead_of_prompting() {
         let root = tempfile::tempdir().expect("tempdir");
@@ -192,86 +184,39 @@ mod tests {
     }
 
     #[test]
-    fn resolve_base_on_linux() {
-        let profile = resolve("base", linux_platform()).unwrap();
-        assert_eq!(profile.name, "base");
-        assert!(profile.active_categories.contains(&Category::Base));
-        assert!(profile.active_categories.contains(&Category::Linux));
-        assert!(!profile.active_categories.contains(&Category::Desktop));
-    }
+    fn profiles_include_exactly_the_role_and_platform_categories() {
+        use Category::{Arch, Base, Desktop, Linux, Windows, Wsl};
 
-    #[test]
-    fn resolve_desktop_on_linux() {
-        let profile = resolve("desktop", linux_platform()).unwrap();
-        assert!(profile.active_categories.contains(&Category::Base));
-        assert!(profile.active_categories.contains(&Category::Linux));
-        assert!(profile.active_categories.contains(&Category::Desktop));
-        assert!(!profile.active_categories.contains(&Category::Arch));
-    }
-
-    #[test]
-    fn resolve_desktop_on_arch() {
-        let profile = resolve("desktop", arch_platform()).unwrap();
-        assert!(profile.active_categories.contains(&Category::Base));
-        assert!(profile.active_categories.contains(&Category::Linux));
-        assert!(profile.active_categories.contains(&Category::Desktop));
-        assert!(profile.active_categories.contains(&Category::Arch));
-    }
-
-    #[test]
-    fn resolve_base_on_arch() {
-        let profile = resolve("base", arch_platform()).unwrap();
-        assert!(profile.active_categories.contains(&Category::Base));
-        assert!(profile.active_categories.contains(&Category::Linux));
-        assert!(profile.active_categories.contains(&Category::Arch));
-        assert!(!profile.active_categories.contains(&Category::Desktop));
-    }
-
-    #[test]
-    fn resolve_base_on_windows() {
-        let profile = resolve("base", windows_platform()).unwrap();
-        assert!(profile.active_categories.contains(&Category::Base));
-        assert!(profile.active_categories.contains(&Category::Windows));
-        assert!(!profile.active_categories.contains(&Category::Linux));
-        assert!(!profile.active_categories.contains(&Category::Desktop));
-    }
-
-    #[test]
-    fn resolve_desktop_inside_wsl_activates_wsl_but_not_arch() {
-        let profile = resolve("desktop", Platform::new_wsl()).unwrap();
-        assert!(profile.active_categories.contains(&Category::Linux));
-        assert!(profile.active_categories.contains(&Category::Wsl));
-        assert!(profile.active_categories.contains(&Category::Desktop));
-        assert!(!profile.active_categories.contains(&Category::Arch));
-    }
-
-    #[test]
-    fn resolve_desktop_on_arch_wsl_activates_arch_and_wsl() {
-        let profile = resolve(
-            "desktop",
-            Platform {
-                os: Os::Linux,
-                is_arch: true,
-                is_wsl: true,
-            },
-        )
-        .unwrap();
-
-        assert!(profile.active_categories.contains(&Category::Base));
-        assert!(profile.active_categories.contains(&Category::Desktop));
-        assert!(profile.active_categories.contains(&Category::Linux));
-        assert!(profile.active_categories.contains(&Category::Arch));
-        assert!(profile.active_categories.contains(&Category::Wsl));
-        assert!(!profile.active_categories.contains(&Category::Windows));
-    }
-
-    #[test]
-    fn resolve_desktop_on_windows() {
-        let profile = resolve("desktop", windows_platform()).unwrap();
-        assert!(profile.active_categories.contains(&Category::Base));
-        assert!(profile.active_categories.contains(&Category::Windows));
-        assert!(profile.active_categories.contains(&Category::Desktop));
-        assert!(!profile.active_categories.contains(&Category::Linux));
+        let platforms: &[(Platform, &[Category])] = &[
+            (linux_platform(), &[Linux]),
+            (Platform::new(Os::Linux, true), &[Linux, Arch]),
+            (Platform::new(Os::Windows, false), &[Windows]),
+            (Platform::new_wsl(), &[Linux, Wsl]),
+            (
+                Platform {
+                    os: Os::Linux,
+                    is_arch: true,
+                    is_wsl: true,
+                },
+                &[Linux, Arch, Wsl],
+            ),
+        ];
+        for &(platform, categories) in platforms {
+            for name in ["base", "desktop"] {
+                let profile = resolve(name, platform).unwrap();
+                let mut expected = vec![Base];
+                if name == "desktop" {
+                    expected.push(Desktop);
+                }
+                expected.extend_from_slice(categories);
+                expected.sort();
+                assert_eq!(profile.name, name);
+                assert_eq!(
+                    profile.active_categories, expected,
+                    "{name} on {platform:?}"
+                );
+            }
+        }
     }
 
     #[test]

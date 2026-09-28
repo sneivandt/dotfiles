@@ -98,47 +98,36 @@ impl<'a> RunCoordinator<'a> {
 
     fn execute_with_restart(
         &self,
-        tasks: Vec<&dyn Task>,
+        mut tasks: Vec<&dyn Task>,
         restart: RestartPlan<'_>,
     ) -> Result<Option<crate::engine::scheduler::ExecutionSummary>> {
         let boundary_closure = dependency_closure(&tasks, restart.boundary.clone())?;
-        let mut summary = crate::engine::scheduler::ExecutionSummary::default();
-
         if boundary_closure.is_empty() {
-            let mut all_tasks = tasks;
-            summary.merge(run_task_graph(&mut all_tasks, self.ctx, self.log, None)?);
-        } else {
-            let mut prefix = tasks
-                .iter()
-                .copied()
-                .filter(|task| boundary_closure.contains(&task.task_id()))
-                .collect::<Vec<_>>();
-            summary.merge(run_task_graph(&mut prefix, self.ctx, self.log, None)?);
-
-            if self.ctx.is_cancelled() || summary.was_interrupted() {
-                return Ok(Some(summary));
-            }
-            let boundary_satisfied = matches!(
-                summary.outcome(&restart.boundary),
-                Some(crate::engine::TaskOutcome::Satisfied)
-            );
-            let restart_requested = (restart.requested)();
-            if restart_requested {
-                if boundary_satisfied && summary.failure_count() == 0 && !self.ctx.is_cancelled() {
-                    (restart.action)();
-                    return Ok(None);
-                }
-                return Ok(Some(summary));
-            }
-            let mut remaining = tasks
-                .iter()
-                .copied()
-                .filter(|task| !boundary_closure.contains(&task.task_id()))
-                .collect::<Vec<_>>();
-            let next = run_task_graph(&mut remaining, self.ctx, self.log, Some(&summary))?;
-            summary.merge(next);
+            return run_task_graph(&mut tasks, self.ctx, self.log, None).map(Some);
         }
 
+        let (mut prefix, mut remaining): (Vec<_>, Vec<_>) = tasks
+            .into_iter()
+            .partition(|task| boundary_closure.contains(&task.task_id()));
+        let mut summary = run_task_graph(&mut prefix, self.ctx, self.log, None)?;
+
+        if self.ctx.is_cancelled() || summary.was_interrupted() {
+            return Ok(Some(summary));
+        }
+        let boundary_satisfied = matches!(
+            summary.outcome(&restart.boundary),
+            Some(crate::engine::TaskOutcome::Satisfied)
+        );
+        if (restart.requested)() {
+            if boundary_satisfied && summary.failure_count() == 0 && !self.ctx.is_cancelled() {
+                (restart.action)();
+                return Ok(None);
+            }
+            return Ok(Some(summary));
+        }
+
+        let next = run_task_graph(&mut remaining, self.ctx, self.log, Some(&summary))?;
+        summary.merge(next);
         Ok(Some(summary))
     }
 }

@@ -116,12 +116,7 @@ pub(super) fn check_prerequisites(ctx: &Context) -> Result<()> {
                 cargo.display()
             )
         })?;
-    let version = result
-        .stdout
-        .lines()
-        .chain(result.stderr.lines())
-        .find(|line| !line.trim().is_empty())
-        .map_or("version check passed", str::trim);
+    let version = first_output_line(&result).unwrap_or("version check passed");
     ctx.debug_fmt(|| format!("prerequisite ok: cargo · {version}"));
     Ok(())
 }

@@ -347,9 +347,6 @@ mod tests {
                     const DEPS: &[TaskId] = $deps;
                     DEPS
                 }
-                fn should_run(&self, _ctx: &Context) -> bool {
-                    true
-                }
                 fn run(&self, _ctx: &Context) -> Result<TaskResult> {
                     Ok(TaskResult::Ok)
                 }
@@ -385,23 +382,11 @@ mod tests {
     mock_task!(CycB, "cyc-b", &[TaskId::Type(TypeId::of::<CycA>())]);
 
     // Missing dep
-    struct MissingDepTask;
-    impl Task for MissingDepTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("missing-dep")
-        }
-        fn dependencies(&self) -> &[TaskId] {
-            // Points to a TaskId that won't be present in the task list
-            const DEPS: &[TaskId] = &[TaskId::Type(TypeId::of::<DepC>())];
-            DEPS
-        }
-        fn should_run(&self, _ctx: &Context) -> bool {
-            true
-        }
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
-        }
-    }
+    mock_task!(
+        MissingDepTask,
+        "missing-dep",
+        &[TaskId::Type(TypeId::of::<DepC>())]
+    );
 
     // -----------------------------------------------------------------------
     // validate
@@ -446,18 +431,7 @@ mod tests {
         assert_eq!(validate(&tasks), Ok(()));
     }
 
-    struct DuplicateIdA;
-    impl Task for DuplicateIdA {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("duplicate-a")
-        }
-        fn should_run(&self, _ctx: &Context) -> bool {
-            true
-        }
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
-        }
-    }
+    mock_task!(DuplicateIdA, "duplicate-a", &[]);
 
     struct DuplicateIdB;
     impl Task for DuplicateIdB {
@@ -471,9 +445,6 @@ mod tests {
         fn dependencies(&self) -> &[TaskId] {
             const DEPS: &[TaskId] = &[TaskId::Type(TypeId::of::<DuplicateIdA>())];
             DEPS
-        }
-        fn should_run(&self, _ctx: &Context) -> bool {
-            true
         }
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
             Ok(TaskResult::Ok)

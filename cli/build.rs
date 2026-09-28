@@ -66,25 +66,19 @@ fn register_git_rerun_triggers() {
     });
 
     // HEAD is per-worktree.
-    if let Some(ref dir) = git_dir {
-        println!("cargo:rerun-if-changed={dir}/HEAD");
-    } else {
-        println!("cargo:rerun-if-changed=../.git/HEAD");
-    }
+    let head_dir = git_dir.as_deref().unwrap_or("../.git");
+    println!("cargo:rerun-if-changed={head_dir}/HEAD");
 
     // Branch refs, refs/tags/, and packed-refs are shared across worktrees.
-    let refs_base = git_common_dir.as_deref().or(git_dir.as_deref());
+    let refs_base = git_common_dir
+        .as_deref()
+        .or(git_dir.as_deref())
+        .unwrap_or("../.git");
     if let Some(head_ref) = git_output(&["symbolic-ref", "--quiet", "HEAD"]) {
-        let dir = refs_base.unwrap_or("../.git");
-        println!("cargo:rerun-if-changed={dir}/{head_ref}");
+        println!("cargo:rerun-if-changed={refs_base}/{head_ref}");
     }
-    if let Some(dir) = refs_base {
-        println!("cargo:rerun-if-changed={dir}/refs/tags/");
-        println!("cargo:rerun-if-changed={dir}/packed-refs");
-    } else {
-        println!("cargo:rerun-if-changed=../.git/refs/tags/");
-        println!("cargo:rerun-if-changed=../.git/packed-refs");
-    }
+    println!("cargo:rerun-if-changed={refs_base}/refs/tags/");
+    println!("cargo:rerun-if-changed={refs_base}/packed-refs");
 }
 
 /// Run a git subcommand and return trimmed stdout on success, `None` otherwise.

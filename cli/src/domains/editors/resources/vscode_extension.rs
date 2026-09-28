@@ -74,14 +74,12 @@ pub fn get_installed_extensions(
             result.stderr.trim()
         );
     }
-    let mut set = HashSet::new();
-    for line in result.stdout.lines() {
-        let id = line.trim().to_lowercase();
-        if !id.is_empty() {
-            set.insert(id);
-        }
-    }
-    Ok(set)
+    Ok(result
+        .stdout
+        .lines()
+        .map(|line| line.trim().to_lowercase())
+        .filter(|id| !id.is_empty())
+        .collect())
 }
 
 /// `VsCodeExtensionResource` intentionally relies on an external state
@@ -130,12 +128,10 @@ fn nonempty_output(output: &str) -> &str {
 /// `%~dp0` to locate the adjacent VS Code executable.
 #[must_use]
 pub fn find_code_command(executor: &dyn Executor) -> Option<String> {
-    for cmd in CODE_COMMANDS {
-        if let Ok(path) = executor.which_path(cmd) {
-            return Some(path.to_string_lossy().into_owned());
-        }
-    }
-    None
+    CODE_COMMANDS
+        .iter()
+        .find_map(|cmd| executor.which_path(cmd).ok())
+        .map(|path| path.to_string_lossy().into_owned())
 }
 
 /// Run a VS Code CLI command. On Windows, `.cmd` wrappers need `cmd.exe /C`.
@@ -259,50 +255,24 @@ mod tests {
     }
 
     #[test]
-    fn state_from_installed_correct() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
-        let resource = VsCodeExtensionResource::new(
-            "github.copilot-chat".to_string(),
-            "code".to_string(),
-            Arc::clone(&executor),
-        );
-        let mut installed = HashSet::new();
-        installed.insert("github.copilot-chat".to_string());
-        assert_eq!(
-            resource.state_from_installed(&installed),
-            ResourceState::Correct
-        );
-    }
-
-    #[test]
-    fn state_from_installed_case_insensitive() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
-        let resource = VsCodeExtensionResource::new(
-            "GitHub.Copilot-Chat".to_string(),
-            "code".to_string(),
-            Arc::clone(&executor),
-        );
-        let mut installed = HashSet::new();
-        installed.insert("github.copilot-chat".to_string()); // lowercase in set
-        assert_eq!(
-            resource.state_from_installed(&installed),
-            ResourceState::Correct
-        );
-    }
-
-    #[test]
-    fn state_from_installed_missing() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
-        let resource = VsCodeExtensionResource::new(
-            "github.copilot-chat".to_string(),
-            "code".to_string(),
-            Arc::clone(&executor),
-        );
-        let installed = HashSet::new();
-        assert_eq!(
-            resource.state_from_installed(&installed),
-            ResourceState::Missing
-        );
+    fn state_from_installed_matches_ids_case_insensitively() {
+        for (id, installed, expected) in [
+            ("github.copilot-chat", true, ResourceState::Correct),
+            ("GitHub.Copilot-Chat", true, ResourceState::Correct),
+            ("github.copilot-chat", false, ResourceState::Missing),
+        ] {
+            let resource = VsCodeExtensionResource::new(id, "code", Arc::new(MockExecutor::new()));
+            let installed_ids = if installed {
+                HashSet::from(["github.copilot-chat".to_string()])
+            } else {
+                HashSet::new()
+            };
+            assert_eq!(
+                resource.state_from_installed(&installed_ids),
+                expected,
+                "{id}, installed={installed}"
+            );
+        }
     }
 
     #[test]

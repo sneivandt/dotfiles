@@ -2,42 +2,11 @@
 
 use anyhow::Result;
 
-use super::apply::{process_single, remove_single};
 use super::batch::BatchProgress;
 use super::context::Context;
-use super::mode::ProcessOpts;
-use super::stats::TaskStats;
-use crate::engine::{IntrinsicState, RemovableResource, Resource, ResourceState};
+use super::stats::{TaskResult, TaskStats};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{log_thread_name, set_log_thread_name};
-
-/// Process resource-like items in parallel using Rayon.
-///
-/// The caller supplies `get_resource_state` so self-checking resources and
-/// pre-computed `(resource, state)` pairs share the same parallel apply path.
-pub(super) fn process_apply_parallel<T: Send, R: Resource + Send>(
-    ctx: &Context,
-    items: Vec<T>,
-    opts: &ProcessOpts,
-    get_resource_state: impl Fn(T) -> Result<(R, ResourceState)> + Sync + Send,
-) -> Result<super::stats::TaskResult> {
-    collect_parallel_stats(ctx, items, |item| {
-        let (resource, current) = get_resource_state(item)?;
-        process_single(ctx, &resource, &current, opts)
-    })
-}
-
-/// Remove resources in parallel using Rayon.
-pub(super) fn process_remove_parallel<R: IntrinsicState + RemovableResource + Send>(
-    ctx: &Context,
-    resources: Vec<R>,
-    verb: &'static str,
-) -> Result<super::stats::TaskResult> {
-    collect_parallel_stats(ctx, resources, |resource| {
-        let current = resource.current_state()?;
-        remove_single(ctx, &resource, &current, verb)
-    })
-}
 
 /// Accumulate per-item [`TaskStats`] deltas in parallel using Rayon.
 ///
@@ -54,11 +23,11 @@ pub(super) fn process_remove_parallel<R: IntrinsicState + RemovableResource + Se
 /// is emitted once, so an interrupted parallel run explains the shortfall
 /// between the items it reports and the items it was given rather than
 /// appearing to have silently processed fewer resources.
-fn collect_parallel_stats<T: Send>(
+pub(super) fn collect_parallel_stats<T: Send>(
     ctx: &Context,
     items: Vec<T>,
     work: impl Fn(T) -> Result<TaskStats> + Sync + Send,
-) -> Result<super::stats::TaskResult> {
+) -> Result<TaskResult> {
     use rayon::prelude::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 

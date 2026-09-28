@@ -17,7 +17,7 @@ use totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_befo
 impl Logger {
     /// Print the summary of all recorded tasks.
     pub fn print_summary(&self) {
-        let tasks = self.lock_tasks().clone();
+        let counts = SummaryCounts::from_tasks(&self.lock_tasks());
         self.clear_status();
         self.separate_from_startup();
 
@@ -25,13 +25,12 @@ impl Logger {
         let elapsed_str = format_elapsed(elapsed);
 
         let summary_mode = SummaryMode::for_command(&self.command);
-        let counts = SummaryCounts::from_tasks(&tasks);
         let style = self.console.stdout_style;
 
         if self.needs_totals_separator() {
             self.task_result("");
         }
-        for line in format_summary_lines(counts, summary_mode, self.dry_run, &elapsed_str, style) {
+        for line in format_summary_lines(counts, summary_mode, &elapsed_str, style) {
             self.always(&line);
         }
     }

@@ -89,201 +89,96 @@ fn symlinks_install_desktop_profile_includes_both_sections() {
 // Chmod task execution
 // ===========================================================================
 
-/// Applying chmod must set the expected permissions on the target file.
 #[cfg(unix)]
 #[test]
-fn chmod_applies_permissions_from_config() {
+fn chmod_apply_repeat_and_dry_run_preserve_permissions() {
     use std::os::unix::fs::PermissionsExt as _;
 
-    let test = common::TestContextBuilder::new()
-        .with_config_file(
-            "chmod.toml",
-            "[base]\npermissions = [{ path = \"ssh/config\", mode = \"600\" }]\n",
-        )
-        .build();
+    for (case, dry_run, expected_mode) in [("apply", false, 0o600), ("dry-run", true, 0o644)] {
+        let test = common::TestContextBuilder::new()
+            .with_config_file(
+                "chmod.toml",
+                "[base]\npermissions = [{ path = \"ssh/config\", mode = \"600\" }]\n",
+            )
+            .build();
+        let ec = test.make_context("base");
+        let ctx = ec.ctx.with_dry_run(dry_run);
+        let target = ctx.home().join(".ssh/config");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&target, "Host *\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    let ec = test.make_context("base");
+        let task = ApplyFilePermissions::new(ec.store.chmod.clone());
+        let result = task.run(&ctx).unwrap();
+        assert!(batch_changed(&result), "{case}: {result:?}");
+        let mode = || std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(), expected_mode, "{case}");
 
-    // Create the target file in the home directory
-    let target = ec.ctx.home().join(".ssh/config");
-    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-    std::fs::write(&target, "Host *\n").unwrap();
-    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
-
-    let task = ApplyFilePermissions::new(ec.store.chmod.clone());
-    let result = task.run(&ec.ctx).unwrap();
-    assert!(batch_changed(&result));
-
-    let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o600, "permissions should be 0600 after chmod");
-}
-
-/// Chmod must be idempotent — running twice should succeed without changes.
-#[cfg(unix)]
-#[test]
-fn chmod_is_idempotent() {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    let test = common::TestContextBuilder::new()
-        .with_config_file(
-            "chmod.toml",
-            "[base]\npermissions = [{ path = \"ssh/config\", mode = \"600\" }]\n",
-        )
-        .build();
-
-    let ec = test.make_context("base");
-
-    let target = ec.ctx.home().join(".ssh/config");
-    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-    std::fs::write(&target, "Host *\n").unwrap();
-
-    let task = ApplyFilePermissions::new(ec.store.chmod.clone());
-    drop(task.run(&ec.ctx).unwrap());
-    let second = task.run(&ec.ctx).unwrap();
-    assert!(batch_unchanged(&second));
-
-    let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o600);
+        if !dry_run {
+            let second = task.run(&ctx).unwrap();
+            assert!(batch_unchanged(&second), "repeat: {second:?}");
+            assert_eq!(mode(), 0o600, "repeat must preserve applied permissions");
+        }
+    }
 }
 
 // ===========================================================================
-// Chmod dry-run
+// Isolated Git config convergence
 // ===========================================================================
 
-/// Dry-run mode must not modify any file permissions.
-#[cfg(unix)]
 #[test]
-fn chmod_dry_run_preserves_permissions() {
-    use std::os::unix::fs::PermissionsExt as _;
+fn git_config_converges_without_mutating_dry_runs_or_current_values() {
+    for (case, initial, dry_run, expected, changed) in [
+        ("dry-run missing value", None, true, None, true),
+        ("incorrect value", Some("true"), false, Some("false"), true),
+        ("current value", Some("false"), false, Some("false"), false),
+    ] {
+        let test = common::TestContextBuilder::new()
+            .with_config_file(
+                "git-config.toml",
+                "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
+            )
+            .build();
+        let ec = test.make_context("base");
+        let ctx = ec.ctx.with_dry_run(dry_run);
+        let config_path = ctx.home().join("gitconfig");
+        std::fs::write(&config_path, "").unwrap();
+        if let Some(value) = initial {
+            git2::Config::open(&config_path)
+                .unwrap()
+                .set_str("core.autocrlf", value)
+                .unwrap();
+        }
 
-    let test = common::TestContextBuilder::new()
-        .with_config_file(
-            "chmod.toml",
-            "[base]\npermissions = [{ path = \"ssh/config\", mode = \"600\" }]\n",
+        let settings = ec.store.git_settings.read();
+        let resources = settings.iter().map(|setting| {
+            GitConfigResource::with_config_path(
+                setting.key.clone(),
+                setting.value.clone(),
+                config_path.clone(),
+            )
+        });
+        let result = process_resources(
+            &ctx,
+            resources,
+            &ProcessOpts::strict("configure").sequential(),
         )
-        .build();
-
-    let ec = test.make_dry_run_context("base");
-
-    let target = ec.ctx.home().join(".ssh/config");
-    std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-    std::fs::write(&target, "Host *\n").unwrap();
-    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
-
-    let result = ApplyFilePermissions::new(ec.store.chmod.clone())
-        .run(&ec.ctx)
         .unwrap();
-    assert!(batch_changed(&result));
-
-    let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o644, "dry-run should not change permissions");
-}
-
-// ===========================================================================
-// Git config dry-run
-// ===========================================================================
-
-/// Dry-run mode must not modify git configuration.
-#[test]
-fn git_config_dry_run_makes_no_changes() {
-    let test = common::TestContextBuilder::new()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
-        )
-        .build();
-
-    let ec = test.make_dry_run_context("base");
-    let config_path = ec.ctx.home().join("gitconfig");
-    std::fs::write(&config_path, "").unwrap();
-    let settings = ec.store.git_settings.read();
-    let resources = settings.iter().map(|setting| {
-        GitConfigResource::with_config_path(
-            setting.key.clone(),
-            setting.value.clone(),
-            config_path.clone(),
-        )
-    });
-    let result = process_resources(
-        &ec.ctx,
-        resources,
-        &ProcessOpts::strict("configure").sequential(),
-    )
-    .unwrap();
-    assert!(batch_changed(&result));
-
-    let config = git2::Config::open(&config_path).unwrap();
-    assert!(
-        config.get_string("core.autocrlf").is_err(),
-        "dry-run should leave the isolated config unchanged"
-    );
-}
-
-#[test]
-fn git_config_replaces_incorrect_isolated_value() {
-    let test = common::TestContextBuilder::new()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
-        )
-        .build();
-
-    let ec = test.make_context("base");
-    let config_path = ec.ctx.home().join("gitconfig");
-    let mut initial_config = git2::Config::open(&config_path).unwrap();
-    initial_config.set_str("core.autocrlf", "true").unwrap();
-    drop(initial_config);
-
-    let settings = ec.store.git_settings.read();
-    let resources = settings.iter().map(|setting| {
-        GitConfigResource::with_config_path(
-            setting.key.clone(),
-            setting.value.clone(),
-            config_path.clone(),
-        )
-    });
-    let result = process_resources(
-        &ec.ctx,
-        resources,
-        &ProcessOpts::strict("configure").sequential(),
-    )
-    .unwrap();
-    assert!(batch_changed(&result));
-
-    let actual_config = git2::Config::open(&config_path).unwrap();
-    assert_eq!(actual_config.get_string("core.autocrlf").unwrap(), "false");
-}
-
-#[test]
-fn git_config_is_idempotent_when_isolated_value_matches() {
-    let test = common::TestContextBuilder::new()
-        .with_config_file(
-            "git-config.toml",
-            "[base]\nsettings = [{ key = \"core.autocrlf\", value = \"false\" }]\n",
-        )
-        .build();
-
-    let ec = test.make_context("base");
-    let config_path = ec.ctx.home().join("gitconfig");
-    let mut config = git2::Config::open(&config_path).unwrap();
-    config.set_str("core.autocrlf", "false").unwrap();
-    drop(config);
-
-    let settings = ec.store.git_settings.read();
-    let resources = settings.iter().map(|setting| {
-        GitConfigResource::with_config_path(
-            setting.key.clone(),
-            setting.value.clone(),
-            config_path.clone(),
-        )
-    });
-    let result = process_resources(
-        &ec.ctx,
-        resources,
-        &ProcessOpts::strict("configure").sequential(),
-    )
-    .unwrap();
-    assert!(batch_unchanged(&result));
+        assert!(
+            if changed {
+                batch_changed(&result)
+            } else {
+                batch_unchanged(&result)
+            },
+            "{case}: {result:?}"
+        );
+        let config = git2::Config::open(&config_path).unwrap();
+        assert_eq!(
+            config.get_string("core.autocrlf").ok().as_deref(),
+            expected,
+            "{case}"
+        );
+    }
 }
 
 // ===========================================================================

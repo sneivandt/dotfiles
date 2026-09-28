@@ -70,14 +70,12 @@ fn standard_no_op_has_only_no_changes_line() {
     let plain_lines = format_summary_lines(
         SummaryCounts::default(),
         SummaryMode::Standard,
-        false,
         "1.2s",
         StyleChoice::plain(),
     );
     let colored_lines = format_summary_lines(
         SummaryCounts::default(),
         SummaryMode::Standard,
-        false,
         "1.2s",
         StyleChoice::colored(),
     );
@@ -107,180 +105,109 @@ fn interrupted_partial_work_is_not_reported_as_no_changes() {
         let counts = SummaryCounts::from_tasks(&[task]);
         assert_eq!(counts.actions.not_attempted, 2);
         assert_eq!(
-            format_summary_lines(
-                counts,
-                SummaryMode::Standard,
-                dry_run,
-                "1.0s",
-                StyleChoice::plain(),
-            ),
+            format_summary_lines(counts, SummaryMode::Standard, "1.0s", StyleChoice::plain(),),
             ["1 interrupted · 1.0s"],
         );
     }
 }
 
 #[test]
-fn standard_error_summary_starts_with_failed_count() {
-    let lines = format_summary_lines(
-        SummaryCounts {
-            ok: 1,
-            failed: 1,
-            ..SummaryCounts::default()
-        },
-        SummaryMode::Standard,
-        false,
-        "7.2s",
-        StyleChoice::plain(),
-    );
-
-    assert_eq!(lines, ["1 failed · 1 current · 7.2s"]);
-}
-
-#[test]
-fn standard_summary_groups_task_and_action_counts() {
-    let lines = format_summary_lines(
-        SummaryCounts {
-            changed: 3,
-            passed: 0,
-            blocked: 0,
-            interrupted: 0,
-            ok: 0,
-            skipped: 1,
-            dry_run: 0,
-            failed: 1,
-            actions: ActionCounts {
-                applied: 87,
-                planned: 0,
-                skipped: 2,
+fn standard_summary_totals_preserve_task_and_action_counts() {
+    for (case, counts, elapsed, expected) in [
+        (
+            "standard_error_summary_starts_with_failed_count",
+            SummaryCounts {
+                ok: 1,
                 failed: 1,
-                ..ActionCounts::default()
+                ..SummaryCounts::default()
             },
-        },
-        SummaryMode::Standard,
-        false,
-        "2.0s",
-        StyleChoice::plain(),
-    );
-
-    assert_eq!(lines, ["1 failed · 3 changed · 1 skipped · 2.0s"]);
-}
-
-#[test]
-fn dry_run_summary_pairs_affected_and_planned_counts() {
-    let lines = format_summary_lines(
-        SummaryCounts {
-            changed: 0,
-            passed: 0,
-            blocked: 0,
-            interrupted: 0,
-            ok: 0,
-            skipped: 0,
-            dry_run: 1,
-            failed: 0,
-            actions: ActionCounts {
-                planned: 81,
-                ..ActionCounts::default()
+            "7.2s",
+            "1 failed · 1 current · 7.2s",
+        ),
+        (
+            "standard_summary_groups_task_and_action_counts",
+            SummaryCounts {
+                changed: 3,
+                skipped: 1,
+                failed: 1,
+                actions: ActionCounts {
+                    applied: 87,
+                    skipped: 2,
+                    failed: 1,
+                    ..ActionCounts::default()
+                },
+                ..SummaryCounts::default()
             },
-        },
-        SummaryMode::Standard,
-        true,
-        "0.8s",
-        StyleChoice::plain(),
-    );
-
-    assert_eq!(lines, ["1 would change · 0.8s"]);
-}
-
-#[test]
-fn dry_run_summary_counts_unquantified_affected_tasks() {
-    let lines = format_summary_lines(
-        SummaryCounts {
-            dry_run: 2,
-            ..SummaryCounts::default()
-        },
-        SummaryMode::Standard,
-        true,
-        "0.8s",
-        StyleChoice::plain(),
-    );
-
-    assert_eq!(lines, ["2 would change · 0.8s"]);
-}
-
-#[test]
-fn summary_totals_account_for_every_reported_task() {
-    let lines = format_summary_lines(
-        SummaryCounts {
-            changed: 2,
-            passed: 0,
-            blocked: 0,
-            interrupted: 0,
-            ok: 15,
-            skipped: 1,
-            dry_run: 0,
-            failed: 0,
-            actions: ActionCounts {
-                applied: 4,
-                ..ActionCounts::default()
+            "2.0s",
+            "1 failed · 3 changed · 1 skipped · 2.0s",
+        ),
+        (
+            "dry_run_summary_pairs_affected_and_planned_counts",
+            SummaryCounts {
+                dry_run: 1,
+                actions: ActionCounts {
+                    planned: 81,
+                    ..ActionCounts::default()
+                },
+                ..SummaryCounts::default()
             },
-        },
-        SummaryMode::Standard,
-        false,
-        "2.3s",
-        StyleChoice::plain(),
-    );
-
-    assert_eq!(
-        lines,
-        ["2 changed \u{b7} 15 current \u{b7} 1 skipped \u{b7} 2.3s"],
-        "every task the run reported on must be represented in the totals"
-    );
-}
-
-#[test]
-fn standard_summary_omits_actions_when_all_action_counts_are_zero() {
-    let lines = format_summary_lines(
-        SummaryCounts {
-            changed: 2,
-            passed: 0,
-            blocked: 0,
-            interrupted: 0,
-            ok: 0,
-            skipped: 0,
-            dry_run: 0,
-            failed: 0,
-            actions: ActionCounts::default(),
-        },
-        SummaryMode::Standard,
-        false,
-        "1.0s",
-        StyleChoice::plain(),
-    );
-
-    assert_eq!(lines, ["2 changed · 1.0s"]);
+            "0.8s",
+            "1 would change · 0.8s",
+        ),
+        (
+            "dry_run_summary_counts_unquantified_affected_tasks",
+            SummaryCounts {
+                dry_run: 2,
+                ..SummaryCounts::default()
+            },
+            "0.8s",
+            "2 would change · 0.8s",
+        ),
+        (
+            "summary_totals_account_for_every_reported_task",
+            SummaryCounts {
+                changed: 2,
+                ok: 15,
+                skipped: 1,
+                actions: ActionCounts {
+                    applied: 4,
+                    ..ActionCounts::default()
+                },
+                ..SummaryCounts::default()
+            },
+            "2.3s",
+            "2 changed · 15 current · 1 skipped · 2.3s",
+        ),
+        (
+            "standard_summary_omits_actions_when_all_action_counts_are_zero",
+            SummaryCounts {
+                changed: 2,
+                ..SummaryCounts::default()
+            },
+            "1.0s",
+            "2 changed · 1.0s",
+        ),
+    ] {
+        assert_eq!(
+            format_summary_lines(counts, SummaryMode::Standard, elapsed, StyleChoice::plain()),
+            [expected],
+            "{case}",
+        );
+    }
 }
 
 #[test]
 fn check_summary_uses_check_vocabulary_and_omits_not_run() {
-    let lines = format_summary_lines(
-        SummaryCounts {
-            changed: 0,
-            passed: 7,
-            blocked: 0,
-            interrupted: 0,
-            ok: 0,
-            skipped: 2,
-            dry_run: 0,
-            failed: 1,
-            actions: ActionCounts::default(),
-        },
-        SummaryMode::Check,
-        false,
-        "3.4s",
-        StyleChoice::plain(),
+    let counts = SummaryCounts {
+        passed: 7,
+        skipped: 2,
+        failed: 1,
+        ..SummaryCounts::default()
+    };
+    assert_eq!(
+        format_summary_lines(counts, SummaryMode::Check, "3.4s", StyleChoice::plain()),
+        ["1 failed · 7 passed · 2 skipped · 3.4s"],
     );
-
-    assert_eq!(lines, ["1 failed · 7 passed · 2 skipped · 3.4s"]);
 }
 
 #[test]
@@ -672,7 +599,6 @@ fn colored_summary_styles_each_outcome_group() {
             ..SummaryCounts::default()
         },
         SummaryMode::Standard,
-        false,
         "1.0s",
         StyleChoice::colored(),
     );
@@ -765,13 +691,7 @@ fn blocked_and_interrupted_counts_do_not_become_skips_or_failures() {
         (1, 1, 1, 0)
     );
     assert_eq!(
-        format_summary_lines(
-            counts,
-            SummaryMode::Check,
-            false,
-            "1.0s",
-            StyleChoice::plain()
-        ),
+        format_summary_lines(counts, SummaryMode::Check, "1.0s", StyleChoice::plain()),
         ["1 blocked · 1 interrupted · 1 skipped · 1.0s"]
     );
 }

@@ -3,11 +3,13 @@
 //! Git-state discovery, update planning, and mutation live in focused child
 //! modules. This file owns task metadata and the operation lifecycle.
 use anyhow::Result;
+use std::path::Path;
 
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskResultDisplay, process_operation,
     task_metadata,
 };
+use crate::infra::exec::CommandSpec;
 
 mod apply;
 mod discovery;
@@ -74,29 +76,31 @@ impl Task for UpdateRepository {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_operation(
             ctx,
-            &UpdateRepositoryOperation::new(self.repo_updated.clone()),
+            &UpdateRepositoryOperation {
+                repo_updated: &self.repo_updated,
+            },
         )
     }
 }
 
 #[derive(Debug)]
-struct UpdateRepositoryOperation {
-    repo_updated: RepositoryUpdateSignal,
+struct UpdateRepositoryOperation<'a> {
+    repo_updated: &'a RepositoryUpdateSignal,
 }
 
-impl UpdateRepositoryOperation {
-    const fn new(repo_updated: RepositoryUpdateSignal) -> Self {
-        Self { repo_updated }
-    }
+fn git_command(ctx: &Context, root: &Path, args: &[&str]) -> CommandSpec {
+    CommandSpec::new("git")
+        .args(args)
+        .current_dir(root)
+        .env("HOME", ctx.home().to_string_lossy().into_owned())
+        .env("GIT_CONFIG_NOSYSTEM", "1")
 }
 
-impl Operation for UpdateRepositoryOperation {
+impl Operation for UpdateRepositoryOperation<'_> {
     type Plan = Vec<CheckedRepository>;
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        let home_str = ctx.home().to_string_lossy().into_owned();
-        let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
-        match checked_repositories(ctx, git_env)? {
+        match checked_repositories(ctx)? {
             RepositorySetReadiness::Ready(repositories) if repositories.is_empty() => {
                 Ok(OperationState::Complete)
             }
@@ -111,15 +115,11 @@ impl Operation for UpdateRepositoryOperation {
     }
 
     fn preview(&self, ctx: &Context, repositories: &Self::Plan) -> Result<TaskResult> {
-        let home_str = ctx.home().to_string_lossy().into_owned();
-        let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
-        dry_run_repositories(ctx, repositories, git_env)
+        dry_run_repositories(ctx, repositories)
     }
 
     fn apply(&self, ctx: &Context, repositories: &Self::Plan) -> Result<TaskResult> {
-        let home_str = ctx.home().to_string_lossy().into_owned();
-        let git_env: &[(&str, &str)] = &[("HOME", &home_str), ("GIT_CONFIG_NOSYSTEM", "1")];
-        apply_repository_updates(ctx, repositories, git_env, &self.repo_updated)
+        apply_repository_updates(ctx, repositories, self.repo_updated)
     }
 }
 

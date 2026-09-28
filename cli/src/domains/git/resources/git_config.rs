@@ -12,14 +12,8 @@ use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, Re
 pub struct GitConfigResource {
     /// Config key (e.g., "core.autocrlf").
     pub key: String,
-    desired: DesiredGitConfig,
+    desired: Option<String>,
     config_path: Option<PathBuf>,
-}
-
-#[derive(Debug)]
-enum DesiredGitConfig {
-    Value(String),
-    Absent,
 }
 
 impl GitConfigResource {
@@ -28,7 +22,7 @@ impl GitConfigResource {
     pub const fn new(key: String, desired_value: String) -> Self {
         Self {
             key,
-            desired: DesiredGitConfig::Value(desired_value),
+            desired: Some(desired_value),
             config_path: None,
         }
     }
@@ -38,7 +32,7 @@ impl GitConfigResource {
     pub const fn absent(key: String) -> Self {
         Self {
             key,
-            desired: DesiredGitConfig::Absent,
+            desired: None,
             config_path: None,
         }
     }
@@ -52,7 +46,7 @@ impl GitConfigResource {
     ) -> Self {
         Self {
             key,
-            desired: DesiredGitConfig::Value(desired_value),
+            desired: Some(desired_value),
             config_path: Some(config_path),
         }
     }
@@ -84,20 +78,15 @@ impl GitConfigResource {
     /// This enables unit testing without touching the real global git config.
     fn state_from_config(&self, config: &git2::Config) -> ResourceResult<ResourceState> {
         let current = config.get_string(&self.key);
-        match (&self.desired, current) {
-            (DesiredGitConfig::Value(desired), Ok(current)) if current == *desired => {
-                Ok(ResourceState::Correct)
-            }
-            (DesiredGitConfig::Value(_) | DesiredGitConfig::Absent, Ok(current)) => {
-                Ok(ResourceState::Incorrect { current })
-            }
-            (DesiredGitConfig::Value(_), Err(error))
-                if error.code() == git2::ErrorCode::NotFound =>
-            {
-                Ok(ResourceState::Missing)
-            }
-            (DesiredGitConfig::Absent, Err(error)) if error.code() == git2::ErrorCode::NotFound => {
-                Ok(ResourceState::Correct)
+        match (self.desired.as_deref(), current) {
+            (Some(desired), Ok(current)) if current == desired => Ok(ResourceState::Correct),
+            (_, Ok(current)) => Ok(ResourceState::Incorrect { current }),
+            (desired, Err(error)) if error.code() == git2::ErrorCode::NotFound => {
+                Ok(if desired.is_some() {
+                    ResourceState::Missing
+                } else {
+                    ResourceState::Correct
+                })
             }
             (_, Err(error)) => Err(anyhow::Error::from(error)
                 .context(format!("reading git config {}", self.key))
@@ -110,10 +99,10 @@ impl GitConfigResource {
     /// This enables unit testing without touching the real global git config.
     fn apply_to_config(&self, config: &mut git2::Config) -> Result<ResourceChange> {
         match &self.desired {
-            DesiredGitConfig::Value(desired) => config
+            Some(desired) => config
                 .set_str(&self.key, desired)
                 .with_context(|| format!("setting {} = {desired}", self.key))?,
-            DesiredGitConfig::Absent => config
+            None => config
                 .remove(&self.key)
                 .with_context(|| format!("removing git config {}", self.key))?,
         }
@@ -123,10 +112,10 @@ impl GitConfigResource {
 
 impl Resource for GitConfigResource {
     fn description(&self) -> String {
-        match &self.desired {
-            DesiredGitConfig::Value(desired) => format!("{} = {desired}", self.key),
-            DesiredGitConfig::Absent => format!("{} is unset", self.key),
-        }
+        self.desired.as_ref().map_or_else(
+            || format!("{} is unset", self.key),
+            |desired| format!("{} = {desired}", self.key),
+        )
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
@@ -185,45 +174,30 @@ mod tests {
     // ------------------------------------------------------------------
 
     #[test]
-    fn state_correct_when_value_matches() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config");
-        let mut config = git2::Config::open(&path).unwrap();
-        config.set_str("core.autocrlf", "false").unwrap();
-
-        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
-        assert_eq!(
-            resource.state_from_config(&config).unwrap(),
-            ResourceState::Correct
-        );
-    }
-
-    #[test]
-    fn state_missing_when_key_absent() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config");
-        let config = git2::Config::open(&path).unwrap();
-
-        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
-        assert_eq!(
-            resource.state_from_config(&config).unwrap(),
-            ResourceState::Missing
-        );
-    }
-
-    #[test]
-    fn state_incorrect_when_value_differs() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("config");
-        let mut config = git2::Config::open(&path).unwrap();
-        config.set_str("core.autocrlf", "true").unwrap();
-
-        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
-        let state = resource.state_from_config(&config).unwrap();
-        assert!(
-            matches!(state, ResourceState::Incorrect { ref current } if current == "true"),
-            "expected Incorrect(true), got {state:?}"
-        );
+    fn configured_value_state_matches_current_config() {
+        for (label, current, expected) in [
+            ("matching value", Some("false"), ResourceState::Correct),
+            ("missing key", None, ResourceState::Missing),
+            (
+                "different value",
+                Some("true"),
+                ResourceState::Incorrect {
+                    current: "true".to_string(),
+                },
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut config = git2::Config::open(&dir.path().join("config")).unwrap();
+            if let Some(value) = current {
+                config.set_str("core.autocrlf", value).unwrap();
+            }
+            let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
+            assert_eq!(
+                resource.state_from_config(&config).unwrap(),
+                expected,
+                "{label}"
+            );
+        }
     }
 
     #[test]

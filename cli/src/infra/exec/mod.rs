@@ -296,10 +296,10 @@ impl CommandSpec {
         } else {
             format!("{program} [arguments redacted]")
         };
-        self.current_dir.as_ref().map_or_else(
-            || command.clone(),
-            |dir| format!("{command} (in {})", dir.display()),
-        )
+        match &self.current_dir {
+            Some(dir) => format!("{command} (in {})", dir.display()),
+            None => command,
+        }
     }
 
     fn into_command(self) -> Command {
@@ -347,9 +347,10 @@ fn render_command_token(value: &OsStr) -> String {
 }
 
 /// Typed child-process failures.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ExecError {
     /// The cooperative cancellation token was set.
+    #[error("{command} cancelled: {}", failure_output(.result))]
     Cancelled {
         /// Rendered command label.
         command: String,
@@ -357,6 +358,11 @@ pub enum ExecError {
         result: ExecResult,
     },
     /// The command exceeded its configured timeout.
+    #[error(
+        "{command} timed out after {} seconds: {}",
+        .timeout.as_secs(),
+        failure_output(.result)
+    )]
     TimedOut {
         /// Rendered command label.
         command: String,
@@ -366,6 +372,7 @@ pub enum ExecError {
         result: ExecResult,
     },
     /// The operating system could not spawn the command.
+    #[error("failed to execute {command}: {source}")]
     Spawn {
         /// Rendered command label.
         command: String,
@@ -373,6 +380,7 @@ pub enum ExecError {
         source: io::Error,
     },
     /// Process management or output capture failed.
+    #[error("{operation} for {command}: {source}")]
     Io {
         /// Rendered command label.
         command: String,
@@ -382,55 +390,17 @@ pub enum ExecError {
         source: io::Error,
     },
     /// A checked command exited unsuccessfully.
+    #[error(
+        "{command} failed (exit {}): {}",
+        .result.code.unwrap_or(-1),
+        failure_output(.result)
+    )]
     NonZero {
         /// Rendered command label.
         command: String,
         /// Captured unsuccessful result.
         result: ExecResult,
     },
-}
-
-impl fmt::Display for ExecError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Cancelled { command, result } => {
-                write!(formatter, "{command} cancelled: {}", failure_output(result))
-            }
-            Self::TimedOut {
-                command,
-                timeout,
-                result,
-            } => write!(
-                formatter,
-                "{command} timed out after {} seconds: {}",
-                timeout.as_secs(),
-                failure_output(result)
-            ),
-            Self::Spawn { command, source } => {
-                write!(formatter, "failed to execute {command}: {source}")
-            }
-            Self::Io {
-                command,
-                operation,
-                source,
-            } => write!(formatter, "{operation} for {command}: {source}"),
-            Self::NonZero { command, result } => write!(
-                formatter,
-                "{command} failed (exit {}): {}",
-                result.code.unwrap_or(-1),
-                failure_output(result)
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ExecError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Spawn { source, .. } | Self::Io { source, .. } => Some(source),
-            Self::Cancelled { .. } | Self::TimedOut { .. } | Self::NonZero { .. } => None,
-        }
-    }
 }
 
 impl ExecError {
@@ -460,7 +430,10 @@ impl ExecError {
             .chain(result.stdout.lines())
             .map(str::trim)
             .find(|line| !line.is_empty());
-        detail.map_or_else(|| label.clone(), |detail| format!("{label}: {detail}"))
+        match detail {
+            Some(detail) => format!("{label}: {detail}"),
+            None => label,
+        }
     }
 
     fn omit_output(&mut self) {
@@ -530,13 +503,6 @@ struct CommandSettings {
 }
 
 impl CommandSettings {
-    const fn default_timeout() -> Self {
-        Self {
-            timeout: DEFAULT_COMMAND_TIMEOUT,
-            cancellation: None,
-        }
-    }
-
     const fn timeout(timeout: Duration) -> Self {
         Self {
             timeout,
@@ -719,8 +685,7 @@ fn terminate_and_collect(
 ) -> std::result::Result<ExecResult, ExecError> {
     terminate_child(child);
     wait_after_terminate(child);
-    let result = collect_result(None, stdout_reader, stderr_reader, label)?;
-    Ok(result)
+    collect_result(None, stdout_reader, stderr_reader, label)
 }
 
 fn wait_for_pipe_close(
@@ -774,22 +739,14 @@ fn join_reader(
     operation: &'static str,
     label: &str,
 ) -> std::result::Result<Vec<u8>, ExecError> {
-    handle.join().map_or_else(
-        |_| {
-            Err(ExecError::Io {
-                command: label.to_string(),
-                operation,
-                source: io::Error::other("output reader thread panicked"),
-            })
-        },
-        |result| {
-            result.map_err(|source| ExecError::Io {
-                command: label.to_string(),
-                operation,
-                source,
-            })
-        },
-    )
+    handle
+        .join()
+        .unwrap_or_else(|_| Err(io::Error::other("output reader thread panicked")))
+        .map_err(|source| ExecError::Io {
+            command: label.to_string(),
+            operation,
+            source,
+        })
 }
 
 /// Trait for executing system commands, enabling test injection.
@@ -827,7 +784,7 @@ impl ProcessExecutor {
     #[must_use]
     pub const fn system() -> Self {
         Self {
-            settings: CommandSettings::default_timeout(),
+            settings: CommandSettings::timeout(DEFAULT_COMMAND_TIMEOUT),
         }
     }
 

@@ -42,20 +42,19 @@ impl SummaryCounts {
             if !task.visibility.is_visible() || task.is_unstarted_interruption() {
                 continue;
             }
-            match task.status {
-                TaskStatus::Changed => counts.changed = counts.changed.saturating_add(1),
-                TaskStatus::Passed => counts.passed = counts.passed.saturating_add(1),
-                TaskStatus::Ok => counts.ok = counts.ok.saturating_add(1),
-                TaskStatus::NotApplicable => {}
-                TaskStatus::Blocked => counts.blocked = counts.blocked.saturating_add(1),
-                TaskStatus::Interrupted => {
-                    counts.interrupted = counts.interrupted.saturating_add(1);
-                }
-                TaskStatus::Skipped => counts.skipped = counts.skipped.saturating_add(1),
-                TaskStatus::DryRun => counts.dry_run = counts.dry_run.saturating_add(1),
-                TaskStatus::Failed => counts.failed = counts.failed.saturating_add(1),
-            }
             counts.actions.merge(task.actions);
+            let counter = match task.status {
+                TaskStatus::Changed => &mut counts.changed,
+                TaskStatus::Passed => &mut counts.passed,
+                TaskStatus::Ok => &mut counts.ok,
+                TaskStatus::NotApplicable => continue,
+                TaskStatus::Blocked => &mut counts.blocked,
+                TaskStatus::Interrupted => &mut counts.interrupted,
+                TaskStatus::Skipped => &mut counts.skipped,
+                TaskStatus::DryRun => &mut counts.dry_run,
+                TaskStatus::Failed => &mut counts.failed,
+            };
+            *counter = counter.saturating_add(1);
         }
         counts
     }
@@ -64,14 +63,51 @@ impl SummaryCounts {
 pub(super) fn format_summary_lines(
     counts: SummaryCounts,
     mode: SummaryMode,
-    dry_run: bool,
     elapsed: &str,
     style: StyleChoice,
 ) -> Vec<String> {
-    let mut parts = match mode {
-        SummaryMode::Standard => format_standard_totals(counts, dry_run, style),
-        SummaryMode::Check => format_check_totals(counts, style),
-    };
+    let mut parts = Vec::new();
+    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
+    match mode {
+        SummaryMode::Standard => {
+            if counts.dry_run > 0 {
+                push_count(
+                    &mut parts,
+                    counts.dry_run,
+                    TextStyle::Magenta,
+                    "would change",
+                    style,
+                );
+            } else if counts.changed > 0 {
+                push_count(
+                    &mut parts,
+                    counts.changed,
+                    TextStyle::Green,
+                    "changed",
+                    style,
+                );
+            } else if counts.failed == 0
+                && counts.actions.applied == 0
+                && counts.actions.planned == 0
+            {
+                parts.push("No changes".to_string());
+            }
+            push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);
+        }
+        SummaryMode::Check => {
+            push_count(&mut parts, counts.passed, TextStyle::Green, "passed", style);
+        }
+    }
+    for (count, label) in [
+        (counts.blocked, "blocked"),
+        (counts.interrupted, "interrupted"),
+        (counts.skipped, "skipped"),
+    ] {
+        push_count(&mut parts, count, TextStyle::Yellow, label, style);
+    }
+    if parts.is_empty() && mode == SummaryMode::Check {
+        parts.push("No checks ran".to_string());
+    }
     if let Some(outcome) = parts.first_mut() {
         *outcome = style.paint(TextStyle::Bold, outcome);
     }
@@ -79,50 +115,8 @@ pub(super) fn format_summary_lines(
     vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
 }
 
-pub(super) fn format_standard_totals(
-    counts: SummaryCounts,
-    _dry_run: bool,
-    style: StyleChoice,
-) -> Vec<String> {
-    let mut parts = Vec::new();
-    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
-    if counts.dry_run > 0 {
-        parts.push(style.paint(
-            TextStyle::Magenta,
-            &format!("{} would change", counts.dry_run),
-        ));
-    } else if counts.changed > 0 {
-        parts.push(style.paint(TextStyle::Green, &format!("{} changed", counts.changed)));
-    } else if counts.failed == 0 && counts.actions.applied == 0 && counts.actions.planned == 0 {
-        parts.push("No changes".to_string());
-    }
-    push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);
-    push_count(
-        &mut parts,
-        counts.blocked,
-        TextStyle::Yellow,
-        "blocked",
-        style,
-    );
-    push_count(
-        &mut parts,
-        counts.interrupted,
-        TextStyle::Yellow,
-        "interrupted",
-        style,
-    );
-    push_count(
-        &mut parts,
-        counts.skipped,
-        TextStyle::Yellow,
-        "skipped",
-        style,
-    );
-    parts
-}
-
 /// Append a styled `"<count> <label>"` fragment, skipping zero counts.
-pub(super) fn push_count(
+fn push_count(
     parts: &mut Vec<String>,
     count: u32,
     text_style: TextStyle,
@@ -132,37 +126,6 @@ pub(super) fn push_count(
     if count > 0 {
         parts.push(style.paint(text_style, &format!("{count} {label}")));
     }
-}
-
-pub(super) fn format_check_totals(counts: SummaryCounts, style: StyleChoice) -> Vec<String> {
-    let mut parts = Vec::new();
-    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
-    push_count(&mut parts, counts.passed, TextStyle::Green, "passed", style);
-    push_count(
-        &mut parts,
-        counts.blocked,
-        TextStyle::Yellow,
-        "blocked",
-        style,
-    );
-    push_count(
-        &mut parts,
-        counts.interrupted,
-        TextStyle::Yellow,
-        "interrupted",
-        style,
-    );
-    push_count(
-        &mut parts,
-        counts.skipped,
-        TextStyle::Yellow,
-        "skipped",
-        style,
-    );
-    if parts.is_empty() {
-        parts.push("No checks ran".to_string());
-    }
-    parts
 }
 
 /// Decide whether a blank line should separate the totals from what precedes

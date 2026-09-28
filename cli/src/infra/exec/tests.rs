@@ -326,12 +326,76 @@ fn nonzero_error_reports_command_status_stdout_and_stderr() {
         "systemctl --user daemon-reload",
         ExecResult::failure("out", "Failed to connect to bus", Some(1)),
     );
-    let message = error.to_string();
+    assert_eq!(
+        error.to_string(),
+        "systemctl --user daemon-reload failed (exit 1): stdout: out; stderr: Failed to connect to bus"
+    );
+}
 
-    assert!(message.contains("systemctl --user daemon-reload"));
-    assert!(message.contains("exit 1"));
-    assert!(message.contains("stdout: out"));
-    assert!(message.contains("stderr: Failed to connect to bus"));
+#[test]
+fn typed_errors_preserve_display_and_io_sources() {
+    for (case, error, expected, source) in [
+        (
+            "cancelled_empty_streams",
+            ExecError::Cancelled {
+                command: "tool".into(),
+                result: ExecResult::failure(" \n", "", None),
+            },
+            "tool cancelled: stdout: <empty>; stderr: <empty>",
+            None,
+        ),
+        (
+            "timeout_whole_seconds_and_trimmed_multiline_output",
+            ExecError::TimedOut {
+                command: "tool".into(),
+                timeout: Duration::from_millis(1500),
+                result: ExecResult::failure(" out\nnext\n", " err ", None),
+            },
+            "tool timed out after 1 seconds: stdout: out\nnext; stderr: err",
+            None,
+        ),
+        (
+            "nonzero_without_exit_code",
+            ExecError::non_zero("tool", ExecResult::failure("", "", None)),
+            "tool failed (exit -1): stdout: <empty>; stderr: <empty>",
+            None,
+        ),
+        (
+            "spawn_error",
+            ExecError::spawn("tool", io::Error::other("spawn failure")),
+            "failed to execute tool: spawn failure",
+            Some("spawn failure"),
+        ),
+        (
+            "io_error",
+            ExecError::Io {
+                command: "tool".into(),
+                operation: "reading stdout",
+                source: io::Error::other("read failure"),
+            },
+            "reading stdout for tool: read failure",
+            Some("read failure"),
+        ),
+    ] {
+        assert_eq!(error.to_string(), expected, "{case}");
+        let actual_source = std::error::Error::source(&error);
+        assert_eq!(
+            actual_source.map(ToString::to_string).as_deref(),
+            source,
+            "{case}"
+        );
+        assert_eq!(
+            error.io_error().map(ToString::to_string).as_deref(),
+            source,
+            "{case}"
+        );
+        if let Some(actual_source) = actual_source {
+            assert!(
+                actual_source.downcast_ref::<io::Error>().is_some(),
+                "{case}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -349,13 +413,27 @@ fn missing_program_returns_typed_spawn_error() {
 
 #[test]
 fn reader_failure_returns_typed_io_error() {
-    let reader = std::thread::spawn(|| Err(io::Error::other("mock read failure")));
-    let result = join_reader(reader, "reading stdout", "mock");
-
-    assert!(
-        matches!(result, Err(ExecError::Io { .. })),
-        "output capture failure should produce a typed I/O error"
-    );
+    for (reader, expected) in [
+        (
+            std::thread::spawn(|| Err(io::Error::other("mock read failure"))),
+            "mock read failure",
+        ),
+        (
+            std::thread::spawn(|| panic!("mock reader panic")),
+            "output reader thread panicked",
+        ),
+    ] {
+        let error = join_reader(reader, "reading stdout", "mock").unwrap_err();
+        assert!(
+            matches!(error, ExecError::Io { .. }),
+            "output capture failure should produce a typed I/O error"
+        );
+        assert_eq!(
+            error.to_string(),
+            format!("reading stdout for mock: {expected}")
+        );
+        assert_eq!(error.io_error().unwrap().to_string(), expected);
+    }
 }
 
 #[test]

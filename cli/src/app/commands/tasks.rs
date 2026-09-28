@@ -110,9 +110,9 @@ fn command_tasks(
                 &RepositoryUpdateSignal::new(),
                 mode,
             );
-            if command == TaskGraphCommand::Install {
-                tasks.retain(|task| !task.update_only());
-            }
+            tasks.retain(|task| {
+                super::install::includes_task(task.as_ref(), command == TaskGraphCommand::Update)
+            });
             if let Some(root) = overlay {
                 tasks.extend(crate::domains::overlay::scripts::overlay_script_tasks(
                     &store.scripts.read(),

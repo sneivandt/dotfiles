@@ -85,9 +85,9 @@ impl ExecutionSummary {
         );
     }
 
-    fn record_completion(&mut self, task: &dyn Task, status: TaskStatus, outcome: TaskOutcome) {
-        self.add_failures(usize::from(status == TaskStatus::Failed));
-        self.record(task.task_id(), task.name(), outcome);
+    fn record_completion(&mut self, task: &dyn Task, execution: TaskExecution) {
+        self.add_failures(usize::from(execution.status == TaskStatus::Failed));
+        self.record(task.task_id(), task.name(), execution.outcome);
     }
 
     /// Look up an outcome recorded by this or an earlier phase.
@@ -309,12 +309,12 @@ fn run_task_buffered(
 /// sequential path does not need because it never interleaves output.
 fn dispatch_task(
     task: &dyn Task,
-    assessment: &TaskAssessment,
+    assessments: &HashMap<TaskId, TaskAssessment>,
     ctx: &Context,
     log: &Arc<Logger>,
     dependencies: &DependencySignal,
     notify_start: bool,
-) -> (DependencySignal, TaskStatus, TaskOutcome) {
+) -> (DependencySignal, TaskExecution) {
     let skip_reason = match dependencies {
         DependencySignal::Blocked { .. } => dependencies
             .reason()
@@ -327,29 +327,31 @@ fn dispatch_task(
     };
 
     let Some((reason, signal)) = skip_reason else {
-        let execution = run_task_buffered(task, assessment, ctx, log, notify_start);
+        let execution = run_task_buffered(
+            task,
+            assessments
+                .get(&task.task_id())
+                .unwrap_or(&TaskAssessment::applicable()),
+            ctx,
+            log,
+            notify_start,
+        );
         return (
             DependencySignal::from_outcome(task.name(), execution.outcome),
-            execution.status,
-            execution.outcome,
+            execution,
         );
     };
 
     let task_id = task.log_key();
-    let status = if signal == DependencySignal::Cancelled {
-        TaskStatus::Interrupted
+    let (status, outcome) = if signal == DependencySignal::Cancelled {
+        (TaskStatus::Interrupted, TaskOutcome::Cancelled)
     } else {
-        TaskStatus::Blocked
+        (TaskStatus::Blocked, TaskOutcome::Blocked)
     };
     record_scheduler_skip(task, &**log, &reason, status);
     log.mark_task_completed(&task_id);
     log.emit_task_result_and_redraw(&task_id);
-    let outcome = if signal == DependencySignal::Cancelled {
-        TaskOutcome::Cancelled
-    } else {
-        TaskOutcome::Blocked
-    };
-    (signal, status, outcome)
+    (signal, TaskExecution { status, outcome })
 }
 
 /// Run tasks in parallel using a dependency graph.
@@ -408,10 +410,10 @@ pub(crate) fn run_tasks_parallel_with_prior(
 
     let summary = std::sync::Mutex::new(ExecutionSummary::default());
     std::thread::scope(|s| {
-        for (idx, (task, runtime)) in tasks.iter().zip(runtimes.iter_mut()).enumerate() {
+        for (idx, (task, runtime)) in tasks.iter().zip(runtimes).enumerate() {
             let task = *task;
-            let dependency_receiver = runtime.dependency_receiver.take();
-            let dependent_senders = std::mem::take(&mut runtime.dependent_senders);
+            let dependency_receiver = runtime.dependency_receiver;
+            let dependent_senders = runtime.dependent_senders;
             let dep_names: Vec<&str> = graph
                 .dependencies(idx)
                 .iter()
@@ -441,16 +443,12 @@ pub(crate) fn run_tasks_parallel_with_prior(
                 // cancellation when dependency outcomes are mixed.
                 let dependency_signal =
                     dependency_outcome(dependency_receiver, dep_count).combine(prior_signal);
-                let assessment = assessments
-                    .get(&task.task_id())
-                    .cloned()
-                    .unwrap_or_else(TaskAssessment::applicable);
-                let (signal, status, outcome) =
-                    dispatch_task(task, &assessment, ctx, log, &dependency_signal, true);
+                let (signal, execution) =
+                    dispatch_task(task, assessments, ctx, log, &dependency_signal, true);
                 summary
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .record_completion(task, status, outcome);
+                    .record_completion(task, execution);
 
                 signal_dependents(task.name(), dependent_senders, &signal);
             });
@@ -488,11 +486,11 @@ pub(crate) fn run_tasks_sequential_with_prior(
     let mut summary = ExecutionSummary::default();
 
     for idx in graph.execution_order() {
+        let Some(task) = tasks.get(idx) else {
+            continue;
+        };
         let dependency_signal = graph.dependencies(idx).iter().fold(
-            tasks.get(idx).map_or_else(
-                || DependencySignal::blocked("missing task", BlockingOutcome::Blocked),
-                |task| prior_dependency_signal(*task, prior),
-            ),
+            prior_dependency_signal(*task, prior),
             |outcome, &dep_idx| {
                 outcome.combine(
                     signals
@@ -510,19 +508,12 @@ pub(crate) fn run_tasks_sequential_with_prior(
             },
         );
 
-        let Some(task) = tasks.get(idx) else {
-            continue;
-        };
-        let assessment = assessments
-            .get(&task.task_id())
-            .cloned()
-            .unwrap_or_else(TaskAssessment::applicable);
-        let (signal, status, outcome) =
-            dispatch_task(*task, &assessment, ctx, log, &dependency_signal, false);
+        let (signal, execution) =
+            dispatch_task(*task, assessments, ctx, log, &dependency_signal, false);
         if let Some(slot) = signals.get_mut(idx) {
             *slot = Some(signal);
         }
-        summary.record_completion(*task, status, outcome);
+        summary.record_completion(*task, execution);
     }
     summary
 }

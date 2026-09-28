@@ -11,22 +11,20 @@ use crate::common;
 // Config loading
 // ---------------------------------------------------------------------------
 
-/// Loading config from a minimal valid repository must not return an error.
 #[test]
-fn config_loads_from_minimal_valid_repo() {
-    let ctx = common::IntegrationTestContext::new();
-    let config = ctx.load_config("base");
-    // An empty config has no items in any category.
-    assert!(config.symlinks.is_empty(), "expected no symlinks");
-    assert!(config.packages.is_empty(), "expected no packages");
-}
-
-/// Config loading must also succeed for the desktop profile.
-#[test]
-fn config_loads_with_desktop_profile() {
-    let ctx = common::IntegrationTestContext::new();
-    let config = ctx.load_config("desktop");
-    assert!(config.symlinks.is_empty(), "expected no symlinks");
+fn config_loads_from_minimal_repo_for_both_profiles() {
+    for profile in ["base", "desktop"] {
+        let ctx = common::IntegrationTestContext::new();
+        let config = ctx.load_config(profile);
+        assert!(
+            config.symlinks.is_empty(),
+            "{profile}: expected no symlinks"
+        );
+        assert!(
+            config.packages.is_empty(),
+            "{profile}: expected no packages"
+        );
+    }
 }
 
 /// Loading config with the desktop profile fixture yields symlinks from both
@@ -234,10 +232,8 @@ fn config_loads_chmod_entries_correctly() {
 // Config loading: registry entries (Windows-only)
 // ---------------------------------------------------------------------------
 
-/// Registry entries in registry.toml must be loaded into `config.registry`
-/// when the platform is Windows.
 #[test]
-fn config_loads_registry_entries_on_windows() {
+fn config_loads_registry_entries_only_on_windows() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
             "registry.toml",
@@ -245,198 +241,103 @@ fn config_loads_registry_entries_on_windows() {
         )
         .build();
 
-    let platform = Platform {
-        os: Os::Windows,
-        is_arch: false,
-        is_wsl: false,
-    };
-    let config = ctx.load_config_for_platform("base", platform);
-    assert_eq!(
-        config.registry.len(),
-        1,
-        "expected 1 registry entry on Windows, got {}",
-        config.registry.len()
-    );
-    assert_eq!(config.registry[0].key_path, "HKCU:\\Console");
-    assert_eq!(config.registry[0].value_name, "FontSize");
-    assert_eq!(config.registry[0].value_data, "14");
-}
-
-/// Registry entries in registry.toml must be skipped when the platform is Linux.
-#[test]
-fn config_does_not_load_registry_on_linux() {
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file(
-            "registry.toml",
-            "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
-        )
-        .build();
-
-    let platform = Platform {
-        os: Os::Linux,
-        is_arch: false,
-        is_wsl: false,
-    };
-    let config = ctx.load_config_for_platform("base", platform);
-    assert!(
-        config.registry.is_empty(),
-        "expected no registry entries on Linux"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Config loading: invalid TOML returns Err
-// ---------------------------------------------------------------------------
-
-/// `Config::load` must return `Err` (not panic) when a config file contains
-/// invalid TOML syntax.
-#[test]
-fn config_load_returns_error_on_invalid_toml() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    let conf = dir.path().join("conf");
-    std::fs::create_dir_all(&conf).expect("create conf dir");
-
-    // Write an intentionally invalid symlinks.toml.
-    std::fs::write(conf.join("symlinks.toml"), "this is not valid toml ][[")
-        .expect("write invalid symlinks.toml");
-
-    // Write the remaining required config files as empty so only symlinks.toml is bad.
-    for file in &[
-        "packages.toml",
-        "chmod.toml",
-        "systemd-units.toml",
-        "vscode-extensions.toml",
-        "git-config.toml",
-        "registry.toml",
-    ] {
-        std::fs::write(conf.join(file), "").expect("write config file");
+    for os in [Os::Windows, Os::Linux] {
+        let config = ctx.load_config_for_platform(
+            "base",
+            Platform {
+                os,
+                is_arch: false,
+                is_wsl: false,
+            },
+        );
+        let entries: Vec<_> = config
+            .registry
+            .iter()
+            .map(|entry| {
+                (
+                    entry.key_path.as_str(),
+                    entry.value_name.as_str(),
+                    entry.value_data.as_str(),
+                )
+            })
+            .collect();
+        let expected = if os == Os::Windows {
+            vec![("HKCU:\\Console", "FontSize", "14")]
+        } else {
+            vec![]
+        };
+        assert_eq!(entries, expected, "{os:?}");
     }
-
-    let platform = Platform::detect();
-    let profile = profiles::resolve("base", platform).expect("resolve profile");
-    let result = Config::load(dir.path(), &profile, platform, None);
-    assert!(
-        result.is_err(),
-        "Config::load should return Err on invalid TOML, got Ok"
-    );
 }
 
 // ---------------------------------------------------------------------------
-// Config loading: error context includes filename
+// Config loading: parse errors identify the offending file and unknown key
 // ---------------------------------------------------------------------------
 
-/// `Config::load` error messages must identify which file is broken so the
-/// user knows where to look.
 #[test]
-fn config_load_error_context_includes_filename() {
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file("packages.toml", "not valid {{ toml")
-        .build();
-
-    let platform = Platform::detect();
-    let profile = profiles::resolve("base", platform).expect("resolve profile");
-    let result = Config::load(ctx.root_path(), &profile, platform, None);
-
-    assert!(result.is_err(), "should fail on invalid packages.toml");
-    let msg = format!("{:#}", result.unwrap_err());
-    assert!(
-        msg.contains("packages.toml"),
-        "error should mention the file name: {msg}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Config loading: type mismatch returns Err
-// ---------------------------------------------------------------------------
-
-/// Writing a TOML value with an incompatible type (e.g. integer instead of
-/// array) must produce an error rather than silently ignoring the data.
-#[test]
-fn config_load_returns_error_on_type_mismatch() {
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.toml", "[base]\nsymlinks = 42\n")
-        .build();
-
-    let platform = Platform::detect();
-    let profile = profiles::resolve("base", platform).expect("resolve profile");
-    let result = Config::load(ctx.root_path(), &profile, platform, None);
-
-    assert!(
-        result.is_err(),
-        "Config::load should return Err on type mismatch, got Ok"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Config loading: unknown keys are rejected, not silently discarded
-// ---------------------------------------------------------------------------
-
-/// Load `conf/<file>` from a minimal repo and return the error it produced.
-///
-/// Panics if the configuration loads successfully — a misspelled key must
-/// never be accepted.
-fn expect_load_error(file: &str, content: &str) -> String {
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file(file, content)
-        .build();
-
-    let platform = Platform::detect();
-    let profile = profiles::resolve("base", platform).expect("resolve profile");
-    let error = Config::load(ctx.root_path(), &profile, platform, None)
-        .expect_err("a config with an unknown key must not load");
-    format!("{error:#}")
-}
-
-/// A misspelled key inside a structured entry must fail the load.
-///
-/// Regression: these entries were `#[serde(untagged)]` enums, and untagged
-/// enums ignore `deny_unknown_fields` — serde buffers the input and falls
-/// through to the next variant, so `targett` parsed as if the key were absent
-/// and the symlink silently used its conventional target instead.
-#[test]
-fn config_load_rejects_unknown_key_in_symlink_entry() {
-    let message = expect_load_error(
-        "symlinks.toml",
-        "[base]\nsymlinks = [{ source = \"bashrc\", targett = \".bashrc\" }]\n",
-    );
-    assert!(
-        message.contains("targett"),
-        "error should name the unknown key, got: {message}"
-    );
-}
-
-/// A misspelled key in a package entry must fail the load.
-#[test]
-fn config_load_rejects_unknown_key_in_package_entry() {
-    let message = expect_load_error(
-        "packages.toml",
-        "[base]\npackages = [{ name = \"paru-bin\", our = true }]\n",
-    );
-    assert!(
-        message.contains("our"),
-        "error should name the unknown key, got: {message}"
-    );
-}
-
-/// A misspelled key in a chmod entry must fail the load.
-#[test]
-fn config_load_rejects_unknown_key_in_chmod_entry() {
-    let message = expect_load_error(
-        "chmod.toml",
-        "[base]\npermissions = [{ mode = \"600\", path = \"ssh/config\", pathh = \"x\" }]\n",
-    );
-    assert!(
-        message.contains("pathh"),
-        "error should name the unknown key, got: {message}"
-    );
-}
-
-/// A misspelled section field must fail the load.
-#[test]
-fn config_load_rejects_unknown_section_field() {
-    let message = expect_load_error("symlinks.toml", "[base]\nsymlink = [\"bashrc\"]\n");
-    assert!(
-        message.contains("symlink"),
-        "error should name the unknown field, got: {message}"
-    );
+fn config_load_rejects_malformed_values_and_unknown_keys() {
+    let cases = [
+        (
+            "invalid symlinks TOML",
+            "symlinks.toml",
+            "this is not valid toml ][[",
+            None,
+        ),
+        (
+            "invalid packages TOML",
+            "packages.toml",
+            "not valid {{ toml",
+            None,
+        ),
+        (
+            "type mismatch",
+            "symlinks.toml",
+            "[base]\nsymlinks = 42\n",
+            None,
+        ),
+        // Regression: untagged entry enums silently discarded misspelled keys.
+        (
+            "symlink key",
+            "symlinks.toml",
+            "[base]\nsymlinks = [{ source = \"bashrc\", targett = \".bashrc\" }]\n",
+            Some("targett"),
+        ),
+        (
+            "package key",
+            "packages.toml",
+            "[base]\npackages = [{ name = \"paru-bin\", our = true }]\n",
+            Some("our"),
+        ),
+        (
+            "chmod key",
+            "chmod.toml",
+            "[base]\npermissions = [{ mode = \"600\", path = \"ssh/config\", pathh = \"x\" }]\n",
+            Some("pathh"),
+        ),
+        (
+            "section field",
+            "symlinks.toml",
+            "[base]\nsymlink = [\"bashrc\"]\n",
+            Some("symlink"),
+        ),
+    ];
+    for (case, file, content, unknown_key) in cases {
+        let ctx = common::TestContextBuilder::new()
+            .with_config_file(file, content)
+            .build();
+        let platform = Platform::detect();
+        let profile = profiles::resolve("base", platform).expect("resolve profile");
+        let error = Config::load(ctx.root_path(), &profile, platform, None).expect_err(case);
+        let message = format!("{error:#}");
+        assert!(
+            message.contains(file),
+            "{case}: missing filename in {message}"
+        );
+        if let Some(key) = unknown_key {
+            assert!(
+                message.contains(key),
+                "{case}: missing unknown key {key} in {message}"
+            );
+        }
+    }
 }

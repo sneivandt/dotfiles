@@ -24,11 +24,10 @@ pub(crate) fn apply_task_filters<'a>(
         .map(Box::as_ref)
         .collect();
     let selected = selected_task_ids(&known_task_refs, only, skip, with_dependencies)?;
-    let filtered: Vec<&dyn Task> = all_tasks
+    let filtered: Vec<&dyn Task> = known_task_refs
         .iter()
-        .chain(additional_known_tasks)
+        .copied()
         .filter(|task| selected.contains(&task.task_id()))
-        .map(Box::as_ref)
         .collect();
     let omitted_dependencies = omitted_blocking_dependencies(&known_task_refs, &filtered);
 
@@ -194,15 +193,12 @@ fn warn_omitted_dependencies(dependencies: &[(&str, &str)], log: &dyn Output) {
 }
 
 pub(crate) fn normalize_task_filter(value: &str) -> String {
-    normalized_task_tokens(value).join("-")
-}
-
-fn normalized_task_tokens(value: &str) -> Vec<String> {
     value
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|token| !token.is_empty())
         .map(str::to_ascii_lowercase)
-        .collect()
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 #[cfg(test)]

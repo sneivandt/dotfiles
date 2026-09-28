@@ -49,44 +49,41 @@ impl AgentSettingResource {
         }
     }
 
-    fn read_json_document(&self) -> Result<Value> {
+    fn read_document_contents(&self) -> Result<String> {
         match std::fs::read_to_string(&self.path) {
-            Ok(ref contents) if contents.trim().is_empty() => Ok(Value::Object(Map::new())),
-            Ok(contents) => serde_json::from_str::<Map<String, Value>>(&contents)
-                .map(Value::Object)
-                .with_context(|| format!("parsing {}", self.path.display())),
-            Err(ref error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(Value::Object(Map::new()))
-            }
+            Ok(contents) => Ok(contents),
+            Err(ref error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
             Err(error) => {
                 Err(anyhow::Error::from(error).context(format!("reading {}", self.path.display())))
             }
         }
     }
 
-    fn read_toml_document(&self) -> Result<toml::Table> {
-        match std::fs::read_to_string(&self.path) {
-            Ok(ref contents) if contents.trim().is_empty() => Ok(toml::Table::new()),
-            Ok(contents) => toml::from_str(&contents)
-                .with_context(|| format!("parsing {}", self.path.display())),
-            Err(ref error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(toml::Table::new())
-            }
-            Err(error) => {
-                Err(anyhow::Error::from(error).context(format!("reading {}", self.path.display())))
-            }
+    fn read_json_document(&self) -> Result<Value> {
+        let contents = self.read_document_contents()?;
+        if contents.trim().is_empty() {
+            return Ok(Value::Object(Map::new()));
         }
+        serde_json::from_str::<Map<String, Value>>(&contents)
+            .map(Value::Object)
+            .with_context(|| format!("parsing {}", self.path.display()))
+    }
+
+    fn read_toml_document(&self) -> Result<toml::Table> {
+        let contents = self.read_document_contents()?;
+        if contents.trim().is_empty() {
+            return Ok(toml::Table::new());
+        }
+        toml::from_str(&contents).with_context(|| format!("parsing {}", self.path.display()))
     }
 
     fn current_json_value<'document>(
         &self,
         document: &'document Value,
     ) -> Option<&'document Value> {
-        let mut node = document;
-        for segment in self.key.split('.') {
-            node = node.as_object()?.get(segment)?;
-        }
-        Some(node)
+        self.key
+            .split('.')
+            .try_fold(document, |node, segment| node.as_object()?.get(segment))
     }
 
     fn current_toml_value<'document>(
@@ -94,11 +91,8 @@ impl AgentSettingResource {
         document: &'document toml::Table,
     ) -> Option<&'document toml::Value> {
         let mut segments = self.key.split('.');
-        let mut node = document.get(segments.next()?)?;
-        for segment in segments {
-            node = node.as_table()?.get(segment)?;
-        }
-        Some(node)
+        let node = document.get(segments.next()?)?;
+        segments.try_fold(node, |node, segment| node.as_table()?.get(segment))
     }
 
     fn state_from_json_document(&self, document: &Value) -> ResourceState {
@@ -366,6 +360,29 @@ command = "example"
         let mut document: toml::Table = toml::from_str("tui = false\n").unwrap();
         let resource = toml_resource("tui.theme", toml::Value::String("default".to_string()));
         assert!(resource.set_in_toml_document(&mut document).is_err());
+    }
+
+    #[test]
+    fn missing_and_empty_documents_converge_in_both_formats() {
+        for format in [SettingsFormat::Json, SettingsFormat::Toml] {
+            for contents in [None, Some(""), Some(" \n\t\n")] {
+                let dir = tempfile::tempdir_in(".").unwrap();
+                let path = dir.path().join("settings");
+                if let Some(contents) = contents {
+                    std::fs::write(&path, contents).unwrap();
+                }
+                let resource = AgentSettingResource::new(
+                    "fixture".to_string(),
+                    "nested.setting".to_string(),
+                    toml::Value::Boolean(true),
+                    format,
+                    path,
+                );
+                assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+                assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+                assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            }
+        }
     }
 
     #[test]

@@ -30,85 +30,50 @@ mod reexec_tests {
     }
 
     #[test]
-    fn self_update_re_exec_preserves_arguments_and_sets_both_guards() {
-        let args = vec![
-            "install".to_string(),
-            "--profile".to_string(),
-            "desktop".to_string(),
-        ];
-        let command = build_reexec_command(Path::new("/repo/bin/dotfiles"), &args);
-
-        assert_eq!(command.get_program(), "/repo/bin/dotfiles");
-        assert_eq!(
-            command
-                .get_args()
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .collect::<Vec<_>>(),
-            args
-        );
-        let env = command
-            .get_envs()
-            .map(|(key, value)| (key.to_owned(), value.map(std::ffi::OsStr::to_owned)))
-            .collect::<std::collections::HashMap<_, _>>();
-        for guard in [REEXEC_GUARD_VAR, SELF_UPDATE_REEXEC_GUARD_VAR] {
-            assert_eq!(
-                env.get(std::ffi::OsStr::new(guard)),
-                Some(&Some(std::ffi::OsString::from("1"))),
-                "self-update re-exec should set {guard}"
-            );
-        }
-    }
-
-    #[test]
-    fn repository_re_exec_sets_shared_and_repository_guards() {
+    fn re_exec_preserves_arguments_and_sets_only_its_own_restart_guards() {
         use crate::infra::env::MapEnv;
 
-        let args = vec![
-            "update".to_string(),
-            "--only".to_string(),
-            "repository".to_string(),
-        ];
-        let command = build_repository_reexec_command(Path::new("/repo/bin/dotfiles"), &args);
-        assert_eq!(command.get_program(), "/repo/bin/dotfiles");
-        assert_eq!(
-            command
-                .get_args()
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .collect::<Vec<_>>(),
-            args
-        );
-        let env = command
-            .get_envs()
-            .map(|(key, value)| (key.to_owned(), value.map(std::ffi::OsStr::to_owned)))
-            .collect::<std::collections::HashMap<_, _>>();
+        for (guard, args) in [
+            (
+                SELF_UPDATE_REEXEC_GUARD_VAR,
+                ["install", "--profile", "desktop"],
+            ),
+            (
+                REPOSITORY_REEXEC_GUARD_VAR,
+                ["update", "--only", "repository"],
+            ),
+        ] {
+            let args = args.map(str::to_string);
+            let command = build_reexec_command(Path::new("/repo/bin/dotfiles"), &args, guard);
+            assert_eq!(command.get_program(), "/repo/bin/dotfiles");
+            assert_eq!(
+                command
+                    .get_args()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>(),
+                args,
+                "{guard}"
+            );
+            let env = command
+                .get_envs()
+                .map(|(key, value)| (key.to_str().unwrap(), value.unwrap().to_str().unwrap()))
+                .collect::<std::collections::HashMap<_, _>>();
+            assert_eq!(
+                env,
+                std::collections::HashMap::from([(REEXEC_GUARD_VAR, "1"), (guard, "1")]),
+                "{guard}: repository restart must not claim that the binary was replaced"
+            );
 
-        assert_eq!(
-            env.get(std::ffi::OsStr::new(REEXEC_GUARD_VAR)),
-            Some(&Some(std::ffi::OsString::from("1")))
-        );
-        assert_eq!(
-            env.get(std::ffi::OsStr::new(REPOSITORY_REEXEC_GUARD_VAR)),
-            Some(&Some(std::ffi::OsString::from("1")))
-        );
-        assert!(
-            !env.contains_key(std::ffi::OsStr::new(SELF_UPDATE_REEXEC_GUARD_VAR)),
-            "repository re-exec must not claim that the binary was replaced"
-        );
-
-        let child_env = command
-            .get_envs()
-            .fold(MapEnv::new(), |child, (key, value)| {
-                child.with(
-                    key.to_str().expect("restart guard names must be Unicode"),
-                    value.expect("restart guards must be set"),
-                )
-            });
-        let global = global(&[]);
-        let runtime = RuntimePolicy::new(&global, false, child_env.into_handle(), true, true);
-        assert!(
-            !should_check_self_update(&runtime),
-            "repository restart must not retry the initial self-update preflight, regardless of its outcome"
-        );
+            let child_env = env
+                .into_iter()
+                .fold(MapEnv::new(), |child, (key, value)| child.with(key, value));
+            let global = global(&[]);
+            let runtime = RuntimePolicy::new(&global, false, child_env.into_handle(), true, true);
+            assert!(
+                !should_check_self_update(&runtime),
+                "{guard}: restart must not retry the initial self-update preflight"
+            );
+        }
     }
 
     #[test]

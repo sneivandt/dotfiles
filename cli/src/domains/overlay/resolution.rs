@@ -80,9 +80,18 @@ pub fn resolve_read_only(
     root: &Path,
     env: &dyn crate::infra::env::Env,
 ) -> Result<Option<PathBuf>> {
+    resolve_with_confirmation(cli_overlay, root, env, confirm_linked_worktree)
+}
+
+fn resolve_with_confirmation(
+    cli_overlay: Option<&Path>,
+    root: &Path,
+    env: &dyn crate::infra::env::Env,
+    confirm: impl FnOnce(&Path) -> Result<bool>,
+) -> Result<Option<PathBuf>> {
     if let Some(path) = cli_overlay {
         let path = absolute_overlay_path(path)?;
-        if is_linked_worktree(&path) && !confirm_linked_worktree(&path)? {
+        if is_linked_worktree(&path) && !confirm(&path)? {
             bail!(
                 "overlay path {} is a linked Git worktree; selection cancelled",
                 path.display()
@@ -107,25 +116,14 @@ fn resolve_from_args_with_confirmation(
     env: &dyn crate::infra::env::Env,
     confirm: impl FnOnce(&Path) -> Result<bool>,
 ) -> Result<Option<PathBuf>> {
-    if let Some(path) = cli_overlay {
-        let path = absolute_overlay_path(path)?;
-        if is_linked_worktree(&path) && !confirm(&path)? {
-            bail!(
-                "overlay path {} is a linked Git worktree; selection cancelled",
-                path.display()
-            );
-        }
-        if let Err(e) = persist(root, &path) {
-            eprintln!("warning: could not persist overlay path to git config: {e}");
-        }
-        return Ok(Some(path));
+    let selected = resolve_with_confirmation(cli_overlay, root, env, confirm)?;
+    if cli_overlay.is_some()
+        && let Some(path) = &selected
+        && let Err(e) = persist(root, path)
+    {
+        eprintln!("warning: could not persist overlay path to git config: {e}");
     }
-
-    read_from_env(env)
-        .or_else(|| read_persisted(root))
-        .as_deref()
-        .map(absolute_overlay_path)
-        .transpose()
+    Ok(selected)
 }
 
 fn absolute_overlay_path(path: &Path) -> Result<PathBuf> {

@@ -2,7 +2,7 @@
 
 use std::io::{self, BufRead, Write};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result};
 
 use super::{ProfileInfo, available};
 
@@ -45,12 +45,9 @@ fn prompt_interactive_with_io(
         .parse()
         .map_err(|_| anyhow::anyhow!("invalid selection"))?;
 
-    if choice == 0 || choice > profiles.len() {
-        bail!("selection out of range");
-    }
-
-    profiles
-        .get(choice.saturating_sub(1))
+    choice
+        .checked_sub(1)
+        .and_then(|index| profiles.get(index))
         .map(|profile| profile.name.to_string())
         .context("selection out of range")
 }

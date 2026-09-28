@@ -67,9 +67,6 @@ impl Logger {
     pub fn new(command: &str) -> Self {
         let start = Instant::now();
         let run_log = RunLog::create(command, start).map(Arc::new);
-        if run_log.is_none() {
-            super::runlog::warn_degraded("the log directory or file could not be created");
-        }
         Self::build(command, run_log, start, true)
     }
 
@@ -85,9 +82,6 @@ impl Logger {
         let run_log = dotfiles_log_subdir(base_dir)
             .and_then(|dir| RunLog::new(command, &dir, start))
             .map(Arc::new);
-        if run_log.is_none() {
-            super::runlog::warn_degraded("the log directory or file could not be created");
-        }
         Self::build(command, run_log, start, false)
     }
 
@@ -97,6 +91,9 @@ impl Logger {
         start: Instant,
         console_output: bool,
     ) -> Self {
+        if run_log.is_none() {
+            super::runlog::warn_degraded("the log directory or file could not be created");
+        }
         Self {
             console: Arc::new(super::console::Console::new(console_output)),
             command: command.to_string(),
@@ -308,19 +305,15 @@ impl Logger {
     /// Every visible scheduled task advances the numerator, including tasks
     /// that turn out not to apply, so the denominator remains stable.
     pub fn mark_task_completed(&self, task_id: &str) {
-        let task = self
+        let visible = self
             .lock_tasks()
             .iter()
             .rev()
             .find(|task| task.task_id == task_id)
-            .cloned();
-        let Some(task) = task else {
-            return;
-        };
-        if !task.visibility.is_visible() {
-            return;
+            .is_some_and(|task| task.visibility.is_visible());
+        if visible {
+            self.tasks_completed.fetch_add(1, Ordering::Relaxed);
         }
-        self.tasks_completed.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Return the completed/total task counts for the progress line.

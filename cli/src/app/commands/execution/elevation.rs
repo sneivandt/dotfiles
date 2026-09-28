@@ -78,19 +78,19 @@ impl<'a> ElevationBroker<'a> {
         // Delegation is not degradation: the tasks really ran, just in the
         // elevated child, so their dependents must still run here. Only an
         // unavailable plan leaves prerequisites unmet.
-        let (reason, cascade, failed) = elevation_plan_disposition(plan);
-
-        let Some(reason) = reason else {
+        let Some((reason, root_outcome, root_status)) =
+            elevation_plan_disposition(plan, self.ctx.require_complete())
+        else {
             return summary;
         };
         let roots: HashMap<TaskId, &str> = elevating
             .iter()
             .map(|task| (task.task_id(), task.name()))
             .collect();
-        if failed || (cascade && self.ctx.require_complete()) {
+        if root_status == TaskStatus::Failed {
             summary.add_failures(roots.len());
         }
-        let blocked = if cascade {
+        let blocked = if root_outcome == TaskOutcome::Unmet {
             graph.blocked_dependents(&roots)
         } else {
             HashMap::new()
@@ -98,12 +98,15 @@ impl<'a> ElevationBroker<'a> {
 
         tasks.retain(|task| {
             let id = task.task_id();
-            let message = if roots.contains_key(&id) {
-                Some(reason.to_string())
+            let (message, status, outcome) = if roots.contains_key(&id) {
+                (reason.to_string(), root_status, root_outcome)
+            } else if let Some(cause) = blocked.get(&id) {
+                (
+                    format!("requires {cause}"),
+                    TaskStatus::Blocked,
+                    TaskOutcome::Blocked,
+                )
             } else {
-                blocked.get(&id).map(|cause| format!("requires {cause}"))
-            };
-            let Some(message) = message else {
                 return true;
             };
 
@@ -111,15 +114,6 @@ impl<'a> ElevationBroker<'a> {
             let _enter = span.enter();
             self.log.debug(message.as_str());
             let task_id = task.log_key();
-            let status = if roots.contains_key(&id)
-                && (failed || (self.ctx.require_complete() && cascade))
-            {
-                TaskStatus::Failed
-            } else if blocked.contains_key(&id) {
-                TaskStatus::Blocked
-            } else {
-                TaskStatus::Skipped
-            };
             self.log.record_task(
                 TaskEntry::new(
                     &task_id,
@@ -133,32 +127,35 @@ impl<'a> ElevationBroker<'a> {
             );
             self.log.mark_task_completed(&task_id);
             self.log.emit_task_result_and_redraw(&task_id);
-            summary.record(
-                id,
-                task.name(),
-                if roots.contains_key(&task.task_id()) {
-                    if cascade {
-                        TaskOutcome::Unmet
-                    } else {
-                        TaskOutcome::Satisfied
-                    }
-                } else {
-                    TaskOutcome::Blocked
-                },
-            );
+            summary.record(id, task.name(), outcome);
             false
         });
         summary
     }
 }
 
-const fn elevation_plan_disposition(plan: ElevationPlan) -> (Option<&'static str>, bool, bool) {
+const fn elevation_plan_disposition(
+    plan: ElevationPlan,
+    require_complete: bool,
+) -> Option<(&'static str, TaskOutcome, TaskStatus)> {
     match plan {
-        ElevationPlan::Ready => (None, false, false),
-        ElevationPlan::Delegated => (Some("ran in elevated session"), false, false),
-        ElevationPlan::Unavailable { reason } => (Some(reason), true, false),
+        ElevationPlan::Ready => None,
+        ElevationPlan::Delegated => Some((
+            "ran in elevated session",
+            TaskOutcome::Satisfied,
+            TaskStatus::Skipped,
+        )),
+        ElevationPlan::Unavailable { reason } => Some((
+            reason,
+            TaskOutcome::Unmet,
+            if require_complete {
+                TaskStatus::Failed
+            } else {
+                TaskStatus::Skipped
+            },
+        )),
         #[cfg(any(windows, test))]
-        ElevationPlan::Failed { reason } => (Some(reason), true, true),
+        ElevationPlan::Failed { reason } => Some((reason, TaskOutcome::Unmet, TaskStatus::Failed)),
     }
 }
 
@@ -338,20 +335,15 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
     const DROPPED_WITH_VALUE: [&str; 2] = ["--only", "--skip"];
 
     let mut out: Vec<String> = Vec::with_capacity(args.len().saturating_add(4));
-    let mut skip_next = false;
-
-    for arg in args {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
         if DROPPED_WITH_VALUE.contains(&arg.as_str()) {
-            skip_next = true;
+            let _inherited_value = args.next();
             continue;
         }
-        if DROPPED_WITH_VALUE
-            .iter()
-            .any(|flag| arg.starts_with(&format!("{flag}=")))
+        if arg
+            .split_once('=')
+            .is_some_and(|(flag, _)| DROPPED_WITH_VALUE.contains(&flag))
         {
             continue;
         }
@@ -474,13 +466,49 @@ mod tests {
     }
 
     #[test]
-    fn failed_elevated_run_is_not_treated_as_optional_unavailability() {
-        let (reason, cascade, failed) = elevation_plan_disposition(ElevationPlan::Failed {
-            reason: "elevated step failed",
-        });
-
-        assert_eq!(reason, Some("elevated step failed"));
-        assert!(cascade);
-        assert!(failed);
+    fn elevation_disposition_distinguishes_delegation_unavailability_and_failure() {
+        for strict in [false, true] {
+            for (plan, expected) in [
+                (ElevationPlan::Ready, None),
+                (
+                    ElevationPlan::Delegated,
+                    Some((
+                        "ran in elevated session",
+                        TaskOutcome::Satisfied,
+                        TaskStatus::Skipped,
+                    )),
+                ),
+                (
+                    ElevationPlan::Unavailable {
+                        reason: "unavailable",
+                    },
+                    Some((
+                        "unavailable",
+                        TaskOutcome::Unmet,
+                        if strict {
+                            TaskStatus::Failed
+                        } else {
+                            TaskStatus::Skipped
+                        },
+                    )),
+                ),
+                (
+                    ElevationPlan::Failed {
+                        reason: "elevated step failed",
+                    },
+                    Some((
+                        "elevated step failed",
+                        TaskOutcome::Unmet,
+                        TaskStatus::Failed,
+                    )),
+                ),
+            ] {
+                assert_eq!(
+                    elevation_plan_disposition(plan, strict),
+                    expected,
+                    "{plan:?}, strict={strict}"
+                );
+            }
+        }
     }
 }

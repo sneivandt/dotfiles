@@ -1,9 +1,10 @@
 use std::time::Duration;
 
-use super::render::{RowOpts, format_task_line, task_detail_lines, task_result_lines};
+use super::render::{RowOpts, format_task_line, task_block};
 use super::totals::{SummaryCounts, SummaryMode, format_summary_lines, should_space_before_totals};
+use crate::infra::logging::buffered::entry::LogEntry;
 use crate::infra::logging::style::StyleChoice;
-use crate::infra::logging::types::{ActionCounts, TaskEntry, TaskStatus, TaskVisibility};
+use crate::infra::logging::types::{ActionCounts, MsgKind, TaskEntry, TaskStatus, TaskVisibility};
 use crate::infra::logging::utils::format_elapsed;
 use crate::infra::logging::{Logger, OutputExt as _};
 
@@ -21,6 +22,22 @@ fn task_entry(name: &str, status: TaskStatus, message: Option<&str>) -> TaskEntr
 
 fn record_task(log: &Logger, name: &str, status: TaskStatus, message: Option<&str>) {
     log.record_task(task_entry(name, status, message));
+}
+
+fn task_result_lines(task: &TaskEntry, details: &[String], opts: RowOpts) -> Vec<String> {
+    let entries: Vec<_> = details
+        .iter()
+        .map(|message| LogEntry::Message {
+            kind: MsgKind::Info,
+            msg: message.clone(),
+        })
+        .collect();
+    let block = task_block(task, &entries, opts);
+    block
+        .status
+        .into_iter()
+        .chain(block.details.into_iter().map(|(_, line)| line))
+        .collect()
 }
 
 /// Standard-mode, non-verbose row options.
@@ -392,7 +409,7 @@ fn verbose_task_line_reports_elapsed_time() {
 }
 
 #[test]
-fn task_detail_lines_drop_the_recorded_summary_not_summary_shaped_text() {
+fn task_block_drops_the_recorded_summary_not_summary_shaped_text() {
     let task = task_entry(
         "symlinks",
         TaskStatus::Changed,
@@ -406,31 +423,38 @@ fn task_detail_lines_drop_the_recorded_summary_not_summary_shaped_text() {
     ];
 
     assert_eq!(
-        task_detail_lines(&details, &task),
-        vec!["link ~/.bashrc", "9 changed, 7 already ok"]
+        task_result_lines(&task, &details, plain_opts()),
+        [
+            "✓ symlinks",
+            "  link ~/.bashrc",
+            "  9 changed, 7 already ok"
+        ]
     );
 }
 
 #[test]
-fn task_detail_lines_drops_lines_restating_the_row_reason() {
+fn task_block_drops_lines_restating_the_row_reason() {
     let task = task_entry("skip-task", TaskStatus::Skipped, Some("dependency failed"));
     let details = vec![
         "skipped: dependency failed".to_string(),
         "dependency failed".to_string(),
     ];
 
-    assert!(task_detail_lines(&details, &task).is_empty());
+    assert_eq!(
+        task_result_lines(&task, &details, plain_opts()),
+        ["⊘ skip-task · dependency failed"]
+    );
 }
 
 #[test]
-fn task_detail_lines_are_empty_when_the_task_only_has_a_message() {
+fn task_block_details_are_empty_when_the_task_only_has_a_message() {
     let task = task_entry(
         "custom task",
         TaskStatus::Changed,
         Some("generated private config"),
     );
 
-    assert!(task_detail_lines(&[], &task).is_empty());
+    assert!(task_block(&task, &[], plain_opts()).details.is_empty());
 }
 
 #[test]

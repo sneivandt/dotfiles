@@ -91,23 +91,20 @@ impl Task for ValidateSymlinkSources {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let config = self.config.read();
-        let symlinks = config.validation_symlinks.clone();
-        let chmod = config.validation_chmod.clone();
-
-        let repo_root = config.root.clone();
-        let overlay_root = config.overlay.clone();
-        drop(config);
+        let symlinks = &config.validation_symlinks;
+        let chmod = &config.validation_chmod;
+        let repo_root = &config.root;
 
         let mut missing = 0u32;
 
-        for symlink in &symlinks {
+        for symlink in symlinks {
             let symlinks_dir =
-                crate::domains::files::config::symlinks::resolve_symlinks_dir(symlink, &repo_root);
+                crate::domains::files::config::symlinks::resolve_symlinks_dir(symlink, repo_root);
             let source = symlinks_dir.join(&symlink.source);
             if symlink.source.contains('*') {
                 crate::domains::files::config::symlinks::expand_glob_patterns(
                     std::slice::from_ref(symlink),
-                    &repo_root,
+                    repo_root,
                 )
                 .with_context(|| format!("validating symlink source glob {}", symlink.source))?;
             } else if !source.exists() {
@@ -118,8 +115,8 @@ impl Task for ValidateSymlinkSources {
         }
 
         let main_sources = repo_root.join("symlinks");
-        let overlay_sources = overlay_root.map(|root| root.join("symlinks"));
-        for entry in &chmod {
+        let overlay_sources = config.overlay.as_ref().map(|root| root.join("symlinks"));
+        for entry in chmod {
             let main_source = main_sources.join(&entry.path);
             let overlay_source_exists = overlay_sources
                 .as_ref()

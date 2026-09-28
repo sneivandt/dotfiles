@@ -112,6 +112,12 @@ filesystem state, use fresh contexts between runs, and assert exact logical
 resource actions and counts rather than message membership. Keep
 platform-specific cases explicit instead of gating the whole suite on Unix.
 
+Integration subprocess tests share `common::cli_command` for isolated home,
+state, cache, and log paths and cleared restart markers. Keep scenario-specific
+flags and environment overrides at the call site. In-process tests use the
+shared context constructor with an injected executor; it retains the temporary
+home for the whole run.
+
 Engine [`batch_reports.rs`](../cli/src/engine/tests/batch_reports.rs) and
 [`parallel.rs`](../cli/src/engine/tests/parallel.rs) cover strict partial failure,
 state-discovery errors, cancellation, in-flight worker completion, and

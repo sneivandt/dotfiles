@@ -52,6 +52,55 @@ fn configured_source_validation_rejects_missing_chmod_source() {
 }
 
 #[test]
+fn configured_source_validation_keeps_overlay_origins_and_unfiltered_sources() {
+    use crate::domains::files::config::symlinks::Symlink;
+
+    let dir = tempfile::tempdir().expect("fixture directory");
+    let root = dir.path().join("main");
+    let overlay = dir.path().join("overlay");
+    std::fs::create_dir_all(root.join("symlinks")).unwrap();
+    std::fs::create_dir_all(overlay.join("symlinks/skills")).unwrap();
+    std::fs::write(overlay.join("symlinks/skills/tool"), "").unwrap();
+    std::fs::write(overlay.join("symlinks/overlay-only.sh"), "").unwrap();
+
+    let mut config = empty_config(root.clone());
+    config.overlay = Some(overlay.clone());
+    config.validation_symlinks = vec![
+        Symlink {
+            source: "skills/*".into(),
+            target: None,
+            origin: Some(overlay.clone()),
+        },
+        Symlink {
+            source: "overlay-only.sh".into(),
+            target: None,
+            origin: Some(overlay.clone()),
+        },
+    ];
+    config.validation_chmod = vec![ChmodEntry::new("755", "overlay-only.sh")];
+    let store = crate::app::config::store::ConfigStore::from_config(config);
+    let task = ValidateSymlinkSources::new(store.aggregate.clone());
+    let ctx = make_linux_context(empty_config(root));
+
+    assert!(store.symlinks.read().is_empty());
+    assert!(store.chmod.read().is_empty());
+    assert!(
+        task.should_run(&ctx),
+        "unfiltered sources must still be checked"
+    );
+    assert!(matches!(
+        task.run(&ctx).unwrap(),
+        crate::engine::TaskResult::CheckPassed
+    ));
+
+    std::fs::remove_file(overlay.join("symlinks/overlay-only.sh")).unwrap();
+    let error = task
+        .run(&ctx)
+        .expect_err("both missing source references must be reported");
+    assert_eq!(error.to_string(), "2 configured source(s) missing");
+}
+
+#[test]
 fn detects_sh_extension() {
     let dir = tempfile::tempdir().expect("tempdir should create");
     let script = dir.path().join("test.sh");

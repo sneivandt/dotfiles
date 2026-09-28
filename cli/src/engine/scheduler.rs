@@ -85,16 +85,21 @@ impl ExecutionSummary {
         );
     }
 
+    fn record_completion(&mut self, task: &dyn Task, status: TaskStatus, outcome: TaskOutcome) {
+        self.add_failures(usize::from(status == TaskStatus::Failed));
+        self.record(task.task_id(), task.name(), outcome);
+    }
+
     /// Look up an outcome recorded by this or an earlier phase.
     #[must_use]
     pub(crate) fn outcome(&self, task_id: &TaskId) -> Option<TaskOutcome> {
         self.tasks.get(task_id).map(|task| task.outcome)
     }
 
-    fn task_name(&self, task_id: &TaskId) -> String {
+    fn task_name(&self, task_id: &TaskId) -> &str {
         self.tasks
             .get(task_id)
-            .map_or_else(|| "earlier task".to_string(), |task| task.name.clone())
+            .map_or("earlier task", |task| task.name.as_str())
     }
 }
 
@@ -130,13 +135,20 @@ impl DependencySignal {
         }
     }
 
-    fn from_task(task: &dyn Task, outcome: TaskOutcome) -> Self {
+    fn from_outcome(name: &str, outcome: TaskOutcome) -> Self {
         match outcome {
             TaskOutcome::Satisfied => Self::Satisfied,
-            TaskOutcome::Unmet => Self::blocked(task.name(), BlockingOutcome::Incomplete),
-            TaskOutcome::Failed => Self::blocked(task.name(), BlockingOutcome::Failed),
-            TaskOutcome::Blocked => Self::blocked(task.name(), BlockingOutcome::Blocked),
+            TaskOutcome::Unmet => Self::blocked(name, BlockingOutcome::Incomplete),
+            TaskOutcome::Failed => Self::blocked(name, BlockingOutcome::Failed),
+            TaskOutcome::Blocked => Self::blocked(name, BlockingOutcome::Blocked),
             TaskOutcome::Cancelled => Self::Cancelled,
+        }
+    }
+
+    fn for_edge(self, blocks_on_failure: bool) -> Self {
+        match self {
+            Self::Blocked { .. } if !blocks_on_failure => Self::Satisfied,
+            signal @ (Self::Satisfied | Self::Blocked { .. } | Self::Cancelled) => signal,
         }
     }
 
@@ -185,12 +197,7 @@ fn signal_dependents(
     signal: &DependencySignal,
 ) {
     for (tx, blocks_on_failure) in senders {
-        let delivered = if !blocks_on_failure && matches!(signal, DependencySignal::Blocked { .. })
-        {
-            DependencySignal::Satisfied
-        } else {
-            signal.clone()
-        };
+        let delivered = signal.clone().for_edge(blocks_on_failure);
         if tx.send(delivered).is_err() {
             tracing::debug!(
                 "dependent task channel closed before {task_name} signalled completion"
@@ -322,7 +329,7 @@ fn dispatch_task(
     let Some((reason, signal)) = skip_reason else {
         let execution = run_task_buffered(task, assessment, ctx, log, notify_start);
         return (
-            DependencySignal::from_task(task, execution.outcome),
+            DependencySignal::from_outcome(task.name(), execution.outcome),
             execution.status,
             execution.outcome,
         );
@@ -399,8 +406,7 @@ pub(crate) fn run_tasks_parallel_with_prior(
         runtime.dependency_sender = None;
     }
 
-    let recorded_outcomes = std::sync::Mutex::new(HashMap::new());
-    let failed_tasks = std::sync::Mutex::new(0_usize);
+    let summary = std::sync::Mutex::new(ExecutionSummary::default());
     std::thread::scope(|s| {
         for (idx, (task, runtime)) in tasks.iter().zip(runtimes.iter_mut()).enumerate() {
             let task = *task;
@@ -412,8 +418,7 @@ pub(crate) fn run_tasks_parallel_with_prior(
                 .filter_map(|&dep_idx| tasks.get(dep_idx).map(|dep_task| dep_task.name()))
                 .collect();
             let dep_count = dep_names.len();
-            let failed_tasks = &failed_tasks;
-            let recorded_outcomes = &recorded_outcomes;
+            let summary = &summary;
             let prior_signal = prior_dependency_signal(task, prior);
 
             s.spawn(move || {
@@ -442,35 +447,18 @@ pub(crate) fn run_tasks_parallel_with_prior(
                     .unwrap_or_else(TaskAssessment::applicable);
                 let (signal, status, outcome) =
                     dispatch_task(task, &assessment, ctx, log, &dependency_signal, true);
-                if status == TaskStatus::Failed {
-                    let mut count = failed_tasks
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    *count = count.saturating_add(1);
-                }
-                recorded_outcomes
+                summary
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(task.task_id(), (task.name().to_string(), outcome));
+                    .record_completion(task, status, outcome);
 
                 signal_dependents(task.name(), dependent_senders, &signal);
             });
         }
     });
-    let failed_count = *failed_tasks
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let recorded = recorded_outcomes
+    summary
         .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut task_records = HashMap::with_capacity(recorded.len());
-    for (task_id, (name, outcome)) in recorded {
-        task_records.insert(task_id, TaskRecord { name, outcome });
-    }
-    ExecutionSummary {
-        failed_tasks: failed_count,
-        tasks: task_records,
-    }
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Run tasks sequentially in dependency-safe order.
@@ -507,18 +495,17 @@ pub(crate) fn run_tasks_sequential_with_prior(
             ),
             |outcome, &dep_idx| {
                 outcome.combine(
-                    match signals.get(dep_idx).cloned().flatten().unwrap_or_else(|| {
-                        DependencySignal::blocked("missing dependency", BlockingOutcome::Blocked)
-                    }) {
-                        DependencySignal::Blocked { .. }
-                            if !graph.blocks_on_failure(idx, dep_idx) =>
-                        {
-                            DependencySignal::Satisfied
-                        }
-                        signal @ (DependencySignal::Satisfied
-                        | DependencySignal::Blocked { .. }
-                        | DependencySignal::Cancelled) => signal,
-                    },
+                    signals
+                        .get(dep_idx)
+                        .cloned()
+                        .flatten()
+                        .unwrap_or_else(|| {
+                            DependencySignal::blocked(
+                                "missing dependency",
+                                BlockingOutcome::Blocked,
+                            )
+                        })
+                        .for_edge(graph.blocks_on_failure(idx, dep_idx)),
                 )
             },
         );
@@ -532,14 +519,10 @@ pub(crate) fn run_tasks_sequential_with_prior(
             .unwrap_or_else(TaskAssessment::applicable);
         let (signal, status, outcome) =
             dispatch_task(*task, &assessment, ctx, log, &dependency_signal, false);
-        if status == TaskStatus::Failed {
-            summary.failed_tasks = summary.failed_tasks.saturating_add(1);
-        }
-
         if let Some(slot) = signals.get_mut(idx) {
             *slot = Some(signal);
         }
-        summary.record(task.task_id(), task.name(), outcome);
+        summary.record_completion(*task, status, outcome);
     }
     summary
 }
@@ -548,45 +531,21 @@ fn prior_dependency_signal(task: &dyn Task, prior: Option<&ExecutionSummary>) ->
     let Some(prior) = prior else {
         return DependencySignal::Satisfied;
     };
-    let blocking = task
-        .dependencies()
+    task.dependencies()
         .iter()
-        .filter_map(|dependency| {
-            prior
-                .outcome(dependency)
-                .map(|outcome| (dependency, outcome))
-        })
-        .fold(
-            DependencySignal::Satisfied,
-            |signal, (dependency, outcome)| {
-                signal.combine(match outcome {
-                    TaskOutcome::Satisfied => DependencySignal::Satisfied,
-                    TaskOutcome::Unmet => DependencySignal::blocked(
-                        prior.task_name(dependency),
-                        BlockingOutcome::Incomplete,
-                    ),
-                    TaskOutcome::Failed => DependencySignal::blocked(
-                        prior.task_name(dependency),
-                        BlockingOutcome::Failed,
-                    ),
-                    TaskOutcome::Blocked => DependencySignal::blocked(
-                        prior.task_name(dependency),
-                        BlockingOutcome::Blocked,
-                    ),
-                    TaskOutcome::Cancelled => DependencySignal::Cancelled,
-                })
-            },
-        );
-    task.ordering_dependencies()
-        .iter()
-        .filter_map(|dependency| prior.outcome(dependency))
-        .fold(blocking, |signal, outcome| {
-            signal.combine(if outcome == TaskOutcome::Cancelled {
-                DependencySignal::Cancelled
-            } else {
-                DependencySignal::Satisfied
+        .map(|dependency| (dependency, true))
+        .chain(
+            task.ordering_dependencies()
+                .iter()
+                .map(|dependency| (dependency, false)),
+        )
+        .filter_map(|(dependency, blocks_on_failure)| {
+            prior.outcome(dependency).map(|outcome| {
+                DependencySignal::from_outcome(prior.task_name(dependency), outcome)
+                    .for_edge(blocks_on_failure)
             })
         })
+        .fold(DependencySignal::Satisfied, DependencySignal::combine)
 }
 
 #[cfg(test)]

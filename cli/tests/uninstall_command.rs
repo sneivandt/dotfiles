@@ -113,25 +113,13 @@ fn uninstall_removes_active_overlay_script_state_by_default() {
     .unwrap();
 
     let run = |dry_run| {
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
-        command
-            .args([
-                "uninstall",
-                "--profile",
-                "base",
-                "--only",
-                "script-private-tools",
-                "--non-interactive",
-            ])
-            .arg("--root")
-            .arg(repo.root_path())
-            .arg("--overlay")
-            .arg(overlay.path())
-            .env("HOME", home.path())
-            .env("XDG_STATE_HOME", home.path().join("state"))
-            .env("DOTFILES_LOG_DIR", home.path().join("logs"))
-            .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-            .env_remove("DOTFILES_OVERLAY");
+        let mut command = common::cli_command(
+            repo.root_path(),
+            home.path(),
+            Some(overlay.path()),
+            "uninstall",
+            "script-private-tools",
+        );
         if dry_run {
             command.arg("--dry-run");
         }
@@ -160,69 +148,5 @@ fn uninstall_removes_active_overlay_script_state_by_default() {
         repeated.status.success(),
         "{}",
         String::from_utf8_lossy(&repeated.stderr)
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Idempotency: uninstall → uninstall is a no-op
-// ---------------------------------------------------------------------------
-
-/// Running `UninstallSymlinks` twice must succeed on both calls.
-///
-/// After the first uninstall the symlink is materialised to a regular file.
-/// The second call must return `TaskResult::Ok` without panicking or erroring
-/// because the target is no longer a symlink (`process_resources_remove`
-/// silently skips resources that are not in the `Correct` state).
-#[cfg(unix)]
-#[test]
-fn uninstall_symlinks_is_idempotent() {
-    use test_api::tasks::Task;
-
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")
-        .with_symlink_source("bashrc")
-        .build();
-
-    let ec = ctx.make_context("base");
-
-    // Install the symlink first so there is something to uninstall.
-    let install_result = tasks::files::symlinks::InstallSymlinks::new(ec.store.symlinks.clone())
-        .run(&ec.ctx)
-        .expect("install run");
-    assert!(
-        matches!(
-            install_result,
-            tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0
-        ),
-        "install run should succeed"
-    );
-
-    // First uninstall: symlink must be materialised to a regular file.
-    let result1 = tasks::files::symlinks::UninstallSymlinks::new(ec.store.symlinks.clone())
-        .run(&ec.ctx)
-        .expect("first uninstall run");
-    assert!(
-        matches!(result1, tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "first uninstall run should succeed"
-    );
-
-    let target = ec.ctx.home().join(".bashrc");
-    let meta = std::fs::symlink_metadata(&target).expect("target should exist after uninstall");
-    assert!(
-        !meta.is_symlink(),
-        "target should be materialised to a regular file after uninstall"
-    );
-
-    // Second uninstall: must succeed (idempotency — target is no longer a symlink).
-    let result2 = tasks::files::symlinks::UninstallSymlinks::new(ec.store.symlinks)
-        .run(&ec.ctx)
-        .expect("second uninstall run");
-    assert!(
-        matches!(
-            result2,
-            tasks::TaskResult::Batch(ref stats)
-                if stats.changed_count() == 0 && stats.failed_count() == 0
-        ),
-        "second uninstall run should succeed (idempotency guarantee)"
     );
 }

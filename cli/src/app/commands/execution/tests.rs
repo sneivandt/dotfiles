@@ -308,6 +308,12 @@ fn entries(trace: &Trace) -> Vec<String> {
         .clone()
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ProbeFailure {
+    Error,
+    Result,
+}
+
 /// A task with a runtime-supplied identity, dependency list, and outcome.
 ///
 /// [`TaskId::dynamic`] lets a test build an arbitrary graph shape, which
@@ -317,7 +323,7 @@ struct ProbeTask {
     id: TaskId,
     dependencies: Vec<TaskId>,
     trace: Trace,
-    fails: bool,
+    failure: Option<ProbeFailure>,
     cancels: bool,
     interrupts: bool,
 }
@@ -329,7 +335,7 @@ impl ProbeTask {
             id: numeric_task_id(id),
             dependencies: Vec::new(),
             trace: Arc::clone(trace),
-            fails: false,
+            failure: None,
             cancels: false,
             interrupts: false,
         }
@@ -341,7 +347,7 @@ impl ProbeTask {
     }
 
     const fn failing(mut self) -> Self {
-        self.fails = true;
+        self.failure = Some(ProbeFailure::Error);
         self
     }
 
@@ -381,8 +387,12 @@ impl Task for ProbeTask {
         if self.cancels {
             ctx.cancellation_token().cancel();
         }
-        if self.fails {
-            anyhow::bail!("{} failed", self.name);
+        if let Some(failure) = self.failure {
+            let message = format!("{} failed", self.name);
+            return match failure {
+                ProbeFailure::Error => Err(anyhow!(message)),
+                ProbeFailure::Result => Ok(TaskResult::Failed(message)),
+            };
         }
         if self.interrupts {
             return Err(cancelled_command().into());
@@ -590,6 +600,89 @@ fn run_executes_tasks_in_dependency_order() {
 }
 
 #[test]
+fn static_dependencies_complete_before_dependents_and_restart() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct Prerequisite(Arc<AtomicBool>);
+    impl Task for Prerequisite {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("prerequisite")
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.0.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    struct Dependent {
+        prerequisite_completed: Arc<AtomicBool>,
+        completed: Arc<AtomicBool>,
+    }
+    impl Task for Dependent {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("dependent")
+        }
+
+        crate::engine::task_deps![Prerequisite];
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            if !self.prerequisite_completed.load(Ordering::SeqCst) {
+                return Ok(TaskResult::Failed(
+                    "dependent started before prerequisite completed".into(),
+                ));
+            }
+            self.completed.store(true, Ordering::SeqCst);
+            Ok(TaskResult::Ok)
+        }
+    }
+
+    for parallel in [false, true] {
+        for restart in [false, true] {
+            let prerequisite = Prerequisite(Arc::new(AtomicBool::new(false)));
+            let dependent = Dependent {
+                prerequisite_completed: Arc::clone(&prerequisite.0),
+                completed: Arc::new(AtomicBool::new(false)),
+            };
+            let trace = trace();
+            let mut remaining = ProbeTask::new("remaining", 3, &trace);
+            remaining.dependencies = vec![dependent.task_id()];
+            let tasks: [&dyn Task; 3] = [&remaining, &dependent, &prerequisite];
+            let (ctx, log) = sequential_context();
+            let ctx = ctx.with_parallel(parallel);
+            let restarted = std::cell::Cell::new(false);
+
+            if restart {
+                run_tasks_to_completion_with_restart(
+                    tasks,
+                    &ctx,
+                    &log,
+                    dependent.task_id(),
+                    || true,
+                    || {
+                        assert!(prerequisite.0.load(Ordering::SeqCst));
+                        assert!(dependent.completed.load(Ordering::SeqCst));
+                        assert!(entries(&trace).is_empty());
+                        restarted.set(true);
+                    },
+                )
+            } else {
+                run_tasks_to_completion(tasks, &ctx, &log)
+            }
+            .unwrap_or_else(|error| panic!("parallel={parallel}, restart={restart}: {error:#}"));
+
+            assert!(dependent.completed.load(Ordering::SeqCst));
+            assert_eq!(restarted.get(), restart);
+            assert_eq!(
+                entries(&trace),
+                if restart { vec![] } else { vec!["remaining"] },
+                "parallel={parallel}, restart={restart}"
+            );
+        }
+    }
+}
+
+#[test]
 fn run_reports_failure_count_when_a_task_fails() {
     let trace = trace();
     let tasks = vec![
@@ -627,24 +720,28 @@ fn run_blocks_dependents_of_a_failed_task() {
 
 #[test]
 fn run_rejects_a_cyclic_graph_before_executing_anything() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("a", 1, &trace).depends_on(&[2]),
-        ProbeTask::new("b", 2, &trace).depends_on(&[1]),
-    ];
-    let (ctx, log) = sequential_context();
+    for parallel in [false, true] {
+        let trace = trace();
+        let tasks = vec![
+            ProbeTask::new("a", 1, &trace).depends_on(&[2]),
+            ProbeTask::new("b", 2, &trace).depends_on(&[1]),
+        ];
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_parallel(parallel);
 
-    let error =
-        run_tasks_to_completion(as_dyn(&tasks), &ctx, &log).expect_err("a cycle must be rejected");
+        let error = run_tasks_to_completion(as_dyn(&tasks), &ctx, &log)
+            .expect_err("a cycle must be rejected");
 
-    assert!(
-        error.to_string().contains("task graph"),
-        "error should name the task graph, got: {error:#}"
-    );
-    assert!(
-        entries(&trace).is_empty(),
-        "no task may run when graph validation fails"
-    );
+        assert_eq!(
+            error.to_string(),
+            "dependency cycle: a -> b -> a detected in task graph",
+            "parallel={parallel}"
+        );
+        assert!(
+            entries(&trace).is_empty(),
+            "no task may run when graph validation fails: parallel={parallel}"
+        );
+    }
 }
 
 #[test]
@@ -904,44 +1001,65 @@ fn unsatisfied_restart_condition_runs_the_remaining_graph() {
 
 #[test]
 fn missing_boundary_falls_back_to_one_graph_without_restart() {
-    let trace = trace();
-    let tasks = vec![ProbeTask::new("static", 1, &trace)];
-    let (ctx, log) = sequential_context();
+    for parallel in [false, true] {
+        let trace = trace();
+        let tasks = vec![ProbeTask::new("static", 1, &trace)];
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_parallel(parallel);
 
-    run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(404),
-        || true,
-        || panic!("a filtered boundary must not trigger restart"),
-    )
-    .expect("missing boundary should use a single graph");
+        run_tasks_to_completion_with_restart(
+            as_dyn(&tasks),
+            &ctx,
+            &log,
+            numeric_task_id(404),
+            || true,
+            || panic!("a filtered boundary must not trigger restart"),
+        )
+        .expect("missing boundary should use a single graph");
 
-    assert_eq!(entries(&trace), vec!["static".to_string()]);
+        assert_eq!(
+            entries(&trace),
+            vec!["static".to_string()],
+            "parallel={parallel}"
+        );
+    }
 }
 
 #[test]
 fn failed_boundary_suppresses_restart() {
-    let trace = trace();
-    let tasks = vec![
-        ProbeTask::new("boundary", 1, &trace).failing(),
-        ProbeTask::new("remaining", 2, &trace).depends_on(&[1]),
-    ];
-    let (ctx, log) = sequential_context();
+    for parallel in [false, true] {
+        for failure in [ProbeFailure::Error, ProbeFailure::Result] {
+            let trace = trace();
+            let mut boundary = ProbeTask::new("boundary", 1, &trace);
+            boundary.failure = Some(failure);
+            let tasks = vec![
+                boundary,
+                ProbeTask::new("remaining", 2, &trace).depends_on(&[1]),
+            ];
+            let (ctx, log) = sequential_context();
+            let ctx = ctx.with_parallel(parallel);
 
-    let error = run_tasks_to_completion_with_restart(
-        as_dyn(&tasks),
-        &ctx,
-        &log,
-        numeric_task_id(1),
-        || true,
-        || panic!("a failed boundary must not trigger restart"),
-    )
-    .expect_err("boundary failure must fail the run");
+            let error = run_tasks_to_completion_with_restart(
+                as_dyn(&tasks),
+                &ctx,
+                &log,
+                numeric_task_id(1),
+                || true,
+                || panic!("a failed boundary must not trigger restart"),
+            )
+            .expect_err("boundary failure must fail the run");
 
-    assert!(error.downcast_ref::<TaskFailures>().is_some());
-    assert_eq!(entries(&trace), vec!["boundary".to_string()]);
+            assert!(
+                error.downcast_ref::<TaskFailures>().is_some(),
+                "parallel={parallel}, failure={failure:?}: {error:#}"
+            );
+            assert_eq!(
+                entries(&trace),
+                vec!["boundary".to_string()],
+                "parallel={parallel}, failure={failure:?}"
+            );
+        }
+    }
 }
 
 #[test]

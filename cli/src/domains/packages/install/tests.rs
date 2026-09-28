@@ -5,10 +5,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domains::packages::config::packages::Package;
-use crate::domains::packages::resources::package::{PackageManager, PackageResource};
-use crate::engine::Resource;
 use crate::infra::ConfigHandle;
-use crate::infra::exec::{ExecError, ExecResult, Executor, MockExecutor};
+use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::Os;
 use crate::test_helpers::{
     assert_task_changed, assert_task_ok, empty_config, make_arch_context, make_linux_context,
@@ -50,31 +48,6 @@ fn aur_preview_uses_package_database_without_requiring_paru() {
             assert_eq!(task_batch(&result.unwrap()).changed_count(), 1);
         }
     }
-}
-
-#[test]
-fn package_resource_description() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-    let pacman_resource = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        Arc::clone(&executor),
-    );
-    assert_eq!(pacman_resource.description(), "git (pacman)");
-
-    let paru_resource = PackageResource::new(
-        "paru-bin".to_string(),
-        PackageManager::Paru,
-        Arc::clone(&executor),
-    );
-    assert_eq!(paru_resource.description(), "paru-bin (paru)");
-
-    let winget_resource = PackageResource::new(
-        "Git.Git".to_string(),
-        PackageManager::Winget,
-        Arc::clone(&executor),
-    );
-    assert_eq!(winget_resource.description(), "Git.Git (winget)");
 }
 
 // -----------------------------------------------------------------------

@@ -5,8 +5,6 @@
 //! provider module alongside this file and a corresponding variant in
 //! [`PackageManager`].
 
-#[cfg(test)]
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -288,44 +286,6 @@ pub fn install_missing_packages(
     manager
         .provider()
         .install_missing(resources, executor, progress)
-}
-
-/// Install a batch of packages, grouped by package manager.
-///
-/// Groups the given resources by their [`PackageManager`] and delegates to each
-/// provider's preferred missing-package strategy.
-///
-/// # Errors
-///
-/// Returns an error if any package manager command fails or if an individual
-/// package install is skipped.
-#[cfg(test)]
-pub fn batch_install_packages(resources: &[&PackageResource]) -> Result<()> {
-    let mut groups: HashMap<PackageManager, Vec<&PackageResource>> = HashMap::new();
-    for resource in resources {
-        groups.entry(resource.manager).or_default().push(resource);
-    }
-
-    for (manager, group) in &groups {
-        let provider = manager.provider();
-        if let Some(first) = group.first() {
-            let executor = &*first.executor;
-
-            let report = provider.install_missing(group, executor, &|_| {})?;
-            if let Some(failure) = report.failures().first() {
-                return Err(crate::engine::resource::ResourceError::command_failed(
-                    provider.name(),
-                    format!(
-                        "install failed for '{}': {}",
-                        failure.package, failure.reason
-                    ),
-                )
-                .into());
-            }
-        }
-    }
-
-    Ok(())
 }
 
 impl Resource for PackageResource {

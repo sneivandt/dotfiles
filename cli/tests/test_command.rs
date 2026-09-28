@@ -37,27 +37,14 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
         let ctx = common::TestContextBuilder::new().build();
         std::fs::create_dir_all(ctx.root_path().join(".git")).expect("create .git dir");
         let home = tempfile::tempdir().expect("create temporary home");
-        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
-        command
-            .args([
-                "check",
-                "--profile",
-                "base",
-                "--only",
-                "config-warnings,config-files",
-                "--no-parallel",
-                "--non-interactive",
-                "--no-symbols",
-            ])
-            .arg("--root")
-            .arg(ctx.root_path())
-            .env("HOME", home.path())
-            .env("XDG_STATE_HOME", home.path().join("state"))
-            .env("XDG_CACHE_HOME", home.path().join("cache"))
-            .env("DOTFILES_LOG_DIR", home.path().join("logs"))
-            .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-            .env_remove("LOCALAPPDATA")
-            .env_remove("DOTFILES_OVERLAY");
+        let mut command = common::cli_command(
+            ctx.root_path(),
+            home.path(),
+            None,
+            "check",
+            "config-warnings,config-files",
+        );
+        command.args(["--no-parallel", "--no-symbols"]);
         if verbose {
             command.arg("--verbose");
         }

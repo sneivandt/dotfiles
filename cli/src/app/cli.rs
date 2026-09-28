@@ -224,7 +224,8 @@ pub enum DiscoveryFormat {
 }
 
 /// Command whose task dependency graph is shown by `tasks --graph`.
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TaskGraphCommand {
     /// Normal installation.
     Install,
@@ -234,6 +235,17 @@ pub enum TaskGraphCommand {
     Uninstall,
     /// Repository validation.
     Check,
+}
+
+impl TaskGraphCommand {
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Install => "install",
+            Self::Update => "update",
+            Self::Uninstall => "uninstall",
+            Self::Check => "check",
+        }
+    }
 }
 
 /// Options for the `tasks` command.

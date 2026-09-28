@@ -53,31 +53,13 @@ fn install_console_separates_tasks_and_keeps_no_op_compact() {
             .unwrap();
             let home = tempfile::tempdir().unwrap();
             let overlay = tempfile::tempdir().unwrap();
-            let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
-            command
-                .args([
-                    "install",
-                    "--profile",
-                    "base",
-                    "--only",
-                    "symlinks,file-permissions",
-                    "--no-repo-update",
-                    "--non-interactive",
-                ])
-                .arg("--root")
-                .arg(repo.root_path())
-                .arg("--overlay")
-                .arg(overlay.path())
-                .env("HOME", home.path())
-                .env("XDG_STATE_HOME", home.path().join("state"))
-                .env("XDG_CACHE_HOME", home.path().join("cache"))
-                .env("DOTFILES_LOG_DIR", home.path().join("logs"))
-                .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-                .env_remove("LOCALAPPDATA")
-                .env_remove("DOTFILES_OVERLAY")
-                .env_remove("DOTFILES_REEXEC_GUARD")
-                .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
-                .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD");
+            let mut command = common::cli_command(
+                repo.root_path(),
+                home.path(),
+                Some(overlay.path()),
+                "install",
+                "symlinks,file-permissions",
+            );
             if verbose {
                 command.arg("--verbose");
             }
@@ -163,30 +145,13 @@ fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
             let home = tempfile::tempdir().unwrap();
             std::fs::create_dir(overlay.path().join("conf")).unwrap();
             std::fs::write(overlay.path().join("conf").join(file), overlay_content).unwrap();
-            let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
-            command
-                .args([
-                    "install",
-                    "--profile",
-                    "base",
-                    "--only",
-                    "symlinks",
-                    "--no-repo-update",
-                    "--non-interactive",
-                ])
-                .arg("--root")
-                .arg(repo.root_path())
-                .arg("--overlay")
-                .arg(overlay.path())
-                .env("HOME", home.path())
-                .env("USERPROFILE", home.path())
-                .env("XDG_STATE_HOME", home.path().join("state"))
-                .env("DOTFILES_LOG_DIR", home.path().join("logs"))
-                .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-                .env_remove("DOTFILES_OVERLAY")
-                .env_remove("DOTFILES_REEXEC_GUARD")
-                .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
-                .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD");
+            let mut command = common::cli_command(
+                repo.root_path(),
+                home.path(),
+                Some(overlay.path()),
+                "install",
+                "symlinks",
+            );
             if dry_run {
                 command.arg("--dry-run");
             }
@@ -667,31 +632,14 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
     let home = tempfile::tempdir().unwrap();
     let overlay = tempfile::tempdir().unwrap();
     let log_dir = home.path().join("logs");
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"));
-    command
-        .args([
-            "install",
-            "--profile",
-            "base",
-            "--only",
-            "symlinks",
-            "--dry-run",
-            "--no-repo-update",
-            "--non-interactive",
-        ])
-        .arg("--root")
-        .arg(repo.root_path())
-        .arg("--overlay")
-        .arg(overlay.path())
-        .env("HOME", home.path())
-        .env("USERPROFILE", home.path())
-        .env("XDG_STATE_HOME", home.path().join("state"))
-        .env("DOTFILES_LOG_DIR", &log_dir)
-        .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-        .env_remove("DOTFILES_OVERLAY")
-        .env_remove("DOTFILES_REEXEC_GUARD")
-        .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
-        .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD");
+    let mut command = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        Some(overlay.path()),
+        "install",
+        "symlinks",
+    );
+    command.arg("--dry-run");
     let output = command.output().unwrap();
     assert!(
         output.status.success(),
@@ -786,29 +734,16 @@ fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
     let home = tempfile::tempdir().unwrap();
     let overlay = tempfile::tempdir().unwrap();
     let log_dir = home.path().join("logs");
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"))
-        .args([
-            "install",
-            "--profile",
-            "base",
-            "--only",
-            "symlinks",
-            "--dry-run",
-            "--no-repo-update",
-            "--non-interactive",
-        ])
-        .arg("--root")
-        .arg(repo.root_path())
-        .arg("--overlay")
-        .arg(overlay.path())
-        .env("HOME", home.path())
-        .env("USERPROFILE", home.path())
-        .env("XDG_STATE_HOME", home.path().join("state"))
-        .env("DOTFILES_LOG_DIR", &log_dir)
-        .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-        .env_remove("DOTFILES_OVERLAY")
-        .output()
-        .unwrap();
+    let output = common::cli_command(
+        repo.root_path(),
+        home.path(),
+        Some(overlay.path()),
+        "install",
+        "symlinks",
+    )
+    .arg("--dry-run")
+    .output()
+    .unwrap();
     assert!(!output.status.success());
     let text = format!(
         "{}{}",

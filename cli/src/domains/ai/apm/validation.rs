@@ -5,11 +5,11 @@
 //! infer from a source fragment: a local `dot-*` reference must have a matching
 //! source directory in the same repository or overlay.
 
-use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde_yaml_ng::Value as YamlValue;
 
+use super::fragments::discover_yaml_files;
 use crate::infra::config::validation::Validator;
 use crate::infra::config::{Diagnostic, DiagnosticCode};
 
@@ -41,7 +41,7 @@ fn validate_root(validator: &mut Validator, root: &Path) {
             validator.warn(
                 APM_IO_ERROR,
                 path_item(root, &config_dir),
-                format!("could not inspect APM config fragments: {err}"),
+                format!("could not inspect APM config fragments: {err:#}"),
             );
             return;
         }
@@ -50,30 +50,6 @@ fn validate_root(validator: &mut Validator, root: &Path) {
     for fragment in fragments {
         validate_fragment(validator, root, &fragment);
     }
-}
-
-fn discover_yaml_files(config_dir: &Path) -> std::io::Result<Vec<PathBuf>> {
-    let entries = match std::fs::read_dir(config_dir) {
-        Ok(entries) => entries,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(err),
-    };
-
-    let mut files = Vec::new();
-    for entry in entries {
-        let path = entry?.path();
-        if is_yaml_fragment(&path) && std::fs::metadata(&path)?.is_file() {
-            files.push(path);
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-
-fn is_yaml_fragment(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("yml") || ext.eq_ignore_ascii_case("yaml"))
 }
 
 fn validate_fragment(validator: &mut Validator, root: &Path, fragment: &Path) {
@@ -209,5 +185,64 @@ mod tests {
         write_fragment(dir.path(), "dependencies: [");
 
         assert!(validate(dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn missing_fragment_directory_has_no_diagnostics() {
+        let root = tempfile::tempdir_in(".").expect("create root");
+        assert!(validate(root.path(), None).is_empty());
+    }
+
+    #[test]
+    fn discovery_failure_remains_an_io_warning() {
+        let root = tempfile::tempdir_in(".").expect("create root");
+        let apm = root.path().join("symlinks/apm");
+        std::fs::create_dir_all(&apm).expect("create APM directory");
+        let config = apm.join("config");
+        std::fs::write(&config, "not a directory").expect("write config file");
+
+        let diagnostics = validate(root.path(), None);
+
+        assert_eq!(diagnostics.len(), 1);
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.code, APM_IO_ERROR);
+        assert_eq!(diagnostic.severity, crate::infra::config::Severity::Warning);
+        assert_eq!(diagnostic.source, SOURCE);
+        assert_eq!(diagnostic.item, path_item(root.path(), &config));
+        assert!(
+            diagnostic
+                .message
+                .contains("could not inspect APM config fragments")
+        );
+        assert!(diagnostic.message.contains("reading APM config directory"));
+    }
+
+    #[test]
+    fn validation_uses_sorted_yaml_fragments_only() {
+        let root = tempfile::tempdir_in(".").expect("create root");
+        let config = root.path().join("symlinks/apm/config");
+        std::fs::create_dir_all(config.join("directory.yml")).expect("create fragment directory");
+        for (name, plugin) in [
+            ("z.yaml", "dot-last"),
+            ("a.YML", "dot-first"),
+            ("README.md", "dot-ignored"),
+        ] {
+            std::fs::write(
+                config.join(name),
+                format!("dependencies:\n  apm:\n    - ~/.apm/plugins/{plugin}\n"),
+            )
+            .expect("write fragment");
+        }
+
+        let diagnostics = validate(root.path(), None);
+
+        assert_eq!(diagnostics.len(), 2);
+        assert!(diagnostics[0].item.ends_with("~/.apm/plugins/dot-first"));
+        assert!(diagnostics[1].item.ends_with("~/.apm/plugins/dot-last"));
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code == APM_PLUGIN_DIR_MISSING)
+        );
     }
 }

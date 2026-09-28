@@ -18,7 +18,7 @@ use crate::infra::platform::Platform;
 struct TaskListing {
     selector: String,
     task: String,
-    commands: Vec<TaskCommand>,
+    commands: Vec<TaskGraphCommand>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -41,33 +41,10 @@ enum GraphSelection {
     Skipped,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-enum TaskCommand {
-    #[serde(rename = "install")]
-    Install,
-    #[serde(rename = "update")]
-    Update,
-    #[serde(rename = "uninstall")]
-    Uninstall,
-    #[serde(rename = "check")]
-    Check,
-}
-
-impl TaskCommand {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Install => "install",
-            Self::Update => "update",
-            Self::Uninstall => "uninstall",
-            Self::Check => "check",
-        }
-    }
-}
-
 impl TaskListing {
-    fn include(&mut self, command: TaskCommand) {
-        if !self.commands.contains(&command) {
-            self.commands.push(command);
+    fn include(&mut self, command: TaskGraphCommand) {
+        if let Err(index) = self.commands.binary_search(&command) {
+            self.commands.insert(index, command);
         }
     }
 }
@@ -107,7 +84,7 @@ pub fn run(opts: &TasksOpts) -> Result<()> {
         {
             bail!("--with-deps is only available for install and update graphs");
         }
-        let tasks = graph_tasks(&store, overlay.as_deref(), command);
+        let tasks = command_tasks(&store, overlay.as_deref(), command);
         let listings = collect_graph(&tasks, &opts.only, &opts.skip, opts.with_deps)?;
         write_graph(&listings, opts.format, &mut stdout.lock())
     } else {
@@ -116,7 +93,7 @@ pub fn run(opts: &TasksOpts) -> Result<()> {
     }
 }
 
-fn graph_tasks(
+fn command_tasks(
     store: &ConfigStore,
     overlay: Option<&std::path::Path>,
     command: TaskGraphCommand,
@@ -258,42 +235,17 @@ fn collect_listings(
 ) -> Result<Vec<TaskListing>> {
     let mut listings = Vec::new();
 
-    let install_tasks = crate::app::catalog::all_install_tasks(store);
-    add_tasks(&mut listings, &install_tasks, |listing, task| {
-        if !task.update_only() {
-            listing.include(TaskCommand::Install);
-        }
-        listing.include(TaskCommand::Update);
-    })?;
-
-    let update_only_tasks = crate::app::catalog::update_only_install_tasks(store);
-    add_tasks(&mut listings, &update_only_tasks, |listing, _| {
-        listing.include(TaskCommand::Update);
-    })?;
-
-    let overlay_tasks = overlay.map_or_else(Vec::new, |root| {
-        crate::domains::overlay::scripts::overlay_script_tasks(&store.scripts.read(), root)
-    });
-    add_tasks(&mut listings, &overlay_tasks, |listing, _| {
-        listing.include(TaskCommand::Install);
-        listing.include(TaskCommand::Update);
-    })?;
-
-    let uninstall_tasks = crate::app::catalog::all_uninstall_tasks(store);
-    add_tasks(&mut listings, &uninstall_tasks, |listing, _| {
-        listing.include(TaskCommand::Uninstall);
-    })?;
-    let removal_tasks = overlay.map_or_else(Vec::new, |root| {
-        crate::domains::overlay::scripts::overlay_script_removal_tasks(&store.scripts.read(), root)
-    });
-    add_tasks(&mut listings, &removal_tasks, |listing, _| {
-        listing.include(TaskCommand::Uninstall);
-    })?;
-
-    let check_tasks = super::check::validation_tasks(store.aggregate.clone());
-    add_tasks(&mut listings, &check_tasks, |listing, _| {
-        listing.include(TaskCommand::Check);
-    })?;
+    // The complete update catalog preserves row order even for update-only
+    // tasks. Membership remains in canonical install/update/uninstall/check order.
+    for command in [
+        TaskGraphCommand::Update,
+        TaskGraphCommand::Install,
+        TaskGraphCommand::Uninstall,
+        TaskGraphCommand::Check,
+    ] {
+        let tasks = command_tasks(store, overlay, command);
+        add_tasks(&mut listings, &tasks, command)?;
+    }
 
     Ok(listings)
 }
@@ -301,7 +253,7 @@ fn collect_listings(
 fn add_tasks(
     listings: &mut Vec<TaskListing>,
     tasks: &[Box<dyn Task>],
-    membership: impl Fn(&mut TaskListing, &dyn Task),
+    command: TaskGraphCommand,
 ) -> Result<()> {
     for task in tasks {
         if task.visibility() == TaskVisibility::Internal {
@@ -319,7 +271,7 @@ fn add_tasks(
                     task.name()
                 );
             }
-            membership(listing, task.as_ref());
+            listing.include(command);
             continue;
         }
 
@@ -328,7 +280,7 @@ fn add_tasks(
             task: task.name().to_string(),
             ..TaskListing::default()
         };
-        membership(&mut listing, task.as_ref());
+        listing.include(command);
         listings.push(listing);
     }
     Ok(())
@@ -460,14 +412,10 @@ mod tests {
     fn task_membership_merges_by_selector() {
         let tasks: Vec<Box<dyn Task>> = vec![Box::new(VisibleTask)];
         let mut listings = Vec::new();
-        add_tasks(&mut listings, &tasks, |listing, _| {
-            listing.include(TaskCommand::Install);
-        })
-        .expect("install membership");
-        add_tasks(&mut listings, &tasks, |listing, _| {
-            listing.include(TaskCommand::Uninstall);
-        })
-        .expect("uninstall membership");
+        add_tasks(&mut listings, &tasks, TaskGraphCommand::Uninstall)
+            .expect("uninstall membership");
+        add_tasks(&mut listings, &tasks, TaskGraphCommand::Install).expect("install membership");
+        add_tasks(&mut listings, &tasks, TaskGraphCommand::Install).expect("repeated membership");
 
         assert_eq!(listings.len(), 1);
         assert_eq!(command_membership(&listings[0]), "install, uninstall");
@@ -507,7 +455,46 @@ mod tests {
             .expect("overlay script listing");
         assert_eq!(command_membership(script), "install, update, uninstall");
 
-        let graph = graph_tasks(&store, Some(overlay), TaskGraphCommand::Uninstall);
+        let catalog = crate::app::catalog::all_install_tasks(&store);
+        let expected_order = catalog
+            .iter()
+            .filter(|task| task.visibility().is_visible())
+            .map(|task| task.selector())
+            .chain(std::iter::once("script-private-tools"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            listings
+                .iter()
+                .take(expected_order.len())
+                .map(|listing| listing.selector.as_str())
+                .collect::<Vec<_>>(),
+            expected_order,
+            "complete catalog order must precede overlay scripts"
+        );
+        for command in [
+            TaskGraphCommand::Install,
+            TaskGraphCommand::Update,
+            TaskGraphCommand::Uninstall,
+            TaskGraphCommand::Check,
+        ] {
+            let graph = command_tasks(&store, Some(overlay), command);
+            let expected = graph
+                .iter()
+                .filter(|task| task.visibility().is_visible())
+                .map(|task| task.selector())
+                .collect::<HashSet<_>>();
+            let listed = listings
+                .iter()
+                .filter(|listing| listing.commands.contains(&command))
+                .map(|listing| listing.selector.as_str())
+                .collect::<HashSet<_>>();
+            assert_eq!(
+                listed, expected,
+                "{command:?} membership must match its graph"
+            );
+        }
+
+        let graph = command_tasks(&store, Some(overlay), TaskGraphCommand::Uninstall);
         assert!(
             graph
                 .iter()
@@ -519,10 +506,7 @@ mod tests {
     fn internal_tasks_are_hidden() {
         let tasks: Vec<Box<dyn Task>> = vec![Box::new(InternalTask)];
         let mut listings = Vec::new();
-        add_tasks(&mut listings, &tasks, |listing, _| {
-            listing.include(TaskCommand::Install);
-        })
-        .expect("task discovery");
+        add_tasks(&mut listings, &tasks, TaskGraphCommand::Install).expect("task discovery");
         assert!(listings.is_empty());
     }
 
@@ -531,7 +515,7 @@ mod tests {
         let listings = vec![TaskListing {
             selector: "visible".to_string(),
             task: "Visible task".to_string(),
-            commands: vec![TaskCommand::Update],
+            commands: vec![TaskGraphCommand::Update],
         }];
 
         let mut table = Vec::new();

@@ -422,6 +422,62 @@ fn previous_phase_outcomes_preserve_blocking_and_ordering_semantics() {
 }
 
 #[test]
+fn mixed_phase_dependencies_keep_the_original_failure_and_edge_policy() {
+    for (prior_name, current_name, expected_cause) in [
+        ("z-prior", "a-current", "z-prior"),
+        ("a-prior", "z-current", "z-current"),
+    ] {
+        conformance("mixed-phase failure precedence", |mode, ctx, log| {
+            let earlier = TestTask::new(prior_name);
+            let cancelled = TestTask::new("earlier-cancelled");
+            let mut prior = ExecutionSummary::default();
+            prior.record(earlier.task_id(), earlier.name(), TaskOutcome::Failed);
+            prior.record(
+                cancelled.task_id(),
+                cancelled.name(),
+                TaskOutcome::Cancelled,
+            );
+            prior.add_failures(1);
+            let current = TestTask::new(current_name).returning(Behavior::Error);
+            let middle = TestTask::new("middle").after(&[&current]);
+            let leaf = TestTask::new("leaf")
+                .after(&[&middle, &earlier])
+                .ordered_after(&[&earlier, &cancelled]);
+            let ordered = TestTask::new("ordered").ordered_after(&[&middle, &earlier]);
+
+            let mut summary = mode.run(
+                &[&leaf, &ordered, &middle, &current],
+                ctx,
+                log,
+                Some(&prior),
+            );
+
+            middle.assert_ran(false);
+            middle.assert_record(
+                log,
+                &summary,
+                TaskStatus::Blocked,
+                TaskOutcome::Blocked,
+                Some(&format!("blocked by failed dependency: {current_name}")),
+            );
+            leaf.assert_ran(false);
+            leaf.assert_record(
+                log,
+                &summary,
+                TaskStatus::Blocked,
+                TaskOutcome::Blocked,
+                Some(&format!("blocked by failed dependency: {expected_cause}")),
+            );
+            ordered.assert_ran(true);
+            assert_eq!(summary.failure_count(), 1);
+            summary.merge(prior);
+            assert_eq!(summary.failure_count(), 2);
+            summary
+        });
+    }
+}
+
+#[test]
 fn completed_phase_results_are_used_by_later_dispatch() {
     conformance("two actual execution phases", |mode, ctx, log| {
         let root = TestTask::new("root").returning(Behavior::Error);

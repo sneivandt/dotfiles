@@ -1,5 +1,5 @@
 //! Windows registry entry configuration loading.
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 #[cfg(test)]
@@ -178,23 +178,26 @@ fn has_supported_hive(key_path: &str) -> bool {
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case(SUPPORTED_HIVE_PREFIX))
 }
 
-/// Parse a DWORD's unsigned, signed, or hexadecimal representation for comparison.
-pub(crate) fn parse_dword_for_compare(value: &str) -> Option<u32> {
+/// Parse an unsigned, signed, or hexadecimal DWORD.
+///
+/// Signed decimals retain their two's-complement `u32` bit pattern.
+pub(crate) fn parse_dword(value: &str) -> Result<u32> {
     if let Some(hex) = value
         .strip_prefix("0x")
         .or_else(|| value.strip_prefix("0X"))
     {
-        return u64::from_str_radix(hex, 16)
-            .ok()
-            .and_then(|n| u32::try_from(n).ok());
+        let number =
+            u64::from_str_radix(hex, 16).with_context(|| format!("invalid hex DWORD: {value}"))?;
+        return u32::try_from(number)
+            .with_context(|| format!("hex DWORD exceeds u32 range: {value}"));
     }
     if let Ok(unsigned) = value.parse::<u32>() {
-        return Some(unsigned);
+        return Ok(unsigned);
     }
     if let Ok(signed) = value.parse::<i32>() {
-        return Some(u32::from_ne_bytes(signed.to_ne_bytes()));
+        return Ok(u32::from_ne_bytes(signed.to_ne_bytes()));
     }
-    None
+    anyhow::bail!("invalid decimal DWORD: {value}")
 }
 
 /// Find contradictory values for case-insensitive registry target identities.
@@ -220,7 +223,8 @@ pub(crate) fn validate_conflicts(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
             },
             |entry| {
                 let data = match entry.value_type {
-                    RegistryValueType::Dword => parse_dword_for_compare(&entry.value_data)
+                    RegistryValueType::Dword => parse_dword(&entry.value_data)
+                        .ok()
                         .map_or_else(|| entry.value_data.clone(), |value| value.to_string()),
                     RegistryValueType::String => entry.value_data.clone(),
                 };
@@ -270,6 +274,46 @@ mod tests {
     use super::*;
     use crate::infra::config::test_helpers::assert_load_unfiltered_rejects;
     use crate::infra::config::test_load_missing_unfiltered_returns_empty;
+
+    #[test]
+    fn parse_dword_preserves_unsigned_signed_and_hex_boundaries() {
+        for (input, expected) in [
+            ("0", 0),
+            ("+14", 14),
+            (&u32::MAX.to_string(), u32::MAX),
+            (&i32::MAX.to_string(), 0x7fff_ffff),
+            (&i32::MIN.to_string(), 0x8000_0000),
+            ("-1", u32::MAX),
+            ("0x0E", 14),
+            ("0Xffffffff", u32::MAX),
+        ] {
+            assert_eq!(parse_dword(input).unwrap(), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn parse_dword_rejects_invalid_values_with_context() {
+        let unsigned_overflow = u64::from(u32::MAX).saturating_add(1);
+        let signed_underflow = i64::from(i32::MIN).saturating_sub(1);
+        let hex_parse_overflow = u128::from(u64::MAX).saturating_add(1);
+        for (input, expected_error) in [
+            ("", "invalid decimal DWORD"),
+            (" 14", "invalid decimal DWORD"),
+            ("14 ", "invalid decimal DWORD"),
+            (&unsigned_overflow.to_string(), "invalid decimal DWORD"),
+            (&signed_underflow.to_string(), "invalid decimal DWORD"),
+            ("0x", "invalid hex DWORD"),
+            ("0xGG", "invalid hex DWORD"),
+            (
+                &format!("{unsigned_overflow:#x}"),
+                "hex DWORD exceeds u32 range",
+            ),
+            (&format!("{hex_parse_overflow:#x}"), "invalid hex DWORD"),
+        ] {
+            let error = parse_dword(input).unwrap_err().to_string();
+            assert_eq!(error, format!("{expected_error}: {input}"));
+        }
+    }
 
     #[test]
     fn unknown_key_in_registry_section_is_rejected() {

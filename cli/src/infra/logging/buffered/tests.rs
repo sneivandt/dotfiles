@@ -517,6 +517,40 @@ fn typed_actions_persist_once_before_flush_with_arbitrary_verbs() {
 }
 
 #[test]
+fn restart_notice_suppresses_the_completed_row_but_retains_verbose_details() {
+    use crate::infra::logging::TaskResultDisplay;
+    for verbose in [false, true] {
+        let (mut log, _tmp, _guard) = isolated_logger();
+        log.set_verbose(verbose);
+        log.set_symbols(false);
+        let log = Arc::new(log);
+        let buf = BufferedLog::new(Arc::clone(&log));
+        buf.task_stage("repository");
+        buf.action("update", "repository", false, "update repository");
+        buf.record_task(
+            task_entry("repository", TaskStatus::Changed, ActionCounts::default())
+                .with_result_display(TaskResultDisplay::RestartNotice),
+        );
+        buf.flush_and_complete("repository", "repository");
+
+        let expected = if verbose {
+            vec!["  update repository"]
+        } else {
+            vec![]
+        };
+        assert_eq!(log.captured_lines(), expected, "verbose={verbose}");
+        assert!(
+            !log.task_console_output_emitted(),
+            "a superseded row is not a task block"
+        );
+        assert_eq!(log.task_entries()[0].status, TaskStatus::Changed);
+        let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert_eq!(stored.matches("update repository").count(), 1);
+        assert!(stored.contains("\"status\":\"changed\""));
+    }
+}
+
+#[test]
 fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
     use crate::infra::logging::{OutputExt as _, isolated_logger_for};
     for command in ["install", "check"] {

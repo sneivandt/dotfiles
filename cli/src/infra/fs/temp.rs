@@ -73,18 +73,7 @@ impl TempGuard {
     ///
     /// Returns an error if no candidate can be created exclusively.
     pub fn create_unique_file(dir: &Path, prefix: &str, suffix: &str) -> io::Result<(Self, File)> {
-        for _ in 0..1_024 {
-            let path = unique_path(dir, prefix, suffix);
-            match File::options().write(true).create_new(true).open(&path) {
-                Ok(file) => return Ok((Self::file(path), file)),
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(error),
-            }
-        }
-        Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "could not reserve a unique temporary file",
-        ))
+        Self::reserve_file(dir, prefix, suffix, &mut File::options())
     }
 
     /// Create and guard a unique file with an explicit Unix creation mode.
@@ -100,24 +89,27 @@ impl TempGuard {
         suffix: &str,
         mode: u32,
     ) -> io::Result<(Self, File)> {
+        let mut options = File::options();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            options.mode(mode);
+        }
+        #[cfg(not(unix))]
+        let _ = mode;
+        Self::reserve_file(dir, prefix, suffix, &mut options)
+    }
+
+    fn reserve_file(
+        dir: &Path,
+        prefix: &str,
+        suffix: &str,
+        options: &mut std::fs::OpenOptions,
+    ) -> io::Result<(Self, File)> {
+        options.write(true).create_new(true);
         for _ in 0..1_024 {
             let path = unique_path(dir, prefix, suffix);
-            #[cfg(unix)]
-            let opened = {
-                use std::os::unix::fs::OpenOptionsExt as _;
-
-                File::options()
-                    .write(true)
-                    .create_new(true)
-                    .mode(mode)
-                    .open(&path)
-            };
-            #[cfg(not(unix))]
-            let opened = {
-                let _ = mode;
-                File::options().write(true).create_new(true).open(&path)
-            };
-            match opened {
+            match options.open(&path) {
                 Ok(file) => return Ok((Self::file(path), file)),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
@@ -202,11 +194,41 @@ impl Drop for TempGuard {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt as _;
 
+    #[test]
+    fn unique_file_variants_reserve_distinct_paths_and_clean_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let (ordinary, ordinary_file) =
+            TempGuard::create_unique_file(dir.path(), ".file", "tmp").unwrap();
+        let (restricted, restricted_file) =
+            TempGuard::create_unique_file_with_mode(dir.path(), ".file", "tmp", 0o600).unwrap();
+        assert_ne!(ordinary.path(), restricted.path());
+        assert!(ordinary.path().is_file());
+        assert!(restricted.path().is_file());
+        drop((ordinary_file, restricted_file));
+        drop((ordinary, restricted));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn unique_file_variants_preserve_non_collision_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        for error in [
+            TempGuard::create_unique_file(&missing, ".file", "tmp").unwrap_err(),
+            TempGuard::create_unique_file_with_mode(&missing, ".file", "tmp", 0o600).unwrap_err(),
+        ] {
+            assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        }
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
     #[test]
     fn unique_file_with_mode_does_not_depend_on_umask() {
         let dir = tempfile::tempdir().unwrap();

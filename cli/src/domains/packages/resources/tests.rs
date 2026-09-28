@@ -8,11 +8,7 @@ use anyhow::Result;
 use super::package::*;
 use super::winget::parse_winget_ids;
 use crate::engine::{Resource, ResourceChange, ResourceState};
-use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
-
-fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
-    Arc::<T>::clone(executor)
-}
+use crate::infra::exec::{ExecError, ExecResult, Executor, MockExecutor};
 
 #[cfg(unix)]
 fn running_as_root() -> bool {
@@ -234,53 +230,7 @@ fn apply_paru_returns_applied_on_success() {
 }
 
 // ------------------------------------------------------------------
-// batch_install_packages — RecordingExecutor
-// ------------------------------------------------------------------
-
-/// A test executor that records every [`Executor::execute`] invocation as
-/// `(program, args)` pairs so tests can assert exact command lines.
-#[derive(Debug, Default)]
-struct RecordingExecutor {
-    calls: std::sync::Mutex<Vec<(String, Vec<String>)>>,
-}
-
-impl RecordingExecutor {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn recorded_calls(&self) -> Vec<(String, Vec<String>)> {
-        self.calls.lock().unwrap().clone()
-    }
-}
-
-impl Executor for RecordingExecutor {
-    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
-        self.calls.lock().unwrap().push((
-            spec.program().to_string_lossy().into_owned(),
-            spec.arguments()
-                .iter()
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .collect(),
-        ));
-        Ok(ExecResult::success(""))
-    }
-
-    fn which(&self, program: &str) -> bool {
-        program == "sudo"
-    }
-
-    fn which_path(&self, program: &str) -> Result<std::path::PathBuf> {
-        if program == "paru" {
-            Ok(std::path::PathBuf::from("/usr/bin/paru"))
-        } else {
-            anyhow::bail!("{program} not found on PATH")
-        }
-    }
-}
-
-// ------------------------------------------------------------------
-// batch_install_packages
+// install_missing_packages
 // ------------------------------------------------------------------
 
 #[test]
@@ -331,96 +281,48 @@ fn batch_install_announces_each_package_before_execution() {
 }
 
 #[test]
-fn batch_install_pacman_groups_into_single_command() {
-    let executor = Arc::new(RecordingExecutor::new());
-    let r1 = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        executor_arc(&executor),
-    );
-    let r2 = PackageResource::new(
-        "vim".to_string(),
-        PackageManager::Pacman,
-        executor_arc(&executor),
-    );
-    batch_install_packages(&[&r1, &r2]).unwrap();
+fn native_batch_install_uses_one_checked_command() {
+    let (pacman_program, pacman_args) = if running_as_root() {
+        ("pacman", vec!["-Syu", "--needed", "--noconfirm"])
+    } else {
+        ("sudo", vec!["pacman", "-Syu", "--needed", "--noconfirm"])
+    };
+    for (manager, names, program, mut args) in [
+        (
+            PackageManager::Pacman,
+            ["git", "vim"],
+            pacman_program,
+            pacman_args,
+        ),
+        (
+            PackageManager::Paru,
+            ["paru-bin", "yay"],
+            "/usr/bin/paru",
+            vec!["-S", "--needed", "--noconfirm"],
+        ),
+    ] {
+        let mut mock = MockExecutor::new();
+        if manager == PackageManager::Pacman {
+            expect_sudo_lookup_if_needed(&mut mock);
+        }
+        args.extend(names);
+        let args: Vec<_> = args.into_iter().map(std::ffi::OsString::from).collect();
+        mock.expect_execute()
+            .once()
+            .withf(move |spec| {
+                spec.program() == program && spec.arguments() == args && spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let resources = names
+            .map(|name| PackageResource::new(name.to_string(), manager, Arc::clone(&executor)));
+        let references: Vec<_> = resources.iter().collect();
 
-    let calls = executor.recorded_calls();
-    assert_eq!(
-        calls.len(),
-        1,
-        "exactly one command for two pacman packages"
-    );
-    let (prog, args) = &calls[0];
-    assert_eq!(prog, "sudo");
-    assert_eq!(args[0], "pacman");
-    assert_eq!(args[1], "-Syu");
-    assert_eq!(args[2], "--needed");
-    assert_eq!(args[3], "--noconfirm");
-    assert!(args.contains(&"git".to_string()), "git must be in args");
-    assert!(args.contains(&"vim".to_string()), "vim must be in args");
-}
+        let report = install_missing_packages(manager, &references, &*executor, &|_| {}).unwrap();
 
-#[test]
-fn batch_install_paru_groups_into_single_command() {
-    let executor = Arc::new(RecordingExecutor::new());
-    let r1 = PackageResource::new(
-        "paru-bin".to_string(),
-        PackageManager::Paru,
-        executor_arc(&executor),
-    );
-    let r2 = PackageResource::new(
-        "yay".to_string(),
-        PackageManager::Paru,
-        executor_arc(&executor),
-    );
-    batch_install_packages(&[&r1, &r2]).unwrap();
-
-    let calls = executor.recorded_calls();
-    assert_eq!(calls.len(), 1, "exactly one command for two paru packages");
-    let (prog, args) = &calls[0];
-    assert_eq!(prog, "/usr/bin/paru");
-    assert_eq!(args[0], "-S");
-    assert_eq!(args[1], "--needed");
-    assert_eq!(args[2], "--noconfirm");
-    assert!(args.contains(&"paru-bin".to_string()));
-    assert!(args.contains(&"yay".to_string()));
-}
-
-#[test]
-fn batch_install_mixed_managers_sends_separate_commands() {
-    let pacman_exec = Arc::new(RecordingExecutor::new());
-    let paru_exec = Arc::new(RecordingExecutor::new());
-    let r1 = PackageResource::new(
-        "git".to_string(),
-        PackageManager::Pacman,
-        executor_arc(&pacman_exec),
-    );
-    let r2 = PackageResource::new(
-        "paru-bin".to_string(),
-        PackageManager::Paru,
-        executor_arc(&paru_exec),
-    );
-    batch_install_packages(&[&r1, &r2]).unwrap();
-
-    // Pacman batch uses pacman_exec
-    let pacman_calls = pacman_exec.recorded_calls();
-    assert_eq!(pacman_calls.len(), 1);
-    assert_eq!(pacman_calls[0].0, "sudo");
-    assert!(pacman_calls[0].1.contains(&"-Syu".to_string()));
-    assert!(pacman_calls[0].1.contains(&"git".to_string()));
-
-    // Paru batch uses paru_exec
-    let paru_calls = paru_exec.recorded_calls();
-    assert_eq!(paru_calls.len(), 1);
-    assert_eq!(paru_calls[0].0, "/usr/bin/paru");
-    assert!(paru_calls[0].1.contains(&"paru-bin".to_string()));
-}
-
-#[test]
-fn batch_install_empty_list_is_noop() {
-    let resources: &[&PackageResource] = &[];
-    batch_install_packages(resources).unwrap();
+        assert_eq!(report.applied_count(), 2, "{manager}");
+        assert!(!report.has_failures(), "{manager}");
+    }
 }
 
 #[test]
@@ -439,15 +341,11 @@ fn batch_install_propagates_pacman_error() {
         PackageManager::Pacman,
         Arc::clone(&executor),
     );
-    assert!(batch_install_packages(&[&r1]).is_err());
+    assert!(install_missing_packages(PackageManager::Pacman, &[&r1], &*executor, &|_| {}).is_err());
 }
 
 #[test]
-fn batch_install_winget_skipped_returns_error() {
-    // MockExecutor::run_unchecked returns success=false.
-    // PackageResource::apply() for Winget checks result.success and returns
-    // ResourceChange::Skipped on failure — batch_install_packages must
-    // convert that into an error.
+fn winget_unmet_install_is_recorded_as_a_package_failure() {
     let mut mock = MockExecutor::new();
     mock.expect_execute()
         .once()
@@ -458,10 +356,15 @@ fn batch_install_winget_skipped_returns_error() {
         PackageManager::Winget,
         Arc::clone(&executor),
     );
-    let err = batch_install_packages(&[&r1]).unwrap_err();
+    let report =
+        install_missing_packages(PackageManager::Winget, &[&r1], &*executor, &|_| {}).unwrap();
+    assert_eq!(report.applied_count(), 0);
+    assert_eq!(report.failures().len(), 1);
+    let failure = &report.failures()[0];
+    assert_eq!(failure.package, "Git.Git");
     assert!(
-        err.to_string().contains("winget install failed"),
-        "expected 'winget install failed' in: {err}"
+        failure.reason.contains("winget install failed"),
+        "unexpected failure: {failure:?}"
     );
 }
 
@@ -491,12 +394,15 @@ fn winget_install_report_tracks_successful_package_names() {
     );
 
     let announced = std::sync::Mutex::new(Vec::new());
-    let report = PackageManager::Winget
-        .provider()
-        .install_missing(&[&first, &second], &*executor, &|package| {
+    let report = install_missing_packages(
+        PackageManager::Winget,
+        &[&first, &second],
+        &*executor,
+        &|package| {
             announced.lock().unwrap().push(package.to_string());
-        })
-        .unwrap();
+        },
+    )
+    .unwrap();
 
     assert_eq!(
         *announced.lock().unwrap(),

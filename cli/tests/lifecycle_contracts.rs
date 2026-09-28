@@ -73,6 +73,12 @@ fn assert_link(target: &Path, source: &Path) {
         dunce::canonicalize(source).unwrap(),
         "managed link must point at its configured source"
     );
+    #[cfg(unix)]
+    assert_eq!(
+        std::fs::read_link(target).unwrap(),
+        source,
+        "native link must retain the exact configured source path"
+    );
 }
 
 fn assert_symlinks_installed(fixture: &Fixture) {
@@ -210,10 +216,12 @@ fn hook_fixture() -> Fixture {
             &format!("#!/bin/sh\n# fixture {hook}\nexit 0\n"),
         );
     }
-    write(
-        &fixture.repo.join("hooks").join("helper.sh"),
-        "not an installable entry point\n",
-    );
+    for helper in ["helper.sh", "sensitive-patterns.ini"] {
+        write(
+            &fixture.repo.join("hooks").join(helper),
+            "not an installable entry point\n",
+        );
+    }
     write(
         &fixture.repo.join(".git").join("hooks").join("pre-commit"),
         "obsolete hook\n",
@@ -239,15 +247,17 @@ fn assert_hooks_installed(fixture: &Fixture) {
             );
         }
     }
-    assert!(
-        !fixture
-            .repo
-            .join(".git")
-            .join("hooks")
-            .join("helper.sh")
-            .exists(),
-        "helper files must not create logical resources"
-    );
+    for helper in ["helper.sh", "sensitive-patterns.ini"] {
+        assert!(
+            !fixture
+                .repo
+                .join(".git")
+                .join("hooks")
+                .join(helper)
+                .exists(),
+            "{helper} must not create a logical resource"
+        );
+    }
 }
 
 #[test]

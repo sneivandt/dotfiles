@@ -7,7 +7,7 @@ use anyhow::Result;
 #[cfg(any(windows, test))]
 use anyhow::bail;
 
-use crate::domains::system::config::registry::{RegistryValueType, parse_dword_for_compare};
+use crate::domains::system::config::registry::{RegistryValueType, parse_dword};
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// Current registry value data and its native value type.
@@ -24,6 +24,9 @@ impl CurrentRegistryValue {
     }
 }
 
+/// A key path and value name kept separate because value names may contain `\`.
+pub type RegistryTarget = (String, String);
+
 /// Native Windows registry access via the `winreg` crate.
 #[cfg(windows)]
 mod native {
@@ -37,7 +40,7 @@ mod native {
     };
 
     use super::{CurrentRegistryValue, parse_hkcu_subkey};
-    use crate::domains::system::config::registry::RegistryValueType;
+    use crate::domains::system::config::registry::{RegistryValueType, parse_dword};
 
     /// Parse a `PowerShell`-style registry path into a root key and subkey.
     fn parse_path(key_path: &str) -> Result<(RegKey, &str)> {
@@ -94,31 +97,6 @@ mod native {
             }
         }
         Ok(())
-    }
-
-    /// Parse a decimal or `0x`-prefixed hex string into a `u32`.
-    ///
-    /// Negative decimal values are accepted and reinterpreted as their
-    /// two's-complement `u32` bit pattern (e.g. `-1` becomes `0xFFFFFFFF`),
-    /// matching how the Windows registry tooling commonly represents signed
-    /// flag values.
-    fn parse_dword(value_data: &str) -> Result<u32> {
-        if let Some(hex) = value_data
-            .strip_prefix("0x")
-            .or_else(|| value_data.strip_prefix("0X"))
-        {
-            let n = u64::from_str_radix(hex, 16)
-                .with_context(|| format!("invalid hex DWORD: {value_data}"))?;
-            return u32::try_from(n)
-                .with_context(|| format!("hex DWORD exceeds u32 range: {value_data}"));
-        }
-        if let Ok(unsigned) = value_data.parse::<u32>() {
-            return Ok(unsigned);
-        }
-        if let Ok(signed) = value_data.parse::<i32>() {
-            return Ok(u32::from_ne_bytes(signed.to_ne_bytes()));
-        }
-        anyhow::bail!("invalid decimal DWORD: {value_data}")
     }
 
     /// Convert a raw registry value to a string representation.
@@ -228,10 +206,13 @@ impl RegistryResource {
         )
     }
 
+    pub(crate) fn cache_key(&self) -> RegistryTarget {
+        (self.key_path.clone(), self.value_name.clone())
+    }
+
     /// Determine the resource state from a pre-fetched current value.
     ///
-    /// This avoids spawning a `PowerShell` process per resource when used
-    /// with [`batch_check_values`].
+    /// [`batch_check_values`] reads all values before convergence starts.
     #[must_use]
     pub fn state_from_cached(&self, current_value: Option<&CurrentRegistryValue>) -> ResourceState {
         current_value.map_or(ResourceState::Missing, |current| {
@@ -249,7 +230,7 @@ impl RegistryResource {
 /// Batch-check all registry values.
 ///
 /// On Windows, reads each value directly via the `winreg` crate. Returns a map
-/// from `"key_path\value_name"` to the current typed value (`None` when the key
+/// from `(key_path, value_name)` to the current typed value (`None` when the key
 /// or value does not exist).
 ///
 /// # Errors
@@ -258,12 +239,11 @@ impl RegistryResource {
 #[cfg(windows)]
 pub fn batch_check_values(
     resources: &[RegistryResource],
-) -> Result<HashMap<String, Option<CurrentRegistryValue>>> {
+) -> Result<HashMap<RegistryTarget, Option<CurrentRegistryValue>>> {
     let mut map = HashMap::with_capacity(resources.len());
     for res in resources {
-        let key = format!("{}\\{}", res.key_path, res.value_name);
         let value = native::read_value(&res.key_path, &res.value_name)?;
-        map.insert(key, value);
+        map.insert(res.cache_key(), value);
     }
     Ok(map)
 }
@@ -280,7 +260,7 @@ pub fn batch_check_values(
 )]
 pub fn batch_check_values(
     _resources: &[RegistryResource],
-) -> Result<HashMap<String, Option<CurrentRegistryValue>>> {
+) -> Result<HashMap<RegistryTarget, Option<CurrentRegistryValue>>> {
     Ok(HashMap::new())
 }
 
@@ -328,8 +308,8 @@ fn value_matches(
 
     match expected_type {
         RegistryValueType::Dword => {
-            let current = parse_dword_for_compare(&current.data);
-            let expected = parse_dword_for_compare(expected_data);
+            let current = parse_dword(&current.data).ok();
+            let expected = parse_dword(expected_data).ok();
             current.is_some() && current == expected
         }
         RegistryValueType::String => current.data == expected_data,
@@ -455,6 +435,47 @@ mod tests {
         let current = CurrentRegistryValue::new("14".to_string(), Some(RegistryValueType::Dword));
         let state = resource.state_from_cached(Some(&current));
         assert_eq!(state, ResourceState::Correct);
+    }
+
+    #[test]
+    fn cached_values_distinguish_backslashes_in_value_names_from_subkeys() {
+        let resources = [
+            RegistryResource::new(
+                r"HKCU:\A".to_string(),
+                r"B\C".to_string(),
+                "1".to_string(),
+                RegistryValueType::Dword,
+            ),
+            RegistryResource::new(
+                r"HKCU:\A\B".to_string(),
+                "C".to_string(),
+                "2".to_string(),
+                RegistryValueType::Dword,
+            ),
+        ];
+        let cached: HashMap<_, _> = resources
+            .iter()
+            .map(|resource| {
+                (
+                    resource.cache_key(),
+                    Some(CurrentRegistryValue::new(
+                        resource.value_data.clone(),
+                        Some(resource.value_type),
+                    )),
+                )
+            })
+            .collect();
+
+        assert_eq!(cached.len(), 2);
+        for resource in &resources {
+            assert_eq!(
+                resource
+                    .state_from_cached(cached.get(&resource.cache_key()).and_then(Option::as_ref)),
+                ResourceState::Correct,
+                "{:?}",
+                resource.cache_key()
+            );
+        }
     }
 
     #[test]

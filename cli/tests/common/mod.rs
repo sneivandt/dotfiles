@@ -10,6 +10,7 @@
 use dotfiles_cli::testing as test_api;
 use std::collections::HashSet;
 use std::path::Path;
+use std::process::Command;
 use std::sync::Arc;
 
 use test_api::config::Config;
@@ -22,6 +23,49 @@ use test_api::tasks::{Context, ContextOpts, Task, TaskId};
 
 fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
     Arc::<Logger>::clone(log)
+}
+
+/// Build a selected CLI command with writable state confined to the fixture.
+///
+/// Callers retain control of presentation, scheduling, and failure-policy flags.
+pub(crate) fn cli_command(
+    repo: &Path,
+    home: &Path,
+    overlay: Option<&Path>,
+    verb: &str,
+    selector: &str,
+) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_dotfiles"));
+    command
+        .args([
+            verb,
+            "--profile",
+            "base",
+            "--only",
+            selector,
+            "--non-interactive",
+        ])
+        .arg("--root")
+        .arg(repo)
+        .env("HOME", home)
+        .env("USERPROFILE", home)
+        .env("XDG_STATE_HOME", home.join("state"))
+        .env("XDG_CACHE_HOME", home.join("cache"))
+        .env("DOTFILES_LOG_DIR", home.join("logs"))
+        .env("DOTFILES_SKIP_SELF_UPDATE", "1")
+        .env_remove("CI")
+        .env_remove("LOCALAPPDATA")
+        .env_remove("DOTFILES_OVERLAY")
+        .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD")
+        .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
+        .env_remove("DOTFILES_REEXEC_GUARD");
+    if let Some(overlay) = overlay {
+        command.arg("--overlay").arg(overlay);
+    }
+    if verb == "install" {
+        command.arg("--no-repo-update");
+    }
+    command
 }
 
 /// Assert the structural invariants shared by every static task catalog.
@@ -134,9 +178,7 @@ impl IntegrationTestContext {
 
     /// Load configuration for the given profile using the current platform.
     pub(crate) fn load_config(&self, profile_name: &str) -> Config {
-        let platform = Platform::detect();
-        let profile = profiles::resolve(profile_name, platform).expect("resolve profile");
-        Config::load(self.root.path(), &profile, platform, None).expect("load config")
+        self.load_config_for_platform(profile_name, Platform::detect())
     }
 
     /// Load configuration for the given profile using the provided platform.
@@ -181,12 +223,7 @@ impl TestContextBuilder {
     /// Create a source file inside the `symlinks/` directory so that
     /// symlink validation does not complain about missing sources.
     pub(crate) fn with_symlink_source(self, source: &str) -> Self {
-        let path = self.ctx.root.path().join("symlinks").join(source);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("create symlink source parent");
-        }
-        std::fs::write(&path, "").expect("write symlink source file");
-        self
+        self.with_symlink_source_content(source, "")
     }
 
     /// Create a source file with specific content inside the `symlinks/` directory.
@@ -278,31 +315,16 @@ impl IntegrationTestContext {
     /// filesystem-only tasks (symlinks, hooks, chmod) can execute without
     /// invoking external commands.
     pub(crate) fn make_context(&self, profile: &str) -> ExecutionContext {
-        let config = self.load_config(profile);
-        let home = tempfile::tempdir().expect("create home dir");
-        let log = Arc::new(Logger::new("test"));
-        let root = config.root.clone();
-        let overlay = config.overlay.clone();
-        let store = ConfigStore::from_config(config);
-        let ctx = Context::from_raw(
-            root,
-            overlay,
+        self.make_context_with_executor(
+            profile,
             Platform::detect(),
-            log_arc(&log),
-            Arc::new(StubExecutor),
-            home.path().to_path_buf(),
             ContextOpts {
                 dry_run: false,
                 parallel: false,
                 is_ci: Some(false),
             },
-        );
-        ExecutionContext {
-            ctx,
-            store,
-            log,
-            _home: home,
-        }
+            Arc::new(StubExecutor),
+        )
     }
 
     /// Create a task execution [`Context`] backed by a real [`ProcessExecutor`].
@@ -321,6 +343,22 @@ impl IntegrationTestContext {
         platform: Platform,
         opts: ContextOpts,
     ) -> ExecutionContext {
+        self.make_context_with_executor(
+            profile,
+            platform,
+            opts,
+            Arc::new(ProcessExecutor::system()),
+        )
+    }
+
+    /// Create a context with an injected executor, retaining its temporary home.
+    pub(crate) fn make_context_with_executor(
+        &self,
+        profile: &str,
+        platform: Platform,
+        opts: ContextOpts,
+        executor: Arc<dyn Executor>,
+    ) -> ExecutionContext {
         let config = self.load_config_for_platform(profile, platform);
         let home = tempfile::tempdir().expect("create home dir");
         let log = Arc::new(Logger::new("test"));
@@ -332,7 +370,7 @@ impl IntegrationTestContext {
             overlay,
             platform,
             log_arc(&log),
-            Arc::new(ProcessExecutor::system()),
+            executor,
             home.path().to_path_buf(),
             opts,
         );

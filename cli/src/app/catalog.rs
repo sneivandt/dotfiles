@@ -90,16 +90,6 @@ pub fn all_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     install_tasks_for_run(store, &repo_updated, ApmPackageMode::Install)
 }
 
-/// Tasks whose update-mode instances run only with `install --update`.
-#[must_use]
-pub(crate) fn update_only_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
-    let repo_updated = RepositoryUpdateSignal::new();
-    install_tasks_for_run(store, &repo_updated, ApmPackageMode::UpdatePins)
-        .into_iter()
-        .filter(|task| task.update_only())
-        .collect()
-}
-
 #[must_use]
 pub(crate) fn install_tasks_for_run(
     store: &ConfigStore,

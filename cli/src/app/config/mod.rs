@@ -7,31 +7,25 @@ macro_rules! config_section_inventory {
     ($apply:ident) => {
         $apply! {
             packages: Vec<crate::domains::packages::config::packages::Package> =>
-                |config: &Config| Some(SectionCount::new("package", "packages", config.packages.len()));
+                |config: &Config| SectionCount::new("package", "packages", config.packages.len());
             symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
-                |config: &Config| Some(SectionCount::new("symlink", "symlinks", config.symlinks.len()));
-            validation_symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
-                |_config: &Config| None;
+                |config: &Config| SectionCount::new("symlink", "symlinks", config.symlinks.len());
             registry: Vec<crate::domains::system::config::registry::RegistryEntry> =>
-                |config: &Config| Some(SectionCount::new("registry entry", "registry entries", config.registry.len()));
+                |config: &Config| SectionCount::new("registry entry", "registry entries", config.registry.len());
             units: Vec<crate::domains::system::config::systemd_units::SystemdUnit> =>
-                |config: &Config| Some(SectionCount::new("systemd unit", "systemd units", config.units.len()));
+                |config: &Config| SectionCount::new("systemd unit", "systemd units", config.units.len());
             system_files: Vec<crate::domains::system::config::system_files::SystemFile> =>
-                |config: &Config| Some(SectionCount::new("system file", "system files", config.system_files.len()));
-            validation_system_files: Vec<crate::domains::system::config::system_files::SystemFile> =>
-                |_config: &Config| None;
+                |config: &Config| SectionCount::new("system file", "system files", config.system_files.len());
             chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
-                |config: &Config| Some(SectionCount::new("chmod entry", "chmod entries", config.chmod.len()));
-            validation_chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
-                |_config: &Config| None;
+                |config: &Config| SectionCount::new("chmod entry", "chmod entries", config.chmod.len());
             vscode_extensions: Vec<String> =>
-                |config: &Config| Some(SectionCount::new("vscode extension", "vscode extensions", config.vscode_extensions.len()));
+                |config: &Config| SectionCount::new("vscode extension", "vscode extensions", config.vscode_extensions.len());
             git_settings: Vec<crate::domains::git::config::git_config::GitSetting> =>
-                |config: &Config| Some(SectionCount::new("git setting", "git settings", config.git_settings.len()));
+                |config: &Config| SectionCount::new("git setting", "git settings", config.git_settings.len());
             agent_settings: Vec<crate::domains::ai::config::agent_settings::AgentSetting> =>
-                |config: &Config| Some(SectionCount::new("agent setting", "agent settings", config.agent_settings.len()));
+                |config: &Config| SectionCount::new("agent setting", "agent settings", config.agent_settings.len());
             scripts: Vec<crate::domains::overlay::config::scripts::ScriptEntry> =>
-                |config: &Config| Some(SectionCount::new("overlay script", "overlay scripts", config.scripts.len()));
+                |config: &Config| SectionCount::new("overlay script", "overlay scripts", config.scripts.len());
         }
     };
 }
@@ -379,7 +373,7 @@ impl Config {
     pub(crate) fn section_counts(&self) -> Vec<SectionCount> {
         macro_rules! collect_section_counts {
             ($($field:ident: $ty:ty => $count:expr;)+) => {
-                [$(($count)(self)),+].into_iter().flatten().collect()
+                vec![$(($count)(self)),+]
             };
         }
 

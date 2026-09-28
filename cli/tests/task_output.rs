@@ -7,60 +7,19 @@
 
 mod common;
 
-use std::process::Command;
-
-fn command(
-    repo: &std::path::Path,
-    home: &std::path::Path,
-    overlay: &std::path::Path,
-    verb: &str,
-    selector: &str,
-) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_dotfiles"));
-    command
-        .args([
-            verb,
-            "--profile",
-            "base",
-            "--only",
-            selector,
-            "--non-interactive",
-            "--no-symbols",
-        ])
-        .arg("--root")
-        .arg(repo)
-        .arg("--overlay")
-        .arg(overlay)
-        .env("HOME", home)
-        .env("USERPROFILE", home)
-        .env("XDG_STATE_HOME", home.join("state"))
-        .env("XDG_CACHE_HOME", home.join("cache"))
-        .env("DOTFILES_LOG_DIR", home.join("logs"))
-        .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-        .env_remove("CI")
-        .env_remove("LOCALAPPDATA")
-        .env_remove("DOTFILES_OVERLAY")
-        .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD")
-        .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
-        .env_remove("DOTFILES_REEXEC_GUARD");
-    if verb == "install" {
-        command.arg("--no-repo-update");
-    }
-    command
-}
-
 #[test]
 fn completions_report_changes_then_current() {
     let repo = common::TestContextBuilder::new().build();
     let home = tempfile::tempdir().unwrap();
     let overlay = tempfile::tempdir().unwrap();
-    let mut command = command(
+    let mut command = common::cli_command(
         repo.root_path(),
         home.path(),
-        overlay.path(),
+        Some(overlay.path()),
         "install",
         "completions",
     );
+    command.arg("--no-symbols");
     for expected in ["CHANGE Shell completions", "No changes · 1 current"] {
         let output = command.output().unwrap();
         let stdout = String::from_utf8(output.stdout).unwrap();
@@ -94,14 +53,14 @@ fn overlay_check_failures_are_visible_in_both_schedulers() {
                 )
                 .unwrap();
             }
-            let mut command = command(
+            let mut command = common::cli_command(
                 repo.root_path(),
                 home.path(),
-                overlay.path(),
+                Some(overlay.path()),
                 "install",
                 "script-audit-script",
             );
-            command.arg("--fail-on-skip");
+            command.args(["--no-symbols", "--fail-on-skip"]);
             if sequential {
                 command.arg("--no-parallel");
             }
@@ -145,14 +104,14 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
         ("psscriptanalyzer", "pwsh"),
     ] {
         for strict in [false, true] {
-            let mut command = command(
+            let mut command = common::cli_command(
                 repo.root_path(),
                 home.path(),
-                overlay.path(),
+                Some(overlay.path()),
                 "check",
                 selector,
             );
-            command.env("PATH", empty_path.path());
+            command.arg("--no-symbols").env("PATH", empty_path.path());
             if strict {
                 command.arg("--fail-on-skip");
             }

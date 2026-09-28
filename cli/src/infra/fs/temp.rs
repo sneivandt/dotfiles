@@ -222,9 +222,44 @@ mod tests {
         for error in [
             TempGuard::create_unique_file(&missing, ".file", "tmp").unwrap_err(),
             TempGuard::create_unique_file_with_mode(&missing, ".file", "tmp", 0o600).unwrap_err(),
+            TempGuard::create_unique_dir(&missing, ".directory", "tmp").unwrap_err(),
         ] {
             assert_eq!(error.kind(), io::ErrorKind::NotFound);
         }
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn concurrent_reservations_keep_distinct_contents_until_their_own_guard_is_dropped() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let workers = 8;
+        let barrier = std::sync::Barrier::new(workers);
+        let files = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..workers)
+                .map(|worker| {
+                    let barrier = &barrier;
+                    let dir = dir.path();
+                    scope.spawn(move || {
+                        barrier.wait();
+                        let (guard, mut file) =
+                            TempGuard::create_unique_file(dir, ".shared", "tmp").unwrap();
+                        write!(file, "{worker}").unwrap();
+                        drop(file);
+                        (guard, worker.to_string())
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), workers);
+        for (guard, content) in &files {
+            assert_eq!(std::fs::read_to_string(guard.path()).unwrap(), *content);
+        }
+        drop(files);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 

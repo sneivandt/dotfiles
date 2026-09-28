@@ -130,16 +130,24 @@ packages = ["winget-pkg"]
     }
 
     #[test]
-    fn aur_packages_detected() {
+    fn table_metadata_defaults_and_explicit_flags_are_preserved() {
         let (_dir, path) = write_temp_toml(
             r#"[arch]
-packages = [{ name = "paru-bin", aur = true }, { name = "yay", aur = true }]
+packages = [
+  { name = "git" },
+  { name = "vim", aur = false },
+  { name = "paru-bin", aur = true },
+]
 "#,
         );
         let packages = load(&path, &[Category::Base, Category::Arch]).unwrap();
-        assert_eq!(packages.len(), 2);
-        assert!(packages[0].is_aur);
-        assert!(packages[1].is_aur);
+        assert_eq!(
+            packages
+                .iter()
+                .map(|package| (package.name.as_str(), package.is_aur))
+                .collect::<Vec<_>>(),
+            [("git", false), ("vim", false), ("paru-bin", true)]
+        );
     }
 
     test_load_missing_returns_empty!(load);

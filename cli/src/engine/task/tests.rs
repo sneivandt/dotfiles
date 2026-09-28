@@ -2,7 +2,6 @@ use super::*;
 use crate::engine::{
     IntrinsicState, ProcessOpts, Resource, ResourceChange, ResourceResult, ResourceState, TaskStats,
 };
-use crate::infra::ConfigHandle;
 use crate::infra::logging::{ActionCounts, TaskStatus};
 use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
 use anyhow::Result;
@@ -20,51 +19,13 @@ impl Resource for DummyResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        Ok(ResourceChange::AlreadyCorrect)
+        panic!("already-correct and unprocessed resources must never be applied")
     }
 }
 
 impl IntrinsicState for DummyResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
         Ok(ResourceState::Correct)
-    }
-}
-
-/// Exercise both resource-task bodies with either direct or config-backed items.
-struct CountingResourceTask {
-    config: Option<ConfigHandle<Vec<()>>>,
-    batch: bool,
-    item_evaluations: AtomicUsize,
-}
-
-impl Task for CountingResourceTask {
-    task_metadata! {
-        name: "Counting resource task",
-    }
-
-    fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let items = self
-            .config
-            .as_ref()
-            .map_or_else(Vec::new, |config| config.read().to_vec());
-        self.item_evaluations.fetch_add(1, Ordering::SeqCst);
-        if self.batch {
-            run_batch_resource_task(
-                ctx,
-                items,
-                |(), _ctx| DummyResource,
-                |_items, _ctx| Ok::<Vec<()>, anyhow::Error>(Vec::new()),
-                |_resource, _cache| Ok(ResourceState::Correct),
-                &ProcessOpts::strict("count"),
-            )
-        } else {
-            run_resource_task(
-                ctx,
-                items,
-                |(), _ctx| DummyResource,
-                &ProcessOpts::strict("count"),
-            )
-        }
     }
 }
 
@@ -255,8 +216,14 @@ fn execute_records_ok_task() {
         result: Ok(TaskResult::Ok),
     };
 
-    execute(&task, &ctx);
+    assert_eq!(execute(&task, &ctx), TaskStatus::Ok);
     assert_eq!(log.failure_count(), 0);
+    let entries = log.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].status, TaskStatus::Ok);
+    assert_eq!(entries[0].name, "ok-task");
+    assert_eq!(entries[0].message, None);
+    assert_eq!(entries[0].actions, ActionCounts::default());
 }
 
 #[test]
@@ -301,8 +268,12 @@ fn execute_records_failed_task() {
         result: Err("kaboom".to_string()),
     };
 
-    execute(&task, &ctx);
+    assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
     assert_eq!(log.failure_count(), 1);
+    let entries = log.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].status, TaskStatus::Failed);
+    assert_eq!(entries[0].message.as_deref(), Some("kaboom"));
 }
 
 #[test]
@@ -315,8 +286,13 @@ fn execute_records_skipped_task() {
         result: Ok(TaskResult::skipped("not needed")),
     };
 
-    execute(&task, &ctx);
+    assert_eq!(execute(&task, &ctx), TaskStatus::Skipped);
     assert_eq!(log.failure_count(), 0);
+    let entries = log.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].status, TaskStatus::Skipped);
+    assert_eq!(entries[0].message.as_deref(), Some("not needed"));
+    assert_eq!(entries[0].actions, ActionCounts::default());
 }
 
 #[test]
@@ -645,24 +621,144 @@ fn precomputed_assessment_is_reused_during_execution() {
 }
 
 #[test]
-fn resource_task_bodies_evaluate_items_once() {
-    for (name, batch, config_backed) in [
-        ("direct resource", false, false),
-        ("direct batch", true, false),
-        ("config resource", false, true),
-        ("config batch", true, true),
-    ] {
-        let (ctx, _) = make_static_context(empty_config("/fixture".into()));
-        let task = CountingResourceTask {
-            config: config_backed.then(|| ConfigHandle::new(Vec::new())),
-            batch,
-            item_evaluations: AtomicUsize::new(0),
-        };
+fn empty_resource_task_bodies_skip_building_and_discovery() {
+    let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+    let builds = AtomicUsize::new(0);
+    let loads = AtomicUsize::new(0);
+    let checks = AtomicUsize::new(0);
+    let build = |(), _: &Context| {
+        builds.fetch_add(1, Ordering::SeqCst);
+        DummyResource
+    };
+    let opts = ProcessOpts::strict("install");
 
-        let result = task.run(&ctx).unwrap();
-        assert!(matches!(result, TaskResult::NotApplicable(_)), "{name}");
-        assert_eq!(task.item_evaluations.load(Ordering::SeqCst), 1, "{name}");
+    let direct = run_resource_task(&ctx, vec![], build, &opts).unwrap();
+    let batch = run_batch_resource_task(
+        &ctx,
+        vec![],
+        build,
+        |_, _| {
+            loads.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        },
+        |_, &()| {
+            checks.fetch_add(1, Ordering::SeqCst);
+            Ok(ResourceState::Correct)
+        },
+        &opts,
+    )
+    .unwrap();
+    for result in [direct, batch] {
+        assert!(matches!(
+            result,
+            TaskResult::NotApplicable(reason) if reason == "nothing configured"
+        ));
     }
+    assert_eq!(builds.load(Ordering::SeqCst), 0);
+    assert_eq!(loads.load(Ordering::SeqCst), 0);
+    assert_eq!(checks.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn resource_task_builds_every_configured_item_once() {
+    let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+    let mut built = Vec::new();
+    let result = run_resource_task(
+        &ctx,
+        vec![3, 1, 2],
+        |item, build_ctx| {
+            assert!(std::ptr::eq(build_ctx, &raw const ctx));
+            built.push(item);
+            DummyResource
+        },
+        &ProcessOpts::strict("install"),
+    )
+    .unwrap();
+
+    assert_eq!(built, [3, 1, 2]);
+    let TaskResult::Batch(stats) = result else {
+        panic!("expected one outcome per configured item");
+    };
+    assert_eq!(stats.already_ok_count(), 3);
+    assert_eq!(stats.changed_count(), 0);
+    assert_eq!(stats.failed_count(), 0);
+    assert_eq!(stats.skipped_count(), 0);
+}
+
+#[test]
+fn failed_batch_load_never_checks_or_applies_resources() {
+    for parallel in [false, true] {
+        for dry_run in [false, true] {
+            let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+            let ctx = ctx.with_parallel(parallel).with_dry_run(dry_run);
+            let mut built = Vec::new();
+            let loads = AtomicUsize::new(0);
+            let checks = AtomicUsize::new(0);
+            let error = run_batch_resource_task(
+                &ctx,
+                vec![3, 1, 2],
+                |item, _| {
+                    built.push(item);
+                    DummyResource
+                },
+                |resources, _| {
+                    loads.fetch_add(1, Ordering::SeqCst);
+                    assert_eq!(resources.len(), 3);
+                    Err::<(), _>(
+                        std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "batch discovery denied",
+                        )
+                        .into(),
+                    )
+                },
+                |_, &()| {
+                    checks.fetch_add(1, Ordering::SeqCst);
+                    panic!("state lookup must not run without a loaded cache")
+                },
+                &ProcessOpts::strict("install"),
+            )
+            .unwrap_err();
+
+            assert_eq!(built, [3, 1, 2]);
+            assert_eq!(loads.load(Ordering::SeqCst), 1);
+            assert_eq!(checks.load(Ordering::SeqCst), 0);
+            let cause = error.downcast_ref::<std::io::Error>().unwrap();
+            assert_eq!(cause.kind(), std::io::ErrorKind::PermissionDenied);
+            assert_eq!(cause.to_string(), "batch discovery denied");
+        }
+    }
+}
+
+#[test]
+fn task_wrapper_forwards_custom_assessment_without_reassessing_hooks() {
+    struct CustomAssessment;
+    impl Task for CustomAssessment {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("custom-assessment")
+        }
+
+        fn should_run(&self, _ctx: &Context) -> bool {
+            panic!("the custom assessment supersedes the default hooks")
+        }
+
+        fn assess(&self, _ctx: &Context) -> TaskAssessment {
+            TaskAssessment::not_applicable(Some("custom gate"))
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            panic!("a gated task must not run")
+        }
+    }
+
+    let (ctx, log) = make_static_context(empty_config("/fixture".into()));
+    let wrapped = TaskWithExtraDeps::new(Box::new(CustomAssessment), &[], &[]);
+    assert_eq!(execute(&wrapped, &ctx), TaskStatus::NotApplicable);
+    let entries = log.task_entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].message.as_deref(), Some("custom gate"));
+    assert_eq!(entries[0].task_id, CustomAssessment.log_key());
+    assert_eq!(entries[0].duration, None);
 }
 
 #[test]

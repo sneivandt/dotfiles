@@ -198,12 +198,6 @@ mod tests {
     }
 
     #[test]
-    fn resource_error_converts_to_anyhow() {
-        let error = ResourceError::command_failed("git", "not found");
-        let _anyhow_error: anyhow::Error = error.into();
-    }
-
-    #[test]
     fn resource_error_preserves_executor_cancellation() {
         let error = ResourceError::from(ExecError::Cancelled {
             command: "git status".to_string(),

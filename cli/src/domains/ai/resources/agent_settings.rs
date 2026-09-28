@@ -445,9 +445,11 @@ command = "example"
             "model".to_string(),
             toml::Value::String("gpt-5.6-sol".to_string()),
             SettingsFormat::Json,
-            json_path,
+            json_path.clone(),
         );
         assert!(json.current_state().is_err());
+        assert!(json.apply().is_err());
+        assert_eq!(std::fs::read_to_string(json_path).unwrap(), "{ not json");
 
         let toml_path = dir.path().join("config.toml");
         std::fs::write(&toml_path, "[not valid").unwrap();
@@ -456,8 +458,10 @@ command = "example"
             "model".to_string(),
             toml::Value::String("gpt-5.6-sol".to_string()),
             SettingsFormat::Toml,
-            toml_path,
+            toml_path.clone(),
         );
         assert!(toml.current_state().is_err());
+        assert!(toml.apply().is_err());
+        assert_eq!(std::fs::read_to_string(toml_path).unwrap(), "[not valid");
     }
 }

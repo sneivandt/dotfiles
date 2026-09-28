@@ -15,6 +15,7 @@ mod common;
 #[cfg(unix)]
 mod unix_e2e {
     use super::common;
+    use dotfiles_cli::testing::logging::TaskStatus;
     use dotfiles_cli::testing::tasks;
     use std::os::unix::fs::PermissionsExt as _;
     use std::path::Path;
@@ -41,16 +42,36 @@ mod unix_e2e {
         (test, ec)
     }
 
-    fn install(ec: &common::ExecutionContext, ctx: &tasks::Context) {
-        tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), ctx);
-        tasks::execute(&InstallGitHooks::new(), ctx);
-        tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), ctx);
+    fn install(ec: &common::ExecutionContext, ctx: &tasks::Context, expected: TaskStatus) {
+        assert_eq!(
+            tasks::execute(&InstallSymlinks::new(ec.store.symlinks.clone()), ctx),
+            expected,
+            "symlinks"
+        );
+        assert_eq!(
+            tasks::execute(&InstallGitHooks::new(), ctx),
+            expected,
+            "hooks"
+        );
+        assert_eq!(
+            tasks::execute(&ApplyFilePermissions::new(ec.store.chmod.clone()), ctx),
+            expected,
+            "permissions"
+        );
         assert_eq!(ec.log.failure_count(), 0, "install must not fail");
     }
 
-    fn uninstall(ec: &common::ExecutionContext, ctx: &tasks::Context) {
-        tasks::execute(&UninstallSymlinks::new(ec.store.symlinks.clone()), ctx);
-        tasks::execute(&UninstallGitHooks::new(), ctx);
+    fn uninstall(ec: &common::ExecutionContext, ctx: &tasks::Context, expected: TaskStatus) {
+        assert_eq!(
+            tasks::execute(&UninstallSymlinks::new(ec.store.symlinks.clone()), ctx),
+            expected,
+            "symlinks"
+        );
+        assert_eq!(
+            tasks::execute(&UninstallGitHooks::new(), ctx),
+            expected,
+            "hooks"
+        );
         assert_eq!(ec.log.failure_count(), 0, "uninstall must not fail");
     }
 
@@ -66,7 +87,7 @@ mod unix_e2e {
         let hook = test.root_path().join(".git/hooks/pre-commit");
         let ssh_config = ec.ctx.home().join(".ssh/config");
 
-        install(&ec, &dry_run);
+        install(&ec, &dry_run, TaskStatus::DryRun);
         assert!(
             link.symlink_metadata().is_err(),
             "preview must not create a link"
@@ -75,8 +96,11 @@ mod unix_e2e {
         assert_eq!(permissions(&ssh_config), 0o644, "preview must not chmod");
         assert_eq!(std::fs::read_to_string(&ssh_config).unwrap(), "Host *\n");
 
-        for pass in ["initial install", "repeat install"] {
-            install(&ec, &ec.ctx);
+        for (pass, expected) in [
+            ("initial install", TaskStatus::Changed),
+            ("repeat install", TaskStatus::Ok),
+        ] {
+            install(&ec, &ec.ctx, expected);
             assert!(
                 link.symlink_metadata().unwrap().is_symlink(),
                 "{pass}: .bashrc must be a symlink"
@@ -96,15 +120,18 @@ mod unix_e2e {
         }
 
         let installed_hook = std::fs::read(&hook).unwrap();
-        uninstall(&ec, &dry_run);
+        uninstall(&ec, &dry_run, TaskStatus::DryRun);
         assert!(
             link.symlink_metadata().unwrap().is_symlink(),
             "uninstall preview must not materialize the link"
         );
         assert_eq!(std::fs::read(&hook).unwrap(), installed_hook);
 
-        for pass in ["initial uninstall", "repeat uninstall"] {
-            uninstall(&ec, &ec.ctx);
+        for (pass, expected) in [
+            ("initial uninstall", TaskStatus::Changed),
+            ("repeat uninstall", TaskStatus::Ok),
+        ] {
+            uninstall(&ec, &ec.ctx, expected);
             assert!(
                 !link.symlink_metadata().unwrap().is_symlink(),
                 "{pass}: managed link must be materialized"

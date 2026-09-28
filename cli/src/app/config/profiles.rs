@@ -63,9 +63,6 @@ pub(super) const KNOWN_CATEGORIES: &[Category] = &[
     Category::Wsl,
 ];
 
-#[cfg(test)]
-use environment::parse_env_profile;
-
 /// Resolve the profile from CLI arg, `DOTFILES_PROFILE` env var, persisted
 /// git config, or interactive prompt.
 ///
@@ -135,11 +132,11 @@ mod tests {
 
     #[test]
     fn non_interactive_resolution_fails_instead_of_prompting() {
-        let root = tempfile::tempdir().expect("tempdir");
+        let (_dir, root) = init_test_repo();
 
         let error = resolve_from_args(
             None,
-            root.path(),
+            &root,
             linux_platform(),
             &crate::infra::env::MapEnv::new(),
             true,
@@ -153,29 +150,12 @@ mod tests {
     }
 
     #[test]
-    fn available_profiles_are_built_in() {
-        assert_eq!(
-            available(),
-            &[
-                ProfileInfo {
-                    name: "base",
-                    description: "Core shell environment, no desktop GUI",
-                },
-                ProfileInfo {
-                    name: "desktop",
-                    description: "Full desktop/workstation setup with GUI tools",
-                },
-            ]
-        );
-    }
-
-    #[test]
     fn read_only_resolution_requires_an_existing_selection() {
-        let root = tempfile::tempdir().expect("tempdir");
+        let (_dir, root) = init_test_repo();
 
         let error = resolve_read_only(
             None,
-            root.path(),
+            &root,
             linux_platform(),
             &crate::infra::env::MapEnv::new(),
         )
@@ -233,26 +213,26 @@ mod tests {
         );
     }
 
-    // ------------------------------------------------------------------
-    // parse_env_profile (backing read_from_env)
-    // ------------------------------------------------------------------
-
     #[test]
-    fn parse_env_profile_returns_some_for_valid_name() {
-        assert_eq!(
-            parse_env_profile(Some("desktop".to_string())),
-            Some("desktop".to_string())
-        );
-    }
+    fn environment_selection_ignores_only_missing_or_empty_values() {
+        use crate::infra::env::MapEnv;
 
-    #[test]
-    fn parse_env_profile_returns_none_for_none() {
-        assert_eq!(parse_env_profile(None), None);
-    }
-
-    #[test]
-    fn parse_env_profile_returns_none_for_empty_string() {
-        assert_eq!(parse_env_profile(Some(String::new())), None);
+        for value in [
+            None,
+            Some(""),
+            Some("desktop"),
+            Some("unknown"),
+            Some(" base "),
+        ] {
+            let env = value.map_or_else(MapEnv::new, |value| {
+                MapEnv::new().with("DOTFILES_PROFILE", value)
+            });
+            assert_eq!(
+                read_from_env(&env).as_deref(),
+                value.filter(|value| !value.is_empty()),
+                "{value:?}: nonempty values must be validated, not silently defaulted"
+            );
+        }
     }
 
     // ------------------------------------------------------------------
@@ -267,15 +247,6 @@ mod tests {
     }
 
     #[test]
-    fn persist_and_read_persisted_round_trip() {
-        let (dir, root) = init_test_repo();
-        persist(&root, "desktop").expect("persist should succeed");
-        let name = read_persisted(&root);
-        assert_eq!(name, Some("desktop".to_string()));
-        drop(dir);
-    }
-
-    #[test]
     fn read_persisted_returns_none_when_unset() {
         let (dir, root) = init_test_repo();
         let name = read_persisted(&root);
@@ -287,6 +258,7 @@ mod tests {
     fn persist_overwrites_previous_value() {
         let (dir, root) = init_test_repo();
         persist(&root, "base").expect("first persist");
+        assert_eq!(read_persisted(&root).as_deref(), Some("base"));
         persist(&root, "desktop").expect("second persist");
         let name = read_persisted(&root);
         assert_eq!(name, Some("desktop".to_string()));
@@ -294,9 +266,58 @@ mod tests {
     }
 
     #[test]
-    fn read_persisted_returns_none_outside_git_repo() {
+    fn read_persisted_returns_none_when_repository_is_invalid() {
         let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join(".git"), "not a git directory").unwrap();
         let name = read_persisted(dir.path());
         assert_eq!(name, None);
+    }
+
+    #[test]
+    fn read_only_selection_obeys_precedence_without_rewriting_persisted_state() {
+        use crate::app::config::error::ConfigError;
+        use crate::infra::env::MapEnv;
+
+        let root = tempfile::tempdir_in(".").unwrap();
+        let repo = git2::Repository::init(root.path()).unwrap();
+        persist(root.path(), "desktop").unwrap();
+        let config_path = repo.path().join("config");
+        let original = std::fs::read(&config_path).unwrap();
+
+        for (cli, environment, expected) in [
+            (Some("base"), Some("invalid"), Ok("base")),
+            (None, Some("base"), Ok("base")),
+            (None, Some(""), Ok("desktop")),
+            (None, None, Ok("desktop")),
+            (Some("invalid"), Some("base"), Err("invalid")),
+            (Some(""), Some("base"), Err("")),
+            (None, Some("invalid"), Err("invalid")),
+            (None, Some(" base "), Err(" base ")),
+        ] {
+            let env = environment.map_or_else(MapEnv::new, |value| {
+                MapEnv::new().with("DOTFILES_PROFILE", value)
+            });
+            let result = resolve_read_only(cli, root.path(), linux_platform(), &env);
+            match expected {
+                Ok(name) => assert_eq!(result.unwrap().name, name, "{cli:?}/{environment:?}"),
+                Err(name) => {
+                    let error = result.unwrap_err();
+                    let Some(ConfigError::InvalidProfile {
+                        name: actual,
+                        available,
+                    }) = error.downcast_ref::<ConfigError>()
+                    else {
+                        panic!("expected invalid-profile error, got {error:#}");
+                    };
+                    assert_eq!(actual, name);
+                    assert_eq!(available, "base, desktop");
+                }
+            }
+            assert_eq!(
+                std::fs::read(&config_path).unwrap(),
+                original,
+                "{cli:?}/{environment:?}: discovery must never persist a selection"
+            );
+        }
     }
 }

@@ -8,11 +8,11 @@
 //! Generation is seeded and reproducible: a failure names the exact seed and
 //! shape that broke.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 
-use crate::engine::graph::{GraphError, ResolvedTaskGraph};
+use crate::engine::graph::{DependencyEdges, GraphError, ResolvedTaskGraph};
 use crate::engine::{Context, Task, TaskId, TaskMeta, TaskResult};
 use crate::test_helpers::numeric_task_id;
 
@@ -24,6 +24,7 @@ struct GeneratedTask {
     name: String,
     id: TaskId,
     dependencies: Vec<TaskId>,
+    ordering: Vec<TaskId>,
 }
 
 impl Task for GeneratedTask {
@@ -37,6 +38,10 @@ impl Task for GeneratedTask {
 
     fn dependencies(&self) -> &[TaskId] {
         &self.dependencies
+    }
+
+    fn ordering_dependencies(&self) -> &[TaskId] {
+        &self.ordering
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
@@ -85,6 +90,7 @@ fn generate_dag(seed: u64, size: usize, edge_chance: u32) -> Vec<GeneratedTask> 
             name: format!("task-{idx}"),
             id: numeric_task_id(idx),
             dependencies,
+            ordering: Vec::new(),
         });
     }
     tasks
@@ -105,17 +111,6 @@ const SHAPES: &[(u64, usize, u32)] = &[
     (7, 32, 40),
     (8, 64, 3),
 ];
-
-#[test]
-fn generated_dags_always_resolve() {
-    for &(seed, size, edge_chance) in SHAPES {
-        let tasks = generate_dag(seed, size, edge_chance);
-        assert!(
-            ResolvedTaskGraph::resolve(&as_dyn(&tasks)).is_ok(),
-            "acyclic graph failed to resolve (seed {seed}, size {size})"
-        );
-    }
-}
 
 #[test]
 fn execution_order_is_a_permutation_of_every_task() {
@@ -142,7 +137,8 @@ fn execution_order_is_a_permutation_of_every_task() {
 #[test]
 fn every_dependency_is_scheduled_before_its_dependent() {
     for &(seed, size, edge_chance) in SHAPES {
-        let tasks = generate_dag(seed, size, edge_chance);
+        let mut tasks = generate_dag(seed, size, edge_chance);
+        tasks.reverse();
         let graph =
             ResolvedTaskGraph::resolve(&as_dyn(&tasks)).expect("acyclic graph should resolve");
 
@@ -151,8 +147,12 @@ fn every_dependency_is_scheduled_before_its_dependent() {
             position[task_idx] = slot;
         }
 
-        for task_idx in 0..size {
-            for &dep_idx in graph.dependencies(task_idx) {
+        for (task_idx, task) in tasks.iter().enumerate() {
+            for dep in &task.dependencies {
+                let dep_idx = tasks
+                    .iter()
+                    .position(|candidate| &candidate.id == dep)
+                    .unwrap();
                 assert!(
                     position[dep_idx] < position[task_idx],
                     "task {task_idx} scheduled before dependency {dep_idx} \
@@ -172,7 +172,12 @@ fn dependents_are_the_exact_reverse_of_dependencies() {
 
         let mut forward: HashSet<(usize, usize)> = HashSet::new();
         let mut reverse: HashSet<(usize, usize)> = HashSet::new();
+        let mut expected: HashSet<(usize, usize)> = HashSet::new();
         for task_idx in 0..size {
+            for dep in &tasks[task_idx].dependencies {
+                let dep_idx = tasks.iter().position(|task| &task.id == dep).unwrap();
+                expected.insert((dep_idx, task_idx));
+            }
             for &dep_idx in graph.dependencies(task_idx) {
                 forward.insert((dep_idx, task_idx));
             }
@@ -181,8 +186,12 @@ fn dependents_are_the_exact_reverse_of_dependencies() {
             }
         }
         assert_eq!(
-            forward, reverse,
-            "dependency and dependent edge sets disagree (seed {seed}, size {size})"
+            forward, expected,
+            "resolved dependencies must retain the input edges (seed {seed}, size {size})"
+        );
+        assert_eq!(
+            reverse, expected,
+            "resolved dependents must retain the input edges (seed {seed}, size {size})"
         );
     }
 }
@@ -205,13 +214,20 @@ fn adding_a_back_edge_always_produces_a_cycle() {
         }
         tasks[0].dependencies.push(numeric_task_id(size - 1));
 
-        assert!(
-            matches!(
-                ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
-                Some(GraphError::Cycle { path }) if path.len() >= 3
-            ),
-            "back edge did not produce a cycle (seed {seed}, size {size})"
-        );
+        let GraphError::Cycle { path } = ResolvedTaskGraph::resolve(&as_dyn(&tasks)).unwrap_err()
+        else {
+            panic!("back edge must produce a cycle (seed {seed}, size {size})");
+        };
+        assert!(path.len() >= 3, "seed {seed}, size {size}");
+        assert_eq!(path.first(), path.last(), "cycle must be closed");
+        for edge in path.windows(2) {
+            let source = tasks.iter().find(|task| task.name == edge[0]).unwrap();
+            let target = tasks.iter().find(|task| task.name == edge[1]).unwrap();
+            assert!(
+                source.dependencies.contains(&target.id),
+                "diagnostic invented an edge: {edge:?} (seed {seed}, size {size})"
+            );
+        }
     }
 }
 
@@ -221,6 +237,7 @@ fn a_self_dependency_is_a_cycle() {
         name: "self".to_string(),
         id: numeric_task_id(0),
         dependencies: vec![numeric_task_id(0)],
+        ordering: Vec::new(),
     }];
     assert!(matches!(
         ResolvedTaskGraph::resolve(&as_dyn(&tasks)).err(),
@@ -256,11 +273,13 @@ fn dependencies_outside_the_filtered_slice_are_ignored() {
             name: "present".to_string(),
             id: numeric_task_id(0),
             dependencies: vec![numeric_task_id(99)],
+            ordering: Vec::new(),
         },
         GeneratedTask {
             name: "dependent".to_string(),
             id: numeric_task_id(1),
             dependencies: vec![numeric_task_id(0), numeric_task_id(99)],
+            ordering: Vec::new(),
         },
     ];
 
@@ -268,4 +287,62 @@ fn dependencies_outside_the_filtered_slice_are_ignored() {
     assert!(graph.dependencies(0).is_empty());
     assert_eq!(graph.dependencies(1), &[0]);
     assert_eq!(graph.execution_order().collect::<Vec<_>>(), vec![0, 1]);
+}
+
+#[test]
+fn closures_and_blocking_preserve_edge_kinds_after_deduplication() {
+    let make_task = |index, dependencies: &[usize], ordering: &[usize]| GeneratedTask {
+        name: format!("task-{index}"),
+        id: numeric_task_id(index),
+        dependencies: dependencies.iter().copied().map(numeric_task_id).collect(),
+        ordering: ordering.iter().copied().map(numeric_task_id).collect(),
+    };
+    let mut tasks = vec![
+        make_task(0, &[], &[]),
+        make_task(1, &[0], &[]),
+        make_task(2, &[], &[]),
+        make_task(3, &[1, 1], &[1, 2, 2, 99]),
+        make_task(4, &[3], &[]),
+        make_task(5, &[], &[4]),
+    ];
+    tasks.reverse();
+    let graph = ResolvedTaskGraph::resolve(&as_dyn(&tasks)).unwrap();
+    let index_of = |id| {
+        tasks
+            .iter()
+            .position(|task| task.id == numeric_task_id(id))
+            .unwrap()
+    };
+    let leaf = index_of(3);
+    assert_eq!(graph.dependencies(leaf), &[index_of(1), index_of(2)]);
+    assert!(graph.blocks_on_failure(leaf, index_of(1)));
+    assert!(!graph.blocks_on_failure(leaf, index_of(2)));
+    assert!(graph.contains(&numeric_task_id(3)));
+    assert!(!graph.contains(&numeric_task_id(99)));
+
+    for (edges, expected) in [
+        (DependencyEdges::Blocking, vec![0, 1, 3, 99]),
+        (DependencyEdges::All, vec![0, 1, 2, 3, 99]),
+    ] {
+        let mut selected = HashSet::from([numeric_task_id(3), numeric_task_id(99)]);
+        graph.extend_dependency_closure(&mut selected, edges);
+        assert_eq!(
+            selected,
+            expected.into_iter().map(numeric_task_id).collect(),
+            "{edges:?}: only reachable dependencies belong in the closure"
+        );
+        let once = selected.clone();
+        graph.extend_dependency_closure(&mut selected, edges);
+        assert_eq!(selected, once, "dependency closure must be idempotent");
+    }
+
+    let roots = HashMap::from([(numeric_task_id(0), "root unavailable")]);
+    assert_eq!(
+        graph.blocked_dependents(&roots),
+        [1, 3, 4]
+            .into_iter()
+            .map(|id| (numeric_task_id(id), "root unavailable"))
+            .collect(),
+        "only blocking descendants inherit the original cause, not roots or ordering-only peers"
+    );
 }

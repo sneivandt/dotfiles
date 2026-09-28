@@ -338,6 +338,53 @@ mod chmod {
             "symlinks should be skipped during recursive check"
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn recursive_apply_never_follows_file_or_directory_symlinks() {
+        use std::os::unix::fs::{PermissionsExt as _, symlink};
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let managed = root.join("managed");
+        let outside = root.join("outside");
+        std::fs::create_dir(&managed).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let external_file = outside.join("private");
+        std::fs::write(&external_file, "external content").unwrap();
+        std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&external_file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let owned = managed.join("owned");
+        std::fs::write(&owned, "managed content").unwrap();
+        std::fs::set_permissions(&owned, std::fs::Permissions::from_mode(0o777)).unwrap();
+        symlink(&external_file, managed.join("file-link")).unwrap();
+        symlink(&outside, managed.join("directory-link")).unwrap();
+        symlink(root.join("missing"), managed.join("dangling-link")).unwrap();
+        let resource = ChmodResource::new(managed, mode("700"));
+
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(
+            std::fs::metadata(&owned).unwrap().permissions().mode() & MODE_BITS_MASK,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(&outside).unwrap().permissions().mode() & MODE_BITS_MASK,
+            0o755
+        );
+        assert_eq!(
+            std::fs::metadata(&external_file)
+                .unwrap()
+                .permissions()
+                .mode()
+                & MODE_BITS_MASK,
+            0o644
+        );
+        assert_eq!(
+            std::fs::read_to_string(external_file).unwrap(),
+            "external content"
+        );
+    }
 }
 
 mod symlink {
@@ -362,7 +409,10 @@ mod symlink {
         mock.expect_execute()
             .once()
             .withf(|spec| {
-                spec.windows_command_line()
+                spec.program() == "cmd"
+                    && !spec.is_checked()
+                    && spec.working_dir().is_none()
+                    && spec.windows_command_line()
                     == Some(r#"""mklink" "/J" "C:\Users\test\.config\templates" "C:\repo\symlinks\config\git\templates"""#)
             })
             .returning(|_| {
@@ -377,14 +427,41 @@ mod symlink {
         .unwrap();
     }
 
+    #[cfg(windows)]
     #[test]
-    fn paths_equal_works() {
-        let path1 = PathBuf::from("/tmp/test");
-        let path2 = PathBuf::from("/tmp/test");
-        assert!(paths_equal(&path1, &path2));
+    fn junction_failure_preserves_both_diagnostic_streams() {
+        use crate::infra::exec::{ExecResult, MockExecutor};
 
-        let path3 = PathBuf::from("/tmp/other");
-        assert!(!paths_equal(&path1, &path3));
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().once().returning(|spec| {
+            assert_eq!(spec.program(), "cmd");
+            assert!(!spec.is_checked());
+            assert_eq!(spec.working_dir(), None);
+            assert_eq!(
+                spec.windows_command_line(),
+                Some(r#"""mklink" "/J" "C:\fixture home\link" "C:\fixture source\directory"""#)
+            );
+            Ok(ExecResult::failure(
+                "partial stdout",
+                "access denied",
+                Some(1),
+            ))
+        });
+        let error = create_junction(
+            Path::new(r"C:\fixture source\directory"),
+            Path::new(r"C:\fixture home\link"),
+            &mock,
+        )
+        .unwrap_err();
+        let detail = format!("{error:#}");
+        for expected in [
+            "mklink",
+            "fixture home",
+            "fixture source",
+            "partial stdout; access denied",
+        ] {
+            assert!(detail.contains(expected), "{detail}");
+        }
     }
 
     #[cfg(unix)]
@@ -421,8 +498,72 @@ mod symlink {
             PathBuf::from("/target"),
             system_executor(),
         );
-        assert!(resource.description().contains("/source"));
-        assert!(resource.description().contains("/target"));
+        assert_eq!(resource.description(), "/target \u{2192} /source");
+    }
+
+    #[test]
+    fn apply_preserves_nonempty_user_directory() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let source = fixture.path().join("source");
+        let target = fixture.path().join("target");
+        std::fs::write(&source, "managed content").unwrap();
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("user-file"), "user content").unwrap();
+        let resource = SymlinkResource::new(
+            source.clone(),
+            target.clone(),
+            Arc::new(crate::infra::exec::MockExecutor::new()),
+        );
+
+        let error = resource.apply().unwrap_err();
+        assert!(
+            format!("{error:#}").contains("remove existing"),
+            "{error:#}"
+        );
+        assert!(std::fs::symlink_metadata(&target).unwrap().is_dir());
+        assert_eq!(
+            std::fs::read_to_string(target.join("user-file")).unwrap(),
+            "user content"
+        );
+        assert_eq!(std::fs::read_to_string(source).unwrap(), "managed content");
+    }
+
+    #[test]
+    fn failed_materialization_keeps_original_link_and_cleans_staging() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let source = root.join("source");
+        let target = root.join("target");
+        std::fs::write(&source, "managed content").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&source, &target).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&source, &target).unwrap();
+        let original_link = std::fs::read_link(&target).unwrap();
+        std::fs::remove_file(&source).unwrap();
+        let resource = SymlinkResource::new(
+            source.clone(),
+            target.clone(),
+            Arc::new(crate::infra::exec::MockExecutor::new()),
+        );
+
+        let error = resource.remove().unwrap_err();
+        assert!(
+            format!("{error:#}").contains("open source file"),
+            "{error:#}"
+        );
+        assert_eq!(std::fs::read_link(&target).unwrap(), original_link);
+        assert_eq!(
+            std::fs::read_dir(&root).unwrap().count(),
+            1,
+            "staging must be removed"
+        );
+
+        std::fs::write(&source, "restored content").unwrap();
+        assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
+        assert!(!std::fs::symlink_metadata(&target).unwrap().is_symlink());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "restored content");
+        assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
     }
 
     #[test]

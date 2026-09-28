@@ -47,22 +47,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_token_is_not_cancelled() {
-        assert!(!CancellationToken::new().is_cancelled());
-    }
-
-    #[test]
-    fn cancel_sets_flag() {
+    fn cancellation_propagates_across_threads_without_affecting_independent_tokens() {
         let token = CancellationToken::new();
-        token.cancel();
-        assert!(token.is_cancelled());
-    }
-
-    #[test]
-    fn clone_sees_same_state() {
-        let token = CancellationToken::new();
+        let independent = CancellationToken::new();
         let cloned = token.clone();
-        token.cancel();
-        assert!(cloned.is_cancelled());
+        assert!(!token.is_cancelled());
+        assert!(!cloned.is_cancelled());
+        std::thread::spawn(move || {
+            cloned.cancel();
+            cloned.cancel();
+            assert!(cloned.is_cancelled(), "repeated cancellation remains set");
+        })
+        .join()
+        .unwrap();
+        assert!(
+            token.is_cancelled(),
+            "the original observes worker cancellation"
+        );
+        assert!(
+            !independent.is_cancelled(),
+            "tokens from distinct runs are isolated"
+        );
     }
 }

@@ -112,18 +112,42 @@ fn run_calls_daemon_reload_before_enabling_unit() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(|spec| {
+            spec.program() == "systemctl"
+                && spec.arguments() == ["--user", "show-environment"]
+                && !spec.is_checked()
+                && spec.working_dir().is_none()
+        })
         .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(|spec| {
+            spec.program() == "systemctl"
+                && spec.arguments() == ["--user", "daemon-reload"]
+                && spec.is_checked()
+                && spec.working_dir().is_none()
+        })
         .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(|spec| {
+            spec.program() == "systemctl"
+                && spec.arguments() == ["--user", "is-enabled", "dunst.service"]
+                && !spec.is_checked()
+                && spec.working_dir().is_none()
+        })
         .returning(|_| Ok(disabled_result()));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(|spec| {
+            spec.program() == "systemctl"
+                && spec.arguments() == ["--user", "enable", "--now", "dunst.service"]
+                && !spec.is_checked()
+                && spec.working_dir().is_none()
+        })
         .returning(|_| Ok(ExecResult::success("")));
     let units = ConfigHandle::new(config.units.clone());
     let ctx = make_systemd_context(config, mock);
@@ -147,13 +171,25 @@ fn run_skips_daemon_reload_in_dry_run() {
     // The manager probe and current_state() still run to decide whether a
     // change would be needed.
     let mut mock = MockExecutor::new();
-    mock.expect_execute().times(2).returning(|spec| {
-        if spec.arguments() == ["--user", "show-environment"] {
-            Ok(ExecResult::success(""))
-        } else {
-            Ok(disabled_result())
-        }
-    });
+    let mut sequence = mockall::Sequence::new();
+    for (args, result) in [
+        (vec!["--user", "show-environment"], ExecResult::success("")),
+        (
+            vec!["--user", "is-enabled", "dunst.service"],
+            disabled_result(),
+        ),
+    ] {
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .return_once(move |spec| {
+                assert_eq!(spec.program(), "systemctl");
+                assert_eq!(spec.arguments(), args);
+                assert!(!spec.is_checked());
+                assert_eq!(spec.working_dir(), None);
+                Ok(result)
+            });
+    }
     let units = ConfigHandle::new(config.units.clone());
     let mut ctx = make_systemd_context(config, mock);
     ctx = ctx.with_dry_run(true);

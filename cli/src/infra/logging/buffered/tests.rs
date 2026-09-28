@@ -284,6 +284,8 @@ fn buffered_presentation_golden_matrix() {
             TaskStatus::Passed,
             TaskStatus::NotApplicable,
             TaskStatus::Skipped,
+            TaskStatus::Blocked,
+            TaskStatus::Interrupted,
             TaskStatus::DryRun,
             TaskStatus::Failed,
         ] {

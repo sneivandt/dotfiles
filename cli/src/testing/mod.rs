@@ -80,7 +80,7 @@ pub mod error {
 }
 
 pub mod logging {
-    pub use crate::infra::logging::{Log, Logger};
+    pub use crate::infra::logging::{Log, Logger, TaskStatus};
 
     /// Create a silent logger whose persistent records stay inside a fixture.
     #[must_use]

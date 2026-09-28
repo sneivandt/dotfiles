@@ -765,7 +765,45 @@ mod tests {
         assert_eq!(opts.format, DiscoveryFormat::Json);
         assert_eq!(opts.only, ["symlinks"]);
         assert!(opts.with_deps);
-        assert!(Cli::try_parse_from(["dotfiles", "tasks", "--only", "symlinks"]).is_err());
+    }
+
+    #[test]
+    fn selection_options_enforce_their_required_companions() {
+        for (args, required) in [
+            (&["dotfiles", "install", "--with-deps"][..], "--only"),
+            (&["dotfiles", "update", "--with-deps"][..], "--only"),
+            (&["dotfiles", "tasks", "--only", "symlinks"][..], "--graph"),
+            (&["dotfiles", "tasks", "--skip", "symlinks"][..], "--graph"),
+            (
+                &["dotfiles", "tasks", "--graph", "install", "--with-deps"][..],
+                "--only",
+            ),
+        ] {
+            let error = Cli::try_parse_from(args.iter().copied()).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument, "{args:?}");
+            assert!(error.to_string().contains(required), "{args:?}: {error}");
+        }
+    }
+
+    #[test]
+    fn repeated_and_comma_delimited_selectors_are_all_preserved() {
+        let cli = Cli::parse_from([
+            "dotfiles",
+            "install",
+            "--only",
+            "symlinks,git-hooks",
+            "--only",
+            "apm",
+            "--skip",
+            "packages,repository",
+            "--skip",
+            "chmod",
+        ]);
+        let Command::Install(opts) = cli.command else {
+            panic!("expected install command");
+        };
+        assert_eq!(opts.tasks.only, ["symlinks", "git-hooks", "apm"]);
+        assert_eq!(opts.tasks.skip, ["packages", "repository", "chmod"]);
     }
 
     #[test]
@@ -791,20 +829,57 @@ mod tests {
 
     #[test]
     fn log_selection_modes_and_output_options_reject_ignored_combinations() {
-        for args in [
-            &["dotfiles", "log", "0", "--list"][..],
-            &["dotfiles", "log", "--id", "run-id", "--command", "install"][..],
-            &["dotfiles", "log", "--list", "--verbose"][..],
-            &["dotfiles", "log", "--raw", "--verbose"][..],
-            &["dotfiles", "log", "--format", "json"][..],
-            &["dotfiles", "log", "--command", "unknown"][..],
+        for (args, expected) in [
+            (
+                &["dotfiles", "log", "0", "--list"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--id", "run-id", "--command", "install"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--id", "run-id", "0"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--id", "run-id", "--list"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--list", "--task", "symlinks"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--list", "--raw"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--list", "--verbose"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--raw", "--verbose"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                &["dotfiles", "log", "--format", "json"][..],
+                ErrorKind::MissingRequiredArgument,
+            ),
+            (
+                &["dotfiles", "log", "--command", "unknown"][..],
+                ErrorKind::InvalidValue,
+            ),
+            (
+                &["dotfiles", "log", "--command", "test"][..],
+                ErrorKind::InvalidValue,
+            ),
         ] {
-            Cli::try_parse_from(args.iter().copied())
+            let error = Cli::try_parse_from(args.iter().copied())
                 .expect_err("ignored or invalid log option combinations should fail");
+            assert_eq!(error.kind(), expected, "{args:?}");
         }
 
-        Cli::try_parse_from(["dotfiles", "log", "--command", "test"])
-            .expect_err("test command filter was removed");
         let Command::Log(opts) = Cli::parse_from(["dotfiles", "log", "-c", "update"]).command
         else {
             panic!("expected log command");

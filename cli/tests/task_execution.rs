@@ -30,14 +30,16 @@ use test_api::{
 };
 
 const fn batch_changed(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.changed_count() > 0)
+    matches!(result, TaskResult::Batch(stats)
+        if stats.changed_count() > 0 && stats.failed_count() == 0 && stats.skipped_count() == 0)
 }
 
 const fn batch_unchanged(result: &TaskResult) -> bool {
     matches!(
         result,
         TaskResult::Batch(stats)
-            if stats.changed_count() == 0 && stats.failed_count() == 0
+            if stats.changed_count() == 0 && stats.failed_count() == 0 && stats.skipped_count() == 0
+                && stats.already_ok_count() > 0
     )
 }
 
@@ -149,6 +151,7 @@ fn git_config_converges_without_mutating_dry_runs_or_current_values() {
                 .set_str("core.autocrlf", value)
                 .unwrap();
         }
+        let before = std::fs::read(&config_path).unwrap();
 
         let settings = ec.store.git_settings.read();
         let resources = settings.iter().map(|setting| {
@@ -173,11 +176,21 @@ fn git_config_converges_without_mutating_dry_runs_or_current_values() {
             "{case}: {result:?}"
         );
         let config = git2::Config::open(&config_path).unwrap();
-        assert_eq!(
-            config.get_string("core.autocrlf").ok().as_deref(),
-            expected,
-            "{case}"
-        );
+        match expected {
+            Some(value) => assert_eq!(config.get_string("core.autocrlf").unwrap(), value, "{case}"),
+            None => assert_eq!(
+                config.get_string("core.autocrlf").unwrap_err().code(),
+                git2::ErrorCode::NotFound,
+                "{case}: absence must not hide a config read error"
+            ),
+        }
+        if dry_run || !changed {
+            assert_eq!(
+                std::fs::read(&config_path).unwrap(),
+                before,
+                "{case}: preview/current config must not be rewritten"
+            );
+        }
     }
 }
 
@@ -191,12 +204,7 @@ fn git_config_converges_without_mutating_dry_runs_or_current_values() {
 ///
 /// Tasks that require an executor (packages, shell, git operations) are
 /// excluded — they are not filesystem-only and would panic on the stub.
-const FILESYSTEM_TASKS: &[&str] = &[
-    "Home symlinks",
-    "Git hooks",
-    "File permissions",
-    "Git settings",
-];
+const FILESYSTEM_TASKS: &[&str] = &["symlinks", "git-hooks", "git"];
 
 #[test]
 fn dry_run_pipeline_produces_no_failures() {
@@ -213,15 +221,52 @@ fn dry_run_pipeline_produces_no_failures() {
 
     let ec = test.make_dry_run_context("base");
 
-    for task in tasks::all_install_tasks(&ec.store) {
-        if FILESYSTEM_TASKS.contains(&task.name()) && task.should_run(&ec.ctx) {
-            tasks::execute(task.as_ref(), &ec.ctx);
+    let git_config = ec.ctx.home().join(".gitconfig");
+    let original = "[core]\n\tautocrlf = true\n";
+    std::fs::write(&git_config, original).unwrap();
+    let mut executed = Vec::new();
+    for mut task in tasks::all_install_tasks(&ec.store) {
+        if FILESYSTEM_TASKS.contains(&task.selector()) {
+            if task.selector() == "git" {
+                // Native libgit2 is not scoped by Context's injected HOME.
+                task = Box::new(tasks::git::git_config::ConfigureGit::with_config_path(
+                    ec.store.git_settings.clone(),
+                    git_config.clone(),
+                ));
+            }
+            assert!(
+                task.should_run(&ec.ctx),
+                "{} must be applicable",
+                task.selector()
+            );
+            assert_eq!(
+                tasks::execute(task.as_ref(), &ec.ctx),
+                test_api::logging::TaskStatus::DryRun,
+                "{} must plan a real change",
+                task.selector()
+            );
+            executed.push(task.selector().to_string());
         }
     }
-
+    executed.sort_unstable();
+    assert_eq!(
+        executed,
+        ["git", "git-hooks", "symlinks"],
+        "all intended pipeline tasks must execute"
+    );
+    assert_eq!(ec.log.failure_count(), 0);
     assert!(
-        ec.log.failure_count() == 0,
-        "dry-run pipeline should produce no failures"
+        ec.ctx.home().join(".bashrc").symlink_metadata().is_err(),
+        "preview must not create a home link"
+    );
+    assert!(
+        !test.root_path().join(".git/hooks/pre-commit").exists(),
+        "preview must not install a hook"
+    );
+    assert_eq!(
+        std::fs::read_to_string(git_config).unwrap(),
+        original,
+        "preview must not rewrite Git config"
     );
 }
 

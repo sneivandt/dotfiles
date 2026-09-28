@@ -84,7 +84,7 @@ mod tests {
 
         let staging_files = std::fs::read_dir(dir.path())
             .unwrap()
-            .filter_map(std::result::Result::ok)
+            .map(std::result::Result::unwrap)
             .filter(|entry| {
                 entry
                     .file_name()
@@ -96,6 +96,46 @@ mod tests {
             staging_files, 0,
             "temporary files must not survive a successful write"
         );
+    }
+
+    #[test]
+    fn write_atomic_cleans_staging_and_preserves_contents_when_rename_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("existing-directory");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("keep"), "unchanged").unwrap();
+
+        let error = write_atomic(&target, "must not replace directory").unwrap_err();
+
+        assert!(error.to_string().starts_with("rename "), "{error:#}");
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        assert_eq!(
+            std::fs::read_to_string(target.join("keep")).unwrap(),
+            "unchanged"
+        );
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert_eq!(
+            entries,
+            [target],
+            "failed writes must remove the staged file"
+        );
+    }
+
+    #[test]
+    fn write_atomic_rejects_a_file_parent_without_altering_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("file");
+        std::fs::write(&parent, "keep parent").unwrap();
+        let error = write_atomic(&parent.join("target"), "replacement").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("create parent: {}", parent.display())
+        );
+        assert_eq!(std::fs::read_to_string(&parent).unwrap(), "keep parent");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[cfg(unix)]

@@ -309,7 +309,7 @@ fn format_check_failure(name: &str, code: Option<i32>, stdout: &str, stderr: &st
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 
     fn make_script_resource(
         name: &str,
@@ -327,27 +327,20 @@ mod tests {
     }
 
     #[test]
-    fn description_returns_name() {
-        let mock = Arc::new(MockExecutor::new());
-        let resource =
-            make_script_resource("Setup database", Path::new("/scripts/setup-db.ps1"), mock);
-        assert_eq!(resource.description(), "Setup database");
-    }
-
-    #[test]
-    fn current_state_returns_invalid_when_script_missing() {
-        let mock = Arc::new(MockExecutor::new());
-        let resource = make_script_resource("test", Path::new("/nonexistent.ps1"), mock);
+    fn missing_script_is_invalid_and_never_invoked_by_any_mode() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let resource = make_script_resource(
+            "test",
+            &dir.path().join("missing.ps1"),
+            Arc::new(MockExecutor::new()),
+        );
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Invalid { .. }));
-    }
-
-    #[test]
-    fn apply_returns_skipped_when_script_missing() {
-        let mock = Arc::new(MockExecutor::new());
-        let resource = make_script_resource("test", Path::new("/nonexistent.ps1"), mock);
-        let result = resource.apply().unwrap();
-        assert!(matches!(result, ResourceChange::Skipped { .. }));
+        for mode in [ScriptMode::Apply, ScriptMode::DryRun, ScriptMode::Remove] {
+            let (change, output) = resource.execute(mode).unwrap();
+            assert!(matches!(change, ResourceChange::Skipped { .. }), "{mode:?}");
+            assert!(output.is_empty(), "{mode:?}");
+        }
     }
 
     #[test]
@@ -375,16 +368,30 @@ mod tests {
         // Mock executor does not find pwsh on PATH, so falls back to powershell
         let mut mock = MockExecutor::new();
         mock.expect_which()
+            .once()
             .withf(|p: &str| p == "pwsh")
             .returning(|_| false);
         mock.expect_which()
+            .once()
             .withf(|p: &str| p == "powershell")
             .returning(|_| true);
         let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
         let command = resource.command(None).unwrap();
         assert_eq!(command.program(), "powershell");
-        assert!(command.arguments().iter().any(|arg| arg == "-File"));
+        assert_eq!(
+            command.arguments(),
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "/scripts/test.ps1"
+            ]
+        );
+        assert!(command.is_checked());
+        assert_eq!(command.working_dir(), Some(Path::new("/scripts")));
     }
 
     #[test]
@@ -392,6 +399,7 @@ mod tests {
     fn interpreter_requires_pwsh_for_ps1_scripts_off_windows() {
         let mut mock = MockExecutor::new();
         mock.expect_which()
+            .once()
             .withf(|p: &str| p == "pwsh")
             .returning(|_| false);
         let mock = Arc::new(mock);
@@ -409,13 +417,27 @@ mod tests {
     fn interpreter_prefers_pwsh_for_ps1_scripts_when_available() {
         let mut mock = MockExecutor::new();
         mock.expect_which()
+            .times(4)
             .withf(|p: &str| p == "pwsh")
             .returning(|_| true);
         let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
-        let command = resource.command(None).unwrap();
-        assert_eq!(command.program(), "pwsh");
-        assert!(command.arguments().iter().any(|arg| arg == "-File"));
+        for flag in [None, Some("--check"), Some("--dryrun"), Some("--remove")] {
+            let command = resource.command(flag).unwrap();
+            let mut expected = vec![
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "/scripts/test.ps1",
+            ];
+            expected.extend(flag);
+            assert_eq!(command.program(), "pwsh");
+            assert_eq!(command.arguments(), expected, "{flag:?}");
+            assert_eq!(command.working_dir(), Some(Path::new("/scripts")));
+            assert!(command.is_checked());
+        }
     }
 
     #[test]
@@ -449,43 +471,90 @@ mod tests {
     }
 
     #[test]
-    fn current_state_treats_check_exit_one_as_missing() {
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("test.sh");
-        std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
-        let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
-        let resource = ScriptResource::new(
-            "test".to_string(),
-            script_path,
-            dir.path().to_path_buf(),
-            Arc::new(mock),
-        );
-        let state = resource.current_state().unwrap();
-        assert!(matches!(state, ResourceState::Missing));
+    fn current_state_maps_only_documented_check_statuses() {
+        for (result, expected) in [
+            (ExecResult::success(""), ResourceState::Correct),
+            (ExecResult::failure("", "", Some(1)), ResourceState::Missing),
+            (
+                ExecResult::failure("", " syntax error \n", Some(2)),
+                ResourceState::Unknown {
+                    reason: "script check failed for test (exit 2): syntax error".to_string(),
+                },
+            ),
+            (
+                ExecResult::failure(" partial output \n", " interrupted \n", None),
+                ResourceState::Unknown {
+                    reason: "script check failed for test (terminated by signal): stdout: partial output; stderr: interrupted".to_string(),
+                },
+            ),
+            (
+                ExecResult::failure("", "", Some(3)),
+                ResourceState::Unknown {
+                    reason: "script check failed for test (exit 3): no output".to_string(),
+                },
+            ),
+        ] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let script_path = dir.path().join("test.sh");
+            std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
+            let expected_path = script_path.clone();
+            let expected_root = dir.path().to_path_buf();
+            let mut mock = MockExecutor::new();
+            mock.expect_execute()
+                .once()
+                .withf(move |spec| {
+                    spec.program() == "sh"
+                        && spec.arguments() == [expected_path.as_os_str(), std::ffi::OsStr::new("--check")]
+                        && spec.working_dir() == Some(expected_root.as_path())
+                        && !spec.is_checked()
+                })
+                .return_once(|_| Ok(result));
+            let resource = make_script_resource("test", &script_path, Arc::new(mock));
+
+            assert_eq!(resource.current_state().unwrap(), expected);
+        }
     }
 
     #[test]
-    fn current_state_treats_other_check_failures_as_unknown() {
-        let dir = tempfile::tempdir().unwrap();
-        let script_path = dir.path().join("test.sh");
-        std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
-        let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(ExecResult::failure("", "syntax error", Some(2))));
-        let resource = ScriptResource::new(
-            "test".to_string(),
-            script_path,
-            dir.path().to_path_buf(),
-            Arc::new(mock),
-        );
-        let state = resource.current_state().unwrap();
-        assert!(matches!(
-            state,
-            ResourceState::Unknown { reason } if reason.contains("exit 2") && reason.contains("syntax error")
-        ));
+    fn execution_modes_propagate_checked_failures_with_context() {
+        for (mode, flag, context) in [
+            (ScriptMode::Apply, None, "running script: test"),
+            (ScriptMode::DryRun, Some("--dryrun"), "dry-run script: test"),
+            (
+                ScriptMode::Remove,
+                Some("--remove"),
+                "removing script: test",
+            ),
+        ] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let script_path = dir.path().join("test.sh");
+            std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
+            let mut expected_args = vec![script_path.as_os_str().to_os_string()];
+            expected_args.extend(flag.map(std::ffi::OsString::from));
+            let expected_root = dir.path().to_path_buf();
+            let mut mock = MockExecutor::new();
+            mock.expect_execute()
+                .once()
+                .withf(move |spec| {
+                    spec.program() == "sh"
+                        && spec.arguments() == expected_args
+                        && spec.working_dir() == Some(expected_root.as_path())
+                        && spec.is_checked()
+                })
+                .returning(|_| {
+                    Err(ExecError::non_zero(
+                        "sh test.sh",
+                        ExecResult::failure("", "fixture failure", Some(2)),
+                    ))
+                });
+            let resource = make_script_resource("test", &script_path, Arc::new(mock));
+
+            let error = resource.execute(mode).unwrap_err();
+            assert!(error.to_string().contains(context), "{mode:?}: {error:#}");
+            assert!(
+                format!("{error:#}").contains("fixture failure"),
+                "{error:#}"
+            );
+        }
     }
 }

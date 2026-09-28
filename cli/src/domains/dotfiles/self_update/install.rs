@@ -297,7 +297,15 @@ mod tests {
 
         let result = replace_binary(&bin, b"new");
         assert!(result.is_err());
-        assert!(!dir.path().join(".dotfiles-update.tmp").exists());
+        let remaining: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            remaining,
+            [std::ffi::OsString::from("dotfiles")],
+            "unique staging files must be removed after replacement fails"
+        );
     }
 
     #[cfg(windows)]
@@ -373,6 +381,63 @@ mod tests {
         assert_eq!(installed, binary_data);
         let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
         assert!(cache.starts_with("v1.0.0\n"));
+        assert_eq!(
+            client.request_urls(),
+            [
+                format!(
+                    "https://github.com/{}/releases/download/v1.0.0/{}",
+                    super::super::REPO,
+                    asset_name()
+                ),
+                format!(
+                    "https://github.com/{}/releases/download/v1.0.0/checksums.sha256",
+                    super::super::REPO
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn checksum_failure_does_not_attempt_provenance_or_replace_existing_state() {
+        #[derive(Debug)]
+        struct ForbiddenGh;
+        impl GhCli for ForbiddenGh {
+            fn available(&self) -> bool {
+                panic!("checksum must be verified before probing provenance");
+            }
+            fn verify(&self, _: &Path, _: &str) -> Result<super::super::attestation::Verification> {
+                panic!("checksum must be verified before invoking provenance");
+            }
+        }
+
+        let root = tempfile::tempdir_in(".").unwrap();
+        let bin = binary_path(root.path());
+        fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        fs::write(&bin, b"existing binary").unwrap();
+        let cache = cache_path(root.path());
+        fs::write(&cache, "existing cache").unwrap();
+        let client = MockHttpClient::new(vec![
+            Ok(b"untrusted binary".to_vec()),
+            Ok(format!("{}  {}\n", "0".repeat(64), asset_name()).into_bytes()),
+        ]);
+
+        let error = download_and_install_with_gh(
+            root.path(),
+            "v2026.09.28.1",
+            &client,
+            &ForbiddenGh,
+            Policy::Required,
+        )
+        .unwrap_err();
+
+        assert!(
+            format!("{error:#}").contains("checksum mismatch"),
+            "{error:#}"
+        );
+        assert_eq!(fs::read(&bin).unwrap(), b"existing binary");
+        assert_eq!(fs::read_to_string(&cache).unwrap(), "existing cache");
+        assert!(!old_binary_path(root.path()).exists());
+        assert_eq!(client.request_urls().len(), 2);
     }
 
     #[test]

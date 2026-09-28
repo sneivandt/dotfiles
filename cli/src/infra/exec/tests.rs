@@ -22,34 +22,36 @@ fn run_echo() {
 }
 
 #[test]
-fn run_failure() {
+fn checked_and_unchecked_failures_retain_exit_code_and_both_streams() {
     let executor = ProcessExecutor::system();
-    #[cfg(windows)]
-    let result = executor.execute(CommandSpec::new("cmd").args(&["/C", "exit", "1"]));
-    #[cfg(not(windows))]
-    let result = executor.execute(CommandSpec::new("false"));
-    assert!(
-        matches!(result, Err(ExecError::NonZero { .. })),
-        "non-zero exit should produce a typed error"
-    );
-}
-
-#[test]
-fn run_unchecked_failure() {
-    let executor = ProcessExecutor::system();
-    #[cfg(windows)]
-    let result = executor
-        .execute(
-            CommandSpec::new("cmd")
-                .args(&["/C", "exit", "1"])
-                .unchecked(),
-        )
-        .unwrap();
-    #[cfg(not(windows))]
-    let result = executor
-        .execute(CommandSpec::new("false").unchecked())
-        .unwrap();
-    assert!(!result.success, "non-zero exit should set success=false");
+    for checked in [true, false] {
+        #[cfg(windows)]
+        let spec = CommandSpec::new("cmd").args(&[
+            "/D",
+            "/C",
+            "(echo output)&(echo diagnostic 1>&2)&exit /b 7",
+        ]);
+        #[cfg(not(windows))]
+        let spec = CommandSpec::new("sh").args(&[
+            "-c",
+            "printf 'output\\n'; printf 'diagnostic\\n' >&2; exit 7",
+        ]);
+        let label = spec.label();
+        let result = executor.execute(if checked { spec } else { spec.unchecked() });
+        let result = if checked {
+            let ExecError::NonZero { command, result } = result.unwrap_err() else {
+                panic!("checked failures must report NonZero");
+            };
+            assert_eq!(command, label);
+            result
+        } else {
+            result.unwrap()
+        };
+        assert!(!result.success, "checked={checked}");
+        assert_eq!(result.code, Some(7), "checked={checked}");
+        assert_eq!(result.stdout.trim(), "output", "checked={checked}");
+        assert_eq!(result.stderr.trim(), "diagnostic", "checked={checked}");
+    }
 }
 
 #[test]
@@ -127,45 +129,35 @@ fn which_path_fails_for_missing_program() {
 }
 
 #[test]
-fn system_executor_which_path_finds_known_program() {
+fn command_spec_applies_working_directory_and_child_only_environment_overrides() {
     let executor = ProcessExecutor::system();
+    let dir = tempfile::tempdir().unwrap();
+    let working_dir = crate::infra::fs::canonicalize(dir.path()).unwrap();
+    let original_env = std::env::var_os("DOTFILES_EXEC_TEST_VALUE");
     #[cfg(windows)]
-    let result = executor.which_path("cmd");
+    let spec = CommandSpec::new("cmd").args(&["/D", "/C", "cd & echo %DOTFILES_EXEC_TEST_VALUE%"]);
     #[cfg(not(windows))]
-    let result = executor.which_path("echo");
-    assert!(
-        result.is_ok(),
-        "ProcessExecutor::which_path should find a known program"
-    );
-}
-
-#[test]
-fn system_executor_which_path_fails_for_missing() {
-    let executor = ProcessExecutor::system();
-    let result = executor.which_path("this-program-does-not-exist-12345");
-    assert!(
-        result.is_err(),
-        "ProcessExecutor::which_path should fail for missing program"
-    );
-}
-
-#[test]
-fn run_in_tempdir() {
-    let executor = ProcessExecutor::system();
-    let dir = std::env::temp_dir();
-    #[cfg(windows)]
+    let spec = CommandSpec::new("sh").args(&[
+        "-c",
+        "printf '%s\\n' \"$PWD\" \"$DOTFILES_EXEC_TEST_VALUE\"",
+    ]);
     let result = executor
         .execute(
-            CommandSpec::new("cmd")
-                .args(&["/C", "echo", "hello"])
-                .current_dir(&dir),
+            spec.current_dir(&working_dir)
+                .env("DOTFILES_EXEC_TEST_VALUE", "overridden")
+                .envs(&[("DOTFILES_EXEC_TEST_VALUE", "child-only value")]),
         )
         .unwrap();
-    #[cfg(not(windows))]
-    let result = executor
-        .execute(CommandSpec::new("echo").arg("hello").current_dir(&dir))
-        .unwrap();
-    assert!(result.success, "echo in temp dir should succeed");
+    assert!(result.success);
+    assert_eq!(result.code, Some(0));
+    assert!(result.stderr.is_empty());
+    let lines: Vec<_> = result.stdout.lines().map(str::trim).collect();
+    assert_eq!(
+        lines,
+        [working_dir.to_str().unwrap(), "child-only value"],
+        "both cwd and the last environment override must reach the child"
+    );
+    assert_eq!(std::env::var_os("DOTFILES_EXEC_TEST_VALUE"), original_env);
 }
 
 #[test]
@@ -233,45 +225,6 @@ fn timeout_remains_active_while_a_descendant_holds_output_pipes() {
     assert!(
         started.elapsed() < Duration::from_secs(3),
         "the command should stop at the timeout plus the termination grace"
-    );
-}
-
-#[test]
-fn managed_executor_cancels_commands() {
-    let token = CancellationToken::new();
-    token.cancel();
-    let executor = ProcessExecutor::managed_with_timeout(token, Duration::from_secs(5));
-    #[cfg(windows)]
-    let result =
-        executor.execute(CommandSpec::new("cmd").args(&["/C", "ping", "localhost", "-n", "5"]));
-    #[cfg(not(windows))]
-    let result = executor.execute(CommandSpec::new("sh").args(&["-c", "sleep 5"]));
-
-    assert!(
-        matches!(result, Err(ExecError::Cancelled { .. })),
-        "cancelled command should produce a typed cancellation"
-    );
-}
-
-#[test]
-fn command_spec_builds_owned_request() {
-    let dir = PathBuf::from("worktree");
-    let spec = CommandSpec::new("git")
-        .args(&["status", "--short"])
-        .current_dir(&dir)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .unchecked();
-
-    assert_eq!(spec.program(), "git");
-    assert_eq!(spec.arguments(), ["status", "--short"]);
-    assert_eq!(spec.working_dir(), Some(dir.as_path()));
-    assert_eq!(
-        spec.environment(),
-        [(OsString::from("GIT_TERMINAL_PROMPT"), OsString::from("0"))]
-    );
-    assert!(
-        !spec.is_checked(),
-        "unchecked builder should disable checking"
     );
 }
 
@@ -412,6 +365,28 @@ fn missing_program_returns_typed_spawn_error() {
 }
 
 #[test]
+fn invalid_working_directory_preserves_spawn_source_and_context() {
+    let root = tempfile::tempdir().unwrap();
+    let missing = root.path().join("missing");
+    #[cfg(windows)]
+    let program = "cmd";
+    #[cfg(not(windows))]
+    let program = "sh";
+    let spec = CommandSpec::new(program).current_dir(&missing);
+    let label = spec.label();
+    let error = ProcessExecutor::system().execute(spec).unwrap_err();
+    let ExecError::Spawn { command, source } = error else {
+        panic!("invalid cwd must fail before executing: {error}");
+    };
+    assert_eq!(command, label);
+    #[cfg(windows)]
+    assert_eq!(source.kind(), io::ErrorKind::NotADirectory);
+    #[cfg(not(windows))]
+    assert_eq!(source.kind(), io::ErrorKind::NotFound);
+    assert!(!missing.exists());
+}
+
+#[test]
 fn reader_failure_returns_typed_io_error() {
     for (reader, expected) in [
         (
@@ -459,14 +434,21 @@ fn output_retention_records_streams_and_preserves_multiline_boundaries() {
             Duration::from_millis(123),
         );
         let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
-        let record = content.lines().find_map(StoredRecord::from_line).unwrap();
+        let records: Vec<_> = content
+            .lines()
+            .filter_map(StoredRecord::from_line)
+            .collect();
+        assert_eq!(records.len(), 1, "{policy:?}: persist exactly one record");
+        let record = records.into_iter().next().unwrap();
         let Record::Command {
+            command,
+            outcome,
             stdout,
             stderr,
             exit_code,
             elapsed_us,
             stdout_bytes,
-            ..
+            stderr_bytes,
         } = record.record
         else {
             panic!("expected command record")
@@ -480,10 +462,46 @@ fn output_retention_records_streams_and_preserves_multiline_boundaries() {
             assert_eq!(stderr.as_deref(), Some("stderr marker\n"));
         }
         assert_eq!(exit_code, result.code);
+        assert_eq!(command, "example [arguments redacted]");
+        assert_eq!(outcome, if success { "succeeded" } else { "failed" });
         assert_eq!(elapsed_us, 123_000);
         assert_eq!(stdout_bytes, result.stdout.len());
+        assert_eq!(stderr_bytes, result.stderr.len());
         assert!(!content.contains("\\u001b"));
     }
+}
+
+#[test]
+fn omitted_unchecked_output_is_available_to_caller_but_not_persisted() {
+    use crate::infra::logging::records::{Record, StoredRecord};
+    let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+    #[cfg(windows)]
+    let spec =
+        CommandSpec::new("cmd").args(&["/D", "/C", "(echo synthetic-private-output)&exit /b 3"]);
+    #[cfg(not(windows))]
+    let spec = CommandSpec::new("sh").args(&["-c", "printf 'synthetic-private-output\\n'; exit 3"]);
+    let result = ProcessExecutor::system()
+        .execute(
+            spec.unchecked()
+                .redact_arguments()
+                .output_log(OutputLog::Omit),
+        )
+        .unwrap();
+    assert_eq!(result.code, Some(3));
+    assert!(!result.success);
+    assert_eq!(result.stdout.trim(), "synthetic-private-output");
+    let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+    assert!(!content.contains("synthetic-private-output"));
+    let records: Vec<_> = content
+        .lines()
+        .filter_map(StoredRecord::from_line)
+        .collect();
+    assert_eq!(records.len(), 1);
+    assert!(matches!(
+        &records[0].record,
+        Record::Command { stdout: None, stderr: None, stdout_bytes, exit_code: Some(3), outcome, .. }
+            if *stdout_bytes == result.stdout.len() && outcome == "failed"
+    ));
 }
 
 #[test]

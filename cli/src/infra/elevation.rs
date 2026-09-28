@@ -285,6 +285,7 @@ mod tests {
         present
             .expect_which()
             .withf(|program| program == "sudo")
+            .times(1)
             .returning(|_| true);
         assert!(sudo_available(&present));
 
@@ -292,11 +293,118 @@ mod tests {
         absent
             .expect_which()
             .withf(|program| program == "sudo")
+            .times(1)
             .returning(|_| false);
         assert!(
             !sudo_available(&absent),
             "sudo must be reported unavailable when it is not on PATH"
         );
+    }
+}
+
+#[cfg(all(test, windows))]
+mod delegation_tests {
+    use super::*;
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+    use crate::infra::logging::Output as _;
+
+    #[test]
+    fn elevation_uses_one_encoded_unchecked_invocation_and_interprets_every_exit_outcome() {
+        for available in [false, true] {
+            for (code, expected) in [
+                (Some(0), ElevationOutcome::Completed),
+                (
+                    Some(ELEVATION_DECLINED_EXIT_CODE),
+                    ElevationOutcome::Declined,
+                ),
+                (Some(17), ElevationOutcome::Failed(17)),
+                (None, ElevationOutcome::Failed(-1)),
+            ] {
+                let (log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("install");
+                let args = [
+                    "install",
+                    "--only",
+                    "registry",
+                    "--elevated-child",
+                    "--parent-run-id=ancestor",
+                ]
+                .map(str::to_string);
+                let expected_args = [
+                    "install",
+                    "--only",
+                    "registry",
+                    "--elevated-child",
+                    "--parent-run-id",
+                    &log.run_log().unwrap().id(),
+                ]
+                .map(str::to_string);
+                let exe = std::env::current_exe().unwrap();
+                let encoded = powershell_encode_command(&build_elevated_child_script(
+                    &exe.display().to_string(),
+                    &expected_args,
+                ));
+                let mut executor = MockExecutor::new();
+                executor
+                    .expect_which()
+                    .withf(|program| program == "pwsh")
+                    .times(1)
+                    .return_const(available);
+                executor
+                    .expect_execute()
+                    .withf(move |spec| {
+                        spec.program() == if available { "pwsh" } else { "powershell" }
+                            && spec.arguments()
+                                == ["-NoProfile", "-EncodedCommand", encoded.as_str()]
+                            && !spec.is_checked()
+                            && spec.working_dir().is_none()
+                            && spec.environment().is_empty()
+                    })
+                    .times(1)
+                    .returning(move |_| {
+                        Ok(ExecResult {
+                            stdout: String::new(),
+                            stderr: String::new(),
+                            success: code == Some(0),
+                            code,
+                        })
+                    });
+                assert_eq!(
+                    run_elevated_child(&executor, &log, &args).unwrap(),
+                    expected,
+                    "pwsh={available}, code={code:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn failure_to_spawn_elevation_helper_is_not_reported_as_user_declining() {
+        let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_which()
+            .withf(|program| program == "pwsh")
+            .times(1)
+            .return_const(true);
+        executor
+            .expect_execute()
+            .withf(|spec| spec.program() == "pwsh" && !spec.is_checked())
+            .times(1)
+            .returning(|_| {
+                Err(ExecError::spawn(
+                    "pwsh",
+                    std::io::Error::other("fixture spawn failure"),
+                ))
+            });
+
+        let error = run_elevated_child(&executor, &log, &["install".into()]).unwrap_err();
+
+        assert_eq!(error.to_string(), "failed to start elevated process");
+        assert!(matches!(
+            error.downcast_ref::<ExecError>(),
+            Some(ExecError::Spawn { .. })
+        ));
+        assert!(format!("{error:#}").contains("fixture spawn failure"));
     }
 }
 

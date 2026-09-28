@@ -483,20 +483,84 @@ mod tests {
 
     #[test]
     fn with_dependencies_adds_the_transitive_closure() {
-        let all: Vec<Box<dyn Task>> = vec![Box::new(SampleTask), Box::new(DependentTask)];
-        let filtered = apply_task_filters(
-            &all,
-            &[],
-            &["dependent".to_string()],
-            &[],
-            true,
-            &Logger::new("test"),
-        )
-        .expect("valid filter");
+        use crate::engine::TaskWithExtraDeps;
 
-        assert_eq!(
-            filtered.iter().map(|task| task.name()).collect::<Vec<_>>(),
-            vec!["Home symlinks", "Dependent"]
-        );
+        let all: Vec<Box<dyn Task>> = vec![
+            Box::new(OrderingDependentTask),
+            TaskWithExtraDeps::boxed(
+                Box::new(OtherTask),
+                &[InternalTask.task_id()],
+                &[DependentTask.task_id()],
+            ),
+            Box::new(DependentTask),
+            Box::new(SampleTask),
+        ];
+        let additional: Vec<Box<dyn Task>> = vec![Box::new(InternalTask)];
+        for (with_deps, skip, expected) in [
+            (false, vec![], vec!["packages"]),
+            (
+                true,
+                vec![],
+                vec!["packages", "dependent", "symlinks", "reload-configuration"],
+            ),
+            (
+                true,
+                vec!["symlinks".to_string()],
+                vec!["packages", "dependent", "reload-configuration"],
+            ),
+            (
+                true,
+                vec!["dependent".to_string()],
+                vec!["packages", "symlinks", "reload-configuration"],
+            ),
+        ] {
+            let filtered = apply_task_filters(
+                &all,
+                &additional,
+                &["packages".to_string()],
+                &skip,
+                with_deps,
+                &Logger::new("test"),
+            )
+            .expect("valid filter");
+            assert_eq!(
+                filtered
+                    .iter()
+                    .map(|task| task.selector())
+                    .collect::<Vec<_>>(),
+                expected,
+                "with_deps={with_deps}, skip={skip:?}: expand blocking and ordering predecessors transitively, then apply skips"
+            );
+        }
+    }
+
+    #[test]
+    fn selector_validation_rejects_unknown_skip_and_internal_selectors() {
+        let tasks: [&dyn Task; 3] = [&SampleTask, &OtherTask, &InternalTask];
+        for (only, skip, flag, selector) in [
+            (vec![], vec!["packges".into()], "--skip", "packges"),
+            (
+                vec!["reload-configuration".into()],
+                vec![],
+                "--only",
+                "reload-configuration",
+            ),
+            (
+                vec![],
+                vec!["reload-configuration".into()],
+                "--skip",
+                "reload-configuration",
+            ),
+        ] {
+            let error = selected_task_ids(&tasks, &only, &skip, false).unwrap_err();
+            let message = error.to_string();
+            assert!(
+                message.starts_with(&format!(
+                    "{flag} did not match a task selector: '{selector}'"
+                )),
+                "{message}"
+            );
+            assert!(message.ends_with("Run 'dotfiles tasks' to list selectors"));
+        }
     }
 }

@@ -319,7 +319,8 @@ mod tests {
 
     #[test]
     fn state_missing_when_file_does_not_exist() {
-        let r = make_sh_resource(Path::new("/repo"), Path::new("/nonexistent"));
+        let home = TempDir::new().unwrap();
+        let r = make_sh_resource(Path::new("/repo"), home.path());
         let state = r.current_state().unwrap();
         assert_eq!(state, ResourceState::Missing);
     }
@@ -471,7 +472,8 @@ mod tests {
 
     #[test]
     fn remove_returns_already_correct_when_absent() {
-        let r = make_sh_resource(Path::new("/repo"), Path::new("/nonexistent"));
+        let home = TempDir::new().unwrap();
+        let r = make_sh_resource(Path::new("/repo"), home.path());
         let result = r.remove().unwrap();
         assert_eq!(result, ResourceChange::AlreadyCorrect);
     }

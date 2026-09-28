@@ -682,13 +682,32 @@ mod tests {
         let (run_log, _tmp) = isolated_run_log();
         run_log.emit(LogEvent::Stage, "precision-test");
         let contents = fs::read_to_string(run_log.path()).unwrap();
-        let has_us = contents
+        let line = contents
             .lines()
-            .any(|l| l.contains("precision-test") && l.contains('T') && l.contains('Z'));
-        assert!(
-            has_us,
-            "run-log should contain microsecond wall-clock timestamp"
+            .find(|line| line.ends_with("[stage] precision-test"))
+            .unwrap();
+        let stamp = line
+            .split_whitespace()
+            .find(|part| part.contains('T') && part.ends_with('Z'))
+            .unwrap();
+        assert_eq!(
+            stamp.len(),
+            27,
+            "persisted wall time must include six fractional digits: {stamp}"
         );
+        for (index, byte) in stamp.bytes().enumerate() {
+            assert!(
+                match index {
+                    4 | 7 => byte == b'-',
+                    10 => byte == b'T',
+                    13 | 16 => byte == b':',
+                    19 => byte == b'.',
+                    26 => byte == b'Z',
+                    _ => byte.is_ascii_digit(),
+                },
+                "invalid timestamp byte {index}: {stamp}"
+            );
+        }
     }
 
     #[test]
@@ -748,7 +767,6 @@ mod tests {
     fn run_log_events_are_chronologically_ordered() {
         let (run_log, _tmp) = isolated_run_log();
         run_log.emit(LogEvent::Stage, "first");
-        std::thread::sleep(std::time::Duration::from_millis(1));
         run_log.emit(LogEvent::Info, "second");
         let contents = fs::read_to_string(run_log.path()).unwrap();
         let first_pos = contents.find("first").expect("first in log");
@@ -847,19 +865,58 @@ mod tests {
     }
 
     #[test]
-    fn run_log_events_have_sequence_numbers() {
+    fn concurrent_events_keep_complete_records_sequence_numbers_and_thread_contexts() {
         let (run_log, _tmp) = isolated_run_log();
-        run_log.emit(LogEvent::Info, "first");
-        run_log.emit(LogEvent::Info, "second");
+        let workers = 4;
+        let events = 16;
+        let barrier = std::sync::Barrier::new(workers);
+        std::thread::scope(|scope| {
+            for worker in 0..workers {
+                let run_log = &run_log;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    let _context = log_task_context(&format!("worker-{worker}"));
+                    barrier.wait();
+                    for event in 0..events {
+                        run_log.emit(LogEvent::Info, &format!("{event}\nretained indentation"));
+                    }
+                });
+            }
+        });
         let contents = fs::read_to_string(run_log.path()).unwrap();
-        assert!(
-            contents.lines().any(|line| line.starts_with("000001 ")),
-            "first event should have sequence 1"
+        let lines: Vec<_> = contents
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .collect();
+        assert_eq!(lines.len(), workers * events);
+        let mut seen = std::collections::BTreeMap::<String, usize>::new();
+        for (index, line) in lines.into_iter().enumerate() {
+            assert_eq!(
+                line.split_whitespace()
+                    .next()
+                    .unwrap()
+                    .parse::<usize>()
+                    .unwrap(),
+                index + 1,
+                "sequence allocation and writing must be serialized"
+            );
+            let stored = StoredRecord::from_line(line).expect("a complete structured record");
+            let event_index = seen.entry(stored.context.clone()).or_default();
+            let Record::Message { event, text } = stored.record else {
+                panic!("expected a multiline message");
+            };
+            assert_eq!(event, "info");
+            assert_eq!(text, format!("{event_index}\nretained indentation"));
+            *event_index += 1;
+        }
+        assert_eq!(
+            seen,
+            (0..workers)
+                .map(|worker| (format!("worker-{worker}"), events))
+                .collect(),
+            "each worker retains its own context and emission order"
         );
-        assert!(
-            contents.lines().any(|line| line.starts_with("000002 ")),
-            "second event should have sequence 2"
-        );
+        assert!(run_log.is_healthy());
     }
 
     #[test]

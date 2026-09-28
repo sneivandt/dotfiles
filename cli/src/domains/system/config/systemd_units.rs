@@ -182,18 +182,6 @@ units = ["dunst.service"]
     }
 
     #[test]
-    fn load_plain_string_defaults_to_user_scope() {
-        let (_dir, path) = write_temp_toml(
-            r#"[base]
-units = ["clean-home-tmp.timer"]
-"#,
-        );
-        let units = load(&path, &[Category::Base]).unwrap();
-        assert_eq!(units[0].scope, UnitScope::User);
-        assert!(units[0].enabled);
-    }
-
-    #[test]
     fn load_scope_override() {
         let (_dir, path) = write_temp_toml(
             r#"[base]

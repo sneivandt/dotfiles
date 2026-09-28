@@ -223,8 +223,21 @@ fn load_checks_only_active_desired_state_for_conflicts() {
     assert!(config.registry.is_empty());
     let mut desktop = profile.clone();
     desktop.active_categories.push(Category::Desktop);
-    assert!(Config::load(dir.path(), &desktop, platform, None).is_err());
-    assert!(Config::load(dir.path(), &profile, windows(), None).is_err());
+    for (active_profile, active_platform, code) in [
+        (&desktop, platform, "git.conflicting-values"),
+        (&profile, windows(), "registry.conflicting-values"),
+    ] {
+        let error = Config::load(dir.path(), active_profile, active_platform, None).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .starts_with("contradictory desired state:\n")
+        );
+        assert!(
+            error.to_string().contains(code),
+            "{active_platform:?}: {error:#}"
+        );
+    }
 }
 
 #[test]
@@ -435,19 +448,42 @@ fn load_filters_systemd_units_by_platform() {
 }
 
 #[test]
-fn load_still_parses_systemd_config_on_windows() {
-    let (dir, profile, platform) = setup_load(
-        windows(),
-        &[(
+fn load_still_parses_inactive_platform_and_profile_config_strictly() {
+    for (platform, file, contents, unknown_field) in [
+        (
+            windows(),
             "systemd-units.toml",
             "[base]\nunits = [{ name = \"example.service\", scop = \"user\" }]\n",
-        )],
-    );
-    let result = Config::load(dir.path(), &profile, platform, None);
-    assert!(
-        result.is_err(),
-        "platform-inactive config should still be parsed strictly"
-    );
+            "scop",
+        ),
+        (
+            linux(),
+            "registry.toml",
+            "[console]\npath = 'HKCU:\\Console'\nvaluess = {}\n",
+            "valuess",
+        ),
+        (
+            linux(),
+            "packages.toml",
+            "[desktop]\npackages = [{ name = 'tool', provder = 'pacman' }]\n",
+            "provder",
+        ),
+    ] {
+        let (dir, profile, platform) = setup_load(platform, &[(file, contents)]);
+        let error = Config::load(dir.path(), &profile, platform, None)
+            .expect_err("inactive sections must still be structurally valid");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Invalid syntax in {}",
+                dir.path().join("conf").join(file).display()
+            )
+        );
+        assert!(
+            format!("{error:#}").contains(&format!("unknown field `{unknown_field}`")),
+            "{platform:?}, {file}: {error:#}"
+        );
+    }
 }
 
 #[test]

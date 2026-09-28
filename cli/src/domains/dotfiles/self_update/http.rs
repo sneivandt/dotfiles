@@ -254,6 +254,7 @@ pub(super) mod test_support {
     pub(crate) struct MockHttpClient {
         responses: std::sync::Mutex<std::collections::VecDeque<Result<Vec<u8>>>>,
         requests: std::sync::Mutex<Vec<Vec<(String, String)>>>,
+        urls: std::sync::Mutex<Vec<String>>,
     }
 
     impl MockHttpClient {
@@ -262,16 +263,25 @@ pub(super) mod test_support {
             Self {
                 responses: std::sync::Mutex::new(responses.into()),
                 requests: std::sync::Mutex::new(Vec::new()),
+                urls: std::sync::Mutex::new(Vec::new()),
             }
         }
 
         pub(crate) fn request_headers(&self) -> Vec<Vec<(String, String)>> {
             self.requests.lock().expect("mutex poisoned").clone()
         }
+
+        pub(crate) fn request_urls(&self) -> Vec<String> {
+            self.urls.lock().expect("mutex poisoned").clone()
+        }
     }
 
     impl HttpClient for MockHttpClient {
-        fn get(&self, _url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+        fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+            self.urls
+                .lock()
+                .expect("mutex poisoned")
+                .push(url.to_string());
             self.requests.lock().expect("mutex poisoned").push(
                 headers
                     .iter()
@@ -297,6 +307,12 @@ mod tests {
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec())]);
         let result = fetch_latest_tag(&client, None).unwrap();
         assert_eq!(result, Some("v1.2.3".to_string()));
+        assert_eq!(
+            client.request_urls(),
+            [format!(
+                "https://api.github.com/repos/{REPO}/releases/latest"
+            )]
+        );
     }
 
     #[test]
@@ -359,6 +375,7 @@ mod tests {
         let client = MockHttpClient::new(vec![Ok(b"binary data".to_vec())]);
         let result = download_bytes(&client, "https://example.com/file").unwrap();
         assert_eq!(result, b"binary data");
+        assert_eq!(client.request_urls(), ["https://example.com/file"]);
     }
 
     #[test]
@@ -379,6 +396,7 @@ mod tests {
             result, b"binary data",
             "a retried download should return the successful response body"
         );
+        assert_eq!(client.request_urls(), ["https://example.com/file"; 2]);
     }
 
     #[test]
@@ -392,6 +410,10 @@ mod tests {
         assert!(
             msg.contains("503"),
             "the final transient failure should be reported, got: {msg}"
+        );
+        assert_eq!(
+            client.request_urls(),
+            vec!["https://example.com/file"; usize::try_from(MAX_GET_ATTEMPTS).unwrap()]
         );
     }
 
@@ -407,6 +429,7 @@ mod tests {
             msg.contains("404"),
             "a permanent failure should surface immediately, got: {msg}"
         );
+        assert_eq!(client.request_urls(), ["https://example.com/file"]);
     }
 
     #[test]
@@ -434,6 +457,12 @@ mod tests {
         let client = MockHttpClient::new(vec![Ok(checksums.into_bytes())]);
 
         verify_checksum(&client, "v1.0.0", "test-asset", data).unwrap();
+        assert_eq!(
+            client.request_urls(),
+            [format!(
+                "https://github.com/{REPO}/releases/download/v1.0.0/checksums.sha256"
+            )]
+        );
     }
 
     #[test]

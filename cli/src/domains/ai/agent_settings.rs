@@ -77,7 +77,7 @@ mod tests {
     use crate::domains::ai::config::agent_settings::{AgentHarness, AgentSetting};
     use crate::engine::Task;
     use crate::infra::ConfigHandle;
-    use crate::test_helpers::{empty_config, make_linux_context};
+    use crate::test_helpers::{empty_config, make_linux_context, task_batch};
     use std::path::PathBuf;
 
     #[test]
@@ -94,7 +94,9 @@ mod tests {
     fn run_with_settings_converges() {
         let dir = tempfile::tempdir().unwrap();
         let config = empty_config(dir.path().to_path_buf());
-        let ctx = make_linux_context(config).with_home(dir.path().to_path_buf());
+        let ctx = make_linux_context(config)
+            .with_home(dir.path().to_path_buf())
+            .with_parallel(true);
         let task = ConfigureAgentSettings::new(ConfigHandle::new(vec![
             AgentSetting {
                 target: AgentHarness::Copilot,
@@ -102,20 +104,89 @@ mod tests {
                 value: toml::Value::String("claude-opus-4.8".to_string()),
             },
             AgentSetting {
+                target: AgentHarness::Copilot,
+                key: "footer.showBranch".to_string(),
+                value: toml::Value::Boolean(true),
+            },
+            AgentSetting {
                 target: AgentHarness::Codex,
                 key: "model_reasoning_effort".to_string(),
                 value: toml::Value::String("high".to_string()),
             },
+            AgentSetting {
+                target: AgentHarness::Codex,
+                key: "tui.theme".to_string(),
+                value: toml::Value::String("fixture-theme".to_string()),
+            },
         ]));
-        let _result = task.run(&ctx).unwrap();
+        let result = task.run(&ctx).unwrap();
+        assert_eq!(task_batch(&result).changed_count(), 4);
 
         let copilot_settings =
             std::fs::read_to_string(dir.path().join(".copilot").join("settings.json")).unwrap();
-        assert!(copilot_settings.contains("claude-opus-4.8"));
+        let copilot: serde_json::Value = serde_json::from_str(&copilot_settings).unwrap();
+        assert_eq!(
+            copilot,
+            serde_json::json!({
+                "model": "claude-opus-4.8", "footer": { "showBranch": true },
+            })
+        );
 
         let codex_config =
             std::fs::read_to_string(dir.path().join(".codex").join("config.toml")).unwrap();
-        assert!(codex_config.contains("model_reasoning_effort = \"high\""));
+        let codex: toml::Table = toml::from_str(&codex_config).unwrap();
+        assert_eq!(codex["model_reasoning_effort"].as_str(), Some("high"));
+        assert_eq!(codex["tui"]["theme"].as_str(), Some("fixture-theme"));
+        let repeated = task.run(&ctx).unwrap();
+        assert_eq!(task_batch(&repeated).changed_count(), 0);
+        assert_eq!(task_batch(&repeated).already_ok_count(), 4);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(".copilot/settings.json")).unwrap(),
+            copilot_settings
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(".codex/config.toml")).unwrap(),
+            codex_config
+        );
+    }
+
+    #[test]
+    fn dry_run_leaves_missing_and_existing_agent_documents_untouched() {
+        for existing in [false, true] {
+            let home = tempfile::tempdir_in(".").unwrap();
+            let json_path = home.path().join(".copilot/settings.json");
+            let toml_path = home.path().join(".codex/config.toml");
+            let json_before = r#"{"model":"old","unmanaged":true}"#;
+            let toml_before = "model = \"old\"\nunmanaged = true\n";
+            if existing {
+                for (path, content) in [(&json_path, json_before), (&toml_path, toml_before)] {
+                    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    std::fs::write(path, content).unwrap();
+                }
+            }
+            let ctx = make_linux_context(empty_config(home.path().to_path_buf()))
+                .with_home(home.path().to_path_buf())
+                .with_dry_run(true);
+            let settings = [AgentHarness::Copilot, AgentHarness::Codex]
+                .into_iter()
+                .map(|target| AgentSetting {
+                    target,
+                    key: "model".to_string(),
+                    value: toml::Value::String("new".to_string()),
+                })
+                .collect();
+            let result = ConfigureAgentSettings::new(ConfigHandle::new(settings))
+                .run(&ctx)
+                .unwrap();
+            assert_eq!(task_batch(&result).changed_count(), 2);
+            for (path, before) in [(&json_path, json_before), (&toml_path, toml_before)] {
+                if existing {
+                    assert_eq!(std::fs::read_to_string(path).unwrap(), before);
+                } else {
+                    assert!(!path.parent().unwrap().exists());
+                }
+            }
+        }
     }
 
     #[test]

@@ -70,7 +70,11 @@ mod tests {
     #[test]
     fn read_returns_none_outside_git_repo() {
         let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join(".git"), "not a git directory").unwrap();
         assert_eq!(read_local(dir.path(), "dotfiles.example"), None);
+        let error = persist_local(dir.path(), "dotfiles.example", "value").unwrap_err();
+        assert_eq!(error.to_string(), "finding git repository");
+        assert!(error.downcast_ref::<git2::Error>().is_some());
     }
 
     #[test]
@@ -83,5 +87,45 @@ mod tests {
             Some("second".to_string())
         );
         drop(dir);
+    }
+
+    #[test]
+    fn empty_values_are_unset_but_whitespace_and_unicode_are_preserved() {
+        let (_dir, root) = init_test_repo();
+        let nested = root.join("nested");
+        std::fs::create_dir(&nested).unwrap();
+        for value in ["", " ", "日本語 path with spaces"] {
+            persist_local(&nested, "dotfiles.example", value).unwrap();
+            assert_eq!(
+                read_local(&root, "dotfiles.example"),
+                (!value.is_empty()).then(|| value.to_string()),
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn failed_persistence_preserves_existing_config_and_reports_the_key() {
+        let (_dir, root) = init_test_repo();
+        persist_local(&root, "dotfiles.example", "original").unwrap();
+        let repo = git2::Repository::open(&root).unwrap();
+        let config = repo.path().join("config");
+        let lock = repo.path().join("config.lock");
+        let before = std::fs::read(&config).unwrap();
+        std::fs::write(&lock, "other writer").unwrap();
+
+        let error = persist_local(&root, "dotfiles.example", "replacement").unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "persisting dotfiles.example to git config"
+        );
+        assert!(error.downcast_ref::<git2::Error>().is_some());
+        assert_eq!(std::fs::read(config).unwrap(), before);
+        assert_eq!(std::fs::read_to_string(lock).unwrap(), "other writer");
+        assert_eq!(
+            read_local(&root, "dotfiles.example").as_deref(),
+            Some("original")
+        );
     }
 }

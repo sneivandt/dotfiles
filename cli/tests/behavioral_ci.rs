@@ -28,7 +28,8 @@ fn executor_arc<T: Executor + 'static>(executor: &Arc<T>) -> Arc<dyn Executor> {
 }
 
 const fn batch_changed(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.changed_count() > 0)
+    matches!(result, TaskResult::Batch(stats)
+        if stats.changed_count() > 0 && stats.failed_count() == 0 && stats.skipped_count() == 0)
 }
 
 #[cfg(unix)]
@@ -36,7 +37,8 @@ const fn batch_unchanged(result: &TaskResult) -> bool {
     matches!(
         result,
         TaskResult::Batch(stats)
-            if stats.changed_count() == 0 && stats.failed_count() == 0
+            if stats.changed_count() == 0 && stats.failed_count() == 0 && stats.skipped_count() == 0
+                && stats.already_ok_count() > 0
     )
 }
 
@@ -124,6 +126,11 @@ impl RecordingExecutor {
             "executor program mismatch"
         );
         assert_eq!(expected.args, recorded.args, "executor args mismatch");
+        assert_eq!(
+            spec.working_dir(),
+            None,
+            "unexpected working-directory override: {recorded:?}"
+        );
         expected.result
     }
 }

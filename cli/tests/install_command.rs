@@ -31,6 +31,97 @@ fn install_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     tasks::all_install_tasks(&store)
 }
 
+#[test]
+fn nested_cli_fixture_preserves_ancestor_settings_and_run_lock() {
+    use std::io::{Read as _, Seek as _, Write as _};
+
+    let ancestor = common::TestContextBuilder::new()
+        .with_git_hooks_dir()
+        .build();
+    let repository = git2::Repository::open(ancestor.root_path()).unwrap();
+    let mut settings = repository.config().unwrap();
+    settings.set_str("dotfiles.profile", "desktop").unwrap();
+    settings
+        .set_str("dotfiles.overlay", "ancestor-overlay-sentinel")
+        .unwrap();
+    drop(settings);
+    let config_path = repository.path().join("config");
+    let original_config = std::fs::read(&config_path).unwrap();
+    let lock_path = repository.path().join("dotfiles-run.lock");
+    let original_lock = b"ancestor run-lock sentinel\n";
+    let mut lock = std::fs::OpenOptions::new()
+        .create_new(true)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .unwrap();
+    lock.write_all(original_lock).unwrap();
+    lock.sync_all().unwrap();
+
+    for locked in [false, true] {
+        if locked {
+            lock.try_lock().expect("hold the ancestor's run lock");
+        }
+        let root = ancestor.root_path().join(format!("nested-{locked}"));
+        common::setup_minimal_repo(&root);
+        assert_eq!(
+            dunce::canonicalize(git2::Repository::discover(&root).unwrap().path()).unwrap(),
+            dunce::canonicalize(repository.path()).unwrap(),
+            "before isolation, this fixture must discover the ancestor"
+        );
+        let home = tempfile::tempdir().unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        let output = common::cli_command(
+            &root,
+            home.path(),
+            Some(overlay.path()),
+            "install",
+            "completions",
+        )
+        .output()
+        .unwrap();
+        assert!(
+            output.status.success(),
+            "ancestor_locked={locked}: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let child = git2::Repository::open(&root).unwrap();
+        let child_settings = child.config().unwrap();
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("profile base"),
+            "the child must use its requested profile rather than the ancestor's desktop selection"
+        );
+        assert_eq!(
+            child_settings.get_string("dotfiles.overlay").unwrap(),
+            overlay.path().to_string_lossy(),
+            "the explicit overlay must be persisted only in the child"
+        );
+        assert!(child.path().join("dotfiles-run.lock").is_file());
+        assert_eq!(
+            std::fs::read(&config_path).unwrap(),
+            original_config,
+            "ancestor_locked={locked}: ancestor settings must remain byte-for-byte unchanged"
+        );
+        lock.rewind().unwrap();
+        assert_eq!(
+            lock.metadata().unwrap().len(),
+            u64::try_from(original_lock.len()).unwrap(),
+            "ancestor_locked={locked}: ancestor lock length must not change"
+        );
+        let mut contents = vec![0; original_lock.len()];
+        lock.read_exact(&mut contents).unwrap();
+        assert_eq!(
+            contents, original_lock,
+            "ancestor_locked={locked}: ancestor lock must not be overwritten"
+        );
+        if locked {
+            lock.unlock().unwrap();
+        }
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn install_console_separates_tasks_and_keeps_no_op_compact() {
@@ -203,37 +294,51 @@ fn install_task_catalog_satisfies_structural_contract() {
 
 #[test]
 fn skip_filters_exclude_any_matching_selector_and_preserve_nonmatches() {
-    let all_tasks = install_tasks();
-    let cases: &[(&str, &[&str], bool)] = &[
-        ("single selector", &["packages"], true),
-        ("multiple selectors", &["packages", "registry"], true),
-        ("no match", &["zzznomatch"], false),
+    let cases: &[(&str, &str, &[&str])] = &[
+        ("single selector", "symlinks", &["Git hooks"]),
+        ("multiple selectors", "symlinks,completions", &["Git hooks"]),
+        (
+            "outside selected subset",
+            "registry",
+            &["Git hooks", "Home symlinks"],
+        ),
     ];
-    for (case, selectors, removes_tasks) in cases {
-        let filtered: Vec<_> = all_tasks
-            .iter()
-            .filter(|task| {
-                !selectors
-                    .iter()
-                    .any(|selector| task_matches_filter(task.as_ref(), selector))
-            })
-            .collect();
-        for task in &filtered {
-            for selector in *selectors {
-                assert!(
-                    !task_matches_filter(task.as_ref(), selector),
-                    "{case}: '{}' should be excluded by --skip {selector}",
-                    task.name()
-                );
-            }
-        }
-        if *removes_tasks {
-            assert!(
-                filtered.len() < all_tasks.len(),
-                "{case}: nothing was removed"
+    for parallel in [false, true] {
+        for (case, skip, expected) in cases {
+            let repo = common::TestContextBuilder::new()
+                .with_config_file("symlinks.toml", "[base]\nsymlinks = ['example']\n")
+                .with_symlink_source("example")
+                .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
+                .with_git_hooks_dir()
+                .build();
+            let home = tempfile::tempdir().unwrap();
+            let mut command = common::cli_command(
+                repo.root_path(),
+                home.path(),
+                None,
+                "install",
+                "symlinks,git-hooks",
             );
-        } else {
-            assert_eq!(filtered.len(), all_tasks.len(), "{case}");
+            command.args(["--dry-run", "--skip", skip, "--verbose", "--no-symbols"]);
+            if !parallel {
+                command.arg("--no-parallel");
+            }
+            let output = command.output().unwrap();
+            let text = String::from_utf8(output.stdout).unwrap();
+            assert!(
+                output.status.success(),
+                "{case}, parallel={parallel}: {text}\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let mut names: Vec<_> = text
+                .lines()
+                .filter_map(|line| line.strip_prefix("DRYRUN "))
+                .map(|line| line.split_once(" · ").expect("task row duration").0)
+                .collect();
+            names.sort_unstable();
+            assert_eq!(names, *expected, "{case}, parallel={parallel}: {text}");
+            assert!(home.path().join(".example").symlink_metadata().is_err());
+            assert!(!repo.root_path().join(".git/hooks/pre-commit").exists());
         }
     }
 }
@@ -277,7 +382,7 @@ fn only_filters_use_exact_selectors_and_union_multiple_matches() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn install_tasks_assess_on_linux_and_windows() {
+fn minimal_install_catalog_applicability_is_platform_specific_and_scheduler_independent() {
     let platforms = [
         Platform {
             os: Os::Linux,
@@ -292,19 +397,39 @@ fn install_tasks_assess_on_linux_and_windows() {
     ];
 
     for platform in platforms {
-        let ctx = common::TestContextBuilder::new().build();
-        let ec = ctx.make_system_context(
-            "base",
-            platform,
-            tasks::ContextOpts {
-                dry_run: true,
-                parallel: false,
-                is_ci: None,
-            },
-        );
-
-        for task in tasks::all_install_tasks(&ec.store) {
-            let _ = task.should_run(&ec.ctx);
+        for parallel in [false, true] {
+            let ctx = common::TestContextBuilder::new().build();
+            let ec = ctx.make_context_with_executor(
+                "base",
+                platform,
+                tasks::ContextOpts {
+                    dry_run: true,
+                    parallel,
+                    is_ci: Some(false),
+                },
+                std::sync::Arc::new(common::StubExecutor),
+            );
+            let mut applicable: Vec<_> = tasks::all_install_tasks(&ec.store)
+                .into_iter()
+                .filter(|task| task.should_run(&ec.ctx))
+                .map(|task| task.selector().to_string())
+                .collect();
+            applicable.sort_unstable();
+            let mut expected = vec![
+                "agent-settings",
+                "completions",
+                "git",
+                "launcher",
+                "path",
+                "symlinks",
+            ];
+            if platform.os == Os::Windows {
+                expected.extend(["developer-mode", "registry"]);
+            } else {
+                expected.extend(["file-permissions", "shell"]);
+            }
+            expected.sort_unstable();
+            assert_eq!(applicable, expected, "{platform:?}, parallel={parallel}");
         }
     }
 }
@@ -326,88 +451,31 @@ fn install_task_catalog_contains_required_tasks() {
 }
 
 // ---------------------------------------------------------------------------
-// ApplyFilePermissions: real filesystem chmod
-// ---------------------------------------------------------------------------
-
-/// `ApplyFilePermissions.run()` must set the declared mode on an existing file.
-///
-/// Creates `$HOME/.ssh/config` with permissions `0o644`, then runs the task
-/// and asserts that the permissions are updated to `0o600`.
-#[cfg(unix)]
-#[test]
-fn apply_file_permissions_run_sets_mode_on_unix() {
-    use std::os::unix::fs::PermissionsExt;
-
-    use test_api::tasks::Task;
-
-    let ctx = common::TestContextBuilder::new()
-        .with_config_file(
-            "chmod.toml",
-            "[base]\npermissions = [{ mode = \"600\", path = \"ssh/config\" }]\n",
-        )
-        .build();
-
-    let platform = Platform {
-        os: Os::Linux,
-        is_arch: false,
-        is_wsl: false,
-    };
-    let ec = ctx.make_system_context(
-        "base",
-        platform,
-        tasks::ContextOpts {
-            dry_run: false,
-            parallel: false,
-            is_ci: Some(false),
-        },
-    );
-
-    // Create $HOME/.ssh/config with mode 0o644.
-    let ssh_dir = ec.ctx.home().join(".ssh");
-    std::fs::create_dir_all(&ssh_dir).expect("create .ssh dir");
-    let ssh_config = ssh_dir.join("config");
-    std::fs::write(&ssh_config, "").expect("create ssh config");
-    std::fs::set_permissions(&ssh_config, std::fs::Permissions::from_mode(0o644))
-        .expect("set initial permissions");
-
-    let result = tasks::files::chmod::ApplyFilePermissions::new(ec.store.chmod.clone())
-        .run(&ec.ctx)
-        .expect("apply file permissions run");
-    assert!(
-        matches!(result, tasks::TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "apply file permissions should succeed"
-    );
-
-    let perms = std::fs::metadata(&ssh_config)
-        .expect("read file metadata")
-        .permissions();
-    assert_eq!(
-        perms.mode() & 0o777,
-        0o600,
-        "file permissions should be 0o600 after applying chmod"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // install::run: full dry-run pipeline
 // ---------------------------------------------------------------------------
 
 #[test]
 fn install_run_dry_run_accepts_valid_filters() {
     let cases: &[(&str, &[&str], &[&str], bool)] = &[
-        ("all tasks", &[], &[], false),
+        ("filesystem tasks", &[], &["symlinks", "git-hooks"], false),
         ("only symlinks", &[], &["symlinks"], false),
-        ("skip packages", &["packages"], &[], false),
+        (
+            "skip packages",
+            &["packages"],
+            &["symlinks", "git-hooks"],
+            false,
+        ),
         // Repository updates are already disabled by the helper.
-        ("redundant repository skip", &["repository"], &[], false),
+        (
+            "redundant repository skip",
+            &["repository"],
+            &["symlinks"],
+            false,
+        ),
         ("parallel symlinks", &[], &["symlinks"], true),
     ];
     for (case, skip, only, parallel) in cases {
-        let result = common::run_install_dry_run(
-            skip.iter().map(|selector| (*selector).to_owned()).collect(),
-            only.iter().map(|selector| (*selector).to_owned()).collect(),
-            *parallel,
-        );
+        let result = common::run_install_dry_run(skip, only, *parallel);
         assert!(result.is_ok(), "{case}: {result:?}");
     }
 }
@@ -415,52 +483,30 @@ fn install_run_dry_run_accepts_valid_filters() {
 /// Calling `install::run` with `--only` matching no selector must explain how
 /// to discover valid selectors.
 #[test]
-fn install_run_dry_run_with_only_no_match_returns_an_actionable_error() {
-    let result = common::run_install_dry_run(vec![], vec!["zzznomatch".to_string()], false);
-    let error = result.expect_err("an unknown selector should fail");
-    let message = error.to_string();
-    assert!(message.contains("--only did not match a task selector"));
-    assert!(message.contains("dotfiles tasks"));
+fn install_run_unknown_filters_return_actionable_errors() {
+    let cases: &[(&str, &[&str], &[&str])] = &[
+        ("--only", &[], &["zzznomatch"]),
+        ("--skip", &["zzznomatch"], &["symlinks"]),
+    ];
+    for (flag, skip, only) in cases {
+        let result = common::run_install_dry_run(skip, only, false);
+        let error = result.expect_err("an unknown selector should fail");
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("{flag} did not match a task selector")),
+            "{message}"
+        );
+        assert!(message.contains("dotfiles tasks"), "{message}");
+    }
 }
 
 /// Calling `install::run` with contradictory `--skip` and `--only` selectors
 /// must fail instead of reporting a successful no-op.
 #[test]
 fn install_run_rejects_filters_that_select_no_tasks() {
-    let result = common::run_install_dry_run(
-        vec!["symlinks".to_string()],
-        vec!["symlinks".to_string()],
-        false,
-    );
+    let result = common::run_install_dry_run(&["symlinks"], &["symlinks"], false);
     let error = result.expect_err("contradictory task filters should fail");
     assert!(error.to_string().contains("selected no tasks"));
-}
-
-// ---------------------------------------------------------------------------
-// Parallel execution: should_run with parallel enabled
-// ---------------------------------------------------------------------------
-
-/// `should_run` must not panic for any install task when `parallel` is `true`.
-///
-/// This exercises the scheduler path that dispatches resources to Rayon
-/// without needing a real system.
-#[test]
-fn install_tasks_should_run_with_parallel_enabled() {
-    let ctx = common::TestContextBuilder::new().build();
-    let ec = ctx.make_system_context(
-        "base",
-        Platform::detect(),
-        tasks::ContextOpts {
-            dry_run: true,
-            parallel: true,
-            is_ci: Some(false),
-        },
-    );
-
-    let all_tasks = install_tasks();
-    for task in &all_tasks {
-        let _ = task.should_run(&ec.ctx);
-    }
 }
 
 #[test]
@@ -497,8 +543,9 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
     let records: Vec<serde_json::Value> = parent_contents
         .lines()
         .filter_map(|line| {
-            let (_, json) = line.split_once(" [record] ")?;
-            serde_json::from_str(json).ok()
+            line.split_once(" [record] ").map(|(_, json)| {
+                serde_json::from_str(json).expect("every structured record must be valid JSON")
+            })
         })
         .collect();
     assert!(
@@ -546,16 +593,15 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
         "viewing logs must not create a run"
     );
     assert!(
-        !home.path().join("log-example").exists(),
+        home.path().join(".log-example").symlink_metadata().is_err(),
         "preview must not install the link"
     );
 }
 
 fn read_retained_log(log_dir: &std::path::Path, args: &[&str]) -> String {
-    let result = std::process::Command::new(env!("CARGO_BIN_EXE_dotfiles"))
-        .arg("log")
+    let home = log_dir.parent().unwrap();
+    let result = common::cli_command(home, home, None, "log", "")
         .args(args)
-        .env("DOTFILES_LOG_DIR", log_dir)
         .output()
         .unwrap();
     assert!(

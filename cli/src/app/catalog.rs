@@ -158,20 +158,6 @@ mod tests {
     }
 
     #[test]
-    fn powershell_completions_register_runtime_cli_and_alias() {
-        let script = generate_powershell_completions();
-
-        assert!(
-            script.contains("DOTFILES_COMPLETE = 'powershell'"),
-            "PowerShell should load runtime dotfiles completion"
-        );
-        assert!(
-            script.contains("-CommandName 'dot' -ParameterName 'Arguments'"),
-            "PowerShell completions should register the dot function parameter"
-        );
-    }
-
-    #[test]
     fn cross_domain_dependencies_are_applied() {
         let tasks = all_install_tasks(&test_params());
         let find = |name: &str| {

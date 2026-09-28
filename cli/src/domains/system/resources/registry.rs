@@ -347,94 +347,102 @@ mod tests {
     }
 
     #[test]
-    fn value_matches_numeric() {
-        let current = CurrentRegistryValue::new("14".to_string(), Some(RegistryValueType::Dword));
-        assert!(value_matches(&current, "14", RegistryValueType::Dword));
-        assert!(value_matches(&current, "0x0E", RegistryValueType::Dword));
-        assert!(!value_matches(&current, "15", RegistryValueType::Dword));
-    }
+    fn cached_state_preserves_native_types_and_numeric_identity() {
+        use RegistryValueType::{Dword, String as Text};
 
-    #[test]
-    fn value_matches_string() {
-        let current =
-            CurrentRegistryValue::new("test".to_string(), Some(RegistryValueType::String));
-        assert!(value_matches(&current, "test", RegistryValueType::String));
-        assert!(!value_matches(&current, "other", RegistryValueType::String));
-    }
-
-    #[test]
-    fn value_type_must_match_even_when_data_is_numeric() {
-        let current = CurrentRegistryValue::new("1".to_string(), Some(RegistryValueType::String));
-        assert!(!value_matches(&current, "1", RegistryValueType::Dword));
-    }
-
-    #[test]
-    fn from_entry_creates_resource() {
-        let entry = crate::domains::system::config::registry::RegistryEntry {
-            key_path: "HKCU:\\Test".to_string(),
-            value_name: "TestValue".to_string(),
-            value_data: "123".to_string(),
-            value_type: RegistryValueType::Dword,
-            origin: None,
-        };
-
-        let resource = RegistryResource::from_entry(&entry);
-        assert_eq!(resource.key_path, "HKCU:\\Test");
-        assert_eq!(resource.value_name, "TestValue");
-        assert_eq!(resource.value_data, "123");
-        assert_eq!(resource.value_type, RegistryValueType::Dword);
-    }
-
-    #[test]
-    fn state_from_cached_correct() {
-        let resource = RegistryResource::new(
-            "HKCU:\\Console".to_string(),
-            "FontSize".to_string(),
-            "14".to_string(),
-            RegistryValueType::Dword,
-        );
-        let current = CurrentRegistryValue::new("14".to_string(), Some(RegistryValueType::Dword));
-        let state = resource.state_from_cached(Some(&current));
-        assert_eq!(state, ResourceState::Correct);
-    }
-
-    #[test]
-    fn state_from_cached_incorrect() {
-        let resource = RegistryResource::new(
-            "HKCU:\\Console".to_string(),
-            "FontSize".to_string(),
-            "14".to_string(),
-            RegistryValueType::Dword,
-        );
-        let current = CurrentRegistryValue::new("20".to_string(), Some(RegistryValueType::Dword));
-        let state = resource.state_from_cached(Some(&current));
-        assert!(matches!(state, ResourceState::Incorrect { .. }));
-    }
-
-    #[test]
-    fn state_from_cached_missing() {
-        let resource = RegistryResource::new(
-            "HKCU:\\Console".to_string(),
-            "FontSize".to_string(),
-            "14".to_string(),
-            RegistryValueType::Dword,
-        );
-        let state = resource.state_from_cached(None);
-        assert_eq!(state, ResourceState::Missing);
-    }
-
-    #[test]
-    fn state_from_cached_hex_match() {
-        let resource = RegistryResource::new(
-            "HKCU:\\Console".to_string(),
-            "FontSize".to_string(),
-            "0x0E".to_string(),
-            RegistryValueType::Dword,
-        );
-        // 0x0E = 14 decimal
-        let current = CurrentRegistryValue::new("14".to_string(), Some(RegistryValueType::Dword));
-        let state = resource.state_from_cached(Some(&current));
-        assert_eq!(state, ResourceState::Correct);
+        let max_dword = u32::MAX.to_string();
+        for (label, desired, desired_type, current, current_type, correct) in [
+            ("decimal", "14", Dword, "14", Some(Dword), true),
+            ("hexadecimal", "0x0E", Dword, "14", Some(Dword), true),
+            (
+                "signed bit pattern",
+                "-1",
+                Dword,
+                max_dword.as_str(),
+                Some(Dword),
+                true,
+            ),
+            ("different number", "14", Dword, "20", Some(Dword), false),
+            (
+                "invalid desired",
+                "not-a-number",
+                Dword,
+                "14",
+                Some(Dword),
+                false,
+            ),
+            (
+                "invalid current",
+                "14",
+                Dword,
+                "not-a-number",
+                Some(Dword),
+                false,
+            ),
+            (
+                "two invalid numbers",
+                "bad",
+                Dword,
+                "bad",
+                Some(Dword),
+                false,
+            ),
+            ("matching text", "test", Text, "test", Some(Text), true),
+            ("different text", "test", Text, "other", Some(Text), false),
+            ("text case", "Test", Text, "test", Some(Text), false),
+            (
+                "numeric text is literal",
+                "0x0E",
+                Text,
+                "14",
+                Some(Text),
+                false,
+            ),
+            (
+                "string instead of DWORD",
+                "14",
+                Dword,
+                "14",
+                Some(Text),
+                false,
+            ),
+            (
+                "DWORD instead of string",
+                "14",
+                Text,
+                "14",
+                Some(Dword),
+                false,
+            ),
+            ("unsupported native type", "14", Dword, "14", None, false),
+        ] {
+            let entry = crate::domains::system::config::registry::RegistryEntry {
+                key_path: r"HKCU:\Test".into(),
+                value_name: "Setting".into(),
+                value_data: desired.into(),
+                value_type: desired_type,
+                origin: None,
+            };
+            let resource = RegistryResource::from_entry(&entry);
+            let observed = CurrentRegistryValue::new(current.into(), current_type);
+            let expected = if correct {
+                ResourceState::Correct
+            } else {
+                ResourceState::Incorrect {
+                    current: current.into(),
+                }
+            };
+            assert_eq!(
+                resource.state_from_cached(Some(&observed)),
+                expected,
+                "{label}"
+            );
+            assert_eq!(
+                resource.state_from_cached(None),
+                ResourceState::Missing,
+                "{label}"
+            );
+        }
     }
 
     #[test]

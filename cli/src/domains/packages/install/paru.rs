@@ -122,13 +122,12 @@ pub(super) fn check_prerequisites(ctx: &Context) -> Result<()> {
 }
 
 /// Prepare a clean build directory for paru.
-pub(super) fn prepare_build_directory(ctx: &Context) -> Result<PathBuf> {
-    let tmp = std::env::temp_dir().join("paru-build");
-    if tmp.exists() {
+pub(super) fn prepare_build_directory(ctx: &Context, build_dir: &Path) -> Result<()> {
+    if build_dir.exists() {
         ctx.log().debug("removing previous paru build directory");
-        std::fs::remove_dir_all(&tmp).context("removing previous paru build directory")?;
+        std::fs::remove_dir_all(build_dir).context("removing previous paru build directory")?;
     }
-    Ok(tmp)
+    Ok(())
 }
 
 /// Clone the source-built paru AUR package.

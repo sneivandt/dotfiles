@@ -64,8 +64,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn asset_name_is_non_empty() {
-        assert!(!asset_name().is_empty());
+    fn asset_name_matches_the_published_platform_artifact() {
+        #[cfg(target_os = "windows")]
+        let expected = "dotfiles-windows-x86_64.exe";
+        #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+        let expected = "dotfiles-linux-aarch64";
+        #[cfg(not(any(
+            target_os = "windows",
+            all(target_os = "linux", target_arch = "aarch64")
+        )))]
+        let expected = "dotfiles-linux-x86_64";
+        assert_eq!(asset_name(), expected);
     }
 
     #[test]

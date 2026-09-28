@@ -204,20 +204,59 @@ mod tests {
 
     #[test]
     fn cmd_command_rejects_expansion_and_quote_characters() {
-        for unsafe_value in [r"%PATH%", "quoted\"value", "line\nbreak"] {
-            let error = CmdCommand::new("echo")
-                .arg(unsafe_value)
-                .command_line()
-                .unwrap_err();
-            assert!(
-                error.to_string().contains("cannot be represented safely"),
-                "unexpected cmd literal error: {error}"
-            );
+        for unsafe_value in [
+            r"%PATH%",
+            "quoted\"value",
+            "line\nbreak",
+            "line\rbreak",
+            "nul\0byte",
+        ] {
+            for command in [
+                CmdCommand::new("echo").arg(unsafe_value),
+                CmdCommand::new(unsafe_value).arg("safe"),
+            ] {
+                let executor = super::super::MockExecutor::new();
+                let error = command.run_unchecked(&executor).unwrap_err();
+                assert!(
+                    error.to_string().contains("cannot be represented safely"),
+                    "unexpected cmd literal error: {error}"
+                );
+            }
         }
     }
 
     #[test]
     fn encode_command_produces_utf16le_base64() {
         assert_eq!(powershell_encode_command("abc"), "YQBiAGMA");
+    }
+
+    #[test]
+    fn powershell_encoding_preserves_non_ascii_and_surrogate_pairs() {
+        let script = "Write-Output '日本語 🦀'\r\nWrite-Output \"O'Brien\"";
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(powershell_encode_command(script))
+            .unwrap();
+        assert_eq!(bytes.len() % 2, 0);
+        let code_units: Vec<_> = bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|bytes| u16::from_le_bytes(*bytes))
+            .collect();
+        assert_eq!(String::from_utf16(&code_units).unwrap(), script);
+    }
+
+    #[test]
+    fn windows_argument_quoting_preserves_empty_quotes_and_trailing_backslashes() {
+        for (input, expected) in [
+            ("", r#""""#),
+            ("plain", "plain"),
+            ("a\"b", r#""a\"b""#),
+            ("path with space\\", r#""path with space\\""#),
+            ("a\\\"b", r#""a\\\"b""#),
+            ("a\tb", "\"a\tb\""),
+        ] {
+            assert_eq!(quote_windows_argument(input), expected, "{input:?}");
+        }
     }
 }

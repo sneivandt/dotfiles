@@ -151,118 +151,111 @@ mod tests {
     // run — real filesystem
     // ------------------------------------------------------------------
 
-    #[test]
-    fn run_writes_completion_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let completions_dir = dir.path().join("symlinks").join(ZSH_COMPLETIONS_SUBDIR);
-        std::fs::create_dir_all(&completions_dir).unwrap();
-
-        let config = empty_config(dir.path().to_path_buf());
-        let ctx = make_linux_context(config);
-
-        let result = task().run(&ctx).unwrap();
-        crate::test_helpers::assert_task_changed(&result);
-
-        let dest = completions_dir.join(ZSH_COMPLETION_FILENAME);
-        assert!(dest.exists(), "completion file should be written");
-
-        let content = std::fs::read_to_string(&dest).unwrap();
-        assert!(
-            content.contains("dotfiles"),
-            "generated script should reference the binary name"
-        );
-    }
-
-    #[test]
-    fn run_writes_powershell_completion_file_on_windows() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = empty_config(dir.path().to_path_buf());
-        let ctx = ContextBuilder::new(config)
-            .os(Os::Windows)
+    fn completion_fixture(os: Os) -> (tempfile::TempDir, Context, PathBuf, &'static str) {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let root = dir.path().join("repo");
+        let home = dir.path().join("home");
+        let ctx = ContextBuilder::new(empty_config(root.clone()))
+            .os(os)
             .build()
-            .with_home(dir.path().to_path_buf());
-
-        let result = task().run(&ctx).unwrap();
-        crate::test_helpers::assert_task_changed(&result);
-
-        let dest = dir
-            .path()
-            .join(".config")
-            .join("powershell")
-            .join("profile.d")
-            .join(POWERSHELL_COMPLETION_FILENAME);
-        assert!(
-            dest.exists(),
-            "PowerShell completion file should be written"
-        );
-        assert_eq!(
-            std::fs::read_to_string(dest).unwrap(),
-            SAMPLE_POWERSHELL_COMPLETION,
-            "PowerShell completion file should use the generated script"
-        );
+            .with_home(home.clone());
+        let (destination, content) = if os == Os::Windows {
+            (
+                home.join(".config/powershell/profile.d")
+                    .join(POWERSHELL_COMPLETION_FILENAME),
+                SAMPLE_POWERSHELL_COMPLETION,
+            )
+        } else {
+            (
+                root.join("symlinks")
+                    .join(ZSH_COMPLETIONS_SUBDIR)
+                    .join(ZSH_COMPLETION_FILENAME),
+                SAMPLE_ZSH_COMPLETION,
+            )
+        };
+        (dir, ctx, destination, content)
     }
 
     #[test]
-    fn run_is_idempotent() {
-        let dir = tempfile::tempdir().unwrap();
-        let completions_dir = dir.path().join("symlinks").join(ZSH_COMPLETIONS_SUBDIR);
-        std::fs::create_dir_all(&completions_dir).unwrap();
+    fn completions_create_repair_and_converge_without_rewriting_current_content() {
+        for os in [Os::Linux, Os::Windows] {
+            for existing_parent in [false, true] {
+                let (_dir, ctx, destination, expected) = completion_fixture(os);
+                if existing_parent {
+                    std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+                }
+                crate::test_helpers::assert_task_changed(&task().run(&ctx).unwrap());
+                assert_eq!(
+                    std::fs::read_to_string(&destination).unwrap(),
+                    expected,
+                    "{os:?}"
+                );
 
-        let config = empty_config(dir.path().to_path_buf());
-        let ctx = make_linux_context(config);
+                std::fs::write(&destination, "stale completions").unwrap();
+                crate::test_helpers::assert_task_changed(&task().run(&ctx).unwrap());
+                assert_eq!(
+                    std::fs::read_to_string(&destination).unwrap(),
+                    expected,
+                    "{os:?}"
+                );
 
-        // First run writes the file.
-        drop(task().run(&ctx).unwrap());
-        let mtime1 = std::fs::metadata(completions_dir.join(ZSH_COMPLETION_FILENAME))
-            .unwrap()
-            .modified()
-            .unwrap();
-
-        // Second run should be a no-op (same content → same mtime).
-        crate::test_helpers::assert_task_ok(&task().run(&ctx).unwrap());
-        let mtime2 = std::fs::metadata(completions_dir.join(ZSH_COMPLETION_FILENAME))
-            .unwrap()
-            .modified()
-            .unwrap();
-
-        assert_eq!(mtime1, mtime2, "second run should not modify the file");
+                let past = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+                std::fs::File::options()
+                    .write(true)
+                    .open(&destination)
+                    .unwrap()
+                    .set_times(std::fs::FileTimes::new().set_modified(past))
+                    .unwrap();
+                let before = std::fs::metadata(&destination).unwrap().modified().unwrap();
+                crate::test_helpers::assert_task_ok(&task().run(&ctx).unwrap());
+                assert_eq!(
+                    std::fs::metadata(&destination).unwrap().modified().unwrap(),
+                    before,
+                    "{os:?}: current content must not be rewritten"
+                );
+            }
+        }
     }
 
     #[test]
-    fn run_creates_parent_directory_if_missing() {
-        let dir = tempfile::tempdir().unwrap();
-        // Do NOT pre-create the completions directory.
-        let config = empty_config(dir.path().to_path_buf());
-        let ctx = make_linux_context(config);
+    fn dry_run_preserves_missing_and_stale_completions() {
+        for os in [Os::Linux, Os::Windows] {
+            let (_dir, ctx, destination, _) = completion_fixture(os);
+            let ctx = ctx.with_dry_run(true);
+            crate::test_helpers::assert_task_changed(&task().run(&ctx).unwrap());
+            assert!(
+                !destination.parent().unwrap().exists(),
+                "{os:?}: preview created directories"
+            );
 
-        let result = task().run(&ctx).unwrap();
-        crate::test_helpers::assert_task_changed(&result);
-
-        let dest = dir
-            .path()
-            .join("symlinks")
-            .join(ZSH_COMPLETIONS_SUBDIR)
-            .join(ZSH_COMPLETION_FILENAME);
-        assert!(dest.exists(), "completion file should be created");
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::write(&destination, "stale completions").unwrap();
+            crate::test_helpers::assert_task_changed(&task().run(&ctx).unwrap());
+            assert_eq!(
+                std::fs::read_to_string(&destination).unwrap(),
+                "stale completions",
+                "{os:?}"
+            );
+        }
     }
 
     #[test]
-    fn run_dry_run_returns_planned_change_without_writing() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = empty_config(dir.path().to_path_buf());
-        let ctx = make_linux_context(config).with_dry_run(true);
+    fn blocked_completion_destination_fails_without_removing_existing_files() {
+        for os in [Os::Linux, Os::Windows] {
+            let (_dir, ctx, destination, _) = completion_fixture(os);
+            std::fs::create_dir_all(&destination).unwrap();
+            let unmanaged = destination.join("keep.txt");
+            std::fs::write(&unmanaged, "preserve").unwrap();
 
-        let result = task().run(&ctx).unwrap();
-        assert!(matches!(
-            result,
-            TaskResult::Batch(stats) if stats.changed_count() > 0
-        ));
-
-        let dest = dir
-            .path()
-            .join("symlinks")
-            .join(ZSH_COMPLETIONS_SUBDIR)
-            .join(ZSH_COMPLETION_FILENAME);
-        assert!(!dest.exists(), "dry-run should not write the file");
+            assert!(
+                task().run(&ctx).is_err(),
+                "{os:?}: directory destination must fail"
+            );
+            assert_eq!(
+                std::fs::read_to_string(unmanaged).unwrap(),
+                "preserve",
+                "{os:?}"
+            );
+        }
     }
 }

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::test_fixture::{
-    expect_apm_install_without_enable, expect_copilot_app_enable,
+    assert_apm_command, expect_apm_install_without_enable, expect_copilot_app_enable,
     expect_copilot_app_workflow_install, expect_cowork_enable, expect_which_apm, has_env,
     install_task, make_context_with_home, make_windows_cowork_context, update_task,
     write_copilot_app_db, write_current_manifest_and_lock, write_default_home_fragment,
@@ -93,6 +93,7 @@ fn expect_primary_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, 
         .once()
         .in_sequence(seq)
         .returning(move |spec| {
+            assert_apm_command(&spec);
             assert_eq!(spec.working_dir(), Some(home.as_path()));
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["install", "-g"]);
@@ -107,6 +108,7 @@ fn expect_primary_update(mock: &mut MockExecutor, seq: &mut mockall::Sequence, h
         .once()
         .in_sequence(seq)
         .returning(move |spec| {
+            assert_apm_command(&spec);
             assert_eq!(spec.working_dir(), Some(home.as_path()));
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
@@ -442,9 +444,16 @@ fn update_reports_ok_when_lock_is_byte_identical() {
 fn update_dry_run_uses_native_apm_plan() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());
+    let manifest_path = dir.path().join(".apm/apm.yml");
+    let lock_path = dir.path().join(".apm/apm.lock.yaml");
+    let manifest_before = std::fs::read(&manifest_path).unwrap();
+    let lock_before = std::fs::read(&lock_path).unwrap();
+    let expected_home = dir.path().to_path_buf();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
-    mock.expect_execute().once().returning(|spec| {
+    mock.expect_execute().once().returning(move |spec| {
+        assert_apm_command(&spec);
+        assert_eq!(spec.working_dir(), Some(expected_home.as_path()));
         assert_eq!(spec.arguments(), ["update", "-g", "--dry-run"]);
         Ok(ExecResult::success("would update example/plugin\n"))
     });
@@ -454,6 +463,8 @@ fn update_dry_run_uses_native_apm_plan() {
         update_task().run(&ctx).expect("preview update"),
         TaskResult::DryRun
     ));
+    assert_eq!(std::fs::read(manifest_path).unwrap(), manifest_before);
+    assert_eq!(std::fs::read(lock_path).unwrap(), lock_before);
 }
 
 #[test]
@@ -479,23 +490,46 @@ fn install_dry_run_does_not_write_generated_manifest() {
 }
 
 #[test]
-fn install_classifies_auth_failures_but_propagates_other_failures() {
-    for (message, auth_failure) in [
+fn native_commands_classify_auth_failures_but_propagate_other_failures() {
+    for (update, message, auth_failure) in [
         (
+            false,
             "fatal: Authentication failed; terminal prompts disabled",
             true,
         ),
-        ("archive extraction failed", false),
+        (
+            true,
+            "fatal: Authentication failed; terminal prompts disabled",
+            true,
+        ),
+        (false, "archive extraction failed", false),
+        (true, "archive extraction failed", false),
     ] {
         let dir = tempfile::tempdir().expect("create temp dir");
         write_default_home_fragment(dir.path());
         let mut mock = MockExecutor::new();
         expect_which_apm(&mut mock, true);
-        mock.expect_execute()
-            .once()
-            .returning(move |_| Err(command_failure(message)));
+        let expected_home = dir.path().to_path_buf();
+        mock.expect_execute().once().returning(move |spec| {
+            assert_apm_command(&spec);
+            assert_eq!(spec.working_dir(), Some(expected_home.as_path()));
+            assert_eq!(
+                spec.arguments(),
+                if update {
+                    vec!["update", "-g", "--yes"]
+                } else {
+                    vec!["install", "-g"]
+                }
+            );
+            Err(command_failure(message))
+        });
         let ctx = linux_context(dir.path(), mock);
-        let result = install_task().run(&ctx);
+        let result = if update {
+            update_task()
+        } else {
+            install_task()
+        }
+        .run(&ctx);
 
         if auth_failure {
             assert!(task_skipped(&result.expect("auth failure should skip")).contains("GitHub"));
@@ -508,6 +542,47 @@ fn install_classifies_auth_failures_but_propagates_other_failures() {
                 .contains(message)
             );
         }
+    }
+}
+
+#[test]
+fn cancelled_native_commands_preserve_cancellation_instead_of_skipping() {
+    for update in [false, true] {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        write_current_manifest_and_lock(dir.path());
+        let mut mock = MockExecutor::new();
+        expect_which_apm(&mut mock, true);
+        let expected_home = dir.path().to_path_buf();
+        mock.expect_execute().once().returning(move |spec| {
+            assert_apm_command(&spec);
+            assert_eq!(spec.working_dir(), Some(expected_home.as_path()));
+            assert_eq!(
+                spec.arguments(),
+                if update {
+                    vec!["update", "-g", "--yes"]
+                } else {
+                    vec!["install", "-g"]
+                }
+            );
+            Err(ExecError::Cancelled {
+                command: "apm".to_string(),
+                result: ExecResult::failure("", "cancelled", None),
+            })
+        });
+        let ctx = linux_context(dir.path(), mock);
+        let error = if update {
+            update_task()
+        } else {
+            install_task()
+        }
+        .run(&ctx)
+        .unwrap_err();
+        assert!(
+            error
+                .downcast_ref::<ExecError>()
+                .is_some_and(ExecError::is_cancelled),
+            "{error:#}"
+        );
     }
 }
 

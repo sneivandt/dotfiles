@@ -1,19 +1,28 @@
 //! Unit tests for configuration validation tasks.
 
 use super::*;
-use std::io::Write;
-
 use crate::infra::config::Diagnostic;
-use crate::infra::exec::{ExecResult, MockExecutor};
+use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 use crate::test_helpers::{empty_config, make_context, make_linux_context};
 use crate::{domains::files::config::chmod::ChmodEntry, infra::ConfigHandle};
 
 #[test]
 fn display_diagnostics_formats_severity_and_code() {
     use crate::infra::config::DiagnosticCode;
-    use crate::infra::logging::isolated_logger;
+    use crate::infra::logging::{MsgKind, Output};
 
-    let (logger, _tmp, _guard) = isolated_logger();
+    #[derive(Default)]
+    struct CapturingOutput(std::sync::Mutex<Vec<(MsgKind, String)>>);
+
+    impl Output for CapturingOutput {
+        fn emit(&self, kind: MsgKind, message: std::borrow::Cow<'_, str>) {
+            self.0.lock().unwrap().push((kind, message.into_owned()));
+        }
+    }
+
+    let output = CapturingOutput::default();
+    display_diagnostics(&[], &output);
+    assert!(output.0.lock().unwrap().is_empty());
     let diagnostics = vec![
         Diagnostic::warning(
             "pkg.toml",
@@ -29,7 +38,21 @@ fn display_diagnostics_formats_severity_and_code() {
         ),
     ];
 
-    display_diagnostics(&diagnostics, &logger);
+    display_diagnostics(&diagnostics, &output);
+    assert_eq!(
+        *output.0.lock().unwrap(),
+        [
+            (MsgKind::Warn, "found 2 configuration diagnostic(s):".into()),
+            (
+                MsgKind::Warn,
+                "  [warn] pkg.toml [git] (package.empty-name): name is empty".into(),
+            ),
+            (
+                MsgKind::Warn,
+                "  [err] sym.toml [.bashrc] (symlink.parent-in-source): unsafe path".into(),
+            ),
+        ]
+    );
 }
 
 #[test]
@@ -113,19 +136,6 @@ fn detects_sh_extension() {
 }
 
 #[test]
-fn detects_shebang_without_extension() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-    let script = dir.path().join("myscript");
-    let mut f = std::fs::File::create(&script).expect("create should succeed");
-    f.write_all(b"#!/bin/bash\necho hello")
-        .expect("write_all should succeed");
-
-    let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
-    assert_eq!(found.len(), 1);
-}
-
-#[test]
 fn ignores_non_shell_files() {
     let dir = tempfile::tempdir().expect("tempdir should create");
     std::fs::write(dir.path().join("readme.md"), "# Hello").expect("write should succeed");
@@ -141,13 +151,18 @@ fn discovers_ps1_files() {
     let dir = tempfile::tempdir().expect("tempdir should create");
     let script_path = dir.path().join("test.ps1");
     let module_path = dir.path().join("module.psm1");
+    let manifest_path = dir.path().join("module.psd1");
     std::fs::write(&script_path, "Write-Host 'hi'").expect("write should succeed");
     std::fs::write(&module_path, "function Test {}").expect("write should succeed");
+    std::fs::write(&manifest_path, "@{}").expect("write should succeed");
     std::fs::write(dir.path().join("readme.md"), "# Hello").expect("write should succeed");
 
     let mut found = Vec::new();
     discover_powershell_scripts(dir.path(), &mut found);
-    assert_eq!(found.len(), 2);
+    found.sort();
+    let mut expected = vec![script_path, module_path, manifest_path];
+    expected.sort();
+    assert_eq!(found, expected);
 }
 
 #[test]
@@ -165,39 +180,64 @@ fn discovers_apm_plugin_dirs() {
 }
 
 #[test]
-fn apm_plugin_validation_runs_pack_dry_run_in_each_plugin() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
+fn apm_validation_checks_each_plugin_and_aggregates_findings() {
+    let dir = tempfile::tempdir_in(".").unwrap();
     let plugins = dir.path().join("symlinks").join("apm").join("plugins");
-    std::fs::create_dir_all(plugins.join("dot-code")).expect("plugin dir should create");
-    std::fs::write(plugins.join("dot-code").join("apm.yml"), "name: dot-code\n")
-        .expect("apm manifest should write");
+    for name in ["dot-c", "dot-a", "dot-b"] {
+        std::fs::create_dir_all(plugins.join(name)).unwrap();
+        std::fs::write(
+            plugins.join(name).join("apm.yml"),
+            format!("name: {name}\n"),
+        )
+        .unwrap();
+    }
 
-    let mut executor = MockExecutor::new();
-    executor
-        .expect_which()
-        .with(mockall::predicate::eq("apm"))
-        .once()
-        .return_const(true);
-    executor.expect_execute().once().returning(|spec| {
-        let plugin_dir = spec.working_dir().expect("working directory should be set");
-        assert!(
-            plugin_dir.ends_with("dot-code"),
-            "APM pack should run in the plugin directory, got {}",
-            plugin_dir.display()
+    for has_findings in [false, true] {
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_which()
+            .with(mockall::predicate::eq("apm"))
+            .once()
+            .return_const(true);
+        let mut sequence = mockall::Sequence::new();
+        for name in ["dot-a", "dot-b", "dot-c"] {
+            let plugin = plugins.join(name);
+            executor
+                .expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .returning(move |spec| {
+                    assert_eq!(spec.working_dir(), Some(plugin.as_path()));
+                    assert_eq!(spec.program(), "apm");
+                    assert_eq!(spec.arguments(), ["pack", "--dry-run", "--verbose"]);
+                    assert!(!spec.is_checked(), "APM validation should allow non-zero");
+                    Ok(if has_findings && name != "dot-b" {
+                        ExecResult::failure("invalid manifest", "", Some(1))
+                    } else {
+                        ExecResult::success("")
+                    })
+                });
+        }
+        let ctx = make_context(
+            empty_config(dir.path().to_path_buf()),
+            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
+            std::sync::Arc::new(executor),
         );
-        assert_eq!(spec.program(), "apm");
-        assert_eq!(spec.arguments(), ["pack", "--dry-run", "--verbose"]);
-        assert!(!spec.is_checked(), "APM validation should allow non-zero");
-        Ok(ExecResult::success(""))
-    });
 
-    let ctx = make_context(
-        empty_config(dir.path().to_path_buf()),
-        crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
-        std::sync::Arc::new(executor),
-    );
-
-    assert!(ValidateApmPlugins.run(&ctx).is_ok());
+        let result = ValidateApmPlugins.run(&ctx);
+        if has_findings {
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "2 APM plugin(s) failed validation",
+                "findings must not stop validation of later plugins"
+            );
+        } else {
+            assert!(matches!(
+                result.unwrap(),
+                crate::engine::TaskResult::CheckPassed
+            ));
+        }
+    }
 }
 
 #[test]
@@ -257,119 +297,46 @@ fn shellcheck_command_includes_project_defaults() {
 }
 
 #[test]
-fn shebang_detects_various_shells() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-
-    for (name, shebang) in [
-        ("a", "#!/bin/sh\n"),
-        ("b", "#!/bin/bash\n"),
-        ("c", "#!/usr/bin/env zsh\n"),
+fn shell_discovery_checks_each_interpreter_and_extension_override() {
+    for (name, contents, accepted) in [
+        ("sh", "#!/bin/sh\n", true),
+        ("bash", "#!/bin/bash\n", true),
+        ("ksh", "#!/bin/ksh\n", true),
+        ("env-sh", "#!/usr/bin/env sh\n", true),
+        ("env-bash", "#!/usr/bin/env bash\n", true),
+        ("env-dash", "#!/usr/bin/env dash\n", true),
+        ("sh-args", "#!/bin/sh -e\n", true),
+        ("bash-args", "#!/bin/bash -x\n", true),
+        ("env-args", "#!/usr/bin/env bash -e\n", true),
+        ("local-bash", "#!/usr/local/bin/bash\n", true),
+        ("homebrew", "#!/opt/homebrew/bin/bash\n", true),
+        ("local-sh", "#!/usr/local/bin/sh\n", true),
+        ("env-split", "#!/usr/bin/env -S bash -e\n", true),
+        ("exe", "#!/usr/bin/env.exe bash.exe\n", true),
+        ("tabs", "#!\t/usr/bin/env\tbash\n", true),
+        ("no-newline", "#!/bin/bash", true),
+        ("zsh", "#!/usr/bin/env zsh\n", false),
+        ("fish", "#!/usr/bin/fish\n", false),
+        ("csh", "#!/bin/csh\n", false),
+        ("tcsh", "#!/usr/bin/tcsh\n", false),
+        ("python", "#!/usr/bin/python3\n", false),
+        ("suffix", "#!/bin/notbash\n", false),
+        ("env-missing", "#!/usr/bin/env -S\n", false),
+        ("empty", "#!\n", false),
+        ("not-first-line", "\n#!/bin/bash\n", false),
+        ("excluded.zsh", "#!/bin/bash\n", false),
     ] {
-        let path = dir.path().join(name);
-        std::fs::write(&path, shebang).expect("write should succeed");
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let script = dir.path().join(name);
+        std::fs::write(&script, contents).unwrap();
+        let mut found = Vec::new();
+        discover_shell_scripts(dir.path(), &mut found);
+        assert_eq!(
+            found,
+            if accepted { vec![script] } else { vec![] },
+            "{name}: {contents:?}"
+        );
     }
-
-    let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
-    // zsh scripts are excluded (shellcheck doesn't support them)
-    assert_eq!(found.len(), 2);
-}
-
-#[test]
-fn shebang_excludes_non_posix_shells() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-
-    // These should NOT be detected as shell scripts
-    for (name, shebang) in [
-        ("fish_script", "#!/usr/bin/fish\n"),
-        ("csh_script", "#!/bin/csh\n"),
-        ("tcsh_script", "#!/usr/bin/tcsh\n"),
-        ("python_script", "#!/usr/bin/python3\n"),
-    ] {
-        let path = dir.path().join(name);
-        std::fs::write(&path, shebang).expect("write should succeed");
-    }
-
-    let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
-    assert!(
-        found.is_empty(),
-        "should not match non-POSIX shell shebangs"
-    );
-}
-
-#[test]
-fn shebang_detects_env_wrappers() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-
-    for (name, shebang) in [
-        ("a", "#!/usr/bin/env sh\n"),
-        ("b", "#!/usr/bin/env bash\n"),
-        ("c", "#!/usr/bin/env dash\n"),
-    ] {
-        let path = dir.path().join(name);
-        std::fs::write(&path, shebang).expect("write should succeed");
-    }
-
-    let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
-    assert_eq!(found.len(), 3);
-}
-
-#[test]
-fn shebang_with_arguments() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-
-    // Shebangs with arguments should still correctly identify the interpreter
-    for (name, shebang) in [
-        ("a", "#!/bin/sh -e\n"),
-        ("b", "#!/bin/bash -x\n"),
-        ("c", "#!/usr/bin/env bash -e\n"),
-    ] {
-        let path = dir.path().join(name);
-        std::fs::write(&path, shebang).expect("write should succeed");
-    }
-
-    let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
-    assert_eq!(found.len(), 3, "should detect shell scripts with arguments");
-}
-
-#[test]
-fn shebang_detects_non_standard_install_paths() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-
-    // Non-standard paths like /usr/local/bin or /opt/homebrew/bin (macOS)
-    // must still correctly resolve the interpreter name.
-    for (name, shebang) in [
-        ("a", "#!/usr/local/bin/bash\n"),
-        ("b", "#!/opt/homebrew/bin/bash\n"),
-        ("c", "#!/usr/local/bin/sh\n"),
-    ] {
-        let path = dir.path().join(name);
-        std::fs::write(&path, shebang).expect("write should succeed");
-    }
-
-    let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
-    assert_eq!(
-        found.len(),
-        3,
-        "should detect shell scripts with non-standard install paths"
-    );
-}
-
-#[test]
-fn shebang_detects_env_with_flags() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-
-    // `env -S` is used to pass arguments through env on some systems.
-    let path = dir.path().join("script");
-    std::fs::write(&path, "#!/usr/bin/env -S bash -e\necho hi\n").expect("write should succeed");
-
-    let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
-    assert_eq!(found.len(), 1, "should detect shell scripts with env -S");
 }
 
 #[test]
@@ -388,7 +355,17 @@ fn discover_files_with_custom_predicate() {
         |p| p.extension().is_some_and(|e| e == "txt"),
         &mut found,
     );
-    assert_eq!(found.len(), 3, "should find .txt files recursively");
+    found.sort();
+    let mut expected = vec![
+        dir.path().join("a.txt"),
+        dir.path().join("b.txt"),
+        sub.join("d.txt"),
+    ];
+    expected.sort();
+    assert_eq!(
+        found, expected,
+        "find only matching files, including nested ones"
+    );
 }
 
 #[test]
@@ -434,7 +411,7 @@ fn linter_passes_without_running_the_tool_when_there_is_nothing_to_lint() {
         "shellcheck",
         "shell scripts",
         &[],
-        |_| Vec::new(),
+        |_| panic!("empty inputs must not even build a linter invocation"),
     )
     .expect("empty input should pass");
 
@@ -445,31 +422,71 @@ fn linter_passes_without_running_the_tool_when_there_is_nothing_to_lint() {
 }
 
 #[test]
-fn linter_failure_reports_the_display_name_not_the_executable() {
-    let dir = tempfile::tempdir().expect("tempdir should create");
-    let mut executor = MockExecutor::new();
-    executor
-        .expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::failure("some finding", "", Some(1))));
-    let ctx = make_context(
-        empty_config(dir.path().to_path_buf()),
-        crate::infra::platform::Platform::detect(),
-        std::sync::Arc::new(executor),
-    );
-
-    let error = run_linter(
-        &ctx,
-        "pwsh",
-        "PSScriptAnalyzer",
-        "PowerShell scripts",
-        &[PathBuf::from("a.ps1")],
-        |_| vec!["-NoProfile".to_owned()],
-    )
-    .expect_err("a failing linter should fail the task");
-
-    assert!(
-        error.to_string().contains("PSScriptAnalyzer"),
-        "failure should name the linter, not the host executable: {error}"
-    );
+fn linter_execution_preserves_command_contract_and_failure_kind() {
+    for (name, response) in [
+        ("success", Ok(ExecResult::success(""))),
+        ("findings", Ok(ExecResult::failure("finding", "", Some(1)))),
+        (
+            "spawn",
+            Err(ExecError::spawn(
+                "pwsh",
+                std::io::Error::other("fixture spawn failure"),
+            )),
+        ),
+        (
+            "cancelled",
+            Err(ExecError::Cancelled {
+                command: "pwsh".into(),
+                result: ExecResult::success(""),
+            }),
+        ),
+    ] {
+        let mut executor = MockExecutor::new();
+        executor.expect_execute().once().return_once(move |spec| {
+            assert_eq!(spec.program(), "pwsh");
+            assert_eq!(spec.arguments(), ["-NoProfile", "-Command", "lint"]);
+            assert_eq!(spec.working_dir(), None);
+            assert!(
+                !spec.is_checked(),
+                "linter exit codes are interpreted by the task"
+            );
+            response
+        });
+        let ctx = make_context(
+            empty_config("fixture-root".into()),
+            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
+            std::sync::Arc::new(executor),
+        );
+        let files = [PathBuf::from("a.ps1"), PathBuf::from("module.psm1")];
+        let result = run_linter(
+            &ctx,
+            "pwsh",
+            "PSScriptAnalyzer",
+            "PowerShell scripts",
+            &files,
+            |inputs| {
+                assert_eq!(inputs, files);
+                vec!["-NoProfile".into(), "-Command".into(), "lint".into()]
+            },
+        );
+        match name {
+            "success" => assert!(matches!(
+                result.unwrap(),
+                crate::engine::TaskResult::CheckPassed
+            )),
+            "findings" => assert_eq!(
+                result.unwrap_err().to_string(),
+                "PSScriptAnalyzer found issues"
+            ),
+            "spawn" => assert!(matches!(
+                result.unwrap_err().downcast_ref::<ExecError>(),
+                Some(ExecError::Spawn { .. })
+            )),
+            "cancelled" => assert!(matches!(
+                result.unwrap_err().downcast_ref::<ExecError>(),
+                Some(ExecError::Cancelled { .. })
+            )),
+            _ => panic!("unknown linter case: {name}"),
+        }
+    }
 }

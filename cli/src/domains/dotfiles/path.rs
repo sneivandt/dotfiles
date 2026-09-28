@@ -54,8 +54,9 @@ mod tests {
     #[test]
     fn depends_on_install_wrapper() {
         let deps = ConfigurePath.dependencies();
-        assert!(
-            !deps.is_empty(),
+        assert_eq!(
+            deps,
+            &[crate::domains::dotfiles::wrapper::InstallWrapper.task_id()],
             "ConfigurePath should depend on InstallWrapper"
         );
     }

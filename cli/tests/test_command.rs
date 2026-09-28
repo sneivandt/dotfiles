@@ -21,12 +21,6 @@ mod loading;
 #[path = "test_command/validation.rs"]
 mod validation;
 
-use dotfiles_cli::testing as test_api;
-
-use std::sync::Arc;
-
-use test_api::logging::Logger;
-
 // ---------------------------------------------------------------------------
 // check command: console output
 // ---------------------------------------------------------------------------
@@ -98,41 +92,30 @@ fn check_command_fails_on_config_warnings() {
 
     std::fs::create_dir_all(ctx.root_path().join(".git")).expect("create .git dir");
 
-    let global = test_api::cli::GlobalOpts {
-        root: Some(ctx.root_path().to_path_buf()),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel: false,
-        no_repo_update: false,
-        require_complete: false,
-        non_interactive: false,
-        no_symbols: false,
-        skip_attestation: false,
-        elevated_child: false,
-    };
-    let opts = test_api::cli::CheckOpts {
-        skip: vec![],
-        only: vec![],
-    };
-    let log = Arc::new(Logger::new("test-command"));
-    let runtime = test_api::commands::RuntimePolicy::new(
-        &global,
-        false,
-        test_api::env::MapEnv::new()
-            .with("HOME", ctx.root_path().join("home"))
-            .with("USERPROFILE", ctx.root_path().join("home"))
-            .with("XDG_STATE_HOME", ctx.root_path().join("state"))
-            .into_handle(),
-        false,
-        false,
+    let home = tempfile::tempdir().unwrap();
+    let output = common::cli_command(
+        ctx.root_path(),
+        home.path(),
+        None,
+        "check",
+        "config-warnings",
+    )
+    .args(["--no-symbols", "--fail-on-skip"])
+    .output()
+    .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
-
-    let result = test_api::commands::check::run(
-        &runtime,
-        &opts,
-        &log,
-        &test_api::engine::CancellationToken::new(),
+    assert!(
+        !output.status.success(),
+        "check command should fail on warnings: {text}"
     );
-    assert!(result.is_err(), "test command should fail on warnings");
+    assert!(text.contains("FAILED Validate config warnings"), "{text}");
+    assert!(
+        text.contains("invalid_no_dot") && text.contains("vscode-extensions.toml"),
+        "{text}"
+    );
+    assert!(text.contains("1 failed"), "{text}");
 }

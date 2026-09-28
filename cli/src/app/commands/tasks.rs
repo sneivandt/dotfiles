@@ -515,25 +515,111 @@ mod tests {
         let listings = vec![TaskListing {
             selector: "visible".to_string(),
             task: "Visible task".to_string(),
-            commands: vec![TaskGraphCommand::Update],
+            commands: vec![TaskGraphCommand::Install, TaskGraphCommand::Update],
         }];
 
         let mut table = Vec::new();
         write_listings(&listings, DiscoveryFormat::Table, &mut table).expect("table output");
-        assert!(String::from_utf8(table).unwrap().contains("SELECTOR"));
+        assert_eq!(
+            String::from_utf8(table).unwrap(),
+            "SELECTOR  TASK          COMMANDS\nvisible   Visible task  install, update\n"
+        );
 
         let mut plain = Vec::new();
         write_listings(&listings, DiscoveryFormat::Plain, &mut plain).expect("plain output");
         assert_eq!(
             String::from_utf8(plain).unwrap(),
-            "visible\tVisible task\tupdate\n"
+            "visible\tVisible task\tinstall, update\n"
         );
 
         let mut json = Vec::new();
         write_listings(&listings, DiscoveryFormat::Json, &mut json).expect("JSON output");
         let value: serde_json::Value = serde_json::from_slice(&json).expect("valid JSON");
-        assert_eq!(value[0]["selector"], "visible");
-        assert_eq!(value[0]["commands"][0], "update");
+        assert_eq!(
+            value,
+            serde_json::json!([{
+                "selector": "visible",
+                "task": "Visible task",
+                "commands": ["install", "update"],
+            }])
+        );
+    }
+
+    #[test]
+    fn reused_selector_with_a_different_label_is_rejected() {
+        struct ConflictingTask;
+        impl Task for ConflictingTask {
+            fn meta(&self) -> TaskMeta<'_> {
+                TaskMeta::new("Different task").with_selector("visible")
+            }
+
+            fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+                panic!("discovery must not execute tasks");
+            }
+        }
+
+        let mut listings = Vec::new();
+        add_tasks(
+            &mut listings,
+            &[Box::new(VisibleTask)],
+            TaskGraphCommand::Install,
+        )
+        .unwrap();
+        let error = add_tasks(
+            &mut listings,
+            &[Box::new(ConflictingTask)],
+            TaskGraphCommand::Check,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "task selector 'visible' is shared by 'Visible task' and 'Different task'"
+        );
+        assert_eq!(listings.len(), 1);
+        assert_eq!(listings[0].commands, [TaskGraphCommand::Install]);
+    }
+
+    #[test]
+    fn graph_selection_distinguishes_skips_from_filters_and_defaults() {
+        let tasks: Vec<Box<dyn Task>> = vec![
+            Box::new(DependentTask),
+            Box::new(InternalTask),
+            Box::new(VisibleTask),
+        ];
+        for (only, skip, expected) in [
+            (
+                vec![],
+                vec![],
+                [
+                    ("dependent", GraphSelection::Default),
+                    ("internal", GraphSelection::Default),
+                    ("visible", GraphSelection::Default),
+                ],
+            ),
+            (
+                vec!["dependent".into()],
+                vec!["visible".into()],
+                [
+                    ("dependent", GraphSelection::Requested),
+                    ("internal", GraphSelection::Filtered),
+                    ("visible", GraphSelection::Skipped),
+                ],
+            ),
+        ] {
+            let graph = collect_graph(&tasks, &only, &skip, false).unwrap();
+            assert_eq!(graph.len(), expected.len());
+            for (selector, selection) in expected {
+                assert_eq!(
+                    graph
+                        .iter()
+                        .find(|entry| entry.selector == selector)
+                        .unwrap()
+                        .selection,
+                    selection,
+                    "{selector}: only={only:?}, skip={skip:?}"
+                );
+            }
+        }
     }
 
     #[test]

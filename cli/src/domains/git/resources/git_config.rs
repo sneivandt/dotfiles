@@ -226,50 +226,24 @@ mod tests {
     // ------------------------------------------------------------------
 
     #[test]
-    fn state_checks_global_level_only() {
-        // Simulate a local config shadowing a global value. When a local
-        // config has a different value, current_state should still report
-        // the global-level value since apply() writes to global only.
-        let dir = tempfile::tempdir().unwrap();
-        let global_path = dir.path().join("global");
-        let local_path = dir.path().join("local");
-
-        // Set global to the desired value
-        let mut global_cfg = git2::Config::open(&global_path).unwrap();
-        global_cfg.set_str("core.autocrlf", "false").unwrap();
-
-        // Set local to a different value (this would shadow global in a
-        // merged config)
-        let mut local_cfg = git2::Config::open(&local_path).unwrap();
-        local_cfg.set_str("core.autocrlf", "true").unwrap();
-
-        // state_from_config with only the global config should see "false"
-        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
-        assert_eq!(
-            resource.state_from_config(&global_cfg).unwrap(),
-            ResourceState::Correct,
-            "checking only global level should report Correct when global matches"
-        );
-    }
-
-    // ------------------------------------------------------------------
-    // apply_to_config
-    // ------------------------------------------------------------------
-
-    #[test]
-    fn apply_sets_value() {
-        let dir = tempfile::tempdir().unwrap();
+    fn malformed_config_is_rejected_without_rewriting_user_content() {
+        let dir = tempfile::tempdir_in(".").unwrap();
         let path = dir.path().join("config");
-        let mut config = git2::Config::open(&path).unwrap();
-
-        let resource = GitConfigResource::new("core.autocrlf".to_string(), "false".to_string());
-        assert_eq!(
-            resource.apply_to_config(&mut config).unwrap(),
-            ResourceChange::Applied
+        let content = "[core\n  autocrlf = true\n";
+        std::fs::write(&path, content).unwrap();
+        let resource = GitConfigResource::with_config_path(
+            "core.autocrlf".into(),
+            "false".into(),
+            path.clone(),
         );
 
-        let val = config.get_string("core.autocrlf").unwrap();
-        assert_eq!(val, "false");
+        for error in [
+            resource.current_state().unwrap_err(),
+            resource.apply().unwrap_err(),
+        ] {
+            assert!(format!("{error:#}").contains("core.autocrlf"), "{error:#}");
+        }
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
     }
 
     #[test]
@@ -278,15 +252,21 @@ mod tests {
         let path = dir.path().join("config");
         let mut config = git2::Config::open(&path).unwrap();
         config.set_str("core.autocrlf", "false").unwrap();
+        config.set_str("core.editor", "fixture-editor").unwrap();
         let resource = GitConfigResource::absent("core.autocrlf".to_string());
 
         assert_eq!(
             resource.apply_to_config(&mut config).unwrap(),
             ResourceChange::Applied
         );
-        assert!(
-            config.get_string("core.autocrlf").is_err(),
-            "obsolete global core.autocrlf must be removed"
+        assert_eq!(
+            config.get_string("core.autocrlf").unwrap_err().code(),
+            git2::ErrorCode::NotFound,
+        );
+        assert_eq!(config.get_string("core.editor").unwrap(), "fixture-editor");
+        assert_eq!(
+            resource.state_from_config(&config).unwrap(),
+            ResourceState::Correct
         );
     }
 
@@ -294,6 +274,8 @@ mod tests {
     fn explicit_config_path_is_used_for_state_and_apply() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config");
+        let mut config = git2::Config::open(&path).unwrap();
+        config.set_str("core.editor", "fixture-editor").unwrap();
         let resource = GitConfigResource::with_config_path(
             "core.autocrlf".to_string(),
             "false".to_string(),
@@ -304,7 +286,11 @@ mod tests {
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
 
-        let config = git2::Config::open(&path).unwrap();
-        assert_eq!(config.get_string("core.autocrlf").unwrap(), "false");
+        let observed = git2::Config::open(&path).unwrap();
+        assert_eq!(observed.get_string("core.autocrlf").unwrap(), "false");
+        assert_eq!(
+            observed.get_string("core.editor").unwrap(),
+            "fixture-editor"
+        );
     }
 }

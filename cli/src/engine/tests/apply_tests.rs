@@ -16,6 +16,12 @@ struct OrderedEventLog {
 }
 
 impl Output for OrderedEventLog {
+    fn action(&self, verb: &str, subject: &str, planned: bool, message: &str) {
+        self.events.lock().unwrap().push(format!(
+            "action: {verb} {subject}, planned={planned}: {message}"
+        ));
+    }
+
     fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
         if kind == MsgKind::Warn {
             self.events.lock().unwrap().push(format!("warn: {msg}"));
@@ -30,6 +36,7 @@ impl TaskRecorder for OrderedEventLog {
 #[derive(Debug)]
 struct DestructiveResource {
     events: Arc<Mutex<Vec<String>>>,
+    warning_error: bool,
 }
 
 impl Resource for DestructiveResource {
@@ -38,6 +45,12 @@ impl Resource for DestructiveResource {
     }
 
     fn pre_apply_warning(&self) -> ResourceResult<Option<String>> {
+        self.events.lock().unwrap().push("warning check".into());
+        if self.warning_error {
+            return Err(crate::engine::resource::ResourceError::permission_denied(
+                "warning probe",
+            ));
+        }
         Ok(Some("existing data will be replaced".to_string()))
     }
 
@@ -174,6 +187,7 @@ fn process_single_warns_before_destructive_apply() {
     }));
     let resource = DestructiveResource {
         events: Arc::clone(&events),
+        warning_error: false,
     };
 
     let stats = apply::process_single(
@@ -189,7 +203,12 @@ fn process_single_warns_before_destructive_apply() {
     assert_eq!(stats.changed_count(), 1);
     assert_eq!(
         events.lock().unwrap().as_slice(),
-        ["warn: existing data will be replaced", "apply",]
+        [
+            "warning check",
+            "warn: existing data will be replaced",
+            "apply",
+            "action: install destructive resource, planned=false: install destructive resource",
+        ]
     );
 }
 
@@ -203,6 +222,7 @@ fn process_single_dry_run_neither_warns_nor_applies() {
     }));
     let resource = DestructiveResource {
         events: Arc::clone(&events),
+        warning_error: false,
     };
 
     let stats = apply::process_single(
@@ -216,10 +236,50 @@ fn process_single_dry_run_neither_warns_nor_applies() {
     .unwrap();
 
     assert_eq!(stats.changed_count(), 1);
-    assert!(
-        events.lock().unwrap().is_empty(),
-        "dry-run must not enter the mutation boundary"
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        [
+            "action: install destructive resource, planned=true: install destructive resource (currently user data)"
+        ],
+        "dry-run must emit a plan without querying warnings or entering the mutation boundary"
     );
+}
+
+#[test]
+fn failed_warning_discovery_prevents_mutation_but_is_not_queried_in_dry_run() {
+    for opts in [default_opts(), bail_opts()] {
+        for dry_run in [false, true] {
+            let (ctx, _) = test_context(empty_config("/fixture".into()));
+            let events = Arc::new(Mutex::new(Vec::new()));
+            let ctx = ctx
+                .with_dry_run(dry_run)
+                .with_log(Arc::new(OrderedEventLog {
+                    events: Arc::clone(&events),
+                }));
+            let resource = DestructiveResource {
+                events: Arc::clone(&events),
+                warning_error: true,
+            };
+            let result = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts);
+
+            if dry_run {
+                assert_eq!(counts(&result.unwrap()), (1, 0, 0, 0));
+                assert_eq!(
+                    events.lock().unwrap().as_slice(),
+                    [
+                        "action: install destructive resource, planned=true: install destructive resource"
+                    ]
+                );
+            } else {
+                let error = result.unwrap_err();
+                let cause = error
+                    .downcast_ref::<crate::engine::resource::ResourceError>()
+                    .unwrap();
+                assert_eq!(cause.category(), "permission_denied");
+                assert_eq!(events.lock().unwrap().as_slice(), ["warning check"]);
+            }
+        }
+    }
 }
 
 #[test]
@@ -460,12 +520,26 @@ fn cancellation_propagates_in_lenient_mode() {
 
 #[test]
 fn process_single_uses_resource_description() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
-    let resource = MockResource::new(ResourceState::Missing).with_desc("custom desc");
-    let opts = default_opts();
+    for dry_run in [false, true] {
+        let (ctx, _) = test_context(empty_config("/fixture".into()));
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let ctx = ctx
+            .with_dry_run(dry_run)
+            .with_log(Arc::new(OrderedEventLog {
+                events: Arc::clone(&events),
+            }));
+        let resource = MockResource::new(ResourceState::Missing).with_desc("custom desc");
 
-    // Should succeed — verifies description doesn't interfere with processing
-    let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
-    assert_eq!(stats.changed_count(), 1);
+        let stats =
+            apply::process_single(&ctx, &resource, &ResourceState::Missing, &default_opts())
+                .unwrap();
+
+        assert_eq!(counts(&stats), (1, 0, 0, 0));
+        assert_eq!(
+            *events.lock().unwrap(),
+            [format!(
+                "action: install custom desc, planned={dry_run}: install custom desc"
+            )]
+        );
+    }
 }

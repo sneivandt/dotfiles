@@ -167,9 +167,18 @@ mod tests {
     #[test]
     fn profile_candidates_have_descriptions() {
         let profiles = profile_candidates();
-        assert_eq!(profiles.len(), 2);
-        assert_eq!(profiles[0].get_value(), "base");
-        assert!(profiles[0].get_help().is_some());
+        assert_eq!(
+            profiles
+                .iter()
+                .map(CompletionCandidate::get_value)
+                .collect::<Vec<_>>(),
+            ["base", "desktop"]
+        );
+        assert!(profiles.iter().all(|profile| {
+            profile
+                .get_help()
+                .is_some_and(|help| !help.to_string().is_empty())
+        }));
     }
 
     #[test]

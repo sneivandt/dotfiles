@@ -284,25 +284,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_plan_skips_invalid_state_with_reason() {
-        let plan = ApplyChange::from_state(
-            "thing".to_string(),
-            &ResourceState::Invalid {
-                reason: "bad target".to_string(),
-            },
-            &ProcessOpts::strict("install"),
-        );
-
-        assert_eq!(
-            plan.operation(),
-            &ApplyOperation::Skip {
-                reason: "bad target".to_string(),
-                kind: SkipKind::UnmetWork,
-            }
-        );
-    }
-
-    #[test]
     fn apply_plan_captures_missing_apply_verb_and_bail_mode() {
         let plan = ApplyChange::from_state(
             "thing".to_string(),
@@ -343,30 +324,6 @@ mod tests {
             plan.dry_run_message().unwrap(),
             "replace thing (currently old)".to_string()
         );
-    }
-
-    #[test]
-    fn apply_plan_respects_install_missing_mode() {
-        let opts = ProcessOpts {
-            verb: "install",
-            mode: ProcessMode::InstallMissing,
-            sequential: false,
-        };
-        let plan = ApplyChange::from_state(
-            "thing".to_string(),
-            &ResourceState::Incorrect {
-                current: "old".to_string(),
-            },
-            &opts,
-        );
-
-        assert!(matches!(
-            plan.operation(),
-            ApplyOperation::Skip {
-                reason,
-                kind: SkipKind::Benign
-            } if reason.contains("incorrect")
-        ));
     }
 
     #[test]

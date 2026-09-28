@@ -44,10 +44,15 @@ fn config_loads_with_desktop_fixture() {
         .build();
 
     let config = ctx.load_config("desktop");
+    let sources: Vec<_> = config
+        .symlinks
+        .iter()
+        .map(|link| link.source.as_str())
+        .collect();
     assert_eq!(
-        config.symlinks.len(),
-        2,
-        "desktop fixture should yield 2 symlinks (base + desktop sections)"
+        sources,
+        ["bashrc", "config/Code/User/settings.json"],
+        "desktop fixture must preserve each selected section, not duplicate one"
     );
 }
 
@@ -99,7 +104,7 @@ fn unknown_profile_returns_error() {
 
 /// Packages listed in packages.toml must be loaded into `config.packages`.
 #[test]
-fn config_loads_packages_from_ini() {
+fn config_loads_packages_from_toml() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file("packages.toml", "[base]\npackages = [\"git\", \"curl\"]\n")
         .build();

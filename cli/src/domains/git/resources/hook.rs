@@ -198,11 +198,18 @@ mod tests {
         let dst = dir.path().join("target");
         std::fs::write(&src, "new content").unwrap();
         std::fs::write(&dst, "old content").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let resource = HookFileResource::new(src, dst);
-        assert!(matches!(
+        assert_eq!(
             resource.current_state().unwrap(),
-            ResourceState::Incorrect { .. }
-        ));
+            ResourceState::Incorrect {
+                current: "content differs".into(),
+            }
+        );
     }
 
     #[test]

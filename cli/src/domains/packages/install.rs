@@ -1,6 +1,7 @@
 //! Tasks: install system packages.
 
 use anyhow::{Context as _, Result};
+use std::path::Path;
 
 use crate::domains::packages::config::packages::Package;
 use crate::domains::packages::resources::package::{
@@ -178,6 +179,10 @@ impl Task for InstallAurPackages {
 #[derive(Debug)]
 pub struct InstallParu;
 
+fn run_paru_install(ctx: &Context, build_dir: &Path) -> Result<TaskResult> {
+    process_operation(ctx, &ParuInstallOperation { build_dir })
+}
+
 impl Task for InstallParu {
     task_metadata! {
         name: "Paru package manager",
@@ -206,12 +211,14 @@ impl Task for InstallParu {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        process_operation(ctx, &ParuInstallOperation)
+        run_paru_install(ctx, &std::env::temp_dir().join("paru-build"))
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ParuInstallOperation;
+struct ParuInstallOperation<'a> {
+    build_dir: &'a Path,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ParuInstallPlan {
@@ -240,7 +247,7 @@ impl ParuInstallPlan {
     }
 }
 
-impl Operation for ParuInstallOperation {
+impl Operation for ParuInstallOperation<'_> {
     type Plan = ParuInstallPlan;
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
@@ -302,7 +309,8 @@ impl Operation for ParuInstallOperation {
             )),
         }
         check_prerequisites(ctx)?;
-        let guard = crate::infra::fs::TempGuard::dir(prepare_build_directory(ctx)?);
+        prepare_build_directory(ctx, self.build_dir)?;
+        let guard = crate::infra::fs::TempGuard::dir(self.build_dir.to_path_buf());
         clone_paru_from_aur(ctx, guard.path())?;
         build_paru(ctx, guard.path())
             .with_context(|| format!("paru {} attempt failed", plan.action()))?;

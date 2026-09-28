@@ -96,10 +96,21 @@ fn runtime_state_handles_daemons_and_completed_oneshots() {
             correct,
             "{label}: {state:?}"
         );
-        assert!(
-            !matches!(state, ResourceState::Unknown { .. }),
-            "{label}: {state:?}"
-        );
+        if !correct {
+            let active = properties
+                .lines()
+                .next()
+                .unwrap()
+                .strip_prefix("ActiveState=")
+                .unwrap();
+            assert_eq!(
+                state,
+                ResourceState::Incorrect {
+                    current: format!("runtime state is {active}")
+                },
+                "{label}"
+            );
+        }
     }
     for properties in ["", "ActiveState=unexpected"] {
         assert!(matches!(
@@ -135,32 +146,6 @@ fn description_returns_unit_name() {
         executor,
     );
     assert_eq!(resource.description(), "clean-home-tmp.timer");
-}
-
-#[test]
-fn from_entry_copies_name() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "dunst.service".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource = SystemdUnitResource::from_entry(&entry, executor, Path::new("/home/test"), true);
-    assert_eq!(resource.name, "dunst.service");
-    assert_eq!(resource.scope, UnitScope::User);
-    assert!(resource.enabled);
-}
-
-#[test]
-fn from_entry_copies_disabled_state() {
-    let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "dhcpcd.service".to_string(),
-        scope: UnitScope::System,
-        enabled: false,
-    };
-    let resource = SystemdUnitResource::from_entry(&entry, executor, Path::new("/home/test"), true);
-    assert!(!resource.enabled);
 }
 
 // ------------------------------------------------------------------
@@ -427,6 +412,10 @@ fn current_state_invalid_for_unknown_scope() {
         resource.current_state().unwrap(),
         ResourceState::Invalid { .. }
     ));
+    assert!(
+        resource.apply().is_err(),
+        "invalid scopes cannot invoke systemctl"
+    );
 }
 
 // ------------------------------------------------------------------
@@ -434,61 +423,83 @@ fn current_state_invalid_for_unknown_scope() {
 // ------------------------------------------------------------------
 
 #[test]
-fn apply_returns_applied_when_systemctl_succeeds() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::success("")));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+fn configured_scope_and_enablement_drive_exact_apply_commands() {
+    for (scope, enabled, program, args) in [
+        (
+            UnitScope::User,
+            true,
+            "systemctl",
+            ["--user", "enable", "--now", "fixture.service"],
+        ),
+        (
+            UnitScope::User,
+            false,
+            "systemctl",
+            ["--user", "disable", "--now", "fixture.service"],
+        ),
+        (
+            UnitScope::System,
+            true,
+            "sudo",
+            ["systemctl", "enable", "--now", "fixture.service"],
+        ),
+        (
+            UnitScope::System,
+            false,
+            "sudo",
+            ["systemctl", "disable", "--now", "fixture.service"],
+        ),
+    ] {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().once().returning(move |spec| {
+            assert_eq!(spec.program(), program);
+            assert_eq!(spec.arguments(), args);
+            assert_eq!(spec.working_dir(), None);
+            assert!(!spec.is_checked());
+            Ok(ExecResult::success(""))
+        });
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: "fixture.service".into(),
+            scope,
+            enabled,
+        };
+        let resource =
+            SystemdUnitResource::from_entry(&entry, Arc::new(mock), Path::new("unused-home"), true);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
 }
 
 #[test]
-fn apply_returns_skipped_when_systemctl_fails() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
-    assert!(
-        matches!(resource.apply().unwrap(), ResourceChange::Skipped { .. }),
-        "expected Skipped when systemctl enable fails"
-    );
-}
-
-#[test]
-fn apply_uses_sudo_for_system_scope() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "sudo"
-                && spec.arguments() == ["systemctl", "enable", "--now", "sshd.service"]
-                && !spec.is_checked()
-        })
-        .returning(|_| Ok(ExecResult::success("")));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
-}
-
-#[test]
-fn apply_disables_system_scope_unit_with_sudo() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "sudo"
-                && spec.arguments() == ["systemctl", "disable", "--now", "dhcpcd.service"]
-                && !spec.is_checked()
-        })
-        .returning(|_| Ok(ExecResult::success("")));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
-    resource.enabled = false;
-    assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+fn apply_reports_unmet_work_with_exit_diagnostics() {
+    for (code, output, error, expected) in [
+        (
+            Some(42),
+            "partial output",
+            "bus unavailable",
+            ["42", "partial output", "bus unavailable"],
+        ),
+        (None, "", "", ["signal", "dunst.service", "enable"]),
+    ] {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().once().returning(move |spec| {
+            assert_eq!(spec.program(), "systemctl");
+            assert_eq!(
+                spec.arguments(),
+                ["--user", "enable", "--now", "dunst.service"]
+            );
+            assert!(!spec.is_checked());
+            Ok(ExecResult::failure(output, error, code))
+        });
+        let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, Arc::new(mock));
+        let change = resource.apply().unwrap();
+        let ResourceChange::Skipped { reason, .. } = &change else {
+            panic!("failed systemctl must not report a change");
+        };
+        for detail in expected {
+            assert!(reason.contains(detail), "missing {detail:?}: {reason}");
+        }
+        assert_eq!(change, ResourceChange::unusable(reason.clone()));
+    }
 }
 
 #[cfg(unix)]

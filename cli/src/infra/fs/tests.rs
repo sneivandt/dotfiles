@@ -194,6 +194,64 @@ fn ensure_parent_dir_noop_when_parent_exists() {
     assert!(dir.path().exists());
 }
 
+#[test]
+fn removing_optional_files_is_idempotent_but_does_not_suppress_directory_errors() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("file");
+    assert!(!remove_file_if_present(&file, "inspect optional file").unwrap());
+    std::fs::write(&file, "content").unwrap();
+    assert!(remove_file_if_present(&file, "inspect optional file").unwrap());
+    assert!(!remove_file_if_present(&file, "inspect optional file").unwrap());
+
+    let directory = root.path().join("directory");
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::write(directory.join("keep"), "unchanged").unwrap();
+    let error = remove_file_if_present(&directory, "inspect optional file").unwrap_err();
+    assert_eq!(error.to_string(), format!("remove {}", directory.display()));
+    assert!(error.downcast_ref::<std::io::Error>().is_some());
+    assert_eq!(
+        std::fs::read_to_string(directory.join("keep")).unwrap(),
+        "unchanged"
+    );
+}
+
+#[test]
+fn file_reads_preserve_bytes_and_report_invalid_utf8_with_path_context() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("binary");
+    std::fs::write(&file, [b'a', 0xff, b'b']).unwrap();
+    assert_eq!(read_bytes(&file).unwrap(), [b'a', 0xff, b'b']);
+    let error = read_string(&file).unwrap_err();
+    assert_eq!(error.to_string(), format!("read {}", file.display()));
+    assert_eq!(
+        error.downcast_ref::<std::io::Error>().unwrap().kind(),
+        std::io::ErrorKind::InvalidData
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn optional_metadata_and_removal_recognize_dangling_links() {
+    let root = tempfile::tempdir().unwrap();
+    let missing_target = root.path().join("missing");
+    let link = root.path().join("link");
+    std::os::unix::fs::symlink(&missing_target, &link).unwrap();
+    assert!(
+        symlink_metadata_optional(&link, "inspect link")
+            .unwrap()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(remove_file_if_present(&link, "inspect link").unwrap());
+    assert!(
+        symlink_metadata_optional(&link, "inspect link")
+            .unwrap()
+            .is_none()
+    );
+    assert!(!missing_target.exists());
+}
+
 // -----------------------------------------------------------------------
 // is_dir_like
 // -----------------------------------------------------------------------

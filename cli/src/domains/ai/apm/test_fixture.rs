@@ -93,11 +93,30 @@ pub fn has_env(spec: &CommandSpec, key: &str, value: &str) -> bool {
         .any(|(actual_key, actual_value)| actual_key == key && actual_value == value)
 }
 
+pub fn assert_apm_command(spec: &CommandSpec) {
+    assert_eq!(spec.program(), "apm");
+    assert!(
+        spec.is_checked(),
+        "APM failures must not be mistaken for success"
+    );
+    assert!(
+        spec.working_dir().is_some(),
+        "APM must run in the fixture home"
+    );
+    for (key, value) in super::commands::APM_NONINTERACTIVE_ENV {
+        assert!(
+            has_env(spec, key, value),
+            "missing noninteractive setting {key}"
+        );
+    }
+}
+
 pub fn expect_copilot_app_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {
     mock.expect_execute()
         .once()
         .in_sequence(seq)
         .returning(|spec| {
+            assert_apm_command(&spec);
             assert_eq!(spec.arguments(), ["experimental", "enable", "copilot-app"]);
             assert!(has_env(&spec, "GIT_TERMINAL_PROMPT", "0"));
             Ok(ExecResult::success("[!] copilot-app is already enabled.\n"))
@@ -109,6 +128,7 @@ pub fn expect_cowork_enable(mock: &mut MockExecutor, seq: &mut mockall::Sequence
         .once()
         .in_sequence(seq)
         .returning(|spec| {
+            assert_apm_command(&spec);
             assert_eq!(
                 spec.arguments(),
                 ["experimental", "enable", "copilot-cowork"]
@@ -128,7 +148,7 @@ pub fn expect_apm_update(
         .once()
         .in_sequence(seq)
         .returning(move |spec| {
-            assert_eq!(spec.program(), "apm");
+            assert_apm_command(&spec);
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
             Ok(ExecResult::success(stdout))
         });
@@ -139,7 +159,7 @@ pub fn expect_copilot_app_workflow_install(mock: &mut MockExecutor, seq: &mut mo
         .once()
         .in_sequence(seq)
         .returning(|spec| {
-            assert_eq!(spec.program(), "apm");
+            assert_apm_command(&spec);
             assert_eq!(
                 spec.arguments(),
                 ["install", "-g", "--target", "copilot-app", "--only", "apm"]
@@ -158,6 +178,7 @@ pub fn expect_apm_install_without_enable(
         .once()
         .in_sequence(seq)
         .returning(move |spec| {
+            assert_apm_command(&spec);
             assert_eq!(spec.working_dir(), Some(install_cwd.as_path()));
             assert_eq!(spec.program(), "apm");
             assert_eq!(spec.arguments(), ["install", "-g"]);
@@ -173,6 +194,7 @@ pub fn expect_apm_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence, 
         .once()
         .in_sequence(seq)
         .returning(move |spec| {
+            assert_apm_command(&spec);
             assert_eq!(spec.working_dir(), Some(install_cwd.as_path()));
             assert_eq!(spec.arguments(), ["install", "-g"]);
             Ok(ExecResult::success("installed\n"))

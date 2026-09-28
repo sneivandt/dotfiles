@@ -108,10 +108,24 @@ fn run_propagates_symbolic_ref_operational_failure() {
 /// `merge --ff-only` — so a case only supplies stdout for as many calls as it
 /// expects the task to reach.
 fn run_with_git_output(outputs: &[&str]) -> (TaskResult, bool) {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let commands: &[&[&str]] = &[
+        &["symbolic-ref", "--quiet", "HEAD"],
+        &["status", "--porcelain", "--untracked-files=no"],
+        &["fetch", "--quiet"],
+        &["rev-parse", "HEAD"],
+        &["rev-parse", "@{u}"],
+        &["rev-list", "--count", "@{u}..HEAD"],
+        &["merge", "--ff-only", "@{u}"],
+    ];
+    assert!(outputs.len() <= commands.len(), "too many scripted outputs");
     let exec = outputs
         .iter()
-        .fold(ScriptedExecutor::new(), |exec, stdout| exec.ok(*stdout));
-    let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), exec);
+        .zip(commands)
+        .fold(ScriptedExecutor::new(), |exec, (stdout, args)| {
+            exec.git(root.path(), args, *stdout)
+        });
+    let ctx = make_update_context(empty_config(root.path().to_path_buf()), exec);
     let signal = UpdateSignal::new();
     let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
     (result, signal.was_updated())
@@ -193,43 +207,18 @@ fn run_classifies_repository_state_from_git_output() {
     }
 }
 
-#[derive(Debug)]
-struct UntrackedAwareExecutor;
-
-impl Executor for UntrackedAwareExecutor {
-    fn execute(&self, spec: CommandSpec) -> std::result::Result<ExecResult, ExecError> {
-        let stdout = if spec
-            .arguments()
-            .iter()
-            .any(|arg| arg == "--untracked-files=no")
-        {
-            String::new()
-        } else {
-            "?? new-file.txt\n".to_string()
-        };
-
-        Ok(ExecResult::success(stdout))
-    }
-
-    fn which(&self, _: &str) -> bool {
-        false
-    }
-
-    fn which_path(&self, program: &str) -> Result<PathBuf> {
-        anyhow::bail!("{program} not found on PATH")
-    }
-}
-
 #[test]
 fn worktree_has_local_changes_ignores_untracked_files() {
-    let config = empty_config(PathBuf::from("/repo"));
-    let ctx = make_context(
-        config,
-        Platform::new(Os::Linux, false),
-        Arc::new(UntrackedAwareExecutor),
+    let root = tempfile::tempdir_in(".").unwrap();
+    let config = empty_config(root.path().to_path_buf());
+    let executor = ScriptedExecutor::new().git(
+        root.path(),
+        &["status", "--porcelain", "--untracked-files=no"],
+        "",
     );
+    let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
 
-    assert!(!worktree_has_local_changes(&ctx, Path::new("/repo")).unwrap());
+    assert!(!worktree_has_local_changes(&ctx, root.path()).unwrap());
 }
 
 #[test]
@@ -532,81 +521,179 @@ fn partial_multi_repository_merge_failure_records_that_the_checkout_changed() {
 // run() — dry-run comparison paths
 // -----------------------------------------------------------------------
 
-#[test]
-fn run_dry_run_returns_ok_when_already_up_to_date() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    // symbolic-ref: success → on a branch
-    // status --porcelain: empty → clean worktree
-    // rev-parse HEAD: abc123
-    // branch.main.remote: origin
-    // branch.main.merge: refs/heads/main
-    // ls-remote origin refs/heads/main: abc123
-    let exec = ScriptedExecutor::new()
-        .ok("refs/heads/main")
-        .ok("")
-        .ok("abc123")
-        .ok("origin")
-        .ok("refs/heads/main")
-        .ok("abc123\trefs/heads/main");
-    let mut ctx = make_update_context(config, exec);
-    ctx = ctx.with_dry_run(true);
-    let task = UpdateRepository::new(UpdateSignal::new());
-
-    let result = task.run(&ctx).unwrap();
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok (already up to date in dry-run), got {result:?}"
-    );
+fn expect_git(
+    mock: &mut MockExecutor,
+    sequence: &mut mockall::Sequence,
+    root: &Path,
+    args: &[&str],
+    result: std::result::Result<ExecResult, ExecError>,
+) {
+    let root = root.to_path_buf();
+    let args: Vec<_> = args
+        .iter()
+        .map(|arg| std::ffi::OsString::from(*arg))
+        .collect();
+    mock.expect_execute()
+        .once()
+        .in_sequence(sequence)
+        .withf(move |spec: &CommandSpec| {
+            spec.program() == "git"
+                && spec.arguments() == args
+                && spec.working_dir() == Some(root.as_path())
+                && spec.is_checked()
+                && spec
+                    .environment()
+                    .iter()
+                    .any(|(key, value)| key == "GIT_CONFIG_NOSYSTEM" && value == "1")
+        })
+        .return_once(|_| result);
 }
 
 #[test]
-fn run_dry_run_returns_dry_run_when_behind_upstream() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    // symbolic-ref: success
-    // status --porcelain: empty
-    // rev-parse HEAD: abc123
-    // branch.main.remote: origin
-    // branch.main.merge: refs/heads/main
-    // ls-remote origin refs/heads/main: def456 (different SHA → would pull)
-    let exec = ScriptedExecutor::new()
-        .ok("refs/heads/main")
-        .ok("")
-        .ok("abc123")
-        .ok("origin")
-        .ok("refs/heads/main")
-        .ok("def456\trefs/heads/main");
-    let mut ctx = make_update_context(config, exec);
-    ctx = ctx.with_dry_run(true);
-    let task = UpdateRepository::new(UpdateSignal::new());
+fn dry_run_queries_remote_without_fetch_merge_or_restart() {
+    for (remote_sha, changed) in [("abc123", false), ("def456", true)] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let exec = ScriptedExecutor::new()
+            .git(
+                root.path(),
+                &["symbolic-ref", "--quiet", "HEAD"],
+                "refs/heads/feature/test",
+            )
+            .git(
+                root.path(),
+                &["status", "--porcelain", "--untracked-files=no"],
+                "",
+            )
+            .git(root.path(), &["rev-parse", "HEAD"], "abc123\n")
+            .git(
+                root.path(),
+                &["config", "--get", "branch.feature/test.remote"],
+                "origin",
+            )
+            .git(
+                root.path(),
+                &["config", "--get", "branch.feature/test.merge"],
+                "refs/heads/feature/test",
+            )
+            .git(
+                root.path(),
+                &[
+                    "ls-remote",
+                    "--exit-code",
+                    "origin",
+                    "refs/heads/feature/test",
+                ],
+                format!("{remote_sha}\trefs/heads/feature/test\n"),
+            );
+        let ctx =
+            make_update_context(empty_config(root.path().to_path_buf()), exec).with_dry_run(true);
+        let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
 
-    let result = task.run(&ctx).unwrap();
-    assert!(
-        matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() > 0),
-        "expected planned update when behind upstream, got {result:?}"
-    );
+        if changed {
+            assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+        } else {
+            crate::test_helpers::assert_task_ok(&result);
+        }
+        assert!(!signal.was_updated(), "preview must not trigger a restart");
+    }
 }
 
 #[test]
-fn run_dry_run_returns_ok_when_cached_upstream_matches_head() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    // symbolic-ref: success
-    // status --porcelain: empty
-    // rev-parse HEAD: abc123
-    // branch.main.remote lookup fails
-    // rev-parse @{u}: abc123 (cached tracking ref matches HEAD)
-    let exec = ScriptedExecutor::new()
-        .ok("refs/heads/main")
-        .ok("")
-        .ok("abc123")
-        .err(git_non_zero("no remote config"))
-        .ok("abc123");
-    let mut ctx = make_update_context(config, exec);
-    ctx = ctx.with_dry_run(true);
-    let task = UpdateRepository::new(UpdateSignal::new());
+fn dry_run_falls_back_to_cached_upstream_and_plans_unknown_state() {
+    for (cached, changed) in [
+        (Ok(ExecResult::success("abc123\n")), false),
+        (Ok(ExecResult::success("def456\n")), true),
+        (Err(git_non_zero("no tracking branch")), true),
+    ] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        for (args, result) in [
+            (
+                vec!["symbolic-ref", "--quiet", "HEAD"],
+                Ok(ExecResult::success("refs/heads/main")),
+            ),
+            (
+                vec!["status", "--porcelain", "--untracked-files=no"],
+                Ok(ExecResult::success("")),
+            ),
+            (vec!["rev-parse", "HEAD"], Ok(ExecResult::success("abc123"))),
+            (
+                vec!["config", "--get", "branch.main.remote"],
+                Err(git_non_zero("no remote config")),
+            ),
+            (vec!["rev-parse", "@{u}"], cached),
+        ] {
+            expect_git(&mut mock, &mut sequence, root.path(), &args, result);
+        }
+        let ctx =
+            make_update_context(empty_config(root.path().to_path_buf()), mock).with_dry_run(true);
+        let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
+        if changed {
+            assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+        } else {
+            crate::test_helpers::assert_task_ok(&result);
+        }
+        assert!(
+            !signal.was_updated(),
+            "cached preview must not trigger a restart"
+        );
+    }
+}
 
-    let result = task.run(&ctx).unwrap();
-    assert!(
-        matches!(result, TaskResult::Ok),
-        "expected Ok when cached upstream matches HEAD, got {result:?}"
-    );
+#[test]
+fn merge_failure_or_cancellation_does_not_signal_a_successful_update() {
+    for cancelled in [false, true] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        for (args, stdout) in [
+            (vec!["symbolic-ref", "--quiet", "HEAD"], "refs/heads/main"),
+            (vec!["status", "--porcelain", "--untracked-files=no"], ""),
+            (vec!["fetch", "--quiet"], ""),
+            (vec!["rev-parse", "HEAD"], "old"),
+            (vec!["rev-parse", "@{u}"], "new"),
+            (vec!["rev-list", "--count", "@{u}..HEAD"], "0"),
+        ] {
+            expect_git(
+                &mut mock,
+                &mut sequence,
+                root.path(),
+                &args,
+                Ok(ExecResult::success(stdout)),
+            );
+        }
+        expect_git(
+            &mut mock,
+            &mut sequence,
+            root.path(),
+            &["merge", "--ff-only", "@{u}"],
+            Err(if cancelled {
+                cancelled_git_error()
+            } else {
+                git_non_zero("merge rejected")
+            }),
+        );
+        let ctx = make_update_context(empty_config(root.path().to_path_buf()), mock);
+        let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx);
+        if cancelled {
+            assert!(
+                result
+                    .unwrap_err()
+                    .downcast_ref::<ExecError>()
+                    .is_some_and(ExecError::is_cancelled)
+            );
+        } else {
+            assert!(
+                matches!(result.unwrap(), TaskResult::Failed(reason) if reason == "git merge --ff-only failed")
+            );
+        }
+        assert!(
+            !signal.was_updated(),
+            "a failed first merge must not request a restart"
+        );
+    }
 }

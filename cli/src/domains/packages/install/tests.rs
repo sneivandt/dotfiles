@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::domains::packages::config::packages::Package;
 use crate::infra::ConfigHandle;
-use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::Os;
 use crate::test_helpers::{
     assert_task_changed, assert_task_ok, empty_config, make_platform_context_with_which,
@@ -174,8 +174,15 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
 }
 
 #[test]
-fn install_paru_run_returns_changed_result_after_install() {
-    let config = empty_config(PathBuf::from("/tmp"));
+fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let build_dir = fixture.path().join("paru-build");
+    std::fs::create_dir(&build_dir).unwrap();
+    std::fs::write(build_dir.join("stale-checkout"), "replace me").unwrap();
+    let unrelated = fixture.path().join("unrelated");
+    std::fs::create_dir(&unrelated).unwrap();
+    std::fs::write(unrelated.join("keep"), "unrelated content").unwrap();
+    let config = empty_config(fixture.path().to_path_buf());
     let mut mock = MockExecutor::new();
     let package_queries = Arc::new(AtomicUsize::new(0));
     mock.expect_execute()
@@ -196,32 +203,106 @@ fn install_paru_run_returns_changed_result_after_install() {
         .with(mockall::predicate::eq("paru"))
         .returning(|_| anyhow::bail!("paru not found on PATH"));
     expect_paru_build_prerequisites(&mut mock);
+    expect_paru_clone(&mut mock, &build_dir);
     mock.expect_execute()
         .once()
-        .withf(is_git_clone)
-        .returning(|spec| {
-            assert_eq!(spec.program(), "git");
-            assert_eq!(spec.arguments()[0], "clone");
-            assert_eq!(spec.arguments()[1], "https://aur.archlinux.org/paru.git");
-            Ok(ExecResult::success(""))
-        });
-    mock.expect_execute()
-        .once()
-        .withf(is_makepkg)
-        .returning(|spec| {
-            assert_eq!(spec.arguments(), ["-si", "--noconfirm"]);
-            assert_eq!(spec.environment().len(), 1);
-            assert_eq!(spec.environment()[0].0, "MAKEFLAGS");
-            Ok(ExecResult::success(""))
-        });
+        .withf(is_makepkg(build_dir.clone()))
+        .returning(|_| Ok(ExecResult::success("")));
     expect_healthy_paru(&mut mock, 1);
 
     let ctx = make_package_context(config, Os::Linux, true, mock);
-    let result = InstallParu.run(&ctx).unwrap();
+    let result = run_paru_install(&ctx, &build_dir).unwrap();
     let stats = task_batch(&result);
     assert!(
         stats.changed_count() > 0 && stats.message() == Some("installed paru"),
         "expected changed result after paru install, got {result:?}"
+    );
+    assert!(
+        !build_dir.exists(),
+        "successful installation must clean its checkout"
+    );
+    assert_eq!(
+        std::fs::read_to_string(unrelated.join("keep")).unwrap(),
+        "unrelated content"
+    );
+}
+
+#[test]
+fn paru_preview_and_completed_state_preserve_existing_build_files() {
+    for (label, installed, dry_run) in [
+        ("already installed", true, false),
+        ("installed preview", true, true),
+        ("missing preview", false, true),
+    ] {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let build_dir = fixture.path().join("paru-build");
+        std::fs::create_dir(&build_dir).unwrap();
+        let marker = build_dir.join("keep");
+        std::fs::write(&marker, "existing checkout").unwrap();
+        let config = empty_config(fixture.path().to_path_buf());
+        let mut mock = MockExecutor::new();
+        if installed {
+            expect_installed_paru_package(&mut mock, 1);
+            expect_healthy_paru(&mut mock, 1);
+        } else {
+            expect_missing_paru_package(&mut mock, 1);
+            expect_missing_paru_path(&mut mock, 1);
+        }
+        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+
+        let result = run_paru_install(&ctx, &build_dir).unwrap();
+
+        if installed {
+            assert_task_ok(&result);
+        } else {
+            assert_task_changed(&result);
+        }
+        assert_eq!(
+            std::fs::read_to_string(marker).unwrap(),
+            "existing checkout",
+            "{label}"
+        );
+    }
+}
+
+#[test]
+fn failed_paru_clone_cleans_only_its_partial_checkout() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let build_dir = fixture.path().join("paru-build");
+    let marker = fixture.path().join("keep");
+    std::fs::write(&marker, "unrelated content").unwrap();
+    let config = empty_config(fixture.path().to_path_buf());
+    let mut mock = MockExecutor::new();
+    expect_missing_paru_package(&mut mock, 1);
+    expect_missing_paru_path(&mut mock, 1);
+    expect_paru_build_prerequisites(&mut mock);
+    let partial = build_dir.clone();
+    mock.expect_execute()
+        .once()
+        .withf(is_git_clone(build_dir.clone()))
+        .returning(move |_| {
+            std::fs::create_dir(&partial).unwrap();
+            std::fs::write(partial.join("partial"), "incomplete checkout").unwrap();
+            Err(ExecError::non_zero(
+                "git clone",
+                ExecResult::failure("", "fixture clone failed", Some(128)),
+            ))
+        });
+    let ctx = make_package_context(config, Os::Linux, true, mock);
+
+    let error = run_paru_install(&ctx, &build_dir).unwrap_err();
+
+    assert!(
+        format!("{error:#}").contains("fixture clone failed"),
+        "{error:#}"
+    );
+    assert!(
+        !build_dir.exists(),
+        "failed clone must clean its partial checkout"
+    );
+    assert_eq!(
+        std::fs::read_to_string(marker).unwrap(),
+        "unrelated content"
     );
 }
 
@@ -252,24 +333,67 @@ fn cargo_path() -> PathBuf {
     PathBuf::from("/usr/bin/cargo")
 }
 
-fn is_paru_version(spec: &crate::infra::exec::CommandSpec) -> bool {
-    spec.program() == paru_path().as_os_str() && spec.arguments() == ["--version"]
+fn is_paru_version(spec: &CommandSpec) -> bool {
+    spec.program() == paru_path().as_os_str()
+        && spec.arguments() == ["--version"]
+        && spec.is_checked()
+        && spec.working_dir().is_none()
 }
 
-fn is_paru_package_query(spec: &crate::infra::exec::CommandSpec) -> bool {
-    spec.program() == "pacman" && spec.arguments() == ["-Q", "paru"] && !spec.is_checked()
+fn is_paru_package_query(spec: &CommandSpec) -> bool {
+    spec.program() == "pacman"
+        && spec.arguments() == ["-Q", "paru"]
+        && !spec.is_checked()
+        && spec.working_dir().is_none()
 }
 
-fn is_git_clone(spec: &crate::infra::exec::CommandSpec) -> bool {
-    spec.program() == "git" && spec.arguments().first().is_some_and(|arg| arg == "clone")
+fn is_git_clone(build_dir: PathBuf) -> impl Fn(&CommandSpec) -> bool {
+    move |spec| {
+        spec.program() == "git"
+            && spec.arguments()
+                == [
+                    std::ffi::OsString::from("clone"),
+                    std::ffi::OsString::from("https://aur.archlinux.org/paru.git"),
+                    build_dir.as_os_str().to_owned(),
+                ]
+            && spec.is_checked()
+            && spec.working_dir().is_none()
+    }
 }
 
-fn is_cargo_version(spec: &crate::infra::exec::CommandSpec) -> bool {
-    spec.program() == cargo_path().as_os_str() && spec.arguments() == ["--version"]
+fn expect_paru_clone(mock: &mut MockExecutor, build_dir: &Path) {
+    let build_dir = build_dir.to_path_buf();
+    mock.expect_execute()
+        .once()
+        .withf(is_git_clone(build_dir.clone()))
+        .returning(move |_| {
+            assert!(
+                !build_dir.exists(),
+                "clone must receive a clean fixture directory"
+            );
+            std::fs::create_dir(&build_dir).unwrap();
+            std::fs::write(build_dir.join("PKGBUILD"), "fixture checkout").unwrap();
+            Ok(ExecResult::success(""))
+        });
 }
 
-fn is_makepkg(spec: &crate::infra::exec::CommandSpec) -> bool {
-    spec.program() == "makepkg"
+fn is_cargo_version(spec: &CommandSpec) -> bool {
+    spec.program() == cargo_path().as_os_str()
+        && spec.arguments() == ["--version"]
+        && spec.is_checked()
+        && spec.working_dir().is_none()
+}
+
+fn is_makepkg(build_dir: PathBuf) -> impl Fn(&CommandSpec) -> bool {
+    move |spec| {
+        spec.program() == "makepkg"
+            && spec.arguments() == ["-si", "--noconfirm"]
+            && spec.is_checked()
+            && spec.working_dir() == Some(build_dir.as_path())
+            && matches!(spec.environment(), [(key, value)] if key == "MAKEFLAGS"
+                && value.to_str().and_then(|value| value.strip_prefix("-j"))
+                    .and_then(|jobs| jobs.parse::<usize>().ok()).is_some_and(|jobs| jobs > 0))
+    }
 }
 
 fn expect_missing_paru_path(mock: &mut MockExecutor, times: usize) {
@@ -370,7 +494,7 @@ fn paru_health_marks_path_executable_without_target_package_broken() {
     assert!(matches!(
         health,
         ParuHealth::Broken { path, reason }
-            if path == std::path::Path::new("/usr/local/bin/paru")
+            if path == Path::new("/usr/local/bin/paru")
                 && reason.contains("not backed by the target package database")
     ));
 }
@@ -427,7 +551,9 @@ fn paru_prerequisites_reject_unconfigured_rustup_cargo() {
 
 #[test]
 fn broken_paru_is_rebuilt_and_revalidated() {
-    let config = empty_config(PathBuf::from("/tmp"));
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let build_dir = fixture.path().join("paru-build");
+    let config = empty_config(fixture.path().to_path_buf());
     let mut mock = MockExecutor::new();
     expect_installed_paru_package(&mut mock, 2);
     let checks = Arc::new(AtomicUsize::new(0));
@@ -444,104 +570,90 @@ fn broken_paru_is_rebuilt_and_revalidated() {
             Ok(ExecResult::success("paru v2.1.0 - libalpm v16.0.1\n"))
         });
     expect_paru_build_prerequisites(&mut mock);
+    expect_paru_clone(&mut mock, &build_dir);
     mock.expect_execute()
         .once()
-        .withf(is_git_clone)
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .withf(is_makepkg)
+        .withf(is_makepkg(build_dir.clone()))
         .returning(|_| Ok(ExecResult::success("")));
 
     let ctx = make_package_context(config, Os::Linux, true, mock);
-    let result = InstallParu.run(&ctx).unwrap();
+    let result = run_paru_install(&ctx, &build_dir).unwrap();
     let stats = task_batch(&result);
 
     assert_eq!(stats.message(), Some("rebuilt paru"));
+    assert!(
+        !build_dir.exists(),
+        "successful rebuild must clean its checkout"
+    );
 }
 
 #[test]
 fn failed_paru_rebuild_returns_clear_root_error() {
-    let config = empty_config(PathBuf::from("/tmp"));
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let build_dir = fixture.path().join("paru-build");
+    let config = empty_config(fixture.path().to_path_buf());
     let mut mock = MockExecutor::new();
-    expect_installed_paru_package(&mut mock, 1);
-    mock.expect_execute()
-        .once()
-        .withf(is_paru_version)
-        .returning(|_| {
-            Err(ExecError::non_zero(
-                "/usr/bin/paru --version",
-                ExecResult::failure("", "libalpm.so.15 not found", Some(127)),
-            ))
-        });
-    expect_paru_build_prerequisites(&mut mock);
-    mock.expect_execute()
-        .once()
-        .withf(is_git_clone)
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .withf(is_makepkg)
-        .returning(|_| {
-            Err(ExecError::non_zero(
-                "makepkg -si --noconfirm",
-                ExecResult::failure("", "package build failed", Some(4)),
-            ))
-        });
+    expect_failed_paru_rebuild(&mut mock, &build_dir);
 
     let ctx = make_package_context(config, Os::Linux, true, mock);
-    let error = InstallParu.run(&ctx).unwrap_err();
+    let error = run_paru_install(&ctx, &build_dir).unwrap_err();
     let message = format!("{error:#}");
 
     assert!(message.contains("paru rebuild attempt failed"), "{message}");
     assert!(message.contains("package build failed"), "{message}");
+    assert!(
+        !build_dir.exists(),
+        "failed rebuild must clean its checkout"
+    );
 }
 
 #[test]
 fn failed_paru_rebuild_blocks_aur_package_task() {
     use std::collections::HashMap;
 
-    use crate::engine::TaskAssessment;
     use crate::engine::graph::ResolvedTaskGraph;
+    use crate::engine::{TaskAssessment, TaskId, TaskMeta};
     use crate::infra::logging::{Log, TaskStatus};
 
-    let mut config = empty_config(PathBuf::from("/tmp"));
+    struct FixtureParuTask {
+        inner: InstallParu,
+        build_dir: PathBuf,
+    }
+
+    impl Task for FixtureParuTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            self.inner.meta()
+        }
+
+        fn task_id(&self) -> TaskId {
+            // Preserve the real AUR dependency while injecting only the checkout path.
+            self.inner.task_id()
+        }
+
+        fn run(&self, ctx: &Context) -> Result<TaskResult> {
+            run_paru_install(ctx, &self.build_dir)
+        }
+    }
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let build_dir = fixture.path().join("paru-build");
+    let mut config = empty_config(fixture.path().to_path_buf());
     config.packages.push(Package {
         name: "apm-bin".to_string(),
         is_aur: true,
     });
     let packages = ConfigHandle::new(config.packages.clone());
     let mut mock = MockExecutor::new();
-    expect_installed_paru_package(&mut mock, 1);
-    mock.expect_execute()
-        .once()
-        .withf(is_paru_version)
-        .returning(|_| {
-            Err(ExecError::non_zero(
-                "/usr/bin/paru --version",
-                ExecResult::failure("", "libalpm.so.15 not found", Some(127)),
-            ))
-        });
-    expect_paru_build_prerequisites(&mut mock);
-    mock.expect_execute()
-        .once()
-        .withf(is_git_clone)
-        .returning(|_| Ok(ExecResult::success("")));
-    mock.expect_execute()
-        .once()
-        .withf(is_makepkg)
-        .returning(|_| {
-            Err(ExecError::non_zero(
-                "makepkg -si --noconfirm",
-                ExecResult::failure("", "package build failed", Some(4)),
-            ))
-        });
+    expect_failed_paru_rebuild(&mut mock, &build_dir);
 
     let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
     let log = Arc::new(log);
     let log_output: Arc<dyn Log> = Arc::<crate::infra::logging::Logger>::clone(&log);
     let ctx = make_package_context(config, Os::Linux, true, mock).with_log(log_output);
-    let install_paru = InstallParu;
+    let install_paru = FixtureParuTask {
+        inner: InstallParu,
+        build_dir: build_dir.clone(),
+    };
     let install_aur = InstallAurPackages::new(packages);
     let tasks: Vec<&dyn Task> = vec![&install_paru, &install_aur];
     let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
@@ -554,6 +666,10 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
         crate::engine::scheduler::run_tasks_sequential(&tasks, &graph, &assessments, &ctx, &log);
 
     assert_eq!(summary.failure_count(), 1);
+    assert!(
+        !build_dir.exists(),
+        "scheduler failure must clean the fixture checkout"
+    );
     let entries = log.task_entries();
     let paru_entry = entries
         .iter()
@@ -590,6 +706,30 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
             "run log should contain {diagnostic:?}:\n{run_log}"
         );
     }
+}
+
+fn expect_failed_paru_rebuild(mock: &mut MockExecutor, build_dir: &Path) {
+    expect_installed_paru_package(mock, 1);
+    mock.expect_execute()
+        .once()
+        .withf(is_paru_version)
+        .returning(|_| {
+            Err(ExecError::non_zero(
+                "/usr/bin/paru --version",
+                ExecResult::failure("", "libalpm.so.15 not found", Some(127)),
+            ))
+        });
+    expect_paru_build_prerequisites(mock);
+    expect_paru_clone(mock, build_dir);
+    mock.expect_execute()
+        .once()
+        .withf(is_makepkg(build_dir.to_path_buf()))
+        .returning(|_| {
+            Err(ExecError::non_zero(
+                "makepkg -si --noconfirm",
+                ExecResult::failure("", "package build failed", Some(4)),
+            ))
+        });
 }
 
 fn expect_paru_native_build_tools(mock: &mut MockExecutor) {
@@ -639,9 +779,36 @@ fn make_package_context(
     crate::test_helpers::make_context(config, Platform::new(os, is_arch), Arc::new(executor))
 }
 
+fn is_native_inventory(spec: &CommandSpec) -> bool {
+    spec.program() == "pacman"
+        && spec.arguments() == ["-Q"]
+        && !spec.is_checked()
+        && spec.working_dir().is_none()
+}
+
+fn is_native_git_install(spec: &CommandSpec) -> bool {
+    #[cfg(unix)]
+    let root = nix::unistd::Uid::effective().is_root();
+    #[cfg(not(unix))]
+    let root = false;
+    let (program, arguments) = if root {
+        ("pacman", vec!["-Syu", "--needed", "--noconfirm", "git"])
+    } else {
+        (
+            "sudo",
+            vec!["pacman", "-Syu", "--needed", "--noconfirm", "git"],
+        )
+    };
+    spec.program() == program
+        && spec.arguments() == arguments
+        && spec.is_checked()
+        && spec.working_dir().is_none()
+}
+
 #[test]
 fn install_packages_batch_installs_missing_packages_on_arch() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut config = empty_config(root.path().to_path_buf());
     config.packages.push(Package {
         name: "git".to_string(),
         is_aur: false,
@@ -650,19 +817,22 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
         name: "vim".to_string(),
         is_aur: false,
     });
-    // which("pacman") → true
-    // run_unchecked("pacman", ["-Q"]) → vim installed, git not
-    // run("sudo", ["pacman", "-S", "--needed", "--noconfirm", "git"]) → success
+    config.packages.push(Package {
+        name: "aur-package-must-not-be-installed".to_string(),
+        is_aur: true,
+    });
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("vim 9.0\n")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(is_native_git_install)
         .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, true, mock);
@@ -676,7 +846,8 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
 
 #[test]
 fn install_packages_all_already_installed_returns_ok() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut config = empty_config(root.path().to_path_buf());
     config.packages.push(Package {
         name: "git".to_string(),
         is_aur: false,
@@ -687,6 +858,7 @@ fn install_packages_all_already_installed_returns_ok() {
     mock.expect_which().returning(|_| true);
     mock.expect_execute()
         .once()
+        .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("git 2.40\n")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, false, mock);
@@ -696,7 +868,8 @@ fn install_packages_all_already_installed_returns_ok() {
 
 #[test]
 fn install_packages_dry_run_reports_missing_packages() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut config = empty_config(root.path().to_path_buf());
     config.packages.push(Package {
         name: "git".to_string(),
         is_aur: false,
@@ -707,17 +880,59 @@ fn install_packages_dry_run_reports_missing_packages() {
     mock.expect_which().returning(|_| true);
     mock.expect_execute()
         .once()
+        .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let mut ctx = make_package_context(config, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
-    assert_eq!(task_batch(&result).changed_count(), 1);
+    let stats = task_batch(&result);
+    assert_eq!(
+        (
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.failed_count()
+        ),
+        (1, 0, 0)
+    );
+}
+
+#[test]
+fn native_inventory_failure_prevents_planning_and_installation() {
+    for dry_run in [false, true] {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let config = empty_config(fixture.path().to_path_buf());
+        let packages = ConfigHandle::new(vec![Package {
+            name: "git".into(),
+            is_aur: false,
+        }]);
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "pacman")
+            .return_const(true);
+        mock.expect_execute()
+            .once()
+            .withf(is_native_inventory)
+            .returning(|_| {
+                Ok(ExecResult::failure(
+                    "partial-package 1.0\n",
+                    "fixture corrupt database",
+                    Some(42),
+                ))
+            });
+        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+        let error = InstallPackages::new(packages).run(&ctx).unwrap_err();
+        let details = format!("{error:#}");
+        assert!(details.contains("fixture corrupt database"), "{details}");
+        assert!(details.contains("42"), "{details}");
+    }
 }
 
 #[test]
 fn install_packages_returns_failed_when_batch_install_fails() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut config = empty_config(root.path().to_path_buf());
     config.packages.push(Package {
         name: "git".to_string(),
         is_aur: false,
@@ -731,25 +946,36 @@ fn install_packages_returns_failed_when_batch_install_fails() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(is_native_git_install)
         .returning(|_| {
-            Err(ExecError::spawn(
-                "sudo",
-                std::io::Error::other("failed (exit 1)"),
+            Err(ExecError::non_zero(
+                "pacman",
+                ExecResult::failure("", "database locked", Some(1)),
             ))
         });
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
-    assert_eq!(task_batch(&result).failed_count(), 1);
+    let stats = task_batch(&result);
+    assert_eq!(
+        (
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.failed_count()
+        ),
+        (0, 0, 1)
+    );
 }
 
 #[test]
 fn install_packages_propagates_batch_cancellation() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut config = empty_config(root.path().to_path_buf());
     config.packages.push(Package {
         name: "git".to_string(),
         is_aur: false,
@@ -760,10 +986,12 @@ fn install_packages_propagates_batch_cancellation() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(is_native_git_install)
         .returning(|_| {
             Err(ExecError::Cancelled {
                 command: "sudo pacman".to_string(),
@@ -785,7 +1013,8 @@ fn install_packages_propagates_batch_cancellation() {
 
 #[test]
 fn install_packages_winget_installs_per_package() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut config = empty_config(root.path().to_path_buf());
     config.packages.push(Package {
         name: "Git.Git".to_string(),
         is_aur: false,
@@ -799,10 +1028,40 @@ fn install_packages_winget_installs_per_package() {
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(|spec| {
+            spec.program() == "winget"
+                && spec.arguments()
+                    == [
+                        "list",
+                        "--accept-source-agreements",
+                        "--disable-interactivity",
+                    ]
+                && !spec.is_checked()
+                && spec.working_dir().is_none()
+        })
         .returning(|_| Ok(ExecResult::success("Name  Id       Version\n")));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
+        .withf(|spec| {
+            spec.program() == "winget"
+                && spec.arguments()
+                    == [
+                        "install",
+                        "--id",
+                        "Git.Git",
+                        "--exact",
+                        "--source",
+                        "winget",
+                        "--accept-source-agreements",
+                        "--accept-package-agreements",
+                        "--disable-interactivity",
+                        "--scope",
+                        "user",
+                    ]
+                && !spec.is_checked()
+                && spec.working_dir().is_none()
+        })
         .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Windows, false, mock);

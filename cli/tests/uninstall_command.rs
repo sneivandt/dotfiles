@@ -60,7 +60,7 @@ fn uninstall_task_catalog_contains_required_tasks() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn uninstall_tasks_assess_on_linux_and_windows() {
+fn uninstall_catalog_applicability_tracks_managed_inputs_on_both_platforms() {
     let platforms = [
         Platform {
             os: Os::Linux,
@@ -75,20 +75,79 @@ fn uninstall_tasks_assess_on_linux_and_windows() {
     ];
 
     for platform in platforms {
-        let ctx = common::TestContextBuilder::new().build();
-        let ec = ctx.make_system_context(
-            "base",
-            platform,
-            tasks::ContextOpts {
-                dry_run: true,
-                parallel: false,
-                is_ci: None,
-            },
-        );
-
-        for task in tasks::all_uninstall_tasks(&ec.store) {
-            let _ = task.should_run(&ec.ctx);
+        for configured in [false, true] {
+            let mut builder = common::TestContextBuilder::new();
+            if configured {
+                builder = builder
+                    .with_config_file("symlinks.toml", "[base]\nsymlinks = ['example']\n")
+                    .with_symlink_source("example")
+                    .with_git_hooks_dir();
+            }
+            let ctx = builder.build();
+            let ec = ctx.make_context_with_executor(
+                "base",
+                platform,
+                tasks::ContextOpts {
+                    dry_run: true,
+                    parallel: false,
+                    is_ci: Some(false),
+                },
+                std::sync::Arc::new(common::StubExecutor),
+            );
+            let mut applicable: Vec<_> = tasks::all_uninstall_tasks(&ec.store)
+                .into_iter()
+                .filter(|task| task.should_run(&ec.ctx))
+                .map(|task| task.selector().to_string())
+                .collect();
+            applicable.sort_unstable();
+            let expected = if configured {
+                vec!["git-hooks", "launcher", "symlinks"]
+            } else {
+                vec!["launcher"]
+            };
+            assert_eq!(
+                applicable, expected,
+                "{platform:?}, configured={configured}"
+            );
         }
+    }
+}
+
+#[test]
+fn invalid_uninstall_selection_fails_without_removing_managed_hooks() {
+    for (selector, skip, diagnostic) in [
+        ("unknown-task", None, "--only did not match a task selector"),
+        ("git-hooks", Some("git-hooks"), "selected no tasks"),
+    ] {
+        let repo = common::TestContextBuilder::new()
+            .with_hook_source("pre-commit", "#!/bin/sh\nexit 0\n")
+            .with_git_hooks_dir()
+            .build();
+        let hook = repo
+            .root_path()
+            .join(".git")
+            .join("hooks")
+            .join("pre-commit");
+        std::fs::write(&hook, "#!/bin/sh\nexit 0\n").unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let mut command =
+            common::cli_command(repo.root_path(), home.path(), None, "uninstall", selector);
+        if let Some(skip) = skip {
+            command.args(["--skip", skip]);
+        }
+        let output = command.output().unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!output.status.success(), "{selector}: {text}");
+        assert!(text.contains(diagnostic), "{selector}: {text}");
+        assert_eq!(
+            std::fs::read_to_string(hook).unwrap(),
+            "#!/bin/sh\nexit 0\n",
+            "{selector}: invalid selection must not remove hooks"
+        );
     }
 }
 

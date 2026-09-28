@@ -462,74 +462,121 @@ mod tests {
     }
 
     #[test]
-    fn record_task_ok() {
+    fn task_records_persist_all_outcomes_and_actions_through_the_log_trait() {
+        use crate::infra::logging::records::{Record, StoredRecord};
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task(task_entry(
-            "symlinks",
-            TaskStatus::Ok,
-            None,
-            ActionCounts::default(),
-        ));
-        let tasks = log.task_entries();
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].name, "symlinks");
-        assert_eq!(tasks[0].status, TaskStatus::Ok);
-        assert_eq!(tasks[0].actions, ActionCounts::default());
-    }
-
-    #[test]
-    fn record_task_with_actions_stores_structured_counts() {
-        let (log, _tmp, _guard) = isolated_logger();
+        let log_ref: &dyn Log = &log;
         let actions = ActionCounts {
             applied: 4,
-            planned: 0,
+            planned: 2,
             skipped: 1,
-            failed: 0,
-            ..ActionCounts::default()
+            failed: 3,
+            interrupted: 6,
+            not_attempted: 5,
         };
-
-        log.record_task(task_entry("symlinks", TaskStatus::Changed, None, actions));
-
-        assert_eq!(log.task_entries()[0].actions, actions);
-    }
-
-    #[test]
-    fn record_task_with_message() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.record_task(task_entry(
-            "packages",
-            TaskStatus::Skipped,
-            Some("not on arch"),
-            ActionCounts::default(),
-        ));
+        let cases = [
+            (TaskStatus::Ok, None),
+            (TaskStatus::Changed, Some("updated")),
+            (TaskStatus::Skipped, Some("not on arch")),
+            (TaskStatus::Failed, Some("permission denied")),
+            (TaskStatus::DryRun, Some("would update")),
+        ];
+        for (index, (status, message)) in cases.iter().enumerate() {
+            log_ref.record_task(
+                TaskEntry::new(
+                    format!("task-{index}"),
+                    "shared display name",
+                    *status,
+                    *message,
+                    actions,
+                    TaskVisibility::Visible,
+                )
+                .with_selector("example"),
+            );
+        }
+        let content = fs::read_to_string(log_ref.run_log().unwrap().path()).unwrap();
+        let records: Vec<_> = content
+            .lines()
+            .filter_map(StoredRecord::from_line)
+            .collect();
         assert_eq!(
-            log.task_entries()[0].message,
-            Some("not on arch".to_string())
+            records.len(),
+            cases.len(),
+            "persist each result exactly once"
         );
+        let tasks = log.task_entries();
+        assert_eq!(tasks.len(), cases.len());
+        for (index, ((expected_status, expected_reason), stored)) in
+            cases.into_iter().zip(records).enumerate()
+        {
+            let expected_id = format!("task-{index}");
+            assert_eq!(stored.context, expected_id);
+            let Record::TaskResult {
+                task_id,
+                selector,
+                name,
+                status,
+                reason,
+                actions: recorded,
+            } = stored.record
+            else {
+                panic!("expected task result");
+            };
+            assert_eq!(task_id, expected_id);
+            assert_eq!(selector.as_deref(), Some("example"));
+            assert_eq!(name, "shared display name");
+            assert_eq!(status, expected_status);
+            assert_eq!(reason.as_deref(), expected_reason);
+            assert_eq!(recorded, actions);
+            assert_eq!(tasks[index].task_id, task_id);
+            assert_eq!(tasks[index].status, status);
+            assert_eq!(tasks[index].message, reason);
+            assert_eq!(tasks[index].actions, recorded);
+        }
     }
 
     #[test]
-    fn record_multiple_tasks() {
+    fn task_durations_use_scheduler_identity_not_display_name() {
+        use crate::infra::logging::records::{Record, StoredRecord};
+        use std::time::Duration;
         let (log, _tmp, _guard) = isolated_logger();
-        log.record_task(task_entry(
-            "a",
-            TaskStatus::Ok,
-            None,
-            ActionCounts::default(),
-        ));
-        log.record_task(task_entry(
-            "b",
-            TaskStatus::Failed,
-            Some("error"),
-            ActionCounts::default(),
-        ));
-        log.record_task(task_entry(
-            "c",
-            TaskStatus::DryRun,
-            None,
-            ActionCounts::default(),
-        ));
-        assert_eq!(log.task_entries().len(), 3);
+        for id in ["first", "second"] {
+            log.record_task(TaskEntry::new(
+                id,
+                "same name",
+                TaskStatus::Ok,
+                None,
+                ActionCounts::default(),
+                TaskVisibility::Visible,
+            ));
+        }
+        let log_ref: &dyn Log = &log;
+        log_ref.record_task_duration("first", Duration::from_micros(1234));
+        log_ref.record_task_duration("missing", Duration::from_micros(9999));
+        let tasks = log.task_entries();
+        assert_eq!(tasks[0].duration, Some(Duration::from_micros(1234)));
+        assert_eq!(tasks[1].duration, None);
+        let content = fs::read_to_string(log.log_path().unwrap()).unwrap();
+        let durations: Vec<_> = content
+            .lines()
+            .filter_map(StoredRecord::from_line)
+            .filter_map(|stored| {
+                if let Record::TaskDuration {
+                    task_id,
+                    elapsed_us,
+                } = stored.record
+                {
+                    assert_eq!(stored.context, task_id);
+                    Some((task_id, elapsed_us))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            durations,
+            [("first".into(), 1234), ("missing".into(), 9999)]
+        );
     }
 
     #[test]
@@ -568,29 +615,6 @@ mod tests {
             ActionCounts::default(),
         ));
         assert_eq!(log.failure_count(), 2);
-    }
-
-    #[test]
-    fn log_trait_delegates_to_logger() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log_ref: &dyn Log = &log;
-        log_ref.record_task(task_entry(
-            "via-trait",
-            TaskStatus::Ok,
-            None,
-            ActionCounts::default(),
-        ));
-        assert_eq!(log.task_entries().len(), 1);
-    }
-
-    #[test]
-    fn run_log_accessible_via_trait() {
-        let (log, _tmp, _guard) = isolated_logger();
-        let log_ref: &dyn Log = &log;
-        assert!(
-            log_ref.run_log().is_some(),
-            "run_log() should be accessible via Log trait"
-        );
     }
 
     #[test]

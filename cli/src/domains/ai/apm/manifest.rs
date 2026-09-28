@@ -364,12 +364,18 @@ dependencies:
         let dir = tempfile::tempdir().expect("create temp dir");
         let target = dir.path().join("apm.yml");
         std::fs::write(&target, "same\n").expect("seed");
+        std::fs::File::options()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(
+                std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000),
+            ))
+            .unwrap();
         let mtime_before = std::fs::metadata(&target)
             .expect("stat")
             .modified()
             .expect("mtime");
-        // Sleep briefly so a rewrite would change mtime measurably.
-        std::thread::sleep(std::time::Duration::from_millis(10));
         write_merged_manifest(&target, "same\n").expect("write");
         let mtime_after = std::fs::metadata(&target)
             .expect("stat")

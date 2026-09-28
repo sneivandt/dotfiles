@@ -182,6 +182,18 @@ mod tests {
         format!("{user}:x:1000:1000::/home/{user}:{shell}\n")
     }
 
+    fn expect_passwd(mock: &mut MockExecutor, user: &'static str, result: ExecResult) {
+        mock.expect_execute()
+            .once()
+            .withf(move |spec| {
+                spec.program() == "getent"
+                    && spec.arguments() == ["passwd", user]
+                    && !spec.is_checked()
+                    && spec.working_dir().is_none()
+            })
+            .return_once(|_| Ok(result));
+    }
+
     #[test]
     fn description_includes_shell_name() {
         let executor: Arc<dyn Executor> = Arc::new(crate::infra::exec::ProcessExecutor::system());
@@ -229,9 +241,11 @@ mod tests {
     #[test]
     fn current_state_treats_bin_and_usr_bin_shells_as_equivalent() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(ExecResult::success(passwd("stuart", "/bin/zsh"))));
+        expect_passwd(
+            &mut mock,
+            "stuart",
+            ExecResult::success(passwd("stuart", "/bin/zsh")),
+        );
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"));
 
@@ -241,9 +255,11 @@ mod tests {
     #[test]
     fn current_state_reports_different_account_shell() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(ExecResult::success(passwd("stuart", "/bin/bash"))));
+        expect_passwd(
+            &mut mock,
+            "stuart",
+            ExecResult::success(passwd("stuart", "/bin/bash")),
+        );
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"));
 
@@ -256,10 +272,125 @@ mod tests {
     }
 
     #[test]
+    fn account_lookup_rejects_unusable_records_without_claiming_missing_state() {
+        for (case, result, reason) in [
+            ("no record", ExecResult::success(""), "no passwd entry"),
+            (
+                "different account",
+                ExecResult::success(passwd("another-user", "/bin/zsh")),
+                "no passwd entry",
+            ),
+            (
+                "missing field",
+                ExecResult::success("stuart:x:1000:1000:/home/stuart:/bin/zsh"),
+                "no passwd entry",
+            ),
+            (
+                "empty shell",
+                ExecResult::success(passwd("stuart", "")),
+                "no passwd entry",
+            ),
+            (
+                "lookup failure",
+                ExecResult::failure(" partial output \n", " database unavailable \n", Some(2)),
+                "exit 2; stdout: partial output; stderr: database unavailable",
+            ),
+            (
+                "terminated lookup",
+                ExecResult::failure("", "", None),
+                "terminated by signal; stdout: <empty>; stderr: <empty>",
+            ),
+        ] {
+            let mut mock = MockExecutor::new();
+            expect_passwd(&mut mock, "stuart", result);
+            let resource =
+                DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"));
+
+            let state = resource.current_state().unwrap();
+            assert!(
+                matches!(state, ResourceState::Unknown { reason: ref actual } if actual.contains(reason)),
+                "{case}: {state:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn account_lookup_selects_target_user_after_unrelated_and_malformed_records() {
+        let mut mock = MockExecutor::new();
+        expect_passwd(
+            &mut mock,
+            "stuart",
+            ExecResult::success(format!(
+                "malformed\n{}{}",
+                passwd("another-user", "/bin/bash"),
+                passwd("stuart", "/usr/bin/zsh")
+            )),
+        );
+        let resource =
+            DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"));
+
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
+
+    #[test]
+    fn account_selection_falls_back_without_consulting_the_host_environment() {
+        for (case, root, user, logname, sudo_user, expected) in [
+            ("root sudo user", true, "root", "login", "stuart", "stuart"),
+            (
+                "ignore sudo as user",
+                false,
+                "stuart",
+                "login",
+                "operator",
+                "stuart",
+            ),
+            (
+                "ignore root sudo user",
+                true,
+                "stuart",
+                "login",
+                "root",
+                "stuart",
+            ),
+            (
+                "ignore empty sudo user",
+                true,
+                "stuart",
+                "login",
+                "",
+                "stuart",
+            ),
+            ("empty USER uses LOGNAME", false, "", "login", "", "login"),
+        ] {
+            let env = MapEnv::new()
+                .with("USER", user)
+                .with("LOGNAME", logname)
+                .with("SUDO_USER", sudo_user)
+                .into_handle();
+            let resource =
+                DefaultShellResource::new("zsh".to_string(), Arc::new(MockExecutor::new()), env)
+                    .with_root(root);
+            assert_eq!(resource.target_user().unwrap(), expected, "{case}");
+        }
+        let resource = DefaultShellResource::new(
+            "zsh".to_string(),
+            Arc::new(MockExecutor::new()),
+            MapEnv::new()
+                .with("USER", "")
+                .with("LOGNAME", "")
+                .into_handle(),
+        )
+        .with_root(false);
+        let error = resource.current_state().unwrap_err().to_string();
+        assert!(error.contains("USER and LOGNAME are not set"), "{error}");
+    }
+
+    #[test]
     fn root_install_context_uses_usermod_for_target_user() {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
+            .withf(|program| program == "zsh")
             .returning(|program| Ok(PathBuf::from(format!("/usr/bin/{program}"))));
         mock.expect_execute()
             .once()
@@ -285,6 +416,7 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
+            .withf(|program| program == "zsh")
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
         mock.expect_which()
             .once()
@@ -319,11 +451,18 @@ mod tests {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
+            .withf(|program| program == "zsh")
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
-        mock.expect_which().once().returning(|_| true);
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "sudo")
+            .returning(|_| true);
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
+            .withf(|spec| {
+                spec.program() == "sudo" && spec.arguments() == ["-n", "true"] && !spec.is_checked()
+            })
             .returning(|_| Ok(ExecResult::failure("", "password required", Some(1))));
         mock.expect_execute()
             .once()
@@ -342,21 +481,56 @@ mod tests {
     }
 
     #[test]
+    fn missing_sudo_falls_back_to_chsh_without_a_probe() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which_path()
+            .once()
+            .withf(|program| program == "zsh")
+            .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "sudo")
+            .return_const(false);
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "chsh"
+                    && spec.arguments() == ["-s", "/usr/bin/zsh"]
+                    && spec.is_checked()
+            })
+            .returning(|_| Ok(ExecResult::success("")));
+        let resource =
+            DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"))
+                .with_root(false);
+
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+    }
+
+    #[test]
     fn apply_propagates_account_mutation_failure() {
         let mut mock = MockExecutor::new();
         mock.expect_which_path()
             .once()
+            .withf(|program| program == "zsh")
             .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
-        mock.expect_execute().once().returning(|_| {
-            Err(ExecError::spawn(
-                "usermod -s /usr/bin/zsh stuart",
-                std::io::Error::other("account database unavailable"),
-            ))
-        });
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "usermod"
+                    && spec.arguments() == ["-s", "/usr/bin/zsh", "stuart"]
+                    && spec.is_checked()
+            })
+            .returning(|_| {
+                Err(ExecError::non_zero(
+                    "usermod -s /usr/bin/zsh stuart",
+                    ExecResult::failure("", "account database unavailable", Some(1)),
+                ))
+            });
         let resource =
             DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"))
                 .with_root(true);
 
-        assert!(resource.apply().is_err());
+        let error = resource.apply().unwrap_err().to_string();
+        assert!(error.contains("account database unavailable"), "{error}");
     }
 }

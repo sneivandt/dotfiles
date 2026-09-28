@@ -434,9 +434,7 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
-    use crate::infra::exec::ExecResult;
-    use crate::infra::exec::MockExecutor;
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
     use std::path::Path;
 
     fn entry(root: &Path, target: &Path, source: &str, merge: MergeStrategy) -> SystemFile {
@@ -591,16 +589,22 @@ mod tests {
             resource.current_state().unwrap(),
             ResourceState::Invalid { .. }
         ));
+        assert!(
+            resource.apply().is_err(),
+            "malformed content must not be installed"
+        );
         assert_eq!(fs::read_to_string(target).unwrap(), "not = [valid\n");
     }
 
-    #[cfg(unix)]
     #[test]
-    fn apply_stages_merged_content_with_root_owned_install_arguments_and_converges() {
+    fn failed_install_cleans_staging_preserves_target_and_can_be_retried() {
+        #[cfg(unix)]
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
-        let root = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir_in(".").unwrap();
         fs::create_dir(root.path().join("system")).unwrap();
+        let staging = root.path().join("staging");
+        fs::create_dir(&staging).unwrap();
         fs::write(
             root.path().join("system/fragment.toml"),
             "[managed]\nenabled = true\n",
@@ -608,44 +612,87 @@ mod tests {
         .unwrap();
         let target = root.path().join("target.toml");
         fs::write(&target, "unmanaged = 'keep'\n").unwrap();
+        #[cfg(unix)]
         fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+        #[cfg(unix)]
         let metadata = fs::metadata(&target).unwrap();
-        let expected_target = target.clone();
-        let copy_target = target.clone();
         let mut executor = MockExecutor::new();
-        executor
-            .expect_execute()
-            .once()
-            .withf(move |spec| {
-                spec.program() == "sudo"
-                    && spec.arguments().starts_with(&[
-                        "install".into(),
-                        "-D".into(),
-                        "--owner=root".into(),
-                        "--group=root".into(),
-                        "--mode=0644".into(),
-                        "--".into(),
-                    ])
-                    && spec
-                        .arguments()
-                        .last()
-                        .is_some_and(|argument| argument == expected_target.as_os_str())
-            })
-            .returning(move |spec| {
-                fs::copy(&spec.arguments()[6], &copy_target).unwrap();
-                fs::set_permissions(&copy_target, fs::Permissions::from_mode(0o644)).unwrap();
-                Ok(ExecResult::success(""))
-            });
+        let mut sequence = mockall::Sequence::new();
+        for fail in [true, false] {
+            let expected_target = target.clone();
+            let expected_staging = staging.clone();
+            executor
+                .expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .returning(move |spec| {
+                    assert_eq!(spec.program(), "sudo");
+                    assert_eq!(spec.arguments().len(), 8);
+                    assert_eq!(
+                        &spec.arguments()[..6],
+                        [
+                            "install",
+                            "-D",
+                            "--owner=root",
+                            "--group=root",
+                            "--mode=0644",
+                            "--",
+                        ]
+                    );
+                    assert_eq!(spec.arguments()[7], expected_target.as_os_str());
+                    assert_eq!(spec.working_dir(), None);
+                    assert!(spec.is_checked());
+                    let staged = Path::new(&spec.arguments()[6]);
+                    assert_eq!(staged.parent(), Some(expected_staging.as_path()));
+                    let content = fs::read_to_string(staged).unwrap();
+                    let table: toml::Table = toml::from_str(&content).unwrap();
+                    assert_eq!(table["unmanaged"].as_str(), Some("keep"));
+                    assert_eq!(table["managed"]["enabled"].as_bool(), Some(true));
+                    #[cfg(unix)]
+                    assert_eq!(
+                        fs::metadata(staged).unwrap().permissions().mode() & 0o777,
+                        0o600
+                    );
+                    if fail {
+                        Err(ExecError::non_zero(
+                            "sudo install",
+                            ExecResult::failure("", "fixture install denied", Some(1)),
+                        ))
+                    } else {
+                        fs::copy(staged, &expected_target).unwrap();
+                        #[cfg(unix)]
+                        fs::set_permissions(&expected_target, fs::Permissions::from_mode(0o644))
+                            .unwrap();
+                        Ok(ExecResult::success(""))
+                    }
+                });
+        }
         let mut resource = SystemFileResource::new(
             entry(root.path(), &target, "fragment.toml", MergeStrategy::Toml),
             Arc::new(executor),
         );
-        resource.temp_dir = root.path().to_path_buf();
-        resource.expected_uid = metadata.uid();
-        resource.expected_gid = metadata.gid();
+        resource.temp_dir = staging.clone();
+        #[cfg(unix)]
+        {
+            resource.expected_uid = metadata.uid();
+            resource.expected_gid = metadata.gid();
+        }
 
+        let error = resource.apply().unwrap_err();
+        assert!(
+            format!("{error:#}").contains("fixture install denied"),
+            "{error:#}"
+        );
+        assert_eq!(fs::read_to_string(&target).unwrap(), "unmanaged = 'keep'\n");
+        assert_eq!(fs::read_dir(&staging).unwrap().count(), 0);
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(fs::read_dir(&staging).unwrap().count(), 0);
         let content = fs::read_to_string(target).unwrap();
         assert!(content.contains("unmanaged = \"keep\""));
         assert!(content.contains("enabled = true"));

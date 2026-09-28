@@ -223,8 +223,12 @@ mod tests {
     }
 
     #[test]
-    fn read_persisted_returns_none_outside_git_repo() {
+    fn read_persisted_returns_none_when_git_repository_cannot_be_opened() {
         let dir = tempfile::tempdir().expect("tempdir");
+        // Prevent discovery of the enclosing checkout when fixtures live under it.
+        std::fs::write(dir.path().join(".git"), "gitdir: missing-repository\n")
+            .expect("write discovery boundary");
+        assert!(git2::Repository::discover(dir.path()).is_err());
         let result = read_persisted(dir.path());
         assert_eq!(result, None);
     }

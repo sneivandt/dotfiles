@@ -1,6 +1,8 @@
 use crate::engine::mode::ProcessOpts;
 use crate::engine::orchestrate::process_resources_with_state;
-use crate::engine::{RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 use crate::engine::{TaskResult, process_resources, process_resources_remove};
 use crate::test_helpers::empty_config;
 use std::{
@@ -20,6 +22,34 @@ struct PrecomputedResource {
     state: ResourceState,
 }
 
+struct ThreadBoundResource(std::thread::ThreadId);
+
+impl Resource for ThreadBoundResource {
+    fn description(&self) -> String {
+        "thread-bound resource".into()
+    }
+
+    fn apply(&self) -> ResourceResult<ResourceChange> {
+        assert_eq!(
+            std::thread::current().id(),
+            self.0,
+            "apply must remain on the caller"
+        );
+        Ok(ResourceChange::Applied)
+    }
+}
+
+impl IntrinsicState for ThreadBoundResource {
+    fn current_state(&self) -> ResourceResult<ResourceState> {
+        assert_eq!(
+            std::thread::current().id(),
+            self.0,
+            "discovery must remain on the caller"
+        );
+        Ok(ResourceState::Missing)
+    }
+}
+
 impl Resource for PrecomputedResource {
     fn description(&self) -> String {
         self.resource.description()
@@ -36,17 +66,19 @@ impl RemovableResource for PrecomputedResource {
     }
 }
 
-const fn is_success(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Ok)
-        || matches!(result, TaskResult::Batch(stats) if stats.failed_count() == 0)
-}
-
-const fn is_batch_failure(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.failed_count() > 0)
-}
-
-const fn is_batch_change(result: &TaskResult) -> bool {
-    matches!(result, TaskResult::Batch(stats) if stats.changed_count() > 0)
+fn assert_counts(result: &TaskResult, expected: (u32, u32, u32, u32)) {
+    let TaskResult::Batch(stats) = result else {
+        panic!("expected batch statistics, got {result:?}");
+    };
+    assert_eq!(
+        (
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.skipped_count(),
+            stats.failed_count(),
+        ),
+        expected
+    );
 }
 
 fn process_precomputed_states(
@@ -89,7 +121,7 @@ fn process_resources_mixed_states() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_batch_failure(&result));
+    assert_counts(&result, (1, 1, 0, 1));
 }
 
 #[test]
@@ -99,7 +131,7 @@ fn process_resources_empty_list() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_success(&result));
+    assert!(matches!(result, TaskResult::Ok));
 }
 
 // -----------------------------------------------------------------------
@@ -122,7 +154,7 @@ fn process_precomputed_states_applies_precomputed() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (1, 1, 0, 0));
 }
 
 #[test]
@@ -138,7 +170,7 @@ fn process_resources_with_state_empty_list_never_queries_state() {
 
     let result = process_resources_with_state(&ctx, resources, state, &opts).unwrap();
 
-    assert!(is_success(&result));
+    assert!(matches!(result, TaskResult::Ok));
     assert_eq!(checks.load(Ordering::SeqCst), 0);
 }
 
@@ -155,7 +187,7 @@ fn process_resources_remove_removes_correct_resources() {
     ];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (1, 1, 0, 0));
 }
 
 #[test]
@@ -166,7 +198,7 @@ fn process_resources_remove_dry_run() {
         vec![MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into()))];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(is_batch_change(&result));
+    assert_counts(&result, (1, 0, 0, 0));
 }
 
 // -----------------------------------------------------------------------
@@ -187,18 +219,18 @@ fn process_resources_parallel_accumulates_stats() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_batch_failure(&result));
+    assert_counts(&result, (1, 1, 0, 1));
 }
 
 #[test]
 fn process_resources_parallel_single_resource_runs_sequentially() {
     // When there is only one resource, the sequential path is taken even if parallel=true.
     let ctx = parallel_ctx();
-    let resources = vec![MockResource::new(ResourceState::Missing)];
+    let resources = vec![ThreadBoundResource(std::thread::current().id())];
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (1, 0, 0, 0));
 }
 
 #[test]
@@ -242,7 +274,7 @@ fn process_precomputed_states_parallel_dispatch() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (2, 1, 0, 0));
 }
 
 // -----------------------------------------------------------------------
@@ -258,7 +290,7 @@ fn process_resources_remove_parallel_dispatch() {
     ];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (1, 1, 0, 0));
 }
 
 // -----------------------------------------------------------------------
@@ -335,9 +367,8 @@ fn process_precomputed_states_stats_accumulate_across_resources() {
     ];
     let opts = default_opts();
 
-    // Just verify it succeeds — individual counts are exercised by process_single tests
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_batch_failure(&result));
+    assert_counts(&result, (1, 2, 0, 1));
 }
 
 // -----------------------------------------------------------------------
@@ -354,7 +385,7 @@ fn process_resources_parallel_dry_run() {
     ];
     let opts = default_opts();
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_batch_change(&result));
+    assert_counts(&result, (2, 0, 0, 0));
 }
 
 #[test]
@@ -365,7 +396,7 @@ fn process_resources_remove_parallel_dry_run() {
         MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
     ];
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(is_batch_change(&result));
+    assert_counts(&result, (2, 0, 0, 0));
 }
 
 #[test]
@@ -383,7 +414,7 @@ fn process_precomputed_states_parallel_no_bail_reports_failure() {
     ];
     let opts = default_opts(); // no_bail
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_batch_failure(&result));
+    assert_counts(&result, (0, 1, 0, 1));
 }
 
 // -----------------------------------------------------------------------
@@ -397,7 +428,7 @@ fn process_precomputed_states_empty_list() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_success(&result));
+    assert!(matches!(result, TaskResult::Ok));
 }
 
 // -----------------------------------------------------------------------
@@ -410,7 +441,7 @@ fn process_resources_remove_empty_list() {
     let resources: Vec<MockResource> = vec![];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (0, 0, 0, 0));
 }
 
 // -----------------------------------------------------------------------
@@ -451,7 +482,7 @@ fn process_precomputed_states_lenient_reports_failure() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_batch_failure(&result));
+    assert_counts(&result, (0, 1, 0, 1));
 }
 
 // -----------------------------------------------------------------------
@@ -468,7 +499,7 @@ fn process_resources_lenient_reports_apply_errors() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_batch_failure(&result));
+    assert_counts(&result, (0, 1, 0, 1));
 }
 
 // -----------------------------------------------------------------------
@@ -546,7 +577,7 @@ fn process_resources_remove_all_missing_skips_silently() {
     ];
 
     let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (0, 3, 0, 0));
 }
 
 // -----------------------------------------------------------------------
@@ -584,7 +615,7 @@ fn process_precomputed_states_dry_run() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_batch_change(&result));
+    assert_counts(&result, (1, 1, 0, 0));
 }
 
 // -----------------------------------------------------------------------
@@ -607,7 +638,7 @@ fn process_precomputed_states_parallel_dry_run() {
     let opts = default_opts();
 
     let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_batch_change(&result));
+    assert_counts(&result, (2, 0, 0, 0));
 }
 
 // -----------------------------------------------------------------------
@@ -625,7 +656,7 @@ fn process_resources_lenient_reports_multiple_apply_errors() {
     let opts = default_opts();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_batch_failure(&result));
+    assert_counts(&result, (0, 1, 0, 2));
 }
 
 // -----------------------------------------------------------------------
@@ -725,35 +756,32 @@ fn assert_unstarted_batch(error: &anyhow::Error, count: u32) {
 #[test]
 fn sequential_opts_forces_sequential_processing() {
     let ctx = parallel_ctx();
-    // Use sequential opts — should not dispatch to parallel path
-    let resources = vec![
-        MockResource::new(ResourceState::Correct),
-        MockResource::new(ResourceState::Missing),
-        MockResource::new(ResourceState::Correct),
-    ];
+    let caller = std::thread::current().id();
+    let resources = (0..3).map(|_| ThreadBoundResource(caller));
     let opts = ProcessOpts::strict("install").sequential();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(is_success(&result));
+    assert_counts(&result, (3, 0, 0, 0));
 }
 
 #[test]
 fn sequential_opts_forces_sequential_for_resource_states() {
     let ctx = parallel_ctx();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-        (
-            MockResource::new(ResourceState::Missing),
-            ResourceState::Missing,
-        ),
-    ];
+    let caller = std::thread::current().id();
+    let resources = (0..3).map(|_| ThreadBoundResource(caller));
     let opts = ProcessOpts::strict("install").sequential();
 
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(is_success(&result));
+    let result = process_resources_with_state(
+        &ctx,
+        resources,
+        |_| {
+            assert_eq!(std::thread::current().id(), caller);
+            Ok(ResourceState::Missing)
+        },
+        &opts,
+    )
+    .unwrap();
+    assert_counts(&result, (3, 0, 0, 0));
 }
 
 #[test]

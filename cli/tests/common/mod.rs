@@ -10,14 +10,14 @@
 use dotfiles_cli::testing as test_api;
 use std::collections::HashSet;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use test_api::config::Config;
 use test_api::config::ConfigStore;
 use test_api::config::profiles;
-use test_api::exec::{CommandSpec, ExecError, ExecResult, Executor, ProcessExecutor};
-use test_api::logging::{Log, Logger};
+use test_api::exec::{CommandSpec, ExecError, ExecResult, Executor};
+use test_api::logging::{Log, Logger, isolated_logger};
 use test_api::platform::Platform;
 use test_api::tasks::{Context, ContextOpts, Task, TaskId};
 
@@ -25,9 +25,10 @@ fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
     Arc::<Logger>::clone(log)
 }
 
-/// Build a selected CLI command with writable state confined to the fixture.
+/// Build a CLI command with writable state confined to the fixture.
 ///
 /// Callers retain control of presentation, scheduling, and failure-policy flags.
+/// An empty selector omits `--only`; `log` has no repository-selection options.
 pub(crate) fn cli_command(
     repo: &Path,
     home: &Path,
@@ -36,31 +37,41 @@ pub(crate) fn cli_command(
     selector: &str,
 ) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_dotfiles"));
+    for (key, _) in std::env::vars_os() {
+        let name = key.to_string_lossy().to_ascii_uppercase();
+        if name.starts_with("DOTFILES_") || name.starts_with("GIT_") {
+            command.env_remove(key);
+        }
+    }
     command
-        .args([
-            verb,
-            "--profile",
-            "base",
-            "--only",
-            selector,
-            "--non-interactive",
-        ])
-        .arg("--root")
-        .arg(repo)
+        .arg(verb)
+        .current_dir(repo)
+        .stdin(Stdio::null())
         .env("HOME", home)
         .env("USERPROFILE", home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
         .env("XDG_STATE_HOME", home.join("state"))
         .env("XDG_CACHE_HOME", home.join("cache"))
+        .env("APPDATA", home.join("AppData").join("Roaming"))
+        .env("LOCALAPPDATA", home.join("AppData").join("Local"))
+        .env("GIT_CONFIG_GLOBAL", home.join(".gitconfig"))
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("DOTFILES_LOG_DIR", home.join("logs"))
         .env("DOTFILES_SKIP_SELF_UPDATE", "1")
-        .env_remove("CI")
-        .env_remove("LOCALAPPDATA")
-        .env_remove("DOTFILES_OVERLAY")
-        .env_remove("DOTFILES_REPOSITORY_REEXEC_GUARD")
-        .env_remove("DOTFILES_SELF_UPDATE_REEXEC_GUARD")
-        .env_remove("DOTFILES_REEXEC_GUARD");
-    if let Some(overlay) = overlay {
-        command.arg("--overlay").arg(overlay);
+        .env_remove("CI");
+    if verb != "log" {
+        // Fixtures may live below a real checkout; prevent Git discovery from
+        // falling through to that checkout's profile, hooks, or run lock.
+        initialize_git_repo(repo);
+        command
+            .args(["--profile", "base", "--non-interactive", "--root"])
+            .arg(repo);
+        if !selector.is_empty() {
+            command.args(["--only", selector]);
+        }
+        if let Some(overlay) = overlay {
+            command.arg("--overlay").arg(overlay);
+        }
     }
     if verb == "install" {
         command.arg("--no-repo-update");
@@ -68,8 +79,21 @@ pub(crate) fn cli_command(
     command
 }
 
+fn initialize_git_repo(root: &Path) {
+    git2::Repository::init(root)
+        .expect("initialize fixture repository")
+        .config()
+        .expect("repository config")
+        .set_str("core.hooksPath", ".git/hooks")
+        .expect("override inherited hook path");
+}
+
 /// Assert the structural invariants shared by every static task catalog.
 pub(crate) fn assert_task_catalog_contract(catalog: &str, tasks: &[Box<dyn Task>]) {
+    assert!(
+        !tasks.is_empty(),
+        "{catalog} task catalog must not be empty"
+    );
     let mut names = HashSet::new();
     let mut selectors = HashSet::new();
     let mut ids = HashSet::new();
@@ -82,6 +106,11 @@ pub(crate) fn assert_task_catalog_contract(catalog: &str, tasks: &[Box<dyn Task>
         assert!(
             names.insert(task.name()),
             "{catalog} task catalog contains duplicate display name '{}'",
+            task.name()
+        );
+        assert!(
+            !task.selector().is_empty(),
+            "{catalog} task '{}' has an empty selector",
             task.name()
         );
         assert!(
@@ -245,7 +274,7 @@ impl TestContextBuilder {
 
     /// Initialize a repository with its `.git/hooks/` directory.
     pub(crate) fn with_git_hooks_dir(self) -> Self {
-        git2::Repository::init(self.ctx.root.path()).expect("initialize Git hook repository");
+        initialize_git_repo(self.ctx.root.path());
         self
     }
 
@@ -327,30 +356,6 @@ impl IntegrationTestContext {
         )
     }
 
-    /// Create a task execution [`Context`] backed by a real [`ProcessExecutor`].
-    ///
-    /// Unlike [`make_context`](Self::make_context) (which uses a [`StubExecutor`]
-    /// and panics on any command), this variant lets a task perform real
-    /// `which()` lookups and shell-outs. The caller controls the [`Platform`] and
-    /// [`ContextOpts`] so tests can exercise platform-guarded `should_run`/`run`
-    /// paths (Windows, Arch, parallel, dry-run) without a matching host OS.
-    ///
-    /// A throwaway temporary directory is used as `$HOME`, keeping the test
-    /// hermetic from the real home directory.
-    pub(crate) fn make_system_context(
-        &self,
-        profile: &str,
-        platform: Platform,
-        opts: ContextOpts,
-    ) -> ExecutionContext {
-        self.make_context_with_executor(
-            profile,
-            platform,
-            opts,
-            Arc::new(ProcessExecutor::system()),
-        )
-    }
-
     /// Create a context with an injected executor, retaining its temporary home.
     pub(crate) fn make_context_with_executor(
         &self,
@@ -361,19 +366,19 @@ impl IntegrationTestContext {
     ) -> ExecutionContext {
         let config = self.load_config_for_platform(profile, platform);
         let home = tempfile::tempdir().expect("create home dir");
-        let log = Arc::new(Logger::new("test"));
+        let log = Arc::new(isolated_logger("test", &home.path().join("logs")));
         let root = config.root.clone();
         let overlay = config.overlay.clone();
         let store = ConfigStore::from_config(config);
-        let ctx = Context::from_raw(
-            root,
-            overlay,
-            platform,
-            log_arc(&log),
-            executor,
-            home.path().to_path_buf(),
-            opts,
-        );
+        let env = test_api::env::MapEnv::new()
+            .with("HOME", home.path())
+            .with("USERPROFILE", home.path())
+            .with("XDG_CONFIG_HOME", home.path().join(".config"))
+            .with("XDG_STATE_HOME", home.path().join("state"))
+            .with("XDG_CACHE_HOME", home.path().join("cache"))
+            .into_handle();
+        let ctx = Context::new(root, overlay, platform, log_arc(&log), executor, env, opts)
+            .expect("isolated task context");
         ExecutionContext {
             ctx,
             store,
@@ -391,62 +396,39 @@ impl IntegrationTestContext {
 /// Run the `install` command in dry-run mode against a fresh minimal repository.
 ///
 /// Builds an isolated Git repository so the profile and repository-scoped run
-/// state stay inside the fixture, then invokes
-/// [`commands::install::run`](test_api::commands::install::run) offline with the
-/// given `skip`/`only` selectors and `parallel` flag. The temporary repository
+/// state stay inside the fixture, then invokes the CLI offline with explicit
+/// fixture-safe `only` selectors and the given `skip`/`parallel` options. The repository
 /// lives only for the duration of the call.
 ///
 /// Returns the command result so callers can assert success or inspect errors.
 pub(crate) fn run_install_dry_run(
-    skip: Vec<String>,
-    only: Vec<String>,
+    skip: &[&str],
+    only: &[&str],
     parallel: bool,
 ) -> anyhow::Result<()> {
-    let ctx = TestContextBuilder::new().build();
-    let root_path = ctx.root_path().to_path_buf();
-
-    git2::Repository::init(&root_path).expect("initialize test repository");
-
-    let global = test_api::cli::GlobalOpts {
-        root: Some(root_path),
-        profile: Some("base".to_string()),
-        dry_run: true,
-        overlay: None,
-        parallel,
-        no_repo_update: true,
-        require_complete: false,
-        non_interactive: false,
-        no_symbols: false,
-        skip_attestation: false,
-        elevated_child: false,
-    };
-    let opts = test_api::cli::InstallOpts {
-        skip,
-        only,
-        with_deps: false,
-    };
-    let log: Arc<Logger> = Arc::new(Logger::new("test-install-dry-run"));
-    let runtime = test_api::commands::RuntimePolicy::new(
-        &global,
-        false,
-        test_api::env::MapEnv::new()
-            .with("HOME", ctx.root_path().join("home"))
-            .with("USERPROFILE", ctx.root_path().join("home"))
-            .with("XDG_STATE_HOME", ctx.root_path().join("state"))
-            .with(
-                "USER",
-                std::env::var("USER").unwrap_or_else(|_| "root".to_owned()),
-            )
-            .into_handle(),
-        false,
-        false,
+    assert!(!only.is_empty(), "select fixture-safe tasks explicitly");
+    let repo = TestContextBuilder::new().with_git_hooks_dir().build();
+    let home = tempfile::tempdir().expect("create home");
+    let mut command = cli_command(
+        repo.root_path(),
+        home.path(),
+        None,
+        "install",
+        &only.join(","),
     );
-
-    test_api::commands::install::run(
-        &runtime,
-        &opts,
-        false,
-        &log,
-        &test_api::engine::CancellationToken::new(),
-    )
+    command.arg("--dry-run");
+    if !parallel {
+        command.arg("--no-parallel");
+    }
+    if !skip.is_empty() {
+        command.args(["--skip", &skip.join(",")]);
+    }
+    let output = command.output().expect("run isolated install");
+    anyhow::ensure!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
 }

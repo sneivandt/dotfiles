@@ -1,6 +1,6 @@
 //! Shared scheduler contracts run against both modes; concurrency has its own suite.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 
@@ -149,7 +149,7 @@ struct TestTask {
     ordering: Vec<TaskId>,
     behavior: Behavior,
     applicable: bool,
-    ran: AtomicBool,
+    runs: AtomicUsize,
 }
 
 impl TestTask {
@@ -161,7 +161,7 @@ impl TestTask {
             ordering: Vec::new(),
             behavior: Behavior::Return(TaskResult::Ok),
             applicable: true,
-            ran: AtomicBool::new(false),
+            runs: AtomicUsize::new(0),
         }
     }
 
@@ -181,7 +181,12 @@ impl TestTask {
     }
 
     fn assert_ran(&self, expected: bool) {
-        assert_eq!(self.ran.load(Ordering::SeqCst), expected, "{}", self.key);
+        assert_eq!(
+            self.runs.load(Ordering::SeqCst),
+            usize::from(expected),
+            "{} must run exactly the expected number of times",
+            self.key
+        );
     }
 
     fn assert_record(
@@ -231,7 +236,7 @@ impl Task for TestTask {
 
     #[allow(clippy::panic, reason = "exercise scheduler panic payload handling")]
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        self.ran.store(true, Ordering::SeqCst);
+        self.runs.fetch_add(1, Ordering::SeqCst);
         match &self.behavior {
             Behavior::Return(result) => Ok(result.clone()),
             Behavior::Error => anyhow::bail!("simulated error"),

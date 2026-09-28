@@ -92,6 +92,7 @@ struct ConcurrencyProbe {
     id: usize,
     in_flight: Arc<AtomicUsize>,
     peak: Arc<AtomicUsize>,
+    calls: Arc<Mutex<Vec<usize>>>,
 }
 
 impl Resource for ConcurrencyProbe {
@@ -100,6 +101,7 @@ impl Resource for ConcurrencyProbe {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        self.calls.lock().unwrap().push(self.id);
         let current = self
             .in_flight
             .fetch_add(1, Ordering::SeqCst)
@@ -171,12 +173,14 @@ fn parallel_apply_accounts_for_every_resource_exactly_once() {
     let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
     let in_flight = Arc::new(AtomicUsize::new(0));
     let peak = Arc::new(AtomicUsize::new(0));
+    let calls = Arc::new(Mutex::new(Vec::new()));
 
     let resources: Vec<ConcurrencyProbe> = (0..BATCH)
         .map(|id| ConcurrencyProbe {
             id,
             in_flight: Arc::clone(&in_flight),
             peak: Arc::clone(&peak),
+            calls: Arc::clone(&calls),
         })
         .collect();
 
@@ -187,6 +191,13 @@ fn parallel_apply_accounts_for_every_resource_exactly_once() {
     assert_eq!(changed, u32::try_from(BATCH).expect("batch fits in u32"));
     assert_eq!(already_ok, 0);
     assert_eq!(failed, 0);
+    let mut actual = calls.lock().unwrap().clone();
+    actual.sort_unstable();
+    assert_eq!(
+        actual,
+        (0..BATCH).collect::<Vec<_>>(),
+        "matching aggregate counts must not hide duplicate or omitted resources"
+    );
     assert_eq!(
         in_flight.load(Ordering::SeqCst),
         0,
@@ -278,6 +289,10 @@ fn parallel_apply_propagates_the_first_failure_in_strict_mode() {
 
 #[test]
 fn cancellation_mid_batch_stops_dispatching_new_remove_work() {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(2)
+        .build()
+        .unwrap();
     let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
     let token = CancellationToken::new();
     let ctx = ctx.with_cancellation(token.clone());
@@ -294,7 +309,8 @@ fn cancellation_mid_batch_stops_dispatching_new_remove_work() {
         })
         .collect();
 
-    let error = process_resources_remove(&ctx, resources, "remove")
+    let error = pool
+        .install(|| process_resources_remove(&ctx, resources, "remove"))
         .expect_err("unfinished work must be reported as interrupted");
     let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
 
@@ -311,8 +327,8 @@ fn cancellation_mid_batch_stops_dispatching_new_remove_work() {
     );
     assert_eq!(failed, 0, "cancellation must not be reported as a failure");
     assert!(
-        changed < u32::try_from(BATCH).expect("batch fits in u32"),
-        "cancellation should have skipped at least one item, saw {changed}"
+        (1..=2).contains(&changed),
+        "only the cancelling resource and an already-running peer may finish, saw {changed}"
     );
     assert_eq!(
         u64::from(changed),

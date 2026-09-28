@@ -99,29 +99,61 @@ fn get_installed_pacman_parses_name_version_lines() {
         ))
     });
     let installed = get_installed_packages(PackageManager::Pacman, &mock).unwrap();
-    assert!(installed.contains("git"));
-    assert!(installed.contains("vim"));
-    assert!(installed.contains("base-devel"));
-    assert!(
-        !installed.contains("2.39.0"),
-        "version number should not be in set"
+    assert_eq!(
+        installed,
+        HashSet::from(["git".into(), "vim".into(), "base-devel".into()])
     );
 }
 
 #[test]
-fn get_installed_pacman_returns_error_on_failure() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute().once().returning(|_| {
-        Err(ExecError::spawn(
-            "pacman",
-            std::io::Error::other("simulated failure"),
-        ))
-    });
-    let result = get_installed_packages(PackageManager::Pacman, &mock);
-    assert!(
-        result.is_err(),
-        "should return an error when the command fails"
-    );
+fn inventory_failures_are_not_reported_as_an_empty_package_set() {
+    for manager in [
+        PackageManager::Pacman,
+        PackageManager::Paru,
+        PackageManager::Winget,
+    ] {
+        for spawn_failure in [false, true] {
+            let mut mock = MockExecutor::new();
+            mock.expect_execute().once().returning(move |spec| {
+                let (program, args) = if manager == PackageManager::Winget {
+                    (
+                        "winget",
+                        vec![
+                            "list",
+                            "--accept-source-agreements",
+                            "--disable-interactivity",
+                        ],
+                    )
+                } else {
+                    ("pacman", vec!["-Q"])
+                };
+                assert_eq!(spec.program(), program);
+                assert_eq!(spec.arguments(), args);
+                assert_eq!(spec.working_dir(), None);
+                assert!(!spec.is_checked());
+                if spawn_failure {
+                    Err(ExecError::spawn(
+                        program,
+                        std::io::Error::other("fixture inventory failure"),
+                    ))
+                } else {
+                    Ok(ExecResult::failure(
+                        "partial-package 1.0",
+                        "fixture inventory failure",
+                        Some(42),
+                    ))
+                }
+            });
+            let error = get_installed_packages(manager, &mock).unwrap_err();
+            assert!(
+                format!("{error:#}").contains("fixture inventory failure"),
+                "{manager}, spawn={spawn_failure}: {error:#}"
+            );
+            if !spawn_failure {
+                assert!(format!("{error:#}").contains("42"), "{error:#}");
+            }
+        }
+    }
 }
 
 #[test]
@@ -310,7 +342,10 @@ fn native_batch_install_uses_one_checked_command() {
         mock.expect_execute()
             .once()
             .withf(move |spec| {
-                spec.program() == program && spec.arguments() == args && spec.is_checked()
+                spec.program() == program
+                    && spec.arguments() == args
+                    && spec.is_checked()
+                    && spec.working_dir().is_none()
             })
             .returning(|_| Ok(ExecResult::success("")));
         let executor: Arc<dyn Executor> = Arc::new(mock);
@@ -322,6 +357,30 @@ fn native_batch_install_uses_one_checked_command() {
 
         assert_eq!(report.applied_count(), 2, "{manager}");
         assert!(!report.has_failures(), "{manager}");
+    }
+}
+
+#[test]
+fn inconsistent_provider_configs_are_rejected_before_commands_or_progress() {
+    for manager in [
+        PackageManager::Pacman,
+        PackageManager::Paru,
+        PackageManager::Winget,
+    ] {
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::new());
+        let first = PackageResource::new("first".into(), manager, Arc::clone(&executor))
+            .with_provider_config("first.conf".into());
+        let second = PackageResource::new("second".into(), manager, Arc::clone(&executor))
+            .with_provider_config("second.conf".into());
+        let error = install_missing_packages(manager, &[&first, &second], &*executor, &|_| {
+            panic!("invalid batch must not announce an install")
+        })
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "package batch contains inconsistent provider configuration",
+            "{manager}"
+        );
     }
 }
 

@@ -266,12 +266,14 @@ mod tests {
     use crate::infra::config::category_matcher::Category;
 
     #[test]
-    fn platform_detect_returns_valid() {
+    fn platform_detection_matches_the_compiled_os() {
         let p = Platform::detect();
-        assert!(
-            p.is_linux() || p.is_windows(),
-            "detected platform should be linux or windows"
-        );
+        assert_eq!(p.is_windows(), cfg!(target_os = "windows"));
+        assert_eq!(p.is_linux(), !cfg!(target_os = "windows"));
+        if !cfg!(target_os = "linux") {
+            assert!(!p.is_arch_linux(), "Arch detection is Linux-only");
+            assert!(!p.is_wsl(), "WSL detection is Linux-only");
+        }
     }
 
     #[test]

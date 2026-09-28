@@ -285,13 +285,38 @@ impl PackageProvider for WingetProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+
+    fn assert_install_command(spec: &CommandSpec, scoped: bool) {
+        let mut expected = vec![
+            "install",
+            "--id",
+            "Git.Git",
+            "--exact",
+            "--source",
+            "winget",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+            "--disable-interactivity",
+        ];
+        if scoped {
+            expected.extend(["--scope", "user"]);
+        }
+        assert_eq!(spec.program(), "winget");
+        assert_eq!(spec.arguments(), expected);
+        assert!(
+            !spec.is_checked(),
+            "HRESULTs are classified by the provider"
+        );
+        assert_eq!(spec.working_dir(), None);
+    }
 
     fn install_with_result(result: ExecResult) -> ResourceChange {
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .return_once(move |_| Ok(result));
+        mock.expect_execute().once().return_once(move |spec| {
+            assert_install_command(&spec, true);
+            Ok(result)
+        });
         WingetProvider.install("Git.Git", &mock, None).unwrap()
     }
 
@@ -447,17 +472,8 @@ mod tests {
 
     #[test]
     fn winget_install_prefers_user_scope() {
-        let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .withf(|spec| {
-                spec.arguments().iter().any(|arg| arg == "--scope")
-                    && spec.arguments().iter().any(|arg| arg == "user")
-            })
-            .returning(|_| Ok(ExecResult::success("")));
-
         assert_eq!(
-            WingetProvider.install("Git.Git", &mock, None).unwrap(),
+            install_with_result(ExecResult::success("")),
             ResourceChange::Applied,
         );
     }
@@ -465,10 +481,12 @@ mod tests {
     #[test]
     fn winget_install_retries_without_scope_when_no_user_installer_exists() {
         let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
         mock.expect_execute()
             .once()
-            .withf(|spec| spec.arguments().iter().any(|arg| arg == "--scope"))
-            .returning(|_| {
+            .in_sequence(&mut sequence)
+            .returning(|spec| {
+                assert_install_command(&spec, true);
                 Ok(ExecResult::failure(
                     "",
                     "no applicable installer",
@@ -477,8 +495,11 @@ mod tests {
             });
         mock.expect_execute()
             .once()
-            .withf(|spec| !spec.arguments().iter().any(|arg| arg == "--scope"))
-            .returning(|_| Ok(ExecResult::success("")));
+            .in_sequence(&mut sequence)
+            .returning(|spec| {
+                assert_install_command(&spec, false);
+                Ok(ExecResult::success(""))
+            });
 
         assert_eq!(
             WingetProvider.install("Git.Git", &mock, None).unwrap(),
@@ -489,21 +510,19 @@ mod tests {
     #[test]
     fn winget_install_skips_rather_than_fails_when_elevation_is_required() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute().times(2).returning(|spec| {
-            if spec.arguments().iter().any(|arg| arg == "--scope") {
-                Ok(ExecResult::failure(
-                    "",
-                    "",
-                    Some(exit_code::NO_APPLICABLE_INSTALLER),
-                ))
-            } else {
-                Ok(ExecResult::failure(
-                    "",
-                    "",
-                    Some(exit_code::COMMAND_REQUIRES_ADMIN),
-                ))
-            }
-        });
+        let mut sequence = mockall::Sequence::new();
+        for (scoped, code) in [
+            (true, exit_code::NO_APPLICABLE_INSTALLER),
+            (false, exit_code::COMMAND_REQUIRES_ADMIN),
+        ] {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .returning(move |spec| {
+                    assert_install_command(&spec, scoped);
+                    Ok(ExecResult::failure("", "", Some(code)))
+                });
+        }
 
         let ResourceChange::Skipped { reason, kind } =
             WingetProvider.install("Git.Git", &mock, None).unwrap()
@@ -558,8 +577,65 @@ mod tests {
     }
 
     #[test]
-    fn winget_install_args_omit_scope_when_unscoped() {
-        assert!(!install_args("Git.Git", None).contains(&"--scope"));
-        assert!(install_args("Git.Git", None).contains(&"--disable-interactivity"));
+    fn winget_install_does_not_retry_an_unscoped_failure() {
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        for scoped in [true, false] {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .returning(move |spec| {
+                    assert_install_command(&spec, scoped);
+                    Ok(ExecResult::failure(
+                        "",
+                        "no applicable installer",
+                        Some(exit_code::NO_APPLICABLE_INSTALLER),
+                    ))
+                });
+        }
+
+        assert_eq!(
+            WingetProvider.install("Git.Git", &mock, None).unwrap(),
+            ResourceChange::unusable("winget install failed: \nno applicable installer"),
+        );
+    }
+
+    #[test]
+    fn winget_install_preserves_transport_errors_without_retrying() {
+        for (label, error) in [
+            (
+                "spawn",
+                ExecError::spawn("winget", std::io::Error::other("fixture spawn failure")),
+            ),
+            (
+                "cancelled",
+                ExecError::Cancelled {
+                    command: "winget".into(),
+                    result: ExecResult::failure("", "", None),
+                },
+            ),
+        ] {
+            let expected = error.to_string();
+            let mut mock = MockExecutor::new();
+            mock.expect_execute().once().return_once(move |spec| {
+                assert_install_command(&spec, true);
+                Err(error)
+            });
+            let observed = WingetProvider.install("Git.Git", &mock, None).unwrap_err();
+            assert_eq!(observed.to_string(), expected, "{label}");
+            assert!(observed.downcast_ref::<ExecError>().is_some(), "{label}");
+        }
+    }
+
+    #[test]
+    fn winget_policy_block_is_unmet_work_not_an_applied_install() {
+        assert_eq!(
+            install_with_result(ExecResult::failure(
+                "",
+                "",
+                Some(exit_code::INSTALL_BLOCKED_BY_POLICY),
+            )),
+            ResourceChange::unusable("Git.Git: blocked by system policy"),
+        );
     }
 }

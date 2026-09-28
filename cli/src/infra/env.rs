@@ -139,4 +139,26 @@ mod tests {
         let env = MapEnv::new().with("A", "1").into_handle();
         assert_eq!(env.var("A"), Some("1".to_string()));
     }
+
+    #[test]
+    fn non_unicode_values_are_present_without_becoming_strings() {
+        #[cfg(unix)]
+        let value = {
+            use std::os::unix::ffi::OsStringExt as _;
+            std::ffi::OsString::from_vec(vec![0xff])
+        };
+        #[cfg(windows)]
+        let value = {
+            use std::os::windows::ffi::OsStringExt as _;
+            std::ffi::OsString::from_wide(&[0xd800])
+        };
+        let env = MapEnv::new().with("RAW", &value).into_handle();
+        assert_eq!(env.var_os("RAW"), Some(value));
+        assert_eq!(env.var("RAW"), None);
+        assert!(
+            env.is_set("RAW"),
+            "presence must not depend on UTF-8 decoding"
+        );
+        assert!(!env.is_set("MISSING"));
+    }
 }

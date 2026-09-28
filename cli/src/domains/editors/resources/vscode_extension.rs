@@ -157,56 +157,54 @@ fn run_code_cmd(cmd: &str, args: &[&str], executor: &dyn Executor) -> Result<exe
 mod tests {
     use super::*;
     use crate::engine::resource::SkipKind;
-    use crate::infra::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 
-    fn expect_list_extensions(mock: &mut MockExecutor, result: ExecResult) {
+    fn expect_code_command(
+        mock: &mut MockExecutor,
+        args: &'static [&'static str],
+        result: std::result::Result<ExecResult, ExecError>,
+    ) {
         #[cfg(target_os = "windows")]
-        mock.expect_execute()
-            .once()
-            .withf(|spec| spec.windows_command_line() == Some(r#"""code" "--list-extensions"""#))
-            .return_once(|_| Ok(result));
+        {
+            let command_line = format!(
+                "\"\"code\" {}\"",
+                args.iter()
+                    .map(|arg| format!("\"{arg}\""))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            mock.expect_execute()
+                .once()
+                .withf(move |spec| {
+                    spec.windows_command_line() == Some(command_line.as_str())
+                        && !spec.is_checked()
+                        && spec.working_dir().is_none()
+                })
+                .return_once(|_| result);
+        }
 
         #[cfg(not(target_os = "windows"))]
         mock.expect_execute()
             .once()
-            .withf(|spec| {
+            .withf(move |spec| {
                 spec.program() == "code"
-                    && spec.arguments() == ["--list-extensions"]
+                    && spec.arguments() == args
                     && !spec.is_checked()
+                    && spec.working_dir().is_none()
             })
-            .return_once(|_| Ok(result));
+            .return_once(|_| result);
+    }
+
+    fn expect_list_extensions(mock: &mut MockExecutor, result: ExecResult) {
+        expect_code_command(mock, &["--list-extensions"], Ok(result));
     }
 
     fn expect_install_extension(mock: &mut MockExecutor, result: ExecResult) {
-        #[cfg(target_os = "windows")]
-        mock.expect_execute()
-            .once()
-            .withf(|spec| {
-                spec.windows_command_line()
-                    == Some(r#"""code" "--install-extension" "ms-python.python" "--force"""#)
-            })
-            .return_once(|_| Ok(result));
-
-        #[cfg(not(target_os = "windows"))]
-        mock.expect_execute()
-            .once()
-            .withf(|spec| {
-                spec.program() == "code"
-                    && spec.arguments() == ["--install-extension", "ms-python.python", "--force"]
-                    && !spec.is_checked()
-            })
-            .return_once(|_| Ok(result));
-    }
-
-    #[test]
-    fn description_returns_extension_id() {
-        let executor: Arc<dyn Executor> = Arc::new(exec::ProcessExecutor::system());
-        let resource = VsCodeExtensionResource::new(
-            "github.copilot-chat".to_string(),
-            "code".to_string(),
-            Arc::clone(&executor),
+        expect_code_command(
+            mock,
+            &["--install-extension", "ms-python.python", "--force"],
+            Ok(result),
         );
-        assert_eq!(resource.description(), "github.copilot-chat");
     }
 
     #[test]
@@ -299,6 +297,56 @@ mod tests {
         );
     }
 
+    #[test]
+    fn apply_success_and_empty_failure_output_are_distinguished() {
+        for (result, expected) in [
+            (ExecResult::success("installed"), ResourceChange::Applied),
+            (
+                ExecResult::failure(" \n", "\n ", None),
+                ResourceChange::unusable(
+                    "code failed to install ms-python.python (exit unknown); stdout: <empty>; stderr: <empty>",
+                ),
+            ),
+        ] {
+            let mut mock = MockExecutor::new();
+            expect_install_extension(&mut mock, result);
+            let resource = VsCodeExtensionResource::new("ms-python.python", "code", Arc::new(mock));
+
+            assert_eq!(resource.apply().unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn spawn_failure_is_not_reported_as_an_extension_skip_or_empty_inventory() {
+        for install in [false, true] {
+            let mut mock = MockExecutor::new();
+            let args: &'static [&'static str] = if install {
+                &["--install-extension", "ms-python.python", "--force"]
+            } else {
+                &["--list-extensions"]
+            };
+            expect_code_command(
+                &mut mock,
+                args,
+                Err(ExecError::spawn(
+                    "code",
+                    std::io::Error::other("launcher unavailable"),
+                )),
+            );
+            let error = if install {
+                VsCodeExtensionResource::new("ms-python.python", "code", Arc::new(mock))
+                    .apply()
+                    .unwrap_err()
+                    .to_string()
+            } else {
+                get_installed_extensions("code", &mock)
+                    .unwrap_err()
+                    .to_string()
+            };
+            assert!(error.contains("launcher unavailable"), "{error}");
+        }
+    }
+
     // ------------------------------------------------------------------
     // get_installed_extensions
     // ------------------------------------------------------------------
@@ -308,33 +356,34 @@ mod tests {
         let mut mock = MockExecutor::new();
         expect_list_extensions(
             &mut mock,
-            ExecResult::success("GitHub.Copilot\nms-python.python\nRust-lang.Rust-analyzer\n"),
+            ExecResult::success(
+                " GitHub.Copilot \r\n\nms-python.python\nRust-lang.Rust-analyzer\nGITHUB.COPILOT\n \t\n",
+            ),
         );
         let installed = get_installed_extensions("code", &mock).unwrap();
-        assert!(installed.contains("github.copilot"));
-        assert!(installed.contains("ms-python.python"));
-        assert!(installed.contains("rust-lang.rust-analyzer"));
+        assert_eq!(
+            installed,
+            HashSet::from([
+                "github.copilot".to_string(),
+                "ms-python.python".to_string(),
+                "rust-lang.rust-analyzer".to_string(),
+            ])
+        );
     }
 
     #[test]
     fn get_installed_extensions_returns_error_when_command_fails() {
         let mut mock = MockExecutor::new();
-        expect_list_extensions(&mut mock, ExecResult::failure("", "", Some(1)));
-        let result = get_installed_extensions("code", &mock);
-        assert!(
-            result.is_err(),
-            "should return an error when the command fails"
+        expect_list_extensions(
+            &mut mock,
+            ExecResult::failure("partial.extension", " inventory failed \n", Some(2)),
         );
-    }
-
-    #[test]
-    fn get_installed_extensions_uses_single_bulk_query() {
-        let mut mock = MockExecutor::new();
-        expect_list_extensions(&mut mock, ExecResult::success("github.copilot-chat\n"));
-        let installed = get_installed_extensions("code", &mock).unwrap();
+        let error = get_installed_extensions("code", &mock)
+            .unwrap_err()
+            .to_string();
         assert!(
-            installed.contains("github.copilot-chat"),
-            "extension should be found"
+            error.contains("exit Some(2)") && error.contains("inventory failed"),
+            "{error}"
         );
     }
 }

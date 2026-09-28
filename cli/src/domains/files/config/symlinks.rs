@@ -557,6 +557,66 @@ symlinks = [{ source = "Documents/pwsh", target = "Documents/pwsh" }]
     }
 
     #[test]
+    fn multiple_glob_captures_preserve_order_sorting_and_origin() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let origin = fixture.path().join("origin");
+        let fallback = fixture.path().join("fallback");
+        for (root, relative) in [
+            (&origin, "zeta/b.conf"),
+            (&origin, "alpha/z.conf"),
+            (&origin, "alpha/a.conf"),
+            (&fallback, "wrong/ignored.conf"),
+        ] {
+            let path = root.join("symlinks").join("apps").join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "fixture").unwrap();
+        }
+        let pattern = Symlink {
+            source: "apps/*/*".into(),
+            target: Some(".config/*/managed/*".into()),
+            origin: Some(origin.clone()),
+        };
+
+        let expanded = expand_glob_patterns(&[pattern], &fallback).unwrap();
+
+        assert_eq!(
+            expanded
+                .iter()
+                .map(|entry| (entry.source.as_str(), entry.target.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                ("apps/alpha/a.conf", Some(".config/alpha/managed/a.conf")),
+                ("apps/alpha/z.conf", Some(".config/alpha/managed/z.conf")),
+                ("apps/zeta/b.conf", Some(".config/zeta/managed/b.conf")),
+            ],
+        );
+        assert!(
+            expanded
+                .iter()
+                .all(|entry| entry.origin.as_ref() == Some(&origin))
+        );
+    }
+
+    #[test]
+    fn empty_matches_and_target_only_globs_are_errors_not_silent_omissions() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        std::fs::create_dir(fixture.path().join("symlinks")).unwrap();
+        for (source, target, diagnostic) in [
+            ("missing/*", None, "matched no entries"),
+            ("file", Some(".config/*"), "is not a glob"),
+        ] {
+            let pattern = Symlink {
+                source: source.into(),
+                target: target.map(str::to_owned),
+                origin: None,
+            };
+            let error = expand_glob_patterns(&[pattern], fixture.path()).unwrap_err();
+            assert!(error.to_string().contains(diagnostic), "{error}");
+            assert!(error.to_string().contains(source), "{error}");
+        }
+    }
+
+    #[test]
     fn validate_detects_absolute_target() {
         let temp_dir = tempfile::tempdir().unwrap();
         let symlinks_dir = temp_dir.path().join("symlinks");

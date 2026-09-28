@@ -133,17 +133,30 @@ mod tests {
     #[derive(Debug, Clone)]
     struct TestOperation {
         state: OperationState<&'static str>,
+        state_calls: Arc<AtomicUsize>,
         preview_calls: Arc<AtomicUsize>,
         apply_calls: Arc<AtomicUsize>,
+        fail_at: Option<&'static str>,
     }
 
     impl TestOperation {
         fn new(state: OperationState<&'static str>) -> Self {
             Self {
                 state,
+                state_calls: Arc::new(AtomicUsize::new(0)),
                 preview_calls: Arc::new(AtomicUsize::new(0)),
                 apply_calls: Arc::new(AtomicUsize::new(0)),
+                fail_at: None,
             }
+        }
+
+        fn check_failure(&self, stage: &'static str) -> Result<()> {
+            if self.fail_at == Some(stage) {
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::PermissionDenied, stage).into(),
+                );
+            }
+            Ok(())
         }
 
         fn preview_calls(&self) -> usize {
@@ -159,6 +172,12 @@ mod tests {
         type Plan = &'static str;
 
         fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
+            assert_eq!(
+                self.state_calls.fetch_add(1, Ordering::SeqCst),
+                0,
+                "the immutable plan must be discovered exactly once"
+            );
+            self.check_failure("state")?;
             Ok(self.state.clone())
         }
 
@@ -168,12 +187,14 @@ mod tests {
                 "preview should receive checked plan"
             );
             self.preview_calls.fetch_add(1, Ordering::SeqCst);
+            self.check_failure("preview")?;
             Ok(TaskStats::changed().finish())
         }
 
         fn apply(&self, _ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
             assert_eq!(*plan, "planned change", "apply should receive checked plan");
             self.apply_calls.fetch_add(1, Ordering::SeqCst);
+            self.check_failure("apply")?;
             Ok(TaskResult::Ok)
         }
     }
@@ -231,7 +252,10 @@ mod tests {
 
         assert!(matches!(
             result,
-            TaskResult::Skipped { reason, .. } if reason == "local changes present"
+            TaskResult::Skipped {
+                reason,
+                kind: crate::engine::SkipKind::UnmetWork,
+            } if reason == "local changes present"
         ));
         assert!(
             log.info
@@ -254,5 +278,27 @@ mod tests {
         assert!(matches!(result, TaskResult::NotApplicable(reason) if reason == "tool missing"));
         assert_eq!(operation.preview_calls(), 0);
         assert_eq!(operation.apply_calls(), 0);
+    }
+
+    #[test]
+    fn stage_errors_preserve_the_cause_and_never_advance_or_retry() {
+        for (stage, dry_run, preview_calls, apply_calls) in [
+            ("state", false, 0, 0),
+            ("state", true, 0, 0),
+            ("preview", true, 1, 0),
+            ("apply", false, 0, 1),
+        ] {
+            let ctx = test_context().with_dry_run(dry_run);
+            let mut operation = TestOperation::new(OperationState::needs_run("planned change"));
+            operation.fail_at = Some(stage);
+
+            let error = process_operation(&ctx, &operation).unwrap_err();
+            let cause = error.downcast_ref::<std::io::Error>().unwrap();
+            assert_eq!(cause.kind(), std::io::ErrorKind::PermissionDenied);
+            assert_eq!(cause.to_string(), stage);
+            assert_eq!(operation.state_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(operation.preview_calls(), preview_calls, "{stage}");
+            assert_eq!(operation.apply_calls(), apply_calls, "{stage}");
+        }
     }
 }

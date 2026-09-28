@@ -151,7 +151,38 @@ mod tests {
             2 => Category::Windows,
             3 => Category::Arch,
             4 => Category::Desktop,
+            5 => Category::Wsl,
             _ => Category::Other("custom".to_string()),
+        }
+    }
+
+    #[test]
+    fn tags_and_compound_sections_normalize_without_losing_unknown_categories() {
+        for (tag, expected, canonical) in [
+            (" BASE ", Category::Base, "base"),
+            ("LiNuX", Category::Linux, "linux"),
+            (" windows\t", Category::Windows, "windows"),
+            ("ARCH", Category::Arch, "arch"),
+            ("\nWsl ", Category::Wsl, "wsl"),
+            (" Desktop ", Category::Desktop, "desktop"),
+            (" CUSTOM ", Category::Other("custom".into()), "custom"),
+        ] {
+            let parsed = Category::from_tag(tag);
+            assert_eq!(parsed, expected, "{tag:?}");
+            assert_eq!(parsed.as_str(), canonical, "{tag:?}");
+            assert_eq!(parsed.to_string(), canonical, "{tag:?}");
+        }
+        for (section, expected) in [
+            ("", vec![]),
+            (" - - ", vec![]),
+            (" Arch - DESKTOP ", vec![Category::Arch, Category::Desktop]),
+            ("linux--wsl", vec![Category::Linux, Category::Wsl]),
+            (
+                "base-custom",
+                vec![Category::Base, Category::Other("custom".into())],
+            ),
+        ] {
+            assert_eq!(parse_section_key(section), expected, "{section:?}");
         }
     }
 
@@ -210,9 +241,9 @@ mod tests {
     proptest! {
         #[test]
         fn matching_is_duplicate_insensitive_and_monotonic(
-            section_codes in proptest::collection::vec(0_u8..6, 0..12),
-            active_codes in proptest::collection::vec(0_u8..6, 0..12),
-            additions in proptest::collection::vec(0_u8..6, 0..12),
+            section_codes in proptest::collection::vec(0_u8..7, 0..12),
+            active_codes in proptest::collection::vec(0_u8..7, 0..12),
+            additions in proptest::collection::vec(0_u8..7, 0..12),
         ) {
             let section = section_codes.into_iter().map(category).collect::<Vec<_>>();
             let active = active_codes.into_iter().map(category).collect::<Vec<_>>();

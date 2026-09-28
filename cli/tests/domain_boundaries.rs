@@ -162,16 +162,144 @@ fn item_attributes(item: &syn::Item) -> &[syn::Attribute] {
     }
 }
 
-/// Whether any attribute gates its item behind `cfg(test)`, including
-/// composites such as `#[cfg(all(test, unix))]`.
+/// Exclude only predicates known to be false without tests. Merely mentioning
+/// `test` is insufficient: `not(test)` and `any(test, unix)` include production.
 fn is_cfg_test(attributes: &[syn::Attribute]) -> bool {
     attributes.iter().any(|attribute| {
         attribute.path().is_ident("cfg")
             && attribute
-                .meta
-                .require_list()
-                .is_ok_and(|list| mentions_ident(&list.tokens, "test"))
+                .parse_args::<syn::Meta>()
+                .is_ok_and(|predicate| cfg_without_tests(&predicate) == Some(false))
     })
+}
+
+/// Unknown platform/features remain possible on some production build.
+fn cfg_without_tests(predicate: &syn::Meta) -> Option<bool> {
+    match predicate {
+        syn::Meta::Path(path) if path.is_ident("test") => Some(false),
+        syn::Meta::List(list) => {
+            let predicates = list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()?;
+            let values: Vec<_> = predicates.iter().map(cfg_without_tests).collect();
+            if list.path.is_ident("not") && values.len() == 1 {
+                values.first().copied().flatten().map(|value| !value)
+            } else if list.path.is_ident("all") {
+                if values.contains(&Some(false)) {
+                    Some(false)
+                } else if values.iter().all(|value| *value == Some(true)) {
+                    Some(true)
+                } else {
+                    None
+                }
+            } else if list.path.is_ident("any") {
+                if values.contains(&Some(true)) {
+                    Some(true)
+                } else if values.iter().all(|value| *value == Some(false)) {
+                    Some(false)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+#[test]
+fn collector_excludes_only_test_exclusive_cfg_items() {
+    for (predicate, production) in [
+        ("test", false),
+        ("all(test, unix)", false),
+        ("any(test, all(test, windows))", false),
+        ("not(not(test))", false),
+        ("not(test)", true),
+        ("any(test, windows)", true),
+        ("all(not(test), unix)", true),
+        ("not(all(test, unix))", true),
+        ("not(unix)", true),
+        ("feature = \"test\"", true),
+    ] {
+        let source = format!(
+            "#[cfg({predicate})]\nfn example() {{ std::process::Command::new(\"probe\"); }}"
+        );
+        let ast = syn::parse_file(&source).expect("parse cfg fixture");
+        for include_test_code in [false, true] {
+            let mut collector = Collector {
+                facts: Facts::default(),
+                include_test_code,
+            };
+            collector.visit_file(&ast);
+            let found = collector
+                .facts
+                .paths
+                .iter()
+                .any(|(path, _)| contains_sequence(path, &["Command", "new"]));
+            assert_eq!(
+                found,
+                production || include_test_code,
+                "cfg({predicate}), include_test_code={include_test_code}"
+            );
+        }
+    }
+}
+
+#[test]
+fn collector_separates_imports_literals_and_macro_code() {
+    let ast = syn::parse_file(
+        r#"
+        use crate::domains::{git::ConfigureGit as Git, files::*};
+        /// std::process::Command::new("doc")
+        fn example() {
+            let _ = "std::process::Command::new(\"literal\")";
+            // std::process::Command::new("comment")
+            task_metadata! { guard: cfg!(windows), deps: [crate::domains::files::InstallSymlinks] }
+        }
+        #[cfg(test)]
+        mod tests { fn ignored() { std::process::Command::new("test"); } }
+    "#,
+    )
+    .expect("parse collector fixture");
+    let mut collector = Collector {
+        facts: Facts::default(),
+        include_test_code: false,
+    };
+    collector.visit_file(&ast);
+    let facts = collector.facts;
+    assert!(
+        !facts
+            .paths
+            .iter()
+            .any(|(path, _)| contains_sequence(path, &["Command", "new"])),
+        "comments, literals and test-only code must not be runtime references"
+    );
+    assert!(
+        facts.paths.iter().any(|(path, _)| contains_sequence(
+            path,
+            &["crate", "domains", "files", "InstallSymlinks"]
+        )),
+        "macro dependency paths must be inspected"
+    );
+    assert!(
+        facts
+            .macros
+            .iter()
+            .any(|(name, tokens, _)| name == "cfg" && mentions_ident(tokens, "windows")),
+        "nested runtime cfg! must be inspected"
+    );
+    let imports: Vec<_> = facts
+        .imports
+        .iter()
+        .map(|(path, _)| path.join("::"))
+        .collect();
+    assert_eq!(
+        imports,
+        ["crate::domains::git::ConfigureGit", "crate::domains::files"]
+    );
 }
 
 /// Whether a token stream contains `wanted` as an identifier at any depth.

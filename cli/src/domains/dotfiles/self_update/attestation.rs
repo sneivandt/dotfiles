@@ -238,6 +238,7 @@ mod tests {
         available: bool,
         result: Verification,
         fails_to_run: bool,
+        attempts: AtomicUsize,
     }
 
     impl GhCli for StubGh {
@@ -246,6 +247,7 @@ mod tests {
         }
 
         fn verify(&self, _path: &Path, _repo: &str) -> Result<Verification> {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
             if self.fails_to_run {
                 bail!("gh exploded");
             }
@@ -262,6 +264,7 @@ mod tests {
                 Verification::Unverified("gh reported no verified attestation".to_string())
             },
             fails_to_run: false,
+            attempts: AtomicUsize::new(0),
         }
     }
 
@@ -279,8 +282,17 @@ mod tests {
 
     #[test]
     fn skip_policy_does_not_invoke_gh() {
-        let gh = stub(false, false);
-        verify_provenance(&gh, Policy::Skip, "dotfiles-linux-x86_64", b"data").unwrap();
+        #[derive(Debug)]
+        struct ForbiddenGh;
+        impl GhCli for ForbiddenGh {
+            fn available(&self) -> bool {
+                panic!("skip policy must not even probe gh availability");
+            }
+            fn verify(&self, _: &Path, _: &str) -> Result<Verification> {
+                panic!("skip policy must not invoke gh");
+            }
+        }
+        verify_provenance(&ForbiddenGh, Policy::Skip, "dotfiles-linux-x86_64", b"data").unwrap();
     }
 
     #[test]
@@ -293,6 +305,7 @@ mod tests {
             error.contains("gh CLI not found"),
             "unexpected error: {error}"
         );
+        assert_eq!(gh.attempts.load(Ordering::SeqCst), 0);
     }
 
     #[test]
@@ -305,6 +318,10 @@ mod tests {
             error.contains("no verified attestation"),
             "unexpected error: {error}"
         );
+        assert_eq!(
+            gh.attempts.load(Ordering::SeqCst),
+            usize::try_from(MAX_VERIFY_ATTEMPTS).unwrap()
+        );
     }
 
     #[test]
@@ -313,6 +330,7 @@ mod tests {
             available: true,
             result: Verification::AuthenticationRequired,
             fails_to_run: false,
+            attempts: AtomicUsize::new(0),
         };
         let error = verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data")
             .unwrap_err()
@@ -320,6 +338,11 @@ mod tests {
         assert!(
             error.contains("run `gh auth login`"),
             "unexpected error: {error}"
+        );
+        assert_eq!(
+            gh.attempts.load(Ordering::SeqCst),
+            1,
+            "authentication failures must not retry"
         );
     }
 
@@ -384,17 +407,12 @@ mod tests {
     }
 
     #[test]
-    fn required_policy_succeeds_when_verified() {
-        let gh = stub(true, true);
-        verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data").unwrap();
-    }
-
-    #[test]
     fn required_policy_fails_on_gh_execution_failure() {
         let gh = StubGh {
             available: true,
             result: Verification::Unverified("not verified".to_string()),
             fails_to_run: true,
+            attempts: AtomicUsize::new(0),
         };
         let error = verify_provenance(&gh, Policy::Required, "dotfiles-linux-x86_64", b"data")
             .unwrap_err()
@@ -403,24 +421,60 @@ mod tests {
             error.contains("gh could not be executed"),
             "unexpected error: {error}"
         );
+        assert_eq!(
+            gh.attempts.load(Ordering::SeqCst),
+            usize::try_from(MAX_VERIFY_ATTEMPTS).unwrap()
+        );
     }
 
     #[test]
-    fn staged_file_is_removed_after_verification() {
-        // A dedicated asset name keeps this scan from seeing files staged by
-        // sibling tests running on other threads.
-        let asset = "cleanup-probe-x86_64";
-        let gh = stub(true, true);
-        verify_provenance(&gh, Policy::Required, asset, b"data").unwrap();
-        let leftovers: Vec<_> = std::fs::read_dir(std::env::temp_dir())
-            .expect("temp dir should be readable")
-            .filter_map(std::result::Result::ok)
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .filter(|name| name.ends_with(asset))
-            .collect();
-        assert!(
-            leftovers.is_empty(),
-            "temporary file should be cleaned up: {leftovers:?}"
-        );
+    fn verification_checks_downloaded_bytes_and_cleans_its_file_on_every_outcome() {
+        #[derive(Debug)]
+        struct RecordingGh {
+            outcome: Option<Verification>,
+            paths: std::sync::Mutex<Vec<std::path::PathBuf>>,
+        }
+        impl GhCli for RecordingGh {
+            fn available(&self) -> bool {
+                true
+            }
+            fn verify(&self, path: &Path, repo: &str) -> Result<Verification> {
+                assert_eq!(repo, REPO, "provenance must be bound to this repository");
+                assert_eq!(std::fs::read(path).unwrap(), b"downloaded bytes");
+                self.paths.lock().unwrap().push(path.to_path_buf());
+                self.outcome
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("cannot start gh"))
+            }
+        }
+
+        for outcome in [
+            Some(Verification::Verified),
+            Some(Verification::AuthenticationRequired),
+            Some(Verification::Unverified("rejected".to_string())),
+            None,
+        ] {
+            let succeeds = outcome == Some(Verification::Verified);
+            let expected_attempts = match outcome {
+                Some(Verification::Verified | Verification::AuthenticationRequired) => 1,
+                _ => usize::try_from(MAX_VERIFY_ATTEMPTS).unwrap(),
+            };
+            let gh = RecordingGh {
+                outcome,
+                paths: std::sync::Mutex::new(Vec::new()),
+            };
+            let result =
+                verify_provenance(&gh, Policy::Required, "fixture-asset", b"downloaded bytes");
+            assert_eq!(result.is_ok(), succeeds, "{result:?}");
+            let paths = gh.paths.into_inner().unwrap();
+            assert_eq!(paths.len(), expected_attempts);
+            for path in &paths {
+                assert_eq!(
+                    path, &paths[0],
+                    "retries must verify the same staged download"
+                );
+                assert!(!path.exists(), "staged file leaked: {}", path.display());
+            }
+        }
     }
 }

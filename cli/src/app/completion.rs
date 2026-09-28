@@ -123,18 +123,14 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
 
 fn repository_args(words: &[OsString]) -> Vec<OsString> {
     let mut result = Vec::new();
-    let mut index = 0;
-    while let Some(word) = words.get(index) {
+    let mut words = words.iter();
+    while let Some(word) = words.next() {
         let Some(text) = word.to_str() else {
-            index = index.saturating_add(1);
             continue;
         };
         if matches!(text, "--profile" | "-p" | "--root" | "--overlay") {
-            if let Some(value) = words.get(index.saturating_add(1)) {
-                result.push(word.clone());
-                result.push(value.clone());
-                index = index.saturating_add(2);
-                continue;
+            if let Some(value) = words.next() {
+                result.extend([word.clone(), value.clone()]);
             }
         } else if text.starts_with("--profile=")
             || text.starts_with("--root=")
@@ -143,7 +139,6 @@ fn repository_args(words: &[OsString]) -> Vec<OsString> {
         {
             result.push(word.clone());
         }
-        index = index.saturating_add(1);
     }
     result
 }
@@ -203,6 +198,24 @@ mod tests {
             ]
             .map(OsString::from)
         );
+    }
+
+    #[test]
+    fn repository_options_preserve_value_boundaries() {
+        for (words, expected) in [
+            (vec![], vec![]),
+            (vec!["--root"], vec![]),
+            (vec!["-p", "base", "--root"], vec!["-p", "base"]),
+            (vec!["--root", "--overlay"], vec!["--root", "--overlay"]),
+            (
+                vec!["--overlay", "", "--root=/repo", "--root", "/other"],
+                vec!["--overlay", "", "--root=/repo", "--root", "/other"],
+            ),
+        ] {
+            let words = words.into_iter().map(OsString::from).collect::<Vec<_>>();
+            let expected = expected.into_iter().map(OsString::from).collect::<Vec<_>>();
+            assert_eq!(repository_args(&words), expected, "{words:?}");
+        }
     }
 
     #[test]

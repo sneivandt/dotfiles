@@ -106,13 +106,9 @@ impl Logger {
         if self.is_verbose() {
             return active.join(", ");
         }
-        let mut names = active
-            .iter()
-            .take(3)
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join(", ");
-        let remaining = active.len().saturating_sub(3);
+        let (shown, hidden) = active.split_at(active.len().min(3));
+        let mut names = shown.join(", ");
+        let remaining = hidden.len();
         if remaining > 0 {
             #[allow(
                 clippy::let_underscore_must_use,
@@ -273,42 +269,36 @@ mod tests {
     }
 
     #[test]
-    fn format_active_names_single_task() {
+    fn format_active_names_preserves_order_and_limits_only_non_verbose_output() {
         let (mut log, _tmp, _guard) = isolated_logger();
-        log.set_verbose(false);
-        assert_eq!(
-            log.format_active(&["only-task".to_string()]),
-            "only-task",
-            "a single active task should be named directly"
-        );
-    }
-
-    #[test]
-    fn format_active_names_multiple_tasks() {
-        let (mut log, _tmp, _guard) = isolated_logger();
-        log.set_verbose(false);
-        assert_eq!(
-            log.format_active(&["task-a".to_string(), "task-b".to_string()]),
-            "task-a, task-b",
-            "multiple active tasks should show task names"
-        );
-    }
-
-    #[test]
-    fn format_active_names_first_three_then_remaining_count() {
-        let (mut log, _tmp, _guard) = isolated_logger();
-        log.set_verbose(false);
-        assert_eq!(
-            log.format_active(&[
-                "task-a".to_string(),
-                "task-b".to_string(),
-                "task-c".to_string(),
-                "task-d".to_string(),
-                "task-e".to_string()
-            ]),
-            "task-a, task-b, task-c, +2 more",
-            "more than three active tasks should show first names plus overflow count"
-        );
+        let names = ["task-a", "task-b", "task-c", "task-d", "task-e"];
+        for (count, expected) in [
+            (0, ""),
+            (1, "task-a"),
+            (2, "task-a, task-b"),
+            (3, "task-a, task-b, task-c"),
+            (4, "task-a, task-b, task-c, +1 more"),
+            (5, "task-a, task-b, task-c, +2 more"),
+        ] {
+            let active: Vec<String> = names
+                .iter()
+                .take(count)
+                .map(|name| (*name).into())
+                .collect();
+            for verbose in [false, true] {
+                log.set_verbose(verbose);
+                let expected = if verbose {
+                    active.join(", ")
+                } else {
+                    expected.to_string()
+                };
+                assert_eq!(
+                    log.format_active(&active),
+                    expected,
+                    "active count: {count}, verbose: {verbose}"
+                );
+            }
+        }
     }
 
     #[test]

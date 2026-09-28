@@ -46,7 +46,7 @@ pub(super) fn process_single<R: Resource>(
             bail_on_error,
             ..
         } => {
-            delta.merge(&execute_mutation(
+            return execute_mutation(
                 ctx,
                 resource,
                 ResourceMutation::apply(
@@ -56,7 +56,7 @@ pub(super) fn process_single<R: Resource>(
                     *bail_on_error,
                 ),
                 Resource::apply,
-            )?);
+            );
         }
     }
     Ok(delta)
@@ -161,9 +161,7 @@ where
             ctx.log()
                 .action(mutation.verb, mutation.description, true, &message);
         }
-        let mut delta = TaskStats::new();
-        delta.record(ItemOutcome::Changed);
-        return Ok(delta);
+        return Ok(TaskStats::changed());
     }
     if mutation.warn_before_apply
         && let Some(warning) = resource.pre_apply_warning()?
@@ -227,20 +225,20 @@ pub(super) fn remove_single<R: RemovableResource>(
 ) -> Result<TaskStats> {
     let effective_state =
         if matches!(current, ResourceState::Missing) && resource.remove_when_missing() {
-            ResourceState::Correct
+            &ResourceState::Correct
         } else {
-            current.clone()
+            current
         };
-    let plan = RemoveChange::from_state(resource.description(), &effective_state, verb);
+    let plan = RemoveChange::from_state(resource.description(), effective_state, verb);
     let mut delta = TaskStats::new();
     match plan.operation() {
         RemoveOperation::Remove { verb: remove_verb } => {
-            delta.merge(&execute_mutation(
+            return execute_mutation(
                 ctx,
                 resource,
                 ResourceMutation::remove(plan.description(), remove_verb, plan.dry_run_message()),
                 RemovableResource::remove,
-            )?);
+            );
         }
         RemoveOperation::Skip { reason } => {
             // Cannot determine if this resource is ours — skip removal rather

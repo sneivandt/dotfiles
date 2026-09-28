@@ -90,10 +90,8 @@ impl Validator {
         for item in items {
             let label = item_label(item);
             for (code, severity, message) in check_fn(item).into_iter().flatten() {
-                self.diagnostics.push(match severity {
-                    Severity::Warning => Diagnostic::warning(self.source, label, code, message),
-                    Severity::Error => Diagnostic::error(self.source, label, code, message),
-                });
+                self.diagnostics
+                    .push(Diagnostic::new(self.source, label, severity, code, message));
             }
         }
         self

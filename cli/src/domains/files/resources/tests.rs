@@ -254,6 +254,9 @@ mod chmod {
         assert_eq!(ensure_dir_execute_bits(0o755), 0o755);
         // 000 stays 000
         assert_eq!(ensure_dir_execute_bits(0o000), 0o000);
+        assert_eq!(ensure_dir_execute_bits(0o222), 0o222);
+        assert_eq!(ensure_dir_execute_bits(0o7111), 0o7111);
+        assert_eq!(ensure_dir_execute_bits(0o7644), 0o7755);
     }
 
     #[cfg(unix)]

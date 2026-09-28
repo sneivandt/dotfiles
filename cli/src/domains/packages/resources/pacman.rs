@@ -18,13 +18,12 @@ fn query_names(executor: &dyn Executor, cmd: &str, args: &[&str]) -> Result<Hash
             result.stderr.trim()
         );
     }
-    let mut set = HashSet::new();
-    for line in result.stdout.lines() {
-        if let Some(name) = line.split_whitespace().next() {
-            set.insert(name.to_string());
-        }
-    }
-    Ok(set)
+    Ok(result
+        .stdout
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .map(str::to_string)
+        .collect())
 }
 
 /// Pacman provider for official Arch Linux packages.

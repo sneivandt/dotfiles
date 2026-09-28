@@ -259,17 +259,7 @@ fn set_permissions(path: &std::path::Path, mode: u32) -> ResourceResult<()> {
 /// traversable (e.g., mode 600 → dir mode 700).
 #[cfg(unix)]
 pub(super) const fn ensure_dir_execute_bits(mode: u32) -> u32 {
-    let mut m = mode;
-    if m & 0o400 != 0 {
-        m |= 0o100;
-    }
-    if m & 0o040 != 0 {
-        m |= 0o010;
-    }
-    if m & 0o004 != 0 {
-        m |= 0o001;
-    }
-    m
+    mode | ((mode & 0o444) >> 2)
 }
 
 /// Strip execute bits from a mode before applying it to regular files during

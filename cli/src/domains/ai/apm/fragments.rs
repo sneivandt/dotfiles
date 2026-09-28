@@ -271,17 +271,13 @@ fn ensure_mapping_field<'a>(
     mapping: &'a mut serde_yaml_ng::Mapping,
     field: &str,
 ) -> Result<&'a mut serde_yaml_ng::Mapping> {
-    let key = serde_yaml_ng::Value::from(field);
-    if !mapping.contains_key(&key) {
-        mapping.insert(
-            key.clone(),
-            serde_yaml_ng::Value::Mapping(serde_yaml_ng::Mapping::new()),
-        );
-    }
-    match mapping.get_mut(&key) {
-        Some(serde_yaml_ng::Value::Mapping(value)) => Ok(value),
-        Some(_) | None => anyhow::bail!("generated APM manifest field {field} is not a mapping"),
-    }
+    let serde_yaml_ng::Value::Mapping(value) = mapping
+        .entry(serde_yaml_ng::Value::from(field))
+        .or_insert_with(|| serde_yaml_ng::Value::Mapping(serde_yaml_ng::Mapping::new()))
+    else {
+        anyhow::bail!("generated APM manifest field {field} is not a mapping");
+    };
+    Ok(value)
 }
 
 /// Return a sequence field, creating it if needed.
@@ -289,16 +285,13 @@ fn ensure_sequence_field<'a>(
     mapping: &'a mut serde_yaml_ng::Mapping,
     field: &str,
 ) -> Result<&'a mut Vec<serde_yaml_ng::Value>> {
-    let key = serde_yaml_ng::Value::from(field);
-    if !mapping.contains_key(&key) {
-        mapping.insert(key.clone(), serde_yaml_ng::Value::Sequence(Vec::new()));
-    }
-    match mapping.get_mut(&key) {
-        Some(serde_yaml_ng::Value::Sequence(value)) => Ok(value),
-        Some(_) | None => {
-            anyhow::bail!("generated APM manifest dependency group {field} is not a sequence")
-        }
-    }
+    let serde_yaml_ng::Value::Sequence(value) = mapping
+        .entry(serde_yaml_ng::Value::from(field))
+        .or_insert_with(|| serde_yaml_ng::Value::Sequence(Vec::new()))
+    else {
+        anyhow::bail!("generated APM manifest dependency group {field} is not a sequence");
+    };
+    Ok(value)
 }
 
 /// Deduplication key for a dependency entry.

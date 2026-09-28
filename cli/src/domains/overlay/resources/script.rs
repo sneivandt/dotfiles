@@ -107,18 +107,17 @@ impl ScriptResource {
         self.execute(ScriptMode::Remove)
     }
 
-    /// Determine the interpreter and complete argument vector for a mode.
-    fn command(&self, flag: Option<&str>) -> Result<(&'static str, Vec<String>)> {
+    /// Build the complete command request for a mode.
+    fn command(&self, flag: Option<&str>) -> Result<CommandSpec> {
         let (interpreter, fixed_args) = interpreter_args_for(&self.script_path, &*self.executor)?;
-        let mut args = fixed_args
-            .into_iter()
-            .map(ToOwned::to_owned)
-            .collect::<Vec<_>>();
-        args.push(self.script_path.display().to_string());
+        let mut command = CommandSpec::new(interpreter)
+            .args(&fixed_args)
+            .arg(self.script_path.display().to_string())
+            .current_dir(&self.working_dir);
         if let Some(flag) = flag {
-            args.push(flag.to_string());
+            command = command.arg(flag);
         }
-        Ok((interpreter, args))
+        Ok(command)
     }
 
     fn execute(&self, mode: ScriptMode) -> Result<(ResourceChange, String)> {
@@ -133,15 +132,9 @@ impl ScriptResource {
         }
         self.ensure_script_path_within_working_dir()?;
 
-        let (interpreter, args) = self.command(mode.flag())?;
-        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
         let result = self
             .executor
-            .execute(
-                CommandSpec::new(interpreter)
-                    .args(&args)
-                    .current_dir(&self.working_dir),
-            )
+            .execute(self.command(mode.flag())?)
             .with_context(|| format!("{} script: {}", mode.action(), self.name))?;
 
         Ok((ResourceChange::Applied, result.stdout))
@@ -202,17 +195,9 @@ impl IntrinsicState for ScriptResource {
         }
         self.ensure_script_path_within_working_dir()?;
 
-        let (interpreter, args) = self.command(Some("--check"))?;
-        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-
         let result = self
             .executor
-            .execute(
-                CommandSpec::new(interpreter)
-                    .args(&args)
-                    .current_dir(&self.working_dir)
-                    .unchecked(),
-            )
+            .execute(self.command(Some("--check"))?.unchecked())
             .with_context(|| format!("checking script state: {}", self.name))?;
 
         match (result.success, result.code) {
@@ -369,8 +354,19 @@ mod tests {
     fn interpreter_uses_sh_for_shell_scripts() {
         let mock = Arc::new(MockExecutor::new());
         let resource = make_script_resource("test", Path::new("/scripts/test.sh"), mock);
-        let (interpreter, _) = resource.command(None).unwrap();
-        assert_eq!(interpreter, "sh");
+        for flag in [None, Some("--check"), Some("--dryrun"), Some("--remove")] {
+            let command = resource.command(flag).unwrap();
+            let mut args = vec!["/scripts/test.sh"];
+            args.extend(flag);
+            assert_eq!(command.program(), "sh", "{flag:?}");
+            assert_eq!(command.arguments(), args, "{flag:?}");
+            assert_eq!(
+                command.working_dir(),
+                Some(Path::new("/scripts")),
+                "{flag:?}"
+            );
+            assert!(command.is_checked(), "{flag:?}");
+        }
     }
 
     #[test]
@@ -386,9 +382,9 @@ mod tests {
             .returning(|_| true);
         let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
-        let (interpreter, args) = resource.command(None).unwrap();
-        assert_eq!(interpreter, "powershell");
-        assert!(args.iter().any(|arg| arg == "-File"));
+        let command = resource.command(None).unwrap();
+        assert_eq!(command.program(), "powershell");
+        assert!(command.arguments().iter().any(|arg| arg == "-File"));
     }
 
     #[test]
@@ -417,9 +413,9 @@ mod tests {
             .returning(|_| true);
         let mock = Arc::new(mock);
         let resource = make_script_resource("test", Path::new("/scripts/test.ps1"), mock);
-        let (interpreter, args) = resource.command(None).unwrap();
-        assert_eq!(interpreter, "pwsh");
-        assert!(args.iter().any(|arg| arg == "-File"));
+        let command = resource.command(None).unwrap();
+        assert_eq!(command.program(), "pwsh");
+        assert!(command.arguments().iter().any(|arg| arg == "-File"));
     }
 
     #[test]

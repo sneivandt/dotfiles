@@ -21,40 +21,28 @@ struct CompletionOperation<'a> {
     shell_name: &'static str,
 }
 
-#[derive(Debug)]
-struct CompletionPlan {
-    destination: std::path::PathBuf,
-    content: String,
-}
-
 impl Operation for CompletionOperation<'_> {
-    type Plan = CompletionPlan;
+    type Plan = ();
 
     fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        let dest = self.destination.clone();
-        let content = self.content.to_string();
-
-        if dest.exists()
-            && let Ok(existing) = std::fs::read_to_string(&dest)
-            && existing == content
+        if self.destination.exists()
+            && let Ok(existing) = std::fs::read_to_string(&self.destination)
+            && existing == self.content
         {
             return Ok(OperationState::Complete);
         }
 
-        Ok(OperationState::needs_run(CompletionPlan {
-            destination: dest,
-            content,
-        }))
+        Ok(OperationState::needs_run(()))
     }
 
-    fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+    fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         ctx.log()
-            .dry_run(format!("write {}", plan.destination.display()));
+            .dry_run(format!("write {}", self.destination.display()));
         Ok(TaskStats::changed().finish())
     }
 
-    fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        crate::infra::fs::write_with_parent(&plan.destination, &plan.content)?;
+    fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
+        crate::infra::fs::write_with_parent(&self.destination, self.content)?;
         ctx.log()
             .info(format!("{} completions written", self.shell_name));
         Ok(TaskStats::changed().finish())

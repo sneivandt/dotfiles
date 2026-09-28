@@ -102,20 +102,14 @@ pub(super) fn build_install_plan(
         }
         PackageManager::Winget => None,
     };
-    let resources: Vec<PackageResource> = packages
-        .iter()
-        .map(|pkg| {
-            let mut resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor_arc());
-            if let Some(path) = &provider_config {
-                resource = resource.with_provider_config(path.clone());
-            }
-            resource
-        })
-        .collect();
     let mut missing = Vec::new();
     let mut already_ok = 0usize;
 
-    for resource in resources {
+    for pkg in packages {
+        let mut resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor_arc());
+        if let Some(path) = &provider_config {
+            resource = resource.with_provider_config(path.clone());
+        }
         if matches!(
             resource.state_from_installed(&installed),
             ResourceState::Correct

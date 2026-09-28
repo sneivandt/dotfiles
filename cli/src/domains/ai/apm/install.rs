@@ -8,7 +8,7 @@ use anyhow::Result;
 use super::ApmFragmentSource;
 use super::commands::{ApmCommand, ApmCommandResult};
 use super::fragments::{discover_effective_fragment_files, merge_fragments};
-use super::managed_targets::{ManagedTargetPreview, ManagedTargets};
+use super::managed_targets::ManagedTargets;
 use super::manifest::{
     describe_lock_changes, merged_manifest_needs_write, read_lock_snapshot, write_merged_manifest,
 };
@@ -132,10 +132,6 @@ impl ApmInstallPlan {
             ));
             planned = planned.saturating_add(1);
         }
-        let preview = match self.mode {
-            ApmPackageMode::Install => ManagedTargetPreview::Install,
-            ApmPackageMode::UpdatePins => ManagedTargetPreview::Update,
-        };
         match self.mode {
             ApmPackageMode::Install => ctx.log().dry_run(
                 "run apm install -g to converge dependencies and remove stale user-scope deployments",
@@ -144,7 +140,7 @@ impl ApmInstallPlan {
                 "run apm update -g --yes to advance matching refs and converge deployments",
             ),
         }
-        planned = planned.saturating_add(self.targets.preview(ctx, preview));
+        planned = planned.saturating_add(self.targets.preview(ctx, self.mode.command()));
         Ok(TaskStats::from_counts(planned, 0, 0, 0).finish())
     }
 

@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 use super::commands::{ApmCommand, ApmCommandResult, run_apm_invocation};
-use super::managed_targets::{ManagedTargetPreview, ManagedTargets};
+use super::managed_targets::ManagedTargets;
 use crate::engine::{Context, TaskResult};
 use crate::infra::logging::OutputExt as _;
 
@@ -21,7 +21,7 @@ pub(super) fn preview_apm_update(ctx: &Context, targets: ManagedTargets) -> Resu
                         .action(verb, &subject, true, &format!("{verb} {subject}"));
                 }
             }
-            targets.preview(ctx, ManagedTargetPreview::Update);
+            targets.preview(ctx, ApmCommand::Update);
             Ok(TaskResult::DryRun)
         }
         ApmCommandResult::AuthSkipped(reason) => Ok(TaskResult::unmet(reason)),

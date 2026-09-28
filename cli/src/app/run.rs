@@ -41,13 +41,7 @@ pub fn run() -> ExitCode {
         // Log viewing is read-only: do not initialize the tracing subscriber or
         // create a new log file just to display an existing log.
         cli::Command::Log(opts) => {
-            return match commands::log::run(&opts, opts.verbose) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(e) => {
-                    drop(writeln!(std::io::stderr().lock(), "{e:#}"));
-                    ExitCode::FAILURE
-                }
-            };
+            return standalone(commands::log::run(&opts, opts.verbose));
         }
         cli::Command::Tasks(opts) => {
             return standalone(commands::tasks::run(&opts));

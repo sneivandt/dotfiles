@@ -49,9 +49,9 @@ impl ApplyChange {
         state: &ResourceState,
         opts: &ProcessOpts,
     ) -> Self {
-        let apply = || ApplyOperation::Apply {
+        let apply = |current| ApplyOperation::Apply {
             verb: opts.verb,
-            current: incorrect_current(state),
+            current,
             bail_on_error: opts.mode.bail_on_error(),
         };
         let operation = match state {
@@ -64,12 +64,14 @@ impl ApplyChange {
                 reason: format!("state unknown: {reason}"),
                 kind: SkipKind::UnmetWork,
             },
-            ResourceState::Missing if opts.mode.fix_missing() => apply(),
+            ResourceState::Missing if opts.mode.fix_missing() => apply(None),
             ResourceState::Missing => ApplyOperation::Skip {
                 reason: "mode skips missing resources".into(),
                 kind: SkipKind::Benign,
             },
-            ResourceState::Incorrect { .. } if opts.mode.fix_incorrect() => apply(),
+            ResourceState::Incorrect { current } if opts.mode.fix_incorrect() => {
+                apply(Some(current.clone()))
+            }
             ResourceState::Incorrect { .. } => ApplyOperation::Skip {
                 reason: "mode skips incorrect resources".into(),
                 kind: SkipKind::Benign,
@@ -178,16 +180,6 @@ impl RemoveChange {
             RemoveOperation::Remove { verb } => Some(format!("{verb} {}", self.description)),
             RemoveOperation::Noop | RemoveOperation::Skip { .. } => None,
         }
-    }
-}
-
-fn incorrect_current(state: &ResourceState) -> Option<String> {
-    match state {
-        ResourceState::Incorrect { current } => Some(current.clone()),
-        ResourceState::Missing
-        | ResourceState::Correct
-        | ResourceState::Invalid { .. }
-        | ResourceState::Unknown { .. } => None,
     }
 }
 

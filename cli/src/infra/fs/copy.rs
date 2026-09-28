@@ -19,10 +19,6 @@ use std::path::Path;
 /// entry cannot be read, a file cannot be copied, a symlink cannot be recreated,
 /// or (on Unix) directory permissions cannot be preserved.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
-    copy_dir_recursive_inner(src, dst, skip_git)
-}
-
-fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
     #[cfg(unix)]
@@ -66,7 +62,7 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, skip_git: bool) -> Result<()
             if skip_git && entry.file_name() == ".git" {
                 continue;
             }
-            copy_dir_recursive_inner(&src_path, &dst_path, skip_git)?;
+            copy_dir_recursive(&src_path, &dst_path, skip_git)?;
         } else {
             std::fs::copy(&src_path, &dst_path).with_context(|| {
                 format!("copying {} to {}", src_path.display(), dst_path.display())

@@ -173,14 +173,7 @@ fn experimental_target_enabled(home: &Path, config_key: &str) -> Option<bool> {
 /// runs.  APM provides idempotency itself via its lockfile, so this output is
 /// purely informational.
 pub(super) fn report_apm_output(ctx: &Context, stdout: &str, stderr: &str) {
-    for line in stdout.lines() {
-        let trimmed = line.trim_end();
-        if trimmed.trim().is_empty() {
-            continue;
-        }
-        ctx.log().debug(trimmed);
-    }
-    for line in stderr.lines() {
+    for line in stdout.lines().chain(stderr.lines()) {
         let trimmed = line.trim_end();
         if trimmed.trim().is_empty() {
             continue;

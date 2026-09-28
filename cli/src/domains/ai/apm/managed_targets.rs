@@ -13,13 +13,6 @@ use super::targets::{ApmTargets, CopilotDeployment, CopilotTarget};
 use crate::engine::Context;
 use crate::infra::logging::OutputExt as _;
 
-/// User-facing context for previewing target-specific work.
-#[derive(Debug, Clone, Copy)]
-pub(super) enum ManagedTargetPreview {
-    Install,
-    Update,
-}
-
 /// Command outcome plus changes made by dotfiles-owned deployment adapters.
 #[derive(Debug)]
 pub(super) struct ManagedCommandResult {
@@ -61,13 +54,13 @@ impl ManagedTargets {
     }
 
     /// Preview every target-specific convergence action.
-    pub(super) fn preview(self, ctx: &Context, preview: ManagedTargetPreview) -> u32 {
+    pub(super) fn preview(self, ctx: &Context, command: ApmCommand) -> u32 {
+        let action = match command {
+            ApmCommand::Install => "sync",
+            ApmCommand::Update => "redeploy updated",
+        };
         let mut planned = 0_u32;
         for target in self.active.active() {
-            let action = match preview {
-                ManagedTargetPreview::Install => "sync",
-                ManagedTargetPreview::Update => "redeploy updated",
-            };
             match target.deployment() {
                 CopilotDeployment::NativeApm { args, .. } => ctx.log().dry_run(format!(
                     "run apm {} to {action} {}",

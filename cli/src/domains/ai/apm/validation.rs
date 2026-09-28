@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn discovery_failure_remains_an_io_warning() {
         let root = tempfile::tempdir_in(".").expect("create root");
-        let apm = root.path().join("symlinks/apm");
+        let apm = root.path().join("symlinks").join("apm");
         std::fs::create_dir_all(&apm).expect("create APM directory");
         let config = apm.join("config");
         std::fs::write(&config, "not a directory").expect("write config file");
@@ -220,7 +220,7 @@ mod tests {
     #[test]
     fn validation_uses_sorted_yaml_fragments_only() {
         let root = tempfile::tempdir_in(".").expect("create root");
-        let config = root.path().join("symlinks/apm/config");
+        let config = root.path().join("symlinks").join("apm").join("config");
         std::fs::create_dir_all(config.join("directory.yml")).expect("create fragment directory");
         for (name, plugin) in [
             ("z.yaml", "dot-last"),

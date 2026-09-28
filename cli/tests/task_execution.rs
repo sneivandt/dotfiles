@@ -16,12 +16,14 @@ mod common;
 
 use dotfiles_cli::testing as test_api;
 #[cfg(unix)]
+use test_api::tasks::Task;
+#[cfg(unix)]
 use test_api::tasks::files::chmod::ApplyFilePermissions;
 #[cfg(unix)]
 use test_api::tasks::files::symlinks::InstallSymlinks;
 #[cfg(unix)]
 use test_api::tasks::files::symlinks::UninstallSymlinks;
-use test_api::tasks::{self, Task, TaskResult};
+use test_api::tasks::{self, TaskResult};
 use test_api::{
     engine::{ProcessOpts, process_resources},
     resources::git_config::GitConfigResource,

@@ -112,8 +112,8 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
     let selected = crate::app::filter::apply_task_filters(
         &tasks,
         &[],
-        &opts.tasks.only,
-        &opts.tasks.skip,
+        &opts.tasks.filters.only,
+        &opts.tasks.filters.skip,
         opts.tasks.with_deps,
         &log,
     )

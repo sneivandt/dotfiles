@@ -289,11 +289,7 @@ fn ini_settings(
             section = Some(header.to_string());
             continue;
         }
-        let (key, value) = if let Some((key, value)) = line.split_once('=') {
-            (key.trim(), Some(value.trim().to_string()))
-        } else if line.split_whitespace().count() == 1 {
-            (line, None)
-        } else {
+        let Some((key, value)) = ini_setting(line) else {
             if strict {
                 bail!("INI fragment contains an invalid bare setting: {line}");
             }
@@ -305,7 +301,7 @@ fn ini_settings(
             }
             continue;
         };
-        settings.push((section.clone(), key.to_string(), value));
+        settings.push((section.clone(), key.to_string(), value.map(str::to_string)));
     }
     Ok(settings)
 }
@@ -340,15 +336,19 @@ fn ini_section(line: &str) -> Option<&str> {
     (line.starts_with('[') && line.ends_with(']')).then_some(line)
 }
 
-fn ini_line_key(line: &str) -> Option<&str> {
+fn ini_setting(line: &str) -> Option<(&str, Option<&str>)> {
     let line = line.trim();
     if line.is_empty() || line.starts_with(['#', ';']) || ini_section(line).is_some() {
         return None;
     }
-    if let Some((key, _)) = line.split_once('=') {
-        return Some(key.trim());
+    if let Some((key, value)) = line.split_once('=') {
+        return Some((key.trim(), Some(value.trim())));
     }
-    (line.split_whitespace().count() == 1).then_some(line)
+    (line.split_whitespace().count() == 1).then_some((line, None))
+}
+
+fn ini_line_key(line: &str) -> Option<&str> {
+    ini_setting(line).map(|(key, _)| key)
 }
 
 fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Option<&str>) {
@@ -505,6 +505,130 @@ mod tests {
             resource.current_state().unwrap(),
             ResourceState::Invalid { reason } if reason.contains("is missing")
         ));
+    }
+
+    #[test]
+    fn ini_setting_recognition_preserves_lexical_edge_cases() {
+        for (label, line, expected) in [
+            (
+                "only the first equals sign separates the value",
+                " \tkey \t= first = second \t",
+                Some(("key", Some("first = second"))),
+            ),
+            ("empty key", " = value ", Some(("", Some("value")))),
+            ("empty value", "key \t= \t", Some(("key", Some("")))),
+            ("empty key and value", "\t= \t", Some(("", Some("")))),
+            ("bare flag with tabs", "\tFlag\t", Some(("Flag", None))),
+            (
+                "whitespace inside an assigned key is retained",
+                " first\tsecond = value ",
+                Some(("first\tsecond", Some("value"))),
+            ),
+            (
+                "inline comment characters are literal",
+                "key=value # hash ; semicolon",
+                Some(("key", Some("value # hash ; semicolon"))),
+            ),
+            (
+                "malformed section-like line remains a bare setting",
+                "\t[not-a-section\t",
+                Some(("[not-a-section", None)),
+            ),
+            ("empty line", "", None),
+            ("whitespace", " \t ", None),
+            ("hash comment", "\t# key=value", None),
+            ("semicolon comment", "\t; Flag", None),
+            ("section header", " \t[other]\t ", None),
+            ("equals sign inside a section header", "[other=value]", None),
+        ] {
+            assert_eq!(ini_line_key(line), expected.map(|(key, _)| key), "{label}");
+            let fragment = format!("[options]\n{line}\n");
+            let expected_settings = expected
+                .map(|(key, value)| {
+                    (
+                        "[options]".to_string(),
+                        key.to_string(),
+                        value.map(str::to_string),
+                    )
+                })
+                .into_iter()
+                .collect::<Vec<_>>();
+            for strict in [false, true] {
+                assert_eq!(
+                    ini_settings(&fragment, strict).unwrap(),
+                    expected_settings,
+                    "{label}, strict={strict}"
+                );
+            }
+
+            if let Some((key, value)) = expected {
+                let current = format!("[options]\n{line}\n{line}\n");
+                let setting =
+                    value.map_or_else(|| key.to_string(), |value| format!("{key}={value}"));
+                let merged = merge_ini(&current, &fragment).unwrap();
+                assert_eq!(merged, format!("[options]\n{setting}\n"), "{label}");
+                assert!(contains_ini(&merged, &fragment).unwrap(), "{label}");
+                assert_eq!(merge_ini(&merged, &fragment).unwrap(), merged, "{label}");
+            }
+        }
+    }
+
+    #[test]
+    fn ini_settings_preserve_strict_diagnostics_and_permissive_skips() {
+        for (label, content, expected_error) in [
+            (
+                "invalid bare setting inside a section",
+                "[options]\n\tbad setting\t\n",
+                "INI fragment contains an invalid bare setting: bad setting",
+            ),
+            (
+                "invalid bare setting precedes the missing-section diagnostic",
+                "\tbad setting\t\n",
+                "INI fragment contains an invalid bare setting: bad setting",
+            ),
+            (
+                "assignment outside a section",
+                "\tkey = value\t\n",
+                "INI fragment contains a setting outside a section: key = value",
+            ),
+            (
+                "bare flag outside a section",
+                "\tFlag\t\n",
+                "INI fragment contains a setting outside a section: Flag",
+            ),
+            (
+                "malformed section-like flag outside a section",
+                "\t[not-a-section\t\n",
+                "INI fragment contains a setting outside a section: [not-a-section",
+            ),
+            (
+                "first invalid line wins",
+                "bad setting\nkey=value\n",
+                "INI fragment contains an invalid bare setting: bad setting",
+            ),
+            (
+                "first out-of-section setting wins",
+                "key=value\nbad setting\n",
+                "INI fragment contains a setting outside a section: key=value",
+            ),
+        ] {
+            assert_eq!(
+                ini_settings(content, true).unwrap_err().to_string(),
+                expected_error,
+                "{label}"
+            );
+            assert!(ini_settings(content, false).unwrap().is_empty(), "{label}");
+            let continued = format!("{content}[options]\nkeep=yes\n");
+            assert_eq!(
+                ini_settings(&continued, false).unwrap(),
+                [(
+                    "[options]".to_string(),
+                    "keep".to_string(),
+                    Some("yes".to_string()),
+                )],
+                "{label}"
+            );
+        }
     }
 
     #[test]

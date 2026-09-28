@@ -46,13 +46,13 @@ pub fn run(
     // membership before user filters so warnings reflect eligible tasks.
     all_tasks.retain(|task| includes_task(task.as_ref(), update_pins));
     let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
-    let mut effective_skip = opts.skip.clone();
+    let mut effective_skip = opts.filters.skip.clone();
     if runtime.global.no_repo_update {
         let repository = all_tasks
             .iter()
             .find(|task| task.task_id() == repository_task)
             .map(Box::as_ref);
-        reject_disabled_repository_selection(repository, &opts.only)?;
+        reject_disabled_repository_selection(repository, &opts.filters.only)?;
         if let Some(repository) = repository {
             effective_skip.retain(|selector| !task_matches_filter(repository, selector));
         }
@@ -64,7 +64,7 @@ pub fn run(
     let mut filtered = apply_task_filters(
         &all_tasks,
         &startup_overlay_tasks,
-        &opts.only,
+        &opts.filters.only,
         &effective_skip,
         opts.with_deps,
         log,

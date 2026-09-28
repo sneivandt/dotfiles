@@ -215,7 +215,7 @@ mod tests {
             assert_eq!(update_pins, expected_update, "{args:?}");
             assert!(global.dry_run, "{args:?}");
             assert!(global.no_repo_update, "{args:?}");
-            assert_eq!(opts.only, ["apm"], "{args:?}");
+            assert_eq!(opts.filters.only, ["apm"], "{args:?}");
             assert!(opts.with_deps, "{args:?}");
         }
     }

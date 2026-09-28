@@ -7,6 +7,7 @@ use anyhow::Result;
 use super::*;
 use crate::engine::{TaskMeta, TaskResult, TaskStats};
 use crate::infra::exec::{ExecError, ExecResult};
+use crate::infra::logging::TaskEntry;
 use crate::test_helpers::{ContextBuilder, empty_config};
 
 mod conformance;
@@ -99,6 +100,9 @@ fn conformance_with_verbosity(
                     entry.actions,
                     entry.visibility,
                     entry.duration.is_some(),
+                    entry.selector,
+                    entry.result_display,
+                    entry.message_is_summary,
                 )
             })
             .collect();
@@ -148,6 +152,7 @@ struct TestTask {
     deps: Vec<TaskId>,
     ordering: Vec<TaskId>,
     behavior: Behavior,
+    metadata: Option<TaskMeta<'static>>,
     applicable: bool,
     runs: AtomicUsize,
 }
@@ -160,6 +165,7 @@ impl TestTask {
             deps: Vec::new(),
             ordering: Vec::new(),
             behavior: Behavior::Return(TaskResult::Ok),
+            metadata: None,
             applicable: true,
             runs: AtomicUsize::new(0),
         }
@@ -215,7 +221,7 @@ impl TestTask {
 
 impl Task for TestTask {
     fn meta(&self) -> TaskMeta<'_> {
-        TaskMeta::new(self.name)
+        self.metadata.unwrap_or_else(|| TaskMeta::new(self.name))
     }
 
     fn task_id(&self) -> TaskId {

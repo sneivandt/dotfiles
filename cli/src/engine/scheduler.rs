@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, mpsc};
 
 use super::graph::ResolvedTaskGraph;
-use crate::engine::task::{TaskExecution, TaskOutcome};
+use crate::engine::task::{TaskExecution, TaskOutcome, task_entry};
 use crate::engine::{self, Context, Task, TaskAssessment, TaskId};
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{
-    self, ActionCounts, BufferedLog, Log, LogEvent, Logger, Output as _, TaskEntry, TaskStatus,
+    self, ActionCounts, BufferedLog, Log, LogEvent, Logger, Output as _, TaskStatus,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -227,18 +227,13 @@ fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str, status: T
     let _enter = span.enter();
     log.run_task_event(LogEvent::TaskSkip, &task.log_key(), reason);
     log.debug(reason);
-    log.record_task(
-        TaskEntry::new(
-            task.log_key(),
-            task.name(),
-            status,
-            Some(reason),
-            ActionCounts::default(),
-            task.visibility(),
-        )
-        .with_selector(task.selector())
-        .with_result_display(task.result_display()),
-    );
+    log.record_task(task_entry(
+        task,
+        &task.log_key(),
+        status,
+        Some(reason),
+        ActionCounts::default(),
+    ));
 }
 
 /// Execute a single task, catching any panic.
@@ -278,18 +273,13 @@ fn run_task_buffered(
                 .unwrap_or_else(|| "task panicked".to_string());
             log.run_task_event(LogEvent::TaskFail, &task.log_key(), &msg);
             buf.error(format!("{}: {msg}", task.name()));
-            log.record_task(
-                TaskEntry::new(
-                    task.log_key(),
-                    task.name(),
-                    TaskStatus::Failed,
-                    Some(&msg),
-                    ActionCounts::default(),
-                    task.visibility(),
-                )
-                .with_selector(task.selector())
-                .with_result_display(task.result_display()),
-            );
+            log.record_task(task_entry(
+                task,
+                &task.log_key(),
+                TaskStatus::Failed,
+                Some(&msg),
+                ActionCounts::default(),
+            ));
             TaskExecution {
                 status: TaskStatus::Failed,
                 outcome: TaskOutcome::Failed,

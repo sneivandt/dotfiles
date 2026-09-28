@@ -9,6 +9,7 @@ mod types;
 
 pub use crate::infra::logging::{TaskResultDisplay, TaskVisibility};
 pub use execute::execute;
+pub(super) use execute::task_entry;
 pub(crate) use execute::{TaskExecution, TaskOutcome, execute_assessed};
 pub(crate) use macros::{run_batch_resource_task, run_resource_task, task_deps, task_metadata};
 pub use types::{TaskAssessment, TaskId, TaskMeta};

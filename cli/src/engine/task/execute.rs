@@ -106,6 +106,26 @@ pub(crate) fn execute_assessed(
     execution
 }
 
+/// Build a task result with the task's identity and presentation metadata.
+pub(in crate::engine) fn task_entry(
+    task: &dyn Task,
+    task_id: &str,
+    status: TaskStatus,
+    message: Option<&str>,
+    actions: ActionCounts,
+) -> TaskEntry {
+    TaskEntry::new(
+        task_id,
+        task.name(),
+        status,
+        message,
+        actions,
+        task.visibility(),
+    )
+    .with_selector(task.selector())
+    .with_result_display(task.result_display())
+}
+
 /// Record a task outcome with the task's own visibility, returning the status.
 fn record(
     task: &dyn Task,
@@ -117,17 +137,8 @@ fn record(
     message_is_summary: bool,
 ) -> TaskStatus {
     ctx.log().record_task(
-        TaskEntry::new(
-            task_id,
-            task.name(),
-            status,
-            message,
-            actions,
-            task.visibility(),
-        )
-        .with_selector(task.selector())
-        .with_result_display(task.result_display())
-        .with_summary_message(message_is_summary),
+        task_entry(task, task_id, status, message, actions)
+            .with_summary_message(message_is_summary),
     );
     status
 }

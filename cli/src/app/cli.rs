@@ -169,6 +169,7 @@ pub struct InstallCommandOpts {
 
 /// Options for the `check` command.
 #[derive(Args, Debug, Clone)]
+#[command(group(clap::ArgGroup::new("CheckOpts").args(["skip", "only"]).multiple(true)))]
 pub struct CheckCommandOpts {
     /// Repository and profile selection.
     #[command(flatten)]
@@ -185,6 +186,7 @@ pub struct CheckCommandOpts {
 
 /// Options for the `uninstall` command.
 #[derive(Args, Debug, Clone)]
+#[command(group(clap::ArgGroup::new("CheckOpts").args(["skip", "only"]).multiple(true)))]
 pub struct UninstallCommandOpts {
     /// Repository and profile selection.
     #[command(flatten)]
@@ -449,35 +451,24 @@ impl EngineCommand {
     }
 }
 
-/// Task filters shared by `install` and `check`.
+/// Task selection for `install` and `update`.
 #[derive(Args, Debug, Clone, Default)]
+#[group(args = ["skip", "only", "with_deps"])]
 pub struct InstallOpts {
-    /// Skip task selectors; repeat the option or separate values with commas
-    #[arg(
-        long,
-        value_delimiter = ',',
-        value_name = "SELECTOR",
-        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
-    )]
-    pub skip: Vec<String>,
-
-    /// Run only task selectors; repeat the option or separate values with commas
-    #[arg(
-        long,
-        value_delimiter = ',',
-        value_name = "SELECTOR",
-        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
-    )]
-    pub only: Vec<String>,
+    /// Shared task selectors.
+    #[command(flatten)]
+    pub filters: TaskFilters,
 
     /// Include blocking and ordering predecessors selected by `--only`
     #[arg(long, requires = "only")]
     pub with_deps: bool,
 }
 
-/// Task filters for non-install commands.
+/// Task filters shared by commands that execute a task graph.
 #[derive(Args, Debug, Clone, Default)]
-pub struct CheckOpts {
+// Command-specific containers retain the existing argument-group identities.
+#[group(skip)]
+pub struct TaskFilters {
     /// Skip task selectors; repeat the option or separate values with commas
     #[arg(
         long,
@@ -497,8 +488,11 @@ pub struct CheckOpts {
     pub only: Vec<String>,
 }
 
+/// Options for the `check` task set.
+pub type CheckOpts = TaskFilters;
+
 /// Options for the `uninstall` task set.
-pub type UninstallOpts = CheckOpts;
+pub type UninstallOpts = TaskFilters;
 
 /// Canonical command names accepted by `log --command`.
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
@@ -677,7 +671,7 @@ mod tests {
         assert!(opts.update_pins);
         assert!(opts.no_repo_update);
         assert!(opts.execution.require_complete);
-        assert_eq!(opts.tasks.only, ["symlinks", "git-hooks"]);
+        assert_eq!(opts.tasks.filters.only, ["symlinks", "git-hooks"]);
         assert!(opts.tasks.with_deps);
     }
 
@@ -787,23 +781,171 @@ mod tests {
 
     #[test]
     fn repeated_and_comma_delimited_selectors_are_all_preserved() {
-        let cli = Cli::parse_from([
-            "dotfiles",
-            "install",
-            "--only",
-            "symlinks,git-hooks",
-            "--only",
-            "apm",
-            "--skip",
-            "packages,repository",
-            "--skip",
-            "chmod",
-        ]);
-        let Command::Install(opts) = cli.command else {
-            panic!("expected install command");
-        };
-        assert_eq!(opts.tasks.only, ["symlinks", "git-hooks", "apm"]);
-        assert_eq!(opts.tasks.skip, ["packages", "repository", "chmod"]);
+        for name in ["install", "update", "check", "uninstall"] {
+            let cli = Cli::parse_from([
+                "dotfiles",
+                name,
+                "--only",
+                "symlinks,git-hooks",
+                "--only",
+                "apm",
+                "--skip",
+                "packages,repository",
+                "--skip",
+                "chmod",
+            ]);
+            let (only, skip) = match cli.command {
+                Command::Install(opts) | Command::Update(opts) => {
+                    (opts.tasks.filters.only, opts.tasks.filters.skip)
+                }
+                Command::Check(opts) => (opts.tasks.only, opts.tasks.skip),
+                Command::Uninstall(opts) => (opts.tasks.only, opts.tasks.skip),
+                Command::Tasks(_) | Command::Log(_) | Command::Completions(_) => {
+                    panic!("expected execution command")
+                }
+            };
+            assert_eq!(only, ["symlinks", "git-hooks", "apm"], "{name}");
+            assert_eq!(skip, ["packages", "repository", "chmod"], "{name}");
+        }
+    }
+
+    #[test]
+    fn execution_commands_keep_dependency_expansion_scoped_to_install_and_update() {
+        for name in ["install", "update", "check", "uninstall"] {
+            for selected in [false, true] {
+                let mut args = vec!["dotfiles", name, "--with-deps"];
+                if selected {
+                    args.extend(["--only", "symlinks"]);
+                }
+                let result = Cli::try_parse_from(args);
+                match (name, selected) {
+                    ("install" | "update", true) => {
+                        let (Command::Install(opts) | Command::Update(opts)) =
+                            result.unwrap().command
+                        else {
+                            panic!("expected install or update");
+                        };
+                        assert!(opts.tasks.with_deps, "{name}");
+                        assert_eq!(opts.tasks.filters.only, ["symlinks"], "{name}");
+                    }
+                    ("install" | "update", false) => {
+                        let error = result.unwrap_err();
+                        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument, "{name}");
+                        assert!(error.to_string().contains("--only"), "{name}: {error}");
+                    }
+                    _ => assert_eq!(
+                        result.unwrap_err().kind(),
+                        ErrorKind::UnknownArgument,
+                        "{name}, selected={selected}"
+                    ),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn execution_selector_arguments_keep_ids_completion_and_group_membership() {
+        let mut command = Cli::command();
+        command.build();
+        for name in ["install", "update", "check", "uninstall"] {
+            let command = command.find_subcommand(name).unwrap();
+            for id in ["skip", "only"] {
+                let argument = command
+                    .get_arguments()
+                    .find(|argument| argument.get_id() == id)
+                    .unwrap();
+                assert_eq!(argument.get_long(), Some(id), "{name}: {id}");
+                assert_eq!(argument.get_value_delimiter(), Some(','), "{name}: {id}");
+                assert_eq!(
+                    argument.get_value_names().unwrap(),
+                    ["SELECTOR"],
+                    "{name}: {id}"
+                );
+                assert!(
+                    argument
+                        .get::<clap_complete::ArgValueCandidates>()
+                        .is_some(),
+                    "{name}: {id} must retain task completion"
+                );
+            }
+            let (id, expected) = if matches!(name, "install" | "update") {
+                ("InstallOpts", vec!["skip", "only", "with_deps"])
+            } else {
+                ("CheckOpts", vec!["skip", "only"])
+            };
+            let group = command
+                .get_groups()
+                .find(|group| group.get_id() == id)
+                .unwrap();
+            assert_eq!(
+                group.get_args().map(clap::Id::as_str).collect::<Vec<_>>(),
+                expected,
+                "{name}: {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn execution_command_help_preserves_exact_option_text_and_order() {
+        const COMMON_OPTIONS: &str = "  -p, --profile <PROFILE>  Use a specific profile
+      --root <PATH>        Use PATH as the dotfiles repository
+      --overlay <PATH>     Merge configuration from an overlay repository
+  -v, --verbose            Show additional diagnostic task output
+      --no-parallel        Run tasks sequentially
+      --fail-on-skip       Fail when applicable work is skipped
+      --non-interactive    Disable prompts and fail when input is required
+      --no-symbols         Use ASCII words instead of status symbols
+      --skip <SELECTOR>    Skip task selectors; repeat the option or separate values with commas
+      --only <SELECTOR>    Run only task selectors; repeat the option or separate values with commas
+";
+        const INSTALL_OPTIONS: &str = "      --with-deps          Include blocking and ordering predecessors selected by `--only`
+  -n, --dry-run            Preview changes without applying them
+      --update             Advance pinned dependencies during convergence
+      --no-repo-update     Use the current checkout without synchronizing its repository
+      --skip-attestation   Skip self-update build provenance verification
+";
+        const UNINSTALL_OPTIONS: &str =
+            "  -n, --dry-run            Preview changes without applying them
+      --skip-attestation   Skip self-update build provenance verification
+";
+        for (name, about, options, after_help) in [
+            (
+                "install",
+                "Apply dotfiles and system configuration",
+                INSTALL_OPTIONS,
+                "",
+            ),
+            (
+                "update",
+                "Apply configuration and advance pinned dependencies",
+                INSTALL_OPTIONS,
+                "\nEquivalent to dotfiles install --update.\n",
+            ),
+            (
+                "check",
+                "Validate configuration and run repository checks",
+                "",
+                "",
+            ),
+            (
+                "uninstall",
+                "Remove managed integrations while preserving user files",
+                UNINSTALL_OPTIONS,
+                "\nRemoves managed home symlinks, repository Git hooks, the installed launcher,\n\
+and active overlay script state through each script's --remove action.\n\
+Packages, services, registry values, and shell selection remain.\n",
+            ),
+        ] {
+            let help = display_output(&["dotfiles", name, "--help"], ErrorKind::DisplayHelp);
+            assert_eq!(
+                help,
+                format!(
+                    "{about}\n\nUsage: dotfiles {name} [OPTIONS]\n\nOptions:\n\
+{COMMON_OPTIONS}{options}  -h, --help               Print help\n{after_help}"
+                ),
+                "{name}"
+            );
+        }
     }
 
     #[test]

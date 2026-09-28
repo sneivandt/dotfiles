@@ -309,7 +309,6 @@ validated on Windows.
 | Wrapper | yes | yes | `dotfiles.sh` / `dotfiles.ps1` |
 | Application: git | yes | yes | Windows also asserts the `core.autocrlf` override |
 | Application: zsh, vim, nvim | yes | n/a | Excluded from the Windows profile |
-| Application: volume initialization | yes | n/a | PipeWire/PulseAudio integration is Linux-only |
 | Managed-script regressions | yes | yes | Isolated prompt host and mocked lock/network/power actions; not native desktop integration |
 | Git hook sensitive-data check | yes | no | Hooks are POSIX `sh`; not run on Windows |
 | ShellCheck, PSScriptAnalyzer | yes | n/a | Both run on the Linux runner |

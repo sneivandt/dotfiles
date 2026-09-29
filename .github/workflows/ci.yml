@@ -24,14 +24,32 @@ jobs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
       run_docs_checks: ${{ steps.classify.outputs.run_docs_checks }}
       run_lint: ${{ steps.classify.outputs.run_lint }}
+      lint_matrix: ${{ steps.classify.outputs.lint_matrix }}
       run_validate_config: ${{ steps.classify.outputs.run_validate_config }}
+      run_config_drift: ${{ steps.classify.outputs.run_config_drift }}
       run_rust_checks: ${{ steps.classify.outputs.run_rust_checks }}
-      run_build_artifacts: ${{ steps.classify.outputs.run_build_artifacts }}
-      run_profile_integration: ${{ steps.classify.outputs.run_profile_integration }}
+      run_rust_fmt: ${{ steps.classify.outputs.run_rust_fmt }}
+      run_audit: ${{ steps.classify.outputs.run_audit }}
+      run_deny: ${{ steps.classify.outputs.run_deny }}
+      run_mutation: ${{ steps.classify.outputs.run_mutation }}
+      run_build_linux: ${{ steps.classify.outputs.run_build_linux }}
+      run_build_windows: ${{ steps.classify.outputs.run_build_windows }}
+      run_profile_linux: ${{ steps.classify.outputs.run_profile_linux }}
+      run_profile_windows: ${{ steps.classify.outputs.run_profile_windows }}
+      run_roundtrip_linux: ${{ steps.classify.outputs.run_roundtrip_linux }}
+      run_roundtrip_windows: ${{ steps.classify.outputs.run_roundtrip_windows }}
       run_app_tests: ${{ steps.classify.outputs.run_app_tests }}
+      run_app_windows: ${{ steps.classify.outputs.run_app_windows }}
+      app_matrix: ${{ steps.classify.outputs.app_matrix }}
       run_git_hooks: ${{ steps.classify.outputs.run_git_hooks }}
+      run_hook_inputs: ${{ steps.classify.outputs.run_hook_inputs }}
       run_wrapper_linux: ${{ steps.classify.outputs.run_wrapper_linux }}
       run_wrapper_windows: ${{ steps.classify.outputs.run_wrapper_windows }}
+      run_managed_scripts: ${{ steps.classify.outputs.run_managed_scripts }}
+      run_prompt: ${{ steps.classify.outputs.run_prompt }}
+      run_lock: ${{ steps.classify.outputs.run_lock }}
+      run_desktop_python: ${{ steps.classify.outputs.run_desktop_python }}
+      run_stocks: ${{ steps.classify.outputs.run_stocks }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,13 +78,15 @@ jobs:
         run: sh .github/workflows/scripts/linux/classify-ci-changes.sh
       - name: Check CI job gate
         run: python3 .github/workflows/scripts/linux/check-ci-contract.py
+      - name: Test change classification and release selection
+        run: python3 -B .github/workflows/scripts/linux/test-ci-changes.py
 
   # ── Rust Format Check ──────────────────────────────────
   rust-fmt:
     name: "Rust: Format Check"
     runs-on: ubuntu-latest
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_rust_checks == 'true'
+    if: needs.classify-changes.outputs.run_rust_fmt == 'true'
     defaults:
       run:
         working-directory: cli
@@ -85,14 +105,7 @@ jobs:
     if: needs.classify-changes.outputs.run_lint == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: ShellCheck
-            setup: sh .github/workflows/scripts/linux/install-apt-packages.sh shellcheck
-            test_function: test_shellcheck
-          - name: PSScriptAnalyzer
-            setup: pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"
-            test_function: test_psscriptanalyzer
+      matrix: ${{ fromJSON(needs.classify-changes.outputs.lint_matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ${{ matrix.name }}
@@ -106,7 +119,7 @@ jobs:
     name: "Regression: Managed scripts (${{ matrix.name }})"
     runs-on: ${{ matrix.os }}
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_build_artifacts == 'true' || needs.classify-changes.outputs.run_lint == 'true'
+    if: needs.classify-changes.outputs.run_managed_scripts == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -118,11 +131,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check PowerShell prompt exit-status preservation
+        if: needs.classify-changes.outputs.run_prompt == 'true'
         shell: pwsh
         run: ./symlinks/config/powershell/tests/Test-Prompt.ps1
       - name: Check session lock behavior
+        if: needs.classify-changes.outputs.run_lock == 'true'
         run: python -B -m unittest discover -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
       - name: Check desktop network and power actions
+        if: needs.classify-changes.outputs.run_desktop_python == 'true'
         run: python -B -m unittest discover -s symlinks/config/quickshell/tests/python -p 'test_*.py'
 
   # ── Documentation Consistency ─────────────────────────
@@ -154,17 +170,35 @@ jobs:
         run: chmod +x bin/dotfiles
       - name: Run typed configuration validation
         run: ./bin/dotfiles check --root . -p desktop --only config-warnings,symlink-sources,config-files
+
+  test-stocks:
+    name: "Regression: Stock ticker"
+    runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_stocks == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Test stock ticker
         env:
           DIR: ${{ github.workspace }}
         run: sh .github/workflows/scripts/linux/test-stocks.sh
+
+  test-hook-inputs:
+    name: "Regression: Isolated hook inputs"
+    runs-on: ubuntu-latest
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_hook_inputs == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test staged inputs and repository isolation
+        run: sh .github/workflows/scripts/linux/test-hook-inputs.sh
 
   # ── Security ──────────────────────────────────────────
   audit:
     name: "Security: Cargo Audit"
     runs-on: ubuntu-latest
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_rust_checks == 'true'
+    if: needs.classify-changes.outputs.run_audit == 'true'
     defaults:
       run:
         working-directory: cli
@@ -185,7 +219,7 @@ jobs:
     name: "Security: Cargo Deny"
     runs-on: ubuntu-latest
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_rust_checks == 'true'
+    if: needs.classify-changes.outputs.run_deny == 'true'
     defaults:
       run:
         working-directory: cli
@@ -207,7 +241,7 @@ jobs:
     name: "Build: Linux"
     runs-on: ubuntu-latest
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_build_artifacts == 'true'
+    if: needs.classify-changes.outputs.run_build_linux == 'true'
     defaults:
       run:
         working-directory: cli
@@ -220,12 +254,19 @@ jobs:
           workspaces: "cli -> target"
           cache-on-failure: true
       - name: Build CI binary
+        if: needs.classify-changes.outputs.run_rust_checks != 'true' && needs.classify-changes.outputs.run_config_drift != 'true'
         run: cargo build --profile ci
       - name: Clippy
+        if: needs.classify-changes.outputs.run_rust_checks == 'true'
         run: cargo clippy --profile ci --all-targets -- -D warnings
       - name: Tests
+        if: needs.classify-changes.outputs.run_rust_checks == 'true'
         run: cargo test --profile ci
+      - name: Configuration drift tests
+        if: needs.classify-changes.outputs.run_config_drift == 'true' && needs.classify-changes.outputs.run_rust_checks != 'true'
+        run: cargo test --profile ci --test config_drift
       - name: Test build-version Git dependencies
+        if: needs.classify-changes.outputs.run_rust_checks == 'true' || needs.classify-changes.outputs.run_hook_inputs == 'true'
         run: sh ../.github/workflows/scripts/linux/test-hook-inputs.sh test_build_version_ref_triggers
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -316,7 +357,7 @@ jobs:
     timeout-minutes: 30
     continue-on-error: true
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_rust_checks == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: needs.classify-changes.outputs.run_mutation == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     strategy:
       fail-fast: false
       matrix:
@@ -377,7 +418,7 @@ jobs:
     name: "Build: Windows"
     runs-on: windows-latest
     needs: [classify-changes]
-    if: needs.classify-changes.outputs.run_build_artifacts == 'true'
+    if: needs.classify-changes.outputs.run_build_windows == 'true'
     defaults:
       run:
         working-directory: cli
@@ -419,7 +460,7 @@ jobs:
     name: "Integration: ${{ matrix.profile }} on Linux"
     runs-on: ubuntu-latest
     needs: [classify-changes, build-linux]
-    if: needs.classify-changes.outputs.run_profile_integration == 'true'
+    if: needs.classify-changes.outputs.run_profile_linux == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -442,7 +483,7 @@ jobs:
     name: "Integration: ${{ matrix.profile }} on Windows"
     runs-on: windows-latest
     needs: [classify-changes, build-windows]
-    if: needs.classify-changes.outputs.run_profile_integration == 'true'
+    if: needs.classify-changes.outputs.run_profile_windows == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -465,7 +506,7 @@ jobs:
     name: "Integration: Install/Uninstall round-trip"
     runs-on: ubuntu-latest
     needs: [classify-changes, build-linux]
-    if: needs.classify-changes.outputs.run_profile_integration == 'true'
+    if: needs.classify-changes.outputs.run_roundtrip_linux == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -484,7 +525,7 @@ jobs:
     name: "Integration: Install/Uninstall round-trip (Windows)"
     runs-on: windows-latest
     needs: [classify-changes, build-windows]
-    if: needs.classify-changes.outputs.run_profile_integration == 'true'
+    if: needs.classify-changes.outputs.run_roundtrip_windows == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -507,20 +548,7 @@ jobs:
     if: needs.classify-changes.outputs.run_app_tests == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - application: git
-            packages: git
-            tests: config aliases behavior clean
-          - application: zsh
-            packages: zsh fzf
-            tests: completion history
-          - application: vim
-            packages: vim
-            tests: opens
-          - application: nvim
-            packages: neovim
-            tests: opens plugins
+      matrix: ${{ fromJSON(needs.classify-changes.outputs.app_matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ${{ matrix.packages }}
@@ -544,7 +572,7 @@ jobs:
     name: "App: ${{ matrix.application }} (Windows)"
     runs-on: windows-latest
     needs: [classify-changes, build-windows]
-    if: needs.classify-changes.outputs.run_app_tests == 'true'
+    if: needs.classify-changes.outputs.run_app_windows == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -647,11 +675,11 @@ jobs:
       - test-git-hooks
       - test-shell-wrapper-linux
       - test-shell-wrapper-windows
+      - test-stocks
+      - test-hook-inputs
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check all jobs passed
-        run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
-            echo "One or more CI jobs failed or were cancelled"
-            exit 1
-          fi
-          echo "All required CI jobs passed or were intentionally skipped"
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 .github/workflows/scripts/linux/check-ci-contract.py --results

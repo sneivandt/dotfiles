@@ -134,7 +134,8 @@ stage_docs()
 stage_ci()
 {
   have python3 || { note "python3 not installed; skipping"; return 2; }
-  python3 "$REPO_ROOT/.github/workflows/scripts/linux/check-ci-contract.py"
+  python3 "$REPO_ROOT/.github/workflows/scripts/linux/check-ci-contract.py" &&
+    python3 -B "$REPO_ROOT/.github/workflows/scripts/linux/test-ci-changes.py"
 }
 
 stage_shell()

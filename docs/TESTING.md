@@ -29,7 +29,7 @@ jobs, coverage, or mutation testing.
 | `test` | `cargo test` |
 | `config` | `dotfiles check --root .` (repository validator) |
 | `docs` | Relative Markdown links and heading anchors resolve; documented task selectors exist (Linux script only) |
-| `ci` | Required CI jobs remain in the aggregate success gate and retain their scheduling conditions (Linux script only) |
+| `ci` | CI/release scheduling contracts, changed-path and release-baseline fixtures, and aggregate success-gate behavior (Linux script only) |
 | `shell` | ShellCheck over wrappers, hooks, and CI scripts |
 | `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
 | `audit` | `cargo audit` |
@@ -288,17 +288,68 @@ The Linux and Windows coverage jobs run all Cargo targets and upload HTML
 reports. Coverage is informational and intentionally does not gate
 `ci-success`.
 
-The Windows build job runs Clippy and the full Rust suite only for Rust-related
-changes. `cargo test` also produces the executable uploaded for downstream jobs,
-so the job does not compile the same Rust change with a separate `cargo build`.
-Configuration-only and wrapper-only changes still run `cargo build` because
-their downstream Windows jobs need the executable.
+### Change-aware scheduling
+
+The workflow always starts so required checks cannot remain pending because of
+a workflow-level path filter. A lightweight classifier selects jobs, platforms,
+linters, and application matrix entries. Documentation consistency and classifier
+regressions always run; the final gate requires every selected job to succeed
+and accepts only explicitly unselected jobs as skipped.
+
+| Changed inputs | Selected work beyond the always-on checks |
+|---|---|
+| Documentation, agent guidance, known repository/editor metadata | No compilation or binary release |
+| Rust source, embedded source-tree assets, Cargo/build/toolchain configuration | Both platform builds, Rust checks, profile/round-trip integration, wrappers, and application tests |
+| Rust integration tests and fixtures | Both platform builds and Rust checks, but no release or unrelated application/wrapper tests |
+| Cargo manifests/lockfiles | Dependency audit and deny checks in addition to Rust checks |
+| `cli/deny.toml` / `cli/rustfmt.toml` | Only dependency-policy / formatting checks, respectively |
+| `conf/` | Configuration validation, drift tests, and profile/round-trip integration; application tests for package, symlink, or Git config changes |
+| `system/` | Linux configuration and profile/round-trip checks |
+| Managed application configuration | Configuration validation/drift checks and the affected Git, Zsh, Vim, or Neovim matrix entries |
+| PowerShell prompt, session lock, Quickshell | Configuration checks plus the affected managed-script regressions on Linux and Windows |
+| Stock helper | Configuration checks and the isolated stock regression |
+| Wrapper or platform-specific integration script | Its platform's build and relevant integration job |
+| Hooks | Hook and isolated staged-input regressions, without CLI builds |
+| Shell / PowerShell files | Only the corresponding linter |
+| CI workflow, shared CI helpers, classifier, manual dispatch, or unavailable comparison range | Conservative full CI; unknown inputs also use this fallback |
+| Release workflow or release-selection script | Publishing selection; no unrelated CI compilation |
+
+Changed paths include deletions and both sides of renames. An invalid Git range
+fails classification rather than silently skipping checks. Empty diffs run only
+the always-on checks. Mutation shards are scheduled only when Rust source changes,
+not for lockfile-only, test-only, or CI-only changes.
+
+Both build jobs run Clippy and the full Rust suite only for Rust-related changes.
+Linux configuration changes run just `config_drift` instead of the full Rust
+suite. Cargo integration tests also produce the executable uploaded for downstream
+jobs; other artifact consumers use `cargo build`. A Windows-only wrapper change
+does not build Linux, and a Linux-only wrapper change does not build Windows.
+Configuration checks still compile the current CLI where needed; they never
+substitute a potentially incompatible downloaded release.
 
 Pull requests and pushes to `main` run changed-code mutation testing when Rust
 source changes. Eight independent shards cover the complete changed-code mutant
 set using the `ci` Cargo profile and upload separate `cargo-mutants` reports.
 Sharding keeps larger refactors within the job timeout without sampling away
 mutants. Mutation results are informational and do not gate `ci-success`.
+
+### Release selection
+
+After successful same-repository push CI on `main`, a read-only job compares the
+tested commit with the most recent non-draft, non-prerelease publication.
+Release builds, version allocation, attestations, and publishing run only when
+binary inputs or the publishing pipeline changed. Documentation, configuration,
+wrappers, standalone test fixtures, and lint-policy changes do not by themselves
+publish a new binary. Changes inside `cli/src/` are conservatively treated as
+binary inputs, including embedded assets and inline unit tests.
+
+Comparing with the published release rather than the previous push catches binary
+changes left unpublished by a failed or cancelled run. Consequently, a docs-only
+push can recover a pending binary release, but never causes an otherwise redundant
+one. With no published release, an initial release is built. Already-released or
+older commits are skipped; API errors, missing release tags, and divergent release
+history fail explicitly. Release asset names, checksums, provenance, and the
+`vYYYY.MM.DD-N` version format are unchanged.
 
 ## Platform coverage parity
 

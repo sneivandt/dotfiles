@@ -24,6 +24,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository }}
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
+      run_release: ${{ steps.classify.outputs.run_release }}
     steps:
       - name: Resolve tested commit
         id: resolve
@@ -32,7 +33,20 @@ jobs:
         run: |
           set -euo pipefail
           echo "sha=$EVENT_HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "CI workflow passed for $EVENT_HEAD_SHA; proceeding with release."
+          echo "CI workflow passed for $EVENT_HEAD_SHA; checking binary inputs."
+      - name: Check out tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.resolve.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check changes since the last published release
+        id: classify
+        env:
+          DIR: ${{ github.workspace }}
+          HEAD_SHA: ${{ steps.resolve.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: sh .github/workflows/scripts/linux/classify-release.sh
 
   # Resolves the release identity (version tag + commit) exactly once so every
   # downstream job builds, attests, and tags the same thing.
@@ -44,6 +58,7 @@ jobs:
   version:
     name: Resolve release version
     needs: [check-ci]
+    if: needs.check-ci.outputs.run_release == 'true'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}

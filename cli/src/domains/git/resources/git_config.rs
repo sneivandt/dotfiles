@@ -100,10 +100,10 @@ impl GitConfigResource {
     fn apply_to_config(&self, config: &mut git2::Config) -> Result<ResourceChange> {
         match &self.desired {
             Some(desired) => config
-                .set_str(&self.key, desired)
+                .set_multivar(&self.key, ".*", desired)
                 .with_context(|| format!("setting {} = {desired}", self.key))?,
             None => config
-                .remove(&self.key)
+                .remove_multivar(&self.key, ".*")
                 .with_context(|| format!("removing git config {}", self.key))?,
         }
         Ok(ResourceChange::Applied)
@@ -224,6 +224,59 @@ mod tests {
     // ------------------------------------------------------------------
     // apply_to_config
     // ------------------------------------------------------------------
+
+    #[test]
+    fn repeated_git_config_values_converge_for_setting_and_removal() {
+        for desired in [Some("false"), None] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let path = dir.path().join("config");
+            std::fs::write(
+                &path,
+                "[core]\n\tautocrlf = false\n\tautocrlf = true\n\teditor = fixture-editor\n",
+            )
+            .unwrap();
+            let resource = desired
+                .map_or_else(
+                    || GitConfigResource::absent("core.autocrlf".into()),
+                    |value| GitConfigResource::new("core.autocrlf".into(), value.into()),
+                )
+                .using_config_path(path.clone());
+
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Incorrect { .. }
+                ),
+                "duplicate settings are not yet in the desired state {desired:?}"
+            );
+            assert_eq!(
+                resource.apply().unwrap(),
+                ResourceChange::Applied,
+                "must converge even when Git has repeated values for {desired:?}"
+            );
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+
+            let observed = git2::Config::open(&path).unwrap();
+            assert_eq!(
+                observed.get_string("core.editor").unwrap(),
+                "fixture-editor"
+            );
+            if let Some(value) = desired {
+                let mut entries = observed.multivar("core.autocrlf", None).unwrap();
+                let mut values = Vec::new();
+                while let Some(entry) = entries.next() {
+                    values.push(entry.unwrap().value().unwrap().to_string());
+                }
+                assert!(!values.is_empty());
+                assert!(values.iter().all(|current| current == value), "{values:?}");
+            } else {
+                assert_eq!(
+                    observed.get_string("core.autocrlf").unwrap_err().code(),
+                    git2::ErrorCode::NotFound
+                );
+            }
+        }
+    }
 
     #[test]
     fn malformed_config_is_rejected_without_rewriting_user_content() {

@@ -321,7 +321,10 @@ fn contract_remove_does_not_touch_unmanaged_or_unsafe_states() {
     )
     .unwrap();
 
-    assert!(batch_unchanged(&result));
+    assert!(
+        batch_failed(&result),
+        "unknown ownership must leave removal incomplete, not successful"
+    );
     assert_eq!(missing.remove_calls(), 0);
     assert_eq!(incorrect.remove_calls(), 0);
     assert_eq!(invalid.remove_calls(), 0);
@@ -439,6 +442,11 @@ fn contract_remove_only_mutates_correct_resources() -> anyhow::Result<()> {
                 batch_changed(&result),
                 "remove state {} should report a change",
                 case.name
+            );
+        } else if matches!(case.state, ResourceState::Unknown { .. }) {
+            assert!(
+                batch_failed(&result),
+                "unknown state must leave removal incomplete"
             );
         } else {
             assert!(

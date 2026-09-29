@@ -215,6 +215,8 @@ skip locally. `--fail-on-skip` or any present `CI` environment variable makes
 unmet skips fail. A present `pwsh` without its
 analyzer module fails outright. Explicitly select/skip tools that are outside
 your intended check; do not report omitted checks as passes.
+Linter discovery and file-read failures also fail the check rather than silently
+omitting inputs. Missing optional input directories remain acceptable.
 
 When changing an overlay, validate the combined configuration with
 `--overlay /path/to/private-dotfiles` on that same command. Keep diagnostics and

@@ -5,74 +5,91 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result};
 
 /// Recursively discover files in a directory tree that match a predicate.
-pub(crate) fn discover_files<F>(dir: &Path, predicate: F, out: &mut Vec<PathBuf>)
+pub(crate) fn discover_files<F>(dir: &Path, predicate: F, out: &mut Vec<PathBuf>) -> Result<()>
 where
-    F: Fn(&Path) -> bool + Copy,
+    F: Fn(&Path) -> Result<bool> + Copy,
 {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
+    let entries = std::fs::read_dir(dir)
+        .with_context(|| format!("reading linter input directory {}", dir.display()))?;
+    for entry in entries {
+        let entry =
+            entry.with_context(|| format!("reading directory entry in {}", dir.display()))?;
         let path = entry.path();
-        if path.is_dir() {
-            discover_files(&path, predicate, out);
-        } else if path.is_file() && predicate(&path) {
+        let metadata = std::fs::metadata(&path)
+            .with_context(|| format!("inspecting linter input {}", path.display()))?;
+        if metadata.is_dir() {
+            discover_files(&path, predicate, out)?;
+        } else if metadata.is_file() && predicate(&path)? {
             out.push(path);
         }
     }
+    Ok(())
 }
 
 /// Recursively discover shell scripts in a directory.
-pub(crate) fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(crate) fn discover_shell_scripts(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     discover_files(
         dir,
         |path| {
             if path.extension().is_some_and(|extension| extension == "zsh") {
-                return false;
+                return Ok(false);
             }
-            path.extension().is_some_and(|extension| extension == "sh") || is_shell_shebang(path)
+            if path.extension().is_some_and(|extension| extension == "sh") {
+                return Ok(true);
+            }
+            shebang_matches(path, SHELL_INTERPRETERS)
         },
         out,
-    );
+    )
 }
 
 /// Recursively discover `PowerShell` scripts in a directory.
-pub(crate) fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(crate) fn discover_powershell_scripts(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     discover_files(
         dir,
         |path| {
-            path.extension().is_some_and(|extension| {
+            if path.extension().is_some_and(|extension| {
                 extension == "ps1" || extension == "psm1" || extension == "psd1"
-            }) || is_powershell_shebang(path)
+            }) {
+                return Ok(true);
+            }
+            shebang_matches(path, POWERSHELL_INTERPRETERS)
         },
         out,
-    );
+    )
 }
 
 /// Collect linter inputs from the repository root.
 ///
 /// Adds each existing path in `files`, then recursively walks each existing
-/// directory in `dirs` with `walk`.
+/// directory in `dirs` with `walk`. Missing optional paths are ignored; failures
+/// inspecting existing paths are returned rather than treated as empty input.
 pub(crate) fn discover_linter_inputs(
     root: &Path,
     files: &[&str],
     dirs: &[&str],
-    walk: fn(&Path, &mut Vec<PathBuf>),
-) -> Vec<PathBuf> {
+    walk: fn(&Path, &mut Vec<PathBuf>) -> Result<()>,
+) -> Result<Vec<PathBuf>> {
     let mut found = Vec::new();
     for name in files {
         let path = root.join(name);
-        if path.exists() {
+        if path
+            .try_exists()
+            .with_context(|| format!("inspecting linter input {}", path.display()))?
+        {
             found.push(path);
         }
     }
     for dir in dirs {
         let path = root.join(dir);
-        if path.exists() {
-            walk(&path, &mut found);
+        if path
+            .try_exists()
+            .with_context(|| format!("inspecting linter input directory {}", path.display()))?
+        {
+            walk(&path, &mut found)?;
         }
     }
-    found
+    Ok(found)
 }
 
 /// Discover local APM plugin directories.
@@ -102,23 +119,15 @@ pub(crate) fn discover_apm_plugin_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
 const SHELL_INTERPRETERS: &[&[u8]] = &[b"sh", b"bash", b"dash", b"ksh"];
 const POWERSHELL_INTERPRETERS: &[&[u8]] = &[b"pwsh", b"powershell"];
 
-fn is_shell_shebang(path: &Path) -> bool {
-    shebang_matches(path, SHELL_INTERPRETERS)
-}
-
-fn is_powershell_shebang(path: &Path) -> bool {
-    shebang_matches(path, POWERSHELL_INTERPRETERS)
-}
-
-fn shebang_matches(path: &Path, interpreters: &[&[u8]]) -> bool {
-    parse_shebang_interpreter(path).is_some_and(|name| {
+fn shebang_matches(path: &Path, interpreters: &[&[u8]]) -> Result<bool> {
+    let first_line = read_first_line(path)?;
+    Ok(parse_shebang_interpreter(&first_line).is_some_and(|name| {
         let trimmed = name.strip_suffix(b".exe").unwrap_or(name.as_slice());
         interpreters.contains(&trimmed)
-    })
+    }))
 }
 
-fn parse_shebang_interpreter(path: &Path) -> Option<Vec<u8>> {
-    let first_line = read_first_line(path);
+fn parse_shebang_interpreter(first_line: &[u8]) -> Option<Vec<u8>> {
     if !first_line.starts_with(b"#!") {
         return None;
     }
@@ -141,17 +150,49 @@ fn parse_shebang_interpreter(path: &Path) -> Option<Vec<u8>> {
     }
 }
 
-fn read_first_line(path: &Path) -> Vec<u8> {
+fn read_first_line(path: &Path) -> Result<Vec<u8>> {
     use std::io::Read as _;
 
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return Vec::new();
-    };
+    let mut file = std::fs::File::open(path)
+        .with_context(|| format!("opening linter input {}", path.display()))?;
     let mut buffer = [0_u8; 256];
-    let count = file.read(&mut buffer).unwrap_or(0);
+    let count = file
+        .read(&mut buffer)
+        .with_context(|| format!("reading linter input {}", path.display()))?;
     let end = buffer
         .get(..count)
         .and_then(|slice| slice.iter().position(|&byte| byte == b'\n'))
         .unwrap_or(count);
-    buffer.get(..end).unwrap_or_default().to_vec()
+    Ok(buffer.get(..end).unwrap_or_default().to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shebang_probe_reports_open_and_read_failures() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        for path in [dir.path().to_path_buf(), dir.path().join("missing")] {
+            let error = shebang_matches(&path, SHELL_INTERPRETERS)
+                .expect_err("unreadable input must not be classified as a non-script");
+            assert!(error.to_string().contains(&path.display().to_string()));
+            assert!(error.downcast_ref::<std::io::Error>().is_some());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn nested_discovery_reports_metadata_failures() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let nested = dir.path().join("nested");
+        std::fs::create_dir(&nested).unwrap();
+        let broken = nested.join("broken");
+        std::os::unix::fs::symlink("missing", &broken).unwrap();
+
+        let error = discover_shell_scripts(dir.path(), &mut Vec::new())
+            .expect_err("an unreadable nested entry must fail discovery");
+        assert!(error.to_string().contains(&broken.display().to_string()));
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+    }
 }

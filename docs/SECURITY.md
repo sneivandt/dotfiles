@@ -29,6 +29,9 @@ download its platform asset and SHA-256 metadata over HTTPS, and verify the
 checksum before accepting the download. Checksum lookup uses the matching
 asset entry from release metadata. Provenance policy differs between initial
 bootstrap and self-update, as below.
+The POSIX bootstrap stages each download privately beside the cached binary and
+publishes it only after verification. Failed downloads or verification do not
+delete a binary published by another concurrent bootstrap.
 
 A checksum detects mismatched/corrupt bytes relative to the published checksum.
 If the publisher or release metadata is compromised, an attacker can publish

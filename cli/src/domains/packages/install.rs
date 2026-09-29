@@ -127,7 +127,7 @@ impl PackageTaskKind {
             // that the preceding bootstrap task only *planned* to install.
             Self::Aur if ctx.dry_run() => PackageManager::Paru,
             Self::Aur => {
-                let path = match check_paru_health(ctx.executor()) {
+                let path = match check_paru_health(ctx.executor())? {
                     ParuHealth::Healthy { path, .. } => path,
                     ParuHealth::Missing { reason } => anyhow::bail!(
                         "paru became unavailable after bootstrap validation: {reason}"
@@ -204,9 +204,9 @@ impl Task for InstallParu {
     fn needs_elevation(&self, ctx: &Context) -> bool {
         // makepkg -si calls sudo internally to install the built package
         ctx.platform().uses_pacman()
-            && !matches!(
+            && matches!(
                 check_paru_health(ctx.executor()),
-                ParuHealth::Healthy { .. }
+                Ok(ParuHealth::Missing { .. } | ParuHealth::Broken { .. })
             )
     }
 
@@ -251,7 +251,7 @@ impl Operation for ParuInstallOperation<'_> {
     type Plan = ParuInstallPlan;
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        match check_paru_health(ctx.executor()) {
+        match check_paru_health(ctx.executor())? {
             ParuHealth::Missing { reason } => {
                 ctx.log().debug(format!("paru status: missing · {reason}"));
                 Ok(OperationState::needs_run(ParuInstallPlan::Install {
@@ -315,7 +315,7 @@ impl Operation for ParuInstallOperation<'_> {
         build_paru(ctx, guard.path())
             .with_context(|| format!("paru {} attempt failed", plan.action()))?;
 
-        match check_paru_health(ctx.executor()) {
+        match check_paru_health(ctx.executor())? {
             ParuHealth::Healthy {
                 path,
                 package,

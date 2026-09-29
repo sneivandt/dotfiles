@@ -260,7 +260,7 @@ impl Task for RunShellcheck {
             &["dotfiles.sh"],
             &["symlinks", "hooks", ".github"],
             discover_shell_scripts,
-        );
+        )?;
         run_linter(
             ctx,
             "shellcheck",
@@ -291,7 +291,7 @@ impl Task for RunPSScriptAnalyzer {
             &["dotfiles.ps1"],
             &["symlinks", "hooks"],
             discover_powershell_scripts,
-        );
+        )?;
         run_linter(
             ctx,
             "pwsh",

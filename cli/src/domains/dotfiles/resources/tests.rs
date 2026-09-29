@@ -67,6 +67,48 @@ fn correct_when_export_line_in_profile() {
 }
 
 #[test]
+fn inactive_profile_mentions_do_not_satisfy_path_state() {
+    for existing in [
+        "# export PATH=\"$HOME/.local/bin:$PATH\"\n",
+        "# Example: export PATH=\"$HOME/.local/bin:$PATH\"\n",
+        "printf '%s\\n' 'export PATH=\"$HOME/.local/bin:$PATH\"'\n",
+    ] {
+        let dir = TempDir::new_in(".").unwrap();
+        let profile = dir.path().join(".profile");
+        std::fs::write(&profile, existing).unwrap();
+        let resource = make_path_entry(dir.path(), false);
+
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Missing,
+            "inactive text must not count as the managed export: {existing:?}"
+        );
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        let installed = std::fs::read_to_string(&profile).unwrap();
+        assert!(
+            installed.starts_with(existing),
+            "preserve existing profile text"
+        );
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(std::fs::read_to_string(&profile).unwrap(), installed);
+    }
+}
+
+#[test]
+fn whitespace_around_managed_profile_line_preserves_idempotence() {
+    let dir = TempDir::new_in(".").unwrap();
+    let profile = dir.path().join(".profile");
+    let content = "# user profile\r\n \texport PATH=\"$HOME/.local/bin:$PATH\" \t\r\n";
+    std::fs::write(&profile, content).unwrap();
+    let resource = make_path_entry(dir.path(), false);
+
+    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+    assert_eq!(std::fs::read_to_string(&profile).unwrap(), content);
+}
+
+#[test]
 fn apply_appends_to_profile() {
     let tmp = TempDir::new().unwrap();
     let profile = tmp.path().join(".profile");

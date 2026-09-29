@@ -242,12 +242,13 @@ pub(super) fn remove_single<R: RemovableResource>(
         }
         RemoveOperation::Skip { reason } => {
             // Cannot determine if this resource is ours — skip removal rather
-            // than risking removing something we did not install.
+            // than risking removing something we did not install. Unlike a
+            // known unmanaged target, this leaves removal unverified.
             ctx.log().warn(format!(
                 "skipping removal of {}: {reason}",
                 plan.description()
             ));
-            delta.record(ItemOutcome::Skipped);
+            delta.record(ItemOutcome::Failed);
         }
         RemoveOperation::Noop => {
             // Not ours or doesn't exist — skip silently

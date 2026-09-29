@@ -8,7 +8,7 @@ use anyhow::Result;
 use super::package::*;
 use super::winget::parse_winget_ids;
 use crate::engine::{Resource, ResourceChange, ResourceState};
-use crate::infra::exec::{ExecError, ExecResult, Executor, MockExecutor};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor, MockExecutor};
 
 #[cfg(unix)]
 fn running_as_root() -> bool {
@@ -401,6 +401,116 @@ fn batch_install_propagates_pacman_error() {
         Arc::clone(&executor),
     );
     assert!(install_missing_packages(PackageManager::Pacman, &[&r1], &*executor, &|_| {}).is_err());
+}
+
+#[test]
+fn failed_native_batch_reports_packages_that_were_actually_installed() {
+    for manager in [PackageManager::Pacman, PackageManager::Paru] {
+        for installed in ["", "first 1.0\n", "first 1.0\nsecond 2.0\n"] {
+            let mut mock = MockExecutor::new();
+            if manager == PackageManager::Pacman {
+                expect_sudo_lookup_if_needed(&mut mock);
+            }
+            let mut sequence = mockall::Sequence::new();
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(CommandSpec::is_checked)
+                .returning(|_| {
+                    Err(ExecError::non_zero(
+                        "fixture batch install",
+                        ExecResult::failure("", "fixture transaction failure", Some(1)),
+                    ))
+                });
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(|spec| {
+                    spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+                })
+                .returning(move |_| Ok(ExecResult::success(installed)));
+            let executor: Arc<dyn Executor> = Arc::new(mock);
+            let first = PackageResource::new("first".into(), manager, Arc::clone(&executor));
+            let second = PackageResource::new("second".into(), manager, Arc::clone(&executor));
+
+            let result = install_missing_packages(manager, &[&first, &second], &*executor, &|_| {});
+
+            if installed.contains("second") {
+                let error = result.expect_err("a failed post-transaction hook must stay failed");
+                assert!(error.to_string().contains("fixture transaction failure"));
+            } else {
+                let report = result.unwrap();
+                let expected_applied = usize::from(!installed.is_empty());
+                assert_eq!(report.applied_count(), expected_applied, "{manager}");
+                assert_eq!(report.failures().len(), 2 - expected_applied, "{manager}");
+                assert!(
+                    report.failures().iter().all(|failure| {
+                        failure.reason.contains("fixture transaction failure")
+                            && (expected_applied == 0 || failure.package == "second")
+                    }),
+                    "{report:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn failed_batch_inventory_errors_remain_errors_not_partial_success() {
+    for cancelled in [false, true] {
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(CommandSpec::is_checked)
+            .returning(|_| {
+                Err(ExecError::non_zero(
+                    "fixture batch",
+                    ExecResult::failure("", "fixture batch failure", Some(1)),
+                ))
+            });
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(|spec| {
+                spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+            })
+            .returning(move |_| {
+                let result = ExecResult::failure("first 1.0\n", "fixture query failure", Some(1));
+                if cancelled {
+                    Err(ExecError::Cancelled {
+                        command: "pacman -Q".into(),
+                        result,
+                    })
+                } else {
+                    Ok(result)
+                }
+            });
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let first =
+            PackageResource::new("first".into(), PackageManager::Paru, Arc::clone(&executor));
+        let second =
+            PackageResource::new("second".into(), PackageManager::Paru, Arc::clone(&executor));
+
+        let error = install_missing_packages(
+            PackageManager::Paru,
+            &[&first, &second],
+            &*executor,
+            &|_| {},
+        )
+        .unwrap_err();
+
+        let message = format!("{error:#}");
+        assert!(message.contains("fixture batch failure"), "{message}");
+        assert!(message.contains("fixture query failure"), "{message}");
+        assert_eq!(
+            error
+                .downcast_ref::<ExecError>()
+                .is_some_and(ExecError::is_cancelled),
+            cancelled,
+        );
+    }
 }
 
 #[test]

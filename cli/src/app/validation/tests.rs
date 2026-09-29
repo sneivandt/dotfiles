@@ -130,7 +130,7 @@ fn detects_sh_extension() {
     std::fs::write(&script, "echo hello").expect("write should succeed");
 
     let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
+    discover_shell_scripts(dir.path(), &mut found).unwrap();
     assert_eq!(found.len(), 1);
     assert_eq!(found.first().expect("found 0 should exist"), &script);
 }
@@ -142,7 +142,7 @@ fn ignores_non_shell_files() {
     std::fs::write(dir.path().join("data.json"), "{}").expect("write should succeed");
 
     let mut found = Vec::new();
-    discover_shell_scripts(dir.path(), &mut found);
+    discover_shell_scripts(dir.path(), &mut found).unwrap();
     assert!(found.is_empty());
 }
 
@@ -158,7 +158,7 @@ fn discovers_ps1_files() {
     std::fs::write(dir.path().join("readme.md"), "# Hello").expect("write should succeed");
 
     let mut found = Vec::new();
-    discover_powershell_scripts(dir.path(), &mut found);
+    discover_powershell_scripts(dir.path(), &mut found).unwrap();
     found.sort();
     let mut expected = vec![script_path, module_path, manifest_path];
     expected.sort();
@@ -247,7 +247,7 @@ fn discovers_powershell_shebang_without_extension() {
     std::fs::write(&script, "#!/usr/bin/env pwsh\nWrite-Host 'hi'").expect("write should succeed");
 
     let mut found = Vec::new();
-    discover_powershell_scripts(dir.path(), &mut found);
+    discover_powershell_scripts(dir.path(), &mut found).unwrap();
     assert_eq!(found, vec![script]);
 }
 
@@ -330,7 +330,7 @@ fn shell_discovery_checks_each_interpreter_and_extension_override() {
         let script = dir.path().join(name);
         std::fs::write(&script, contents).unwrap();
         let mut found = Vec::new();
-        discover_shell_scripts(dir.path(), &mut found);
+        discover_shell_scripts(dir.path(), &mut found).unwrap();
         assert_eq!(
             found,
             if accepted { vec![script] } else { vec![] },
@@ -352,9 +352,10 @@ fn discover_files_with_custom_predicate() {
     let mut found = Vec::new();
     discover_files(
         dir.path(),
-        |p| p.extension().is_some_and(|e| e == "txt"),
+        |p| Ok(p.extension().is_some_and(|e| e == "txt")),
         &mut found,
-    );
+    )
+    .unwrap();
     found.sort();
     let mut expected = vec![
         dir.path().join("a.txt"),
@@ -382,7 +383,8 @@ fn linter_inputs_include_root_files_then_discovered_scripts() {
         &["dotfiles.sh"],
         &["hooks", "missing-dir"],
         discover_shell_scripts,
-    );
+    )
+    .unwrap();
 
     assert_eq!(
         found,
@@ -392,6 +394,62 @@ fn linter_inputs_include_root_files_then_discovered_scripts() {
         ],
         "root files come first, then scripts from each existing directory"
     );
+}
+
+#[test]
+fn linters_reject_invalid_discovery_directories_before_running() {
+    let cases: [(&dyn Task, &str); 2] = [
+        (&RunShellcheck, "shellcheck"),
+        (&RunPSScriptAnalyzer, "pwsh"),
+    ];
+    for (task, executable) in cases {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        std::fs::write(dir.path().join("hooks"), "not a directory").unwrap();
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_which()
+            .with(mockall::predicate::eq(executable))
+            .once()
+            .return_const(true);
+        executor.expect_execute().never();
+        let ctx = make_context(
+            empty_config(dir.path().to_path_buf()),
+            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
+            std::sync::Arc::new(executor),
+        );
+
+        let error = task.run(&ctx).expect_err("failed discovery must not pass");
+        assert!(error.to_string().contains("hooks"), "{error:#}");
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+    }
+}
+
+#[test]
+fn linters_accept_missing_optional_input_directories_without_execution() {
+    let cases: [(&dyn Task, &str); 2] = [
+        (&RunShellcheck, "shellcheck"),
+        (&RunPSScriptAnalyzer, "pwsh"),
+    ];
+    for (task, executable) in cases {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_which()
+            .with(mockall::predicate::eq(executable))
+            .once()
+            .return_const(true);
+        executor.expect_execute().never();
+        let ctx = make_context(
+            empty_config(dir.path().to_path_buf()),
+            crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
+            std::sync::Arc::new(executor),
+        );
+
+        assert!(matches!(
+            task.run(&ctx).unwrap(),
+            crate::engine::TaskResult::CheckPassed
+        ));
+    }
 }
 
 #[test]

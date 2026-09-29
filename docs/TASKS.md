@@ -91,8 +91,9 @@ install task is reversed by uninstall.
 
 Enables Developer Mode when the Windows policy value is unset. This
 machine-level registry mutation needs Administrator rights. **Home symlinks**
-has a blocking dependency on it; normal runs remain unelevated and delegate
-only tasks needing elevation.
+waits for it with an ordering-only dependency, so unavailable Developer Mode
+does not block already-correct links or unprivileged directory junctions.
+Normal runs remain unelevated and delegate only tasks needing elevation.
 
 Pending file links can themselves require elevation when Developer Mode is off.
 Directory links can fall back to junctions. Unavailable elevation skips
@@ -115,6 +116,8 @@ and moving the checkout can invalidate the saved path.
 Requires **Dotfiles launcher**. On Linux, persists an export in `~/.profile`
 when needed. On Windows, updates the user PATH while preserving registry value
 type and expandable tokens. Start a new shell before relying on the change.
+Comments and example text do not satisfy Linux PATH persistence; detection
+requires the standalone managed export line.
 Uninstall leaves the PATH addition in place.
 
 ### Repository and source tasks
@@ -173,6 +176,8 @@ belongs to the separate [dynamic tasks](#dynamic-overlay-tasks).
 Converges active declared values in **global** Git configuration, not just the
 checkout's `.git/config`. Empty configuration produces no work. Profile and
 overlay selection persistence, by contrast, uses local Git configuration.
+Setting or removing a managed key handles repeated occurrences without
+affecting unrelated settings.
 
 #### Agent settings
 
@@ -199,7 +204,8 @@ See [System files](CONFIGURATION.md#system-files) before changing fragments.
 Installs missing non-AUR entries through pacman on Linux or winget on Windows.
 The Linux configuration is intended for Arch; there is no apt/dnf adapter.
 Missing pacman/winget is unmet work. Installed-state query failures are errors,
-not an empty package inventory.
+not an empty package inventory. A failed batch transaction rechecks installed
+state to report partial progress without treating the transaction as successful.
 
 **On Arch, installing missing packages invokes
 `pacman -Syu --needed --noconfirm`.** This can update the wider system as well
@@ -216,7 +222,8 @@ are reported as unmet/skipped work. See [Windows packages](WINDOWS.md#packages).
 
 On Arch, ensures the target system has both a registered `paru` package and a
 working `/usr/bin/paru --version`. It can rebuild an installed helper after a
-library upgrade makes it unusable.
+library upgrade makes it unusable. Failed package queries and interrupted
+health probes fail the task rather than triggering a speculative rebuild.
 
 The task waits for system packages using an ordering-only edge. Before cloning
 or building AUR source it requires `git`, `makepkg`, `sudo`, and a working
@@ -245,8 +252,9 @@ does not ask for confirmation. Nonempty directories fail rather than being
 recursively deleted. Back up or relocate unrelated targets before applying.
 
 Links keep the checkout live: applications can see tracked source edits
-immediately. On Windows, the task depends on Developer Mode and rejects Git
-symlink placeholders checked out as ordinary files.
+immediately. On Windows, the task waits for Developer Mode but independently
+assesses its own elevation needs, and rejects Git symlink placeholders checked
+out as ordinary files.
 See [Symlinks](CONFIGURATION.md#symlinks) for target and glob rules.
 
 #### File permissions
@@ -265,6 +273,8 @@ packages, then reports missing zsh as unmet work.
 
 State comes from the account database, not `$SHELL`. Apply uses `usermod` as
 root, `sudo -n usermod` when cached/passwordless sudo works, otherwise `chsh`.
+An account path with the right shell name still needs repair if that executable
+is missing or unusable.
 This does not replace the shell process already running in your terminal.
 
 #### Systemd units

@@ -20,6 +20,7 @@ pub struct ChmodResource {
     pub(super) mode: Result<OctalMode, String>,
     home: Option<PathBuf>,
     validation_error: Option<String>,
+    excluded_targets: Vec<PathBuf>,
 }
 
 impl ChmodResource {
@@ -32,6 +33,7 @@ impl ChmodResource {
             mode: Ok(mode),
             home: None,
             validation_error: None,
+            excluded_targets: Vec::new(),
         }
     }
 
@@ -41,14 +43,31 @@ impl ChmodResource {
         entry: &crate::domains::files::config::chmod::ChmodEntry,
         home: &std::path::Path,
     ) -> Self {
-        let relative_path = entry.path.strip_prefix('.').unwrap_or(&entry.path);
+        let normalized = std::path::Path::new(&entry.path)
+            .components()
+            .filter(|component| !matches!(component, std::path::Component::CurDir))
+            .collect::<PathBuf>();
+        let normalized = normalized.to_string_lossy();
+        let relative_path = normalized.strip_prefix('.').unwrap_or(&normalized);
         let target = home.join(format!(".{relative_path}"));
         Self {
             target,
             mode: entry.parsed_mode().clone(),
             home: Some(home.to_path_buf()),
             validation_error: validate_path(&entry.path).err(),
+            excluded_targets: Vec::new(),
         }
+    }
+
+    /// Leave explicitly configured descendants to their own permission resources.
+    #[must_use]
+    pub fn excluding(mut self, targets: &[PathBuf]) -> Self {
+        self.excluded_targets = targets
+            .iter()
+            .filter(|target| **target != self.target && target.starts_with(&self.target))
+            .cloned()
+            .collect();
+        self
     }
 
     fn invalid_path_reason(&self) -> ResourceResult<Option<String>> {
@@ -101,6 +120,7 @@ impl Resource for ChmodResource {
                     &self.target,
                     ensure_dir_execute_bits(mode),
                     strip_file_execute_bits(mode),
+                    &self.excluded_targets,
                 )?;
             } else {
                 set_permissions(&self.target, mode)?;
@@ -142,7 +162,7 @@ impl IntrinsicState for ChmodResource {
                 .map_err(|reason| anyhow::anyhow!("{reason}"))?;
             let desired_mode = mode.as_u32();
             if self.target.is_dir() {
-                check_dir_recursive(&self.target, desired_mode)
+                check_dir_recursive(&self.target, desired_mode, &self.excluded_targets)
             } else {
                 let current_mode =
                     std::fs::metadata(&self.target)?.permissions().mode() & MODE_BITS_MASK;
@@ -170,7 +190,11 @@ impl IntrinsicState for ChmodResource {
 /// files are compared with execute bits stripped (via [`strip_file_execute_bits`]),
 /// matching the logic in [`apply_recursive`].
 #[cfg(unix)]
-fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> ResourceResult<ResourceState> {
+fn check_dir_recursive(
+    path: &std::path::Path,
+    base_mode: u32,
+    excluded_targets: &[PathBuf],
+) -> ResourceResult<ResourceState> {
     use std::os::unix::fs::PermissionsExt;
 
     let dir_mode = ensure_dir_execute_bits(base_mode);
@@ -190,13 +214,13 @@ fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> ResourceResult
         let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
         let entry_path = entry.path();
 
-        if entry_path.is_symlink() {
+        if excluded_targets.contains(&entry_path) || entry_path.is_symlink() {
             continue;
         }
 
         if entry_path.is_dir() {
             if let recursive_state @ ResourceState::Incorrect { .. } =
-                check_dir_recursive(&entry_path, base_mode)?
+                check_dir_recursive(&entry_path, base_mode, excluded_targets)?
             {
                 return Ok(recursive_state);
             }
@@ -214,7 +238,12 @@ fn check_dir_recursive(path: &std::path::Path, base_mode: u32) -> ResourceResult
 }
 
 #[cfg(unix)]
-fn apply_recursive(path: &std::path::Path, dir_mode: u32, file_mode: u32) -> ResourceResult<()> {
+fn apply_recursive(
+    path: &std::path::Path,
+    dir_mode: u32,
+    file_mode: u32,
+    excluded_targets: &[PathBuf],
+) -> ResourceResult<()> {
     let effective_mode = if path.is_dir() { dir_mode } else { file_mode };
     set_permissions(path, effective_mode)?;
 
@@ -224,11 +253,11 @@ fn apply_recursive(path: &std::path::Path, dir_mode: u32, file_mode: u32) -> Res
         {
             let entry = entry.with_context(|| format!("reading entry in {}", path.display()))?;
             let entry_path = entry.path();
-            if entry_path.is_symlink() {
+            if excluded_targets.contains(&entry_path) || entry_path.is_symlink() {
                 continue;
             }
             if entry_path.is_dir() {
-                apply_recursive(&entry_path, dir_mode, file_mode)?;
+                apply_recursive(&entry_path, dir_mode, file_mode, excluded_targets)?;
             } else {
                 set_permissions(&entry_path, file_mode)?;
             }

@@ -158,8 +158,18 @@ pub(crate) fn build_elevated_child_script(exe: &str, args: &[String]) -> String 
 
     format!(
         "$ErrorActionPreference = 'Stop'\n\
-         try {{ $p = {start} }} catch {{ exit {ELEVATION_DECLINED_EXIT_CODE} }}\n\
-         if ($null -eq $p) {{ exit {ELEVATION_DECLINED_EXIT_CODE} }}\n\
+         try {{ $p = {start} }} catch {{\n\
+             $exception = $_.Exception\n\
+             while ($null -ne $exception) {{\n\
+                 if ($exception -is [System.ComponentModel.Win32Exception] -and \
+                     $exception.NativeErrorCode -eq {ELEVATION_DECLINED_EXIT_CODE}) {{\n\
+                     exit {ELEVATION_DECLINED_EXIT_CODE}\n\
+                 }}\n\
+                 $exception = $exception.InnerException\n\
+             }}\n\
+             throw\n\
+         }}\n\
+         if ($null -eq $p) {{ throw 'Elevated process did not return a process handle' }}\n\
          exit $p.ExitCode\n"
     )
 }
@@ -443,13 +453,84 @@ mod escaping_tests {
     fn elevated_child_script_maps_a_declined_prompt_to_a_distinct_code() {
         let script = build_elevated_child_script("dotfiles.exe", &[]);
 
-        assert_eq!(
-            script
-                .matches(&ELEVATION_DECLINED_EXIT_CODE.to_string())
-                .count(),
-            2,
-            "both the catch block and the null guard must report a decline: {script}"
+        assert!(
+            script.contains(&format!(
+                "$exception.NativeErrorCode -eq {ELEVATION_DECLINED_EXIT_CODE}"
+            )),
+            "only an explicit Windows cancellation must count as declined: {script}"
         );
+    }
+
+    #[test]
+    #[allow(
+        clippy::print_stderr,
+        reason = "make optional runtime coverage gaps visible to the test harness"
+    )]
+    fn elevated_child_script_distinguishes_decline_from_start_failure() {
+        use crate::infra::exec::{CommandSpec, Executor as _, ProcessExecutor};
+
+        let executor = ProcessExecutor::system();
+        let powershell = if executor.which("pwsh") {
+            "pwsh"
+        } else if cfg!(windows) {
+            "powershell"
+        } else {
+            eprintln!("SKIP: PowerShell is unavailable for elevation-script fixtures");
+            return;
+        };
+        for (name, behavior, expected) in [
+            ("success", "[pscustomobject]@{ ExitCode = 0 }", 0),
+            ("child failure", "[pscustomobject]@{ ExitCode = 7 }", 7),
+            (
+                "declined",
+                "throw [System.ComponentModel.Win32Exception]::new(1223)",
+                ELEVATION_DECLINED_EXIT_CODE,
+            ),
+            (
+                "wrapped decline",
+                "throw [System.InvalidOperationException]::new('wrapped', \
+                 [System.ComponentModel.Win32Exception]::new(1223))",
+                ELEVATION_DECLINED_EXIT_CODE,
+            ),
+            (
+                "missing executable",
+                "throw [System.ComponentModel.Win32Exception]::new(2)",
+                1,
+            ),
+            (
+                "other launch failure",
+                "throw [System.InvalidOperationException]::new('launch failed')",
+                1,
+            ),
+            ("missing process handle", "$null", 1),
+        ] {
+            let script = format!(
+                "function Start-Process {{ {behavior} }}\n{}",
+                build_elevated_child_script("unused-fixture-executable", &[])
+            );
+            let result = executor
+                .execute(
+                    CommandSpec::new(powershell)
+                        .args(&[
+                            "-NoProfile",
+                            "-NonInteractive",
+                            "-EncodedCommand",
+                            &powershell_encode_command(&script),
+                        ])
+                        .redact_arguments()
+                        .timeout(std::time::Duration::from_secs(60))
+                        .unchecked(),
+                )
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+            let expected = if cfg!(unix) { expected % 256 } else { expected };
+            assert_eq!(result.code, Some(expected), "{name}: {result:?}");
+            if expected == 1 {
+                assert!(
+                    !result.stderr.is_empty(),
+                    "{name}: the real launch error must remain available"
+                );
+            }
+        }
     }
 
     #[test]

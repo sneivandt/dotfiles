@@ -232,6 +232,8 @@ lookup when one system query can serve many resources. The
   retains failure accounting. Mode and parallelism are independent decisions.
 - Removal is a separate `RemovableResource` capability. The default removal
   plan acts only on matching managed state, not arbitrary mismatched user data.
+  Unknown ownership prevents removal and records a failure, rather than
+  reporting that the requested removal completed.
 
 Stopped batches carry a typed [`BatchReport`](../cli/src/engine/batch.rs):
 completed statistics, interrupted work and unattempted items. Parallel execution

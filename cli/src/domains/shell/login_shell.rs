@@ -93,6 +93,11 @@ mod tests {
                 true
             });
         executor
+            .expect_which()
+            .once()
+            .withf(|program| program == "/usr/bin/zsh")
+            .return_const(true);
+        executor
             .expect_execute()
             .once()
             .withf(|spec| {

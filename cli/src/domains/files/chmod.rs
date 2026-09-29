@@ -35,11 +35,20 @@ impl Task for ApplyFilePermissions {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let entries = self.config.read().to_vec();
+        let resources: Vec<_> = self
+            .config
+            .read()
+            .iter()
+            .map(|entry| ChmodResource::from_entry(entry, ctx.home()))
+            .collect();
+        let targets: Vec<_> = resources
+            .iter()
+            .map(|resource| resource.target.clone())
+            .collect();
         run_resource_task(
             ctx,
-            entries,
-            |entry, ctx| ChmodResource::from_entry(&entry, ctx.home()),
+            resources,
+            |resource, _| resource.excluding(&targets),
             &ProcessOpts::fix_existing("configure"),
         )
     }
@@ -77,5 +86,88 @@ mod tests {
             "ssh/config",
         )]));
         assert!(task.should_run(&ctx));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_child_permissions_override_recursive_modes_and_converge() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for parallel in [false, true] {
+            for child_first in [true, false] {
+                let fixture = tempfile::tempdir_in(".").unwrap();
+                let home = fixture.path().join("home");
+                let directory = home.join(".tools");
+                let executable = directory.join("run");
+                let ordinary = directory.join("data");
+                let private = directory.join("private");
+                let private_data = private.join("data");
+                std::fs::create_dir_all(&private).unwrap();
+                std::fs::write(&executable, "fixture").unwrap();
+                std::fs::write(&ordinary, "data").unwrap();
+                std::fs::write(&private_data, "private data").unwrap();
+                std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+                    .unwrap();
+                std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o755)).unwrap();
+                std::fs::set_permissions(&private_data, std::fs::Permissions::from_mode(0o644))
+                    .unwrap();
+                for path in [&executable, &ordinary] {
+                    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+                }
+                let mut entries = vec![
+                    ChmodEntry::new("755", "tools/run"),
+                    ChmodEntry::new("700", "tools/private"),
+                    ChmodEntry::new("755", "tools"),
+                ];
+                if !child_first {
+                    entries.reverse();
+                }
+                let task = ApplyFilePermissions::new(ConfigHandle::new(entries));
+                let ctx = make_linux_context(empty_config(fixture.path().to_path_buf()))
+                    .with_home(home)
+                    .with_parallel(parallel);
+                let preview = task.run(&ctx.clone().with_dry_run(true)).unwrap();
+                assert_eq!(crate::test_helpers::task_batch(&preview).changed_count(), 3);
+                assert_eq!(
+                    executable.metadata().unwrap().permissions().mode() & 0o777,
+                    0o600
+                );
+                assert_eq!(
+                    directory.metadata().unwrap().permissions().mode() & 0o777,
+                    0o700
+                );
+                assert_eq!(
+                    private.metadata().unwrap().permissions().mode() & 0o777,
+                    0o755
+                );
+
+                crate::test_helpers::assert_task_changed(&task.run(&ctx).unwrap());
+                assert_eq!(
+                    executable.metadata().unwrap().permissions().mode() & 0o777,
+                    0o755,
+                    "explicit child mode must win; parallel={parallel}, child_first={child_first}"
+                );
+                assert_eq!(
+                    ordinary.metadata().unwrap().permissions().mode() & 0o777,
+                    0o644
+                );
+                assert_eq!(
+                    private.metadata().unwrap().permissions().mode() & 0o777,
+                    0o700
+                );
+                assert_eq!(
+                    private_data.metadata().unwrap().permissions().mode() & 0o777,
+                    0o600
+                );
+                let repeated = task.run(&ctx).unwrap();
+                let stats = crate::test_helpers::task_batch(&repeated);
+                assert_eq!(
+                    stats.changed_count(),
+                    0,
+                    "repeated run must not flip child modes"
+                );
+                assert_eq!(stats.already_ok_count(), 3);
+            }
+        }
     }
 }

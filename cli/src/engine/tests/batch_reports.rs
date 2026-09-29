@@ -19,6 +19,7 @@ enum Behavior {
     CancelAfterApply,
     Current,
     ProbeFail,
+    Unknown,
 }
 
 struct ProbeResource {
@@ -52,7 +53,7 @@ impl Resource for ProbeResource {
                 self.ctx.cancellation_token().cancel();
                 Ok(ResourceChange::Applied)
             }
-            Behavior::Apply | Behavior::Current | Behavior::ProbeFail => {
+            Behavior::Apply | Behavior::Current | Behavior::ProbeFail | Behavior::Unknown => {
                 Ok(ResourceChange::Applied)
             }
         }
@@ -64,6 +65,9 @@ impl IntrinsicState for ProbeResource {
         match self.behavior {
             Behavior::Current => Ok(ResourceState::Correct),
             Behavior::ProbeFail => Err(std::io::Error::other("probe failed").into()),
+            Behavior::Unknown => Ok(ResourceState::Unknown {
+                reason: "ownership probe failed".into(),
+            }),
             Behavior::Apply | Behavior::Fail | Behavior::Interrupt | Behavior::CancelAfterApply => {
                 Ok(ResourceState::Missing)
             }
@@ -224,6 +228,30 @@ fn a_fully_processed_batch_is_not_relabelled_by_late_cancellation() {
     assert_eq!(crate::engine::execute(&task, &ctx), TaskStatus::Changed);
     assert!(ctx.is_cancelled());
     assert_eq!(log.task_entries().last().unwrap().actions.applied, 1);
+}
+
+#[test]
+fn unknown_removal_state_fails_without_mutating_in_both_execution_modes() {
+    for parallel in [false, true] {
+        for dry_run in [false, true] {
+            let (ctx, log) = test_context(empty_config("/fixture".into()));
+            let ctx = ctx.with_parallel(parallel).with_dry_run(dry_run);
+            let mut task = BatchTask::new(&[Behavior::Unknown, Behavior::Current]);
+            task.remove = true;
+
+            assert_eq!(crate::engine::execute(&task, &ctx), TaskStatus::Failed);
+            let entry = log.task_entries().pop().unwrap();
+            assert_eq!(entry.actions.failed, 1);
+            assert_eq!(entry.actions.skipped, 0);
+            assert_eq!(entry.actions.applied, u32::from(!dry_run));
+            assert_eq!(entry.actions.planned, u32::from(dry_run));
+            assert_eq!(
+                *task.calls.lock().unwrap(),
+                if dry_run { vec![] } else { vec![1] },
+                "unknown ownership must never authorize removal"
+            );
+        }
+    }
 }
 
 #[test]

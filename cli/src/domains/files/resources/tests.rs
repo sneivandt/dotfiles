@@ -132,12 +132,59 @@ mod chmod {
     #[test]
     fn from_entry_normalizes_leading_dot_path() {
         let home = std::path::Path::new("/home/user");
-        for path in ["ssh/config", ".ssh/config"] {
+        for path in [
+            "ssh/config",
+            ".ssh/config",
+            "./ssh/config",
+            "./.ssh/config",
+            "././ssh/./config",
+        ] {
             let entry = crate::domains::files::config::chmod::ChmodEntry::new("600", path);
             let resource = ChmodResource::from_entry(&entry, home);
             assert_eq!(resource.mode.as_ref().unwrap(), &mode("600"), "{path}");
             assert_eq!(resource.target, home.join(".ssh/config"), "{path}");
         }
+        #[cfg(windows)]
+        for path in [r".\ssh\config", r".\.ssh\config", r".\.\ssh\.\config"] {
+            let entry = crate::domains::files::config::chmod::ChmodEntry::new("600", path);
+            let resource = ChmodResource::from_entry(&entry, home);
+            assert_eq!(resource.target, home.join(".ssh/config"), "{path}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chmod_dot_relative_entry_changes_only_the_managed_target() {
+        use crate::domains::files::config::chmod::ChmodEntry;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path();
+        for directory in [".ssh", "ssh"] {
+            std::fs::create_dir(home.join(directory)).unwrap();
+            let path = home.join(directory).join("config");
+            std::fs::write(&path, "fixture").unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        let resource = ChmodResource::from_entry(&ChmodEntry::new("600", "./ssh/config"), home);
+
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        for (relative, expected) in [(".ssh/config", 0o600), ("ssh/config", 0o644)] {
+            assert_eq!(
+                std::fs::metadata(home.join(relative))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & MODE_BITS_MASK,
+                expected,
+                "{relative}"
+            );
+        }
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
     }
 
     #[test]

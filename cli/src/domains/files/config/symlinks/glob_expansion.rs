@@ -138,11 +138,12 @@ fn expand_segments(
             .collect());
     };
 
+    let current = base.join(relative);
+    if !is_real_dir(&current) {
+        return Ok(Vec::new());
+    }
+
     if segment == "*" {
-        let current = base.join(relative);
-        if !is_real_dir(&current) {
-            return Ok(Vec::new());
-        }
         let mut entries: Vec<_> = std::fs::read_dir(&current)
             .with_context(|| format!("reading directory {}", current.display()))?
             .collect::<std::io::Result<Vec<_>>>()
@@ -151,7 +152,16 @@ fn expand_segments(
 
         let mut matches = Vec::new();
         for entry in entries {
-            let capture = entry.file_name().to_string_lossy().into_owned();
+            #[allow(
+                clippy::unnecessary_debug_formatting,
+                reason = "escape non-UTF-8 bytes so distinct filenames remain distinguishable"
+            )]
+            let capture = entry.file_name().into_string().map_err(|name| {
+                anyhow::anyhow!(
+                    "source glob entry name is not valid UTF-8: {:?}",
+                    current.join(name)
+                )
+            })?;
             let mut next_captures = captures.to_vec();
             next_captures.push(capture.clone());
             matches.extend(expand_segments(
@@ -176,4 +186,78 @@ fn path_to_config_string(path: &Path) -> String {
         .map(|component| component.as_os_str().to_string_lossy())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glob_does_not_descend_through_symlinks_before_literal_segments() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let apps = root.join("symlinks/apps");
+        let outside = root.join("outside");
+        for directory in [apps.join("managed/nested"), outside.join("nested")] {
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(directory.join("file"), "fixture").unwrap();
+        }
+        std::os::unix::fs::symlink(&outside, apps.join("escaped")).unwrap();
+        for pattern in ["apps/*/nested/file", "apps/*/nested/*"] {
+            let entry = Symlink {
+                source: pattern.into(),
+                target: None,
+                origin: None,
+            };
+            let expanded = expand_glob_patterns(&[entry], &root).unwrap();
+            assert_eq!(expanded.len(), 1, "{pattern}: {expanded:?}");
+            assert_eq!(expanded[0].source, "apps/managed/nested/file");
+        }
+
+        let entry = Symlink {
+            source: "apps/escaped/nested/*".into(),
+            target: None,
+            origin: None,
+        };
+        let error = expand_glob_patterns(&[entry], &root).unwrap_err();
+        assert!(error.to_string().contains("matched no entries"), "{error}");
+    }
+
+    #[test]
+    fn glob_still_includes_terminal_symlinks() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let apps = root.join("symlinks/apps");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(root.join("symlinks/file"), "fixture").unwrap();
+        std::os::unix::fs::symlink("../file", apps.join("alias")).unwrap();
+        let entry = Symlink {
+            source: "apps/*".into(),
+            target: None,
+            origin: None,
+        };
+
+        let expanded = expand_glob_patterns(&[entry], &root).unwrap();
+        assert_eq!(expanded.len(), 1);
+        assert_eq!(expanded[0].source, "apps/alias");
+    }
+
+    #[test]
+    fn glob_rejects_non_utf8_captures_instead_of_aliasing_another_entry() {
+        use std::os::unix::ffi::OsStrExt as _;
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let apps = fixture.path().join("symlinks/apps");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(apps.join(std::ffi::OsStr::from_bytes(b"\xff")), "invalid").unwrap();
+        std::fs::write(apps.join("\u{fffd}"), "valid Unicode").unwrap();
+        let entry = Symlink {
+            source: "apps/*".into(),
+            target: Some(".apps/*".into()),
+            origin: None,
+        };
+
+        let error = expand_glob_patterns(&[entry], fixture.path()).unwrap_err();
+        assert!(format!("{error:#}").contains("UTF-8"), "{error:#}");
+    }
 }

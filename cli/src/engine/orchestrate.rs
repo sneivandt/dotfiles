@@ -117,6 +117,8 @@ pub fn process_resources<R: IntrinsicState + Send>(
 ///
 /// Only resources in [`ResourceState::Correct`] are removed (they are "ours").
 /// Resources that are `Missing`, `Incorrect`, or `Invalid` are skipped.
+/// `Unknown` resources are not removed and count as failures because ownership
+/// could not be verified.
 ///
 /// When `ctx.parallel` is `true` and there is more than one resource, removal
 /// runs in parallel using Rayon (matching the behaviour of [`process_resources`]

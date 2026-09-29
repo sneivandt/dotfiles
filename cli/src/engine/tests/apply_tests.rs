@@ -419,7 +419,7 @@ fn remove_single_classifies_resource_states() {
             ResourceState::Unknown {
                 reason: "detection failed".to_string(),
             },
-            (0, 0, 1, 0),
+            (0, 0, 0, 1),
         ),
     ];
 

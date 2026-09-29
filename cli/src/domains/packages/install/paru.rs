@@ -1,8 +1,9 @@
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
+use crate::domains::packages::resources::package::{PackageManager, get_installed_packages};
 use crate::engine::Context;
-use crate::infra::exec::{CommandSpec, Executor};
+use crate::infra::exec::{CommandSpec, ExecError, Executor};
 use crate::infra::logging::OutputExt as _;
 
 use super::super::{PARU_EXECUTABLE, PARU_PACKAGE};
@@ -52,27 +53,30 @@ fn missing_or_stale(executor: &dyn Executor, reason: String) -> ParuHealth {
 /// `/usr/bin/paru` here both refer to the target system. The explicit path also
 /// makes validation independent of the caller's PATH and is reused by later AUR
 /// package operations.
-pub(super) fn check_paru_health(executor: &dyn Executor) -> ParuHealth {
-    let package_result = match executor.execute(
-        CommandSpec::new("pacman")
-            .args(&["-Q", PARU_PACKAGE])
-            .unchecked(),
-    ) {
-        Ok(result) => result,
-        Err(error) => {
-            return missing_or_stale(
-                executor,
-                format!("could not query target package {PARU_PACKAGE}: {error}"),
-            );
-        }
-    };
+///
+/// Query failures and interrupted probes are errors, not rebuild plans.
+pub(super) fn check_paru_health(executor: &dyn Executor) -> Result<ParuHealth> {
+    let package_result = executor
+        .execute(
+            CommandSpec::new("pacman")
+                .args(&["-Q", PARU_PACKAGE])
+                .unchecked(),
+        )
+        .context("querying target paru package")?;
     if !package_result.success {
+        // A targeted query uses the same failure status for absence and database
+        // errors. Only a successful inventory can establish that paru is missing.
+        let installed = get_installed_packages(PackageManager::Pacman, executor)
+            .context("verifying whether the target paru package is missing")?;
+        if installed.contains(PARU_PACKAGE) {
+            return Err(ExecError::non_zero("pacman -Q paru", package_result).into());
+        }
         let detail =
             first_output_line(&package_result).unwrap_or("package query returned no output");
-        return missing_or_stale(
+        return Ok(missing_or_stale(
             executor,
             format!("target package {PARU_PACKAGE} is not installed: {detail}"),
-        );
+        ));
     }
     let package = first_output_line(&package_result)
         .map_or_else(|| PARU_PACKAGE.to_string(), ToString::to_string);
@@ -82,16 +86,27 @@ pub(super) fn check_paru_health(executor: &dyn Executor) -> ParuHealth {
         Ok(result) => {
             let version = first_output_line(&result)
                 .map_or_else(|| "version check passed".to_string(), ToString::to_string);
-            ParuHealth::Healthy {
+            Ok(ParuHealth::Healthy {
                 path,
                 package,
                 version,
-            }
+            })
         }
-        Err(error) => ParuHealth::Broken {
+        Err(error @ ExecError::NonZero { .. }) => Ok(ParuHealth::Broken {
             path,
             reason: error.to_string(),
-        },
+        }),
+        Err(error @ ExecError::Spawn { .. })
+            if error
+                .io_error()
+                .is_some_and(|source| source.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            Ok(ParuHealth::Broken {
+                path,
+                reason: error.to_string(),
+            })
+        }
+        Err(error) => Err(error).context("checking target paru executable"),
     }
 }
 

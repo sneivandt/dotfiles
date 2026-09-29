@@ -731,6 +731,112 @@ fn offline_user_unit_can_be_disabled() {
 
 #[cfg(unix)]
 #[test]
+fn offline_disable_removes_stale_links_without_requiring_install_metadata() {
+    use crate::engine::{ProcessOpts, TaskResult, process_resources};
+    use crate::test_helpers::{ContextBuilder, empty_config};
+
+    for (label, definition) in [
+        ("changed targets", Some("[Install]\nWantedBy=new.target\n")),
+        ("static unit", Some("[Service]\nExecStart=/usr/bin/true\n")),
+        ("missing definition", None),
+    ] {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let home = fixture.path().canonicalize().unwrap();
+        let unit_dir = home.join(".config/systemd/user");
+        let wants = unit_dir.join("old.target.wants");
+        let requires = unit_dir.join("old.target.requires");
+        std::fs::create_dir_all(&wants).unwrap();
+        std::fs::create_dir_all(&requires).unwrap();
+        let unit_path = unit_dir.join("example.service");
+        if let Some(definition) = definition {
+            std::fs::write(&unit_path, definition).unwrap();
+        }
+        let wanted = wants.join("example.service");
+        let dependency = requires.join("example.service");
+        std::os::unix::fs::symlink("../example.service", &wanted).unwrap();
+        std::os::unix::fs::symlink(&unit_path, &dependency).unwrap();
+        let unrelated_dir = unit_dir.join("unrelated.target.wants");
+        std::fs::create_dir(&unrelated_dir).unwrap();
+        let unrelated = unrelated_dir.join("example.service");
+        std::os::unix::fs::symlink("../other.service", &unrelated).unwrap();
+        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+            name: "example.service".to_string(),
+            scope: UnitScope::User,
+            enabled: false,
+        };
+        let resource = || {
+            let mut resource = SystemdUnitResource::from_entry(
+                &entry,
+                Arc::new(MockExecutor::new()),
+                &home,
+                false,
+            );
+            resource.system_user_unit_dirs.clear();
+            resource
+        };
+        assert!(
+            matches!(
+                resource().current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ),
+            "{label}"
+        );
+        let ctx = ContextBuilder::new(empty_config(home.clone()))
+            .build()
+            .with_dry_run(true);
+        let result =
+            process_resources(&ctx, [resource()], &ProcessOpts::strict("configure")).unwrap();
+        assert!(
+            matches!(result, TaskResult::Batch(stats) if stats.changed_count() == 1),
+            "{label}: dry-run must plan the stale-link removal"
+        );
+        assert!(wanted.is_symlink() && dependency.is_symlink(), "{label}");
+
+        assert_eq!(
+            resource().apply().unwrap(),
+            ResourceChange::Applied,
+            "{label}"
+        );
+        assert!(!wanted.is_symlink() && !dependency.is_symlink(), "{label}");
+        assert!(
+            unrelated.is_symlink(),
+            "{label}: preserve user-replaced links"
+        );
+        assert_eq!(resource().current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(resource().apply().unwrap(), ResourceChange::AlreadyCorrect);
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_disable_refuses_to_traverse_replaced_enablement_directories() {
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let home = fixture.path().canonicalize().unwrap();
+    let unit_dir = home.join(".config/systemd/user");
+    let external = home.join("external");
+    std::fs::create_dir_all(&unit_dir).unwrap();
+    std::fs::create_dir(&external).unwrap();
+    let link = external.join("example.service");
+    std::os::unix::fs::symlink(unit_dir.join("example.service"), &link).unwrap();
+    std::os::unix::fs::symlink(&external, unit_dir.join("old.target.wants")).unwrap();
+    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+        name: "example.service".to_string(),
+        scope: UnitScope::User,
+        enabled: false,
+    };
+    let resource =
+        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+
+    assert!(resource.current_state().is_err());
+    assert!(resource.apply().is_err());
+    assert!(
+        link.is_symlink(),
+        "unmanaged directory contents must survive"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn offline_user_unit_rejects_install_targets_that_escape_the_user_directory() {
     let home = tempfile::tempdir().unwrap();
     let unit_dir = home.path().join(".config/systemd/user");

@@ -144,7 +144,7 @@ _verify_checksum() {
   _vc_tag="$1"
   _vc_asset="$2"
   _vc_binary="$3"
-  tmpfile=$(mktemp)
+  tmpfile="$_vc_binary.sha256"
   trap 'rm -f "$tmpfile"' EXIT
   if ! download_file \
     "https://github.com/$REPO/releases/download/$_vc_tag/checksums.sha256" \
@@ -189,7 +189,7 @@ _verify_attestation() {
 }
 
 # Download the bootstrap binary if needed.
-download_binary() {
+download_binary() {(
   _arch="$(uname -m)"
   case "$_arch" in
     x86_64|amd64)  asset="dotfiles-linux-x86_64" ;;
@@ -211,34 +211,36 @@ download_binary() {
   url="https://github.com/$REPO/releases/download/$tag/$asset"
 
   mkdir -p "$BIN_DIR"
+  bootstrap_dir="$BIN_DIR/.bootstrap-$$"
+  (umask 077 && mkdir "$bootstrap_dir")
+  staged_binary="$bootstrap_dir/binary"
+  trap 'rm -f "$staged_binary" "$staged_binary.sha256"; rmdir "$bootstrap_dir"' EXIT
+  trap 'exit 1' HUP INT TERM
 
   echo "Bootstrap · dotfiles $tag · ${asset#dotfiles-}"
-  if ! download_file "$url" "$BINARY"; then
+  if ! download_file "$url" "$staged_binary"; then
     echo "ERROR: Failed to download dotfiles binary." >&2
     echo "Check your internet connection or use --build to build from source." >&2
-    rm -f "$BINARY"
     exit 1
   fi
 
   if ! command -v sha256sum >/dev/null 2>&1; then
     echo "ERROR: sha256sum not found. Cannot verify download integrity." >&2
-    rm -f "$BINARY"
     exit 1
   fi
-  if ! ( _verify_checksum "$tag" "$asset" "$BINARY" ); then
-    rm -f "$BINARY"
-    exit 1
-  fi
-
-  if ! _verify_attestation "$BINARY"; then
-    rm -f "$BINARY"
+  if ! ( _verify_checksum "$tag" "$asset" "$staged_binary" ); then
     exit 1
   fi
 
-  chmod +x "$BINARY"
+  if ! _verify_attestation "$staged_binary"; then
+    exit 1
+  fi
+
+  chmod +x "$staged_binary"
+  mv -f "$staged_binary" "$BINARY"
 
   echo "Downloaded · checksum verified · $BINARY"
-}
+)}
 
 # Bootstrap: download the latest binary only if no binary is present.
 # Subsequent updates are handled by the binary itself.

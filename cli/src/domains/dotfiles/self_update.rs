@@ -71,7 +71,7 @@ const SKIP_SELF_UPDATE_ENV: &str = "DOTFILES_SKIP_SELF_UPDATE";
 const GH_TOKEN_ENV: &str = "GH_TOKEN";
 const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 
-use cache::{read_fresh_cache, write_cache};
+use cache::{read_fresh_cache, write_cache_best_effort};
 use http::{HttpClient, default_http_client, fetch_latest_tag};
 use install::download_and_install;
 use paths::is_running_from_bin;
@@ -136,7 +136,7 @@ fn check_for_update(
     root: &std::path::Path,
     client: &dyn HttpClient,
     github_token: Option<&str>,
-) -> Result<UpdateCheck> {
+) -> UpdateCheck {
     let raw_version =
         option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
     check_for_update_with_current(root, client, raw_version, github_token)
@@ -147,22 +147,22 @@ fn check_for_update_with_current(
     client: &dyn HttpClient,
     raw_version: &str,
     github_token: Option<&str>,
-) -> Result<UpdateCheck> {
+) -> UpdateCheck {
     let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if !is_release_version(&current) {
         tracing::debug!("dev build ({current}), skipping update check");
-        return Ok(UpdateCheck::DevBuild);
+        return UpdateCheck::DevBuild;
     }
     if let Some(latest) = read_fresh_cache(root)
         && is_release_version(&latest)
     {
-        return Ok(classify_update(&current, latest));
+        return classify_update(&current, latest);
     }
     let latest = match fetch_latest_tag(client, github_token) {
         Ok(Some(latest)) => latest,
         Ok(None) => {
             tracing::debug!("latest release carried no tag_name, treating as offline");
-            return Ok(UpdateCheck::Offline);
+            return UpdateCheck::Offline;
         }
         // Self-update runs unattended before mutating commands, so a
         // failed lookup must not fail the run. It must not vanish silently
@@ -173,14 +173,14 @@ fn check_for_update_with_current(
                 "skipping self-update: {}",
                 update_check_failure_message(&error)
             );
-            return Ok(UpdateCheck::Offline);
+            return UpdateCheck::Offline;
         }
     };
     let check = classify_update(&current, latest.clone());
     if !matches!(check, UpdateCheck::UpdateAvailable { .. }) {
-        write_cache(root, &latest)?;
+        write_cache_best_effort(root, &latest);
     }
-    Ok(check)
+    check
 }
 
 /// Run `work` while a transient status line is shown, clearing it afterwards.
@@ -213,8 +213,9 @@ fn with_status<T>(log: &dyn Output, status: &str, work: impl FnOnce() -> T) -> T
 ///
 /// # Errors
 ///
-/// Returns an error if the GitHub API call, download, or checksum
-/// verification fails.
+/// Returns an error if the download, checksum or provenance verification,
+/// binary replacement, or smoke test fails. Release lookup and cache failures
+/// are reported without failing the invocation.
 pub fn pre_update(
     root: &std::path::Path,
     log: &dyn Output,
@@ -232,7 +233,7 @@ pub fn pre_update(
     let token = github_token(&SystemEnv);
     let check = with_status(log, "Checking for updates", || {
         check_for_update(root, &client, token.as_deref())
-    })?;
+    });
     match check {
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
         UpdateCheck::UpdateAvailable { latest, current } => {
@@ -302,8 +303,7 @@ mod tests {
         write_cache(dir.path(), "v9999.12.31-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
 
         match result {
             UpdateCheck::UpdateAvailable { latest, .. } => {
@@ -321,8 +321,7 @@ mod tests {
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
         assert!(
@@ -338,8 +337,7 @@ mod tests {
         // GitHub reports an older release than the running binary.
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-9", None).unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-9", None);
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
@@ -347,6 +345,22 @@ mod tests {
             cached.starts_with("v2026.07.25-1\n"),
             "the cache holds the latest published tag, not the running version; got {cached:?}"
         );
+    }
+
+    #[test]
+    fn cache_write_failure_does_not_fail_a_successful_version_check() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        fs::create_dir_all(cache_path(dir.path())).unwrap();
+        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
+
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
+
+        assert!(matches!(result, UpdateCheck::AlreadyCurrent));
+        assert!(
+            cache_path(dir.path()).is_dir(),
+            "preserve conflicting cache state"
+        );
+        assert_eq!(client.request_urls().len(), 1);
     }
 
     #[test]
@@ -365,8 +379,7 @@ mod tests {
         .unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
     }
@@ -378,8 +391,7 @@ mod tests {
         write_cache(dir.path(), "v2026.07.25-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result =
-            check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None).unwrap();
+        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         assert!(

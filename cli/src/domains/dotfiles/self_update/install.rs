@@ -8,7 +8,7 @@ use std::path::Path;
 use anyhow::{Context as _, Result, bail};
 
 use super::attestation::{GhCli, Policy, SystemGh, policy, verify_provenance};
-use super::cache::write_cache;
+use super::cache::write_cache_best_effort;
 use super::http::{HttpClient, download_bytes, verify_checksum};
 use super::paths::{asset_name, binary_path, old_binary_name, old_binary_path};
 
@@ -212,7 +212,7 @@ fn download_and_install_with_gh(
         }
         return Err(smoke_err);
     }
-    write_cache(root, tag)?;
+    write_cache_best_effort(root, tag);
 
     Ok(())
 }
@@ -394,6 +394,37 @@ mod tests {
                     super::super::REPO
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn cache_write_failure_does_not_hide_a_successful_binary_update() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        fs::create_dir_all(cache_path(dir.path())).unwrap();
+        let bin = binary_path(dir.path());
+        fs::write(&bin, b"previous binary").unwrap();
+        let data = version_capable_binary();
+        let hash = super::super::hex_encode(&Sha256::digest(&data));
+        let checksums = format!("{hash}  {}\n", asset_name());
+        let client = MockHttpClient::new(vec![Ok(data.clone()), Ok(checksums.into_bytes())]);
+
+        download_and_install_with_gh(
+            dir.path(),
+            "v2026.07.25-1",
+            &client,
+            &StubGh { verified: true },
+            Policy::Required,
+        )
+        .expect("a verified, runnable update must succeed so the caller can restart");
+
+        assert_eq!(fs::read(&bin).unwrap(), data);
+        assert_eq!(
+            fs::read(old_binary_path(dir.path())).unwrap(),
+            b"previous binary"
+        );
+        assert!(
+            cache_path(dir.path()).is_dir(),
+            "preserve conflicting cache state"
         );
     }
 

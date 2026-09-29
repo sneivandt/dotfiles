@@ -413,18 +413,20 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
         .filter(|line| !line.is_empty())
     {
         let (facility, module) = pam_rule_identity(rule)?;
-        lines.retain(|line| {
-            let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
-            let mut tokens = code.split_whitespace();
-            !(tokens.clone().next() == Some(facility) && tokens.any(|token| token == module))
-        });
         let Some(index) = lines
             .iter()
             .rposition(|line| line.split_whitespace().next() == Some(facility))
         else {
             bail!("PAM service has no {facility} stack; refusing to synthesize one");
         };
-        lines.insert(index.saturating_add(1), rule.to_string());
+        let mut trailing = lines.split_off(index.saturating_add(1));
+        lines.retain(|line| {
+            let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
+            let mut tokens = code.split_whitespace();
+            !(tokens.clone().next() == Some(facility) && tokens.any(|token| token == module))
+        });
+        lines.push(rule.to_string());
+        lines.append(&mut trailing);
     }
     let mut rendered = lines.join("\n");
     rendered.push('\n');
@@ -505,6 +507,54 @@ mod tests {
             resource.current_state().unwrap(),
             ResourceState::Invalid { reason } if reason.contains("is missing")
         ));
+    }
+
+    #[test]
+    fn pam_merge_preserves_a_stack_containing_only_the_managed_module() {
+        let fragment = "auth optional keyring.so\n";
+        for current in [
+            fragment,
+            "# retained\nauth required keyring.so old_option\n",
+            "auth optional keyring.so\nauth optional keyring.so\n",
+        ] {
+            let merged = merge_pam(current, fragment).unwrap();
+            assert!(merged.ends_with(fragment), "{merged}");
+            assert_eq!(merged.matches("keyring.so").count(), 1, "{merged}");
+            assert_eq!(merge_pam(&merged, fragment).unwrap(), merged);
+            if current.starts_with('#') {
+                assert!(merged.starts_with("# retained\n"));
+            }
+        }
+        assert!(
+            merge_pam("session optional other.so\n", fragment).is_err(),
+            "a genuinely absent facility must still be rejected"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pam_resource_accepts_an_already_converged_single_module_stack() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let root = tempfile::tempdir_in(".").unwrap();
+        fs::create_dir(root.path().join("system")).unwrap();
+        let content = "password optional keyring.so\n";
+        fs::write(root.path().join("system/passwd"), content).unwrap();
+        let target = root.path().join("passwd");
+        fs::write(&target, content).unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+        let metadata = fs::metadata(&target).unwrap();
+        let mut resource = SystemFileResource::new(
+            entry(root.path(), &target, "passwd", MergeStrategy::Pam),
+            Arc::new(MockExecutor::new()),
+        );
+        resource.expected_uid = metadata.uid();
+        resource.expected_gid = metadata.gid();
+
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+        assert_eq!(fs::read_to_string(target).unwrap(), content);
     }
 
     #[test]

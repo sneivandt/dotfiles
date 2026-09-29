@@ -72,7 +72,7 @@ impl DefaultShellResource {
         let current_name = std::path::Path::new(shell)
             .file_name()
             .and_then(|name| name.to_str());
-        if current_name == Some(&self.target_shell) {
+        if current_name == Some(&self.target_shell) && self.executor.which(shell) {
             Ok(ResourceState::Correct)
         } else {
             Ok(ResourceState::Incorrect {
@@ -204,6 +204,10 @@ mod tests {
     #[test]
     fn current_state_reads_passwd_database_instead_of_shell_environment() {
         let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "/usr/bin/zsh")
+            .return_const(true);
         mock.expect_execute()
             .once()
             .withf(|spec| {
@@ -224,6 +228,10 @@ mod tests {
     #[test]
     fn non_root_runuser_context_ignores_an_inherited_sudo_user() {
         let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "/usr/bin/zsh")
+            .return_const(true);
         mock.expect_execute()
             .once()
             .withf(|spec| spec.arguments() == ["passwd", "new-user"])
@@ -241,6 +249,10 @@ mod tests {
     #[test]
     fn current_state_treats_bin_and_usr_bin_shells_as_equivalent() {
         let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "/bin/zsh")
+            .return_const(true);
         expect_passwd(
             &mut mock,
             "stuart",
@@ -269,6 +281,87 @@ mod tests {
                 current: "/bin/bash".to_string()
             }
         );
+    }
+
+    #[test]
+    fn unavailable_account_shell_is_repaired_and_converges() {
+        use crate::engine::{ProcessOpts, process_resources};
+        use crate::test_helpers::{empty_config, make_linux_context, task_batch};
+
+        for dry_run in [true, false] {
+            let mut mock = MockExecutor::new();
+            let mut sequence = mockall::Sequence::new();
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(|spec| {
+                    spec.program() == "getent"
+                        && spec.arguments() == ["passwd", "stuart"]
+                        && !spec.is_checked()
+                })
+                .returning(|_| Ok(ExecResult::success(passwd("stuart", "/removed/bin/zsh"))));
+            mock.expect_which()
+                .once()
+                .withf(|program| program == "/removed/bin/zsh")
+                .return_const(false);
+            if !dry_run {
+                mock.expect_which_path()
+                    .once()
+                    .withf(|program| program == "zsh")
+                    .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
+                mock.expect_which()
+                    .once()
+                    .withf(|program| program == "sudo")
+                    .return_const(false);
+                mock.expect_execute()
+                    .once()
+                    .in_sequence(&mut sequence)
+                    .withf(|spec| {
+                        spec.program() == "chsh"
+                            && spec.arguments() == ["-s", "/usr/bin/zsh"]
+                            && spec.is_checked()
+                    })
+                    .returning(|_| Ok(ExecResult::success("")));
+                mock.expect_execute()
+                    .once()
+                    .in_sequence(&mut sequence)
+                    .withf(|spec| {
+                        spec.program() == "getent"
+                            && spec.arguments() == ["passwd", "stuart"]
+                            && !spec.is_checked()
+                    })
+                    .returning(|_| Ok(ExecResult::success(passwd("stuart", "/usr/bin/zsh"))));
+                mock.expect_which()
+                    .once()
+                    .withf(|program| program == "/usr/bin/zsh")
+                    .return_const(true);
+            }
+            let executor: Arc<dyn Executor> = Arc::new(mock);
+            let ctx =
+                make_linux_context(empty_config(PathBuf::from("/repo"))).with_dry_run(dry_run);
+            let run = || {
+                process_resources(
+                    &ctx,
+                    [DefaultShellResource::new(
+                        "zsh".to_string(),
+                        Arc::clone(&executor),
+                        env_for("stuart"),
+                    )
+                    .with_root(false)],
+                    &ProcessOpts::strict("configure"),
+                )
+                .unwrap()
+            };
+
+            assert_eq!(
+                task_batch(&run()).changed_count(),
+                1,
+                "a removed or non-executable login shell needs repair; dry_run={dry_run}"
+            );
+            if !dry_run {
+                assert_eq!(task_batch(&run()).already_ok_count(), 1);
+            }
+        }
     }
 
     #[test]
@@ -317,6 +410,10 @@ mod tests {
     #[test]
     fn account_lookup_selects_target_user_after_unrelated_and_malformed_records() {
         let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "/usr/bin/zsh")
+            .return_const(true);
         expect_passwd(
             &mut mock,
             "stuart",

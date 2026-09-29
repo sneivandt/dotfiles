@@ -142,6 +142,8 @@ The rules are deliberately narrower than shell globs:
   Partial patterns such as `plugins/*.yml` and recursive `**` are errors.
 - Expansion does not descend through symlinked directories.
 - A pattern must match at least one entry; an empty match is an error.
+- Matched names must be valid UTF-8; invalid names fail rather than being
+  silently replaced with a different configuration path.
 - Matches are sorted, then checked for the same target conflicts as explicit
   entries. Expansion happens after category filtering.
 
@@ -231,12 +233,15 @@ permissions = [
 
 Modes are three- or four-digit octal strings. Paths use the **dot-prefixed**
 home convention: `ssh/config` means `~/.ssh/config`, not `~/ssh/config`.
+Current-directory components are normalized: `./ssh/config` has the same target.
 Absolute paths, parent traversal, and paths naming home itself are invalid.
 Missing targets are not created by this task.
 
 Directory entries apply recursively. Directories retain traversal access;
 ordinary files have execute bits cleared. Give an executable file its own
 entry rather than expecting a directory's `755` to make every file executable.
+Explicit descendant entries override recursive ancestors regardless of entry
+order or parallel execution; ancestor resources leave those targets untouched.
 Permissions applied through managed links can affect their repository sources.
 
 ## Registry
@@ -289,6 +294,8 @@ login, not started immediately. The search order is `~/.config/systemd/user`,
 in the user's unit directory, including for packaged units. Links to managed
 units retain their installed home path so materializing them during uninstall
 does not leave an enablement link pointing into a removed checkout.
+Offline disabling removes matching existing `.wants` and `.requires` links,
+even if the unit file has disappeared or its `[Install]` directives changed.
 
 ## System files
 
@@ -323,6 +330,8 @@ Duplicate active targets are errors, including across main and overlay.
 Unrelated settings are preserved. These are privileged changes; review the
 fragment and preview before applying. Removing the declaration does not restore
 the old file.
+PAM merges require an existing facility stack; a stack consisting solely of
+the managed module is valid and remains convergent on subsequent runs.
 
 ## VS Code extensions
 

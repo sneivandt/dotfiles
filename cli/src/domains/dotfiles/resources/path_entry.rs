@@ -126,7 +126,8 @@ impl PathEntryResource {
 
         Ok(std::fs::read_to_string(path)
             .with_context(|| format!("read {}", path.display()))?
-            .contains(line))
+            .lines()
+            .any(|existing| existing.trim() == line))
     }
 }
 

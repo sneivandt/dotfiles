@@ -50,6 +50,13 @@ pub(super) fn write_cache(root: &Path, tag: &str) -> Result<()> {
     write_cache_at(root, tag, now, boot_id.as_deref())
 }
 
+/// Persist an advisory cache without invalidating a completed check or update.
+pub(super) fn write_cache_best_effort(root: &Path, tag: &str) {
+    if let Err(error) = write_cache(root, tag) {
+        tracing::warn!("could not persist release-check cache: {error:#}");
+    }
+}
+
 fn write_cache_at(root: &Path, tag: &str, now: u64, boot_id: Option<&str>) -> Result<()> {
     let content = boot_id.map_or_else(
         || format!("{tag}\n{now}\n"),

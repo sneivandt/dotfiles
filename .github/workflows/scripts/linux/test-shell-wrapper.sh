@@ -102,7 +102,8 @@ test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args()
 {(
   log_stage "Testing real wrapper bootstrap download, checksum, and forwarding"
 
-  tmpdir=$(mktemp -d)
+  tmpdir="$DIR/.wrapper-bootstrap-$$"
+  mkdir "$tmpdir"
   trap 'rm -rf "$tmpdir"' EXIT
 
   cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
@@ -133,11 +134,16 @@ case "$url" in
     printf '{"tag_name":"v9.9.9"}\n'
     ;;
   */releases/download/v9.9.9/checksums.sha256)
-    sum=$(sha256sum "$DOTFILES_ROOT/bin/dotfiles" | awk '{print $1}')
+    [ ! -e "$DOTFILES_ROOT/bin/dotfiles" ] || {
+      echo "bootstrap published its binary before verification" >&2
+      exit 1
+    }
+    sum=$(sha256sum "$(cat "$DOTFILES_ROOT/download-path")" | awk '{print $1}')
     printf '%s  dotfiles-linux-x86_64\n' "$sum" > "$out"
     ;;
   */releases/download/v9.9.9/dotfiles-linux-x86_64)
     mkdir -p "$(dirname "$out")"
+    printf '%s\n' "$out" > "$DOTFILES_ROOT/download-path"
     cat > "$out" <<'BIN'
 #!/bin/sh
 printf '%s\n' "$DOTFILES_ROOT" > "$DOTFILES_ROOT/root.txt"
@@ -424,7 +430,8 @@ test_wrapper_attestation_verification()
 {(
   log_stage "Testing build provenance verification during bootstrap download"
 
-  tmpdir=$(mktemp -d)
+  tmpdir="$DIR/.wrapper-attestation-$$"
+  mkdir "$tmpdir"
   trap 'rm -rf "$tmpdir"' EXIT
 
   cp "$DIR/dotfiles.sh" "$tmpdir/dotfiles.sh"
@@ -455,11 +462,12 @@ case "$url" in
     printf '{"tag_name":"v9.9.9"}\n'
     ;;
   */releases/download/v9.9.9/checksums.sha256)
-    sum=$(sha256sum "$DOTFILES_ROOT/bin/dotfiles" | awk '{print $1}')
+    sum=$(sha256sum "$(cat "$DOTFILES_ROOT/download-path")" | awk '{print $1}')
     printf '%s  dotfiles-linux-x86_64\n' "$sum" > "$out"
     ;;
   */releases/download/v9.9.9/dotfiles-linux-x86_64)
     mkdir -p "$(dirname "$out")"
+    printf '%s\n' "$out" > "$DOTFILES_ROOT/download-path"
     printf '#!/bin/sh\nexit 0\n' > "$out"
     ;;
   *)
@@ -502,7 +510,7 @@ EOF
   # Missing gh: warn and continue so a fresh bootstrap can install it.
   rm -rf "${tmpdir:?}/bin"
   rm -f "$tmpdir/fake-bin/gh"
-  for command_name in awk chmod dirname mkdir mktemp readlink rm sha256sum uname; do
+  for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname; do
     ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
   done
   output=$(PATH="$tmpdir/fake-bin" "$tmpdir/dotfiles.sh" --version 2>&1)
@@ -516,6 +524,65 @@ EOF
     return 1
   fi
   log_verbose "✓ Missing gh warns without blocking bootstrap"
+)}
+
+test_wrapper_failed_bootstrap_preserves_cached_binary()
+{(
+  log_stage "Testing failed bootstrap leaves a concurrently installed binary intact"
+  fixture="$DIR/.wrapper-staging-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir "$fixture/fake-bin"
+  cp "$DIR/dotfiles.sh" "$fixture/dotfiles.sh"
+  cat > "$fixture/fake-bin/curl" <<'EOF'
+#!/bin/sh
+set -eu
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift; out=$1 ;;
+    http*) url=$1 ;;
+  esac
+  shift
+done
+case "$url" in
+  */releases/latest) printf '{"tag_name":"v9.9.9"}\n' ;;
+  */checksums.sha256)
+    if [ "$WRAPPER_FAILURE" = checksum ]; then
+      printf 'invalid  dotfiles-linux-x86_64\n' > "$out"
+    else
+      sum=$(sha256sum "$(cat "$DOTFILES_ROOT/download-path")" | awk '{print $1}')
+      printf '%s  dotfiles-linux-x86_64\n' "$sum" > "$out"
+    fi
+    ;;
+  */dotfiles-linux-x86_64)
+    printf '#!/bin/sh\nexit 99\n' > "$out"
+    printf '%s\n' "$out" > "$DOTFILES_ROOT/download-path"
+    # Another bootstrap finished after this one observed a missing cache.
+    printf '#!/bin/sh\nexit 0\n' > "$DOTFILES_ROOT/bin/dotfiles"
+    chmod +x "$DOTFILES_ROOT/bin/dotfiles"
+    [ "$WRAPPER_FAILURE" != download ]
+    ;;
+  *) exit 1 ;;
+esac
+EOF
+  printf '#!/bin/sh\nexit 1\n' > "$fixture/fake-bin/gh"
+  printf '#!/bin/sh\nprintf "x86_64\\n"\n' > "$fixture/fake-bin/uname"
+  chmod +x "$fixture/fake-bin/"*
+  expected=$(printf '#!/bin/sh\nexit 0\n')
+  for failure in download checksum attestation; do
+    if PATH="$fixture/fake-bin:$PATH" WRAPPER_FAILURE="$failure" DOTFILES_SKIP_ATTESTATION=0 \
+      "$fixture/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+      log_error "$failure failure was accepted"
+    fi
+    [ -x "$fixture/bin/dotfiles" ] || log_error "$failure removed the concurrent binary"
+    [ "$(cat "$fixture/bin/dotfiles")" = "$expected" ] ||
+      log_error "$failure modified the concurrent binary"
+    [ "$(find "$fixture/bin" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ] ||
+      log_error "$failure leaked staging files"
+    rm "$fixture/bin/dotfiles"
+  done
 )}
 
 test_wrapper_release_pinned_urls()
@@ -549,6 +616,7 @@ case "$0" in
     test_wrapper_uses_local_binary
     test_wrapper_forwarded_args
     test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    test_wrapper_failed_bootstrap_preserves_cached_binary
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args
     test_wrapper_forwards_advanced_flags
     test_wrapper_preserves_runtime_context

@@ -94,10 +94,11 @@ background installation.
 
 ## Developer Mode and symlinks
 
-In the full graph, **Home symlinks** requires **Windows Developer Mode**.
-Developer Mode lets ordinary users create file symlinks. Directory symlinks can
-fall back to junctions, but that fallback does not remove the graph dependency
-or make file links unprivileged.
+In the full graph, **Home symlinks** waits for **Windows Developer Mode** through
+an ordering-only dependency. Developer Mode lets ordinary users create file
+symlinks. Directory symlinks can fall back to junctions, and already-correct
+links need no change; neither is blocked solely by unavailable Developer Mode.
+Pending file links still require an appropriate capability or elevation.
 
 To inspect both operations rather than assuming Developer Mode is ready:
 
@@ -107,8 +108,7 @@ To inspect both operations rather than assuming Developer Mode is ready:
 ```
 
 `--only symlinks` without `--with-deps` deliberately omits the Developer Mode
-task. Use it when you know the prerequisite is already satisfied, not as a way
-to fix an unmet prerequisite.
+task. It does not bypass the symlink task's own capability and elevation checks.
 
 There are two distinct symlink problems:
 
@@ -158,6 +158,8 @@ unelevated. Its history links to the child's run ID.
 - **`--fail-on-skip` or CI:** unavailable required elevation makes the command
   fail rather than succeed with unmet work.
 - **Elevated child failed:** the command fails and its dependents are blocked.
+- **Elevated process could not start:** the launch error is reported as a
+  failure, not mistaken for declined consent.
 - **Everything already current:** no broker prompt is needed.
 
 Dry-run does not request elevation to apply planned changes. After resolving a

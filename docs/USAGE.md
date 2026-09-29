@@ -195,6 +195,8 @@ The parent retains the run lock until it exits.
 Release checks are cached for up to one hour and, on Linux, only for the boot
 that created the cache. Source builds do not self-update from their Cargo
 output directory. A restarted child does not repeat the self-update check.
+An unwritable release-check cache produces a warning but does not invalidate a
+successful version check or prevent restarting into a verified binary update.
 
 ### Select tasks
 

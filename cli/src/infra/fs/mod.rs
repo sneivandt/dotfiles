@@ -16,7 +16,7 @@ mod copy;
 mod place;
 mod temp;
 
-pub use copy::copy_dir_recursive;
+pub use copy::{copy_dir_recursive, reject_destination_link};
 pub use place::{rename_into_place, write_atomic};
 pub use temp::TempGuard;
 

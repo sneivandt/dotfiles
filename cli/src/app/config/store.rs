@@ -8,7 +8,7 @@
 
 use crate::app::config::Config;
 use crate::domains::ai::apm::ApmFragmentSource;
-use crate::domains::files::config::symlinks::{Symlink, resolve_symlinks_dir};
+use crate::domains::files::config::symlinks::{Symlink, default_target, resolve_symlinks_dir};
 use crate::infra::ConfigHandle;
 use std::path::Path;
 
@@ -63,11 +63,9 @@ fn apm_fragment_target_name(symlink: &Symlink) -> Option<std::ffi::OsString> {
     let target = symlink
         .target
         .clone()
-        .unwrap_or_else(|| format!(".{}", symlink.source));
-    let mut segments = target
-        .split(['/', '\\'])
-        .filter(|segment| !segment.is_empty());
-    if segments.next() != Some(".apm") || segments.next() != Some("config") {
+        .unwrap_or_else(|| default_target(&symlink.source));
+    let mut segments = Path::new(&target).iter().filter(|segment| *segment != ".");
+    if segments.next()? != ".apm" || segments.next()? != "config" {
         return None;
     }
     let filename = segments.next()?;
@@ -120,5 +118,82 @@ mod tests {
                 "base.yml".into(),
             )]
         );
+    }
+
+    #[test]
+    fn fragment_sources_follow_normalized_managed_targets() {
+        let root = PathBuf::from("fixture-root");
+        for (source, target, expected) in [
+            ("./apm/config/base.yml", None, Some("base.yml")),
+            ("apm/./config/base.yaml", None, Some("base.yaml")),
+            (
+                "fragment.yml",
+                Some("./.apm/config/base.yml"),
+                Some("base.yml"),
+            ),
+            (
+                "fragment.yml",
+                Some(".apm/./config//base.yml"),
+                Some("base.yml"),
+            ),
+            ("fragment.yml", Some(".apm/config/nested/base.yml"), None),
+            ("fragment.yml", Some("../.apm/config/base.yml"), None),
+            ("fragment.yml", Some(".apm/config/base.json"), None),
+        ] {
+            let mut config = empty_config(root.clone());
+            config.symlinks = vec![Symlink {
+                source: source.into(),
+                target: target.map(str::to_owned),
+                origin: Some(root.clone()),
+            }];
+            let store = ConfigStore::from_config(config);
+            let expected = expected
+                .map(|name| ApmFragmentSource::new(root.join("symlinks").join(source), name.into()))
+                .into_iter()
+                .collect::<Vec<_>>();
+            assert_eq!(
+                *store.apm_fragments.read(),
+                expected,
+                "{source:?} -> {target:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backslashes_in_unix_targets_are_not_apm_directory_separators() {
+        let mut config = empty_config("fixture-root".into());
+        config.symlinks = vec![Symlink {
+            source: "fragment.yml".into(),
+            target: Some(r".apm\config\base.yml".into()),
+            origin: None,
+        }];
+
+        assert!(
+            ConfigStore::from_config(config)
+                .apm_fragments
+                .read()
+                .is_empty()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn backslashes_in_windows_targets_are_apm_directory_separators() {
+        for (source, target) in [
+            (r".\apm\config\base.yml", None),
+            ("fragment.yml", Some(r".\.apm\config\base.yml")),
+        ] {
+            let entry = Symlink {
+                source: source.into(),
+                target: target.map(str::to_owned),
+                origin: None,
+            };
+            assert_eq!(
+                apm_fragment_target_name(&entry),
+                Some("base.yml".into()),
+                "{source:?} -> {target:?}"
+            );
+        }
     }
 }

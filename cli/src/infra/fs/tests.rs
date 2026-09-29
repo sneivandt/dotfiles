@@ -77,6 +77,173 @@ fn fails_when_a_symlink_cannot_be_recreated() {
     assert_eq!(std::fs::read_to_string(original).unwrap(), "source content");
 }
 
+#[cfg(any(unix, windows))]
+#[test]
+fn recursive_copy_rejects_destination_links_without_mutating_their_targets() {
+    #[derive(Debug, PartialEq, Eq)]
+    enum Destination {
+        Root,
+        Directory,
+        File,
+        DanglingFile,
+    }
+    for (kind, destination) in [
+        ("root", Destination::Root),
+        ("directory", Destination::Directory),
+        ("file", Destination::File),
+        ("dangling file", Destination::DanglingFile),
+    ] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let source = root.path().join("source");
+        let target = root.path().join("target");
+        let unrelated = root.path().join("unrelated");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(&unrelated).unwrap();
+        let original = unrelated.join("data");
+        std::fs::write(&original, "keep original").unwrap();
+        let original_permissions = unrelated.metadata().unwrap().permissions();
+        let (link, referent, directory) = match destination {
+            Destination::Root => {
+                std::fs::write(source.join("data"), "replacement").unwrap();
+                (target.clone(), unrelated.clone(), true)
+            }
+            Destination::Directory => {
+                std::fs::create_dir(source.join("nested")).unwrap();
+                std::fs::write(source.join("nested/data"), "replacement").unwrap();
+                std::fs::create_dir(&target).unwrap();
+                (target.join("nested"), unrelated.clone(), true)
+            }
+            Destination::File | Destination::DanglingFile => {
+                std::fs::write(source.join("data"), "replacement").unwrap();
+                std::fs::create_dir(&target).unwrap();
+                let referent = if destination == Destination::File {
+                    original.clone()
+                } else {
+                    unrelated.join("missing")
+                };
+                (target.join("data"), referent, false)
+            }
+        };
+        let referent = std::path::absolute(&referent).unwrap();
+        create_native_symlink(&referent, &link, directory).unwrap();
+
+        let error = copy_dir_recursive(&source, &target, false).unwrap_err();
+
+        assert!(
+            error.to_string().contains("refusing to copy through"),
+            "{kind}: {error:#}"
+        );
+        assert_eq!(std::fs::read_link(&link).unwrap(), referent, "{kind}");
+        assert_eq!(
+            std::fs::read_to_string(&original).unwrap(),
+            "keep original",
+            "{kind}: unrelated file must not be overwritten"
+        );
+        assert_eq!(
+            unrelated.metadata().unwrap().permissions(),
+            original_permissions,
+            "{kind}: unrelated directory permissions must not change"
+        );
+        assert!(!unrelated.join("missing").exists(), "{kind}");
+    }
+}
+
+#[test]
+fn recursive_copy_merges_existing_real_directories_and_preserves_extra_files() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    std::fs::create_dir_all(source.join("nested")).unwrap();
+    std::fs::create_dir_all(target.join("nested")).unwrap();
+    std::fs::write(source.join("nested/data"), "updated").unwrap();
+    std::fs::write(target.join("nested/data"), "old").unwrap();
+    std::fs::write(target.join("nested/extra"), "keep").unwrap();
+
+    copy_dir_recursive(&source, &target, false).unwrap();
+    copy_dir_recursive(&source, &target, false).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(target.join("nested/data")).unwrap(),
+        "updated"
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.join("nested/extra")).unwrap(),
+        "keep"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn recursive_copy_rejects_destination_junctions() {
+    use crate::infra::exec::{ProcessExecutor, windows::CmdCommand};
+
+    let root = tempfile::tempdir_in(".").unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    let unrelated = root.path().join("unrelated");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::create_dir(&unrelated).unwrap();
+    std::fs::write(source.join("data"), "replacement").unwrap();
+    std::fs::write(unrelated.join("data"), "keep original").unwrap();
+    let result = CmdCommand::new("mklink")
+        .arg("/J")
+        .arg(std::path::absolute(&target).unwrap().to_str().unwrap())
+        .arg(std::path::absolute(&unrelated).unwrap().to_str().unwrap())
+        .run_unchecked(&ProcessExecutor::system())
+        .unwrap();
+    assert!(result.success, "fixture junction creation: {result:?}");
+
+    let error = copy_dir_recursive(&source, &target, false).unwrap_err();
+
+    assert!(error.to_string().contains("refusing to copy through"));
+    assert_eq!(
+        std::fs::read_to_string(unrelated.join("data")).unwrap(),
+        "keep original"
+    );
+    assert!(std::fs::read_link(&target).is_ok());
+    std::fs::remove_dir(target).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn recursive_copy_recreates_source_junctions_without_traversing_them() {
+    use crate::infra::exec::{ProcessExecutor, windows::CmdCommand};
+
+    let root = tempfile::tempdir_in(".").unwrap();
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    let unrelated = root.path().join("unrelated");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::create_dir(&unrelated).unwrap();
+    std::fs::write(unrelated.join("data"), "outside source").unwrap();
+    let junction = source.join("external");
+    let result = CmdCommand::new("mklink")
+        .arg("/J")
+        .arg(std::path::absolute(&junction).unwrap().to_str().unwrap())
+        .arg(std::path::absolute(&unrelated).unwrap().to_str().unwrap())
+        .run_unchecked(&ProcessExecutor::system())
+        .unwrap();
+    assert!(result.success, "fixture junction creation: {result:?}");
+
+    copy_dir_recursive(&source, &target, false).unwrap();
+
+    let copied_link = target.join("external");
+    assert!(
+        copied_link.symlink_metadata().unwrap().is_symlink(),
+        "a source junction must become a link, not a recursively copied directory"
+    );
+    assert_eq!(
+        std::fs::read_link(&copied_link).unwrap(),
+        std::fs::read_link(&junction).unwrap()
+    );
+    assert_eq!(
+        std::fs::read_to_string(unrelated.join("data")).unwrap(),
+        "outside source"
+    );
+    std::fs::remove_dir(copied_link).unwrap();
+    std::fs::remove_dir(junction).unwrap();
+}
+
 #[cfg(unix)]
 #[test]
 fn recreates_symlinks_in_destination() {

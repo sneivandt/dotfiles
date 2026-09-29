@@ -274,7 +274,26 @@ fn dry_run_pipeline_produces_no_failures() {
 #[cfg(unix)]
 #[test]
 fn offline_service_survives_symlink_uninstall_and_checkout_removal() {
+    use test_api::exec::{CommandSpec, ExecError, ExecResult, Executor};
     use test_api::tasks::system::systemd_units::ConfigureSystemd;
+
+    #[derive(Debug)]
+    struct OfflineSystemdExecutor;
+
+    impl Executor for OfflineSystemdExecutor {
+        fn execute(&self, spec: CommandSpec) -> Result<ExecResult, ExecError> {
+            common::StubExecutor.execute(spec)
+        }
+
+        fn which(&self, program: &str) -> bool {
+            program == "systemctl"
+        }
+
+        fn which_path(&self, program: &str) -> anyhow::Result<std::path::PathBuf> {
+            common::StubExecutor.which_path(program)
+        }
+    }
+
     let source = "config/systemd/user/example.service";
     let test = common::TestContextBuilder::new()
         .with_config_file(
@@ -290,7 +309,20 @@ fn offline_service_survives_symlink_uninstall_and_checkout_removal() {
             "[Service]\nExecStart=/bin/true\n[Install]\nWantedBy=default.target\n",
         )
         .build();
-    let ec = test.make_context("base");
+    let ec = test.make_context_with_executor(
+        "base",
+        test_api::platform::Platform {
+            os: test_api::platform::Os::Linux,
+            is_arch: false,
+            is_wsl: false,
+        },
+        test_api::engine::ContextOpts {
+            dry_run: false,
+            parallel: false,
+            is_ci: Some(false),
+        },
+        std::sync::Arc::new(OfflineSystemdExecutor),
+    );
     let ctx = ec.ctx.with_env(
         test_api::env::MapEnv::new()
             .with("DOTFILES_PROVISIONING", "arch-chroot")

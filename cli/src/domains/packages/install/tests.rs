@@ -198,6 +198,10 @@ fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
             }
             Ok(ExecResult::success("paru 2.1.0-2\n"))
         });
+    mock.expect_execute()
+        .once()
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("base-devel 1.0\n")));
     mock.expect_which_path()
         .once()
         .with(mockall::predicate::eq("paru"))
@@ -421,6 +425,10 @@ fn expect_missing_paru_package(mock: &mut MockExecutor, times: usize) {
                 Some(1),
             ))
         });
+    mock.expect_execute()
+        .times(times)
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("base-devel 1.0\n")));
 }
 
 fn expect_healthy_paru(mock: &mut MockExecutor, times: usize) {
@@ -444,7 +452,7 @@ fn paru_health_marks_nonzero_executable_broken() {
             ))
         });
 
-    let health = check_paru_health(&mock);
+    let health = check_paru_health(&mock).unwrap();
 
     assert!(matches!(
         health,
@@ -471,7 +479,7 @@ fn paru_health_preserves_missing_libalpm_failure() {
             ))
         });
 
-    let health = check_paru_health(&mock);
+    let health = check_paru_health(&mock).unwrap();
 
     assert!(matches!(
         health,
@@ -489,7 +497,7 @@ fn paru_health_marks_path_executable_without_target_package_broken() {
         .with(mockall::predicate::eq("paru"))
         .returning(|_| Ok(PathBuf::from("/usr/local/bin/paru")));
 
-    let health = check_paru_health(&mock);
+    let health = check_paru_health(&mock).unwrap();
 
     assert!(matches!(
         health,
@@ -515,6 +523,148 @@ fn paru_prerequisites_reject_missing_cargo_with_arch_guidance() {
 
     assert!(message.contains("missing prerequisite: cargo"), "{message}");
     assert!(message.contains("pacman -Syu --needed rust"), "{message}");
+}
+
+#[test]
+fn paru_inventory_failure_never_plans_a_bootstrap_or_rebuild() {
+    for dry_run in [false, true] {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(is_paru_package_query)
+            .returning(|_| {
+                Ok(ExecResult::failure(
+                    "",
+                    "could not open package database",
+                    Some(1),
+                ))
+            });
+        mock.expect_execute()
+            .once()
+            .withf(is_native_inventory)
+            .returning(|_| {
+                Ok(ExecResult::failure(
+                    "",
+                    "fixture unreadable package database",
+                    Some(1),
+                ))
+            });
+        let config = empty_config(PathBuf::from("fixture-repository"));
+        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+
+        let error = InstallParu.run(&ctx).unwrap_err();
+
+        assert!(
+            format!("{error:#}").contains("fixture unreadable package database"),
+            "{error:#}"
+        );
+    }
+}
+
+#[test]
+fn paru_targeted_query_failure_is_not_absence_when_inventory_contains_paru() {
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(is_paru_package_query)
+        .returning(|_| Ok(ExecResult::failure("", "fixture query failure", Some(1))));
+    mock.expect_execute()
+        .once()
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("paru 2.1.0-2\n")));
+
+    let error = check_paru_health(&mock).unwrap_err();
+
+    assert!(format!("{error:#}").contains("fixture query failure"));
+}
+
+#[test]
+fn paru_probe_errors_are_not_converted_to_rebuild_plans() {
+    #[derive(Debug, Clone, Copy)]
+    enum Failure {
+        Cancelled,
+        Timeout,
+        Spawn,
+        Capture,
+    }
+
+    for stage in ["package query", "executable"] {
+        for failure in [
+            Failure::Cancelled,
+            Failure::Timeout,
+            Failure::Spawn,
+            Failure::Capture,
+        ] {
+            for dry_run in [false, true] {
+                let mut mock = MockExecutor::new();
+                if stage == "executable" {
+                    expect_installed_paru_package(&mut mock, 1);
+                }
+                mock.expect_execute()
+                    .once()
+                    .withf(move |spec| {
+                        if stage == "executable" {
+                            is_paru_version(spec)
+                        } else {
+                            is_paru_package_query(spec)
+                        }
+                    })
+                    .returning(move |_| {
+                        let command = "fixture paru probe".to_string();
+                        let result = ExecResult::failure("", "", None);
+                        Err(match failure {
+                            Failure::Cancelled => ExecError::Cancelled { command, result },
+                            Failure::Timeout => ExecError::TimedOut {
+                                command,
+                                timeout: std::time::Duration::from_secs(1),
+                                result,
+                            },
+                            Failure::Spawn => ExecError::spawn(
+                                command,
+                                std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+                            ),
+                            Failure::Capture => ExecError::Io {
+                                command,
+                                operation: "capturing output",
+                                source: std::io::Error::other("fixture capture failure"),
+                            },
+                        })
+                    });
+                let config = empty_config(PathBuf::from("fixture-repository"));
+                let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+
+                let error = InstallParu.run(&ctx).unwrap_err();
+
+                let exec_error = error.downcast_ref::<ExecError>().unwrap();
+                assert_eq!(
+                    exec_error.is_cancelled(),
+                    matches!(failure, Failure::Cancelled)
+                );
+                assert!(
+                    format!("{error:#}").contains("fixture paru probe"),
+                    "{stage}/{failure:?}: {error:#}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn paru_probe_failure_does_not_request_elevation() {
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(is_paru_package_query)
+        .returning(|_| {
+            Err(ExecError::spawn(
+                "pacman",
+                std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+            ))
+        });
+    let config = empty_config(PathBuf::from("fixture-repository"));
+    let ctx = make_package_context(config, Os::Linux, true, mock);
+
+    assert!(!InstallParu.needs_elevation(&ctx));
 }
 
 #[test]
@@ -958,6 +1108,11 @@ fn install_packages_returns_failed_when_batch_install_fails() {
                 ExecResult::failure("", "database locked", Some(1)),
             ))
         });
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
     let ctx = make_package_context(config, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
@@ -969,6 +1124,62 @@ fn install_packages_returns_failed_when_batch_install_fails() {
             stats.failed_count()
         ),
         (0, 0, 1)
+    );
+}
+
+#[test]
+fn partial_package_batch_preserves_changed_and_already_installed_counts() {
+    let config = empty_config(PathBuf::from("fixture-repository"));
+    let packages = ConfigHandle::new(
+        ["first", "second", "existing"]
+            .into_iter()
+            .map(|name| Package {
+                name: name.into(),
+                is_aur: false,
+            })
+            .collect(),
+    );
+    let mut mock = MockExecutor::new();
+    mock.expect_which().return_const(true);
+    let mut sequence = mockall::Sequence::new();
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("existing 1.0\n")));
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(|spec| {
+            spec.is_checked()
+                && spec.arguments().ends_with(&[
+                    std::ffi::OsString::from("first"),
+                    std::ffi::OsString::from("second"),
+                ])
+        })
+        .returning(|_| {
+            Err(ExecError::non_zero(
+                "pacman",
+                ExecResult::failure("", "fixture second package failed", Some(1)),
+            ))
+        });
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(is_native_inventory)
+        .returning(|_| Ok(ExecResult::success("existing 1.0\nfirst 1.0\n")));
+    let ctx = make_package_context(config, Os::Linux, true, mock);
+
+    let result = InstallPackages::new(packages).run(&ctx).unwrap();
+    let stats = task_batch(&result);
+
+    assert_eq!(
+        (
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.failed_count()
+        ),
+        (1, 1, 1)
     );
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate::domains::system::config::systemd_units::SystemdUnit;
-use crate::engine::{Context, Task, TaskResult};
+use crate::engine::{Context, SkipKind, Task, TaskResult};
 use crate::infra::ConfigHandle;
 #[cfg(unix)]
 use crate::infra::env::MapEnv;
@@ -39,7 +39,7 @@ fn should_run_false_when_units_empty() {
 }
 
 #[test]
-fn should_run_false_when_systemctl_not_found() {
+fn missing_systemctl_is_checked_at_run_time() {
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.units.push(SystemdUnit {
         name: "dunst.service".to_string(),
@@ -48,7 +48,18 @@ fn should_run_false_when_systemctl_not_found() {
     });
     let units = ConfigHandle::new(config.units.clone());
     let ctx = make_linux_context(config); // which() returns false
-    assert!(!ConfigureSystemd::new(units).should_run(&ctx));
+    let task = ConfigureSystemd::new(units);
+    assert!(task.should_run(&ctx));
+    for dry_run in [false, true] {
+        assert!(
+            matches!(
+                task.run(&ctx.with_dry_run(dry_run)).unwrap(),
+                TaskResult::Skipped { reason, kind: SkipKind::UnmetWork }
+                    if reason == "systemctl unavailable"
+            ),
+            "a required tool missing after prerequisites leaves work unmet"
+        );
+    }
 }
 
 #[test]
@@ -90,12 +101,18 @@ fn should_run_true_on_linux_with_units_and_systemctl() {
 // ------------------------------------------------------------------
 
 /// Build a context backed by `MockExecutor` for `run()` tests.
-fn make_systemd_context(config: crate::Config, executor: MockExecutor) -> Context {
+fn make_systemd_context(config: crate::Config, mut executor: MockExecutor) -> Context {
+    executor
+        .expect_which()
+        .with(mockall::predicate::eq("systemctl"))
+        .return_const(true);
     make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
 }
 
 #[test]
 fn run_calls_daemon_reload_before_enabling_unit() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.units.push(SystemdUnit {
         name: "dunst.service".to_string(),
@@ -109,6 +126,12 @@ fn run_calls_daemon_reload_before_enabling_unit() {
     //   4. run_unchecked("systemctl", ["--user", "enable", "--now", "dunst.service"]) → success
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
+    let installed = Arc::new(AtomicBool::new(false));
+    let observed = Arc::clone(&installed);
+    mock.expect_which()
+        .once()
+        .with(mockall::predicate::eq("systemctl"))
+        .returning(move |_| observed.load(Ordering::SeqCst));
     mock.expect_execute()
         .once()
         .in_sequence(&mut seq)
@@ -151,11 +174,56 @@ fn run_calls_daemon_reload_before_enabling_unit() {
         .returning(|_| Ok(ExecResult::success("")));
     let units = ConfigHandle::new(config.units.clone());
     let ctx = make_systemd_context(config, mock);
+    let task = ConfigureSystemd::new(units);
+    assert!(
+        task.should_run(&ctx),
+        "assessment must not skip systemctl provided by a prerequisite"
+    );
+    installed.store(true, Ordering::SeqCst);
 
-    let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
+    let result = task.run(&ctx).unwrap();
     assert!(
         matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
         "expected one changed action after daemon-reload + enable, got {result:?}"
+    );
+}
+
+#[test]
+fn unavailable_wsl_manager_is_checked_at_run_time() {
+    let mut config = empty_config(PathBuf::from("."));
+    config.units.push(SystemdUnit {
+        name: "example.service".to_string(),
+        scope: UnitScope::User,
+        enabled: true,
+    });
+    let units = ConfigHandle::new(config.units.clone());
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .once()
+        .with(mockall::predicate::eq("systemctl"))
+        .return_const(true);
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.program() == "systemctl"
+                && spec.arguments() == ["is-system-running"]
+                && !spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::failure("offline", "", Some(1))));
+    let ctx = make_context(
+        config,
+        Platform {
+            os: Os::Linux,
+            is_arch: false,
+            is_wsl: true,
+        },
+        Arc::new(mock),
+    );
+    let task = ConfigureSystemd::new(units);
+
+    assert!(task.should_run(&ctx));
+    assert!(
+        matches!(task.run(&ctx).unwrap(), TaskResult::NotApplicable(reason) if reason == "systemd unavailable")
     );
 }
 
@@ -390,10 +458,6 @@ fn needs_sudo_true_for_disabled_system_scope_unit() {
         enabled: true,
     });
     let mut mock = MockExecutor::new();
-    mock.expect_which()
-        .once()
-        .with(mockall::predicate::eq("systemctl"))
-        .return_const(true);
     mock.expect_execute()
         .once()
         .withf(|spec| {
@@ -420,10 +484,6 @@ fn needs_sudo_false_for_enabled_system_scope_unit() {
         enabled: true,
     });
     let mut mock = MockExecutor::new();
-    mock.expect_which()
-        .once()
-        .with(mockall::predicate::eq("systemctl"))
-        .return_const(true);
     mock.expect_execute()
         .once()
         .withf(|spec| {
@@ -463,10 +523,6 @@ fn needs_sudo_true_for_system_unit_that_should_be_disabled() {
         enabled: false,
     });
     let mut mock = MockExecutor::new();
-    mock.expect_which()
-        .once()
-        .with(mockall::predicate::eq("systemctl"))
-        .return_const(true);
     mock.expect_execute()
         .once()
         .withf(|spec| {

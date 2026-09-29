@@ -34,11 +34,7 @@ impl Task for ConfigureSystemd {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().supports_systemd()
-            && !self.config.read().is_empty()
-            && ctx.which("systemctl")
-            && systemd_available(ctx)
-            && !ctx.is_ci()
+        ctx.platform().supports_systemd() && !self.config.read().is_empty() && !ctx.is_ci()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
@@ -49,6 +45,12 @@ impl Task for ConfigureSystemd {
         let units = self.config.read().to_vec();
         if units.is_empty() {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
+        }
+        if !ctx.which("systemctl") {
+            return Ok(TaskResult::unmet("systemctl unavailable"));
+        }
+        if !systemd_available(ctx) {
+            return Ok(TaskResult::NotApplicable("systemd unavailable".to_string()));
         }
 
         let user_manager_available = user_manager_available(ctx, &units);

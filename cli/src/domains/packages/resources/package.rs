@@ -9,10 +9,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
-use crate::infra::exec::{CommandSpec, Executor};
+use crate::infra::exec::{CommandSpec, ExecError, Executor};
 
 use super::pacman::PacmanProvider;
 use super::paru::ParuProvider;
@@ -85,9 +85,10 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     ///
     /// Providers with native batch support (see
     /// [`PackageProvider::batch_invocation`]) install everything in one solver
-    /// invocation. Providers without batch support install one at a time,
-    /// continuing after individual failures and reporting them in the returned
-    /// [`PackageInstallReport`].
+    /// invocation, re-querying state after a failed transaction to account for
+    /// packages installed before the failure. Providers without batch support
+    /// install one at a time, continuing after individual failures and reporting
+    /// them in the returned [`PackageInstallReport`].
     ///
     /// `progress` is called with each package name before the batch starts,
     /// or immediately before its individual install starts. One-at-a-time
@@ -98,7 +99,8 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns an error if a provider-level batch operation fails.
+    /// Returns an error if a batch cannot start, is cancelled, cannot be
+    /// reconciled, or fails after installing every requested package.
     fn install_missing(
         &self,
         resources: &[&PackageResource],
@@ -123,7 +125,16 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
             for name in &names {
                 progress(name);
             }
-            executor.execute(CommandSpec::new(program).args(&args))?;
+            match executor.execute(CommandSpec::new(program).args(&args)) {
+                Ok(_) => {}
+                Err(error @ ExecError::NonZero { .. }) => {
+                    let installed = self.query_installed(executor).with_context(|| {
+                        format!("rechecking installed packages after batch failure: {error}")
+                    })?;
+                    return reconcile_failed_batch(resources, &installed, error);
+                }
+                Err(error) => return Err(error.into()),
+            }
             return Ok(PackageInstallReport::applied(
                 resources
                     .iter()
@@ -156,8 +167,8 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
                 }) => {}
                 Err(err) => {
                     if err
-                        .downcast_ref::<crate::infra::exec::ExecError>()
-                        .is_some_and(crate::infra::exec::ExecError::is_cancelled)
+                        .downcast_ref::<ExecError>()
+                        .is_some_and(ExecError::is_cancelled)
                     {
                         return Err(err);
                     }
@@ -167,6 +178,30 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         }
         Ok(report)
     }
+}
+
+fn reconcile_failed_batch(
+    resources: &[&PackageResource],
+    installed: &HashSet<String>,
+    error: ExecError,
+) -> Result<PackageInstallReport> {
+    let mut report = PackageInstallReport::new();
+    for resource in resources {
+        if matches!(
+            resource.state_from_installed(installed),
+            ResourceState::Correct
+        ) {
+            report.record_applied(resource.name.clone());
+        } else {
+            report.record_failure(resource.name.clone(), error.to_string());
+        }
+    }
+    if !report.has_failures() {
+        // A post-transaction hook can fail after every requested package was
+        // installed. Do not turn that failed transaction into a successful task.
+        return Err(error.into());
+    }
+    Ok(report)
 }
 
 // ---------------------------------------------------------------------------

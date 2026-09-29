@@ -178,15 +178,20 @@ impl SystemdUnitResource {
     }
 
     fn offline_current_state(&self) -> ResourceResult<ResourceState> {
+        if !self.enabled {
+            return Ok(if self.offline_disable_links()?.is_empty() {
+                ResourceState::Correct
+            } else {
+                ResourceState::Incorrect {
+                    current: "enabled".to_string(),
+                }
+            });
+        }
         if self.offline_unit_path()?.is_none() {
             // This is expected during a fresh dry run: the preceding symlink
             // task reports the unit definition it would install but does not
             // create it. The enablement link would therefore also be missing.
-            return Ok(if self.enabled {
-                ResourceState::Missing
-            } else {
-                ResourceState::Correct
-            });
+            return Ok(ResourceState::Missing);
         }
         let links = self.offline_enablement_links()?;
         let mut all_enabled = true;
@@ -212,24 +217,15 @@ impl SystemdUnitResource {
                 Err(error) => return Err(error.into()),
             }
         }
-        if self.enabled {
-            Ok(if all_enabled {
-                ResourceState::Correct
-            } else if any_enabled {
-                ResourceState::Incorrect {
-                    current: "enablement links are incomplete or bypass the installed unit"
-                        .to_string(),
-                }
-            } else {
-                ResourceState::Missing
-            })
+        Ok(if all_enabled {
+            ResourceState::Correct
         } else if any_enabled {
-            Ok(ResourceState::Incorrect {
-                current: "enabled".to_string(),
-            })
+            ResourceState::Incorrect {
+                current: "enablement links are incomplete or bypass the installed unit".to_string(),
+            }
         } else {
-            Ok(ResourceState::Correct)
-        }
+            ResourceState::Missing
+        })
     }
 
     fn enable_offline(&self) -> ResourceResult<ResourceChange> {
@@ -256,20 +252,58 @@ impl SystemdUnitResource {
         Ok(ResourceChange::Applied)
     }
 
-    fn disable_offline(&self) -> ResourceResult<ResourceChange> {
-        for (link, source) in self.offline_enablement_links()? {
+    fn offline_disable_links(&self) -> ResourceResult<Vec<PathBuf>> {
+        let user_dir = self.offline_user_dir()?;
+        let directories = match std::fs::read_dir(&user_dir) {
+            Ok(directories) => directories,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
+        };
+        let sources: Vec<_> = std::iter::once(&user_dir)
+            .chain(&self.system_user_unit_dirs)
+            .map(|directory| directory.join(&self.name))
+            .collect();
+        let mut links = Vec::new();
+        // Disable the installed relationships, not the unit's potentially
+        // changed [Install] directives. Never traverse user-replaced directories.
+        for directory in directories {
+            let directory = directory?;
+            let name = directory.file_name();
+            let name = name.to_string_lossy();
+            if !(name.ends_with(".wants") || name.ends_with(".requires")) {
+                continue;
+            }
+            if !directory.file_type()?.is_dir() {
+                return Err(ResourceError::conflicting_state(
+                    directory.path().display().to_string(),
+                    "systemd enablement directory",
+                    "non-directory filesystem entry",
+                ));
+            }
+            let link = directory.path().join(&self.name);
             match std::fs::symlink_metadata(&link) {
-                Ok(_) if symlink_points_to(&link, &source) => std::fs::remove_file(&link)?,
-                Ok(_) => {
-                    return Err(ResourceError::conflicting_state(
-                        link.display().to_string(),
-                        "systemd enablement symlink",
-                        "unexpected filesystem entry",
-                    ));
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    if sources.iter().any(|source| {
+                        symlink_references(&link, source) || symlink_points_to(&link, source)
+                    }) {
+                        links.push(link);
+                    }
                 }
+                Ok(_) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
+        }
+        Ok(links)
+    }
+
+    fn disable_offline(&self) -> ResourceResult<ResourceChange> {
+        let links = self.offline_disable_links()?;
+        if links.is_empty() {
+            return Ok(ResourceChange::AlreadyCorrect);
+        }
+        for link in links {
+            std::fs::remove_file(link)?;
         }
         Ok(ResourceChange::Applied)
     }

@@ -149,6 +149,86 @@ fn elevated_child_args_do_not_duplicate_repeated_flags() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
+    use crate::app::config::store::ConfigStore;
+    use crate::domains::files::config::symlinks::Symlink;
+    use crate::infra::logging::TaskStatus;
+    use crate::test_helpers::make_windows_context;
+
+    for parallel in [false, true] {
+        for (is_file, existing) in [(false, false), (true, true), (true, false)] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = crate::infra::fs::canonicalize(fixture.path()).unwrap();
+            let source = root.join("symlinks/example");
+            let home = root.join("home");
+            std::fs::create_dir_all(root.join("symlinks")).unwrap();
+            std::fs::create_dir(&home).unwrap();
+            if is_file {
+                std::fs::write(&source, "managed content").unwrap();
+            } else {
+                std::fs::create_dir(&source).unwrap();
+            }
+            if existing {
+                std::os::unix::fs::symlink(&source, home.join(".example")).unwrap();
+            }
+            let mut config = empty_config(root);
+            config.symlinks.push(Symlink {
+                source: "example".into(),
+                target: None,
+                origin: None,
+            });
+            let log = Arc::new(Logger::new("test"));
+            let ctx = make_windows_context(config.clone())
+                .with_home(home.clone())
+                .with_log(Arc::<Logger>::clone(&log))
+                .with_non_interactive(true)
+                .with_parallel(parallel);
+            let tasks = crate::app::catalog::all_install_tasks(&ConfigStore::from_config(config));
+            let selected = tasks
+                .iter()
+                .filter(|task| matches!(task.selector(), "developer-mode" | "symlinks"))
+                .map(Box::as_ref)
+                .collect::<Vec<_>>();
+            let symlinks = selected
+                .iter()
+                .find(|task| task.selector() == "symlinks")
+                .unwrap();
+            let needs_elevation = is_file && !existing;
+            assert_eq!(
+                symlinks.needs_elevation(&ctx),
+                needs_elevation,
+                "only pending file links need elevation"
+            );
+
+            run_tasks_to_completion(selected, &ctx, &log).unwrap();
+
+            let entries = log.task_entries();
+            let symlink_entry = entries
+                .iter()
+                .find(|entry| entry.name == "Home symlinks")
+                .unwrap();
+            assert_eq!(
+                symlink_entry.status,
+                if needs_elevation {
+                    TaskStatus::Skipped
+                } else if existing {
+                    TaskStatus::Ok
+                } else {
+                    TaskStatus::Changed
+                },
+                "parallel={parallel}, is_file={is_file}, existing={existing}"
+            );
+            assert_eq!(
+                home.join(".example").exists(),
+                !needs_elevation,
+                "unprivileged links must converge; pending privileged links must remain skipped"
+            );
+        }
+    }
+}
+
 #[test]
 fn blocked_dependents_cascades_to_transitive_dependents() {
     // Mirrors the real Windows shape: symlinks cannot run unelevated, and

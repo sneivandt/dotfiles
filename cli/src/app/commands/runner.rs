@@ -197,8 +197,8 @@ fn resolve_root_from_dir(
         return crate::infra::fs::canonicalize(root);
     }
 
-    if let Some(root) = env.var("DOTFILES_ROOT") {
-        return Ok(std::path::PathBuf::from(root));
+    if let Some(root) = env.var_os("DOTFILES_ROOT") {
+        return crate::infra::fs::canonicalize(std::path::Path::new(&root));
     }
 
     if let Ok(exe) = std::env::current_exe()
@@ -405,11 +405,54 @@ mod root_tests {
     }
 
     #[test]
-    fn environment_root_is_used_without_canonicalizing() {
-        let env = MapEnv::new().with("DOTFILES_ROOT", "relative-root");
+    fn environment_root_is_canonicalized_and_must_exist() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().join("repo");
+        std::fs::create_dir(&root).unwrap();
+        let env = MapEnv::new().with("DOTFILES_ROOT", &root);
         assert_eq!(
             resolve_root_from_dir(None, None, &env).unwrap(),
-            std::path::Path::new("relative-root")
+            crate::infra::fs::canonicalize(&root).unwrap()
+        );
+        let missing = MapEnv::new().with("DOTFILES_ROOT", root.join("missing"));
+        assert!(
+            resolve_root_from_dir(None, None, &missing).is_err(),
+            "an invalid environment root must not produce an empty configuration"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn relative_environment_root_creates_resolvable_home_symlinks() {
+        use crate::domains::files::config::symlinks::Symlink;
+        use crate::domains::files::symlinks::InstallSymlinks;
+        use crate::test_helpers::{assert_task_changed, empty_config, make_linux_context};
+
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let fixture_root = crate::infra::fs::canonicalize(fixture.path()).unwrap();
+        let root = fixture_root.join("repo");
+        let home = fixture_root.join("home");
+        std::fs::create_dir_all(root.join("symlinks")).unwrap();
+        std::fs::create_dir(&home).unwrap();
+        std::fs::write(root.join("symlinks/example"), "managed content").unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        let relative_root = root.strip_prefix(&cwd).unwrap();
+        let env = MapEnv::new().with("DOTFILES_ROOT", relative_root);
+        let resolved = resolve_root_from_dir(None, Some(&cwd), &env).unwrap();
+        let config = empty_config(resolved.clone());
+        let ctx = make_linux_context(config).with_home(home.clone());
+        let task = InstallSymlinks::new(ConfigHandle::new(vec![Symlink {
+            source: "example".into(),
+            target: None,
+            origin: Some(resolved),
+        }]));
+
+        assert_task_changed(&task.run(&ctx).unwrap());
+
+        assert_eq!(
+            std::fs::read_to_string(home.join(".example")).unwrap(),
+            "managed content",
+            "link payloads must not resolve the repository relative to the user's home"
         );
     }
 

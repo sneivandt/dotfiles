@@ -34,11 +34,6 @@ const fn id<T: 'static>() -> TaskId {
     TaskId::Type(TypeId::of::<T>())
 }
 
-/// Wrap a task, adding cross-domain dependency edges declared by the app.
-fn with_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
-    TaskWithExtraDeps::boxed(Box::new(inner), extra, &[])
-}
-
 /// Wrap a task, adding cross-domain ordering-only edges declared by the app.
 fn with_ordering_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
     TaskWithExtraDeps::boxed(Box::new(inner), &[], extra)
@@ -112,7 +107,7 @@ pub(crate) fn install_tasks_for_run(
         Box::new(InstallPackages::new(store.packages.clone())),
         Box::new(InstallParu),
         Box::new(InstallAurPackages::new(store.packages.clone())),
-        with_deps(
+        with_ordering_deps(
             InstallSymlinks::new(store.symlinks.clone()),
             &[id::<EnableDeveloperMode>()],
         ),
@@ -188,6 +183,18 @@ mod tests {
                 .ordering_dependencies()
                 .contains(&id::<InstallSymlinks>()),
             "systemd must wait for symlinks (app-injected)"
+        );
+        assert!(
+            find("Home symlinks")
+                .ordering_dependencies()
+                .contains(&id::<EnableDeveloperMode>()),
+            "symlinks must wait for Developer Mode while assessing their own privilege needs"
+        );
+        assert!(
+            !find("Home symlinks")
+                .dependencies()
+                .contains(&id::<EnableDeveloperMode>()),
+            "unavailable Developer Mode must not block links that need no elevation"
         );
         assert!(
             find("Shell completions")

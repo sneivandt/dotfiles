@@ -227,6 +227,9 @@ An explicit path also works on Linux. Dotfiles reasserts the experimental
 feature when needed, but deliberately does **not** invoke APM's native
 `copilot-cowork` deployment. It copies resolved skills from `~/.agents/skills`
 file-by-file to avoid replacing OneDrive-protected directories and their ACLs.
+Reconciliation retains unchanged symlinks, repairs changed file/link entries
+without writing through destination links, and refuses to replace directories
+with files.
 Lockfile `target_subset` filters are respected: only unfiltered packages or
 packages including `copilot-cowork` are candidates.
 

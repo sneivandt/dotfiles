@@ -34,9 +34,7 @@ pub fn run() -> ExitCode {
     // here keeps the engine dispatch in `run_engine` total.
     let command = match args.command {
         cli::Command::Completions(opts) => {
-            let script = super::completion::registration(opts.shell);
-            drop(std::io::stdout().lock().write_all(script.as_bytes()));
-            return ExitCode::SUCCESS;
+            return standalone(write_completions(opts.shell, &mut std::io::stdout().lock()));
         }
         // Log viewing is read-only: do not initialize the tracing subscriber or
         // create a new log file just to display an existing log.
@@ -77,6 +75,18 @@ fn install_command(opts: cli::InstallCommandOpts, force_update_pins: bool) -> cl
         update_pins,
         verbose,
     }
+}
+
+fn write_completions(
+    shell: clap_complete::Shell,
+    out: &mut dyn std::io::Write,
+) -> anyhow::Result<()> {
+    use anyhow::Context as _;
+
+    let script = super::completion::registration(shell);
+    out.write_all(script.as_bytes())
+        .context("writing shell completions")?;
+    out.flush().context("flushing shell completions")
 }
 
 fn standalone(result: anyhow::Result<()>) -> ExitCode {
@@ -174,6 +184,49 @@ mod tests {
     use std::sync::{Mutex, PoisonError};
 
     use super::*;
+
+    #[test]
+    fn completions_preserve_generated_content() {
+        let mut output = Vec::new();
+        let result = write_completions(clap_complete::Shell::Zsh, &mut output);
+
+        assert_eq!(standalone(result), ExitCode::SUCCESS);
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            super::super::completion::registration(clap_complete::Shell::Zsh)
+        );
+    }
+
+    #[test]
+    fn completion_output_failures_fail_the_command() {
+        struct BrokenOutput {
+            fail_write: bool,
+        }
+
+        impl std::io::Write for BrokenOutput {
+            fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+                if self.fail_write {
+                    Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+                } else {
+                    Ok(buffer.len())
+                }
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+            }
+        }
+
+        for fail_write in [false, true] {
+            let result =
+                write_completions(clap_complete::Shell::Zsh, &mut BrokenOutput { fail_write });
+            assert_eq!(
+                standalone(result),
+                ExitCode::FAILURE,
+                "output failures must not report successful completion generation"
+            );
+        }
+    }
 
     #[test]
     fn update_command_and_install_flag_select_the_same_pipeline() {

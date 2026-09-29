@@ -120,6 +120,8 @@ descendant of home, not home itself. Current-directory components are normalized
 `./bashrc` still targets `~/.bashrc`, while `.` is invalid. Duplicate targets and
 parent/child target overlaps are rejected. Comparison ignores redundant
 separators and `.` components, and is case-insensitive on Windows.
+Targets that alias the source entry through existing directory links are
+rejected rather than replacing the source itself.
 
 **Back up existing files before applying.** Installation warns and replaces a
 regular file or empty directory at a managed target without making a backup.
@@ -216,6 +218,8 @@ Keys are dot-separated paths; values use TOML types. Manage the narrowest key
 needed so unrelated user and harness-owned settings remain untouched. Existing
 documents must be JSON objects or TOML tables; malformed documents are reported,
 not replaced with an empty one.
+Conflicting values for the same harness and exact key are rejected before any
+settings document is changed, including conflicts across main and overlay.
 
 These are harness preferences, not plugin declarations. Use [APM](APM.md) for
 skills, instructions, hooks, and MCP configuration. Removing a setting stops
@@ -279,6 +283,8 @@ units = [
 
 A string means `scope = "user"` and `enabled = true`. A table must specify
 `name` and `scope` (`user` or `system`); `enabled` defaults to `true`.
+Supported unit suffixes are `.service`, `.timer`, `.socket`, `.target`, `.path`,
+`.mount`, `.automount`, and `.swap`.
 User unit files are usually provided by symlinks before this task runs.
 System-scope changes use `sudo`.
 
@@ -296,6 +302,8 @@ units retain their installed home path so materializing them during uninstall
 does not leave an enablement link pointing into a removed checkout.
 Offline disabling removes matching existing `.wants` and `.requires` links,
 even if the unit file has disappeared or its `[Install]` directives changed.
+Offline enablement honors empty `WantedBy=` and `RequiredBy=` assignments,
+which reset only their respective lists of earlier relationships.
 
 ## System files
 
@@ -332,6 +340,9 @@ fragment and preview before applying. Removing the declaration does not restore
 the old file.
 PAM merges require an existing facility stack; a stack consisting solely of
 the managed module is valid and remains convergent on subsequent runs.
+Ownership matches the facility and actual module field, including after
+bracketed controls; module names used as arguments or included stack names
+do not make an unrelated rule managed.
 
 ## VS Code extensions
 
@@ -363,8 +374,9 @@ The startup header shows the resolved overlay path.
 
 An explicit linked Git worktree prompts for confirmation before use or
 persistence. The prompt defaults to no; a non-interactive invocation rejects
-the new worktree selection. An ordinary checkout with a `.git` directory does
-not need that confirmation.
+the new worktree selection, including `--non-interactive` or CI policy on an
+attached terminal. An ordinary checkout with a `.git` directory does not need
+that confirmation.
 
 ### Merge rules
 
@@ -405,8 +417,8 @@ description = "Converge private workstation settings"
 Names must be nonempty and normalize to distinct task selectors. This example
 becomes `script-configure-private-workstation`. Paths must stay inside the
 overlay, including after resolving symlinks. Scripts run with the overlay root
-as their working directory. `.ps1` uses `pwsh` (or Windows PowerShell when
-available on Windows); other extensions use `sh`.
+as their working directory. `.ps1`, matched case-insensitively, uses `pwsh` (or
+Windows PowerShell when available on Windows); other extensions use `sh`.
 
 Implement the complete protocol:
 

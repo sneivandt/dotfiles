@@ -274,6 +274,11 @@ nonzero exit has a specific domain meaning that the caller handles.
 Typed errors preserve spawn, I/O, nonzero-exit, timeout and cancellation causes
 through resource/task boundaries.
 
+The shared [`write_atomic`](../cli/src/infra/fs/place.rs) helper stages content
+with owner-only access on Unix. Replacing a regular file preserves its access
+mode; new files and replacements of symlinks remain owner-only. Callers that
+need executable output apply that policy explicitly.
+
 Timeout and cancellation cover both child lifetime and captured-pipe draining.
 Unix process groups and Windows job objects allow cleanup of descendants that
 retain output pipes after the leader exits; Windows assignment occurs before

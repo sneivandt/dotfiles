@@ -196,6 +196,10 @@ Apply prints each package ID and:
 3. Reports administrator-required, cancelled, or policy-blocked packages as
    unmet/skipped and continues with other packages.
 
+If installation discovers the package is already present and returns
+“no applicable upgrade,” the package counts as already correct, not failed
+or newly installed.
+
 Winget's own interaction is disabled and source/package agreements are
 accepted by these commands; an installer's UAC dialog can still appear.
 Strict skip policy fails if applicable work remains. Review package sources

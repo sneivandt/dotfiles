@@ -238,6 +238,9 @@ deliberately inapplicable in CI; strict mode does not turn those into failures.
 Only one task-engine command can run per repository at a time, including
 `check` and previews. Linked worktrees share a lock in the common Git directory.
 `tasks` and `log` are exempt.
+Outside Git repositories, the lock uses the platform state directory or home
+fallback; blank or relative state/home paths are ignored so changing the
+working directory cannot select a different lock.
 
 ## Discover tasks
 
@@ -372,6 +375,8 @@ History orders by recorded start time and links restarted/elevated children to
 their parent IDs. `unfinished` means no finish record exists: a run may still
 be active or may have terminated abruptly. Old logs without lifecycle records
 show `unknown`; malformed or unfamiliar records remain readable as raw text.
+An empty or unmatched history remains machine-readable: `--list --format json`
+returns `[]`, and plain format emits no rows.
 
 Log-directory precedence is:
 
@@ -390,6 +395,8 @@ The `completions` task installs runtime registration for Zsh or PowerShell.
 The shell queries the current binary for profiles, log command values, and
 task selectors. Task completion carries forward `--root`, `--profile`, and
 `--overlay` and uses the same read-only configuration discovery as `tasks`.
+The hidden `completions` command fails if writing or flushing its registration
+to stdout fails.
 
 ## Repository and overlay paths
 

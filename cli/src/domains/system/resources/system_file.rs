@@ -392,14 +392,26 @@ fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Opti
 
 fn pam_rule_identity(line: &str) -> anyhow::Result<(&str, &str)> {
     let mut tokens = line.split_whitespace();
-    let Some(facility) = tokens.clone().next() else {
+    let Some(facility) = tokens.next() else {
         bail!("PAM fragment contains an empty rule");
     };
+    let Some(control) = tokens.next() else {
+        bail!("PAM fragment rule has no control field: {line}");
+    };
+    if matches!(control, "include" | "substack") {
+        bail!("PAM fragment rule includes a stack rather than a module: {line}");
+    }
+    if control.starts_with('[')
+        && !control.ends_with(']')
+        && !tokens.by_ref().any(|token| token.ends_with(']'))
+    {
+        bail!("PAM fragment rule has an unterminated control field: {line}");
+    }
     #[allow(
         clippy::case_sensitive_file_extension_comparisons,
         reason = "PAM module names and Linux file extensions are case-sensitive"
     )]
-    let Some(module) = tokens.find(|token| token.ends_with(".so")) else {
+    let Some(module) = tokens.next().filter(|token| token.ends_with(".so")) else {
         bail!("PAM fragment rule has no module: {line}");
     };
     Ok((facility, module))
@@ -422,8 +434,7 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
         let mut trailing = lines.split_off(index.saturating_add(1));
         lines.retain(|line| {
             let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
-            let mut tokens = code.split_whitespace();
-            !(tokens.clone().next() == Some(facility) && tokens.any(|token| token == module))
+            !pam_rule_identity(code).is_ok_and(|identity| identity == (facility, module))
         });
         lines.push(rule.to_string());
         lines.append(&mut trailing);
@@ -529,6 +540,46 @@ mod tests {
             merge_pam("session optional other.so\n", fragment).is_err(),
             "a genuinely absent facility must still be rejected"
         );
+    }
+
+    #[test]
+    fn pam_merge_does_not_claim_module_arguments_or_stack_names() {
+        let unmanaged = "auth include system-auth\n\
+            auth required pam_exec.so keyring.so\n\
+            auth [success=1 default=ignore] pam_debug.so keyring.so\n\
+            auth include keyring.so\n";
+        let current = format!(
+            "{unmanaged}auth optional keyring.so old_option\nsession include system-login\n"
+        );
+        let fragment = "auth optional keyring.so\n";
+        let expected = format!("{unmanaged}{fragment}session include system-login\n");
+
+        let merged = merge_pam(&current, fragment).unwrap();
+
+        assert_eq!(merged, expected, "unmanaged PAM rules must be preserved");
+        assert_eq!(merge_pam(&merged, fragment).unwrap(), merged);
+    }
+
+    #[test]
+    fn pam_rule_identity_uses_the_module_field_after_the_control_field() {
+        for rule in [
+            "auth optional keyring.so argument",
+            "auth [success=1 default=ignore] keyring.so argument",
+            "auth [success=done] keyring.so argument",
+        ] {
+            assert_eq!(pam_rule_identity(rule).unwrap(), ("auth", "keyring.so"));
+        }
+        for rule in [
+            "auth optional script keyring.so",
+            "auth include keyring.so",
+            "auth substack keyring.so",
+            "auth [success=1 keyring.so",
+        ] {
+            assert!(
+                pam_rule_identity(rule).is_err(),
+                "a stack name or argument is not a module field: {rule}"
+            );
+        }
     }
 
     #[cfg(unix)]

@@ -27,8 +27,20 @@ pub(super) fn current_state(resource: &SymlinkResource) -> ResourceResult<Resour
         return Ok(ResourceState::Invalid { reason });
     }
 
+    if same_entry(&resource.source, &resource.target) {
+        return Ok(ResourceState::Invalid {
+            reason: "target aliases the source entry through its parent directory".to_string(),
+        });
+    }
+
     std::fs::read_link(&resource.target).map_or_else(
         |_| match crate::infra::fs::symlink_metadata_optional(&resource.target, "stat target")? {
+            Some(_) if paths_equal(&resource.target, &resource.source) => {
+                Ok(ResourceState::Invalid {
+                    reason: "target resolves to the source instead of a separate managed link"
+                        .to_string(),
+                })
+            }
             // `read_link` succeeds for a dangling symlink, so reaching here with
             // metadata present means the target is not a symlink at all.
             Some(_) => Ok(ResourceState::Incorrect {
@@ -37,16 +49,7 @@ pub(super) fn current_state(resource: &SymlinkResource) -> ResourceResult<Resour
             None => Ok(ResourceState::Missing),
         },
         |existing| {
-            let resolved = if existing.is_absolute() {
-                existing.clone()
-            } else {
-                resource
-                    .target
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."))
-                    .join(&existing)
-            };
-            if paths_equal(&resolved, &resource.source) {
+            if link_points_to_source(&resource.target, &existing, &resource.source) {
                 Ok(ResourceState::Correct)
             } else {
                 Ok(ResourceState::Incorrect {
@@ -55,6 +58,42 @@ pub(super) fn current_state(resource: &SymlinkResource) -> ResourceResult<Resour
             }
         },
     )
+}
+
+pub(super) fn link_points_to_source(target: &Path, existing: &Path, source: &Path) -> bool {
+    let resolved = if existing.is_absolute() {
+        existing.to_path_buf()
+    } else {
+        target
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(existing)
+    };
+    paths_equal(&resolved, source)
+}
+
+/// Compare entry locations without following the final link.
+pub(super) fn same_entry(source: &Path, target: &Path) -> bool {
+    let same_name =
+        source
+            .file_name()
+            .zip(target.file_name())
+            .is_some_and(|(source_name, target_name)| {
+                #[cfg(windows)]
+                {
+                    source_name.to_string_lossy().to_lowercase()
+                        == target_name.to_string_lossy().to_lowercase()
+                }
+                #[cfg(not(windows))]
+                {
+                    source_name == target_name
+                }
+            });
+    same_name
+        && paths_equal(
+            source.parent().unwrap_or_else(|| Path::new(".")),
+            target.parent().unwrap_or_else(|| Path::new(".")),
+        )
 }
 
 /// Compare two paths for equality, canonicalizing when possible.

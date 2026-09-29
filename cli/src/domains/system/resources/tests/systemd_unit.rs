@@ -470,6 +470,55 @@ fn configured_scope_and_enablement_drive_exact_apply_commands() {
 }
 
 #[test]
+fn system_automount_and_swap_units_use_the_existing_runtime_contract() {
+    for name in ["data.automount", "swapfile.swap"] {
+        for enabled in [true, false] {
+            let mut mock = MockExecutor::new();
+            mock.expect_execute()
+                .once()
+                .withf(move |spec| {
+                    spec.program() == "systemctl"
+                        && spec.arguments() == ["is-enabled", name]
+                        && !spec.is_checked()
+                })
+                .returning(move |_| {
+                    Ok(if enabled {
+                        ExecResult::success("enabled\n")
+                    } else {
+                        ExecResult::failure("disabled\n", "", Some(1))
+                    })
+                });
+            expect_runtime(
+                &mut mock,
+                name,
+                UnitScope::System,
+                if enabled {
+                    "ActiveState=active\n"
+                } else {
+                    "ActiveState=inactive\n"
+                },
+            );
+            let mut resource = SystemdUnitResource::new(name, UnitScope::System, Arc::new(mock));
+            resource.enabled = enabled;
+
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(
+                resource.apply_invocation().unwrap(),
+                (
+                    "sudo",
+                    vec![
+                        "systemctl",
+                        if enabled { "enable" } else { "disable" },
+                        "--now",
+                        name,
+                    ],
+                )
+            );
+        }
+    }
+}
+
+#[test]
 fn apply_reports_unmet_work_with_exit_diagnostics() {
     for (code, output, error, expected) in [
         (
@@ -689,6 +738,80 @@ fn offline_user_unit_supports_required_by_targets() {
             .join("graphical-session.target.requires/session.service")
             .is_symlink()
     );
+}
+
+#[test]
+fn offline_install_targets_reset_each_relationship_list_independently() {
+    for (content, expected) in [
+        (
+            "[Install]\nWantedBy=old.target\nRequiredBy=keep.target\n\
+             WantedBy= \nWantedBy=new.target\n",
+            vec!["keep.target.requires", "new.target.wants"],
+        ),
+        (
+            "[Install]\nRequiredBy=old.target\nWantedBy=keep.target\n\
+             RequiredBy=\nRequiredBy=new.target\n",
+            vec!["keep.target.wants", "new.target.requires"],
+        ),
+        (
+            "[Install]\nWantedBy=old.target\nRequiredBy=old.target\n\
+             WantedBy=\nRequiredBy=\n",
+            vec![],
+        ),
+    ] {
+        assert_eq!(install_targets(content).unwrap(), expected, "{content}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_enablement_does_not_recreate_reset_install_targets() {
+    use crate::engine::{ProcessOpts, TaskResult, process_resources};
+    use crate::test_helpers::{ContextBuilder, empty_config};
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let home = fixture.path().canonicalize().unwrap();
+    let unit_dir = home.join(".config/systemd/user");
+    std::fs::create_dir_all(&unit_dir).unwrap();
+    std::fs::write(
+        unit_dir.join("example.service"),
+        "[Install]\nWantedBy=old.target\nRequiredBy=keep.target\n\
+         WantedBy=\nWantedBy=new.target\n",
+    )
+    .unwrap();
+    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+        name: "example.service".to_string(),
+        scope: UnitScope::User,
+        enabled: true,
+    };
+    let resource =
+        || SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+    let ctx = ContextBuilder::new(empty_config(home.clone())).build();
+    let preview = process_resources(
+        &ctx.with_dry_run(true),
+        [resource()],
+        &ProcessOpts::strict("configure"),
+    )
+    .unwrap();
+    assert!(matches!(preview, TaskResult::Batch(stats) if stats.changed_count() == 1));
+    assert!(!unit_dir.join("new.target.wants").exists());
+    assert!(!unit_dir.join("keep.target.requires").exists());
+
+    assert_eq!(resource().apply().unwrap(), ResourceChange::Applied);
+    assert!(!unit_dir.join("old.target.wants").exists());
+    assert!(
+        unit_dir
+            .join("new.target.wants/example.service")
+            .is_symlink()
+    );
+    assert!(
+        unit_dir
+            .join("keep.target.requires/example.service")
+            .is_symlink()
+    );
+    let repeated =
+        process_resources(&ctx, [resource()], &ProcessOpts::strict("configure")).unwrap();
+    assert!(matches!(repeated, TaskResult::Batch(stats) if stats.already_ok_count() == 1));
 }
 
 #[cfg(unix)]

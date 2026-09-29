@@ -118,7 +118,7 @@ out=""
 url=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    -o)
+    -o|-qO)
       shift
       out="$1"
       ;;
@@ -131,7 +131,12 @@ done
 
 case "$url" in
   */releases/latest)
-    printf '{"tag_name":"v9.9.9"}\n'
+    if [ "${WRAPPER_RELEASE_JSON+x}" = x ]; then
+      printf '%s\n' "$WRAPPER_RELEASE_JSON"
+    else
+      printf '{"tag_name":"v9.9.9"}\n'
+    fi
+    exit "${WRAPPER_RELEASE_STATUS:-0}"
     ;;
   */releases/download/v9.9.9/checksums.sha256)
     [ ! -e "$DOTFILES_ROOT/bin/dotfiles" ] || {
@@ -158,9 +163,27 @@ BIN
 esac
 EOF
   chmod +x "$tmpdir/fake-bin/curl"
+  wrapper_path="$tmpdir/fake-bin:$PATH"
+  if [ "${WRAPPER_DOWNLOADER:-curl}" = wget ]; then
+    mv "$tmpdir/fake-bin/curl" "$tmpdir/fake-bin/wget"
+    for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname; do
+      ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
+    done
+    wrapper_path="$tmpdir/fake-bin"
+  fi
 
-  PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=1 \
-    "$tmpdir/dotfiles.sh" install -p desktop -n
+  status=0
+  PATH="$wrapper_path" DOTFILES_SKIP_ATTESTATION=1 \
+    "$tmpdir/dotfiles.sh" install -p desktop -n > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
+  if [ "${WRAPPER_EXPECT_RELEASE_ERROR:-0}" = 1 ]; then
+    [ "$status" -ne 0 ] || log_error "Wrapper accepted an unsuccessful release lookup"
+    [ ! -e "$tmpdir/download-path" ] || log_error "Failed release lookup downloaded an asset"
+    [ ! -e "$tmpdir/args.txt" ] || log_error "Failed release lookup executed a child"
+    grep -q 'Failed to resolve latest release tag' "$tmpdir/stderr" ||
+      log_error "Failed release lookup was not explained"
+    return 0
+  fi
+  [ "$status" -eq 0 ] || log_error "Bootstrap failed: $(cat "$tmpdir/stderr")"
 
   expected=$(cat <<'EOF'
 install
@@ -191,6 +214,25 @@ EOF
   fi
 
   log_verbose "✓ Real wrapper bootstrap downloads, verifies, chmods, and forwards arguments"
+)}
+
+test_wrapper_release_metadata_formats()
+{(
+  log_stage "Testing release JSON property order and failed metadata transfers"
+  for downloader in curl wget; do
+    WRAPPER_DOWNLOADER="$downloader"
+    export WRAPPER_DOWNLOADER
+    WRAPPER_RELEASE_JSON='{"url":"https://api.github.com/example","tag_name":"v9.9.9","name":"release"}' \
+      test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_RELEASE_JSON='{
+    "url": "https://api.github.com/example",
+    "name": "release", "tag_name" : "v9.9.9"
+  }' test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_RELEASE_STATUS=23 WRAPPER_EXPECT_RELEASE_ERROR=1 \
+      test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    WRAPPER_RELEASE_JSON='{"name":"release without a tag"}' WRAPPER_EXPECT_RELEASE_ERROR=1 \
+      test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+  done
 )}
 
 test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args()
@@ -616,6 +658,7 @@ case "$0" in
     test_wrapper_uses_local_binary
     test_wrapper_forwarded_args
     test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args
+    test_wrapper_release_metadata_formats
     test_wrapper_failed_bootstrap_preserves_cached_binary
     test_wrapper_build_mode_consumes_build_flag_and_forwards_cli_args
     test_wrapper_forwards_advanced_flags

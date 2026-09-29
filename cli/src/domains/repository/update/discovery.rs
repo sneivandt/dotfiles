@@ -70,12 +70,18 @@ pub(super) fn check_repository_ready(
     target: UpdateTarget,
 ) -> Result<RepositoryReadiness> {
     // Skip when not on a branch (e.g. detached HEAD in CI checkouts).
-    let Some(head_ref) =
-        optional_git_output(ctx, &target.root, &["symbolic-ref", "--quiet", "HEAD"])?
-    else {
-        let reason = target.reason("detached HEAD");
-        ctx.log().info(format!("{reason}, skipping pull"));
-        return Ok(RepositoryReadiness::NotApplicable(reason));
+    let head_ref = match ctx.executor().execute(git_command(
+        ctx,
+        &target.root,
+        &["symbolic-ref", "--quiet", "HEAD"],
+    )) {
+        Ok(result) => result.stdout.trim().to_string(),
+        Err(ExecError::NonZero { result, .. }) if result.code == Some(1) => {
+            let reason = target.reason("detached HEAD");
+            ctx.log().info(format!("{reason}, skipping pull"));
+            return Ok(RepositoryReadiness::NotApplicable(reason));
+        }
+        Err(error) => return Err(error.into()),
     };
 
     // Refuse to pull when tracked files are dirty. Untracked files do not

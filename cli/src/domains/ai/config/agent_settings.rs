@@ -10,6 +10,9 @@ const AGENT_SETTINGS_EMPTY_KEY: DiagnosticCode = DiagnosticCode::new("agent-sett
 /// Diagnostic code: `agent-settings.key-empty-segment`.
 const AGENT_SETTINGS_KEY_EMPTY_SEGMENT: DiagnosticCode =
     DiagnosticCode::new("agent-settings", "key-empty-segment");
+/// Diagnostic code: `agent-settings.conflicting-values`.
+const AGENT_SETTINGS_CONFLICTING_VALUES: DiagnosticCode =
+    DiagnosticCode::new("agent-settings", "conflicting-values");
 
 /// An agent harness with a supported user settings document.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
@@ -51,12 +54,25 @@ pub struct AgentSetting {
 
 config_section!(field: "settings", ty: AgentSetting);
 
-/// Validate agent settings entries and return any warnings.
+/// Find settings that cannot converge to a single value in their target document.
+pub(crate) fn validate_conflicts(settings: &[AgentSetting]) -> Vec<Diagnostic> {
+    crate::infra::config::validation::Validator::new(AGENT_SETTINGS_TOML)
+        .check_conflicts(
+            settings,
+            AGENT_SETTINGS_CONFLICTING_VALUES,
+            |setting| format!("{}:{}", setting.target.name(), setting.key),
+            |setting| setting.value.clone(),
+            |_| None,
+        )
+        .finish()
+}
+
+/// Validate agent settings entries and return semantic diagnostics.
 #[must_use]
 pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
     use crate::infra::config::validation::{Validator, check};
 
-    Validator::new(AGENT_SETTINGS_TOML)
+    let mut diagnostics = Validator::new(AGENT_SETTINGS_TOML)
         .check_each(
             settings,
             |setting| &setting.key,
@@ -75,7 +91,9 @@ pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
                 ]
             },
         )
-        .finish()
+        .finish();
+    diagnostics.extend(validate_conflicts(settings));
+    diagnostics
 }
 
 /// TOML filename that backs this config section.
@@ -180,6 +198,44 @@ settings = [{ target = "codex", key = "model", value = "x" }]
     #[test]
     fn validate_empty_settings_produces_no_warnings() {
         assert!(validate(&[]).is_empty());
+    }
+
+    #[test]
+    fn conflicting_values_are_scoped_to_the_harness_and_exact_key() {
+        for (target, key, value, conflicts) in [
+            (AgentHarness::Copilot, "model", "other", true),
+            (AgentHarness::Copilot, "model", "current", false),
+            (AgentHarness::Codex, "model", "other", false),
+            (AgentHarness::Copilot, "Model", "other", false),
+        ] {
+            let settings = [
+                AgentSetting {
+                    target: AgentHarness::Copilot,
+                    key: "model".to_string(),
+                    value: toml::Value::String("current".to_string()),
+                },
+                AgentSetting {
+                    target,
+                    key: key.to_string(),
+                    value: toml::Value::String(value.to_string()),
+                },
+            ];
+            let diagnostics = validate(&settings);
+            assert_eq!(
+                diagnostics.len(),
+                usize::from(conflicts),
+                "{target:?}:{key}"
+            );
+            if conflicts {
+                let diagnostic = &diagnostics[0];
+                assert_eq!(diagnostic.code, AGENT_SETTINGS_CONFLICTING_VALUES);
+                assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
+                assert_eq!(diagnostic.source, AGENT_SETTINGS_TOML);
+                assert_eq!(diagnostic.item, "copilot:model");
+                assert!(diagnostic.message.contains("entry 1"));
+                assert!(diagnostic.message.contains("entry 2"));
+            }
+        }
     }
 
     #[test]

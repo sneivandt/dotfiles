@@ -130,6 +130,12 @@ mod exit_code {
     /// `APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED` (`0x8A15_0061`).
     pub(super) const PACKAGE_ALREADY_INSTALLED: i32 = -1_978_335_135;
 
+    /// `APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE` (`0x8A15_002B`).
+    ///
+    /// `winget install` switches to upgrading when it finds an installed
+    /// package. No applicable upgrade still satisfies our presence-only goal.
+    pub(super) const UPDATE_NOT_APPLICABLE: i32 = -1_978_335_189;
+
     /// `APPINSTALLER_CLI_ERROR_INSTALL_ALREADY_INSTALLED` (`0x8A15_010D`).
     pub(super) const INSTALL_ALREADY_INSTALLED: i32 = -1_978_334_963;
 
@@ -160,9 +166,11 @@ enum InstallVerdict {
 const fn classify_install(code: Option<i32>) -> InstallVerdict {
     match code {
         Some(exit_code::NO_APPLICABLE_INSTALLER) => InstallVerdict::RetryWithoutScope,
-        Some(exit_code::PACKAGE_ALREADY_INSTALLED | exit_code::INSTALL_ALREADY_INSTALLED) => {
-            InstallVerdict::AlreadyInstalled
-        }
+        Some(
+            exit_code::PACKAGE_ALREADY_INSTALLED
+            | exit_code::INSTALL_ALREADY_INSTALLED
+            | exit_code::UPDATE_NOT_APPLICABLE,
+        ) => InstallVerdict::AlreadyInstalled,
         Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH) => InstallVerdict::Installed,
         Some(exit_code::COMMAND_REQUIRES_ADMIN) => InstallVerdict::Skipped(
             "requires administrator; re-run `dotfiles install --only packages` from an elevated shell",
@@ -545,6 +553,7 @@ mod tests {
         for code in [
             exit_code::PACKAGE_ALREADY_INSTALLED,
             exit_code::INSTALL_ALREADY_INSTALLED,
+            exit_code::UPDATE_NOT_APPLICABLE,
         ] {
             assert_eq!(
                 install_with_result(ExecResult::failure("", "", Some(code))),
@@ -552,6 +561,37 @@ mod tests {
                 "exit code {code} should not inflate the applied count",
             );
         }
+    }
+
+    #[test]
+    fn winget_already_current_after_scope_retry_is_already_correct() {
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        for (scoped, code, message) in [
+            (
+                true,
+                exit_code::NO_APPLICABLE_INSTALLER,
+                "No user-scope installer",
+            ),
+            (
+                false,
+                -1_978_335_189,
+                "No available upgrade found. No newer package versions are available.",
+            ),
+        ] {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .returning(move |spec| {
+                    assert_install_command(&spec, scoped);
+                    Ok(ExecResult::failure(message, "", Some(code)))
+                });
+        }
+
+        assert_eq!(
+            WingetProvider.install("Git.Git", &mock, None).unwrap(),
+            ResourceChange::AlreadyCorrect,
+        );
     }
 
     #[test]

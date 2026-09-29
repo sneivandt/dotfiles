@@ -614,6 +614,128 @@ mod symlink {
     }
 
     #[test]
+    fn source_entries_are_not_replaced_through_an_aliased_target_parent() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let sources = root.join("sources");
+        let home = root.join("home");
+        std::fs::create_dir(&sources).unwrap();
+        std::fs::create_dir(&home).unwrap();
+        std::fs::write(sources.join("managed"), "source content").unwrap();
+        crate::infra::fs::create_native_symlink(
+            Path::new("managed"),
+            &sources.join("alias"),
+            false,
+        )
+        .unwrap();
+        crate::infra::fs::create_native_symlink(&sources, &home.join(".config"), true).unwrap();
+        for (source, target) in [
+            ("managed", "managed"),
+            ("alias", "alias"),
+            ("alias", "managed"),
+        ] {
+            let resource = SymlinkResource::new(
+                sources.join(source),
+                home.join(".config").join(target),
+                system_executor(),
+            );
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { .. }
+                ),
+                "{source} -> {target} would mutate the source entry"
+            );
+            assert!(resource.apply().is_err(), "{source} -> {target}");
+            assert!(
+                matches!(resource.remove().unwrap(), ResourceChange::Skipped { .. }),
+                "{source} -> {target}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(sources.join("managed")).unwrap(),
+                "source content"
+            );
+            assert_eq!(
+                std::fs::read_link(sources.join("alias")).unwrap(),
+                Path::new("managed")
+            );
+            assert_eq!(std::fs::read_link(home.join(".config")).unwrap(), sources);
+        }
+
+        let independent_target = home.join("managed");
+        let independent = SymlinkResource::new(
+            sources.join("managed"),
+            independent_target.clone(),
+            system_executor(),
+        );
+        independent.apply().unwrap();
+        assert_eq!(independent.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(independent.remove().unwrap(), ResourceChange::Applied);
+        assert_eq!(
+            std::fs::read_to_string(independent_target).unwrap(),
+            "source content"
+        );
+        assert_eq!(
+            std::fs::read_to_string(sources.join("managed")).unwrap(),
+            "source content"
+        );
+    }
+
+    #[test]
+    fn materialization_preserves_a_link_retargeted_after_state_discovery() {
+        for directory in [false, true] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            let source = root.join("source");
+            let user = root.join("user");
+            let target = root.join("target");
+            let content_path = |path: &Path| {
+                if directory {
+                    path.join("content")
+                } else {
+                    path.to_path_buf()
+                }
+            };
+            if directory {
+                std::fs::create_dir(&source).unwrap();
+                std::fs::create_dir(&user).unwrap();
+            }
+            std::fs::write(content_path(&source), "managed content").unwrap();
+            std::fs::write(content_path(&user), "user content").unwrap();
+            crate::infra::fs::create_native_symlink(&source, &target, directory).unwrap();
+            let resource = SymlinkResource::new(source.clone(), target.clone(), system_executor());
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+
+            if cfg!(windows) && directory {
+                std::fs::remove_dir(&target).unwrap();
+            } else {
+                std::fs::remove_file(&target).unwrap();
+            }
+            crate::infra::fs::create_native_symlink(Path::new("user"), &target, directory).unwrap();
+
+            let error = resource.remove().unwrap_err();
+            assert!(
+                format!("{error:#}").contains("no longer points to the managed source"),
+                "{error:#}"
+            );
+            assert_eq!(std::fs::read_link(&target).unwrap(), Path::new("user"));
+            assert_eq!(
+                std::fs::read_to_string(content_path(&target)).unwrap(),
+                "user content"
+            );
+            assert_eq!(
+                std::fs::read_to_string(content_path(&source)).unwrap(),
+                "managed content"
+            );
+            assert_eq!(
+                std::fs::read_dir(&root).unwrap().count(),
+                3,
+                "failed materialization must clean its staging path"
+            );
+        }
+    }
+
+    #[test]
     fn symlink_resource_description_abbreviates_managed_paths() {
         let resource = SymlinkResource::new(
             PathBuf::from("/repo/symlinks/bashrc"),

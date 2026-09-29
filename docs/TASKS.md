@@ -129,12 +129,16 @@ Both install and update consider the main checkout and an overlay with a
 are ignored by that readiness check. Detached HEAD is inapplicable. Missing
 upstream or local-only/diverged commits are reported as unmet work rather than
 being reset or rebased.
+Fatal Git errors while detecting the branch are failures, not detached-HEAD
+skips.
 
 Apply fetches and uses `git merge --ff-only @{u}`. A changed checkout triggers
 a guarded child with the original arguments, which reloads configuration and
 rediscovers tasks before proceeding. The parent retains the repository lock.
 The main and overlay updates are not a cross-repository transaction; a later
 failure does not roll back an earlier successful update.
+Cancellation is not retried, even if Git also emitted a transient-network
+error message.
 
 Dry-run may query remote refs with `git ls-remote`; it does not fetch or merge.
 `--no-repo-update` removes this task from install/update, including dependency
@@ -369,6 +373,9 @@ settings, harness settings, shell selection, permissions, completions, WSL,
 editor extensions, and APM deployment are not reversed by static uninstall
 tasks. Nested symlinks in materialized directory trees are recreated as links,
 not flattened copies of everything they reference.
+Materialization rechecks link ownership after copying and before unlinking, so
+links retargeted since discovery are preserved. File copies are staged with
+owner-only access on Unix, then receive the source permissions before publication.
 
 ## Validation tasks
 

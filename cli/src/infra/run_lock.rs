@@ -93,6 +93,9 @@ impl Drop for RunLock {
 }
 
 /// Resolve a repository-scoped internal state path.
+///
+/// Blank or relative state/home environment values are ignored so fallback
+/// lock identities never depend on the command's working directory.
 pub(crate) fn repository_state_path(
     root: &Path,
     env: &dyn Env,
@@ -104,16 +107,12 @@ pub(crate) fn repository_state_path(
     }
 
     let state_root = if platform.is_windows() {
-        env.var_os("LOCALAPPDATA").map(PathBuf::from).or_else(|| {
-            env.var_os("USERPROFILE")
-                .map(PathBuf::from)
-                .map(|home| home.join("AppData").join("Local"))
+        absolute_env_path(env, "LOCALAPPDATA").or_else(|| {
+            absolute_env_path(env, "USERPROFILE").map(|home| home.join("AppData").join("Local"))
         })
     } else {
-        env.var_os("XDG_STATE_HOME").map(PathBuf::from).or_else(|| {
-            env.var_os("HOME")
-                .map(PathBuf::from)
-                .map(|home| home.join(".local").join("state"))
+        absolute_env_path(env, "XDG_STATE_HOME").or_else(|| {
+            absolute_env_path(env, "HOME").map(|home| home.join(".local").join("state"))
         })
     }
     .context("cannot determine platform state directory for the run lock")?;
@@ -125,6 +124,12 @@ pub(crate) fn repository_state_path(
         .join("repositories")
         .join(digest)
         .join(filename))
+}
+
+fn absolute_env_path(env: &dyn Env, key: &str) -> Option<PathBuf> {
+    env.var_os(key)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
 }
 
 #[cfg(test)]
@@ -316,5 +321,81 @@ mod tests {
             std::fs::read_to_string(path.join("keep")).unwrap(),
             "preserve"
         );
+    }
+
+    #[test]
+    fn non_repository_locks_ignore_blank_and_relative_state_directories() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = std::path::absolute(fixture.path()).unwrap();
+        std::fs::write(root.join(".git"), "not a git directory").unwrap();
+        let home = root.join("home");
+
+        for (os, state_key, home_key) in [
+            (Os::Linux, "XDG_STATE_HOME", "HOME"),
+            (Os::Windows, "LOCALAPPDATA", "USERPROFILE"),
+        ] {
+            let platform = Platform::new(os, false);
+            let fallback = MapEnv::new().with(home_key, &home);
+            let expected = repository_state_path(&root, &fallback, platform, "lock").unwrap();
+            for invalid in ["", "relative-state"] {
+                let env = fallback.clone().with(state_key, invalid);
+                let actual = repository_state_path(&root, &env, platform, "lock").unwrap();
+                assert_eq!(actual, expected, "{os}: {state_key}={invalid:?}");
+                assert!(actual.is_absolute(), "{os}: lock must not depend on cwd");
+            }
+        }
+        assert!(!home.exists(), "path resolution must remain read-only");
+    }
+
+    #[test]
+    fn non_repository_locks_reject_missing_absolute_home_and_state_directories() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = std::path::absolute(fixture.path()).unwrap();
+        std::fs::write(root.join(".git"), "not a git directory").unwrap();
+
+        for (os, state_key, home_key) in [
+            (Os::Linux, "XDG_STATE_HOME", "HOME"),
+            (Os::Windows, "LOCALAPPDATA", "USERPROFILE"),
+        ] {
+            for invalid in ["", "relative-home"] {
+                let env = MapEnv::new().with(state_key, "").with(home_key, invalid);
+                let error = repository_state_path(&root, &env, Platform::new(os, false), "lock")
+                    .unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("cannot determine platform state directory"),
+                    "{os}: {home_key}={invalid:?}: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn blank_state_override_and_home_fallback_contend_for_the_same_run_lock() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let root = std::path::absolute(fixture.path()).unwrap();
+        std::fs::write(root.join(".git"), "not a git directory").unwrap();
+        for (os, state_key, home_key) in [
+            (Os::Linux, "XDG_STATE_HOME", "HOME"),
+            (Os::Windows, "LOCALAPPDATA", "USERPROFILE"),
+        ] {
+            let fallback = MapEnv::new().with(home_key, root.join(os.to_string()));
+            let platform = Platform::new(os, false);
+            let _holder = RunLock::acquire(&root, &fallback, platform, "install").unwrap();
+            let expected =
+                repository_state_path(&root, &fallback, platform, "dotfiles-run.lock").unwrap();
+            let contender = fallback.with(state_key, "");
+            assert_eq!(
+                repository_state_path(&root, &contender, platform, "dotfiles-run.lock").unwrap(),
+                expected,
+                "{os}: resolve inside the fixture before attempting the contender"
+            );
+            let error = RunLock::acquire(&root, &contender, platform, "update").unwrap_err();
+            assert!(
+                error.to_string().contains("another dotfiles run"),
+                "{os}: a blank override must not bypass an existing lock: {error}"
+            );
+        }
     }
 }

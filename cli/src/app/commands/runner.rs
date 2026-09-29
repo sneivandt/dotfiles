@@ -73,6 +73,7 @@ impl CommandRunner {
             runtime.global.overlay.as_deref(),
             &root,
             env.as_ref(),
+            runtime.execution.non_interactive,
         )?;
         let profile = resolve_profile(runtime, &root, platform, overlay.as_deref(), log)?;
         let config = load_config(&root, &profile, platform, overlay.as_deref(), log)?;

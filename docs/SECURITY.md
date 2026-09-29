@@ -32,6 +32,8 @@ bootstrap and self-update, as below.
 The POSIX bootstrap stages each download privately beside the cached binary and
 publishes it only after verification. Failed downloads or verification do not
 delete a binary published by another concurrent bootstrap.
+Failed release-metadata transfers abort before any asset download, even if the
+partial response contains a release tag.
 
 A checksum detects mismatched/corrupt bytes relative to the published checksum.
 If the publisher or release metadata is compromised, an attacker can publish

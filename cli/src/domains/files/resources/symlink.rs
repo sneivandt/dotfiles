@@ -115,6 +115,13 @@ impl Resource for SymlinkResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        if let ResourceState::Invalid { reason } = self.current_state()? {
+            return Err(crate::engine::resource::ResourceError::conflicting_state(
+                self.target.display().to_string(),
+                "a target separate from a valid symlink source",
+                reason,
+            ));
+        }
         crate::infra::fs::ensure_parent_dir(&self.target)?;
 
         // Attempt to remove any existing target; ignore NotFound since the
@@ -149,6 +156,11 @@ impl RemovableResource for SymlinkResource {
     }
 
     fn remove(&self) -> ResourceResult<ResourceChange> {
+        if self.validation_error.is_some() || state::same_entry(&self.source, &self.target) {
+            return Ok(ResourceChange::skipped(
+                "invalid symlink resource will not be materialized",
+            ));
+        }
         // Classify the target explicitly so that unexpected metadata errors
         // do not fall through to `copy_into_place` (which would materialize
         // the source into place — the wrong thing to do for a transient

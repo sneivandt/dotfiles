@@ -86,6 +86,11 @@ fn run_in_dir(
         runs.retain(|run| command.matches(&run.command));
     }
     if runs.is_empty() {
+        if opts.list
+            && let Some(format @ (DiscoveryFormat::Json | DiscoveryFormat::Plain)) = opts.format
+        {
+            return write_run_list(&runs, format, out);
+        }
         let message = if logs_exist {
             NO_MATCHING_LOG
         } else {
@@ -530,6 +535,48 @@ mod tests {
         let mut output = Vec::new();
         run_in_dir(dir, opts, verbose, &mut output).expect("log command should succeed");
         String::from_utf8(output).unwrap()
+    }
+
+    #[test]
+    fn empty_history_preserves_machine_readable_formats() {
+        for case in ["missing directory", "empty directory", "unmatched command"] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let logs = fixture.path().join("logs");
+            if case == "empty directory" {
+                std::fs::create_dir(&logs).unwrap();
+            } else if case == "unmatched command" {
+                write_run(&logs, "20260731T154210Z-install-1.log", "fixture\n");
+            }
+            for format in [DiscoveryFormat::Json, DiscoveryFormat::Plain] {
+                let output = capture(
+                    &logs,
+                    &LogOpts {
+                        list: true,
+                        format: Some(format),
+                        command: Some(crate::app::cli::LogCommand::Update),
+                        ..opts()
+                    },
+                    false,
+                );
+                if format == DiscoveryFormat::Json {
+                    assert_eq!(
+                        serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+                        serde_json::json!([]),
+                        "{case}: JSON history must always be an array"
+                    );
+                } else {
+                    assert!(
+                        output.is_empty(),
+                        "{case}: plain history must contain only rows"
+                    );
+                }
+            }
+            assert_eq!(
+                logs.exists(),
+                case != "missing directory",
+                "listing history must not create its directory"
+            );
+        }
     }
 
     #[test]

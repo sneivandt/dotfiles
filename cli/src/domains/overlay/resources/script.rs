@@ -231,21 +231,20 @@ pub(crate) fn interpreter_args_for(
         .and_then(|e| e.to_str())
         .unwrap_or("");
 
-    match ext {
-        "ps1" => {
-            let shell = powershell_interpreter(executor)?;
-            Ok((
-                shell,
-                vec![
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-ExecutionPolicy",
-                    "Bypass",
-                    "-File",
-                ],
-            ))
-        }
-        _ => Ok(("sh", vec![])),
+    if ext.eq_ignore_ascii_case("ps1") {
+        let shell = powershell_interpreter(executor)?;
+        Ok((
+            shell,
+            vec![
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ],
+        ))
+    } else {
+        Ok(("sh", vec![]))
     }
 }
 
@@ -437,6 +436,33 @@ mod tests {
             assert_eq!(command.arguments(), expected, "{flag:?}");
             assert_eq!(command.working_dir(), Some(Path::new("/scripts")));
             assert!(command.is_checked());
+        }
+    }
+
+    #[test]
+    fn interpreter_recognizes_powershell_extensions_without_case_sensitivity() {
+        for filename in ["setup.PS1", "setup.Ps1", "setup.pS1"] {
+            let mut mock = MockExecutor::new();
+            mock.expect_which()
+                .times(4)
+                .withf(|program| program == "pwsh")
+                .return_const(true);
+            let resource = make_script_resource("test", Path::new(filename), Arc::new(mock));
+            for flag in [None, Some("--check"), Some("--dryrun"), Some("--remove")] {
+                let command = resource.command(flag).unwrap();
+                let mut expected = vec![
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    filename,
+                ];
+                expected.extend(flag);
+                assert_eq!(command.program(), "pwsh", "{filename} {flag:?}");
+                assert_eq!(command.arguments(), expected, "{filename} {flag:?}");
+                assert!(command.is_checked());
+            }
         }
     }
 

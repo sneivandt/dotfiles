@@ -1285,6 +1285,76 @@ fn install_packages_winget_installs_per_package() {
 }
 
 #[test]
+fn winget_already_current_after_discovery_is_not_an_install_failure() {
+    let config = empty_config(PathBuf::from("fixture-repository"));
+    let packages = ConfigHandle::new(vec![Package {
+        name: "Git.Git".into(),
+        is_aur: false,
+    }]);
+    let mut mock = MockExecutor::new();
+    let mut sequence = mockall::Sequence::new();
+    mock.expect_which()
+        .once()
+        .withf(|program| program == "winget")
+        .return_const(true);
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(|spec| {
+            spec.program() == "winget"
+                && spec.arguments()
+                    == [
+                        "list",
+                        "--accept-source-agreements",
+                        "--disable-interactivity",
+                    ]
+                && !spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("Name  Id       Version\n")));
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(|spec| {
+            spec.program() == "winget"
+                && spec.arguments()
+                    == [
+                        "install",
+                        "--id",
+                        "Git.Git",
+                        "--exact",
+                        "--source",
+                        "winget",
+                        "--accept-source-agreements",
+                        "--accept-package-agreements",
+                        "--disable-interactivity",
+                        "--scope",
+                        "user",
+                    ]
+                && !spec.is_checked()
+        })
+        .returning(|_| {
+            Ok(ExecResult::failure(
+                "No available upgrade found.",
+                "",
+                Some(-1_978_335_189),
+            ))
+        });
+    let ctx = make_package_context(config, Os::Windows, false, mock);
+
+    let result = InstallPackages::new(packages).run(&ctx).unwrap();
+    let stats = task_batch(&result);
+
+    assert_eq!(
+        (
+            stats.changed_count(),
+            stats.already_ok_count(),
+            stats.failed_count()
+        ),
+        (0, 1, 0),
+    );
+}
+
+#[test]
 fn winget_discovery_parse_failure_never_attempts_installation() {
     for dry_run in [false, true] {
         let config = empty_config(PathBuf::from("fixture-repository"));

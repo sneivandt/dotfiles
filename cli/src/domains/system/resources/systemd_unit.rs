@@ -345,7 +345,7 @@ fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
 
 fn install_targets(content: &str) -> ResourceResult<Vec<String>> {
     let mut in_install = false;
-    let mut targets = Vec::new();
+    let mut targets: Vec<String> = Vec::new();
     for raw_line in content.lines() {
         let line = raw_line.trim();
         if line.starts_with('[') && line.ends_with(']') {
@@ -363,6 +363,10 @@ fn install_targets(content: &str) -> ResourceResult<Vec<String>> {
             "RequiredBy" => ".requires",
             _ => continue,
         };
+        if value.trim().is_empty() {
+            targets.retain(|target| !target.ends_with(suffix));
+            continue;
+        }
         for target in value.split_whitespace() {
             let mut components = Path::new(target).components();
             if !matches!(components.next(), Some(std::path::Component::Normal(_)))

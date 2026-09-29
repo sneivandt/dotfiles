@@ -49,7 +49,8 @@ pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
 /// When the overlay path is obtained from a CLI argument, it is persisted
 /// to the repository's local git config so future runs use it automatically.
 /// Relative selections are made absolute against the invocation directory
-/// before use or persistence.
+/// before use or persistence. Non-interactive runs decline explicit linked
+/// worktrees without prompting.
 ///
 /// Returns `None` if no overlay is configured.
 ///
@@ -62,8 +63,15 @@ pub fn resolve_from_args(
     cli_overlay: Option<&Path>,
     root: &Path,
     env: &dyn crate::infra::env::Env,
+    non_interactive: bool,
 ) -> Result<Option<PathBuf>> {
-    resolve_from_args_with_confirmation(cli_overlay, root, env, confirm_linked_worktree)
+    resolve_from_args_with_confirmation(
+        cli_overlay,
+        root,
+        env,
+        non_interactive,
+        confirm_linked_worktree,
+    )
 }
 
 /// Resolve an overlay for a read-only discovery command without persisting an
@@ -114,9 +122,16 @@ fn resolve_from_args_with_confirmation(
     cli_overlay: Option<&Path>,
     root: &Path,
     env: &dyn crate::infra::env::Env,
+    non_interactive: bool,
     confirm: impl FnOnce(&Path) -> Result<bool>,
 ) -> Result<Option<PathBuf>> {
-    let selected = resolve_with_confirmation(cli_overlay, root, env, confirm)?;
+    let selected = resolve_with_confirmation(cli_overlay, root, env, |path| {
+        if non_interactive {
+            Ok(false)
+        } else {
+            confirm(path)
+        }
+    })?;
     if cli_overlay.is_some()
         && let Some(path) = &selected
         && let Err(e) = persist(root, path)
@@ -237,8 +252,13 @@ mod tests {
     fn resolve_from_args_prefers_cli_arg() {
         let (dir, root) = init_test_repo();
         let cli_path = std::path::absolute("cli-overlay").expect("absolute CLI path");
-        let result = resolve_from_args(Some(&cli_path), &root, &crate::infra::env::MapEnv::new())
-            .expect("ordinary overlay should resolve");
+        let result = resolve_from_args(
+            Some(&cli_path),
+            &root,
+            &crate::infra::env::MapEnv::new(),
+            false,
+        )
+        .expect("ordinary overlay should resolve");
         assert_eq!(result, Some(cli_path.clone()));
         // Also persisted
         assert_eq!(read_persisted(&root), Some(cli_path));
@@ -248,7 +268,7 @@ mod tests {
     #[test]
     fn resolve_from_args_returns_none_when_nothing_configured() {
         let (dir, root) = init_test_repo();
-        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new())
+        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new(), false)
             .expect("missing overlay should resolve");
         assert_eq!(result, None);
         drop(dir);
@@ -272,7 +292,7 @@ mod tests {
         let (dir, root) = init_test_repo();
         let overlay = std::path::absolute("persisted-overlay").expect("absolute overlay path");
         persist(&root, &overlay).expect("persist");
-        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new())
+        let result = resolve_from_args(None, &root, &crate::infra::env::MapEnv::new(), false)
             .expect("persisted overlay should resolve");
         assert_eq!(result, Some(overlay));
         drop(dir);
@@ -285,9 +305,13 @@ mod tests {
         let path = Path::new("relative-overlay");
         let expected = std::path::absolute(path).expect("absolute overlay path");
 
-        let selected =
-            resolve_from_args(Some(path), repo.path(), &crate::infra::env::MapEnv::new())
-                .expect("resolve relative overlay");
+        let selected = resolve_from_args(
+            Some(path),
+            repo.path(),
+            &crate::infra::env::MapEnv::new(),
+            false,
+        )
+        .expect("resolve relative overlay");
 
         assert_eq!(selected, Some(expected.clone()));
         assert_eq!(read_persisted(repo.path()), Some(expected));
@@ -309,6 +333,7 @@ mod tests {
             Some(&overlay),
             repo.path(),
             &crate::infra::env::MapEnv::new(),
+            false,
         )
         .unwrap()
         .expect("selected overlay");
@@ -350,18 +375,25 @@ mod tests {
         let env = crate::infra::env::MapEnv::new().with("DOTFILES_OVERLAY", "env-overlay");
         persist(repo.path(), Path::new("persisted-overlay")).expect("persist legacy path");
 
-        for resolver in [resolve_from_args, resolve_read_only] {
+        for read_only in [false, true] {
+            let resolver = |environment: &dyn crate::infra::env::Env| {
+                if read_only {
+                    resolve_read_only(None, repo.path(), environment)
+                } else {
+                    resolve_from_args(None, repo.path(), environment, false)
+                }
+            };
             let expected_env =
                 std::path::absolute("env-overlay").expect("absolute environment path");
             assert_eq!(
-                resolver(None, repo.path(), &env).unwrap(),
+                resolver(&env).unwrap(),
                 Some(expected_env),
                 "environment must override persisted selection"
             );
             let expected_persisted =
                 std::path::absolute("persisted-overlay").expect("absolute saved path");
             assert_eq!(
-                resolver(None, repo.path(), &crate::infra::env::MapEnv::new()).unwrap(),
+                resolver(&crate::infra::env::MapEnv::new()).unwrap(),
                 Some(expected_persisted),
                 "legacy relative persisted selections must be usable by subprocesses"
             );
@@ -394,6 +426,7 @@ mod tests {
             Some(overlay.path()),
             &root,
             &crate::infra::env::MapEnv::new(),
+            false,
             |_| Ok(false),
         )
         .expect_err("declined linked worktree should be rejected");
@@ -424,6 +457,7 @@ mod tests {
             Some(overlay.path()),
             &root,
             &crate::infra::env::MapEnv::new(),
+            false,
             |_| Ok(true),
         )
         .expect("confirmed linked worktree should resolve");
@@ -431,6 +465,49 @@ mod tests {
         assert_eq!(result.as_deref(), Some(overlay.path()));
         assert_eq!(read_persisted(&root).as_deref(), Some(overlay.path()));
         drop(dir);
+    }
+
+    #[test]
+    fn non_interactive_linked_worktree_selection_never_prompts_or_persists() {
+        let (_dir, root) = init_test_repo();
+        let overlay = tempfile::tempdir().unwrap();
+        std::fs::write(
+            overlay.path().join(".git"),
+            "gitdir: ../main/.git/worktrees/overlay\n",
+        )
+        .unwrap();
+        let saved = root.join("previous-overlay");
+        persist(&root, &saved).unwrap();
+
+        let error = resolve_from_args_with_confirmation(
+            Some(overlay.path()),
+            &root,
+            &crate::infra::env::MapEnv::new(),
+            true,
+            |_| panic!("non-interactive policy must bypass terminal confirmation"),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("selection cancelled"));
+        assert_eq!(read_persisted(&root), Some(saved));
+    }
+
+    #[test]
+    fn non_interactive_primary_checkout_selection_still_persists() {
+        let (_dir, root) = init_test_repo();
+        let overlay = tempfile::tempdir().unwrap();
+        std::fs::create_dir(overlay.path().join(".git")).unwrap();
+
+        let selected = resolve_from_args(
+            Some(overlay.path()),
+            &root,
+            &crate::infra::env::MapEnv::new(),
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(selected.as_deref(), Some(overlay.path()));
+        assert_eq!(read_persisted(&root), selected);
     }
 
     #[test]

@@ -99,6 +99,46 @@ fn run_propagates_symbolic_ref_operational_failure() {
     );
 }
 
+#[test]
+fn symbolic_ref_fatal_exit_is_not_detached_in_apply_or_preview() {
+    for dry_run in [false, true] {
+        for code in [Some(128), None] {
+            let root = tempfile::tempdir_in(".").unwrap();
+            let mut mock = MockExecutor::new();
+            let mut sequence = mockall::Sequence::new();
+            expect_git(
+                &mut mock,
+                &mut sequence,
+                root.path(),
+                &["symbolic-ref", "--quiet", "HEAD"],
+                Err(ExecError::non_zero(
+                    "git",
+                    ExecResult::failure("", "fatal: could not read repository configuration", code),
+                )),
+            );
+            let ctx = make_update_context(empty_config(root.path().to_path_buf()), mock)
+                .with_dry_run(dry_run);
+            let signal = UpdateSignal::new();
+
+            let error = UpdateRepository::new(signal.clone())
+                .run(&ctx)
+                .expect_err("only exit 1 means detached HEAD; fatal failures must propagate");
+
+            assert!(
+                matches!(
+                    error.downcast_ref::<ExecError>(),
+                    Some(ExecError::NonZero { result, .. }) if result.code == code
+                ),
+                "preserve the failure classification for dry_run={dry_run}: {error:#}"
+            );
+            assert!(
+                !signal.was_updated(),
+                "a failed branch probe cannot change the checkout"
+            );
+        }
+    }
+}
+
 /// Run [`UpdateRepository`] against a scripted sequence of successful git
 /// command outputs, returning the task result and whether the repository was
 /// marked as updated.
@@ -256,6 +296,46 @@ fn run_propagates_fetch_cancellation() {
         err.downcast_ref::<ExecError>()
             .is_some_and(ExecError::is_cancelled)
     );
+}
+
+#[test]
+fn run_does_not_retry_cancelled_fetch_with_transient_output() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut mock = MockExecutor::new();
+    let mut sequence = mockall::Sequence::new();
+    for (args, result) in [
+        (
+            &["symbolic-ref", "--quiet", "HEAD"][..],
+            Ok(ExecResult::success("refs/heads/main")),
+        ),
+        (
+            &["status", "--porcelain", "--untracked-files=no"][..],
+            Ok(ExecResult::success("")),
+        ),
+        (
+            &["fetch", "--quiet"][..],
+            Err(ExecError::Cancelled {
+                command: "git".into(),
+                result: ExecResult::failure("", "Connection reset by peer", None),
+            }),
+        ),
+    ] {
+        expect_git(&mut mock, &mut sequence, root.path(), args, result);
+    }
+    let ctx = make_update_context(empty_config(root.path().to_path_buf()), mock);
+    let signal = UpdateSignal::new();
+
+    let error = UpdateRepository::new(signal.clone())
+        .run(&ctx)
+        .expect_err("cancellation takes precedence over transient stderr and must not retry");
+
+    assert!(
+        error
+            .downcast_ref::<ExecError>()
+            .is_some_and(ExecError::is_cancelled),
+        "{error:#}"
+    );
+    assert!(!signal.was_updated());
 }
 
 #[test]

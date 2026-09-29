@@ -99,7 +99,14 @@ config_section! {
 
 /// Valid systemd unit file extensions.
 const VALID_UNIT_EXTENSIONS: &[&str] = &[
-    ".service", ".timer", ".socket", ".target", ".path", ".mount",
+    ".service",
+    ".timer",
+    ".socket",
+    ".target",
+    ".path",
+    ".mount",
+    ".automount",
+    ".swap",
 ];
 
 /// Validate systemd unit entries and return any warnings.
@@ -221,6 +228,46 @@ units = [{ name = "dhcpcd.service", scope = "system", enabled = false }]
         let warnings = validate(&units, Platform::new(Os::Linux, false));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("valid systemd extension"));
+    }
+
+    #[test]
+    fn validate_accepts_supported_unit_types_and_rejects_invalid_suffixes() {
+        use crate::infra::config::Severity;
+        use crate::infra::platform::{Os, Platform};
+
+        let platform = Platform::new(Os::Linux, false);
+        for (name, valid) in [
+            ("example.service", true),
+            ("example.timer", true),
+            ("example.socket", true),
+            ("example.target", true),
+            ("example.path", true),
+            ("data.mount", true),
+            ("data.automount", true),
+            ("swapfile.swap", true),
+            ("data.AUTOMOUNT", false),
+            ("swapfile.swapp", false),
+            ("data.automount.bak", false),
+            ("example.unknown", false),
+        ] {
+            let units = [SystemdUnit {
+                name: name.to_string(),
+                scope: UnitScope::System,
+                enabled: true,
+            }];
+            let diagnostics = validate(&units, platform);
+            if valid {
+                assert!(diagnostics.is_empty(), "{name}: {diagnostics:?}");
+            } else {
+                assert_eq!(diagnostics.len(), 1, "{name}: {diagnostics:?}");
+                let diagnostic = &diagnostics[0];
+                assert_eq!(diagnostic.code, SYSTEMD_INVALID_EXTENSION, "{name}");
+                assert_eq!(diagnostic.severity, Severity::Warning, "{name}");
+                assert_eq!(diagnostic.source, SYSTEMD_UNITS_TOML, "{name}");
+                assert_eq!(diagnostic.item, name);
+                assert!(diagnostic.message.contains("valid systemd extension"));
+            }
+        }
     }
 
     #[test]

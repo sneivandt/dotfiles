@@ -155,6 +155,7 @@ fn fetch_with_retry(
                 .timeout(Duration::from_mins(5)),
         ) {
             Ok(_) => return Ok(()),
+            Err(error) if error.is_cancelled() => return Err(error),
             Err(error) if attempt < MAX_FETCH_ATTEMPTS && is_transient_fetch_error(&error) => {
                 ctx.log().warn(format!(
                     "transient git fetch failure for {} (attempt {attempt}/{MAX_FETCH_ATTEMPTS}), retrying: {error:#}",

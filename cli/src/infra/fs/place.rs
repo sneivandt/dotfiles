@@ -7,6 +7,8 @@
 
 use anyhow::{Context as _, Result};
 use std::io::Write as _;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use super::{TempGuard, ensure_parent_dir};
@@ -29,20 +31,34 @@ pub fn rename_into_place(staged: &Path, target: &Path) -> Result<()> {
 /// target, so readers never observe a partially written file and the target is
 /// never briefly absent. The parent directory is created if needed.
 ///
+/// On Unix, staging files are private and existing regular-file access modes
+/// are preserved. New files and replacements of symlinks are owner-only.
+///
 /// # Errors
 ///
-/// Returns an error if the parent directory cannot be created, the staged file
-/// cannot be written, or the rename fails.
+/// Returns an error if target metadata cannot be read, the parent directory
+/// cannot be created, the staged file cannot be written, its permissions cannot
+/// be restored, or the rename fails.
 pub fn write_atomic(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
     ensure_parent_dir(path)?;
 
+    #[cfg(unix)]
+    let mode = super::symlink_metadata_optional(path, "read atomic-write target permissions")?
+        .filter(std::fs::Metadata::is_file)
+        .map(|metadata| metadata.permissions().mode() & 0o777);
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let (mut guard, mut staged_file) =
-        TempGuard::create_unique_file(parent, ".dotfiles-write", "tmp")
+        TempGuard::create_unique_file_with_mode(parent, ".dotfiles-write", "tmp", 0o600)
             .with_context(|| format!("create temporary file beside {}", path.display()))?;
     staged_file
         .write_all(content.as_ref())
         .with_context(|| format!("write temporary file beside {}", path.display()))?;
+    #[cfg(unix)]
+    if let Some(mode) = mode {
+        staged_file
+            .set_permissions(std::fs::Permissions::from_mode(mode))
+            .with_context(|| format!("preserve access permissions for {}", path.display()))?;
+    }
     drop(staged_file);
 
     rename_into_place(guard.path(), path)?;
@@ -73,6 +89,62 @@ mod tests {
         write_atomic(&target, "fresh").unwrap();
 
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "fresh");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_stages_privately_and_preserves_existing_access_modes() {
+        struct InspectStaging<'a> {
+            parent: &'a Path,
+        }
+
+        impl AsRef<[u8]> for InspectStaging<'_> {
+            fn as_ref(&self) -> &[u8] {
+                let staged = std::fs::read_dir(self.parent)
+                    .unwrap()
+                    .map(std::result::Result::unwrap)
+                    .find(|entry| {
+                        entry
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with(".dotfiles-write")
+                    })
+                    .expect("staging file must exist before reading payload");
+                assert_eq!(
+                    staged.metadata().unwrap().permissions().mode() & 0o777,
+                    0o600,
+                    "staging must be private before any payload bytes are written"
+                );
+                b"replacement"
+            }
+        }
+
+        let root = tempfile::tempdir_in(".").unwrap();
+        let content = InspectStaging {
+            parent: root.path(),
+        };
+        for (name, mode) in [
+            ("new", None),
+            ("private", Some(0o600)),
+            ("group-readable", Some(0o640)),
+            ("executable", Some(0o750)),
+            ("read-only", Some(0o400)),
+        ] {
+            let target = root.path().join(name);
+            if let Some(mode) = mode {
+                std::fs::write(&target, "old").unwrap();
+                std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode)).unwrap();
+            }
+            for _ in 0..2 {
+                write_atomic(&target, &content).unwrap();
+                assert_eq!(std::fs::read_to_string(&target).unwrap(), "replacement");
+                assert_eq!(
+                    target.metadata().unwrap().permissions().mode() & 0o777,
+                    mode.unwrap_or(0o600),
+                    "{name}: replacement must retain the intended access mode"
+                );
+            }
+        }
     }
 
     #[test]
@@ -174,6 +246,11 @@ mod tests {
                 .file_type()
                 .is_symlink(),
             "target must be a regular file after an atomic write"
+        );
+        assert_eq!(
+            target.metadata().unwrap().permissions().mode() & 0o777,
+            0o600,
+            "a replaced symlink must not inherit its referent's access mode"
         );
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "content");
         assert_eq!(

@@ -129,14 +129,23 @@ download_file() {
 resolve_release_tag() {
   _api_url="https://api.github.com/repos/$REPO/releases/latest"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
-         "$_api_url" 2>/dev/null | \
-      awk -F'"' '/"tag_name"/{print $4; exit}'
+    _release_json=$(curl -fsSL --connect-timeout "$CONNECT_TIMEOUT" --max-time "$TRANSFER_TIMEOUT" \
+         "$_api_url" 2>/dev/null) || return 1
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
-         "$_api_url" 2>/dev/null | \
-      awk -F'"' '/"tag_name"/{print $4; exit}'
+    _release_json=$(wget -qO- --connect-timeout="$CONNECT_TIMEOUT" --timeout="$TRANSFER_TIMEOUT" \
+         "$_api_url" 2>/dev/null) || return 1
+  else
+    return 1
   fi
+  printf '%s\n' "$_release_json" | awk '
+    match($0, /"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"/) {
+      tag = substr($0, RSTART, RLENGTH)
+      sub(/^"tag_name"[[:space:]]*:[[:space:]]*"/, "", tag)
+      sub(/"$/, "", tag)
+      print tag
+      exit
+    }
+  '
 }
 
 # Verify checksum in a subshell to scope the trap safely.
@@ -201,8 +210,7 @@ download_binary() {(
       ;;
   esac
 
-  tag=$(resolve_release_tag)
-  if [ -z "$tag" ]; then
+  if ! tag=$(resolve_release_tag) || [ -z "$tag" ]; then
     echo "ERROR: Failed to resolve latest release tag." >&2
     echo "Check your internet connection or use --build to build from source." >&2
     exit 1

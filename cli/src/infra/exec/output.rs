@@ -97,3 +97,27 @@ pub(super) fn failure_output(result: &ExecResult) -> String {
         if stderr.is_empty() { "<empty>" } else { stderr }
     )
 }
+
+/// Prefer a concrete diagnostic over banners and progress in failed output.
+/// Fall back to the first nonempty line for tools without recognised markers.
+pub(super) fn failure_summary(result: &ExecResult) -> Option<&str> {
+    let lines = || {
+        result
+            .stderr
+            .lines()
+            .chain(result.stdout.lines())
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+    };
+    lines()
+        .find(|line| {
+            let lower = line.to_ascii_lowercase();
+            lower.contains("[errno ")
+                || lower.starts_with("error:")
+                || lower.starts_with("fatal:")
+                || lower.contains(": error:")
+                || lower.contains(": fatal:")
+        })
+        .or_else(|| lines().find(|line| line.to_ascii_lowercase().contains("failed to ")))
+        .or_else(|| lines().next())
+}

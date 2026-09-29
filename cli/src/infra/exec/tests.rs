@@ -532,3 +532,72 @@ fn command_failure_summary_keeps_one_cause_and_omits_stream_dump() {
     );
     assert!(error.to_string().contains("second detail"));
 }
+
+#[test]
+fn command_failure_summary_prefers_diagnostics_over_notices() {
+    let cases = [
+        (
+            "APM wrapped clone failure",
+            "[!] A new version of APM is available\n\
+             [>] Checking upstream for revision-pin freshness...\n\
+             [x] 2 packages failed:\n\
+             example/skills/tool -- Failed to install dependency: Failed to clone\n\
+             repository: [Errno 2] No such file or directory: '/usr/bin/git'\n\
+             One or more direct dependencies failed validation.",
+            "",
+            "repository: [Errno 2] No such file or directory: '/usr/bin/git'",
+        ),
+        (
+            "stderr notice before fatal error",
+            "progress",
+            "warning: update available\n fatal: unable to access remote\nmore detail",
+            "fatal: unable to access remote",
+        ),
+        (
+            "stdout error after stderr notice",
+            "Error: permission denied\nmore detail",
+            "warning: update available",
+            "Error: permission denied",
+        ),
+        (
+            "compiler diagnostic",
+            "",
+            "compiling\nsource.rs:12: error: invalid syntax",
+            "source.rs:12: error: invalid syntax",
+        ),
+        (
+            "failure without error prefix",
+            "update available\nFailed to connect to server\nsee documentation",
+            "",
+            "Failed to connect to server",
+        ),
+        (
+            "unrecognised stderr retains precedence",
+            "stdout detail",
+            "\n stderr detail\nsecond detail",
+            "stderr detail",
+        ),
+        (
+            "unrecognised stdout fallback",
+            "\n stdout detail\nsecond detail",
+            "\n",
+            "stdout detail",
+        ),
+    ];
+    for (name, stdout, stderr, expected) in cases {
+        let error = ExecError::non_zero("example", ExecResult::failure(stdout, stderr, Some(1)));
+        assert_eq!(
+            error.concise_message(),
+            format!("example failed (exit 1): {expected}"),
+            "{name}"
+        );
+        assert!(error.to_string().contains(stdout.trim()), "{name}");
+        assert!(error.to_string().contains(stderr.trim()), "{name}");
+    }
+}
+
+#[test]
+fn empty_command_failure_output_has_no_diagnostic_suffix() {
+    let error = ExecError::non_zero("example", ExecResult::failure(" \n", "\n", Some(1)));
+    assert_eq!(error.concise_message(), "example failed (exit 1)");
+}

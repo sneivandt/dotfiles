@@ -19,7 +19,7 @@ pub(crate) mod windows;
 
 #[cfg(test)]
 use output::stream_summary;
-use output::{failure_output, log_command_output};
+use output::{failure_output, failure_summary, log_command_output};
 #[cfg(any(
     target_os = "android",
     target_os = "freebsd",
@@ -424,13 +424,7 @@ impl ExecError {
             Self::Cancelled { command, result } => (format!("{command} interrupted"), result),
             Self::Spawn { .. } | Self::Io { .. } => return self.to_string(),
         };
-        let detail = result
-            .stderr
-            .lines()
-            .chain(result.stdout.lines())
-            .map(str::trim)
-            .find(|line| !line.is_empty());
-        match detail {
+        match failure_summary(result) {
             Some(detail) => format!("{label}: {detail}"),
             None => label,
         }

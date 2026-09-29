@@ -395,6 +395,10 @@ uses the implementation type name and any dynamic instance key. Renaming an
 implementation or instance key changes that internal identity. Multiline
 messages retain line breaks and indentation.
 
+Failed-command task rows prefer explicit error diagnostics over update notices
+and progress output, then fall back to the first nonempty output line. The run
+log retains the full captured output for diagnosis.
+
 The viewer renders these records as readable text. Failed-command output and
 successful stderr are visible without `--verbose`. Other diagnostic messages
 and successful command records require `--verbose`; `--raw` prints stored lines

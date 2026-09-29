@@ -166,13 +166,7 @@ mod tests {
     ) {
         #[cfg(target_os = "windows")]
         {
-            let command_line = format!(
-                "\"\"code\" {}\"",
-                args.iter()
-                    .map(|arg| format!("\"{arg}\""))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
+            let command_line = format!("\"code {}\"", args.join(" "));
             mock.expect_execute()
                 .once()
                 .withf(move |spec| {

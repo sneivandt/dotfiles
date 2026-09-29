@@ -460,7 +460,7 @@ mod symlink {
                     && !spec.is_checked()
                     && spec.working_dir().is_none()
                     && spec.windows_command_line()
-                    == Some(r#"""mklink" "/J" "C:\Users\test\.config\templates" "C:\repo\symlinks\config\git\templates"""#)
+                    == Some(r#""mklink /J C:\Users\test\.config\templates C:\repo\symlinks\config\git\templates""#)
             })
             .returning(|_| {
                 Ok(ExecResult::success(""))
@@ -486,7 +486,7 @@ mod symlink {
             assert_eq!(spec.working_dir(), None);
             assert_eq!(
                 spec.windows_command_line(),
-                Some(r#"""mklink" "/J" "C:\fixture home\link" "C:\fixture source\directory"""#)
+                Some(r#""mklink /J "C:\fixture home\link" "C:\fixture source\directory"""#)
             );
             Ok(ExecResult::failure(
                 "partial stdout",

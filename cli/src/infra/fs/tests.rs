@@ -179,8 +179,8 @@ fn recursive_copy_rejects_destination_junctions() {
 
     let root = tempfile::tempdir_in(".").unwrap();
     let source = root.path().join("source");
-    let target = root.path().join("target");
-    let unrelated = root.path().join("unrelated");
+    let target = root.path().join("target & (junction)!");
+    let unrelated = root.path().join("unrelated & (directory)!");
     std::fs::create_dir(&source).unwrap();
     std::fs::create_dir(&unrelated).unwrap();
     std::fs::write(source.join("data"), "replacement").unwrap();

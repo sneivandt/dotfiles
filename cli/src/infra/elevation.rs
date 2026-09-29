@@ -518,7 +518,7 @@ mod escaping_tests {
                             &powershell_encode_command(&script),
                         ])
                         .redact_arguments()
-                        .timeout(std::time::Duration::from_secs(60))
+                        .timeout(std::time::Duration::from_mins(1))
                         .unchecked(),
                 )
                 .unwrap_or_else(|error| panic!("{name}: {error}"));

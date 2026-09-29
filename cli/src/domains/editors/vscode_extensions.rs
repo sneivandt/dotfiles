@@ -107,17 +107,7 @@ mod tests {
             .withf(move |spec| {
                 #[cfg(windows)]
                 let command_matches = spec.windows_command_line()
-                    == Some(
-                        format!(
-                            "\"\"{}\" {}\"",
-                            launcher.display(),
-                            args.iter()
-                                .map(|arg| format!("\"{arg}\""))
-                                .collect::<Vec<_>>()
-                                .join(" ")
-                        )
-                        .as_str(),
-                    );
+                    == Some(format!("\"\"{}\" {}\"", launcher.display(), args.join(" ")).as_str());
                 #[cfg(not(windows))]
                 let command_matches = spec.program() == launcher.as_os_str()
                     && spec

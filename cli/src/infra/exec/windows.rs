@@ -9,7 +9,7 @@ use base64::Engine as _;
 
 use super::{CommandSpec, ExecError, ExecResult, Executor};
 
-/// A `cmd.exe` command whose arguments are treated as quoted literals.
+/// A `cmd.exe` command whose arguments are treated as literals.
 #[derive(Debug, Clone)]
 pub(crate) struct CmdCommand {
     program: String,
@@ -65,8 +65,8 @@ impl CmdCommand {
             tokens.push(quote_cmd_literal(arg)?);
         }
 
-        // `/S /C` expects an outer quote pair around a command whose executable
-        // is itself quoted.
+        // `/S /C` removes this outer quote pair, preserving quotes around paths
+        // and arguments.
         Ok(format!("\"{}\"", tokens.join(" ")))
     }
 }
@@ -74,6 +74,15 @@ impl CmdCommand {
 fn quote_cmd_literal(value: &str) -> Result<String> {
     if value.contains(['\0', '\r', '\n', '"', '%']) {
         bail!("value cannot be represented safely in a cmd.exe command: {value:?}");
+    }
+    // Quoting builtin names (such as "mklink") prevents cmd from recognizing
+    // them. Safe tokens, including builtin switches, need no quotes.
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"_./\\:-".contains(&byte))
+    {
+        return Ok(value.to_string());
     }
     Ok(format!("\"{value}\""))
 }
@@ -198,8 +207,43 @@ mod tests {
 
         assert_eq!(
             command.command_line().unwrap(),
-            r#"""mklink" "/J" "C:\Users\A&B\link" "C:\repo\(managed)\target"""#
+            r#""mklink /J "C:\Users\A&B\link" "C:\repo\(managed)\target"""#
         );
+    }
+
+    #[test]
+    fn cmd_command_keeps_builtin_tokens_unquoted_and_wrapper_paths_literal() {
+        assert_eq!(
+            CmdCommand::new("mklink")
+                .arg("/J")
+                .arg(r"C:\link")
+                .arg(r"C:\source")
+                .command_line()
+                .unwrap(),
+            r#""mklink /J C:\link C:\source""#
+        );
+        assert_eq!(
+            CmdCommand::new(r"C:\Program Files\A&B\code.cmd")
+                .arg("--install-extension")
+                .arg("publisher.extension")
+                .command_line()
+                .unwrap(),
+            r#"""C:\Program Files\A&B\code.cmd" --install-extension publisher.extension""#
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cmd_executes_a_script_wrapper_with_spaces_and_metacharacters() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let script = std::path::absolute(fixture.path().join("wrapper & (fixture).cmd")).unwrap();
+        std::fs::write(&script, "@echo off\r\nexit /b 23\r\n").unwrap();
+
+        let result = CmdCommand::new(script.to_str().unwrap())
+            .run_unchecked(&crate::infra::exec::ProcessExecutor::system())
+            .unwrap();
+
+        assert_eq!(result.code, Some(23), "{result:?}");
     }
 
     #[test]

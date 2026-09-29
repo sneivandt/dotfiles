@@ -629,6 +629,8 @@ mod symlink {
         )
         .unwrap();
         crate::infra::fs::create_native_symlink(&sources, &home.join(".config"), true).unwrap();
+        let original_config_target = std::fs::read_link(home.join(".config")).unwrap();
+        assert!(paths_equal(&original_config_target, &sources));
         for (source, target) in [
             ("managed", "managed"),
             ("alias", "alias"),
@@ -659,7 +661,10 @@ mod symlink {
                 std::fs::read_link(sources.join("alias")).unwrap(),
                 Path::new("managed")
             );
-            assert_eq!(std::fs::read_link(home.join(".config")).unwrap(), sources);
+            assert_eq!(
+                std::fs::read_link(home.join(".config")).unwrap(),
+                original_config_target
+            );
         }
 
         let independent_target = home.join("managed");

@@ -43,6 +43,10 @@ class ShellConfigTests(unittest.TestCase):
     def run_shell(self, script, shell="zsh", interactive=False, expected=0):
         args = (["bash", "--noprofile", "--norc", "-ic" if interactive else "-c"]
                 if shell == "bash" else ["zsh", "-dfi" if interactive else "-df", "-c"])
+        if shell == "zsh" and "ZSH_COMPDUMP" in self.env:
+            # Test the real completion initializer, not optional host/vendor
+            # completion trees with runner-specific ownership.
+            script = 'fpath=(${^fpath}/compinit(N:h))\n' + script
         result = subprocess.run(
             args + [script], cwd=self.fixture, env=self.env,
             text=True, capture_output=True, timeout=20,
@@ -132,7 +136,7 @@ class ShellConfigTests(unittest.TestCase):
         for _ in range(2):
             self.run_shell(
                 'setopt extendedglob\n'
-                'source "$ROOT/symlinks/config/zsh/completion.zsh"\n'
+                'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
                 '[[ ${_comps[dotfiles]} == _clap_dynamic_completer_dotfiles ]]\n'
             )
 
@@ -141,14 +145,31 @@ class ShellConfigTests(unittest.TestCase):
         (self.home / ".config/zsh/completions/_dotfiles").unlink()
         self.run_shell(
             'setopt extendedglob\n'
-            'source "$ROOT/symlinks/config/zsh/completion.zsh"\n'
+            'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
             '(( ! ${+_comps[dotfiles]} ))\n'
+        )
+
+    def test_completion_fixture_ignores_unrelated_insecure_vendor_tree(self):
+        self.prepare_completion()
+        vendor = self.fixture / "vendor-completions"
+        vendor.mkdir()
+        vendor.chmod(0o777)
+        self.write(vendor / "_fixture", "#compdef fixture\n")
+        native = subprocess.check_output(
+            ["zsh", "-df", "-c", "print -r -- ${(j.:.)fpath}"],
+            env=self.env, text=True, timeout=10,
+        ).strip()
+        self.env["FPATH"] = str(vendor) + ":" + native
+        self.run_shell(
+            'setopt extendedglob\n'
+            'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
+            '[[ ${_comps[dotfiles]} == _clap_dynamic_completer_dotfiles ]]\n'
         )
 
     def test_completion_scan_age_does_not_depend_on_dump_changes(self):
         dump = self.prepare_completion()
         script = ('setopt extendedglob\n'
-                  'source "$ROOT/symlinks/config/zsh/completion.zsh"\n')
+                  'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n')
         self.run_shell(script)
         checked = Path(str(dump) + ".checked")
         old = int(time.time() - 172800)

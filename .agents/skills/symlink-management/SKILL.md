@@ -35,7 +35,8 @@ source captures in number; do not assume general shell glob syntax or recursive
 - The task uses strict resource processing.
 - `SymlinkResource` owns platform-specific creation.
 - Correct links are already converged. Install replaces incorrect targets,
-  including regular files/directories, with a warning and no backup. Preserve
+  including regular files and empty directories, with a warning and no backup.
+  Nonempty real directories fail without recursive deletion. Preserve
   `pre_apply_warning()` and never run a real install as a casual verification
   step against the user's home.
 - Uninstall materializes managed links into real files/directories rather than

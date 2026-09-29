@@ -18,14 +18,15 @@ Paths below are relative to
 |---|---|
 | screen instances, shared services, open-menu coordination | `shell.qml` |
 | per-monitor bar and service bindings | `Bar.qml` |
-| workspace visibility, title sizing | `WorkspaceGroup.qml` and `tests/tst_WorkspaceGroup.qml` |
-| calendar layout, local/UTC selection | `CalendarContent.qml`, `CalendarMenu.qml` |
+| workspace visibility, title sizing | `WorkspaceGroup.qml` and `tests/qml/tst_WorkspaceGroup.qml` |
+| calendar layout, local/UTC selection | `CalendarContent.qml`, `CalendarMenu.qml`, `tests/qml/tst_CalendarContent.qml` |
 | volume thumb, track, and input behavior | `VolumeSlider.qml`, `VolumeMenu.qml` |
 | palette, typography, spacing, animation | `Theme.js` |
 | popup geometry, focus, dismissal | `ShellPopup.qml` |
 | reusable controls | `BarBlock.qml`, `MenuButton.qml`, `MenuIconButton.qml` |
 | service queries and actions | `AudioState.qml`, `NetworkState.qml`, `MarketState.qml` |
-| NetworkManager protocol and parsing | `network_helper.py`, `network_helper_test.py` |
+| queued network refreshes | `RefreshQueue.qml`, `tests/qml/tst_RefreshQueue.qml` |
+| NetworkManager protocol and parsing | `network_helper.py`, `tests/python/test_network_helper.py` |
 
 ## Preserve reactive behavior
 

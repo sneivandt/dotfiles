@@ -27,8 +27,9 @@ other target. Preserve the boundaries enforced by
 - Use `infra::fs::is_dir_like()` for classification and
   `create_native_symlink()` for native dispatch.
 - Resource code may fall back to junctions for directory links.
-- Check capability before mutation. Developer Mode permits unprivileged links;
-  otherwise the applicable symlink task requires elevation.
+- Check capability before mutation. Developer Mode permits unprivileged native
+  links. Without that capability, only missing/incorrect file links justify
+  elevation; directory links can fall back to junctions.
 - Dry-run never requests elevation.
 
 ## Elevation

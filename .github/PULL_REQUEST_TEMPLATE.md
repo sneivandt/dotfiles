@@ -1,7 +1,5 @@
-# Pull Request
-
 ## Summary
-<!-- What changed, and why is this change needed? -->
+<!-- What problem does this solve? Describe the meaningful behavior or documentation change. -->
 
 ## Related Issues
 <!-- Use "Fixes #123", link related issues, or write "N/A". -->
@@ -17,34 +15,31 @@
 - [ ] CI, build, or dependency maintenance
 
 ## Scope
-<!-- Check all affected profiles and platform categories. -->
+<!-- Check the profiles and platform categories whose behavior changes. -->
 - [ ] `base`
 - [ ] `desktop`
 - [ ] `linux`
 - [ ] `arch`
 - [ ] `windows`
+- [ ] `wsl`
 - [ ] Profile/platform agnostic
 
 ## Validation
-<!-- Check only commands or behaviors you verified. Explain omitted relevant checks below. -->
+<!--
+Choose focused coverage using docs/TESTING.md.
+List exact commands or test cases and their results; distinguish PASS, FAIL, and SKIP.
+For mutation changes, identify isolated dry-run, repeat/idempotency, and failure cases.
+A real install, package update, or desktop restart is not required merely to complete this form.
+-->
 
-### Rust changes
-- [ ] `cd cli && cargo fmt --check`
-- [ ] `cd cli && cargo clippy --profile ci --all-targets -- -D warnings`
-- [ ] `cd cli && cargo clippy --profile ci --target x86_64-pc-windows-gnu --all-targets -- -D warnings`
-- [ ] `cd cli && cargo test --profile ci`
-
-### Configuration, wrappers, hooks, and behavior
-- [ ] Ran config validation from source for the affected platform/profile
-      (`./dotfiles.sh --build check -p base` or `.\dotfiles.ps1 --build check -p base`)
-- [ ] Ran a source-built dry-run for each affected profile
-      (`./dotfiles.sh --build install -p <profile> -n` or Windows equivalent)
-- [ ] Verified idempotency when the change mutates machine state
+| Check or behavior | Result |
+|---|---|
+| | |
 
 **Test environment**
 - OS: <!-- e.g. Arch Linux, Ubuntu, Windows 11 -->
 - Profiles: <!-- e.g. base, desktop, or N/A -->
-- Checks not run: <!-- Explain why, or write "None". -->
+- Checks not run: <!-- Include missing tools and native Windows/runtime gaps, or write "None". -->
 
 ## User-Facing Impact
 - Configuration changes: <!-- Summarize, or write "None". -->

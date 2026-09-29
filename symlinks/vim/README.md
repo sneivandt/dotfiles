@@ -1,76 +1,93 @@
-# Neovim Plugin Management
+# Vim and Neovim configuration
 
-This directory is symlinked to both `~/.vim` and `~/.config/nvim`, so Vim and
-Neovim share the same base configuration.
+On Linux, this directory is linked directly to both `~/.vim` and
+`~/.config/nvim`. Vim uses the shared base configuration without third-party
+plugins; Neovim adds plugins through lazy.nvim.
 
-## Current Setup
+Because the installed paths point into the checkout, editing configuration or
+updating the Neovim lockfile can modify tracked repository files.
 
-### Neovim (lazy.nvim)
+## Configuration entry points
 
-Neovim uses **lazy.nvim**, a modern plugin manager with:
-- Fast startup through lazy loading
-- Lockfile support (`lazy-lock.json`)
-- Automatic plugin installation
-- Better dependency management
-- Built-in plugin profiling
-- Pinned to a specific commit for security and reproducibility
+| File | Responsibility |
+|---|---|
+| [`vimrc`](vimrc) | Shared editing behavior and mappings |
+| [`init.vim`](init.vim) | Neovim entry point; sources `~/.vim/vimrc` and `~/.vim/nvimrc` |
+| [`nvimrc`](nvimrc) | Neovim terminal behavior, plugin bootstrap, and additional mappings |
+| [`lua/lazy-bootstrap.lua`](lua/lazy-bootstrap.lua) | lazy.nvim bootstrap, plugin declarations, and plugin configuration |
+| [`lazy-lock.json`](lazy-lock.json) | Tracked plugin revisions |
 
-**First-Time Setup:**
+The links are declared in
+[`conf/symlinks.toml`](../../conf/symlinks.toml). See
+[Configuration](../../docs/CONFIGURATION.md#symlinks) for their lifecycle.
 
-When you first launch Neovim:
+## First launch
 
-1. lazy.nvim will auto-install to `~/.local/share/nvim/lazy/lazy.nvim`
-2. All plugins will be automatically downloaded
-3. The checked-in lockfile is available from
-   `~/.config/nvim/lazy-lock.json`; both `~/.vim` and `~/.config/nvim` link
-   directly to this directory.
+When lazy.nvim is absent, starting Neovim clones it into
+`stdpath("data") .. "/lazy/lazy.nvim"` and checks out the commit specified in
+`lua/lazy-bootstrap.lua`. The usual Linux location is
+`~/.local/share/nvim/lazy/lazy.nvim`; use `:echo stdpath('data')` to find the
+actual data directory rather than assuming the default.
 
-Run `:TSInstallConfigured` once to install the configured Tree-sitter parsers.
-Installation runs asynchronously; wait for it to finish, then reopen the file
-to enable highlighting and indentation. Normal startup never installs parsers
-or waits for their downloads. Installed parsers are updated by the plugin's
-`:TSUpdate` build hook when updating plugins.
+Git and network access are required for bootstrap. Missing plugins are also
+installed automatically. Launching Neovim is therefore not a read-only
+configuration check.
 
-**Security Note:** The bootstrap process pins lazy.nvim to a specific commit hash to prevent supply-chain attacks. The commit is periodically updated to get security fixes.
+The bootstrap commit fixes which lazy.nvim revision a new installation uses;
+it is not a guarantee that upstream code is safe, nor is an existing
+installation reset to that revision on every launch. Review dependency changes
+and lockfile diffs as code changes.
 
-### Vim (No Plugins)
+### Tree-sitter parsers
 
-Regular Vim (non-Neovim) runs without plugins for simplicity. All plugin functionality is provided by Neovim through lazy.nvim.
+Run `:TSInstallConfigured` once to install missing configured parsers. The
+command starts installation asynchronously; wait for completion, then reopen
+the file to enable highlighting and indentation.
 
-### Plugin Management with lazy.nvim
+Normal startup does not install parsers or wait for downloads. The plugin's
+`:TSUpdate` build hook updates installed parsers during plugin updates. A
+missing parser produces a warning directing you to `:TSInstallConfigured`;
+it is not a reason to delete the plugin tree.
 
-You can use lazy.nvim commands in Neovim:
+## Plugin management
 
-- `:Lazy` - Open lazy.nvim UI
-- `:Lazy update` - Update all plugins
-- `:Lazy sync` - Install missing and update plugins
-- `:Lazy clean` - Remove unused plugins
-- `:Lazy profile` - Profile plugin loading times
-- `:TSInstallConfigured` - Install any missing configured Tree-sitter parsers
+| Neovim command | Purpose |
+|---|---|
+| `:Lazy` | Inspect plugin state and errors |
+| `:Lazy update` | Update plugins and their recorded revisions |
+| `:Lazy sync` | Install missing plugins, clean unused ones, and update |
+| `:Lazy clean` | Remove plugins no longer declared |
+| `:Lazy profile` | Inspect plugin loading time |
+| `:TSInstallConfigured` | Install missing parsers from the configured list |
 
-### Configuration
+Update commands change installed content and may change the tracked
+`lazy-lock.json`. Review the repository diff before keeping those revisions;
+do not run an update merely to inspect configuration.
 
-Plugins are defined in `lua/lazy-bootstrap.lua`. The configuration includes all essential plugins for Neovim development.
-
-## Files
-
-- `init.vim` - Neovim entry point, loaded as `~/.config/nvim/init.vim` and sources `~/.vim/vimrc`
-- `nvimrc` - Plugin loading logic for Neovim
-- `lua/lazy-bootstrap.lua` - lazy.nvim bootstrap and plugin definitions (Neovim only)
-- `lazy-lock.json` - lazy.nvim plugin lockfile shared through the `~/.config/nvim` symlink
+To add or configure a plugin, edit its declaration in
+`lua/lazy-bootstrap.lua`. Keep plugin-only behavior on the Neovim path so
+plain Vim can still load without third-party plugins.
 
 ## Troubleshooting
 
-### Plugin conflicts in Neovim
-If you see errors with lazy.nvim:
-1. Exit Neovim
-2. Clean lazy.nvim cache: `rm -rf ~/.local/share/nvim/lazy`
-3. Restart Neovim to re-download plugins. Bootstrap errors now include the
-   failing `git` output when clone or checkout fails.
+Start with `:messages` and the error details in `:Lazy`. Bootstrap failures
+include the failing Git command's output; check Git availability, connectivity,
+and the reported revision before altering local state.
 
-### Updating lazy.nvim
-To update to a newer version of lazy.nvim:
-1. Check the latest stable release at https://github.com/folke/lazy.nvim/releases
-2. Update the commit hash in `lua/lazy-bootstrap.lua`
-3. Remove the lazy.nvim directory: `rm -rf ~/.local/share/nvim/lazy/lazy.nvim`
-4. Restart Neovim to re-download
+For a plugin-specific error, inspect that plugin's configuration and locked
+revision first. Do not delete the entire lazy.nvim tree as a general repair:
+that discards unrelated installed plugins and requires fresh downloads.
+If a corrupt installation must be replaced, close Neovim, locate the exact
+affected directory under the actual data path, and move it aside for recovery
+before retrying.
+
+### Updating the bootstrap pin
+
+Choose and review a lazy.nvim revision, then update the commit in
+`lua/lazy-bootstrap.lua`. Verify first-launch behavior in an isolated Neovim
+data directory: changing the source pin does not exercise bootstrap when the
+manager is already installed. Check the resulting plugin lockfile separately.
+
+Use [Testing](../../docs/TESTING.md) for repository validation and application
+coverage. Avoid using the installed editor profile for checks that are meant
+to leave the live configuration unchanged.

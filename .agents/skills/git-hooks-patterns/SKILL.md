@@ -25,9 +25,11 @@ Cross-domain dependency wiring belongs in the app catalog.
   `DOTFILES_HOOKS_FULL=1`.
 
 Keep the hook and its integration test synchronized when adding a helper.
-The installed entry point is a copy, but it resolves `.sh` helpers from the
-checkout at runtime. A copied entry-point change needs explicit redeployment;
-helper-only changes do not. Do not run the whole installer to test a hook.
+By default the installed entry point is a copy, but it resolves `.sh` helpers
+from the checkout at runtime. A copied entry-point change needs explicit
+redeployment; helper-only changes do not. If `core.hooksPath` already points at
+the tracked sources, preserve them rather than copying over or removing them.
+Do not run the whole installer to test a hook.
 
 Preserve staged-content semantics: a partially staged file's working-tree
 contents are not necessarily what will be committed. Cover spaces in filenames,

@@ -35,7 +35,8 @@ reinstallation of everything.
 ## Platform rules
 
 - Pacman handles ordinary Arch packages; AUR bootstrap and AUR packages stay
-  separate.
+  separate. Its missing-package install uses `-Syu`, so it can also synchronize
+  databases and upgrade installed packages; it is not an add-only operation.
 - Do not wrap AUR helpers in an extra sudo layer.
 - Check the PATH-selected `paru` executable's health, not just its existence.
   Keep bootstrap/rebuild planning separate from AUR package installation and
@@ -43,7 +44,8 @@ reinstallation of everything.
   packages without inheriting unrelated package failures. AUR dry-run queries
   pacman's database without requiring a helper that bootstrap only previewed.
 - Winget uses exact IDs, prefers user scope, and retries unscoped only when no
-  user-scope installer exists. Privilege-only failures are explicit skips.
+  user-scope installer exists. Privilege and policy refusals return
+  `ResourceChange::unusable`: they count as failed items, not benign skips.
 
 Read [installation planning](../../../cli/src/domains/packages/install/planning.rs)
 and the affected [provider](../../../cli/src/domains/packages/resources/).

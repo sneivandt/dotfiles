@@ -21,9 +21,9 @@ description: >
 
 ## Contracts
 
-- Use category sections for role and environment selection. `base` and custom
-  categories come from profiles; `linux`, `windows`, `arch`, and `wsl` come
-  from platform detection. Compound sections require every category.
+- Use category sections for role and environment selection. `base` and `desktop`
+  come from profiles; `linux`, `windows`, `arch`, and `wsl` come from platform
+  detection. Compound sections require every category; custom tags are rejected.
 - Sources are relative to the declaring repository's `system/` directory;
   targets must be absolute paths below `/etc`.
 - `toml` recursively merges tables, `ini` converges assigned keys and bare flags

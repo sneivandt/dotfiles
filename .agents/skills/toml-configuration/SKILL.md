@@ -2,8 +2,8 @@
 name: toml-configuration
 description: >
   Use when editing conf/*.toml data, typed models, loaders, category sections,
-  or overlay merging. Prefer a narrower package, profile, or symlink skill for
-  domain-only data changes. Not for validator implementation alone.
+  or overlay merging. Prefer the owning domain skill for data-only changes
+  when one exists. Not for validator implementation alone.
 ---
 
 # TOML Configuration

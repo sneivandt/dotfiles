@@ -12,7 +12,9 @@ action-version inventories in guidance.
 
 ## CI rules
 
-- Keep permissions least-privilege and cancel superseded runs.
+- Keep permissions least-privilege and cancel superseded CI runs. Preserve the
+  [release workflow's](../../../.github/workflows/release.yml) non-cancelling
+  concurrency policy so publishing is not interrupted.
 - Pin external actions to full commit SHAs with the release tag in a comment.
 - Use the `ci` Cargo profile for checks and `release` only for publishing.
 - Put recurring logic in `.github/workflows/scripts/{linux,windows}/`.
@@ -33,6 +35,8 @@ action-version inventories in guidance.
   considering already-installed clients.
 - `workflow_run` publishers must verify successful same-repository pushes to
   `main` before granting write permissions or secrets.
+- Compare binary inputs with the latest published release, not the previous
+  push, so a failed or superseded publish does not lose pending changes.
 - Do not execute untrusted PR code in a privileged publishing context or
   interpolate untrusted event text into shell source. Pass data through
   environment variables/arguments and validate it.
@@ -47,6 +51,7 @@ action-version inventories in guidance.
    affected and unaffected paths when changing classification.
 
 Start with [CI](../../../.github/workflows/ci.yml) and
-[change classification](../../../.github/workflows/scripts/linux/classify-ci-changes.sh).
+[change classification](../../../.github/workflows/scripts/linux/classify-ci-changes.py)
+(the `.sh` entry point delegates to it).
 Use [Testing](../../../docs/TESTING.md) for canonical commands and the current CI
 coverage matrix.

@@ -1,376 +1,408 @@
 # Task reference
 
-This page describes the CLI's visible install, pin-update, uninstall,
-validation, and dynamic overlay tasks. Run
-`dotfiles tasks --profile <profile>` for the available selectors, labels, and
-command membership.
-Use `dotfiles tasks --graph install` to inspect the resolved dependency graph.
+Use a **selector** to run one operation against the active configuration.
+Selectors do not select individual packages, files, or services.
+From the repository root, with an existing CLI on PATH:
 
-Each task has separate metadata for:
+```bash
+dotfiles tasks --root . --profile desktop
+dotfiles tasks --root . --profile desktop --graph install
+```
 
-- scheduler identity, used for dependencies and duplicate detection
-- stable selector, used by `--only` and `--skip`
-- display label, used in console rows
-- visibility, which keeps internal orchestration out of discovery and totals
-
-Selectors are case-insensitive after punctuation and whitespace are normalized
-to hyphens. Matching is exact against either the stable selector or the full
-normalized display label; it does not remove action words, use the first word,
-or perform substring matching. Unknown selectors fail before execution. A
-filter combination that selects no tasks also fails. For installation tasks,
-add `--with-deps` to include blocking and ordering predecessors selected by
-`--only`.
+Discovery loads the selected profile and overlay but does not probe machine
+state or execute tasks. A task appearing here may be inapplicable on your host.
+For command syntax, selection rules, and preview side effects, see
+[Usage](USAGE.md#select-tasks).
 
 ## Scheduling model
 
-The engine validates active tasks as a dependency graph. A task becomes ready
-after its active dependencies succeed. Independent ready tasks may run in
-parallel, so visible rows appear in completion order. `--no-parallel` runs
-independent work sequentially but does not guarantee a display order.
+Tasks are connected by two kinds of dependencies:
 
-Every ordering requirement is an explicit edge. Catalog insertion order is not
-scheduling policy. Tasks marked `update_only` are excluded from `install` and
-included by `update`; this metadata controls command membership,
-not ordering.
+| Graph column | Meaning when both tasks are selected |
+|---|---|
+| `BLOCKING` | The predecessor must succeed; failure or unmet work blocks its dependents |
+| `AFTER` | Wait for the predecessor, but still check this task if it fails |
 
-`dotfiles tasks --graph <install|update|uninstall|check>` lists every task in
-dependency-safe order, including internal orchestration tasks. `BLOCKING`
-contains predecessors whose failure blocks the task; `AFTER` contains
-ordering-only predecessors. `INTERNAL` marks tasks hidden from normal
-discovery. `--format json` emits the same graph as structured data. The graph
-uses the selected profile and overlay, but does not probe the machine or
-predict task applicability.
-Add `--only <selector>`, `--skip <selector>`, and, for install or update,
-`--with-deps` to inspect the same selector rules used by execution. The
-`SELECTION` column distinguishes default, requested, dependency, filtered,
-and skipped tasks. Edges remain visible even when a filter removes their
-predecessor.
+For example, AUR installation requires a healthy Paru bootstrap. Systemd waits
+for package, AUR, symlink, and permission work, but unrelated failures there do
+not stop it inspecting each unit.
 
-Built-in mutating tasks are idempotent and dry-run safe. A task may report
-current, skipped, or not applicable without performing work. Overlay scripts
-are external programs, so each script must honor the idempotency and dry-run
-contract itself.
+`--only` selects exact normalized selectors or full labels; it does not
+automatically select prerequisites. Filtering out a blocking prerequisite
+warns and assumes it is satisfied. On install/update, `--with-deps` recursively
+includes both kinds of predecessor. `--skip` can remove them again.
+Unknown selectors and explicit empty selections are errors.
+
+Inspect expansion before applying it:
+
+```bash
+dotfiles tasks --root . --profile desktop --graph install \
+  --only systemd --with-deps --format json
+```
+
+Graph output retains filtered nodes and edges and marks their `SELECTION`.
+It also includes internal orchestration (`INTERNAL`), hidden from normal
+discovery and task totals. It is a dependency/selection view, not a machine
+change plan. For a graph without repository work, use `--skip repository`;
+`tasks` does not accept `--no-repo-update`.
+
+Independent ready tasks can run concurrently, and console rows appear in
+completion order. `--no-parallel` disables parallel execution; catalog order
+is not an execution-order contract. Membership in `update` likewise does not
+imply ordering.
+
+Built-in mutation tasks inspect current state and support CLI dry-run planning.
+Tasks can finish current, not applicable, or skipped rather than changed.
+External overlay scripts must implement their own safety contract.
 
 ## Installation tasks
 
 ### Catalog overview
 
-| Selector | Task label | Commands | Purpose |
-|---|---|---|---|
-| `developer-mode` | Windows Developer Mode | install, update | Enables unprivileged symlink creation |
-| `repository` | Dotfiles repository | install, update | Synchronizes repository content |
-| `git` | Git settings | install, update | Applies declared global Git settings |
-| `agent-settings` | Agent settings | install, update | Converges selected harness settings |
-| `git-hooks` | Git hooks | install, update, uninstall | Installs or removes repository-maintained hooks |
-| `completions` | Shell completions | install, update | Installs runtime shell completion registration |
-| `packages` | System packages | install, update | Installs non-AUR packages through pacman or winget |
-| `paru` | Paru package manager | install, update | Bootstraps the `paru` AUR helper |
-| `aur-packages` | AUR packages | install, update | Installs package entries marked `aur = true` |
-| `symlinks` | Home symlinks | install, update, uninstall | Converges or materializes managed home links |
-| `file-permissions` | File permissions | install, update | Applies declared Unix modes |
-| `shell` | Default shell | install, update | Converges the configured login shell |
-| `system-files` | System files | install, update | Merges selected tracked fragments into administrator-owned files below `/etc` |
-| `systemd` | Systemd units | install, update | Enables and starts configured units, or enables user units offline during target provisioning |
-| `registry` | Windows registry | install, update | Converges declared current-user values |
-| `vscode-extensions` | VS Code extensions | install, update | Installs missing declared extensions, or schedules them for first login during target provisioning |
-| `apm` | APM packages | install, update | Converges merged APM manifests and AI tooling, advancing eligible refs with `--update` |
-| `launcher` | Dotfiles launcher | install, update, uninstall | Installs or removes the platform wrapper |
-| `path` | Shell PATH | install, update | Ensures the launcher directory is on user PATH |
+All rows below belong to both **install** and **update**. The APM task changes
+mode for updates. Rows marked “yes” also belong to uninstall; no other static
+install task is reversed by uninstall.
 
-`Report overlay scripts` is an internal orchestration task. It keeps its
-scheduler identity and run-log entry, but does not appear in `dotfiles tasks`,
-normal console rows, or aggregate totals.
+| Selector | Console label | Inputs / affected state | Uninstall |
+|---|---|---|---|
+| `developer-mode` | Windows Developer Mode | Windows machine symlink capability | — |
+| `repository` | Dotfiles repository | Main checkout and Git overlay | — |
+| `git` | Git settings | `conf/git-config.toml` → global Git config | — |
+| `agent-settings` | Agent settings | `conf/agent-settings.toml` → harness settings | — |
+| `git-hooks` | Git hooks | `hooks/` → Git's hooks directory | yes |
+| `completions` | Shell completions | Generated Zsh/PowerShell registration | — |
+| `packages` | System packages | Non-AUR entries in `conf/packages.toml` | — |
+| `paru` | Paru package manager | Arch's `/usr/bin/paru` | — |
+| `aur-packages` | AUR packages | Entries marked `aur = true` in `conf/packages.toml` | — |
+| `symlinks` | Home symlinks | `conf/symlinks.toml` → home links | yes |
+| `file-permissions` | File permissions | `conf/chmod.toml` → home target modes | — |
+| `shell` | Default shell | Linux account login shell → zsh | — |
+| `system-files` | System files | `conf/system-files.toml` + `system/` → `/etc` | — |
+| `systemd` | Systemd units | `conf/systemd-units.toml` → unit enablement/startup | — |
+| `registry` | Windows registry | `conf/registry.toml` → current-user values | — |
+| `vscode-extensions` | VS Code extensions | `conf/vscode-extensions.toml` → editor extensions | — |
+| `apm` | APM packages | Active APM fragments → generated user-scope deployment | — |
+| `launcher` | Dotfiles launcher | Generated shim in `~/.local/bin` | yes |
+| `path` | Shell PATH | `~/.local/bin` in the user's PATH | — |
 
 ### Host capability and wrapper tasks
 
 #### Windows Developer Mode
 
-This Windows-only task checks Developer Mode and enables it when needed. It runs
-before symlink provisioning because Windows normally requires Developer Mode or
-elevation to create symlinks. Unsupported environments are reported without
-hiding mutation failures.
+Enables Developer Mode when the Windows policy value is unset. This
+machine-level registry mutation needs Administrator rights. **Home symlinks**
+has a blocking dependency on it; normal runs remain unelevated and delegate
+only tasks needing elevation.
 
-Enabling Developer Mode is the only Windows catalog mutation that inherently
-needs administrator rights. Pending file symlinks can also require elevation
-while Developer Mode is off; directory links can fall back to junctions. After
-Developer Mode is enabled, no Windows task requires brokered elevation. If
-elevation is unavailable, the CLI skips the affected tasks and their dependents,
-then continues the rest of the run.
+Pending file links can themselves require elevation when Developer Mode is off.
+Directory links can fall back to junctions. Unavailable elevation skips
+affected tasks and blocks their dependents, not the whole independent graph.
+See [Windows elevation](WINDOWS.md#elevation).
 
 #### Dotfiles launcher
 
-Copies the platform wrapper into `~/.local/bin` as `dotfiles`. The wrapper
-locates, downloads, verifies, or builds the Rust binary, then forwards all CLI
-arguments. Rerunning the task replaces stale wrapper content. Command behavior
-remains in the Rust CLI.
+Writes a small launcher that delegates to the repository's wrapper:
+
+- Linux: `~/.local/bin/dotfiles`.
+- Windows: `%USERPROFILE%\.local\bin\dotfiles.cmd`, preferring `pwsh` and
+  falling back to Windows PowerShell.
+
+It replaces stale launcher content. This is not a copy of the Rust binary,
+and moving the checkout can invalidate the saved path.
 
 #### Shell PATH
 
-Runs after **Dotfiles launcher** and ensures `~/.local/bin` can be resolved by the
-user. Platform-specific capability methods perform the actual PATH convergence.
+Requires **Dotfiles launcher**. On Linux, persists an export in `~/.profile`
+when needed. On Windows, updates the user PATH while preserving registry value
+type and expandable tokens. Start a new shell before relying on the change.
+Uninstall leaves the PATH addition in place.
 
 ### Repository and source tasks
 
 #### Dotfiles repository
 
-Updates the current repository when supported. Successful content changes
-restart the current command with the same arguments. The guarded child loads a
-fresh immutable configuration snapshot, rebuilds static and overlay tasks,
-omits repository synchronization, and continues with the selected work. The
-parent retains the run lock until the child exits.
+Both install and update consider the main checkout and an overlay with a
+`.git` entry. Tracked local changes prevent synchronization; untracked files
+are ignored by that readiness check. Detached HEAD is inapplicable. Missing
+upstream or local-only/diverged commits are reported as unmet work rather than
+being reset or rebased.
 
-Installation synchronizes the repository whether or not `--update` is
-present. Only tasks explicitly marked update-only require that option.
-With `--no-repo-update`, repository synchronization is omitted and the current
-checkout is treated as the desired source without activating the restart
-boundary.
+Apply fetches and uses `git merge --ff-only @{u}`. A changed checkout triggers
+a guarded child with the original arguments, which reloads configuration and
+rediscovers tasks before proceeding. The parent retains the repository lock.
+The main and overlay updates are not a cross-repository transaction; a later
+failure does not roll back an earlier successful update.
+
+Dry-run may query remote refs with `git ls-remote`; it does not fetch or merge.
+`--no-repo-update` removes this task from install/update, including dependency
+expansion, and keeps the current checkout as the source. It does not disable
+binary self-update or other network access.
 
 #### Git hooks
 
-Runs after **Dotfiles repository**, so it uses the latest hook sources. It
-installs files from `hooks/` into Git's shared hook directory, including for
-linked worktrees, and honors `core.hooksPath`. The task does not apply outside a
-Git checkout or when hook sources are absent.
+Copies extensionless hook files from `hooks/`, after repository synchronization.
+Uses the common Git hooks directory for linked worktrees and honors
+`core.hooksPath`. If that path already points to the tracked sources, they are
+not copied over themselves or removed.
+
+Existing hook content at managed destination names can be replaced; there is
+no hook-composition or backup mechanism. Save custom hooks before converging.
+See [Hooks](HOOKS.md) for their behavior.
 
 #### Shell completions
 
-The application installs runtime completion registration after **Dotfiles
-repository** runs. Linux writes Zsh registration beneath the managed
-`symlinks/config/zsh/completions` tree. Windows writes PowerShell registration
-to `~/.config/powershell/profile.d`. The shell asks the current binary for
-profile names, log commands, and configuration-aware task selectors.
+After repository synchronization, writes runtime completion registration:
+
+- Linux: `symlinks/config/zsh/completions/_dotfiles` inside the checkout.
+- Windows: `~/.config/powershell/profile.d/dotfiles-completions.ps1`.
+
+Completion candidates come from the running CLI, including configuration-aware
+task selectors. This task does not itself install the shell or all its profile
+links.
 
 #### Report overlay scripts
 
-Runs when an overlay was supplied and `conf/scripts.toml` produced at least one
-active script. It only reports the startup count. Actual execution is handled
-by dynamically created tasks.
+This is internal bookkeeping, not a selectable operation. It reports the
+number of active script definitions in the run log. Actual script execution
+belongs to the separate [dynamic tasks](#dynamic-overlay-tasks).
 
 ### System convergence tasks
 
 #### Git settings
 
-Reads `conf/git-config.toml` and converges each selected setting using global Git
-configuration. Empty configuration produces no work.
+Converges active declared values in **global** Git configuration, not just the
+checkout's `.git/config`. Empty configuration produces no work. Profile and
+overlay selection persistence, by contrast, uses local Git configuration.
 
 #### Agent settings
 
-Reads `conf/agent-settings.toml` and updates declared dot-separated keys in
-Copilot's JSON settings and Codex's TOML settings. Undeclared and volatile
-harness-owned keys are preserved.
+Converges declared dot-separated keys in Copilot JSON and Codex TOML settings,
+preserving undeclared and volatile harness-owned keys. This task is distinct
+from deploying plugins/skills through APM.
+See [Agent harness settings](CONFIGURATION.md#agent-harness-settings).
 
 #### System files
 
-Reads `conf/system-files.toml` and converges every entry selected by the active
-profile and environment categories. Tracked files and fragments live under
-`system/`. TOML tables merge recursively, INI section keys and bare flags
-converge, and PAM rules are placed at the end of their matching facility stacks.
-Each strategy preserves unmanaged content.
+On Linux outside CI, merges selected tracked fragments into administrator-owned
+files below `/etc`. The current configuration covers Codex requirements on
+Linux, pacman options on Arch, GNOME Keyring PAM integration for Arch desktop,
+and WSL configuration inside WSL.
 
-The task runs on Linux outside CI, refuses malformed or non-regular targets,
-and refuses to create missing PAM service files. Changes are staged and
-installed with `sudo install` as `root:root` mode `0644`; dry runs do not write.
-The current entries manage Codex requirements on Linux, Pacman options on Arch,
-GNOME Keyring PAM rules for the Arch desktop profile, and WSL settings inside
-WSL.
+TOML, INI, and PAM use different merge strategies that preserve unmanaged
+content. Malformed/non-regular targets fail; absent PAM service files are not
+created. Changed content is staged and installed as `root:root`, mode `0644`,
+using `sudo install`. Dry-run does not write these targets.
+See [System files](CONFIGURATION.md#system-files) before changing fragments.
 
 #### System packages
 
-Reads `conf/packages.toml`, separates regular packages from AUR entries, and
-uses the active platform provider:
+Installs missing non-AUR entries through pacman on Linux or winget on Windows.
+The Linux configuration is intended for Arch; there is no apt/dnf adapter.
+Missing pacman/winget is unmet work. Installed-state query failures are errors,
+not an empty package inventory.
 
-- pacman on Arch Linux
-- winget on Windows
+**On Arch, installing missing packages invokes
+`pacman -Syu --needed --noconfirm`.** This can update the wider system as well
+as install the missing entries; it is not an isolated file-copy operation.
+If every configured package is already present, this task does not run a
+package upgrade solely because the command was `update`.
 
-The task discovers installed state before applying changes and only requests
-elevation when the planned provider action needs it.
-
-On Windows, the task never elevates itself. It tries winget with `--scope user`
-first, then retries without a scope only when no user-scope installer exists. If
-an installer still requires administrator rights, the package is marked skipped
-and the rest of the run continues. Run
-`dotfiles install --only packages` from an elevated terminal to finish those
-packages.
+On Windows, winget is tried with `--scope user`, then without a scope only for
+“no applicable installer.” The task does not broker elevation, but an installer
+can request UAC. Administrator-required, declined, or policy-blocked installs
+are reported as unmet/skipped work. See [Windows packages](WINDOWS.md#packages).
 
 #### Paru package manager
 
-This Arch-only task bootstraps the `paru` AUR helper. It queries
-`pacman -Q paru` and runs `/usr/bin/paru --version` in the current system
-context. Under `install-arch`, both commands run inside the target chroot. The
-task waits for system packages without being blocked by unrelated package
-failures, then checks its own prerequisites. It installs a missing helper and
-rebuilds an installed but unusable helper from AUR source against the current
-system libraries.
+On Arch, ensures the target system has both a registered `paru` package and a
+working `/usr/bin/paru --version`. It can rebuild an installed helper after a
+library upgrade makes it unusable.
 
-Before cloning, the task requires `git`, `makepkg`, and `sudo`. It then resolves
-Cargo and runs `cargo --version`. An unconfigured `rustup` proxy therefore fails
-with remediation guidance before `makepkg` starts. Both the target package and
-executable must pass the same check before dependent tasks run. Those tasks call
-the exact `/usr/bin/paru` path instead of resolving a host or stale PATH entry.
+The task waits for system packages using an ordering-only edge. Before cloning
+or building AUR source it requires `git`, `makepkg`, `sudo`, and a working
+`cargo --version`; an unconfigured rustup proxy is not sufficient. The completed
+helper is checked again before dependent AUR work runs.
+
+Under `install-arch`, checks run inside the target chroot, not against the live
+ISO. Later AUR operations use validated `/usr/bin/paru`, not a stale PATH copy.
 
 #### AUR packages
 
-Installs package entries marked `{ aur = true }` in `conf/packages.toml`. It
-uses the AUR helper after its bootstrap prerequisite has completed. Dry-run
+Installs missing AUR entries after **Paru package manager** succeeds. Dry-run
 queries pacman's installed-package database without requiring the helper that
-bootstrap only planned to install. Database query errors still fail the preview.
+bootstrap only planned to install. A failed database query still fails the
+preview. Installing AUR packages builds and executes package-supplied code.
 
 #### Home symlinks
 
-Reads `conf/symlinks.toml`, expands supported source globs, computes
-home-relative targets, and creates or corrects links. Main and overlay entries
-keep their source repository. On Windows, the graph establishes Developer Mode
-first.
+Expands configured sources from the main or overlay `symlinks/` tree into
+home-relative links. Source provenance is retained; overlay entries do not
+silently become main-repository paths.
+
+**Existing regular files and empty directories at managed targets can be
+replaced without backup.** The preview warns about non-link targets; apply
+does not ask for confirmation. Nonempty directories fail rather than being
+recursively deleted. Back up or relocate unrelated targets before applying.
+
+Links keep the checkout live: applications can see tracked source edits
+immediately. On Windows, the task depends on Developer Mode and rejects Git
+symlink placeholders checked out as ordinary files.
+See [Symlinks](CONFIGURATION.md#symlinks) for target and glob rules.
 
 #### File permissions
 
-Linux-only task driven by `conf/chmod.toml`. Directory entries preserve
-traversal bits while ordinary files in a recursively processed tree have
-execute bits cleared unless explicitly targeted by another entry.
+After symlink success, applies declared Unix modes to existing home targets.
+Directory entries recurse, preserve directory traversal bits, and clear
+ordinary-file execute bits; explicit file entries can declare executable
+modes. On linked targets, permission changes can affect the source checkout.
+The task does not create missing target content.
 
 #### Default shell
 
-This Linux-only task sets the user's default shell after package installation,
-when the desired executable is available. It reads state from the account
-database instead of the invoking process's `SHELL` variable. A root invocation
-uses `usermod` directly. An unprivileged non-interactive invocation uses
-passwordless or cached sudo when available. A normal interactive run uses
-`chsh`. Missing zsh is reported as unmet work with an explicit reason.
+On Linux outside CI, sets the account's login shell to **zsh**. This is
+task-defined, not a shell name selected from TOML. It waits for system
+packages, then reports missing zsh as unmet work.
 
+State comes from the account database, not `$SHELL`. Apply uses `usermod` as
+root, `sudo -n usermod` when cached/passwordless sudo works, otherwise `chsh`.
+This does not replace the shell process already running in your terminal.
 
 #### Systemd units
 
-Reads `conf/systemd-units.toml` and enables/starts selected units. Bare strings
-use user scope; table entries can select `user` or `system` scope. System units
-use `sudo` when they need enablement. The task runs after package, AUR, symlink,
-and file-permission tasks because a unit may depend on installed
-binaries, linked unit definitions, and executable scripts. These are ordering
-edges: unrelated prerequisite failures do not prevent the task from checking
-each unit's actual state. When the user manager is unavailable in a fresh-install
-chroot, it creates per-user enablement links for user units and leaves startup to the first
-real login.
+Converges enablement and runtime state: enabled entries are enabled/started,
+and `enabled = false` entries are disabled/stopped. Bare names default to
+enabled user units. System-scope units can require sudo. It waits for package, AUR, symlink, and
+permission tasks via ordering-only edges, then inspects actual unit state.
+
+The task requires systemctl and is excluded in CI. Inside WSL, systemd must
+already be running or degraded; editing `wsl.conf` does not start it in the
+current distribution session.
+
+Without a user manager, including Arch chroot provisioning, it creates
+per-user enablement links offline and leaves startup to a real login. An
+“enabled” result is not a promise that a service is running in the chroot.
 
 #### Windows registry
 
-Windows-only task driven by `conf/registry.toml`. It creates or updates
-current-user registry values while preserving undeclared values.
+Converges declared current-user values without deleting undeclared values.
+This task is separate from machine-level Developer Mode and does not request
+brokered elevation. Some settings are only read at application/session startup.
+Uninstall does not restore their former values.
 
 #### VS Code extensions
 
-Reads `conf/vscode-extensions.toml` and installs missing extensions using an
-available VS Code CLI. It runs after regular and AUR package installation so a
-newly installed editor can be used in the same run.
+After regular/AUR packages, finds an available VS Code CLI, queries installed
+extensions, and installs missing entries. A missing editor CLI is unmet work,
+not success.
+
+Arch chroot provisioning defers installation to `dotfiles-first-login.service`
+instead of attempting Marketplace installation without a real user session.
+The first-login work is retried until the configured extensions converge.
 
 #### APM packages
 
-Builds the active APM desired state from repository-managed fragments under
-`symlinks/apm/config/`, including overlay contributions, then converges the
-generated manifest, lock state, plugins, and skills. It runs after package,
-AUR, and symlink tasks so the APM executable and inputs are available.
+Builds user-scope desired state from active repository/overlay APM fragments.
+Symlink success is blocking; regular/AUR package work is ordering-only so APM
+availability can be rechecked after package installation.
 
-The task delegates user-scope convergence and stale-content cleanup to
-`apm install -g` during an ordinary install. With `--update`, it runs
-`apm update -g --yes` instead so APM advances eligible refs and converges the
-resulting graph in one pass. Copilot App uses an APM-only pass through its native
-experimental target so manifest-wide MCP dependencies remain with supported
-targets. Cowork remains experimental and uses an ACL-safe file reconciliation
-after its APM feature flag and path configuration are honored. See
-[APM](APM.md) for the ownership boundary.
+| Command mode | Native convergence |
+|---|---|
+| Ordinary install | `apm install -g` |
+| update / install `--update` | `apm update -g --yes`, without a preceding install pass |
+| Update preview with current generated manifest | `apm update -g --dry-run` |
+| Update preview needing a new generated manifest | Reports manifest write and delegated update; does not plan against stale input |
 
-The task compares the exact lockfile before and after either command because
-current APM preserves unchanged serialization. An update dry-run uses
-`apm update -g --dry-run` when the generated manifest is current. If fragment
-changes would first replace the generated manifest, the preview reports that
-write and the delegated update without asking APM to plan against stale input.
+This task also manages target-specific integration; it is broader than copying
+skill files. See [APM](APM.md) for generated state ownership, supported targets,
+authentication, and cleanup. Do not edit generated outputs as source.
 
 ## Dynamic overlay tasks
 
-At startup, the command reads active overlay script configuration and creates
-one task per script. If repository synchronization changes the checkout, the
-guarded child process reloads configuration and performs discovery again. Each
-task:
+Only an overlay can provide `conf/scripts.toml`. Each active script gets:
 
-- uses the configured script `name` as its task display name
-- uses `script-<normalized-name>` as its stable selector
-- has a deterministic identity based on name and path
-- participates in `--only` and `--skip` filtering
-- appears in `dotfiles tasks` when active
-- uses the script's check mode to determine whether work is required
-- uses its dry-run mode during `--dry-run`
-- captures and forwards non-empty output through the engine logger
+- Its configured `name` as the display label.
+- A stable `script-<normalized-name>` selector.
+- Install, update, and uninstall membership.
+- A separate task result and captured output.
 
-A missing configured script or a check exit other than 0 or 1 fails the task
-and remains visible in normal output. Exit 0 means current; exit 1 means apply
-is needed.
+Discovery happens during configuration startup and repeats in a child after
+repository synchronization.
 
-The engine passes `--check` and, for install dry runs, `--dryrun` as needed, but
-it cannot stop a script that ignores the contract from changing state.
-Uninstall runs each active script's `--remove` action when its check reports
-managed state. An uninstall dry run reports the planned removal without
-executing it.
+| Mode | Script invocation | Contract |
+|---|---|---|
+| Check | `--check` | Exit 0: desired/managed state present; exit 1: work needed/state absent |
+| Apply | No flag | Apply desired state when the install check returns 1 |
+| Preview | `--dryrun` | Preview needed install work without mutation |
+| Remove | `--remove` | Remove state on uninstall when the check returns 0 |
 
-Scripts are never loaded from the public repository's `conf/` directory. See
-[Overlay scripts](CONFIGURATION.md#overlay-scripts).
+A missing script or other check exit fails the task. Uninstall dry-run still
+checks state but does not execute `--remove`.
+The engine cannot prevent side effects from a script that violates check or
+preview mode. Review it before running even a dry run.
+See [Overlay scripts](CONFIGURATION.md#overlay-scripts) for authoring rules.
 
 ## Uninstall tasks
 
-Uninstall reuses the stable selectors and labels shown in discovery:
+Uninstall uses **the currently selected configuration**, not a historical
+inventory. Keep the original profile, overlay, checkout, and sources available
+until removal is complete.
 
-| Selector | Task label | Purpose |
+| Selector | What removal does | Important limit |
 |---|---|---|
-| `symlinks` | Home symlinks | Replaces every managed home symlink with copied content |
-| `git-hooks` | Git hooks | Removes hooks installed from this repository |
-| `launcher` | Dotfiles launcher | Removes the installed `~/.local/bin/dotfiles` wrapper |
+| `symlinks` | Copies configured source content into home, replacing links | Also materializes missing targets; preserves existing non-link targets |
+| `git-hooks` | Removes installed hooks still matching the repository's managed state | Modified/replaced hooks and unrelated hook names are preserved |
+| `launcher` | Removes the launcher when it still matches the managed content/state | Leaves modified launchers, the checkout, binary, and PATH entry |
+| `script-…` | Runs active overlay scripts' `--remove` | Depends entirely on each script's removal contract |
 
-Active overlay scripts also appear with their `script-<normalized-name>`
-selectors and run `--remove` when their state is present.
-
-**Home symlinks** preserves user-visible files; it does not delete them.
-The uninstall command does not attempt to reverse package-manager, systemd,
-registry, shell, WSL, APM, or editor changes.
+This is not restoration from backups. Packages, services, registry, global Git
+settings, harness settings, shell selection, permissions, completions, WSL,
+editor extensions, and APM deployment are not reversed by static uninstall
+tasks. Nested symlinks in materialized directory trees are recreated as links,
+not flattened copies of everything they reference.
 
 ## Validation tasks
 
-`dotfiles check` executes these validation tasks through the dependency
-scheduler:
+`check` uses a separate task set, not the install graph. All commands load
+configuration before task filtering, so `--only` is not a workaround for a
+malformed required file.
 
-| Selector | Task label | What it checks |
+| Selector | Console label | Scope |
 |---|---|---|
-| `config-warnings` | Validate config warnings | Reports loader diagnostics, including missing source directories for local `dot-*` APM plugin references |
-| `symlink-sources` | Validate symlink sources | Confirms configured symlink and file-permission sources exist and globs resolve |
-| `config-files` | Validate config files | Confirms all required main TOML files exist; warns when `hooks/` is absent |
-| `apm-plugins` | Validate APM plugins | Runs `apm pack --dry-run --verbose` for each local plugin when APM is available |
-| `shellcheck` | Shellcheck | Runs ShellCheck on repository shell scripts when installed |
-| `psscriptanalyzer` | PSScriptAnalyzer | Runs PowerShell Script Analyzer whenever `pwsh` is available |
+| `config-warnings` | Validate config warnings | Fails on aggregated configuration diagnostics, including warning-severity findings |
+| `symlink-sources` | Validate symlink sources | Checks symlink/glob and chmod sources, including inactive category source definitions |
+| `config-files` | Validate config files | Required main TOML inventory; warns when `hooks/` is absent |
+| `apm-plugins` | Validate APM plugins | Native `apm pack --dry-run --verbose` for local plugins under the main checkout |
+| `shellcheck` | Shellcheck | Shell scripts discovered in the main repository |
+| `psscriptanalyzer` | PSScriptAnalyzer | PowerShell scripts discovered in the main repository |
 
-The required main files are:
+Required main files are `agent-settings.toml`, `chmod.toml`, `git-config.toml`,
+`packages.toml`, `registry.toml`, `symlinks.toml`, `system-files.toml`,
+`systemd-units.toml`, and `vscode-extensions.toml`, all under `conf/`.
 
-- `conf/agent-settings.toml`
-- `conf/chmod.toml`
-- `conf/git-config.toml`
-- `conf/packages.toml`
-- `conf/registry.toml`
-- `conf/symlinks.toml`
-- `conf/system-files.toml`
-- `conf/systemd-units.toml`
-- `conf/vscode-extensions.toml`
+Missing `apm`, `shellcheck`, or `pwsh` produces a visible skip; strict policy
+(`--fail-on-skip` or CI) fails on these. If `pwsh` exists but its
+PSScriptAnalyzer module does not, the analyzer fails. Local package-shape
+checks are not complete validation of remote APM dependencies or every private
+overlay script.
 
-Missing ShellCheck, APM, or PowerShell executables produce visible skipped
-checks naming the missing tool. `--fail-on-skip` and CI treat these as failures.
-When `pwsh` is available, a missing PSScriptAnalyzer module fails its check.
-Syntax and consistency failures in required configuration also fail the
-command. The separate `config_drift` integration test verifies relationships
-across the real configuration and source tree.
+Use [Testing](TESTING.md#cli-validation) for canonical commands and the
+separate integration/configuration-drift coverage.
 
 ## Filtering examples
 
+All examples below preview rather than apply; run from the intended checkout.
+
 ```bash
-# Preview the stable "symlinks" selector
-dotfiles install --only symlinks --dry-run
+# Just selected home links; prerequisites are assumed satisfied.
+dotfiles install --root . --profile base --no-repo-update --only symlinks --dry-run
 
-# Run package and APM-related update tasks, except AUR tasks
-dotfiles update --only "packages,apm" --skip aur-packages
+# Inspect every prerequisite that would be added.
+dotfiles tasks --root . --profile desktop --graph update --only apm --with-deps
 
-# Run a dynamic overlay task by its generated stable selector
-dotfiles install --overlay C:\private-dotfiles --only script-private-tools
+# Preview configured regular packages and APM updates, without AUR tasks.
+dotfiles update --root . --profile desktop --no-repo-update --only "packages,apm" --dry-run
 ```
+
+For an overlay script, pass the real overlay root, discover its generated
+selector with `tasks`, then use that exact `script-…` value with `--only`.
+Remember that previewing a script executes its check/preview code.

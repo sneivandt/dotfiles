@@ -1,166 +1,217 @@
 # Security model
 
-This guide describes the repository's trust boundaries and security controls.
-It is not a public vulnerability-disclosure policy.
+Dotfiles runs with access to your account and can request privileged changes.
+Its controls reduce accidental exposure and constrain specific operations;
+they do not make an untrusted checkout, overlay or package safe to execute.
+This guide documents those boundaries, not a vulnerability audit or a promised
+private disclosure service.
 
 ## Trust boundaries
 
-The CLI can modify user and machine state. Treat these inputs as trusted code or
-trusted configuration:
+| Input/boundary | What to trust or review | What the CLI does not guarantee |
+|---|---|---|
+| Checkout and managed content | Rust, wrappers, hooks, shell/editor configuration and future repository updates | That applying configuration is harmless; linked applications may load changed code immediately |
+| Configuration and profiles | Selected records, paths and the combined public/private desired state | That syntactically valid values implement your intended policy |
+| Overlay | Local repository, fragments and executable scripts | Isolation from your home, network or other accessible state |
+| Release binary | GitHub release metadata and provenance, plus the local copy after verification | That checksum/provenance proves absence of malicious or vulnerable code |
+| External tools/packages | Package providers, AUR recipes, APM packages/plugins and executables resolved on PATH | Independent review of every upstream installer or transitive dependency |
+| Elevation | The selected privileged tasks and all code they call | A sandbox around a task or protection from an already-compromised account |
+| Logs and diagnostics | Paths, command arguments and captured output before sharing | Automatic removal of every secret or private value |
 
-- the checked-out repository
-- a path supplied through `--overlay`
-- release assets downloaded by a wrapper
-- commands executed by package providers
-- overlay scripts
-- APM packages and local plugins
-
-Review changes to these inputs before applying them, particularly when elevation
-may be required.
+Review the selected work and its sources before install/update. Selection,
+idempotency and dry-run are operational controls, not trust decisions.
 
 ## Release downloads
 
-When the platform binary is absent, the wrappers download a published release
-asset and its checksum. They:
+The [POSIX wrapper](../dotfiles.sh), [PowerShell wrapper](../dotfiles.ps1) and
+[self-update path](../cli/src/domains/dotfiles/self_update.rs) select a release,
+download its platform asset and SHA-256 metadata over HTTPS, and verify the
+checksum before accepting the download. Checksum lookup uses the matching
+asset entry from release metadata. Provenance policy differs between initial
+bootstrap and self-update, as below.
 
-1. Select the asset for the detected operating system and architecture.
-2. Use HTTPS for GitHub release access.
-3. Download the corresponding SHA-256 checksum.
-4. Verify the binary before executing it.
-5. Verify the binary's GitHub build provenance attestation when `gh` is
-   available.
+A checksum detects mismatched/corrupt bytes relative to the published checksum.
+If the publisher or release metadata is compromised, an attacker can publish
+matching bytes and checksums. GitHub build attestations add evidence linking
+the asset to a repository/workflow build; they do not replace review of that
+repository, its dependencies, the workflow or GitHub account access.
 
-The same sequence applies to the binary's own self-update download.
-
-A checksum proves that the binary matches the published release metadata, but
-not who produced the release. The release workflow also publishes a provenance
-attestation for each asset. The attestation identifies the workflow, repository,
-and commit that produced the binary. Repository and GitHub account security
-remain part of the trust chain.
+These controls run on downloads, not as continuous integrity monitoring of
+every existing local executable. `--build` instead compiles the trusted local
+checkout and dependencies; it does not verify a release attestation.
 
 ## Build provenance verification
 
-Provenance verification uses the `gh` CLI (`gh attestation verify`). During
-initial wrapper bootstrap, a missing `gh` command produces a warning and skips
-the attestation check so the CLI can install its configured packages. A present
-`gh` command that cannot verify the attestation still fails the bootstrap.
-Self-update keeps its existing verification policy.
+Verification runs `gh attestation verify <asset> --repo sneivandt/dotfiles`.
+The release workflow attests assets and verifies that attestations can be
+retrieved **before publishing** the release. The client supplies the repository
+constraint; it does not maintain a separate allowlist of approved commits.
 
-| Setting | Effect |
-|---|---|
-| unset | Verify when `gh` is available; warn and continue when it is absent during wrapper bootstrap |
-| `--skip-attestation` | Skip provenance verification for this CLI self-update |
-| `DOTFILES_SKIP_ATTESTATION=1` | Skip provenance verification entirely |
+| Situation | Wrapper bootstrap | CLI self-update |
+|---|---|---|
+| `gh` available and verification succeeds | Accept after checksum verification | Accept after checksum verification |
+| `gh` absent | Warn and continue with checksum verification only | Reject the update download |
+| `gh` present but verification/authentication fails | Reject bootstrap | Reject the update; preserve the installed binary |
+| `DOTFILES_SKIP_ATTESTATION=1` | Skip provenance, still verify checksum | Skip provenance, still verify checksum |
+| CLI `--skip-attestation` | Forwarded to Rust; does not bypass wrapper verification | Skip provenance for this invocation's self-update |
 
-An unverifiable self-update leaves the currently installed binary unchanged.
-The CLI retries verification three times before rejecting an asset. The final
-error includes the underlying `gh` output.
-Verification can be performed manually after bootstrap:
+The bootstrap exception permits first use before `gh` is installed. It is a
+weaker verification path, not successful provenance verification.
+Self-update retries transient/verification failures up to three times; an
+authentication-required result is reported immediately.
+See [the implementation](../cli/src/domains/dotfiles/self_update/attestation.rs).
 
-```sh
+To verify an existing downloaded Linux binary manually:
+
+```bash
 gh attestation verify bin/dotfiles --repo sneivandt/dotfiles
 ```
 
-Use wrapper `--build` when you need the binary compiled from the local checkout.
+Use `bin/dotfiles.exe` on Windows. Check the reported repository and provenance;
+do not set the bypass merely to silence an unexplained error. For operational
+diagnosis, see [Troubleshooting](TROUBLESHOOTING.md).
 
 ## Elevation
 
-Tasks plan elevation before applying operations that require it. Keep elevation
-to the smallest necessary scope:
+The [elevation broker](../cli/src/app/commands/execution/elevation.rs) assesses
+selected tasks before dispatch. It does not require running the whole CLI as
+root/administrator:
 
-- Windows symlinks use Developer Mode where possible.
-- Registry settings are currently user-scoped.
-- systemd configuration defaults to user units; explicitly scoped system units
-  may require elevation.
-- System-file convergence uses elevation only to install selected merged
-  fragments below `/etc` as `root:root` mode `0644`.
-- package managers elevate only for provider actions that need it.
+- **Linux:** cached sudo credentials can be used without a prompt; when
+  necessary and interactive, credentials are primed in the foreground before
+  privileged commands run. Non-interactive/CI runs do not prompt for fresh
+  credentials.
+- **Windows:** selected elevating tasks run in one short-lived UAC-elevated
+  child restricted to their selectors. The parent remains unelevated and the
+  child cannot request another elevated child. Non-interactive/CI sessions do
+  not request UAC consent.
+- **Unavailable or declined privilege:** affected tasks become unmet work and
+  blocking dependents cannot proceed. Unrelated tasks can continue. Strict
+  completion (`--fail-on-skip` or CI) turns unmet work into failure;
+  “skipped” does not mean the privileged change happened.
 
-Do not move broad task execution behind an unconditional administrator or root
-requirement.
+The normal parent stays unprivileged **when launched that way**. Launching the
+CLI from an already elevated shell gives it that shell's privileges; the engine
+does not drop them.
 
-Elevation is scoped to the tasks that declare it. The main process stays
-unprivileged on both platforms:
-
-- Linux primes `sudo` once and runs only the privileged commands under it.
-- Windows delegates the elevating tasks to one short-lived elevated child run
-  restricted to those selectors, then continues unprivileged. The child cannot
-  recurse into another elevated run.
-
-The CLI never requests elevation in a non-interactive or CI session. If
-elevation is declined or unavailable, it skips the affected tasks and their
-dependents instead of aborting the whole run.
+Examples of scoped privileged work include system packages, system-scoped units
+and merged files below `/etc`. Windows file symlinks may need elevation without
+Developer Mode; directory junctions provide a non-elevated fallback. Current
+registry configuration is user-scoped. These choices minimize prompting, not
+the consequences of malicious code inside an approved task.
 
 ## Private overlays
 
-Overlays are explicitly supplied local repositories. They may contain private
-desired state and executable scripts. The public repository:
+An overlay extends the public configuration; it is not an untrusted plugin
+container. It can be selected explicitly or through the repository's supported
+environment/persisted selection. Confirm which overlay is active before sharing
+output or applying changes.
 
-- appends supported overlay configuration
-- resolves overlay symlink sources from the overlay root
-- executes only scripts listed in the overlay's `conf/scripts.toml`
-- does not load scripts from its own public `conf/`
+The [configuration loader](../cli/src/app/config/mod.rs) appends supported main
+then overlay records, retaining source origins. Scripts are loaded only from
+the overlay's `conf/scripts.toml`, not public `conf/`, and become explicitly
+configured dynamic tasks.
 
-Review an overlay before using `--overlay`. A dry run reduces mutation risk, but
-it does not make an untrusted executable safe. The engine passes `--check` and
-`--dryrun` to scripts but cannot stop a script that ignores those flags from
-changing state.
+The [script workflow](../cli/src/domains/overlay/scripts.rs) calls check and
+preview modes, including `--check` and `--dryrun`. These are cooperative
+contracts: a script can ignore them, print private data, access the network or
+mutate anything its process can access. A dry-run is **not a sandbox**.
+APM fragments and agent/editor content likewise cross into tools that interpret
+them; review the deployed content, not only the manifest shape.
+
+Path validation protects particular managed-resource boundaries, such as
+relative home-link targets and system-file targets below `/etc`. It is not a
+general filesystem confinement policy for every external command or script.
 
 ## Secrets
 
-Do not place credentials, private keys, tokens, connection strings, or
-machine-specific secret values in:
+Keep credentials, private keys, tokens, connection strings and private
+machine/overlay values out of tracked configuration, fixtures, examples,
+workflow files and diagnostic uploads.
 
-- `conf/`
-- `symlinks/`
-- test fixtures
-- logs
-- documentation examples
-- GitHub workflow files
+The [pre-commit scanner](HOOKS.md#scan-scope) checks added staged text against
+versioned regex rules, prints redacted matches, and supports narrow safe-span
+exceptions. It is local and bypassable, does not scan all history or arbitrary
+binary/encoded data, and trusts the checkout's helper code and rules. Neither a
+clean scan nor a green CI result establishes that a patch is secret-free.
 
-The pre-commit hook scans staged content using `hooks/sensitive-patterns.ini`.
-The scan is a backup control, not a guarantee. Generated command output and
-overlay script output enter the logs, so scripts must not print sensitive
-values.
+### Logs are a separate disclosure boundary
 
-If a secret is committed, revoke or rotate it first; removing it from the latest
-commit is not sufficient.
+[`CommandSpec`](../cli/src/infra/exec/mod.rs) controls two independent things:
+
+- `redact_arguments()` suppresses command arguments in diagnostics.
+- `OutputLog::Omit` excludes captured streams from persisted command diagnostics
+  and checked-command errors; it does not sanitize values a caller later logs.
+
+By default, failed stdout/stderr and successful stderr are retained; successful
+stdout gets a byte count. `OutputLog::Full` retains successful stdout too.
+Domain messages and overlay-script output can also reach logs. There is no
+universal secret scrubber. Inspect logs locally and share only the smallest
+sanitized excerpt, even when a console failure looks innocuous.
+
+If a real secret reaches a commit or shared log, revoke/rotate it first. Removing
+the latest occurrence does not invalidate copies, history, artifacts or logs.
+Coordinate any subsequent history cleanup separately rather than assuming a
+force-push can undo exposure.
 
 ## Dependency and CI controls
 
-CI includes:
+[`ci.yml`](../.github/workflows/ci.yml) runs input-selected dependency
+advisory/policy checks and builds/tests. Its `ci-success` gate requires every
+selected job to succeed and only unselected jobs to be skipped; classification
+failure or an unexpected skip fails the gate. Coverage and mutation reports are
+informational. See
+[CI gates](TESTING.md#ci-gates) for exact coverage instead of treating “CI green”
+as a universal security claim.
 
-- Cargo dependency auditing
-- Cargo policy and license checks
-- formatting and linting
-- Linux and Windows builds/tests
-- wrapper and integration behavior
-- publishing guard checks
+[`release.yml`](../.github/workflows/release.yml) has a narrower publishing
+boundary:
 
-Publishing workflows run only after successful CI from a same-repository push to
-`main`, before jobs receive write permissions or publishing secrets. Release
-runs are serialized to prevent tag-allocation races and cannot be dispatched
-manually with an attacker-selected source revision. Release assets include
-checksums and build provenance attestations consumed by the wrappers and the
-self-update path.
+1. Accept only a successful CI workflow from a same-repository **push to main**.
+2. With read-only permissions, compare the exact tested SHA against the latest
+   published non-draft, non-prerelease release. Select publication only when
+   binary/publishing inputs changed, or no release exists.
+3. Carry that workflow's exact tested SHA into release builds and the tag.
+4. Serialize release runs without cancelling an active release.
+5. Build without dependency caches in the release workflow.
+6. Grant contents/OIDC/attestation write permissions to the publishing job,
+   generate checksums and attestations, verify discoverability, then publish.
+
+The published-release baseline retains pending binary changes after failed or
+cancelled publishing runs; a later docs-only push can therefore finish an
+unpublished release. Older/already-released commits skip publication, while API
+errors, missing release tags or divergent history fail selection. See
+[Release selection](TESTING.md#release-selection) for the input policy and
+isolated regression checks.
+
+There is no manual dispatch path selecting an arbitrary source revision.
+These guards reduce accidental or untrusted-event publication; they do not
+protect against a trusted maintainer account, dependency or approved workflow
+being compromised.
 
 ## Safe contribution practices
 
-- Pin every external GitHub Action to a full commit SHA, with the human-readable
-  tag kept in a trailing comment. Moving tags (including tool tags such as
-  `taiki-e/install-action@cargo-deny`) must be expressed as a pinned SHA plus an
-  explicit input.
-- Keep workflow permissions least-privilege.
-- Never echo secrets in shell tracing or the run log.
-- Preserve dry-run semantics for every mutation.
-- Propagate validation failures instead of falling back to unsafe defaults.
-- Avoid following unvalidated paths outside the expected repository, home, or
-  configuration roots.
-- Review package, APM, and overlay supply-chain changes separately from code
-  correctness.
+For security-relevant changes:
+
+- Review trust-boundary changes explicitly: new executable content, external
+  sources, privileged commands and data retained in logs.
+- Pin external Actions to full commit SHAs and keep permissions scoped to the
+  job that needs them. Version comments are for readability, not pinning.
+- Use checked subprocesses or explicitly handle nonzero results; do not turn
+  validation/discovery failures into success-shaped defaults.
+- Preserve idempotency and dry-run tests, but do not describe them as isolation
+  or rollback.
+- Test with synthetic secrets and isolated paths, not private overlay excerpts.
+
+Use [Contributing](CONTRIBUTING.md) for the change workflow and
+[Testing](TESTING.md) for safe validation.
 
 ## Reporting a vulnerability
 
-Do not include exploit details or credentials in a public issue. Report the
-vulnerability privately through
-[GitHub's vulnerability reporting form](https://github.com/sneivandt/dotfiles/security/advisories/new).
+Do not post credentials, private configuration or sensitive exploit details in
+a public issue. Check the repository's current
+[Security page](https://github.com/sneivandt/dotfiles/security) for any available
+private reporting mechanism before sending details. This document does not
+assert that private reporting is enabled or promise a response process.
+If no private channel is advertised, ask how to contact the maintainer without
+including the sensitive material.

@@ -1,254 +1,277 @@
 # Testing and validation
 
-Tests cover domain logic, task orchestration, commands, configuration drift,
-wrappers, hooks, installation, Linux, and Windows.
+Use this page to choose a check, run it against the intended source, and state
+what it did **not** cover. Commands start at the repository root unless a block
+explicitly changes directory. Prefer a focused check over a full machine
+installation.
+
+## Choosing coverage
+
+| Change | Start with | Widen when |
+|---|---|---|
+| Documentation or skills | `sh .github/workflows/scripts/linux/check.sh docs` | Task names, file locations or headings changed: inspect incoming references too |
+| TOML/category/source layout | `config_drift` and the local `config` stage | Loader/merge/profile behavior changed: add command tests and the full Rust suite |
+| Task selection or dependencies | Affected command suite, `task_execution` | Shared catalog/engine behavior changed: scheduler contracts and full suite |
+| Concrete resource | Its domain unit tests and `lifecycle_contracts` or affected `e2e_apply` cases | Shared planning, error accounting or adapters changed |
+| Process execution | `cargo test --profile ci infra::exec::` from `cli/` | Platform process-tree, timeout or capture behavior changed: native Windows too |
+| Wrapper or hook | Focused fixtures under [Wrapper and hook tests](#wrapper-and-hook-tests) | Full wrapper/hook suites only in a disposable environment |
+| Managed desktop/shell content | [Desktop shell](#desktop-shell) regressions | Native rendering/session behavior changed: manual testing on the relevant desktop |
+| Workflow/CI classification | Local `ci` stage and the changed job's exact command | Trigger or dependency changes: classification/hook-input regressions |
+
+For Rust changes, add formatting and host Clippy to the affected tests; consider
+cross-target Clippy for Windows-sensitive code. Broaden coverage for shared
+configuration, engine or catalog changes, not merely because a file is Rust.
+
+### Isolation and side effects
+
+There are three different kinds of check:
+
+- **Fixture tests:** Rust integration/unit tests and targeted wrapper/hook-input
+  regressions use controlled roots, homes or injected tools. They can create
+  files, Git repositories and subprocesses inside their fixtures. CI-selection
+  tests also create fixture commits/tags and mock `gh`; they do not publish a
+  release or commit into the developer checkout.
+- **Repository checks:** formatting, linters and `dotfiles check` inspect actual
+  source/configuration. Cargo writes build caches; dependency audits can use
+  the network. The CLI can write run logs and persist profile/overlay choices
+  even though `check` does not apply managed resources.
+- **Host integration:** install/uninstall and application jobs, and the full
+  commit-hook suite, intentionally mutate their environment. Use a disposable
+  checkout **and** a disposable home/runner/VM as appropriate. A clean Git tree
+  does not make your real home safe.
+
+Do not run an install, package update, elevation request or desktop restart as
+a substitute for missing tests. Do not invoke a wrapper to validate changed
+Rust: it may bootstrap a release or reuse an older binary.
 
 ## Fast local sequence
 
-From the repository root, run the default Linux verification stages:
+The canonical entrypoints are
+[`linux/check.sh`](../.github/workflows/scripts/linux/check.sh) and
+[`windows/Check.ps1`](../.github/workflows/scripts/windows/Check.ps1).
+They share CI's Cargo profile, but **do not run the entire CI workflow**.
 
 ```bash
+sh .github/workflows/scripts/linux/check.sh --list
+sh .github/workflows/scripts/linux/check.sh fmt clippy test config
 sh .github/workflows/scripts/linux/check.sh
 ```
 
-On Windows:
-
 ```powershell
+pwsh -File .github\workflows\scripts\windows\Check.ps1 -List
+pwsh -File .github\workflows\scripts\windows\Check.ps1 fmt clippy test config
 pwsh -File .github\workflows\scripts\windows\Check.ps1
 ```
 
-These scripts define the local verification sequence and use the same `ci`
-Cargo profile as CI. A stage reports `SKIP` instead of failing when its tool is
-missing. The default stages do not include the opt-in MSRV check, integration
-jobs, coverage, or mutation testing.
+With no stage names, each script runs its default stages:
 
-| Stage | Covers |
-|---|---|
-| `fmt` | `cargo fmt --check` |
-| `clippy` | `cargo clippy --all-targets -D warnings` |
-| `test` | `cargo test` |
-| `config` | `dotfiles check --root .` (repository validator) |
-| `docs` | Relative Markdown links and heading anchors resolve; documented task selectors exist (Linux script only) |
-| `ci` | CI/release scheduling contracts, changed-path and release-baseline fixtures, and aggregate success-gate behavior (Linux script only) |
-| `shell` | ShellCheck over wrappers, hooks, and CI scripts |
-| `powershell` | PSScriptAnalyzer over all `.ps1`/`.psm1` |
-| `audit` | `cargo audit` |
-| `deny` | `cargo deny check all` |
-| `msrv` | Compile against the MSRV in `cli/Cargo.toml` (opt-in) |
+| Stage | Actual scope | Availability caveat |
+|---|---|---|
+| `fmt` | `cargo fmt --check` | Requires Cargo and rustfmt |
+| `clippy` | Host `cargo clippy --profile ci --all-targets -- -D warnings` | Does not include cross-target Clippy |
+| `test` | `cargo test --profile ci` | Does not run shell/PowerShell CI integration scripts |
+| `config` | CLI `check --profile desktop --only config-warnings,symlink-sources,config-files` | Intentionally excludes external APM/linters |
+| `docs` | Relative inline Markdown links/heading anchors and static task-selector inventory | Linux entrypoint only |
+| `ci` | CI/release scheduling contracts, changed-path and release-baseline fixtures, and aggregate result-gate behavior | Linux entrypoint only; requires Python 3 plus Git/POSIX shell for fixtures |
+| `shell` | Shared ShellCheck file discovery in `test-static-analysis.sh` | Requires ShellCheck; Windows also needs POSIX `sh` |
+| `powershell` | Repository PowerShell analysis at Warning/Error severity | See the different missing-module behavior below |
+| `audit` | `cargo audit` for `cli/Cargo.lock` | Requires cargo-audit |
+| `deny` | `cargo deny check all` | Requires cargo-deny |
 
-Run a subset, list the stages, or include the opt-in ones:
+Missing top-level tools generally produce `SKIP` without failing the script.
+Read the summary: **“All checks passed” can include skipped stages.** Installed
+Cargo with a missing/broken subcommand can still fail rather than skip.
+On Linux, absent `pwsh` skips `powershell`, but present `pwsh` without
+PSScriptAnalyzer fails. The Windows entrypoint explicitly skips a missing
+PSScriptAnalyzer module.
 
-```bash
-sh .github/workflows/scripts/linux/check.sh fmt clippy
-sh .github/workflows/scripts/linux/check.sh --list
-sh .github/workflows/scripts/linux/check.sh --all
-```
+The opt-in `msrv` stage reads `rust-version` from `cli/Cargo.toml`, attempts to
+install that compiler, then runs `cargo +<msrv> check --all-targets`. It is a
+compile check, not a second full test suite. Request it explicitly, or use
+`--all` on Linux / `-All` on Windows. Those options can download a toolchain;
+they still do not enable host integration, coverage or mutation testing.
 
-The Windows script has no `docs` or `ci` stage. CI runs those checks on Linux.
-
-Run Cargo directly when you need one Rust check:
+Run individual Rust checks from `cli/` so the repository's pinned
+[`rust-toolchain.toml`](../cli/rust-toolchain.toml) applies:
 
 ```bash
 cd cli
-cargo test --profile ci
+cargo fmt --check
 cargo clippy --profile ci --all-targets -- -D warnings
+cargo test --profile ci
 ```
+
+The docs checker validates local inline links, not external URLs or the
+correctness of prose. It compares [TASKS.md](TASKS.md) with static selectors in
+code; dynamic overlay selectors are documented by convention.
+
+The `ci` stage runs both
+[`check-ci-contract.py`](../.github/workflows/scripts/linux/check-ci-contract.py)
+and [`test-ci-changes.py`](../.github/workflows/scripts/linux/test-ci-changes.py).
+To focus on the latter's pure classification and result-gate cases without
+creating Git fixtures:
+
+```bash
+python3 -B .github/workflows/scripts/linux/test-ci-changes.py \
+  ClassificationTests GateTests
+```
+
+Omit the class names to include rename/deletion, unusual-path, invalid-range and
+published-release-baseline fixtures. Those fixtures need Git and `sh`, use a
+mock GitHub CLI, and make no release API calls.
 
 ## Integration test suites
 
-The Rust integration tests under `cli/tests/` cover distinct boundaries:
+Rust integration targets under [`cli/tests/`](../cli/tests) are distinct from
+the host-mutating CI integration jobs:
 
-| Test target | Focus |
+| Target | Use it for |
 |---|---|
-| `behavioral_ci` | Cross-cutting behaviors that protect CI assumptions |
-| `config_drift` | Cross-file invariants among real configuration and managed sources |
-| `domain_boundaries` | Architectural dependency boundaries |
-| `e2e_apply` | End-to-end convergence against controlled state |
-| `install_command` | Install selection and command composition |
-| `lifecycle_contracts` | Shared real-task dry-run, apply/repeat, failure/retry, and conservative-removal contracts on isolated fixtures |
-| `task_execution` | Filesystem-backed task execution, resource convergence, and dry-run safety |
-| `task_output` | Visible task outcomes, missing-tool reasons, and command exit status |
-| `test_command` | Validation task construction and outcomes |
-| `uninstall_command` | Conservative uninstall composition and behavior |
+| `config_drift` | Real configuration/source/category invariants |
+| `domain_boundaries` | Allowed architectural dependencies and platform/environment boundaries |
+| `install_command`, `uninstall_command`, `test_command` | Command task sets, selection, loading and outcomes (`test_command` tests `check`) |
+| `task_execution` | Filesystem-backed task/resource convergence and dry-run |
+| `task_output` | Visible statuses, reasons, logs and exit behavior |
+| `lifecycle_contracts` | Shared real-task dry-run, apply/repeat, retry and conservative-removal contracts |
+| `e2e_apply` | Representative CLI convergence against controlled state |
+| `behavioral_ci` | Cross-cutting regressions supporting CI assumptions |
 
-Run one suite:
+Combine related targets in one invocation:
 
 ```bash
 cd cli
-cargo test --test config_drift
+cargo test --profile ci --test config_drift --test test_command
+cargo test --profile ci --test lifecycle_contracts
+cargo test --profile ci --test install_command -- --list
 ```
 
-Run one named test:
-
-```bash
-cd cli
-cargo test --test install_command test_name
-```
+To focus further, append a substring of the test name before `--`, for example
+`cargo test --profile ci --test install_command repository`. Check the reported
+test count: a misspelled filter can run zero tests successfully.
 
 ## Test ownership
 
-Unit tests own parsing, state transitions, resource error paths, idempotency,
-and dry-run safety. Shared cases in
-[`engine/tests/scheduler/conformance.rs`](../cli/src/engine/tests/scheduler/conformance.rs)
-exercise the same contracts in sequential and parallel modes and compare their
-structured outcomes. Scheduler output ordering and channel-synchronized
-concurrency cases stay in adjacent `output.rs` and `parallel.rs` suites.
-Command tests own selection, dependency wiring, elevation,
-re-execution, and exit results. End-to-end fixtures cover representative
-install, repeat, dry-run, and uninstall lifecycles for materially different
-platform paths.
+Put the regression at the lowest boundary that can prove the behavior:
 
-Use named case tables instead of repeating fixture setup for parsing or
-rejection cases. Judge test cleanup by the branches and contracts retained,
-not the number of registered tests. Derived equality, cloning, and simple
-field copies alone do not need independent tests; shared ownership,
-cancellation propagation, and observable formatting still do.
+- Unit tests: parsing, validation, state transitions, resource errors and
+  process adapters.
+- [`scheduler/conformance.rs`](../cli/src/engine/tests/scheduler/conformance.rs):
+  shared sequential/parallel scheduler contracts. Adjacent `parallel.rs` and
+  `output.rs` own synchronization-specific and stage/result-ordering cases.
+- [`batch_reports.rs`](../cli/src/engine/tests/batch_reports.rs) and
+  [`parallel.rs`](../cli/src/engine/tests/parallel.rs): partial failure,
+  cancellation, discovery errors and in-flight accounting.
+- Command suites: selection, dependency wiring, elevation/re-exec policy and
+  exit status.
+- Lifecycle/end-to-end fixtures: externally observable state across runs.
 
-The reusable [`lifecycle.rs`](../cli/tests/common/lifecycle.rs) harness drives
-real symlink, Git-hook, and Git-setting tasks using isolated roots, homes, and
-injected adapters. Cases in
-[`lifecycle_contracts.rs`](../cli/tests/lifecycle_contracts.rs) compare managed
-filesystem state, use fresh contexts between runs, and assert exact logical
-resource actions and counts rather than message membership. Keep
-platform-specific cases explicit instead of gating the whole suite on Unix.
+[`common::cli_command`](../cli/tests/common/mod.rs) isolates home, config,
+cache, state and logs; clears inherited `DOTFILES_*`/`GIT_*` overrides; pins
+repository discovery to a fixture Git boundary; and disables self/repository
+updates. Use it for subprocess tests instead of rebuilding a partly isolated
+command. In-process tests should use injected environment/executors and an
+isolated logger.
 
-Integration subprocess tests share `common::cli_command` for isolated home,
-state, cache, configuration, and log paths. The helper clears inherited
-`DOTFILES_*` and `GIT_*` overrides, isolates stdin and the working directory, and
-establishes a fixture-local Git boundary so repository discovery cannot reach
-the developer checkout. Keep scenario-specific flags and environment overrides
-at the call site. In-process tests use the shared context constructor with an
-injected executor, `MapEnv`, and an isolated persistent logger; it retains the
-temporary home for the whole run.
+[`common/lifecycle.rs`](../cli/tests/common/lifecycle.rs) drives real symlink,
+Git-hook and Git-setting tasks on fixtures. Preserve assertions about exact
+logical actions/counts, managed state, fresh contexts between runs, and safe
+repeat/removal behavior. Do not reduce a lifecycle test to “the output contains
+this message.”
 
-Engine [`batch_reports.rs`](../cli/src/engine/tests/batch_reports.rs) and
-[`parallel.rs`](../cli/src/engine/tests/parallel.rs) cover strict partial failure,
-state-discovery errors, cancellation, in-flight worker completion, and
-sequential/parallel action cardinality. Logging tests ensure interrupted changes
-are not labelled "No changes". Run
-`cargo test --profile ci --test lifecycle_contracts` for the shared real-task
-contracts.
-
-## Desktop shell
-
-Workspace layout and queued network-refresh regressions use the Qt 6 Quick
-Test runner. On Arch, run them offscreen without switching real workspaces:
-
-```bash
-QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
-  /usr/lib/qt6/bin/qmltestrunner -input symlinks/config/quickshell/tests/qml
-```
-
-The Quickshell network helper uses Python's standard-library test runner. Its
-tests mock network actions, so they never connect, disconnect, or toggle an
-adapter:
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
-  -s symlinks/config/quickshell/tests/python -p 'test_*.py'
-```
-
-On Windows, use `python -B` in place of the environment-variable prefix and
-`python3`. The native GLib integration case is skipped when its runtime is
-unavailable; the mocked network cases still run.
-
-Session-lock regressions mock process and service checks without locking the
-desktop. The power-menu regression is included in the Quickshell Python suite.
-The prompt regression runs an isolated PowerShell host without loading the
-installed profile:
-
-```powershell
-python -B -m unittest discover -s symlinks\config\hypr\scripts\tests -p 'test_*.py'
-pwsh -NoProfile -File symlinks\config\powershell\tests\Test-Prompt.ps1
-```
-
-The managed-script regression jobs run these cases and the Quickshell Python
-suite on Linux and Windows, and gate `ci-success`.
+Use named case tables for repeated input/rejection cases. Test observable
+contracts rather than trivial derives or field copies; retain separate cases
+where platform behavior differs.
 
 ## CLI validation
 
-`dotfiles check` is the user-facing repository validator. It checks:
-
-- loader warnings
-- symlink source existence
-- required TOML files
-- APM plugins when APM is available
-- shell scripts when ShellCheck is available
-- PowerShell scripts whenever `pwsh` is available; the PSScriptAnalyzer module
-  must also be installed or the check fails
+To validate the current Rust implementation against this checkout without
+bootstrap:
 
 ```bash
-dotfiles check --root . --verbose
+cd cli
+cargo run --profile ci -- check --root .. --profile desktop \
+  --only config-warnings,symlink-sources,config-files
 ```
 
-When an overlay is involved, always validate the combined configuration:
+This is the same selection as the local `config` stage. It treats configuration
+diagnostics as failure, checks configured symlink and permission sources
+(including retained inactive definitions), and verifies required TOML files.
+Structural/conflicting configuration can fail before any check task runs.
+
+For all checks, use the built CLI or Cargo:
 
 ```bash
-dotfiles check --root . --overlay C:\path\to\private-dotfiles
+cd cli
+cargo run --profile ci -- check --root .. --profile desktop --verbose
 ```
+
+The additional tasks run APM's `pack --dry-run --verbose` on discovered local
+plugins, ShellCheck, and PSScriptAnalyzer. They are not interchangeable with
+the local scripts' lint stages; see
+[`validation/checks.rs`](../cli/src/app/validation/checks.rs) for discovery scope.
+
+Missing `apm`, `shellcheck` or `pwsh` is **unmet work**, normally displayed as a
+skip locally. `--fail-on-skip` or any present `CI` environment variable makes
+unmet skips fail. A present `pwsh` without its
+analyzer module fails outright. Explicitly select/skip tools that are outside
+your intended check; do not report omitted checks as passes.
+
+When changing an overlay, validate the combined configuration with
+`--overlay /path/to/private-dotfiles` on that same command. Keep diagnostics and
+paths private until sanitized. A successful public-only check says nothing
+about overlay conflicts.
 
 ## Dry-run testing
 
-Dry-run is part of the mutation contract. Preview the smallest affected task
-set, then inspect applicability and planned actions:
+Preview the smallest affected task set with the **current build**:
 
 ```bash
-dotfiles install --root . --only symlinks --dry-run --verbose
-dotfiles install --root . --update --only apm --dry-run --verbose
-dotfiles uninstall --root . --dry-run --verbose
+cd cli
+cargo run --profile ci -- install --root .. --profile desktop \
+  --no-repo-update --only symlinks --dry-run --verbose
+cargo run --profile ci -- install --root .. --profile desktop \
+  --no-repo-update --update --only apm --dry-run --verbose
+cargo run --profile ci -- uninstall --root .. --profile desktop \
+  --only symlinks --dry-run --verbose
 ```
 
-A dry run must not change files, package state, registry values, unit state, or
-generated manifests.
+These previews must not apply managed filesystem, package, registry, unit or
+generated-manifest changes. They can still inspect the host, create logs and
+persist selection metadata. Prove absence of mutations with fixture assertions,
+not the presence of the words “dry run.”
+
+Only preview trusted configuration. Overlay scripts run check/preview code and
+must honor their flags; dry-run is not a sandbox. See
+[Private overlays](SECURITY.md#private-overlays).
 
 ## Wrapper and hook tests
 
-CI-maintained integration scripts live under:
+The [Linux scripts](../.github/workflows/scripts/linux) and
+[Windows scripts](../.github/workflows/scripts/windows) include both isolated
+regressions and CI host integration. Read a suite before running all its cases.
+Full wrapper suites may build/copy binaries or use a supplied `BINARY_PATH`.
 
-```text
-.github\workflows\scripts\linux\
-.github\workflows\scripts\windows\
-```
+### Focused, isolated regressions
 
-They cover wrapper forwarding and download behavior, install/uninstall flows,
-configuration, application availability, Git hooks, static analysis, and
-platform-specific cases. Shared Linux helpers live under
-`scripts/linux/lib/`.
-
-The pre-commit checks can also be run directly:
+These run fixture tools rather than bootstrap/install the real CLI:
 
 ```bash
-sh hooks/check-sensitive.sh
-sh hooks/check-rust.sh
-sh hooks/check-ci-guards.sh
-sh hooks/pre-commit
-DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
+sh .github/workflows/scripts/linux/test-hook-inputs.sh test_staged_ci_guards
+sh .github/workflows/scripts/linux/test-hook-inputs.sh test_ci_change_classification
+sh .github/workflows/scripts/linux/test-hook-inputs.sh test_staged_ci_guard_deletions
+sh .github/workflows/scripts/linux/test-shell-wrapper.sh \
+  test_wrapper_preserves_runtime_context test_wrapper_uses_cargo_artifact
 ```
 
-`check-rust.sh` and `check-ci-guards.sh` validate an exported snapshot of the
-staged index, not the working tree. Unstaged and untracked content is excluded,
-the working tree remains untouched, and Cargo's target cache is reused.
+`test_ci_change_classification` delegates to the complete Python CI-selection
+suite described above, including its isolated Git/release-baseline fixtures.
+`test-hook-inputs.sh` without a selector runs all its input regressions,
+including `test_build_version_ref_triggers`. That case compiles the std-only
+`cli/build.rs` directly, without Cargo dependencies, to check branch-ref
+invalidation of build metadata. It skips if the pinned Rust compiler is
+unavailable and also runs explicitly in the Linux CI build job.
 
-Run the isolated hook-input and wrapper-context regressions from the repository
-root without installing hooks or running a real bootstrap:
-
-```bash
-sh .github/workflows/scripts/linux/test-hook-inputs.sh
-sh .github/workflows/scripts/linux/test-shell-wrapper.sh test_wrapper_preserves_runtime_context
-```
-
-Pass `test_staged_ci_guards` or `test_ci_change_classification` to
-`test-hook-inputs.sh` to focus on staged-content isolation or rename-aware CI
-classification. With no target, it runs all hook-input regressions.
-
-The selectors `test_staged_ci_guard_deletions` and
-`test_build_version_ref_triggers` cover deleted/renamed configuration and Git
-branch-ref invalidation of build metadata. The latter requires the repository's
-pinned Rust compiler and runs in the Linux build job.
-`test_wrapper_uses_cargo_artifact` checks configured Cargo output paths without
-building or executing the real CLI.
-
-On Windows, load the wrapper test functions and run the isolated path fixture:
+On Windows, dot-source the suite to load functions without executing all cases:
 
 ```powershell
 . .\.github\workflows\scripts\windows\Test-ShellWrapper.ps1
@@ -256,92 +279,174 @@ Test-IsolatedWrapperPath
 Test-CargoArtifactPath
 ```
 
-The full hook integration script creates real commits and refuses to run in a
-dirty checkout. Run it in a fresh scratch repository:
+### Checks on your real index
+
+These do not create commits, but inspect **what is staged**, not all edits:
 
 ```bash
-mkdir -p /tmp/hooktest/hooks && cp -a hooks/. /tmp/hooktest/hooks/
-cd /tmp/hooktest && git init -q
-git -c user.name=Test -c user.email=test@test.local commit --allow-empty -qm baseline
-ln -sf /tmp/hooktest/hooks/pre-commit .git/hooks/pre-commit
-DIR=/path/to/dotfiles sh /path/to/dotfiles/.github/workflows/scripts/linux/test-git-hooks.sh
+sh hooks/check-sensitive.sh
+sh hooks/check-rust.sh
+sh hooks/check-ci-guards.sh
+DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
 ```
 
-A failed case can leave its fixture committed, so do not reuse the scratch
-repository for another run.
+The Rust and CI guards export the staged index and reuse the checkout's Cargo
+cache; they do not stash, overwrite or stage working-tree content. Helper code
+and sensitive-pattern configuration themselves are read from the checkout.
+Full mode is staged-change-aware, not a replacement for the full local/CI
+sequence. See [Hooks](HOOKS.md) for triggers and skipped tools.
+
+### Full commit-hook suite: disposable repository only
+
+[`test-git-hooks.sh`](../.github/workflows/scripts/linux/test-git-hooks.sh)
+creates **real commits in its current repository**. It rejects tracked
+uncommitted changes, but that guard is not permission to use a clean developer
+checkout. A failed detection case can commit its fixture and anything else
+staged. Never use its force override to test your working repository.
+
+One fixture setup, from the source checkout (use a fresh directory each time):
+
+```bash
+(
+  source_root="$PWD"
+  fixture="$PWD/.hook-test-repo"
+  test ! -e "$fixture" || exit 1
+  mkdir -p "$fixture/hooks"
+  cp -R hooks/. "$fixture/hooks/"
+  cd "$fixture" || exit 1
+  unset GIT_DIR GIT_COMMON_DIR GIT_WORK_TREE GIT_INDEX_FILE
+  unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+  unset GIT_CONFIG GIT_CONFIG_PARAMETERS
+  export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_COUNT=0
+  git init -q --template=
+  git config core.hooksPath .git/hooks
+  git config user.name "Hook Test"
+  git config user.email "ci@test.local"
+  git add hooks
+  git commit -qm baseline
+  cp hooks/pre-commit .git/hooks/pre-commit
+  chmod +x .git/hooks/pre-commit
+  DIR="$source_root" sh "$source_root/.github/workflows/scripts/linux/test-git-hooks.sh"
+)
+```
+
+Inspect and remove only `.hook-test-repo` afterward; never stage it. Do not
+reuse a failed fixture: its committed test data can turn the next run into an
+empty diff and give misleading results.
+
+## Desktop shell
+
+These checks do not require installing the managed configuration.
+
+Quickshell workspace-layout and queued-refresh QML regressions use Qt 6 Quick
+Test. On Arch:
+
+```bash
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
+  /usr/lib/qt6/bin/qmltestrunner -input symlinks/config/quickshell/tests/qml
+```
+
+Network/power and session-lock regressions mock actions; they do not toggle
+adapters, lock the desktop or power off the machine:
+
+```bash
+python3 -B -m unittest discover \
+  -s symlinks/config/quickshell/tests/python -p 'test_*.py'
+python3 -B -m unittest discover \
+  -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
+pwsh -NoProfile -File symlinks/config/powershell/tests/Test-Prompt.ps1
+```
+
+On Windows use `python -B` instead of `python3 -B`. The prompt test starts an
+isolated PowerShell host without the installed profile. The native GLib case
+skips when its runtime is unavailable; mocked Python cases still run. When their
+inputs change, CI selects the affected Python/PowerShell regression steps on
+Linux and Windows, **not** the QML runner or a native desktop session.
 
 ## CI gates
 
-The main CI workflow includes:
+[`ci.yml`](../.github/workflows/ci.yml) starts for pushes/PRs to `main` and manual
+dispatch without workflow-level path filters that could leave required checks
+pending. [`classify-ci-changes.sh`](../.github/workflows/scripts/linux/classify-ci-changes.sh)
+delegates selection to the standard-library-only
+[`Python classifier`](../.github/workflows/scripts/linux/classify-ci-changes.py).
+Documentation checks, scheduling-contract checks and classifier regressions
+remain always-on, including for documentation-only changes.
 
-- formatting and linting
-- ShellCheck and PowerShell analysis
-- documentation consistency (runs even for docs-only changes)
-- configuration validation
-- `cargo-audit` and `cargo-deny`
-- Linux and Windows builds
-- minimum-supported Rust checks
-- Rust test suites
-- wrapper, hook, install, uninstall, and application integration tests
-
-The Linux and Windows coverage jobs run all Cargo targets and upload HTML
-reports. Coverage is informational and intentionally does not gate
-`ci-success`.
+The `ci-success` job runs with `always()` and depends on every gating job.
+[`check-ci-contract.py`](../.github/workflows/scripts/linux/check-ci-contract.py)
+validates workflow dependencies, selection outputs, matrix wiring and release
+conditions. In `--results` mode it also checks actual outcomes: classification
+must succeed, every **selected** job must succeed, and every **unselected** job
+must be skipped. Failure, cancellation, missing outputs and accidental skips
+cannot masquerade as intentional omissions. A deliberately unselected job still
+provides no coverage for that run.
 
 ### Change-aware scheduling
 
-The workflow always starts so required checks cannot remain pending because of
-a workflow-level path filter. A lightweight classifier selects jobs, platforms,
-linters, and application matrix entries. Documentation consistency and classifier
-regressions always run; the final gate requires every selected job to succeed
-and accepts only explicitly unselected jobs as skipped.
+Selection is per input, platform, linter and application—not one global
+“code changed” switch. This table summarizes the policy; the classifier and its
+regressions own the exact path rules. Linter selections add to other applicable
+checks rather than replacing them.
 
 | Changed inputs | Selected work beyond the always-on checks |
 |---|---|
-| Documentation, agent guidance, known repository/editor metadata | No compilation or binary release |
+| Documentation, agent guidance, known repository/editor metadata | No compilation; these changes alone are not binary-release inputs |
 | Rust source, embedded source-tree assets, Cargo/build/toolchain configuration | Both platform builds, Rust checks, profile/round-trip integration, wrappers, and application tests |
-| Rust integration tests and fixtures | Both platform builds and Rust checks, but no release or unrelated application/wrapper tests |
+| Rust integration tests and fixtures | Both platform builds and Rust checks, but no unrelated application/wrapper tests or new binary-release input |
 | Cargo manifests/lockfiles | Dependency audit and deny checks in addition to Rust checks |
 | `cli/deny.toml` / `cli/rustfmt.toml` | Only dependency-policy / formatting checks, respectively |
 | `conf/` | Configuration validation, drift tests, and profile/round-trip integration; application tests for package, symlink, or Git config changes |
 | `system/` | Linux configuration and profile/round-trip checks |
-| Managed application configuration | Configuration validation/drift checks and the affected Git, Zsh, Vim, or Neovim matrix entries |
+| Managed application configuration | Configuration validation/drift checks and affected Git, Zsh, Vim, or Neovim application entries |
 | PowerShell prompt, session lock, Quickshell | Configuration checks plus the affected managed-script regressions on Linux and Windows |
 | Stock helper | Configuration checks and the isolated stock regression |
 | Wrapper or platform-specific integration script | Its platform's build and relevant integration job |
-| Hooks | Hook and isolated staged-input regressions, without CLI builds |
-| Shell / PowerShell files | Only the corresponding linter |
+| Hooks | Hook and isolated staged-input regressions; hook-only changes do not request CLI builds |
+| `.sh` / `.ps1` / `.psm1` files | Add the corresponding linter; the extensionless `hooks/pre-commit` also selects ShellCheck |
 | CI workflow, shared CI helpers, classifier, manual dispatch, or unavailable comparison range | Conservative full CI; unknown inputs also use this fallback |
-| Release workflow or release-selection script | Publishing selection; no unrelated CI compilation |
+| Release workflow or release-selection script | Publishing selection without unrelated CI compilation |
 
 Changed paths include deletions and both sides of renames. An invalid Git range
-fails classification rather than silently skipping checks. Empty diffs run only
-the always-on checks. Mutation shards are scheduled only when Rust source changes,
-not for lockfile-only, test-only, or CI-only changes.
+fails classification rather than silently skipping checks. A valid empty diff
+runs only the always-on checks. Manual/missing-range full CI is a separate
+fallback; it does not itself request publication or mutation testing.
 
-Both build jobs run Clippy and the full Rust suite only for Rust-related changes.
-Linux configuration changes run just `config_drift` instead of the full Rust
-suite. Cargo integration tests also produce the executable uploaded for downstream
-jobs; other artifact consumers use `cargo build`. A Windows-only wrapper change
-does not build Linux, and a Linux-only wrapper change does not build Windows.
-Configuration checks still compile the current CLI where needed; they never
-substitute a potentially incompatible downloaded release.
+Both build jobs run Clippy and the full Rust suite only when the classifier
+requests Rust checks: Rust inputs or the conservative full-CI fallback.
+On Linux, configuration-only changes run `config_drift` instead. Cargo
+integration tests produce the executable uploaded for downstream jobs; other
+artifact consumers use `cargo build`. A wrapper-only change builds only its
+platform. Configuration checks compile the current CLI where needed; they do
+not substitute a potentially incompatible downloaded release.
 
-Pull requests and pushes to `main` run changed-code mutation testing when Rust
-source changes. Eight independent shards cover the complete changed-code mutant
-set using the `ci` Cargo profile and upload separate `cargo-mutants` reports.
-Sharding keeps larger refactors within the job timeout without sampling away
-mutants. Mutation results are informational and do not gate `ci-success`.
+Coverage still has deliberate limits:
+
+- Profile matrices use `base` and `desktop`, skip VS Code in dry-run, and skip
+  external linter/APM tasks in `check`. Those tools have separate or local
+  coverage; this is not proof that every installer works on a clean machine.
+- Windows application integration skips APM, packages and VS Code and tests
+  Git's effective configuration. Linux application jobs cover Git, zsh, Vim
+  and Neovim.
+- Linux/Windows `cargo llvm-cov` HTML reports are informational and excluded
+  from `ci-success`.
+- Eight mutation-test shards cover the complete changed-code mutant set using
+  the `ci` profile for PRs/main pushes that change Rust source under `cli/src/`.
+  They are informational and excluded from `ci-success`. Lockfile-only,
+  standalone-test-only and CI-only changes do not select mutation shards.
 
 ### Release selection
 
-After successful same-repository push CI on `main`, a read-only job compares the
-tested commit with the most recent non-draft, non-prerelease publication.
+After successful same-repository push CI on `main`, a read-only job runs
+[`classify-release.sh`](../.github/workflows/scripts/linux/classify-release.sh)
+to compare the exact tested commit with the latest non-draft, non-prerelease
+publication returned by GitHub.
 Release builds, version allocation, attestations, and publishing run only when
 binary inputs or the publishing pipeline changed. Documentation, configuration,
 wrappers, standalone test fixtures, and lint-policy changes do not by themselves
 publish a new binary. Changes inside `cli/src/` are conservatively treated as
-binary inputs, including embedded assets and inline unit tests.
+binary inputs, including embedded assets and inline unit tests. Unknown inputs
+also conservatively select publication; full CI by itself does not.
 
 Comparing with the published release rather than the previous push catches binary
 changes left unpublished by a failed or cancelled run. Consequently, a docs-only
@@ -353,59 +458,28 @@ history fail explicitly. Release asset names, checksums, provenance, and the
 
 ## Platform coverage parity
 
-CI coverage differs by platform. Anything listed as Linux-only below is not
-validated on Windows.
-
-| Area | Linux | Windows | Notes |
+| Boundary | Linux CI | Windows CI | What remains unproved |
 |---|---|---|---|
-| Build, Clippy, tests | yes | yes | |
-| All-target coverage report | yes | yes | Informational HTML artifact |
-| Profile dry-run and `dotfiles check` | yes | yes | `base` and `desktop` |
-| Install/uninstall round-trip | yes | yes | |
-| Wrapper | yes | yes | `dotfiles.sh` / `dotfiles.ps1` |
-| Application: git | yes | yes | Windows also asserts the `core.autocrlf` override |
-| Application: zsh, vim, nvim | yes | n/a | Excluded from the Windows profile |
-| Managed-script regressions | yes | yes | Isolated prompt host and mocked lock/network/power actions; not native desktop integration |
-| Git hook sensitive-data check | yes | no | Hooks are POSIX `sh`; not run on Windows |
-| ShellCheck, PSScriptAnalyzer | yes | n/a | Both run on the Linux runner |
-| `cargo audit`, `cargo deny`, MSRV | yes | n/a | Platform-independent |
+| Rust build/Clippy/tests | Yes | Yes, subject to selection above | Other architectures' runtime behavior |
+| `base`/`desktop` preview and config check | Yes | Yes | Real external installs omitted by those jobs |
+| Install/uninstall round-trip | Yes | Yes | Every possible pre-existing user configuration |
+| Wrapper integration | POSIX wrapper | PowerShell wrapper | All network/authentication environments |
+| Applications | Git, zsh, Vim, Neovim | Git | Full Windows package/VS Code installation |
+| Managed Python/PowerShell scripts | Yes | Yes | Native compositor/network/lock session |
+| QML Quick Test | No (local command above) | No | Rendered desktop integration |
+| Commit-hook sensitive scan | Yes | No native hook job | Git-for-Windows hook runtime |
+| ShellCheck/PSScriptAnalyzer, audit/deny/MSRV | Linux jobs | No duplicate jobs | Native behavior beyond static/compile checks |
 
-Cross-target Clippy catches many Windows compile errors from Linux, but it
-cannot test Windows runtime behavior. For Rust changes that can break Windows
-compilation, run:
+From Linux, check Windows-gated Rust paths without claiming runtime coverage:
 
 ```bash
 cd cli
-cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+cargo clippy --profile ci --target x86_64-pc-windows-gnu \
+  --all-targets -- -D warnings
 ```
 
-If the target or toolchain is unavailable, record the omitted check. Use the
-Windows CI jobs for changes to Windows-specific paths.
-
-The Windows git application test asserts the final effective configuration
-outside any repository. Installation removes the obsolete managed
-`core.autocrlf` entry from `~/.gitconfig`, leaving the platform include under
-`~/.config/git` authoritative.
-
-## Choosing coverage
-
-| Change | Minimum focused validation |
-|---|---|
-| TOML data | `config_drift` plus `dotfiles check` |
-| Task metadata or dependencies | relevant command suite plus `task_execution` |
-| Resource behavior | domain unit tests plus affected command/e2e suite |
-| Environment-dependent behavior | unit tests injecting a fixed environment, not process-global variables |
-| Wrapper | platform wrapper integration script |
-| Hook | hook script and Git hook integration test |
-| Cross-platform Rust | tests/check on the host plus the repository's cross-platform sequence |
-| Documentation | `check.sh docs` (link and task-selector consistency) |
-| CI workflow | `check.sh ci` plus the narrow command used by the changed job |
-
-Escalate to the full suite when shared engine behavior, catalog composition, or
-configuration loading changes.
-
-Executor regressions run with `cargo test --profile ci infra::exec::`.
-Native Windows cases use isolated subprocess jobs and cover timeout,
-cancellation, and output draining after the process leader exits. Their ignored
-child fixture is invoked by those tests; it is not a standalone test to run
-with `--ignored`.
+Record a missing target/compiler/toolchain as an omitted check. Native Windows
+tests are still required for registry, elevation, symlink/junction, path and
+process behavior. Executor tests include timeout, cancellation and output
+draining after a process leader exits; their ignored child fixture is launched
+by the tests and is **not** a standalone `--ignored` test to run manually.

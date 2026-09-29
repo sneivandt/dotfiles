@@ -46,6 +46,11 @@ of adding a near-duplicate.
 
 ## Verify
 
-For public APM config or plugin changes run `./dotfiles.sh install -n`. Validate
-private-overlay changes from a checkout where that overlay is configured. Use
-the repository's `ai-tooling-apm` skill for Rust implementation details.
+Use the dotfiles checkout's `docs/TESTING.md` for scoped checks and previews,
+and its `ai-tooling-apm` skill for implementation details. Skill-text-only edits
+need frontmatter, link, and routing review, not a live install or deployment.
+For behavior changes, prefer current-source checks with isolated homes and
+synthetic overlays; a wrapper may bootstrap or run an older installed binary.
+An authorized preview with a real overlay can execute its cooperative
+`--check`/`--dryrun` scripts. Inspect trusted scripts first and keep private paths
+and output out of public reports.

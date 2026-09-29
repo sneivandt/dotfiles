@@ -27,7 +27,7 @@ applies changes in dependency order. Settings that already match are skipped.
 | Editors | Vim/Neovim, VS Code settings, and extensions |
 | Terminal | Alacritty and Windows Terminal |
 | Git | Global settings, aliases, and repository hooks |
-| Packages | paru for Arch Linux packages and winget packages on Windows |
+| Packages | pacman and paru on Arch Linux; winget on Windows |
 | Arch desktop | Hyprland, Quickshell, mako, fuzzel, and GTK settings |
 | Services | systemd user and system units |
 | AI tooling | APM packages and plugins, Copilot and Codex settings |
@@ -69,6 +69,8 @@ Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 Uninstall leaves packages, services, and registry values in place.
 
 ## Documentation
+
+See the [documentation index](docs/README.md) for guides by task.
 
 - [Usage](docs/USAGE.md), [profiles](docs/PROFILES.md), and [task reference](docs/TASKS.md)
 - [Configuration](docs/CONFIGURATION.md), including private overlays

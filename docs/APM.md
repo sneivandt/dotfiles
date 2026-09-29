@@ -1,252 +1,312 @@
 # APM and AI tooling
 
-The repository uses [APM](https://github.com/microsoft/apm) to distribute
-skills, plugins, instructions, hooks, and MCP configuration to supported AI
-agents. Dotfiles defines the desired state. APM resolves packages and writes
-their content.
+[APM](https://github.com/microsoft/apm) resolves and deploys reusable agent
+content. Dotfiles selects its inputs, generates a user-scope manifest, and
+invokes APM. Harness preferences such as reasoning effort are managed separately.
+
+Start with the ownership table before editing anything. In particular, do not
+hand-edit the generated manifest or deployed copies of a skill.
 
 ## Responsibilities
 
-| Layer | Responsibility |
-|---|---|
-| `conf/agent-settings.toml` | Converges stable per-harness preferences in Copilot JSON and Codex TOML |
-| `symlinks/apm/config/*.yml` | Profile-specific APM source fragments |
-| `conf/symlinks.toml` | Selects and links applicable fragments and local plugins |
-| APM packages task | Merges fragments, persists the generated manifest, and invokes native APM install or update for the active command mode |
-| APM itself | Resolves packages, verifies local sources, converges deployments, and removes stale content |
+| What you want to change | Edit here | What happens on apply |
+|---|---|---|
+| Copilot or Codex preferences | [`conf/agent-settings.toml`](../conf/agent-settings.toml) | Selected keys converge in `~/.copilot/settings.json` or `~/.codex/config.toml` |
+| Package dependencies, MCP declarations, or normal deployment targets | [`symlinks/apm/config/`](../symlinks/apm/config/) | Active fragments merge into `~/.apm/apm.yml`; APM resolves and deploys them |
+| Which machines receive a fragment or local plugin | [`conf/symlinks.toml`](../conf/symlinks.toml) | Profile/category selection exposes the source under `~/.apm/` |
+| Repository-owned reusable agent content | [`symlinks/apm/plugins/`](../symlinks/apm/plugins/) | Linked local plugins are consumed by APM |
+| Instructions for working on this repository | [`AGENTS.md`](../AGENTS.md) and [`.agents/skills/`](../.agents/skills/) | Repository-local guidance; not the personal plugin deployment tree |
 
-Use APM to place APM-managed content in agent directories. Do not maintain
-separate copies.
+`dot-agent` holds reusable agent behavior; `dot-skill` holds focused reusable
+skills. Private integrations and instructions belong in a private overlay.
+Do not duplicate APM-managed content directly into harness directories.
 
-APM owns distributable content such as skills, plugins, hooks, instructions,
-and MCP declarations. `conf/agent-settings.toml` owns selected harness
-preferences such as model, reasoning effort, and terminal UI options.
-Codex settings in `~/.codex/config.toml` are shared by its CLI, IDE extension,
-and agent inside the ChatGPT desktop app; app-only preferences remain in the
-desktop app.
+Only declared harness keys are managed; invalid existing settings documents
+are reported without replacing them. Removing a declaration leaves its stored
+value in place. See [agent settings](CONFIGURATION.md#agent-harness-settings)
+for the schema. Codex's user config is shared by its CLI, IDE extension, and
+desktop agent; app-only appearance and notification preferences belong to the
+app, and ChatGPT Work chats do not read local Codex settings.
 
-Settings documents must be JSON objects or TOML tables. Invalid documents are
-reported without replacing their contents. Removing a setting from
-`conf/agent-settings.toml` stops managing that key; it does not delete the user's
-stored value.
+**Applying APM is executable configuration, not just copying text.** Packages
+can supply hooks, MCP servers, and workflows. When Copilot App is present,
+dotfiles also enables its own deployed workflows in autopilot mode. Review
+those sources and [target-specific behavior](#deployment-targets) before applying.
 
 ## Configuration fragments
 
-The source fragments are stored under:
+Tracked fragments live in `symlinks/apm/config/`. The symlink configuration
+selects which ones become `~/.apm/config/*.yml` or `*.yaml`. A fragment for one
+platform must be selected by the matching category; a filename such as
+`arch.yml` is not itself a condition.
 
-```text
-symlinks\apm\config\
-```
+During planning, dotfiles reads the selected **source** files, even if their
+home links have not been installed yet. A managed source masks the home entry
+with the same filename before inspecting that entry. This lets dry-run plan
+the replacement of a stale or broken managed link. Other, unmanaged YAML
+fragments already in `~/.apm/config/` also participate.
 
-The active profile controls which fragments are linked. The task merges main
-and private-overlay fragments into one generated desired state. Put
-platform-specific packages in the matching profile fragment, not behind runtime
-conditions in generated output.
+Fragments are ordered by their effective filename in that directory, not by
+"public first, private last." For example, `base.yml` sorts before `private.yml`,
+but `90-private.yml` sorts before `base.yml`. Choose names deliberately rather
+than relying on overlay precedence.
 
-Local plugin sources live under:
+### Merge rules
 
-```text
-symlinks\apm\plugins\
-```
+Each nonempty fragment must be a YAML mapping. Dotfiles merges it as follows:
 
-Managed symlinks expose these plugins to APM without requiring a published
-package.
+| Field | Rule |
+|---|---|
+| `name`, `version` | Generated identity is fixed to `dotfiles`, `1.0.0` |
+| `dependencies`, `devDependencies` | Dependency groups append in fragment order |
+| MCP dependency entries | First entry with a given `name` wins; unnamed entries deduplicate by serialized value |
+| Other dependency entries | Duplicate serialized entries are removed, keeping the first |
+| Other mappings | Merge recursively |
+| Other sequences, including `targets` | Append unique values |
+| Other scalar values | Later values replace earlier values |
 
-## Deployment targets
+These rules differ from [TOML overlay merging](CONFIGURATION.md#merge-rules).
+An overlay can add targets, but omitting a base target from its own list does
+not remove it. Similarly, repeating an MCP server's name is not an override.
+Keep one authoritative declaration when changing an existing server.
 
-`symlinks/apm/config/base.yml` declares the cross-platform `targets:` list:
+The merge implementation and its examples live in
+[`fragments.rs`](../cli/src/domains/ai/apm/fragments.rs).
+
+## Adding an APM package
+
+1. Edit the narrowest applicable source fragment. Use the native APM dependency
+   syntax and a deliberate ref/pin policy rather than editing lock data.
+2. For a local package, put it under `symlinks/apm/plugins/` and ensure the
+   declaring repository selects it through `conf/symlinks.toml`.
+3. If introducing a fragment, select its link in the same categories as its
+   required local plugins. Keep target compatibility in the package declaration.
+4. Follow [validation](#validation), then preview against the edited checkout.
+5. Apply ordinary install to reconcile declarations. Use update only when
+   advancing dependency refs is intended.
+
+The base fragment illustrates the local-package form:
 
 ```yaml
 targets:
   - agent-skills
   - copilot
+
+dependencies:
+  apm:
+    - ~/.apm/plugins/dot-agent
+    - ~/.apm/plugins/dot-skill
 ```
 
-Without this list, APM detects every agent harness directory in the home
-directory and deploys to each one. That can write skills and MCP declarations
-to unused runtimes. The explicit list limits deployment to configured runtimes.
-At the next convergence, APM removes its content from runtimes removed from the
-list.
-
-APM resolves the runtime set in this order:
-
-1. An explicit `--target` flag on the invocation.
-2. The `targets:` list in the merged manifest.
-3. `apm config target`.
-4. Auto-detection.
-
-The APM packages task omits `--target` from its primary invocation, leaving the
-merged manifest in control. Copilot App is the exception because APM does not
-accept its experimental target in `apm.yml`. When the App database exists, the
-task idempotently enables `copilot-app` and runs a separate
-`apm install -g --target copilot-app --only apm` to deploy workflows without
-asking the MCP-incapable target to process manifest-wide MCP dependencies. The
-primary invocation still deploys those MCP dependencies to supported targets.
-If the APM manifest is already current, the primary native install still runs.
-After APM finishes, the task restores `autopilot` mode, enabled state, and
-`next_run_at` for any dotfiles-managed workflow that drifted. This includes
-custom cron schedules, which the App stores as `interval: manual` plus a
-`cron_expression`. Duplicate rows are collapsed only within the same managed
-workflow ID. Legacy `apm--unknown--<package>--<prompt>` rows are removed only
-when the corresponding managed `apm--_local--<package>--<prompt>` exists and
-its definition, including any cron expression, matches. Independent IDs and
-foreign workflows are preserved even when their visible definitions match.
-Workflow restoration is also attempted after failed APM or Cowork convergence:
-a later failure must not leave workflows disabled by an earlier APM step.
-The original convergence error remains the task's outcome; restoration is
-best-effort and reports its own failures separately.
-
-When repairing a scheduled workflow's next run, local daily, weekly, and cron
-times use the UTC offset for the scheduled date, including daylight-saving
-transitions.
-
-Cowork remains an experimental APM target and is disabled by default. When a
-Cowork skills path is available, dotfiles re-asserts the feature with:
-
-```bash
-apm experimental enable copilot-cowork
-```
-
-Dotfiles follows APM's Cowork path precedence: the
-`APM_COPILOT_COWORK_SKILLS_DIR` environment variable, the persisted
-`copilot_cowork_skills_dir` value in `~/.apm/config.json`, then the
-`ONEDRIVECOMMERCIAL` or `ONEDRIVE` Windows fallback. A configured path also
-enables Cowork reconciliation on Linux.
-
-Current APM still replaces a colliding skill directory with directory removal
-followed by a full tree copy. Cowork stores skills under OneDrive and protects
-those directories, so dotfiles must not invoke the native `copilot-cowork`
-target yet. Instead, after the primary install, it reads each locked
-dependency's `target_subset`, selects packages with no filter or a filter
-containing `copilot-cowork`, and copies their resolved skills from
-`~/.agents/skills` file-by-file. Successful reconciliation records each managed
-skill in `.dotfiles-apm-skills.json` inside that Cowork skills directory.
-It removes `SKILL.md` from excluded or removed skills only when that inventory
-establishes ownership, preserving unrelated skills, Cowork-owned placeholders,
-directories, and ACLs. An older unrecorded copy is not assumed to be managed
-solely because a same-named skill exists under `~/.agents/skills`.
-
-Reconciliation removes legacy `cowork://` deployment records before native APM
-convergence. Explicit legacy skill deployment records are first retained in the
-ownership inventory when their configured Cowork directory exists, so stale
-managed skills can still be removed after APM rewrites the lockfile. Otherwise,
-unrelated APM commands can retry directory deletion that OneDrive blocks.
-Dry-run reports the planned file-level reconciliation without modifying Cowork,
-the ownership inventory, or the lockfile.
-
-These compatibility paths are not redundant with native APM. The
-[v0.29.1 skill integrator](https://github.com/microsoft/apm/blob/v0.29.1/src/apm_cli/integration/skill_integrator.py)
-still removes existing target directories before copying, and its
-[workflow integrator](https://github.com/microsoft/apm/blob/v0.29.1/src/apm_cli/integration/copilot_app_workflow_integrator.py)
-rejects autopilot mode and inserts disabled workflows. Retain both dotfiles
-adapters until a candidate passes isolated checks for ACL-preserving updates,
-stale target cleanup, fragment and target filtering, managed workflow
-enablement, and preservation of foreign workflows on Linux, Windows, and WSL.
-Release notes or Linux-only success are not sufficient evidence for removal.
-
-Fragments merge their `targets:` lists by union with deduplication, so a private
-overlay fragment can add a runtime without restating the base list.
+This is a fragment example, not a second file to add alongside the existing
+base fragment.
 
 ## Install behavior
 
-**APM packages** depends on:
+The `apm` task runs after regular packages, AUR packages, and symlinks so its
+executable and managed sources can be available. A scoped invocation still
+needs those prerequisites already satisfied; see [task selection](TASKS.md).
 
-- regular packages
-- AUR packages
-- symlinks
+On an ordinary apply, dotfiles:
 
-This order makes the APM executable and repository-managed fragments available
-before convergence. The task:
+1. Discovers effective fragments and produces a deterministic manifest.
+2. Writes `~/.apm/apm.yml` atomically only when its contents differ. An existing
+   symlink at that generated path is rejected, not followed.
+3. Runs `apm install -g` without a primary `--target` override.
+4. Reconciles available Copilot App and Cowork targets as described below.
+5. Compares the exact before/after `~/.apm/apm.lock.yaml` and adapter state to
+   report changes.
 
-1. Discovers active main and overlay fragments from their configured symlink
-   sources, while preserving unmanaged home fragments. Managed sources mask the
-   corresponding home entries before metadata checks, so dry-run can preview
-   replacement of stale or broken managed links without first repairing them.
-2. Produces the merged manifest in deterministic order.
-3. Writes the generated manifest only when its content changed.
-4. Runs `apm install -g` during ordinary installation, or `apm update -g --yes`
-   when `--update` is enabled.
-5. Lets APM verify local sources, converge deployments, and remove stale or
-   orphaned user-scope content.
-6. Compares the exact lockfile before and after to report whether APM changed
-   resolved state. Changed tasks list each added, removed, or updated dependency
-   and show ref, commit, content, deployment-file, or target changes when APM's
-   lockfile records them.
+Native APM owns package resolution, local-source verification, and stale
+deployment cleanup. Install does not intentionally advance pinned dependencies.
+It still invokes APM when the manifest is unchanged, so deployment drift can be
+repaired.
 
-If no managed or unmanaged fragments remain, the task is inapplicable. Removing
-the last fragment does not by itself run native cleanup or delete the existing
-generated manifest and deployments.
-
-Re-running `dotfiles install` should not advance pinned dependency versions.
-Native APM owns idempotency through its lockfile. **APM packages** can therefore
-invoke APM every time while still reporting a current task when the generated
-manifest, lockfile, Cowork files, and retained autopilot policy are unchanged.
-Cowork repairs name the changed skills even when the lockfile stays identical.
-Dry-run previews the delegated install and target work without writing the generated
-manifest.
+Run from the repository root with an already available CLI:
 
 ```bash
-dotfiles install --only apm --dry-run --verbose
-dotfiles install --only apm
+dotfiles install --root . --no-repo-update --only apm --dry-run --verbose
 ```
+
+After reviewing the plan, the applying command is:
+
+```bash
+dotfiles install --root . --no-repo-update --only apm
+```
+
+Ordinary install dry-run describes the manifest, native command, and target
+work without invoking the native install or writing those artifacts. It can
+preview installation even before `apm` is present. This does not make wrapper
+bootstrap or all CLI bookkeeping read-only; see [Usage](USAGE.md).
 
 ## Pin-update behavior
 
-With `dotfiles update`, **APM packages** writes the merged
-manifest and runs `apm update -g --yes` instead of `apm install -g`. Native APM
-advances matching refs and converges the resulting dependency graph in that one
-pass. No separate `apm outdated` parser or dotfiles success marker is involved.
+`dotfiles update` (or `install --update`) changes the native operation to
+`apm update -g --yes`. APM advances eligible refs and converges the resulting
+dependency graph in that pass.
 
-The task compares the exact lockfile bytes before and after update. Current APM
-preserves unchanged target mappings and timestamps, so an identical lockfile
-reports current only when retained workflow state and Cowork files also remain
-unchanged. Native lock-state changes and Cowork repairs are reported as changed.
-Applied updates list each changed dependency with its old and new ref or commit.
-When the generated manifest is current, dry-run promotes dependency names from
-APM's native update plan while the full native output remains available under
-`--verbose` and in the run log. When fragments would change the generated
-manifest, dotfiles reports the prospective manifest write and update command
-without asking APM to plan against the old manifest.
+Preview the scoped update:
 
 ```bash
-dotfiles update --only apm
+dotfiles update --root . --no-repo-update --only apm --dry-run --verbose
 ```
+
+If the generated manifest is already current, dotfiles invokes the native
+`apm update -g --dry-run` and promotes dependency changes from its plan into
+the task output. This may contact upstream services and requires APM.
+If fragments would change the manifest, it reports the prospective manifest
+write and update command instead of asking APM to plan against stale inputs.
+
+Remove `--dry-run` only to apply the update. Both modes use lockfile changes,
+not installation chatter, to identify changed dependencies. Output can name
+ref, commit, content, deployment-file, or target changes. Cowork repairs and
+workflow-policy repairs count as changes even when the lockfile is identical.
+Native details remain in the run log and verbose output.
+
+## Deployment targets
+
+The base fragment explicitly selects `agent-skills` and `copilot`, avoiding
+deployment to every harness directory APM happens to discover. Native APM
+target resolution is:
+
+1. Invocation `--target`.
+2. Merged manifest `targets`.
+3. APM's configured default target.
+4. Harness auto-detection.
+
+The primary dotfiles invocation leaves the manifest in control. The two
+compatibility paths below are **additional, host-detected behavior**, not
+ordinary entries in that target list.
+
+### Copilot App workflows
+
+When `~/.copilot/data.db` exists, dotfiles ensures APM's experimental
+`copilot-app` support is enabled and runs a separate:
+
+```text
+apm install -g --target copilot-app --only apm
+```
+
+The separate invocation deploys workflow packages without sending manifest-wide
+MCP dependencies to an MCP-incapable target. It runs in update mode too, after
+the primary update resolves dependencies.
+
+Dotfiles then restores its managed workflows to **enabled, autopilot** state
+and repairs `next_run_at`. This is an intentional policy: manually disabling
+one of those workflows in the App is not a persistent opt-out from future
+dotfiles convergence.
+
+Ownership comes from the exact workflow IDs recorded in the global APM
+lockfile, not a broad name prefix. Duplicate rows are collapsed only within a
+managed ID. A legacy `apm--unknown--<package>--<prompt>` row is removed only when
+the corresponding managed `apm--_local--<package>--<prompt>` and its definition
+match. Foreign workflows and independent IDs remain untouched even when their
+visible definitions match.
+
+Custom cron expressions are retained, including the App's representation as
+`interval: manual` plus `cron_expression`. Future local schedules use the UTC
+offset at the scheduled date, including daylight-saving transitions.
+
+Restoration is attempted even after an APM or Cowork failure, since an earlier
+step may already have reset workflows. It is best-effort: failures are reported
+separately and do not replace the original convergence result. Python and access
+to the App database are required for this repair. See
+[`autopilot/`](../cli/src/domains/ai/apm/autopilot/) for the ownership and
+failure-handling contracts.
+
+### Cowork skills
+
+Cowork reconciliation is enabled when a skills path resolves, in this order:
+
+1. `APM_COPILOT_COWORK_SKILLS_DIR`.
+2. `copilot_cowork_skills_dir` in `~/.apm/config.json`.
+3. On Windows, `ONEDRIVECOMMERCIAL`, then `ONEDRIVE`, with
+   `Documents/Cowork/skills` appended.
+
+An explicit path also works on Linux. Dotfiles reasserts the experimental
+feature when needed, but deliberately does **not** invoke APM's native
+`copilot-cowork` deployment. It copies resolved skills from `~/.agents/skills`
+file-by-file to avoid replacing OneDrive-protected directories and their ACLs.
+Lockfile `target_subset` filters are respected: only unfiltered packages or
+packages including `copilot-cowork` are candidates.
+
+Successful copies are recorded in `.dotfiles-apm-skills.json` in the Cowork
+skills directory. For excluded or removed skills, reconciliation removes
+`SKILL.md` only when that inventory establishes ownership. It preserves
+directories, Cowork placeholders, and unrelated skills. A same-named source
+under `~/.agents/skills` alone is not proof that an older copy is managed.
+
+Before native convergence, dotfiles removes legacy `cowork://` lockfile
+deployment records that could provoke directory deletion. Explicit legacy skill
+records are first retained in the ownership inventory when the configured
+directory exists. Dry-run modifies neither that inventory, the lockfile, nor
+Cowork content.
+
+These adapters address known upstream behavior, including the directory
+replacement in APM's
+[v0.29.1 skill integrator](https://github.com/microsoft/apm/blob/v0.29.1/src/apm_cli/integration/skill_integrator.py)
+and workflow defaults in its
+[workflow integrator](https://github.com/microsoft/apm/blob/v0.29.1/src/apm_cli/integration/copilot_app_workflow_integrator.py).
+Do not remove them merely because APM has a newer version. A replacement must
+demonstrate ACL-preserving updates, stale cleanup, target filtering, workflow
+policy retention, and preservation of foreign workflows on the relevant
+platforms.
+
+## Removing packages and targets
+
+Remove a package from its source fragment, then run ordinary APM convergence
+while a fragment still exists. Native APM handles stale deployments; the Cowork
+adapter uses its ownership inventory for its narrower cleanup.
+
+To remove a normal deployment target, remove it from **every** contributing
+fragment: target lists merge by union. Host-detected Copilot App and Cowork
+behavior is separate from this list.
+
+If no managed or unmanaged fragments remain, the task is inapplicable. Removing
+the last fragment does **not** invoke APM cleanup or delete the existing
+manifest, lockfile, or deployments. Keep a valid fragment while converging the
+intended empty dependency set; do not assume deleting source files uninstalls
+their deployed content.
 
 ## Overlays
 
-Private overlays can contribute additional APM fragments and local plugins.
-The merged configuration appends overlay content rather than replacing the main
-repository's declarations. Keep private package locations and agent-specific
-configuration out of the public repository.
+An overlay can contribute fragments and local plugins using the same layout.
+Keep private source locations and content in that overlay. Select links with
+compatible categories, use distinct home targets, and validate the combined
+configuration rather than each repository in isolation.
 
-Validate combined public and overlay state using
-[CLI validation](TESTING.md#cli-validation), then preview APM reconciliation as
-described in [Dry-run testing](TESTING.md#dry-run-testing).
+An unmanaged home fragment is another effective input. If the merged manifest
+contains an unexpected dependency, inspect all fragment **sources and names**
+before editing generated state.
 
 ## Validation
 
-**Validate config warnings** checks the dotfiles-specific cross-file invariant
-that each local `~/.apm/plugins/dot-*` reference has a matching source directory
-in the same repository or overlay. Native APM owns YAML syntax, dependency
-fields, MCP declarations, and package-layout validation. **Validate APM
-plugins** runs `apm pack --dry-run --verbose` for every local plugin directory.
-If APM is not installed, the pack check is reported as unavailable.
+Dotfiles validates its cross-file invariant that a local
+`~/.apm/plugins/dot-*` reference has a matching source directory in the declaring
+repository or overlay. Fragment merging checks the YAML shapes it consumes;
+native APM owns the full dependency, MCP, and package-layout schema.
 
-When changing APM configuration, check:
+The `check` command's APM plugin validator runs `apm pack --dry-run --verbose`
+for local plugin directories. APM being unavailable is not evidence that a
+plugin passed validation. Use [Testing](TESTING.md#cli-validation) for the exact
+commands and [focused coverage](TESTING.md#choosing-coverage) when changing
+implementation behavior.
 
-- native APM validation succeeds for the fragments and packages
-- deterministic merged ordering
-- symlink category alignment
-- local plugin paths that exist in the source tree
-- native install/update dry-run behavior
+For a content change, check package layout, source availability, fragment/link
+category alignment, target compatibility, and the scoped dry-run. A successful
+pack alone does not prove deployment works in every target.
 
-## Adding an APM package
+## Authentication and failure diagnosis
 
-1. Choose the narrowest applicable fragment in `symlinks/apm/config/`.
-2. Add a pinned or policy-compliant package declaration.
-3. If the fragment is conditional, confirm its symlink category.
-4. Follow the APM coverage in [Testing](TESTING.md).
-5. Run install before using `dotfiles update` to advance versions.
+APM subprocesses disable interactive Git credential prompts. Recognized
+authentication failures are reported as unmet prerequisites, not a successful
+deployment; other native failures fail the task. Authenticate deliberately
+outside the run, for example with `gh auth login`, and retry. Never put tokens
+in fragments, plugin content, or diagnostic excerpts.
 
-Represent changes in a source fragment. Do not edit generated merged state or
-lock data by hand.
+For a failure, use the task's concrete error and saved verbose output to
+distinguish fragment parsing, credentials, missing tools, native deployment,
+and adapter repair. Do not clear lockfiles or whole deployment trees as a
+first response. A failed multi-step run may already have changed the manifest
+or some targets; correcting the cause and reconverging is safer than treating
+it as an automatic rollback.

@@ -1,50 +1,57 @@
 # Configuration reference
 
-The Rust CLI loads desired state from `conf/` before constructing tasks. It
-filters records by active category, validates them, and exposes them through
-shared handles.
+Edit desired state in [`conf/`](../conf/), application files in
+[`symlinks/`](../symlinks/), and administrator-file fragments in
+[`system/`](../system/). Do not edit generated output to make a persistent
+configuration change. Installed application files may be live links into this
+checkout, so an edit can take effect before another `dotfiles install`.
+
+This guide describes file formats and their consequences. See
+[Usage](USAGE.md) for commands, [Profiles](PROFILES.md) for selection, and
+[APM](APM.md) for AI package manifests.
+
+## Making a configuration change
+
+1. Find the owning file in the table below. For an application setting, edit
+   its existing source rather than adding a CLI task.
+2. Choose the narrowest category section that should receive the change.
+   Keep a source file and the package or service that uses it in compatible
+   categories.
+3. Check the path rules for that file. `symlinks`, `chmod`, system fragments,
+   and overlay scripts do **not** share one path convention.
+4. Validate the configuration, including the overlay if used, and preview the
+   affected task against the current checkout. Follow
+   [Testing](TESTING.md#cli-validation) and
+   [dry-run guidance](TESTING.md#dry-run-testing).
+5. Apply only after reviewing the plan. Changing or removing a declaration is
+   not a general rollback mechanism; see [removing configuration](#removing-configuration).
+
+Examples below show file syntax, not additional declarations to paste alongside
+an existing section with the same name.
 
 ## Files
 
-| File | Shape | Consumer |
+All nine main TOML files are required, even on platforms where their tasks do
+not apply. An empty file is valid when nothing is configured.
+
+| File | Section field | What it manages |
 |---|---|---|
-| `symlinks.toml` | Category sections containing home-relative source paths | Symlink tasks |
-| `packages.toml` | Category sections containing package strings or AUR records | Package tasks |
-| `git-config.toml` | Category sections containing key/value settings | Git configuration |
-| `agent-settings.toml` | Targeted dot-path JSON/TOML settings | Agent harness configuration |
-| `chmod.toml` | Category sections containing mode/path records | Unix permissions |
-| `registry.toml` | Named registry records with `path` and `values` | Windows registry |
-| `systemd-units.toml` | Category sections containing user or system unit records | systemd configuration |
-| `system-files.toml` | Category sections mapping `/etc` targets to tracked fragments | System-file convergence |
-| `vscode-extensions.toml` | Category sections containing extension identifiers | VS Code extensions |
+| [`symlinks.toml`](../conf/symlinks.toml) | `symlinks` | Links from repository sources into the home directory |
+| [`packages.toml`](../conf/packages.toml) | `packages` | Arch packages, AUR packages, and Windows winget IDs |
+| [`git-config.toml`](../conf/git-config.toml) | `settings` | Global Git key/value settings |
+| [`agent-settings.toml`](../conf/agent-settings.toml) | `settings` | Selected Copilot JSON and Codex TOML keys |
+| [`chmod.toml`](../conf/chmod.toml) | `permissions` | Unix file and directory modes |
+| [`registry.toml`](../conf/registry.toml) | Named records with `path` and `values` | Windows current-user registry values |
+| [`systemd-units.toml`](../conf/systemd-units.toml) | `units` | User and system unit enablement and runtime state |
+| [`system-files.toml`](../conf/system-files.toml) | `files` | Structured merges into files below `/etc` |
+| [`vscode-extensions.toml`](../conf/vscode-extensions.toml) | `extensions` | VS Code extension IDs |
 
-An overlay may also provide `conf/scripts.toml`. The main repository does not
-load scripts from that file.
-
-Sources declared by `system-files.toml` are relative to the declaring
-repository's root-level `system/` directory. Each record chooses `toml`, `ini`,
-or `pam` merge behavior. Targets must be absolute paths below `/etc`; duplicate
-active targets are rejected rather than treated as overlay overrides.
-
-### Conflicting desired state
-
-Active Git settings and Windows registry entries must declare only one desired
-value per target, including entries appended from an overlay. Conflicting
-declarations fail configuration loading before any task runs, even with `--only`
-or `--dry-run`. The error reports both source files and their section/entry
-locations using `git.conflicting-values` or `registry.conflicting-values`.
-Overlay append order is not an override mechanism.
-
-Identical declarations remain valid. Git section and variable names are
-case-insensitive, subsection names are case-sensitive, and setting values are
-compared literally. Registry key paths and value names are case-insensitive;
-both the native value type and data must agree. Equivalent DWORD forms such as
-`14` and `"0x0E"` agree, but DWORD `14` and string `"14"` conflict. Inactive Git
-categories and registry entries on non-Windows platforms do not participate.
+An overlay may additionally contain `conf/scripts.toml`. That file is not loaded
+from the main repository.
 
 ## Category sections
 
-Most files group records under category names:
+Except for registry records, TOML files group entries under category names:
 
 ```toml
 [base]
@@ -59,76 +66,43 @@ symlinks = [
 symlinks = ["config/hypr/hyprland.lua"]
 ```
 
-A hyphenated section uses AND semantics. `[arch-desktop]` is active only
-when both `arch` and `desktop` are active. It does not mean either category.
 The accepted tags are `base`, `desktop`, `linux`, `windows`, `arch`, and `wsl`.
-Misspelled or custom tags are configuration errors.
+A hyphen means **AND**: `[arch-desktop]` requires both categories, not either.
+Custom or misspelled tags are errors.
 
-`base` is always active. Platform categories are detected by the CLI; role
-categories come from the selected profile. See [Profiles](PROFILES.md).
+### Profiles
 
-## Profiles
+`base` is always active. The `desktop` profile adds the `desktop` category;
+the CLI supplies platform categories. Use the profile for the machine's role,
+not its operating system. Selection precedence and persistence are documented
+in [Profiles](PROFILES.md).
 
-The CLI has two built-in profiles. `base` activates the `base` category, while
-`desktop` activates both `base` and `desktop`. The CLI combines the selected
-profile with detected `linux`, `windows`, `arch`, and `wsl` categories.
+## Path conventions
 
-## System files
+| Declaration | Resolves relative to | Example result |
+|---|---|---|
+| Symlink `source` | Declaring repository's `symlinks/` | `config/git/config` reads `symlinks/config/git/config` |
+| Symlink without `target` | Home, with a leading dot added | `config/git/config` becomes `~/.config/git/config` |
+| Explicit symlink `target` | Home, exactly as written | `Documents/file` becomes `~/Documents/file` |
+| Permission `path` | Home, with a leading dot added | `ssh/config` becomes `~/.ssh/config` |
+| System-file `source` | Declaring repository's `system/` | `pacman.conf` reads `system/pacman.conf` |
+| Omitted system-file `target` | `/etc/` plus `source` | `pacman.conf` becomes `/etc/pacman.conf` |
+| Overlay script `path` | Overlay root | `scripts/setup.sh` reads `<overlay>/scripts/setup.sh` |
 
-`system-files.toml` maps targets below `/etc` to tracked sources below the
-root-level `system/` directory. When the target is `/etc/<source>`, omit
-`target`; specify it only when the target path differs:
-
-```toml
-[linux]
-files = [
-  { source = "codex/requirements.toml", merge = "toml" },
-]
-
-[arch]
-files = [
-  { source = "pacman.conf", merge = "ini" },
-]
-
-[arch-desktop]
-files = [
-  { source = "pam.d/login", merge = "pam" },
-]
-
-[wsl]
-files = [
-  { source = "wsl.conf", merge = "ini" },
-]
-```
-
-Targets must be absolute paths strictly below `/etc`. Neither source nor target
-may contain `..` components, even when the resulting path would remain below
-its root.
-
-`toml` recursively overlays fragment tables. `ini` converges assigned keys and
-bare flags within sections, which also covers Pacman options. `pam` replaces
-matching module rules and inserts them after the final rule in each facility
-stack. All three preserve unrelated content.
+Use `/` in portable configuration paths. An overlay entry retains its source
+repository; it does not read a same-named source from the main checkout.
 
 ## Symlinks
 
-`symlinks.toml` entries are paths relative to `symlinks/`. Their home target is
-the same path prefixed with a dot, so `config/git/config` links to
-`~/.config/git/config`. Current-directory components are removed before adding
-the prefix: `./bashrc` also maps to `~/.bashrc`. A source or target that names
-only its root (such as `.`) is rejected:
+A bare string uses the dot-prefixed target convention:
 
 ```toml
 [base]
-symlinks = [
-  "config/git/config",
-  "ssh/config",
-]
+symlinks = ["config/git/config", "ssh/config"]
 ```
 
-To override the dot-prefixed default, use a table with an explicit
-home-relative `target`. Windows paths such as `AppData/` use this form because
-they have no leading dot:
+Use a table for a different target, including Windows locations that must not
+have a leading dot:
 
 ```toml
 [windows]
@@ -137,48 +111,42 @@ symlinks = [
 ]
 ```
 
-The same canonical source may appear more than once if each entry has a
-different target. Multiple applications can then share one configuration
-without forwarding files or symlink chains inside the repository. The loader
-rejects a source that resolves outside its owning `symlinks/` tree.
-Target collision and parent/child overlap checks ignore `.` components and
-redundant separators. They also compare case-insensitively on Windows, matching
-the managed-target path policy.
+The same source can serve multiple distinct targets. For example, the Vim tree
+is linked directly to both `~/.vim` and `~/.config/nvim`; an intermediate
+forwarding file or repository symlink is unnecessary.
 
-Overlay symlinks resolve from the overlay's own `symlinks/` tree, not the main
-repository.
+Sources must remain within their owning `symlinks/` tree. Targets must name a
+descendant of home, not home itself. Current-directory components are normalized:
+`./bashrc` still targets `~/.bashrc`, while `.` is invalid. Duplicate targets and
+parent/child target overlaps are rejected. Comparison ignores redundant
+separators and `.` components, and is case-insensitive on Windows.
+
+**Back up existing files before applying.** Installation warns and replaces a
+regular file or empty directory at a managed target without making a backup.
+A nonempty real directory fails rather than being recursively deleted. Read
+the [installation and uninstall behavior](USAGE.md) before managing an existing
+application configuration.
 
 ### Glob patterns
 
-A source path may use `*` to link every entry of a directory, so a new file
-does not have to be added to `symlinks.toml` by hand:
+Use a complete `*` path segment to manage each entry separately:
 
 ```toml
 [base]
-symlinks = [
-  "apm/plugins/*",
-]
+symlinks = ["apm/plugins/*"]
 ```
 
-Rules:
+The rules are deliberately narrower than shell globs:
 
-- `*` matches exactly **one complete path segment**. Partial-segment patterns
-  such as `plugins/*.yml` or `plugins/apm-*` are rejected, as is the recursive
-  wildcard `**`. Both produce a configuration error rather than matching
-  nothing.
-- Every directory entry matches, files and directories alike, including
-  dot-prefixed ones. Each resolved source becomes an independently managed
-  link.
-- Matching does not descend through a symlinked directory, so expansion cannot
-  escape the `symlinks/` tree.
-- A glob must match at least one entry. An empty match is a configuration
-  error, which catches renamed or deleted directories instead of silently
-  managing nothing.
-- Matches are sorted by path, so run output and dry-run previews are stable.
+- `*` matches one complete segment, including dot-prefixed files and directories.
+  Partial patterns such as `plugins/*.yml` and recursive `**` are errors.
+- Expansion does not descend through symlinked directories.
+- A pattern must match at least one entry; an empty match is an error.
+- Matches are sorted, then checked for the same target conflicts as explicit
+  entries. Expansion happens after category filtering.
 
-A `target` may contain `*` only when its `source` does, and both must use the
-same number of wildcards. The *n*th `*` in the target is replaced with the
-segment captured by the *n*th `*` in the source:
+If an explicit target contains wildcards, source and target must have the same
+number. Captures are substituted in order:
 
 ```toml
 [base]
@@ -187,14 +155,11 @@ symlinks = [
 ]
 ```
 
-Globs expand during configuration loading, after category filtering and before
-validation. Later stages see only concrete paths. Expanded targets use the
-normal conflict checks. Duplicate targets and targets nested under another
-managed target are errors.
+That example requires a `symlinks/skills/` directory with at least one entry.
+For this repository's reusable agent content, prefer the existing
+[APM deployment](APM.md) rather than a second deployment path.
 
 ## Packages
-
-Package entries are strings unless the package comes from the AUR:
 
 ```toml
 [arch]
@@ -205,48 +170,54 @@ packages = [
 ]
 
 [windows]
-packages = [
-  "Git.Git",
-  "Microsoft.PowerShell",
-]
+packages = ["Git.Git", "Microsoft.PowerShell"]
 ```
 
-Arch regular packages use pacman; entries marked `aur = true` are separated for
-the AUR task. Windows identifiers are passed to winget.
+Regular Arch packages use pacman; `aur = true` sends a package to the separate
+AUR task. Windows entries are winget identifiers. A package declaration is
+platform-specific desired state, not a portable package-name translation.
+When configured packages are missing, the pacman task uses `-Syu`: an ordinary
+install can synchronize package databases and upgrade installed system packages
+as well as add missing ones. See the [task reference](TASKS.md) for provider
+prerequisites and update behavior.
 
 ## Git settings
 
 ```toml
 [windows]
 settings = [
-  { key = "core.autocrlf", value = "false" },
   { key = "core.longpaths", value = "true" },
 ]
 ```
 
-The CLI applies these settings to global Git configuration. Keep platform-only
-behavior in platform category sections.
+Values are strings, including booleans written as `"true"` or `"false"`.
+These entries converge global Git settings. Shared Git configuration files and
+platform includes instead live under `symlinks/config/git/`; do not introduce
+contradictory values in the two places.
 
 ## Agent harness settings
 
 ```toml
 [base]
 settings = [
-  { target = "copilot", key = "model", value = "gpt-6-sol" },
-  { target = "copilot", key = "effortLevel", value = "medium" },
-  { target = "codex", key = "model", value = "gpt-6-sol" },
+  { target = "copilot", key = "footer.showBranch", value = true },
   { target = "codex", key = "model_reasoning_effort", value = "medium" },
 ]
 ```
 
-Supported targets are `copilot` (`~/.copilot/settings.json`) and `codex`
-(`~/.codex/config.toml`). Keys are dot-separated paths, and only declared keys
-are managed; siblings and volatile harness-owned state remain untouched.
+| Target | Managed document |
+|---|---|
+| `copilot` | `~/.copilot/settings.json` |
+| `codex` | `~/.codex/config.toml` |
 
-Codex uses the same user configuration for its CLI, IDE extension, and agent
-inside the ChatGPT desktop app. ChatGPT Work chats do not read local Codex
-configuration, and app-only appearance, notification, and keyboard preferences
-remain managed through the desktop app.
+Keys are dot-separated paths; values use TOML types. Manage the narrowest key
+needed so unrelated user and harness-owned settings remain untouched. Existing
+documents must be JSON objects or TOML tables; malformed documents are reported,
+not replaced with an empty one.
+
+These are harness preferences, not plugin declarations. Use [APM](APM.md) for
+skills, instructions, hooks, and MCP configuration. Removing a setting stops
+managing it but does not delete its stored value.
 
 ## File permissions
 
@@ -258,16 +229,20 @@ permissions = [
 ]
 ```
 
-Paths are relative to the home directory and modes are Unix octal strings. For
-directory trees, traversal access is preserved while ordinary files do not
-inherit execute bits unless explicitly targeted. Paths must name a descendant
-of the home directory; empty paths and paths that resolve to the home directory
-itself are rejected before permissions can be changed.
+Modes are three- or four-digit octal strings. Paths use the **dot-prefixed**
+home convention: `ssh/config` means `~/.ssh/config`, not `~/ssh/config`.
+Absolute paths, parent traversal, and paths naming home itself are invalid.
+Missing targets are not created by this task.
+
+Directory entries apply recursively. Directories retain traversal access;
+ordinary files have execute bits cleared. Give an executable file its own
+entry rather than expecting a directory's `755` to make every file executable.
+Permissions applied through managed links can affect their repository sources.
 
 ## Registry
 
-Registry records are not category arrays; each named record declares one path
-and a values table:
+Registry section names are labels, **not categories**. All records apply on
+Windows regardless of profile:
 
 ```toml
 [explorer]
@@ -277,9 +252,11 @@ path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
 EnableAutoTray = 0
 ```
 
-The loader accepts string, decimal, and hexadecimal TOML values. Keep values
-under current-user paths unless the implementation explicitly supports another
-scope.
+Only `HKCU:\` is supported. TOML integers and booleans become `REG_DWORD`;
+parseable hexadecimal strings such as `"0x0E"` also become DWORDs. Ordinary
+strings become `REG_SZ`, so `"14"` is a string while `14` is a DWORD.
+The file is still parsed on non-Windows platforms to catch structural errors,
+but its entries are not applied there.
 
 ## systemd units
 
@@ -295,209 +272,249 @@ units = [
 ]
 ```
 
-A bare string uses `user` scope and defaults to `enabled = true`. Use a table
-to select `user` or `system` scope or to keep a conflicting unit disabled.
-User unit files are normally delivered through managed symlinks before the task
-enables and starts them. Changing a system unit uses `sudo`.
-With a live service manager, a static unit has no enablement links to disable,
-but `enabled = false` still requires its runtime state to be stopped. This does
-not mask the unit or prevent other units from starting it as a dependency.
+A string means `scope = "user"` and `enabled = true`. A table must specify
+`name` and `scope` (`user` or `system`); `enabled` defaults to `true`.
+User unit files are usually provided by symlinks before this task runs.
+System-scope changes use `sudo`.
 
-Without a user service manager, the task enables user units for the next login.
-It looks first in `~/.config/systemd/user`, then `/etc/systemd/user`,
-`/run/systemd/user`, `/usr/local/lib/systemd/user`, `/usr/lib/systemd/user`, and
-`/lib/systemd/user`. Enablement links are created under the user's unit directory,
-including for packaged units. Links to managed units keep their installed home
-path so they continue working after uninstall materializes the files and the
-checkout is removed. An offline rerun repairs older links that point directly
-into the checkout.
+With a live manager, enabled units are enabled and started; disabled units are
+disabled and stopped. A static unit may have no enablement links, but
+`enabled = false` still requires it to be stopped. This does not mask the unit
+or stop another unit from starting it later.
 
+Without a user service manager, user-unit enablement is prepared for the next
+login, not started immediately. The search order is `~/.config/systemd/user`,
+`/etc/systemd/user`, `/run/systemd/user`, `/usr/local/lib/systemd/user`,
+`/usr/lib/systemd/user`, then `/lib/systemd/user`. Enablement links are created
+in the user's unit directory, including for packaged units. Links to managed
+units retain their installed home path so materializing them during uninstall
+does not leave an enablement link pointing into a removed checkout.
 
-### Arch desktop appearance
+## System files
 
-The Quickshell bar and popups share colors, typography, spacing, and motion
-tokens in `symlinks/config/quickshell/Theme.js`. `ShellPopup.qml` owns anchoring,
-dismissal, scrolling, and focus; shared controls provide keyboard focus and
-tooltips. Only one bar popup is open at a time, including across monitors.
+Use `system-files.toml` for structured changes to administrator-owned files,
+not a home-directory symlink:
 
-The bar uses the bottom Wayland layer so floating and dragged windows can cover
-it. It still reserves space for tiled windows and hides on fullscreen workspaces;
-Hyprland keeps its popup menus above application windows.
+```toml
+[linux]
+files = [{ source = "codex/requirements.toml", merge = "toml" }]
 
-The volume menu selects the default output and supports amplification up to
-150%, with a marked 100% threshold. The network menu manages Wi-Fi through
-NetworkManager, including saved networks and password entry; enterprise
-configuration remains in the connection editor. Passwords are sent over stdin,
-not placed in command arguments. Power actions require an explicit confirmation.
-Market refresh failures retain previous quotes and show stale/error status.
+[arch]
+files = [{ source = "pacman.conf", merge = "ini" }]
 
-Quickshell watches its linked configuration. Reload feedback uses a themed
-notice; failures keep the last valid shell active and remain visible until
-dismissed or corrected. After changing the other desktop configurations, use
-`hyprctl reload config-only` and `makoctl reload`. Fuzzel reads its configuration
-on launch; existing GTK applications may need reopening to pick up cursor changes.
-Keep the simple Hyprlock background and disabled animations until its documented
-DPMS workaround is no longer needed.
+[arch-desktop]
+files = [{ source = "pam.d/login", merge = "pam" }]
 
-### Hyprland media keys
+[wsl]
+files = [{ source = "wsl.conf", merge = "ini" }]
+```
 
-`symlinks/config/hypr/conf/binds.lua` binds standard `XF86` media key symbols,
-so the physical F-key positions can differ between keyboards. The keyboard's
-Fn mode determines whether a key sends a media symbol or an ordinary F-key.
-Unused media bindings are harmless on keyboards without those keys.
+Omitting `target` selects `/etc/<source>`. Set it explicitly only when the
+destination differs. Sources belong under the declaring repository's `system/`;
+targets must be absolute paths strictly below `/etc`. Neither may contain `..`.
+Duplicate active targets are errors, including across main and overlay.
 
-Fallback shortcuts use Super plus ordinary function keys:
+| `merge` | Managed part of the destination |
+|---|---|
+| `toml` | Fragment keys, merging tables recursively |
+| `ini` | Assigned keys and bare flags within sections, including Pacman options |
+| `pam` | Matching module rules, inserting fragment rules after the final rule in each facility stack |
 
-| Shortcut | Action |
-| --- | --- |
-| Super + F1 | Toggle output mute |
-| Super + F2 / F3 | Lower / raise volume by 5% |
-| Super + F4 | Toggle microphone mute |
-| Super + F5 / F6 | Lower / raise display brightness by 5% |
-
-Volume uses `pactl` from `libpulse` and follows the default output, including
-headphones. It works with PulseAudio or PipeWire's PulseAudio compatibility
-server. Volume can exceed 100%. Play/pause and track keys use `playerctl`.
-Dedicated media keys also work while locked; fallback shortcuts do not.
-
-`brightness.sh` uses `brightnessctl` to select the first available display
-backlight without hardcoding a GPU or device name. It keeps brightness above
-zero and does nothing when no backlight exists, without changing keyboard LEDs.
-External monitors need a separate DDC/CI setup unless their driver exposes a
-backlight device. All helper packages are declared in `conf/packages.toml`.
-
-After editing, run `hyprctl reload config-only` and check `hyprctl configerrors`.
-Test the media keys, holding Fn if required by the keyboard, or the fallback
-shortcuts. To remove these shortcuts, revert the media binding block and reload.
+Unrelated settings are preserved. These are privileged changes; review the
+fragment and preview before applying. Removing the declaration does not restore
+the old file.
 
 ## VS Code extensions
 
 ```toml
 [desktop]
-extensions = [
-  "rust-lang.rust-analyzer",
-  "tamasfe.even-better-toml",
-]
+extensions = ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"]
 ```
 
-Use complete `<publisher>.<extension>` identifiers. The task installs missing
-extensions through an available VS Code CLI.
+Use full `<publisher>.<extension>` identifiers. The task uses an available
+VS Code CLI to install missing extensions.
 
 ## Overlays
 
-`--overlay <PATH>` adds a second repository. For ordinary configuration, active
-overlay entries are **appended** to active main entries; they do not replace
-records with the same logical name. This applies to packages, symlinks, Git,
-Copilot, permissions, registry records, systemd units, and VS Code extensions.
+An overlay is a second repository for private or machine-specific desired
+state. It uses the same `conf/`, `symlinks/`, and `system/` layout, plus optional
+scripts. Do not copy private content, credentials, or machine logs into this
+public repository.
 
-Overlay rules:
+### Selection and persistence
 
-- Missing overlay configuration files are treated as empty.
-- Main configuration remains required where validation says it is required.
-- Symlink entries retain the repository they came from.
-- `scripts.toml` is overlay-only.
+Precedence is `--overlay <PATH>`, then `DOTFILES_OVERLAY`, then repository-local
+Git configuration `dotfiles.overlay`. Relative selections resolve against the
+invoking process's working directory, **not** the dotfiles root.
 
-When an overlay is active, its resolved path is reported as the final
-` · overlay <path>` section of the startup header line.
+An explicit selection is persisted as an absolute path for future runs.
+Previously saved relative paths remain relative to the invoking directory until
+replaced. Read-only task discovery resolves a selection without saving it.
+The startup header shows the resolved overlay path.
 
-Selection precedence is `--overlay`, then `DOTFILES_OVERLAY`, then
-repository-local Git config `dotfiles.overlay`. Relative paths are resolved
-against the invoking process's current directory, not the dotfiles root.
-An explicit `--overlay` selection is saved as an absolute path so later runs
-from another directory use the same overlay. Previously saved relative paths
-still use the invoking directory until replaced with an explicit selection.
-Read-only task discovery resolves the path without saving it.
+An explicit linked Git worktree prompts for confirmation before use or
+persistence. The prompt defaults to no; a non-interactive invocation rejects
+the new worktree selection. An ordinary checkout with a `.git` directory does
+not need that confirmation.
 
-When `--overlay` points to a linked Git worktree, the CLI asks before using and
-persisting that path. The `[y/N]` prompt defaults to no. A non-interactive
-invocation rejects the new worktree path. Normal checkouts have a `.git`
-directory and do not require confirmation.
+### Merge rules
 
-Validate combined state using the overlay examples in
-[CLI validation](TESTING.md#cli-validation) and
-[Dry-run testing](TESTING.md#dry-run-testing).
+Ordinary TOML entries are appended main-first, overlay-second. Missing overlay
+files contribute nothing. This is **not a general override mechanism**: source
+ownership is retained, conflicts are still checked, and two declarations of
+one target do not automatically become one declaration.
+
+Keep one clear desired value per target. APM YAML fragments have their own
+[merge rules](APM.md#configuration-fragments), not TOML append semantics.
+
+### Conflicting desired state
+
+Active Git settings and Windows registry entries cannot declare different
+values for the same target. Loading fails before tasks run, even with `--only`
+or `--dry-run`. Diagnostics identify both declarations using
+`git.conflicting-values` or `registry.conflicting-values`.
+
+Identical declarations are allowed. Git section and variable names are
+case-insensitive; subsection names are case-sensitive and values are compared
+literally. Registry paths and value names are case-insensitive; both value type
+and data must agree. DWORD `14` and `"0x0E"` agree; DWORD `14` and string `"14"`
+do not. Inactive Git categories and registry entries off Windows do not
+participate in these conflict checks.
 
 ## Overlay scripts
 
-An overlay's `conf/scripts.toml` defines convention-based script tasks. Each
-entry has a unique task name and a path relative to the overlay:
+Use a script only for private work that the declarative configuration does not
+already express. Define it in the overlay's `conf/scripts.toml`:
 
 ```toml
-[base]
-scripts = [
-  {
-    name = "Configure private workstation",
-    path = "scripts/configure-workstation.ps1",
-    description = "Converge private workstation settings"
-  },
-]
+[[base.scripts]]
+name = "Configure private workstation"
+path = "scripts/configure-workstation.ps1"
+description = "Converge private workstation settings"
 ```
 
-The script resource supports four execution intents:
+Names must be nonempty and normalize to distinct task selectors. This example
+becomes `script-configure-private-workstation`. Paths must stay inside the
+overlay, including after resolving symlinks. Scripts run with the overlay root
+as their working directory. `.ps1` uses `pwsh` (or Windows PowerShell when
+available on Windows); other extensions use `sh`.
 
-- normal apply
-- current-state check through `--check`
-- preview through `--dryrun`
-- removal through `--remove`
+Implement the complete protocol:
 
-Install invokes check, apply, or preview as appropriate. Uninstall checks each
-active overlay script and invokes `--remove` when its state is present. An
-uninstall dry run reports planned removals without invoking `--remove`.
+| Invocation | Required behavior |
+|---|---|
+| `--check` | Inspect only. Exit `0` if configured, `1` if absent/needs applying; any other failure stops the task. |
+| No flag | Apply idempotently; return nonzero on failure. |
+| `--dryrun` | Describe the intended application without changing state. Note the spelling: no hyphen between `dry` and `run`. |
+| `--remove` | Remove the script's managed state conservatively; return nonzero on failure. |
 
-Scripts must be idempotent, return nonzero on failure, and avoid printing
-secrets. Install dry runs supply `--dryrun`; uninstall dry runs only supply
-`--check`. Dry-run safety still depends on the script because the engine cannot
-prevent a script from changing state. After the reload discovery
-boundary, each active entry becomes a dynamic task selectable by name.
+Install checks first and applies or previews only if needed. Uninstall uses the
+same check: `0` means there is state to remove, `1` means nothing to remove.
+An uninstall dry run checks and reports the removal but never invokes
+`--remove` or `--dryrun`.
+
+**Script dry-run safety is cooperative, not sandboxed.** Both inspection and
+preview must be read-only. Avoid secrets in output: script output can appear
+in the console and run log. Active scripts are discovered at the configuration
+reload boundary and appear in [task discovery](TASKS.md).
 
 ## APM configuration
 
-APM's source fragments are YAML files under `symlinks/apm/config/`, not a TOML
-file in `conf/`. The active profile determines which fragments are linked into
-the home configuration. See [APM](APM.md).
+APM packages use YAML fragments under `symlinks/apm/config/`, selected by
+`conf/symlinks.toml`. They are distinct from harness preferences in
+`agent-settings.toml`. See [APM](APM.md) for source ownership, target selection,
+updates, and generated files.
+
+## Removing configuration
+
+Removing a record usually means "stop managing this," not "undo it." Packages,
+Git settings, registry values, service state, agent settings, and merged system
+files are not generally removed just because their declarations disappear.
+
+For a managed link or overlay script, keep its declaration active while
+performing the intended [uninstall](USAGE.md), then remove the declaration.
+Uninstall materializes matching managed links as local copies; it does not
+restore arbitrary pre-install state. It can also create a local copy when the
+configured target is absent; existing non-link files and directories are
+preserved. APM has separate native stale-deployment cleanup and a
+[last-fragment caveat](APM.md#removing-packages-and-targets).
 
 ## Loading and reload behavior
 
-At startup, the loader:
+The loader resolves the profile, decodes main and optional overlay files,
+selects active categories, expands symlink globs, and rejects structural and
+target conflicts before tasks are built. Aggregate diagnostics cover additional
+domain and cross-file rules. `--only` is task selection, not a way to skip
+configuration loading.
 
-1. Resolves the active profile and categories.
-2. Parses main configuration.
-3. Parses existing overlay files.
-4. Appends active overlay records.
-5. Runs section and aggregate validation.
-6. Stores values in shared handles used by tasks.
+If repository synchronization changes tracked content, **Reload configuration**
+loads and validates the new state before later tasks use it. See
+[Architecture](ARCHITECTURE.md) for that runtime boundary.
 
-If **Dotfiles repository** changes tracked content, the internal **Reload configuration**
-repeats the load and updates those handles. Later tasks therefore observe the
-new configuration in the same command invocation. The reload runs the same
-section and aggregate validation as startup and reports any diagnostics, so a
-configuration pulled mid-run is held to the same standard as one present when
-the command began.
+### Unknown keys are errors
 
-## Unknown keys are errors
+Unknown section fields and entry fields fail loading rather than being ignored.
+For example, `symlink` instead of `symlinks`, or `targett` instead of `target`,
+is an error. Structural parsing includes inactive categories and platforms;
+putting a typo in `[windows]` does not hide it on Linux.
 
-Every main `conf/*.toml` file listed above is required and parsed strictly,
-including files for inactive platforms. An unrecognized or misspelled key
-aborts loading. The error includes the file, line, column, and accepted keys:
-
-```text
-ERROR Invalid syntax in conf/symlinks.toml: unknown field `symlink`, expected `symlinks`
-```
-
-This applies to section fields such as `symlink` instead of `symlinks` and keys
-inside table entries such as `targett` instead of `target`.
-
-Section category tags are checked too. The accepted tags are `base`, `desktop`,
-`linux`, `windows`, `arch`, and `wsl`.
-
-Entries that accept either a bare string or a table (symlinks, packages,
-systemd units) are also strict in both forms: a value that is neither a string
-nor a table is rejected by kind.
+String-or-table entries are strict too: a value of some third type is not
+silently coerced. Diagnostics include source context so the declaration can
+be corrected rather than worked around.
 
 ## Validation
 
-The validation workflow catches syntax errors, unknown keys, missing required
-files, nonexistent symlink sources, and failures from available APM or script
-analyzers. A separate Rust integration test checks configuration drift. Commands
-and focused coverage are documented in
-[Testing](TESTING.md#cli-validation).
+`dotfiles check` covers loader diagnostics, required files, declared sources,
+and available APM/script analyzers. The `config_drift` Rust suite checks
+relationships among the real configuration and tracked sources. Neither a
+successful parse nor a single-platform run proves every category works.
+Use [Testing](TESTING.md#choosing-coverage) to select coverage.
+
+## Desktop application configuration
+
+Desktop appearance and keybindings are application source files, not additional
+TOML schemas.
+
+### Arch desktop appearance
+
+Quickshell's shared colors, typography, spacing, and motion live in
+[`Theme.js`](../symlinks/config/quickshell/Theme.js). `ShellPopup.qml` owns popup
+placement, dismissal, scrolling, and focus; one bar popup is open at a time
+across monitors. The bar reserves space for tiled windows, sits below floating
+windows, and hides on fullscreen workspaces.
+
+The volume menu selects the default output and permits amplification to 150%,
+marking 100%. The network menu uses NetworkManager for saved networks and
+password entry; enterprise setup stays in the connection editor. Logging out,
+restarting, and shutting down require confirmation; locking is immediate.
+Failed market refreshes retain previous quotes and show stale/error status.
+
+Quickshell watches linked sources and keeps the last valid shell on reload
+failure. Editing this checkout can therefore reload the live UI. For deliberate
+manual reloads of other components, Hyprland uses `hyprctl reload config-only`
+and `hyprctl configerrors`; mako uses `makoctl reload`. Fuzzel reads its config
+on launch, and existing GTK applications may need reopening.
+Retain the simple Hyprlock background and disabled animations while the
+[documented DPMS workaround](../symlinks/config/hypr/hyprlock.conf) is needed.
+
+### Hyprland media keys
+
+[`binds.lua`](../symlinks/config/hypr/conf/binds.lua) uses standard `XF86` symbols,
+not physical F-key positions. Keyboard Fn mode determines which symbols are
+sent. The fallback shortcuts are:
+
+| Shortcut | Action |
+|---|---|
+| Super + F1 | Toggle output mute |
+| Super + F2 / F3 | Lower / raise volume by 5% |
+| Super + F4 | Toggle microphone mute |
+| Super + F5 / F6 | Lower / raise display brightness by 5% |
+
+Volume follows the default output through `pactl` and can exceed 100%.
+Playback uses `playerctl`. Dedicated media keys work while locked; fallback
+shortcuts do not.
+
+[`brightness.sh`](../symlinks/config/hypr/scripts/brightness.sh) uses
+`brightnessctl` for display backlights, never keyboard LEDs, and keeps brightness
+above zero. No backlight means no action. External monitors generally need
+separate DDC/CI configuration unless their driver exposes a backlight.

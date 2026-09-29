@@ -7,17 +7,28 @@ Scope {
     property var quotes: []
     property int updated: 0
     property string error: ""
-    readonly property bool loading: query.running
+    property bool _queryActive: false
+    readonly property bool loading: _queryActive || query.running
 
     function refresh() {
-        if (!query.running)
-            query.running = true;
+        if (loading)
+            return;
+        _queryActive = true;
+        query.running = true;
     }
+
+    Component.onCompleted: refresh()
 
     Process {
         id: query
+        objectName: "marketQueryProcess"
         command: [Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.sh"]
-        running: true
+        onRunningChanged: {
+            if (!running && root._queryActive) {
+                root._queryActive = false;
+                root.error = "Cannot start the market helper. Check that stocks.sh is installed and executable.";
+            }
+        }
         stdout: StdioCollector {
             id: output
         }
@@ -25,6 +36,9 @@ Scope {
             id: errors
         }
         onExited: code => {
+            if (!root._queryActive)
+                return;
+            root._queryActive = false;
             if (code !== 0) {
                 root.error = errors.text.trim() || "Could not refresh market data.";
                 return;

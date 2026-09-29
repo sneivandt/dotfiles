@@ -4,25 +4,27 @@ fpath=(~/.config/zsh/completions $fpath)
 
 autoload -Uz compinit
 
-# Performance: Only regenerate compdump once per day
-# This significantly speeds up shell startup
+# Limit full completion scans to once per day.
 typeset -g ZSH_COMPDUMP="${ZSH_COMPDUMP:-${XDG_CACHE_HOME:-$HOME/.cache}/zsh/zcompdump-${ZSH_VERSION}}"
 
 # Ensure cache directory exists (extract directory from ZSH_COMPDUMP path)
 mkdir -p "${ZSH_COMPDUMP:h}"
 
-# Check if compdump needs regeneration (once per 24 hours)
-# (#qNmh-24) = glob qualifier: quiet, no error if missing, modified less than 24 hours ago
-if [[ -n ${ZSH_COMPDUMP}(#qNmh-24) ]]; then
-  # Dump file is recent, use fast mode
-  compinit -C -d "$ZSH_COMPDUMP"
+# compinit leaves an unchanged dump's mtime alone, so track the last scan separately.
+if [[ -f "$ZSH_COMPDUMP" && -n ${ZSH_COMPDUMP}.checked(#qNmh-24) ]]; then
+  compinit -C -d "$ZSH_COMPDUMP" || return
 else
-  # Regenerate dump file
-  compinit -d "$ZSH_COMPDUMP"
+  compinit -d "$ZSH_COMPDUMP" || return
+  touch "${ZSH_COMPDUMP}.checked"
   # Compile zsh compdump for faster loading
-  if [[ ! -f "${ZSH_COMPDUMP}.zwc" || "${ZSH_COMPDUMP}" -nt "${ZSH_COMPDUMP}.zwc" ]]; then
+  if [[ -f "$ZSH_COMPDUMP" && ( ! -f "${ZSH_COMPDUMP}.zwc" || "${ZSH_COMPDUMP}" -nt "${ZSH_COMPDUMP}.zwc" ) ]]; then
     zcompile "$ZSH_COMPDUMP"
   fi
+fi
+
+# The generated dynamic registration is a source script, not a #compdef file.
+if [[ -r ~/.config/zsh/completions/_dotfiles ]] && command -v dotfiles >/dev/null 2>&1; then
+  source ~/.config/zsh/completions/_dotfiles
 fi
 
 setopt always_to_end

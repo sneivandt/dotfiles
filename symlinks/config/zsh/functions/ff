@@ -4,7 +4,6 @@
 # Find file
 
 command -v fzf >/dev/null 2>&1 || { echo "ERROR: fzf not installed" 1>&2 && return 1; }
-command -v "${EDITOR:-vim}" >/dev/null 2>&1 || { echo "ERROR: ${EDITOR:-vim} not installed" 1>&2 && return 1; }
 
 if ! command -v locate >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
   echo "ERROR: neither locate nor fd installed" 1>&2
@@ -55,6 +54,7 @@ elif [ -f "$file" ]
 then
   if [ -w "$file" ]
   then
+    command -v "${EDITOR:-vim}" >/dev/null 2>&1 || { echo "ERROR: ${EDITOR:-vim} not installed" 1>&2 && return 1; }
     ${EDITOR:-vim} "$file"
   elif command -v sudo >/dev/null 2>&1
   then
@@ -66,4 +66,3 @@ then
 else
   return 1
 fi
-

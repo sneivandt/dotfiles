@@ -21,9 +21,9 @@ FLAGS = (
 )
 APPS = {
     "git": {"application": "git", "packages": "git", "tests": "config aliases behavior clean"},
-    "zsh": {"application": "zsh", "packages": "zsh fzf", "tests": "completion history"},
-    "vim": {"application": "vim", "packages": "vim", "tests": "opens"},
-    "nvim": {"application": "nvim", "packages": "neovim", "tests": "opens plugins"},
+    "zsh": {"application": "zsh", "packages": "zsh fzf wget", "tests": "completion history configuration"},
+    "vim": {"application": "vim", "packages": "vim", "tests": "opens configuration"},
+    "nvim": {"application": "nvim", "packages": "neovim", "tests": "opens plugins configuration"},
 }
 LINTERS = {
     "shell": {
@@ -131,6 +131,8 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("app_windows")
         elif path == LINUX + "test-nvim-config.lua":
             apps.add("nvim")
+        elif path == LINUX + "test-shell-config.py":
+            apps.add("zsh")
         elif path == LINUX + "install-apt-packages.sh":
             apps.update(APPS)
             linters.add("shell")
@@ -162,17 +164,16 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             if path.startswith("symlinks/config/git/"):
                 apps.add("git")
                 enable("app_windows")
-            if path.startswith(("symlinks/config/zsh/", "symlinks/config/shell/")) or path in {
-                "symlinks/zshrc", "symlinks/zprofile",
+            if path.startswith(("symlinks/config/zsh/", "symlinks/config/bash/", "symlinks/config/shell/")) or path in {
+                "symlinks/zshrc", "symlinks/zprofile", "symlinks/bashrc",
+                "symlinks/bash_profile", "symlinks/config/wgetrc", "symlinks/config/git/windows",
             }:
                 apps.add("zsh")
             if path.startswith("symlinks/vim/"):
                 apps.update(("vim", "nvim"))
             if path.startswith("symlinks/config/powershell/"):
                 enable("prompt")
-            if path == "symlinks/config/hypr/scripts/lock-screen.sh" or path.startswith(
-                "symlinks/config/hypr/scripts/tests/"
-            ):
+            if path.startswith(("symlinks/config/hypr/scripts/", "symlinks/config/hypr/conf/")):
                 enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python")

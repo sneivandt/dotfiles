@@ -58,9 +58,15 @@ class ClassificationTests(unittest.TestCase):
             ("conf/agent-settings.toml", profiles),
             ("system/pam.d/login", config | {"profile_linux", "roundtrip_linux"}),
             ("symlinks/config/git/config", config | {"app_tests", "app_windows", "build_windows"}),
+            ("symlinks/config/git/windows", config | {"app_tests", "app_windows", "build_windows"}),
             ("symlinks/vim/init.vim", config | {"app_tests"}),
             ("symlinks/config/zsh/prompt.zsh", config | {"app_tests"}),
-            ("symlinks/config/hypr/conf/appearance.lua", config),
+            ("symlinks/bash_profile", config | {"app_tests"}),
+            ("symlinks/bashrc", config | {"app_tests"}),
+            ("symlinks/config/wgetrc", config | {"app_tests"}),
+            ("symlinks/config/hypr/conf/appearance.lua", config | {"managed_scripts", "lock"}),
+            ("symlinks/config/hypr/conf/resize-on-border.lua",
+             config | {"managed_scripts", "lock"}),
             ("symlinks/config/powershell/tests/Test-Prompt.ps1",
              config | {"lint", "managed_scripts", "prompt"}),
             ("symlinks/config/hypr/scripts/lock-screen.sh",
@@ -69,7 +75,12 @@ class ClassificationTests(unittest.TestCase):
              config | {"managed_scripts", "lock"}),
             ("symlinks/config/quickshell/network_helper.py",
              config | {"managed_scripts", "desktop_python"}),
-            ("symlinks/config/hypr/scripts/stocks.sh", config | {"stocks", "lint"}),
+            ("symlinks/config/hypr/scripts/stocks.sh",
+             config | {"stocks", "lint", "managed_scripts", "lock"}),
+            ("symlinks/config/hypr/scripts/screenshot.sh",
+             config | {"lint", "managed_scripts", "lock"}),
+            ("symlinks/config/hypr/scripts/choose-editor.sh",
+             config | {"lint", "managed_scripts", "lock"}),
             ("dotfiles.sh", {"lint", "wrapper_linux", "build_linux"}),
             ("dotfiles.ps1", {"lint", "wrapper_windows", "build_windows"}),
             ("hooks/pre-commit", {"lint", "git_hooks", "hook_inputs"}),
@@ -81,6 +92,7 @@ class ClassificationTests(unittest.TestCase):
             (WINDOWS + "Test-InstallUninstall.ps1", {"roundtrip_windows", "build_windows", "lint"}),
             (WINDOWS + "Test-Applications.ps1", {"app_windows", "build_windows", "lint"}),
             (LINUX + "test-nvim-config.lua", {"app_tests", "build_linux"}),
+            (LINUX + "test-shell-config.py", {"app_tests", "build_linux"}),
             (LINUX + "test-hook-inputs.sh", {"hook_inputs", "build_linux", "lint"}),
             (LINUX + "check-ci-contract.py", set()),
             (LINUX + "test-ci-changes.py", set()),
@@ -116,8 +128,11 @@ class ClassificationTests(unittest.TestCase):
             (["dotfiles.ps1"], ["PSScriptAnalyzer"], []),
             (["dotfiles.sh", "dotfiles.ps1"], ["ShellCheck", "PSScriptAnalyzer"], []),
             (["symlinks/config/git/config"], [], ["git"]),
+            (["symlinks/config/git/windows"], [], ["git", "zsh"]),
             (["symlinks/vim/init.vim"], [], ["vim", "nvim"]),
             ([LINUX + "test-nvim-config.lua"], [], ["nvim"]),
+            ([LINUX + "test-shell-config.py"], [], ["zsh"]),
+            (["symlinks/bashrc", "symlinks/config/wgetrc"], [], ["zsh"]),
             (["symlinks/config/zsh/prompt.zsh", "symlinks/config/git/config"],
              [], ["git", "zsh"]),
         ]
@@ -130,6 +145,12 @@ class ClassificationTests(unittest.TestCase):
                 self.assertEqual(outputs["run_app_tests"], bool(apps))
         self.assertFalse(classify(["docs/README.md", "dotfiles.sh"])["docs_only"])
         self.assertTrue(classify(["docs/README.md", "AGENTS.md"])["docs_only"])
+
+    def test_editor_matrices_include_plugin_free_regressions(self):
+        matrix = classify(["symlinks/vim/vimrc"])["app_matrix"]["include"]
+        self.assertEqual({entry["application"] for entry in matrix}, {"vim", "nvim"})
+        for entry in matrix:
+            self.assertIn("configuration", entry["tests"].split())
 
     def test_binary_inputs(self):
         for path in ("cli/src/main.rs", "cli/src/data.json", "cli/src/embedded.md", "cli/build.rs",

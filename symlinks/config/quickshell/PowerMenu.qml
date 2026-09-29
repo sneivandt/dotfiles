@@ -9,6 +9,7 @@ ShellPopup {
     panelWidth: 336
     property string confirmation: ""
     property string error: ""
+    property bool _actionActive: false
     readonly property var actions: ({
             logout: {
                 label: "Log out",
@@ -25,9 +26,10 @@ ShellPopup {
         })
 
     function run(command) {
-        if (actionProcess.running)
+        if (_actionActive || actionProcess.running)
             return;
         error = "";
+        _actionActive = true;
         actionProcess.exec(command);
     }
 
@@ -40,10 +42,20 @@ ShellPopup {
 
     Process {
         id: actionProcess
+        objectName: "powerActionProcess"
+        onRunningChanged: {
+            if (!running && root._actionActive) {
+                root._actionActive = false;
+                root.error = "Cannot start the action. Check that its command is installed and executable.";
+            }
+        }
         stderr: StdioCollector {
             id: actionErrors
         }
         onExited: code => {
+            if (!root._actionActive)
+                return;
+            root._actionActive = false;
             if (code === 0)
                 root.close();
             else
@@ -66,7 +78,7 @@ ShellPopup {
             visible: root.confirmation.length === 0
             Layout.fillWidth: true
             spacing: 0
-            enabled: !actionProcess.running
+            enabled: !root._actionActive
 
             MenuButton {
                 Layout.fillWidth: true
@@ -123,17 +135,17 @@ ShellPopup {
                 Layout.fillWidth: true
                 label: "Cancel"
                 showChevron: false
-                enabled: !actionProcess.running
+                enabled: !root._actionActive
                 onTriggered: root.confirmation = ""
             }
             MenuButton {
                 Layout.fillWidth: true
-                label: actionProcess.running ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
+                label: root._actionActive ? "Working..." : (root.confirmation ? root.actions[root.confirmation].label : "")
                 danger: true
                 selected: true
                 showSelectionIndicator: false
                 showChevron: false
-                enabled: !actionProcess.running
+                enabled: !root._actionActive
                 onTriggered: root.run(root.actions[root.confirmation].command)
             }
         }
@@ -141,6 +153,7 @@ ShellPopup {
             visible: root.error.length > 0
             Layout.fillWidth: true
             text: root.error
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: Theme.red
             font.family: Theme.font

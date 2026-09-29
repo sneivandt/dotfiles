@@ -15,12 +15,11 @@ BTC-USD|BTC|Bitcoin|$
 '
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/quickshell-stocks"
 cache_file="$cache_dir/quotes.json"
-lock_dir="$cache_dir/quotes-prices.lock"
-reap_dir="$lock_dir.reap"
+# Use a new filename so orphaned directories from the old lock cannot block us.
+lock_file="$cache_dir/quotes-prices.flock"
 cache_ttl=300
 cache_version=3
 tmp_file=""
-lock_owned=0
 
 empty_output() {
   printf '{"quotes":[],"updated":0}'
@@ -37,85 +36,27 @@ cached_or_empty() {
   fi
 }
 
+cache_is_fresh() {
+  [ -s "$cache_file" ] || return 1
+  mtime=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+  [ "$((now - mtime))" -lt "$cache_ttl" ] &&
+    jq -e --argjson version "$cache_version" \
+      '.version == $version' "$cache_file" >/dev/null 2>&1
+}
+
 cleanup() {
   if [ -n "$tmp_file" ] && [ -f "$tmp_file" ]; then
     rm -f "$tmp_file"
   fi
-  lock_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
-  if [ "$lock_owned" -eq 1 ] && [ "$lock_pid" = "$$" ]; then
-    rm -f "$lock_dir/pid"
-    rmdir "$lock_dir" 2>/dev/null || true
-  fi
-}
-
-write_lock_pid() {
-  if printf '%s\n' "$$" > "$lock_dir/pid"; then
-    lock_owned=1
-    return 0
-  fi
-
-  rmdir "$lock_dir" 2>/dev/null || true
-  return 1
-}
-
-release_reap_lock() {
-  rmdir "$reap_dir" 2>/dev/null || true
-}
-
-acquire_lock() {
-  if mkdir "$lock_dir" 2>/dev/null; then
-    write_lock_pid
-    return
-  fi
-
-  # Only one process may inspect and replace a stale lock at a time.
-  if ! mkdir "$reap_dir" 2>/dev/null; then
-    return 1
-  fi
-
-  # The previous owner may have released the lock before the reaper was acquired.
-  if mkdir "$lock_dir" 2>/dev/null; then
-    result=1
-    if write_lock_pid; then
-      result=0
-    fi
-    release_reap_lock
-    return "$result"
-  fi
-
-  lock_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
-  case "$lock_pid" in
-    ''|*[!0-9]*)
-      lock_mtime=$(stat -c %Y "$lock_dir" 2>/dev/null || echo "$now")
-      if [ "$((now - lock_mtime))" -lt "$cache_ttl" ]; then
-        release_reap_lock
-        return 1
-      fi
-      ;;
-    *)
-      if kill -0 "$lock_pid" 2>/dev/null; then
-        release_reap_lock
-        return 1
-      fi
-      ;;
-  esac
-
-  if ! rm -f "$lock_dir/pid" 2>/dev/null ||
-     ! rmdir "$lock_dir" 2>/dev/null ||
-     ! mkdir "$lock_dir" 2>/dev/null; then
-    release_reap_lock
-    return 1
-  fi
-
-  result=1
-  if write_lock_pid; then
-    result=0
-  fi
-  release_reap_lock
-  return "$result"
 }
 
 mkdir -p "$cache_dir"
+
+if ! command -v flock >/dev/null 2>&1; then
+  printf 'ERROR: flock is required to lock the stocks cache\n' >&2
+  cached_or_empty
+  exit 127
+fi
 
 for cmd in curl jq awk stat mktemp; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -125,23 +66,38 @@ for cmd in curl jq awk stat mktemp; do
 done
 
 now=$(date +%s)
-mtime=0
-if [ -f "$cache_file" ]; then
-  mtime=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
-fi
-
-if [ "$((now - mtime))" -lt "$cache_ttl" ] && [ -s "$cache_file" ] &&
-   jq -e --argjson version "$cache_version" \
-     '.version == $version' "$cache_file" >/dev/null 2>&1; then
+if cache_is_fresh; then
   cached_or_empty
   exit 0
 fi
 
-if ! acquire_lock; then
+# Keep this inode: unlinking a flock file would let another process lock a new one.
+exec 9>"$lock_file"
+# Reserve a status outside flock's normal error codes for contention.
+if flock -n -E 200 9; then
+  :
+else
+  lock_status=$?
+  if [ "$lock_status" -eq 200 ]; then
+    cached_or_empty
+    exit 0
+  fi
+  printf 'ERROR: unable to lock the stocks cache (flock exited %s)\n' "$lock_status" >&2
+  cached_or_empty
+  exit "$lock_status"
+fi
+
+# Another process may have finished refreshing between the first check and flock.
+now=$(date +%s)
+if cache_is_fresh; then
   cached_or_empty
   exit 0
 fi
-trap cleanup EXIT HUP INT TERM
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 quotes_json='[]'
 while IFS='|' read -r query symbol fallback_name price_prefix; do

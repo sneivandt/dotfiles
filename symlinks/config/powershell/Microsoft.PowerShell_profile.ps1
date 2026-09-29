@@ -38,13 +38,52 @@ if (Get-Command "code-insiders" -ErrorAction SilentlyContinue)
 
 function dot
 {
-    [CmdletBinding(PositionalBinding = $false)]
+    dotfiles @args
+}
+
+function Format-PromptPath
+{
     param(
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [string[]] $Arguments
+        [string] $Path,
+        [string] $HomeDirectory,
+        [bool] $WindowsPlatform = ([IO.Path]::DirectorySeparatorChar -eq '\')
     )
 
-    dotfiles @Arguments
+    if ([string]::IsNullOrEmpty($HomeDirectory))
+    {
+        return $Path
+    }
+
+    $comparison = [StringComparison]::Ordinal
+    $separator = '/'
+    if ($WindowsPlatform)
+    {
+        $comparison = [StringComparison]::OrdinalIgnoreCase
+        $separator = '\'
+        $Path = $Path.Replace('/', '\')
+        $HomeDirectory = $HomeDirectory.Replace('/', '\')
+    }
+
+    $homePath = $HomeDirectory.TrimEnd([char]$separator)
+    if ([string]::Equals($Path.TrimEnd([char]$separator), $homePath, $comparison))
+    {
+        return '~'
+    }
+    if ($Path.StartsWith($homePath + $separator, $comparison))
+    {
+        return '~' + $separator + $Path.Substring($homePath.Length + 1)
+    }
+    return $Path
+}
+
+function Test-PromptRoot
+{
+    param(
+        [string] $UserName = [Environment]::UserName,
+        [bool] $WindowsPlatform = ([IO.Path]::DirectorySeparatorChar -eq '\')
+    )
+
+    return -not $WindowsPlatform -and $UserName -ceq 'root'
 }
 
 $Global:IsNestedPwsh = $false
@@ -78,12 +117,7 @@ function Prompt
         $promptLine += "${cyan}pwsh ${reset}"
     }
 
-    $curPath = $ExecutionContext.SessionState.Path.CurrentLocation.Path
-
-    if ($curPath.StartsWith($Home, [System.StringComparison]::OrdinalIgnoreCase))
-    {
-        $curPath = "~" + $curPath.SubString($Home.Length)
-    }
+    $curPath = Format-PromptPath -Path $ExecutionContext.SessionState.Path.CurrentLocation.Path -HomeDirectory $HOME
 
     $promptLine += "${yellow}${curPath}${reset}"
 
@@ -103,7 +137,7 @@ function Prompt
         }
     }
 
-    if ($env:username -eq "root")
+    if (Test-PromptRoot)
     {
         $promptSuffix = "${red}# ${reset}"
     }

@@ -18,10 +18,10 @@ Scope {
     property var networks: []
     property var connections: []
     property string connectivity: "unknown"
-    readonly property bool loading: statusQuery.running
-    readonly property bool busy: actionProcess.running && operation !== "scan"
-    readonly property bool scanning: actionProcess.running && operation === "scan"
-    readonly property bool working: actionProcess.running
+    readonly property bool loading: _statusActive || statusQuery.running
+    readonly property bool busy: working && operation !== "scan"
+    readonly property bool scanning: working && operation === "scan"
+    readonly property bool working: _actionActive || actionProcess.running
     readonly property string error: actionError || statusError
     property string operation: ""
     property string actionLabel: ""
@@ -31,6 +31,8 @@ Scope {
     property var pendingNetwork: null
     property bool scanOnRefresh: false
     property double lastScan: 0
+    property bool _statusActive: false
+    property bool _actionActive: false
     readonly property string helperPath: decodeURIComponent(Qt.resolvedUrl("network_helper.py").toString().replace(/^file:\/\//, ""))
 
     signal credentialsRequested(var accessPoint)
@@ -49,7 +51,7 @@ Scope {
     }
 
     function rescan() {
-        if (actionProcess.running)
+        if (working)
             return;
 
         if (!available || !wifiAvailable || !wifiEnabled) {
@@ -64,7 +66,7 @@ Scope {
     }
 
     function setWifiEnabled(enabled) {
-        if (!available || !wifiAvailable || actionProcess.running)
+        if (!available || !wifiAvailable || working)
             return;
 
         if (enabled && !wifiHardwareEnabled) {
@@ -78,7 +80,7 @@ Scope {
     }
 
     function connectNetwork(accessPoint, password, ssid) {
-        if (!available || !wifiEnabled || actionProcess.running)
+        if (!available || !wifiEnabled || working)
             return;
 
         if (accessPoint.advanced) {
@@ -95,13 +97,14 @@ Scope {
     }
 
     function runAction(request, label) {
-        if (actionProcess.running)
+        if (working)
             return;
 
         actionError = "";
         operation = request.operation;
         actionLabel = label;
         pendingRequest = JSON.stringify(request) + "\n";
+        _actionActive = true;
         actionProcess.stdinEnabled = true;
         actionProcess.running = true;
     }
@@ -122,15 +125,31 @@ Scope {
     RefreshQueue {
         id: refreshQueue
 
-        blocked: statusQuery.running || actionProcess.running
-        onReady: statusQuery.running = true
+        blocked: root.loading || root.working
+        onReady: {
+            root._statusActive = true;
+            statusQuery.running = true;
+        }
     }
 
     Process {
         id: statusQuery
+        objectName: "networkStatusProcess"
 
         command: ["python3", root.helperPath, "status"]
+        onRunningChanged: {
+            // FailedToStart emits runningChanged without an exited signal.
+            if (!running && root._statusActive) {
+                root._statusActive = false;
+                root.available = false;
+                root.statusError = "Cannot start the network helper. Check that Python is installed and executable.";
+                root.scanOnRefresh = false;
+            }
+        }
         onExited: code => {
+            if (!root._statusActive)
+                return;
+            root._statusActive = false;
             const result = root.readResult(statusOutput.text);
             if (code === 0 && result.ok) {
                 const state = result.state;
@@ -166,11 +185,21 @@ Scope {
 
     Process {
         id: actionProcess
+        objectName: "networkActionProcess"
 
         command: ["python3", root.helperPath, "action"]
         onRunningChanged: {
-            if (!running)
+            if (!running && root._actionActive) {
+                root._actionActive = false;
+                root.available = false;
+                root.actionError = "Cannot start the network helper. Check that Python is installed and executable.";
                 root.pendingRequest = "";
+                root.pendingNetwork = null;
+                root.actionLabel = "";
+                root.operation = "";
+                stdinEnabled = false;
+                root.refresh();
+            }
         }
         onStarted: {
             write(root.pendingRequest);
@@ -178,6 +207,9 @@ Scope {
             stdinEnabled = false;
         }
         onExited: code => {
+            if (!root._actionActive)
+                return;
+            root._actionActive = false;
             root.pendingRequest = "";
             const result = root.readResult(actionOutput.text);
             if (code !== 0 || !result.ok) {
@@ -187,8 +219,10 @@ Scope {
             }
             root.pendingNetwork = null;
             root.actionLabel = "";
+            const scanned = root.operation === "scan";
+            root.operation = "";
             root.refresh();
-            if (root.operation === "scan")
+            if (scanned)
                 scanSettled.restart();
         }
 

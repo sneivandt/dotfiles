@@ -26,7 +26,7 @@ extensions = [
   "tamasfe.even-better-toml",
 ]
 
-[windows]
+[windows-desktop]
 extensions = [
   "ms-vscode-remote.remote-wsl",
 ]

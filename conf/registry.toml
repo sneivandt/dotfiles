@@ -38,25 +38,6 @@ ColorTable13 = 16227003                # Tokyo Night bright magenta (#bb9af7)
 ColorTable14 = 6860768                 # Tokyo Night bright yellow (#e0af68)
 ColorTable15 = 16108224                # Tokyo Night bright white (#c0caf5)
 
-# PowerShell PSReadLine syntax highlighting colors
-[psreadline]
-path = 'HKCU:\Console\PSReadLine'
-
-[psreadline.values]
-NormalForeground = 0xF                 # Tokyo Night foreground (#c0caf5)
-CommentForeground = 0x8                # Tokyo Night comment (#414868)
-KeywordForeground = 0xD                # Tokyo Night purple (#bb9af7)
-StringForeground = 0xA                 # Tokyo Night green (#9ece6a)
-OperatorForeground = 0xB               # Tokyo Night cyan (#7dcfff)
-VariableForeground = 0x9               # Tokyo Night blue (#7aa2f7)
-CommandForeground = 0x9                # Tokyo Night blue (#7aa2f7)
-ParameterForeground = 0xE              # Tokyo Night yellow (#e0af68)
-TypeForeground = 0xB                   # Tokyo Night cyan (#7dcfff)
-NumberForeground = 0x6                 # Tokyo Night orange/yellow (#e0af68)
-MemberForeground = 0xB                 # Tokyo Night cyan (#7dcfff)
-EmphasisForeground = 0xD               # Tokyo Night magenta (#bb9af7)
-ErrorForeground = 0xC                  # Tokyo Night red (#f7768e)
-
 # Desktop window focus settings
 [desktop]
 path = 'HKCU:\Control Panel\Desktop'

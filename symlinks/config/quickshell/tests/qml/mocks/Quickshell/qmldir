@@ -1,0 +1,7 @@
+module Quickshell
+singleton Quickshell 1.0 Quickshell.qml
+Scope 1.0 Scope.qml
+PopupWindow 1.0 PopupWindow.qml
+Region 1.0 Region.qml
+Edges 1.0 Constants.qml
+PopupAdjustment 1.0 Constants.qml

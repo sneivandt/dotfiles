@@ -33,7 +33,8 @@ Git and network access are required for bootstrap. Missing plugins are also
 installed automatically. Launching Neovim is therefore not a read-only
 configuration check.
 
-The bootstrap commit fixes which lazy.nvim revision a new installation uses;
+The bootstrap commit matches lazy.nvim's revision in `lazy-lock.json` and
+fixes which manager revision a new installation uses;
 it is not a guarantee that upstream code is safe, nor is an existing
 installation reset to that revision on every launch. Review dependency changes
 and lockfile diffs as code changes.
@@ -84,9 +85,24 @@ before retrying.
 ### Updating the bootstrap pin
 
 Choose and review a lazy.nvim revision, then update the commit in
-`lua/lazy-bootstrap.lua`. Verify first-launch behavior in an isolated Neovim
-data directory: changing the source pin does not exercise bootstrap when the
-manager is already installed. Check the resulting plugin lockfile separately.
+`lua/lazy-bootstrap.lua` and its entry in `lazy-lock.json` together, without
+advancing unrelated plugin revisions. Verify first-launch behavior in an
+isolated Neovim data directory: changing the source pin does not exercise
+bootstrap when the manager is already installed. Check the resulting plugin
+lockfile separately.
+
+### Plugin-free regression checks
+
+From the repository root, run:
+
+```bash
+python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
+```
+
+These checks use isolated homes beneath the working directory and source only
+the shared `vimrc`, never the plugin bootstrap. They verify that Go's whitespace
+display and snippets' fold level remain local when changing buffers, filetypes,
+or windows. The bootstrap pin is also checked against the tracked lockfile.
 
 Use [Testing](../../docs/TESTING.md) for repository validation and application
 coverage. Avoid using the installed editor profile for checks that are meant

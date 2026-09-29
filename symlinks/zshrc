@@ -7,6 +7,12 @@
 [ -n "$ZSHRC_LOADED" ] && return
 ZSHRC_LOADED=1
 
+# A new terminal or tmux pane must not retain the parent shell's GPG tty.
+if tty -s; then
+  GPG_TTY="$(tty)"
+  export GPG_TTY
+fi
+
 # Quiet
 setopt no_beep
 setopt NO_LIST_BEEP

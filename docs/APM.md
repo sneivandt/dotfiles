@@ -107,6 +107,14 @@ The `apm` task runs after regular packages, AUR packages, and symlinks so its
 executable and managed sources can be available. A scoped invocation still
 needs those prerequisites already satisfied; see [task selection](TASKS.md).
 
+Arch installs APM through the AUR's
+[`apm-bin`](https://aur.archlinux.org/packages/apm-bin) package. This channel can
+lag [upstream releases](https://github.com/microsoft/apm/releases): on
+2026-09-29, the AUR recipe remained at 0.26.0-1 while upstream had released
+0.32.0. The package remains selected; there is no automatic upstream-installer
+fallback. A package update only supplies the version available from AUR, and
+`apm update -g` updates agent dependencies, not the APM executable.
+
 On an ordinary apply, dotfiles:
 
 1. Discovers effective fragments and produces a deterministic manifest.

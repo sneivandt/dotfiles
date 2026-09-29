@@ -180,8 +180,10 @@ ShellPopup {
                     }
 
                     Text {
+                        objectName: "networkActionLabel"
                         Layout.fillWidth: true
                         text: root.network.actionLabel || "Refreshing network status…"
+                        textFormat: Text.PlainText
                         font.family: Theme.font
                         font.pixelSize: Theme.textSmall
                         color: Theme.mutedStrong
@@ -190,9 +192,11 @@ ShellPopup {
                 }
 
                 Text {
+                    objectName: "networkError"
                     Layout.fillWidth: true
                     visible: root.network.error.length > 0
                     text: root.network.error
+                    textFormat: Text.PlainText
                     font.family: Theme.font
                     font.pixelSize: Theme.textSmall
                     color: Theme.red
@@ -258,8 +262,10 @@ ShellPopup {
                     spacing: Theme.spacing
 
                     Text {
+                        objectName: "networkCredentialsTitle"
                         Layout.fillWidth: true
                         text: root.selectedNetwork ? "Connect to " + root.selectedNetwork.name : ""
+                        textFormat: Text.PlainText
                         font.family: Theme.font
                         font.pixelSize: Theme.textBody
                         color: Theme.foreground

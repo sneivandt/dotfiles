@@ -5,10 +5,10 @@
 command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not installed" 1>&2 && return 1; }
 
 # Remove stopped containers
-docker container prune -f
+docker container prune -f || return
 
 # Remove unused networks
-docker network prune -f
+docker network prune -f || return
 
 # Remove dangling images
 docker image prune -f

@@ -9,7 +9,9 @@ trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 
 mkdir -p \
   "$TEST_ROOT/bin" \
-  "$TEST_ROOT/home/.cache/quickshell-stocks/quotes-prices.lock"
+  "$TEST_ROOT/home/.cache/quickshell-stocks/quotes-prices.lock" \
+  "$TEST_ROOT/home/.cache/quickshell-stocks/quotes-prices.lock.reap"
+# Orphaned directories from the old protocol must not block the kernel lock.
 printf '%s\n' 99999999 > \
   "$TEST_ROOT/home/.cache/quickshell-stocks/quotes-prices.lock/pid"
 
@@ -23,22 +25,6 @@ EOF
 cat > "$TEST_ROOT/bin/jq" <<'EOF'
 #!/bin/sh
 exit 0
-EOF
-
-cat > "$TEST_ROOT/bin/mkdir" <<'EOF'
-#!/bin/sh
-case "$*" in
-  *quotes-prices.lock*) sleep 0.02 ;;
-esac
-exec /usr/bin/mkdir "$@"
-EOF
-
-cat > "$TEST_ROOT/bin/rmdir" <<'EOF'
-#!/bin/sh
-case "$*" in
-  *quotes-prices.lock*) sleep 0.02 ;;
-esac
-exec /usr/bin/rmdir "$@"
 EOF
 
 chmod +x "$TEST_ROOT/bin/"*

@@ -1,40 +1,14 @@
--- Disable resize_on_border when the focused workspace's window fills it.
---
--- A window "fills" the workspace when it's fullscreen, or when it's the only
--- tiled window on the workspace (with no border/gaps via the f[1] workspace
--- rule). In those cases the border-resize cursor is misleading because there's
--- nothing to resize against.
+-- Border resizing is global, so follow the focused window rather than counting
+-- workspace tiles. Ordinary tiled and floating windows remain resizable.
 
 local M = {}
 
 local enabled = nil
 
-local function workspaceFills()
-    local ws = hl.get_active_workspace()
-    if not ws then
-        return false
-    end
-
-    local tiled = 0
-    for _, w in ipairs(ws:get_windows() or {}) do
-        if not w.hidden then
-            -- fullscreen: 0 = none, 1 = maximize, 2 = fullscreen
-            if w.fullscreen >= 2 then
-                return true
-            end
-            if not w.floating then
-                tiled = tiled + 1
-            end
-        end
-    end
-
-    return tiled == 1
-end
-
--- Exported so binds that change floating state can re-evaluate; Hyprland emits
--- no event for a float toggle.
 function M.update()
-    local want = not workspaceFills()
+    local window = hl.get_active_window()
+    -- The Lua window state is 0 = normal, 1 = maximized, 2 = fullscreen.
+    local want = not (window and window.fullscreen == 1)
     if want == enabled then
         return
     end
@@ -46,6 +20,11 @@ function M.update()
         },
     })
 end
+
+hl.on("config.reloaded", function()
+    enabled = nil
+    M.update()
+end)
 
 for _, event in ipairs({
     "hyprland.start",

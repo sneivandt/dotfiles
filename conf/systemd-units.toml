@@ -16,6 +16,7 @@ units = [
   "gnome-keyring-daemon.socket",
   "hypridle.service",
   "hyprpaper.service",
+  "hyprpolkitagent.service",
   "mako.service",
   { name = "network-manager-applet.service", scope = "user", enabled = false },
   "quickshell.service",

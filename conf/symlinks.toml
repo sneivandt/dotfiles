@@ -99,7 +99,8 @@ symlinks = [
 
 [desktop]
 symlinks = [
-  { source = "config/Code/User/settings.json", target = ".vscode-remote/data/Machine/settings.json" },
+  { source = "config/Code/User/settings.json", target = ".vscode-server/data/Machine/settings.json" },
+  { source = "config/Code/User/settings.json", target = ".vscode-server-insiders/data/Machine/settings.json" },
 ]
 
 [linux-desktop]

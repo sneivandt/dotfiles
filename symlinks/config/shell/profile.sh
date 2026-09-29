@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# User commands must be available to capability checks and session startup.
+# shellcheck disable=SC1090
+[ -r ~/.config/shell/path.sh ] && . ~/.config/shell/path.sh
+
 # gpg
 if tty -s; then
   GPG_TTY="$(tty)"

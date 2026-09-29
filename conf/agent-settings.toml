@@ -18,7 +18,7 @@ settings = [
   { target = "copilot", key = "beep",           value = false         },
   { target = "copilot", key = "memory",         value = true          },
   { target = "copilot", key = "renderMarkdown", value = true          },
-  { target = "copilot", key = "logLevel",       value = "all"         },
+  { target = "copilot", key = "logLevel",       value = "default"     },
 
   # Copilot CLI appearance
   { target = "copilot", key = "theme", value = "default" },
@@ -43,9 +43,8 @@ settings = [
   { target = "codex", key = "features.memories",      value = true              },
   { target = "codex", key = "model",                  value = "gpt-6-sol"       },
   { target = "codex", key = "model_reasoning_effort", value = "medium"          },
-  { target = "codex", key = "personality",            value = "pragmatic"       },
   { target = "codex", key = "web_search",             value = "cached"          },
-  { target = "codex", key = "file_opener",            value = "vscode"          },
+  { target = "codex", key = "file_opener",            value = "vscode-insiders" },
   { target = "codex", key = "tui.show_tooltips",      value = false             },
   { target = "codex", key = "shell_environment_policy.ignore_default_excludes", value = false },
 ]

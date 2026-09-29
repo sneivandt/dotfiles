@@ -249,6 +249,33 @@ endfunction " }}}
 " }}}
 " Filetype specitic ------------------------------------------------------- {{{
 
+" Window-local options are inherited by new buffers and splits. Restore the
+" shared defaults before a buffer leaves, then apply the entering filetype.
+function! s:RestoreFiletypeWindowOptions() abort
+  if get(w:, 'dotfiles_window_filetype', '') ==# 'go'
+    setlocal list<
+  elseif get(w:, 'dotfiles_window_filetype', '') ==# 'snippets'
+    setlocal foldlevel<
+  endif
+  unlet! w:dotfiles_window_filetype
+endfunction
+
+function! s:ApplyFiletypeWindowOptions() abort
+  call s:RestoreFiletypeWindowOptions()
+  if &filetype ==# 'go'
+    setlocal nolist
+  elseif &filetype ==# 'snippets'
+    setlocal foldlevel=0
+  endif
+  let w:dotfiles_window_filetype = &filetype
+endfunction
+
+augroup FiletypeWindowOptions
+  autocmd!
+  autocmd BufWinLeave * call s:RestoreFiletypeWindowOptions()
+  autocmd BufWinEnter,FileType * call s:ApplyFiletypeWindowOptions()
+augroup END
+
 " C/C++ {{{
 
 augroup FiletypeCCpp
@@ -259,12 +286,6 @@ augroup END
 
 " }}}
 " Go {{{
-
-augroup FiletypeGo
-  autocmd!
-  " Listchars
-  autocmd Filetype go set nolist
-augroup END
 
 " Disable go version warning
 let g:go_version_warning=0
@@ -294,14 +315,6 @@ augroup FiletypePython
   autocmd!
   " Indentation
   autocmd Filetype python setlocal sw=4 ts=4 sts=4
-augroup END
-
-" }}}
-" Snippet {{{
-
-augroup FiletypeSnippets
-  autocmd!
-  autocmd Filetype snippets set foldlevel=0
 augroup END
 
 " }}}

@@ -1,7 +1,7 @@
 <h1 align="center">Dotfiles</h1>
 
 <p align="center">
-  <strong>My Arch Linux and Windows setup, managed by a Rust CLI.</strong>
+  <strong>Declarative system configuration for Arch Linux and Windows, powered by a Rust CLI.</strong>
 </p>
 
 <p align="center">
@@ -10,10 +10,16 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
 </p>
 
-Packages, symlinks, and system settings live in [conf/](conf/), with app
-configuration under [symlinks/](symlinks/). The CLI selects entries for the
-active profile and operating system, compares them with the machine, and
-applies changes in dependency order. Settings that already match are skipped.
+This repository combines my personal dotfiles with a system configuration
+manager. It manages packages, application settings, symlinks, services, and
+platform-specific configuration through a shared desired-state engine.
+
+Profiles and private overlays define what belongs on each machine. The CLI
+inspects existing state, applies changes in dependency order, and skips settings
+that already match. It supports dry-run previews and structured run logs.
+
+Desired state lives in [conf/](conf/), with app configuration under
+[symlinks/](symlinks/).
 
 <p align="center">
   <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Example install output showing changed symlinks, packages, and the default shell, followed by a summary">

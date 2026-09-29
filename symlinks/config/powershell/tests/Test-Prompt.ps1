@@ -9,14 +9,21 @@ if ($parseErrors.Count -gt 0)
 {
     throw "Profile parse errors: $parseErrors"
 }
-$promptDefinition = $ast.Find({
-        param($node)
-        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Prompt'
-    }, $true)
-if ($null -eq $promptDefinition)
+$definitions = @{}
+foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot'))
 {
-    throw 'The profile must define Prompt.'
+    $definition = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
+        }, $true)
+    if ($null -eq $definition)
+    {
+        throw "The profile must define $name."
+    }
+    $definitions[$name] = $definition.Extent.Text
 }
+$promptSetup = @('Format-PromptPath', 'Test-PromptRoot', 'Prompt') |
+    ForEach-Object { $definitions[$_] }
 if (-not (Get-Command git -ErrorAction SilentlyContinue))
 {
     throw 'These prompt tests require Git.'
@@ -31,8 +38,8 @@ $cases = @(
 
 foreach ($case in $cases)
 {
-    # Load only Prompt, not the profile's PATH, aliases, or installed extensions.
-    $setup = $promptDefinition.Extent.Text + "`n" +
+    # Load only prompt functions, not the profile's PATH, aliases, or extensions.
+    $setup = ($promptSetup -join "`n") + "`n" +
     '$Global:IsNestedPwsh = $false; $Global:GitExists = $' + $case.GitExists.ToString().ToLowerInvariant() +
     '; $global:LASTEXITCODE = ' + $case.ExitCode
     if ($case.ThrowFromGit)
@@ -89,4 +96,141 @@ foreach ($case in $cases)
     {
         $process.Dispose()
     }
+}
+
+& {
+    foreach ($definition in $definitions.Values)
+    {
+        . ([scriptblock]::Create($definition))
+    }
+
+    $pathCases = @(
+        @{ Path = '/home/alex'; HomeDirectory = '/home/alex'; WindowsPlatform = $false; Expected = '~' }
+        @{ Path = '/home/alex/src'; HomeDirectory = '/home/alex'; WindowsPlatform = $false; Expected = '~/src' }
+        @{ Path = '/home/alexander'; HomeDirectory = '/home/alex'; WindowsPlatform = $false; Expected = '/home/alexander' }
+        @{ Path = '/home/Alex/src'; HomeDirectory = '/home/alex'; WindowsPlatform = $false; Expected = '/home/Alex/src' }
+        @{ Path = '/home/alex/src'; HomeDirectory = '/home/alex/'; WindowsPlatform = $false; Expected = '~/src' }
+        @{ Path = '/'; HomeDirectory = '/'; WindowsPlatform = $false; Expected = '~' }
+        @{ Path = '/src'; HomeDirectory = '/'; WindowsPlatform = $false; Expected = '~/src' }
+        @{ Path = '/src'; HomeDirectory = ''; WindowsPlatform = $false; Expected = '/src' }
+        @{ Path = 'C:\Users\Alex'; HomeDirectory = 'c:\users\alex'; WindowsPlatform = $true; Expected = '~' }
+        @{ Path = 'C:\Users\Alex\src'; HomeDirectory = 'c:/users/alex/'; WindowsPlatform = $true; Expected = '~\src' }
+        @{ Path = 'C:\Users\Alexander'; HomeDirectory = 'C:\Users\Alex'; WindowsPlatform = $true; Expected = 'C:\Users\Alexander' }
+        @{ Path = 'C:\'; HomeDirectory = 'C:\'; WindowsPlatform = $true; Expected = '~' }
+        @{ Path = 'C:\src'; HomeDirectory = 'C:\'; WindowsPlatform = $true; Expected = '~\src' }
+    )
+    foreach ($case in $pathCases)
+    {
+        $actual = Format-PromptPath -Path $case.Path -HomeDirectory $case.HomeDirectory -WindowsPlatform $case.WindowsPlatform
+        if ($actual -cne $case.Expected)
+        {
+            throw "Path formatting failed: $($case.Path) => $actual; expected $($case.Expected)"
+        }
+    }
+    Write-Output "PASS: $($pathCases.Count) platform-specific home-path cases"
+
+    foreach ($case in @(
+            @{ UserName = 'root'; WindowsPlatform = $false; Expected = $true }
+            @{ UserName = 'Root'; WindowsPlatform = $false; Expected = $false }
+            @{ UserName = 'alex'; WindowsPlatform = $false; Expected = $false }
+            @{ UserName = 'root'; WindowsPlatform = $true; Expected = $false }
+        ))
+    {
+        if ((Test-PromptRoot -UserName $case.UserName -WindowsPlatform $case.WindowsPlatform) -ne $case.Expected)
+        {
+            throw "Root detection failed: $($case.UserName), Windows=$($case.WindowsPlatform)"
+        }
+    }
+    $expectedRoot = [IO.Path]::DirectorySeparatorChar -eq '/' -and [Environment]::UserName -ceq 'root'
+    $originalUser = $env:USER
+    $originalUsername = $env:USERNAME
+    try
+    {
+        $env:USER = 'someone-else'
+        $env:USERNAME = 'root'
+        if ((Test-PromptRoot) -ne $expectedRoot)
+        {
+            throw 'Root detection must use the process identity, not a username environment variable.'
+        }
+    }
+    finally
+    {
+        $env:USER = $originalUser
+        $env:USERNAME = $originalUsername
+    }
+    Write-Output 'PASS: Unix root and Windows non-root identity cases'
+
+    Set-Item Function:dotfiles -Value { , $args }
+    $actual = dot install -v
+    if (($actual | ConvertTo-Json -Compress) -cne '["install","-v"]')
+    {
+        throw 'dot must not consume -v as a PowerShell common parameter.'
+    }
+    foreach ($arguments in @(
+            @('install', '-v'),
+            @('install', '--verbose', '--dry-run'),
+            @('-d', '--', '--help', 'two words', '"quoted"', '', [string][char]0x03BB)
+        ))
+    {
+        $actual = dot @arguments
+        if (($actual | ConvertTo-Json -Compress) -cne ($arguments | ConvertTo-Json -Compress))
+        {
+            throw "dot changed the native arguments: $($actual | ConvertTo-Json -Compress)"
+        }
+    }
+    Write-Output 'PASS: transparent dot forwarding, including -v, option terminator and empty arguments'
+
+    # Exercise the production registration without building or invoking the CLI.
+    $completionSource = Get-Content -Raw (Join-Path $repositoryRoot 'cli/src/app/completion.rs')
+    $registration = [regex]::Match(
+        $completionSource,
+        '(?s)const POWERSHELL_DOT_COMPLETER: &str = r"(?<script>.*?)";'
+    )
+    if (-not $registration.Success)
+    {
+        throw 'The production dot completion registration was not found.'
+    }
+    $completionErrors = $null
+    $completionAst = [Management.Automation.Language.Parser]::ParseInput(
+        $registration.Groups['script'].Value, [ref]$null, [ref]$completionErrors
+    )
+    if ($completionErrors.Count -gt 0)
+    {
+        throw "Completion registration parse errors: $completionErrors"
+    }
+    . ($completionAst.GetScriptBlock())
+    Set-Item Function:dotfiles -Value { throw 'Completion must not invoke dotfiles.' }
+    Register-ArgumentCompleter -Native -CommandName dotfiles -ScriptBlock {
+        param($wordToComplete)
+
+        if ($wordToComplete -eq '' -or $wordToComplete -like 'ins*')
+        {
+            [Management.Automation.CompletionResult]::new('install', 'install', 'ParameterValue', 'Mock install')
+        }
+        if ($wordToComplete -like '--on*')
+        {
+            [Management.Automation.CompletionResult]::new('--only', '--only', 'ParameterName', 'Mock selector')
+        }
+        if ($wordToComplete -like '--ver*')
+        {
+            [Management.Automation.CompletionResult]::new('--verbose', '--verbose', 'ParameterName', 'Mock verbosity')
+        }
+    }
+    foreach ($case in @(
+            @{ Text = 'dot ins'; Expected = 'install' }
+            @{ Text = 'dot install --on'; Expected = '--only' }
+            @{ Text = 'dot install --ver'; Expected = '--verbose' }
+            @{ Text = 'Write-Output ignored; dot ins'; Expected = 'install' }
+            @{ Text = 'dot ins trailing'; Cursor = 'dot ins'.Length; Expected = 'install' }
+            @{ Text = 'dot '; Expected = 'install' }
+        ))
+    {
+        $cursorColumn = if ($case.ContainsKey('Cursor')) { $case.Cursor } else { $case.Text.Length }
+        $completionMatches = (TabExpansion2 -InputScript $case.Text -CursorColumn $cursorColumn).CompletionMatches
+        if ($completionMatches.Count -ne 1 -or $completionMatches[0].CompletionText -cne $case.Expected)
+        {
+            throw "Native dot completion failed: $($case.Text), cursor $cursorColumn"
+        }
+    }
+    Write-Output 'PASS: native dot completion, command offsets, mid-line cursor and trailing space'
 }

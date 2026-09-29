@@ -9,11 +9,13 @@ use serde::Deserialize;
 const COMPLETION_ENV: &str = "DOTFILES_COMPLETE";
 
 const POWERSHELL_DOT_COMPLETER: &str = r"
-Register-ArgumentCompleter -CommandName 'dot' -ParameterName 'Arguments' -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
+Register-ArgumentCompleter -Native -CommandName 'dot' -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
 
+    $relativeCursor = $cursorPosition - $commandAst.Extent.StartOffset
+    $commandLine = $commandAst.ToString().PadRight($relativeCursor).Substring(0, $relativeCursor)
     $expandedLine = [regex]::Replace(
-        $commandAst.ToString(),
+        $commandLine,
         '^dot(?=\s|$)',
         'dotfiles',
         1
@@ -280,6 +282,8 @@ mod tests {
 
         let powershell = registration(clap_complete::Shell::PowerShell);
         assert!(powershell.contains("DOTFILES_COMPLETE = 'powershell'"));
-        assert!(powershell.contains("-CommandName 'dot' -ParameterName 'Arguments'"));
+        assert!(powershell.contains("-Native -CommandName 'dot'"));
+        assert!(!powershell.contains("-ParameterName 'Arguments'"));
+        assert!(powershell.contains("$cursorPosition - $commandAst.Extent.StartOffset"));
     }
 }

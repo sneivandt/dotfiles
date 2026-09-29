@@ -52,7 +52,7 @@ hl.config({
     },
 })
 
--- Remove gaps and borders for fullscreen windows
+-- Remove gaps and borders for maximized windows (f[1]).
 hl.workspace_rule({
     workspace = "f[1]",
     gaps_in = 0,

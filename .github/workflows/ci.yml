@@ -130,11 +130,14 @@ jobs:
             os: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check PowerShell prompt exit-status preservation
+      - name: Check PowerShell profile behavior
         if: needs.classify-changes.outputs.run_prompt == 'true'
         shell: pwsh
         run: ./symlinks/config/powershell/tests/Test-Prompt.ps1
-      - name: Check session lock behavior
+      - name: Install desktop-script regression tools
+        if: runner.os == 'Linux' && needs.classify-changes.outputs.run_lock == 'true'
+        run: sh .github/workflows/scripts/linux/install-apt-packages.sh lua5.4 jq
+      - name: Check desktop script behavior
         if: needs.classify-changes.outputs.run_lock == 'true'
         run: python -B -m unittest discover -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
       - name: Check desktop network and power actions

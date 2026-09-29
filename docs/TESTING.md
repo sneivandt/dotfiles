@@ -340,16 +340,21 @@ empty diff and give misleading results.
 
 These checks do not require installing the managed configuration.
 
-Quickshell workspace-layout and queued-refresh QML regressions use Qt 6 Quick
-Test. On Arch:
+Quickshell layout, queued-refresh, and process-lifecycle QML regressions use
+Qt 6.8 or newer Quick Test. On Arch:
 
 ```bash
-QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
-  /usr/lib/qt6/bin/qmltestrunner -input symlinks/config/quickshell/tests/qml
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QML_DISABLE_DISK_CACHE=1 \
+  /usr/lib/qt6/bin/qmltestrunner \
+  -import symlinks/config/quickshell/tests/qml/mocks \
+  -input symlinks/config/quickshell/tests/qml
 ```
 
-Network/power and session-lock regressions mock actions; they do not toggle
-adapters, lock the desktop or power off the machine:
+The mock import is required: it supplies inert Quickshell process and window
+types, so no installed Quickshell runtime or live services are used.
+
+Network/power and desktop-script regressions mock actions; they do not toggle
+adapters, lock the desktop, capture the screen or power off the machine:
 
 ```bash
 python3 -B -m unittest discover \
@@ -360,10 +365,26 @@ pwsh -NoProfile -File symlinks/config/powershell/tests/Test-Prompt.ps1
 ```
 
 On Windows use `python -B` instead of `python3 -B`. The prompt test starts an
-isolated PowerShell host without the installed profile. The native GLib case
+isolated PowerShell host without the installed profile and covers argument
+forwarding, completion, home abbreviation, root detection and exit status.
+The native GLib case
 skips when its runtime is unavailable; mocked Python cases still run. When their
 inputs change, CI selects the affected Python/PowerShell regression steps on
 Linux and Windows, **not** the QML runner or a native desktop session.
+
+Shell startup, completion, utility failure handling and download regressions
+use isolated homes, mock commands and a loopback-only HTTP server. Vim
+regressions run without plugin installation:
+
+```bash
+python3 -B .github/workflows/scripts/linux/test-shell-config.py
+python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
+sh .github/workflows/scripts/linux/test-stocks.sh
+```
+
+These Linux checks require their native tools (including Bash, Zsh, wget and
+Vim). Missing-tool skips are not passes. CI runs the shell and Vim suites in
+their application jobs; stock-cache concurrency also has its own job.
 
 ## CI gates
 

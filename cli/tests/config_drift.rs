@@ -31,7 +31,6 @@ enum SymlinkEntry {
 #[serde(deny_unknown_fields)]
 struct SymlinkWithTarget {
     source: String,
-    #[allow(dead_code, reason = "used conditionally via cfg")]
     target: String,
 }
 
@@ -124,6 +123,41 @@ fn mirrored_symlink_parser_rejects_unknown_table_fields() {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[test]
+fn vscode_remote_settings_cover_stable_and_insiders_servers() {
+    let root = repo_root();
+    let content =
+        std::fs::read_to_string(root.join("conf/symlinks.toml")).expect("read symlinks.toml");
+    let sections: HashMap<String, SymlinkSection> =
+        toml::from_str(&content).expect("parse symlinks.toml");
+    let source = "config/Code/User/settings.json";
+    let targets: HashSet<&str> = sections
+        .get("desktop")
+        .expect("desktop symlink section")
+        .symlinks
+        .iter()
+        .filter_map(|entry| match entry {
+            SymlinkEntry::WithTarget(entry) if entry.source == source => {
+                Some(entry.target.as_str())
+            }
+            SymlinkEntry::Simple(_) | SymlinkEntry::WithTarget(_) => None,
+        })
+        .collect();
+
+    assert_eq!(
+        targets,
+        HashSet::from([
+            ".vscode-server/data/Machine/settings.json",
+            ".vscode-server-insiders/data/Machine/settings.json",
+        ]),
+        "remote settings must target both current VS Code server directories"
+    );
+    assert!(
+        root.join("symlinks").join(source).is_file(),
+        "remote settings source must exist"
+    );
+}
 
 #[test]
 fn vscode_insiders_desktop_launchers_use_gnome_libsecret() {

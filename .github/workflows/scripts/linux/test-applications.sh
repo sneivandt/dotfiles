@@ -16,6 +16,12 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # Zsh
 # ---------------------------------------------------------------------------
 
+test_zsh_configuration()
+{(
+  log_stage "Testing isolated shell configuration"
+  python3 -B "$SCRIPT_DIR/test-shell-config.py"
+)}
+
 test_zsh_completion()
 {(
   is_program_installed "zsh" || { log_verbose "Skipping: zsh not installed"; return 0; }
@@ -54,6 +60,12 @@ test_zsh_history()
 # Vim
 # ---------------------------------------------------------------------------
 
+test_vim_configuration()
+{(
+  log_stage "Testing isolated Vim configuration"
+  python3 -B -m unittest discover -s "$DIR/symlinks/vim/tests" -p 'test_*.py'
+)}
+
 test_vim_opens()
 {(
   is_program_installed "vim" || { log_verbose "Skipping: vim not installed"; return 0; }
@@ -70,6 +82,11 @@ test_vim_opens()
 # ---------------------------------------------------------------------------
 # Neovim
 # ---------------------------------------------------------------------------
+
+test_nvim_configuration()
+{
+  test_vim_configuration
+}
 
 test_nvim_opens()
 {(

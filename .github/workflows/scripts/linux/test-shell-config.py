@@ -18,10 +18,10 @@ ROOT = Path(__file__).resolve().parents[4]
 class ShellConfigTests(unittest.TestCase):
     def setUp(self):
         self.fixture = ROOT / (".shell-config-test-" + uuid.uuid4().hex)
-        self.fixture.mkdir()
+        self.fixture.mkdir(mode=0o700)
         self.addCleanup(shutil.rmtree, self.fixture)
         self.home = self.fixture / "home with spaces"
-        self.home.mkdir()
+        self.home.mkdir(mode=0o700)
         self.env = {
             "HOME": str(self.home),
             "PATH": "/usr/bin:/bin",
@@ -37,8 +37,7 @@ class ShellConfigTests(unittest.TestCase):
     def write(self, path, contents, executable=False):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents, encoding="utf-8")
-        if executable:
-            path.chmod(0o755)
+        path.chmod(0o755 if executable else 0o644)
         return path
 
     def run_shell(self, script, shell="zsh", interactive=False, expected=0):
@@ -62,8 +61,12 @@ class ShellConfigTests(unittest.TestCase):
         cache = self.home / ".cache/zsh"
         self.write(cache / "hosts.cache", "typeset -ga hosts=(localhost)\n")
         self.env["ZSH_COMPDUMP"] = str(cache / "zcompdump-fixture")
+        # Keep compaudit's trust checks enabled even with a permissive CI umask.
+        completion_dir = self.home / ".config/zsh/completions"
+        for directory in (completion_dir.parent.parent, completion_dir.parent, completion_dir):
+            directory.mkdir(mode=0o700, exist_ok=True)
         self.write(
-            self.home / ".config/zsh/completions/_dotfiles",
+            completion_dir / "_dotfiles",
             "source <(DOTFILES_COMPLETE=zsh dotfiles)\n",
         )
         binary = self.write(

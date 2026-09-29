@@ -1,6 +1,7 @@
 """Exercise launch argument handling without executing an application."""
 
 import os
+import shlex
 import subprocess
 import unittest
 
@@ -24,9 +25,13 @@ exec() { printf '%s\0' "$@"; exit 0; }
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")
 class LauncherTests(unittest.TestCase):
     def launch(self, name, args, available):
+        # Python's Windows argv quoting does not protect literal newlines from
+        # Git Bash. Set the fixture arguments inside Bash instead.
+        script = MOCKS + "set -- " + shlex.join(args) + "\n"
+        script += (SCRIPTS / name).read_text(encoding="utf-8")
         return subprocess.run(
-            [BASH, "--noprofile", "--norc", "-s", "--", *args],
-            input=MOCKS + (SCRIPTS / name).read_text(encoding="utf-8"),
+            [BASH, "--noprofile", "--norc", "-s"],
+            input=script,
             capture_output=True,
             text=True,
             timeout=10,
@@ -44,7 +49,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result.stdout.split("\0")[:-1], expected)
 
     def test_editor_preserves_arguments_and_preference(self):
-        args = ["file with spaces.txt", "--wait", "", "another\nfile"]
+        args = ["file with spaces.txt", "--wait", "", "another\nfile", "'quoted' $literal"]
         for editor in ("code-insiders", "code", "gvim"):
             with self.subTest(editor=editor):
                 self.assert_launch(

@@ -16,7 +16,7 @@ active profile and operating system, compares them with the machine, and
 applies changes in dependency order. Settings that already match are skipped.
 
 <p align="center">
-  <img src="docs/assets/terminal-screenshot.svg" width="600" alt="Example install output showing changed symlinks, packages, and the default shell, followed by a summary">
+  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Example install output showing changed symlinks, packages, and the default shell, followed by a summary">
 </p>
 
 ## What it manages

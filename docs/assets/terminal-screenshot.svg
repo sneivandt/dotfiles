@@ -1,36 +1,71 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="600" height="464" viewBox="0 0 600 464" role="img" aria-labelledby="title desc">
-  <title id="title">dotfiles terminal output</title>
-  <desc id="desc">Example of symlinks, packages, and a default shell being installed beneath a run header with a bold command and dim metadata. Status rows appear in completion order, with the actions a task took listed as indented lines beneath it, bold task names, normal-contrast actions, blank lines between task blocks, and an aggregate summary with a bold outcome separated by a blank line.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="562" viewBox="0 0 760 562" role="img" aria-labelledby="title desc">
+  <title id="title">dotfiles — a desktop setup, in sync</title>
+  <desc id="desc">A Tokyo Night-inspired terminal showing an illustrative incremental run of dotfiles install on Arch Linux with the desktop profile. Three tasks link Git and Zsh configuration, install neovim and zsh, and configure the default shell. Green checkmarks and bold task names precede indented actions. The final summary reads: 3 changed, 12 current, 18.6 seconds.</desc>
   <defs>
-    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
-      <feDropShadow dx="0" dy="0" stdDeviation="16" flood-color="#16161e" flood-opacity="0.45"/>
+    <linearGradient id="backdrop" x2="1" y2="1">
+      <stop stop-color="#24283b"/>
+      <stop offset="1" stop-color="#151621"/>
+    </linearGradient>
+    <radialGradient id="violet-glow" cx="0" cy="0" r="1">
+      <stop stop-color="#bb9af7" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#bb9af7" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blue-glow" cx="1" cy="1" r="0.8">
+      <stop stop-color="#7aa2f7" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#7aa2f7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="terminal" x2="0" y2="1">
+      <stop stop-color="#1c1e2d"/>
+      <stop offset="1" stop-color="#1a1b26"/>
+    </linearGradient>
+    <linearGradient id="chrome" x2="0" y2="1">
+      <stop stop-color="#2a2e43"/>
+      <stop offset="1" stop-color="#24283b"/>
+    </linearGradient>
+    <linearGradient id="border" x2="0.8" y2="1">
+      <stop stop-color="#737aa2" stop-opacity="0.5"/>
+      <stop offset="0.5" stop-color="#414868" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#7aa2f7" stop-opacity="0.2"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0b0c14" flood-opacity="0.55"/>
     </filter>
   </defs>
-  <rect width="100%" height="100%" rx="28" fill="#1a1b26"/>
-  <rect x="18" y="18" width="564" height="428" rx="14" fill="#1a1b26" opacity="0.96" filter="url(#shadow)"/>
-  <path d="M32 18h536a14 14 0 0 1 14 14v28H18V32a14 14 0 0 1 14-14z" fill="#24283b"/>
-  <line x1="18" y1="60" x2="582" y2="60" stroke="#414868" stroke-opacity="0.75"/>
-  <circle cx="44" cy="39" r="6" fill="#f7768e"/>
-  <circle cx="64" cy="39" r="6" fill="#e0af68"/>
-  <circle cx="84" cy="39" r="6" fill="#9ece6a"/>
-  <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, monospace" font-size="15" xml:space="preserve">
-    <text x="34" y="82"><tspan fill="#e0af68">~</tspan></text>
-    <text x="34" y="103"><tspan fill="#c0caf5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan fill="#c0caf5"> install</tspan></text>
-    <text x="34" y="124"><tspan fill="#c0caf5" font-weight="700">Install</tspan><tspan fill="#565f89"> · profile desktop · Arch Linux</tspan></text>
+  <rect width="760" height="562" rx="28" fill="url(#backdrop)"/>
+  <rect width="760" height="562" rx="28" fill="url(#violet-glow)"/>
+  <rect width="760" height="562" rx="28" fill="url(#blue-glow)"/>
 
-    <text x="34" y="166"><tspan fill="#9ece6a">✓</tspan><tspan x="52" fill="#c0caf5" font-weight="700">Home symlinks</tspan></text>
-    <text x="52" y="187" fill="#c0caf5">link ~/.config/git/config → symlinks/config/git/config</text>
-    <text x="52" y="208" fill="#c0caf5">link ~/.config/nvim → symlinks/vim</text>
-    <text x="52" y="229" fill="#c0caf5">link ~/.zshrc → symlinks/zshrc</text>
+  <rect x="24" y="24" width="712" height="514" rx="16" fill="url(#terminal)" filter="url(#shadow)"/>
+  <path d="M40 24h680a16 16 0 0 1 16 16v36H24V40a16 16 0 0 1 16-16z" fill="url(#chrome)"/>
+  <path d="M25 76h710" stroke="#414868" stroke-opacity="0.65"/>
+  <rect x="24.5" y="24.5" width="711" height="513" rx="15.5" fill="none" stroke="url(#border)"/>
 
-    <text x="34" y="271"><tspan fill="#9ece6a">✓</tspan><tspan x="52" fill="#c0caf5" font-weight="700">System packages</tspan></text>
-    <text x="52" y="292" fill="#c0caf5">install neovim</text>
-    <text x="52" y="313" fill="#c0caf5">install zsh</text>
+  <g>
+    <circle cx="50" cy="50" r="6" fill="#f7768e"/>
+    <circle cx="70" cy="50" r="6" fill="#e0af68"/>
+    <circle cx="90" cy="50" r="6" fill="#9ece6a"/>
+  </g>
+  <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace">
+    <text x="380" y="55" fill="#a9b1d6" font-size="13" text-anchor="middle" letter-spacing="0.4">dotfiles — zsh</text>
 
-    <text x="34" y="355"><tspan fill="#9ece6a">✓</tspan><tspan x="52" fill="#c0caf5" font-weight="700">Default shell</tspan></text>
-    <text x="52" y="376" fill="#c0caf5">configure default shell → zsh</text>
+    <g font-size="18" fill="#c0caf5" xml:space="preserve">
+      <text x="56" y="110" fill="#e0af68">~</text>
+      <text x="56" y="136"><tspan fill="#8992b5">$ </tspan><tspan fill="#9ece6a">dotfiles</tspan><tspan> install</tspan></text>
+      <text x="56" y="162"><tspan font-weight="700">Install</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text>
 
-    <text x="34" y="418"><tspan fill="#9ece6a" font-weight="700">3 changed</tspan><tspan fill="#565f89"> · 12 current · 1.3s</tspan></text>
+      <text x="56" y="214"><tspan fill="#9ece6a">✓</tspan><tspan x="78" font-weight="700">Home symlinks</tspan></text>
+      <text x="78" y="240">link ~/.config/git/config → symlinks/config/git/config</text>
+      <text x="78" y="266">link ~/.zshrc → symlinks/zshrc</text>
+
+      <text x="56" y="318"><tspan fill="#9ece6a">✓</tspan><tspan x="78" font-weight="700">System packages</tspan></text>
+      <text x="78" y="344">install neovim</text>
+      <text x="78" y="370">install zsh</text>
+
+      <text x="56" y="422"><tspan fill="#9ece6a">✓</tspan><tspan x="78" font-weight="700">Default shell</tspan></text>
+      <text x="78" y="448">configure default shell → zsh</text>
+
+      <text x="56" y="500"><tspan fill="#9ece6a" font-weight="700">3 changed</tspan><tspan fill="#8992b5"> · 12 current · 18.6s</tspan></text>
+    </g>
   </g>
 </svg>

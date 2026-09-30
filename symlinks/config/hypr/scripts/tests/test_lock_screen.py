@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import unittest
@@ -35,6 +36,21 @@ function [ {
 }
 exec() { printf '%s\n' "$@"; }
 """
+
+
+class HypridleConfigTests(unittest.TestCase):
+    def test_suspend_waits_for_lock_notification_with_wrapper(self):
+        config = (SCRIPT.parent.parent / "hypridle.conf").read_text(encoding="utf-8")
+        general = re.search(r"(?ms)^general \{\n(.*?)^\}", config)
+        self.assertIsNotNone(general)
+        self.assertRegex(general[1], r"(?m)^\s*inhibit_sleep\s*=\s*3\s*$")
+        self.assertRegex(
+            general[1],
+            r"(?m)^\s*lock_cmd\s*=\s*~/.config/hypr/scripts/lock-screen\.sh\s*$",
+        )
+        self.assertRegex(
+            general[1], r"(?m)^\s*before_sleep_cmd\s*=\s*loginctl lock-session\s*$"
+        )
 
 
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")

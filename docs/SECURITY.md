@@ -128,6 +128,19 @@ Path validation protects particular managed-resource boundaries, such as
 relative home-link targets and system-file targets below `/etc`. It is not a
 general filesystem confinement policy for every external command or script.
 
+## Archive extraction
+
+The Zsh [`extract` helper](../symlinks/config/zsh/functions/extract) uses
+`bsdtar` for RPM payloads, not unrestricted `cpio` extraction. This requires
+libarchive's command-line tools (`libarchive` on Arch, `libarchive-tools` on
+Debian/Ubuntu). Its default extraction policy rejects parent traversal and
+paths through directory symlinks, and strips leading slashes from absolute
+member names. Do not disable those protections with `-P`.
+
+Extract untrusted archives into a fresh directory: path checks are not a
+sandbox, and files inside the chosen destination can still be overwritten.
+Review extracted content before running it.
+
 ## Secrets
 
 Keep credentials, private keys, tokens, connection strings and private

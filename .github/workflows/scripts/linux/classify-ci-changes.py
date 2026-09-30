@@ -21,7 +21,7 @@ FLAGS = (
 )
 APPS = {
     "git": {"application": "git", "packages": "git", "tests": "config aliases behavior clean"},
-    "zsh": {"application": "zsh", "packages": "zsh fzf wget", "tests": "completion history configuration"},
+    "zsh": {"application": "zsh", "packages": "zsh fzf wget libarchive-tools", "tests": "completion history configuration"},
     "vim": {"application": "vim", "packages": "vim", "tests": "opens configuration"},
     "nvim": {"application": "nvim", "packages": "neovim", "tests": "opens plugins configuration"},
 }
@@ -173,7 +173,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 apps.update(("vim", "nvim"))
             if path.startswith("symlinks/config/powershell/"):
                 enable("prompt")
-            if path.startswith(("symlinks/config/hypr/scripts/", "symlinks/config/hypr/conf/")):
+            if (
+                path.startswith(("symlinks/config/hypr/scripts/", "symlinks/config/hypr/conf/"))
+                or path == "symlinks/config/hypr/hypridle.conf"
+            ):
                 enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python")

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Isolated regressions for managed shell startup and command helpers."""
 
+import gzip
 import http.server
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import threading
 import time
@@ -230,6 +232,64 @@ class ShellConfigTests(unittest.TestCase):
             helpers + 'fixture-editor() { print -r -- "edited: $1"; }\nff -e selected\n'
         )
         self.assertEqual(result.stdout.strip(), "edited: " + str(file))
+
+    def write_rpm(self, members):
+        payload = bytearray()
+        for name, data in [*members, ("TRAILER!!!", b"")]:
+            encoded_name = name.encode() + b"\0"
+            fields = (
+                1, 0o100600, 0, 0, 1, int(time.time()) + 3600, len(data),
+                0, 0, 0, 0, len(encoded_name), 0,
+            )
+            entry = b"070701" + "".join(f"{value:08x}" for value in fields).encode()
+            entry += encoded_name
+            entry += b"\0" * (-len(entry) % 4)
+            entry += data + b"\0" * (-len(data) % 4)
+            payload.extend(entry)
+        # Minimal RPM lead and empty signature/header sections around a cpio payload.
+        lead = struct.pack(
+            ">4sBBHH66sHH16s", b"\xed\xab\xee\xdb", 3, 0, 0, 1,
+            b"synthetic-security-fixture", 1, 5, b"",
+        )
+        header = struct.pack(">4s4sII", b"\x8e\xad\xe8\x01", b"", 0, 0)
+        archive = self.fixture / "fixture with spaces.rpm"
+        archive.write_bytes(lead + header + header + gzip.compress(payload))
+        return archive
+
+    def run_extract(self, archive, expected=0):
+        self.env["ARCHIVE"] = str(archive)
+        return self.run_shell(
+            'cd "$HOME"\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz extract\n'
+            'extract "$ARCHIVE"\n',
+            expected=expected,
+        )
+
+    def test_extract_rpm_reads_payload(self):
+        archive = self.write_rpm([("nested/file with spaces", b"fixture\n")])
+        self.run_extract(archive)
+        self.assertEqual((self.home / "nested/file with spaces").read_bytes(), b"fixture\n")
+
+    def test_extract_rpm_confines_member_paths(self):
+        target = self.write(self.fixture / "outside", "original\n")
+        (self.home / "escape").symlink_to(self.fixture, target_is_directory=True)
+        for member, expected in (
+            ("../outside", 1),
+            (str(target), 0),
+            ("escape/outside", 1),
+        ):
+            with self.subTest(member=member):
+                archive = self.write_rpm([(member, b"replaced\n")])
+                result = self.run_extract(archive, expected=expected)
+                self.assertEqual(target.read_text(), "original\n")
+                self.assertTrue(result.stderr, "unsafe paths must not be handled silently")
+
+    def test_extract_rpm_propagates_invalid_archive_failure(self):
+        archive = self.write(self.fixture / "invalid.rpm", "not an archive\n")
+        result = self.run_extract(archive, expected=1)
+        self.assertIn("Error", result.stderr)
+        self.assertEqual(list(self.home.iterdir()), [])
 
     def test_windows_git_editor_uses_installed_insiders_command(self):
         result = subprocess.run(

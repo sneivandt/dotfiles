@@ -73,6 +73,8 @@ class ClassificationTests(unittest.TestCase):
              config | {"lint", "managed_scripts", "lock"}),
             ("symlinks/config/hypr/scripts/tests/test_lock_screen.py",
              config | {"managed_scripts", "lock"}),
+            ("symlinks/config/hypr/hypridle.conf",
+             config | {"managed_scripts", "lock"}),
             ("symlinks/config/quickshell/network_helper.py",
              config | {"managed_scripts", "desktop_python"}),
             ("symlinks/config/hypr/scripts/stocks.sh",
@@ -151,6 +153,12 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual({entry["application"] for entry in matrix}, {"vim", "nvim"})
         for entry in matrix:
             self.assertIn("configuration", entry["tests"].split())
+
+    def test_shell_matrix_installs_safe_rpm_extractor(self):
+        matrix = classify(["symlinks/config/zsh/functions/extract"])["app_matrix"]["include"]
+        self.assertEqual(len(matrix), 1)
+        self.assertEqual(matrix[0]["application"], "zsh")
+        self.assertIn("libarchive-tools", matrix[0]["packages"].split())
 
     def test_binary_inputs(self):
         for path in ("cli/src/main.rs", "cli/src/data.json", "cli/src/embedded.md", "cli/build.rs",

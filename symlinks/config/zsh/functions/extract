@@ -22,6 +22,6 @@ case "$1" in
   *.Z)              uncompress "$1" ;;
   *.xz)             unxz    "$1" ;;
   *.deb)            ar x    "$1" ;;
-  *.rpm)            rpm2cpio "$1" | cpio -idmv ;;
+  *.rpm)            bsdtar -xf "$1" ;;
   *)                echo "'$1' cannot be extracted via extract()" 1>&2; return 1 ;;
 esac

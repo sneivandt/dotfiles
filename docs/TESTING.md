@@ -382,9 +382,11 @@ python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
 sh .github/workflows/scripts/linux/test-stocks.sh
 ```
 
-These Linux checks require their native tools (including Bash, Zsh, wget and
-Vim). Missing-tool skips are not passes. CI runs the shell and Vim suites in
-their application jobs; stock-cache concurrency also has its own job.
+These Linux checks require their native tools (including Bash, Zsh, wget,
+libarchive's `bsdtar` and Vim). The shell suite exercises synthetic RPM payloads,
+including extraction-path confinement. Missing-tool skips are not passes.
+CI runs the shell and Vim suites in their application jobs; stock-cache
+concurrency also has its own job.
 
 ## CI gates
 

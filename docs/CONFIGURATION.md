@@ -518,6 +518,20 @@ on launch, and existing GTK applications may need reopening.
 Retain the simple Hyprlock background and disabled animations while the
 [documented DPMS workaround](../symlinks/config/hypr/hyprlock.conf) is needed.
 
+### Screen locking and suspend
+
+[`hypridle.conf`](../symlinks/config/hypr/hypridle.conf) requests locking after
+ten idle minutes and switches displays off after fifteen. Idle inhibitors can
+postpone these listeners; display power-off is not system suspension.
+
+Before sleep, Hypridle requests a session lock and explicitly uses
+`inhibit_sleep = 3` to wait for the compositor's lock notification. Automatic
+detection cannot recognize Hyprlock behind the shared `lock-screen.sh` wrapper.
+This requires Hypridle and a compositor supporting lock notifications.
+The delay remains bounded by logind's `InhibitDelayMaxSec`: a failed locker is
+not a guarantee that suspend will be prevented. Resume turns displays on but
+does not unlock the session.
+
 ### Hyprland media keys
 
 [`binds.lua`](../symlinks/config/hypr/conf/binds.lua) uses standard `XF86` symbols,

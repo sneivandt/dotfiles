@@ -153,7 +153,7 @@ fn git_config_converges_without_mutating_dry_runs_or_current_values() {
         }
         let before = std::fs::read(&config_path).unwrap();
 
-        let settings = ec.store.git_settings.read();
+        let settings = ec.store.git_settings.get();
         let resources = settings.iter().map(|setting| {
             GitConfigResource::with_config_path(
                 setting.key.clone(),

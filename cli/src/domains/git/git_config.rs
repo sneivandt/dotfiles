@@ -47,15 +47,15 @@ impl Task for ConfigureGit {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let settings = self.config.read().to_vec();
+        let settings = self.config.get();
         let manages_autocrlf = settings
             .iter()
             .any(|setting| setting.key.eq_ignore_ascii_case("core.autocrlf"));
         let autocrlf_cleanup = (ctx.platform().is_windows() && !manages_autocrlf)
             .then(|| GitConfigResource::absent("core.autocrlf".to_string()));
         let resources = settings
-            .into_iter()
-            .map(|setting| GitConfigResource::new(setting.key, setting.value))
+            .iter()
+            .map(|setting| GitConfigResource::new(setting.key.clone(), setting.value.clone()))
             .chain(autocrlf_cleanup)
             .map(|resource| {
                 if let Some(path) = &self.config_path {

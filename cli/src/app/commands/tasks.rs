@@ -115,7 +115,7 @@ fn command_tasks(
             });
             if let Some(root) = overlay {
                 tasks.extend(crate::domains::overlay::scripts::overlay_script_tasks(
-                    &store.scripts.read(),
+                    store.scripts.get(),
                     root,
                 ));
             }
@@ -126,7 +126,7 @@ fn command_tasks(
             if let Some(root) = overlay {
                 tasks.extend(
                     crate::domains::overlay::scripts::overlay_script_removal_tasks(
-                        &store.scripts.read(),
+                        store.scripts.get(),
                         root,
                     ),
                 );

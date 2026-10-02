@@ -112,7 +112,7 @@ mod tests {
         let store = ConfigStore::from_config(config);
 
         assert_eq!(
-            *store.apm_fragments.read(),
+            *store.apm_fragments.get(),
             vec![ApmFragmentSource::new(
                 root.join("symlinks").join("apm/config/base.yml"),
                 "base.yml".into(),
@@ -152,7 +152,7 @@ mod tests {
                 .into_iter()
                 .collect::<Vec<_>>();
             assert_eq!(
-                *store.apm_fragments.read(),
+                *store.apm_fragments.get(),
                 expected,
                 "{source:?} -> {target:?}"
             );
@@ -172,7 +172,7 @@ mod tests {
         assert!(
             ConfigStore::from_config(config)
                 .apm_fragments
-                .read()
+                .get()
                 .is_empty()
         );
     }

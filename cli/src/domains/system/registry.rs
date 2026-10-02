@@ -38,7 +38,7 @@ impl Task for ApplyRegistry {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resources = self
             .config
-            .read()
+            .get()
             .iter()
             .map(RegistryResource::from_entry)
             .collect();

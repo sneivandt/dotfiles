@@ -313,6 +313,59 @@ fn unavailable_elevation_prunes_roots_and_transitive_dependents() {
 }
 
 #[test]
+fn unavailable_elevation_preserves_task_presentation_metadata() {
+    use crate::infra::logging::TaskStatus;
+
+    struct PresentedTask;
+    impl Task for PresentedTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("Presented task")
+                .with_selector("presented")
+                .with_visibility(crate::engine::TaskVisibility::Internal)
+                .with_result_display(crate::engine::TaskResultDisplay::RestartNotice)
+        }
+
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            panic!("unavailable elevation must prevent execution");
+        }
+    }
+
+    for strict in [false, true] {
+        let task = PresentedTask;
+        let mut tasks: Vec<&dyn Task> = vec![&task];
+        let assessments = HashMap::from([(
+            task.task_id(),
+            TaskAssessment::applicable().with_elevation(true),
+        )]);
+        let graph = crate::engine::graph::ResolvedTaskGraph::resolve(&tasks).expect("valid graph");
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_non_interactive(true).with_require_complete(strict);
+        let summary = ElevationBroker::new(&ctx, &log).prepare(&mut tasks, &assessments, &graph);
+
+        assert!(tasks.is_empty());
+        assert_eq!(summary.outcome(&task.task_id()), Some(TaskOutcome::Unmet));
+        let recorded = log.task_entries();
+        let entry = recorded.first().expect("elevation result must be recorded");
+        assert_eq!(entry.task_id, task.log_key());
+        assert_eq!(entry.name, task.name());
+        assert_eq!(entry.selector.as_deref(), Some("presented"));
+        assert_eq!(entry.visibility, crate::engine::TaskVisibility::Internal);
+        assert_eq!(
+            entry.result_display,
+            crate::engine::TaskResultDisplay::RestartNotice
+        );
+        assert_eq!(
+            entry.status,
+            if strict {
+                TaskStatus::Failed
+            } else {
+                TaskStatus::Skipped
+            }
+        );
+    }
+}
+
+#[test]
 fn elevated_child_does_not_request_elevation_again() {
     let trace = trace();
     let task = ProbeTask::new("Home symlinks", 1, &trace);

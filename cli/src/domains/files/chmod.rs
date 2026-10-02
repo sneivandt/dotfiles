@@ -37,7 +37,7 @@ impl Task for ApplyFilePermissions {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let resources: Vec<_> = self
             .config
-            .read()
+            .get()
             .iter()
             .map(|entry| ChmodResource::from_entry(entry, ctx.home()))
             .collect();

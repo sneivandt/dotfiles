@@ -107,7 +107,7 @@ pub(crate) fn execute_assessed(
 }
 
 /// Build a task result with the task's identity and presentation metadata.
-pub(in crate::engine) fn task_entry(
+pub(crate) fn task_entry(
     task: &dyn Task,
     task_id: &str,
     status: TaskStatus,
@@ -168,82 +168,123 @@ fn record_interrupted(
     )
 }
 
-/// Run a task and record its outcome.
-///
-/// Typed executor cancellation errors are recorded as [`TaskStatus::Interrupted`]
-/// so the summary does not count signal interruptions as real failures.
-fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExecution {
-    let rec = |status: TaskStatus, msg: Option<&str>| {
-        record(
-            task,
-            task_id,
-            ctx,
-            status,
-            msg,
-            ActionCounts::default(),
-            false,
-        )
+/// Presentation and dependency decisions computed before recording a result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClassifiedResult {
+    execution: TaskExecution,
+    actions: ActionCounts,
+}
+
+/// Classify completed task results without logging or inspecting process state.
+fn classify_result(result: &TaskResult, dry_run: bool, require_complete: bool) -> ClassifiedResult {
+    let (status, outcome) = match result {
+        TaskResult::Ok => (TaskStatus::Ok, TaskOutcome::Satisfied),
+        TaskResult::DryRun => (TaskStatus::DryRun, TaskOutcome::Satisfied),
+        TaskResult::CheckPassed => (TaskStatus::Passed, TaskOutcome::Satisfied),
+        TaskResult::NotApplicable(_) => (TaskStatus::NotApplicable, TaskOutcome::Satisfied),
+        TaskResult::Skipped { kind, .. } if kind.is_failure() => (
+            if require_complete {
+                TaskStatus::Failed
+            } else {
+                TaskStatus::Skipped
+            },
+            TaskOutcome::Unmet,
+        ),
+        TaskResult::Skipped { .. } => (TaskStatus::Skipped, TaskOutcome::Satisfied),
+        TaskResult::Failed(_) => (TaskStatus::Failed, TaskOutcome::Failed),
+        TaskResult::Batch(stats) => {
+            if stats.failed_count() > 0 {
+                (TaskStatus::Failed, TaskOutcome::Failed)
+            } else {
+                let display_status = if stats.changed_count() > 0 {
+                    if dry_run {
+                        TaskStatus::DryRun
+                    } else {
+                        TaskStatus::Changed
+                    }
+                } else if stats.skipped_count() > 0 {
+                    TaskStatus::Skipped
+                } else {
+                    TaskStatus::Ok
+                };
+                (display_status, TaskOutcome::Satisfied)
+            }
+        }
     };
+    let actions = if let TaskResult::Batch(stats) = result {
+        batch_actions(stats, dry_run)
+    } else if status == TaskStatus::Failed {
+        ActionCounts {
+            failed: 1,
+            ..ActionCounts::default()
+        }
+    } else {
+        ActionCounts::default()
+    };
+    ClassifiedResult {
+        execution: TaskExecution::new(status, outcome),
+        actions,
+    }
+}
+
+/// Run a task and record its already-classified outcome.
+///
+/// Typed executor cancellation remains interrupted; unrelated failures retain
+/// their failure semantics even when cancellation was requested independently.
+fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExecution {
     ctx.log().task_stage(task.name());
     match task.run(ctx) {
-        Ok(result) => match result {
-            TaskResult::Ok => {
-                ctx.log()
-                    .run_task_event(LogEvent::TaskDone, &task.log_key(), "ok");
-                TaskExecution::new(rec(TaskStatus::Ok, None), TaskOutcome::Satisfied)
-            }
-            TaskResult::DryRun => {
-                ctx.log()
-                    .run_task_event(LogEvent::TaskDone, &task.log_key(), "planned");
-                TaskExecution::new(rec(TaskStatus::DryRun, None), TaskOutcome::Satisfied)
-            }
-            TaskResult::CheckPassed => {
-                ctx.log()
-                    .run_task_event(LogEvent::TaskDone, &task.log_key(), "passed");
-                TaskExecution::new(rec(TaskStatus::Passed, None), TaskOutcome::Satisfied)
-            }
-            TaskResult::NotApplicable(reason) => {
-                ctx.log()
-                    .run_task_event(LogEvent::TaskSkip, &task.log_key(), &reason);
-                TaskExecution::new(
-                    rec(TaskStatus::NotApplicable, Some(&reason)),
-                    TaskOutcome::Satisfied,
+        Ok(result) => {
+            let classified = classify_result(&result, ctx.dry_run(), ctx.require_complete());
+            let rec = |message: Option<&str>| {
+                record(
+                    task,
+                    task_id,
+                    ctx,
+                    classified.execution.status,
+                    message,
+                    classified.actions,
+                    false,
                 )
-            }
-            TaskResult::Skipped { reason, kind } => {
-                if kind.is_failure() && ctx.require_complete() {
-                    return TaskExecution::new(
-                        record_failed_outcome(task, task_id, ctx, &reason),
-                        TaskOutcome::Unmet,
-                    );
+            };
+            match &result {
+                TaskResult::Ok => {
+                    ctx.log().run_task_event(LogEvent::TaskDone, task_id, "ok");
+                    rec(None);
                 }
-                ctx.log()
-                    .run_task_event(LogEvent::TaskSkip, &task.log_key(), &reason);
-                TaskExecution::new(
-                    rec(TaskStatus::Skipped, Some(&reason)),
-                    if kind.is_failure() {
-                        TaskOutcome::Unmet
+                TaskResult::DryRun => {
+                    ctx.log()
+                        .run_task_event(LogEvent::TaskDone, task_id, "planned");
+                    rec(None);
+                }
+                TaskResult::CheckPassed => {
+                    ctx.log()
+                        .run_task_event(LogEvent::TaskDone, task_id, "passed");
+                    rec(None);
+                }
+                TaskResult::NotApplicable(reason) => {
+                    ctx.log()
+                        .run_task_event(LogEvent::TaskSkip, task_id, reason);
+                    rec(Some(reason));
+                }
+                TaskResult::Skipped { reason, .. } => {
+                    if classified.execution.status == TaskStatus::Failed {
+                        record_failed_outcome(task, task_id, ctx, reason, classified);
                     } else {
-                        TaskOutcome::Satisfied
-                    },
-                )
+                        ctx.log()
+                            .run_task_event(LogEvent::TaskSkip, task_id, reason);
+                        rec(Some(reason));
+                    }
+                }
+                TaskResult::Failed(reason) => {
+                    record_failed_outcome(task, task_id, ctx, reason, classified);
+                }
+                TaskResult::Batch(stats) => {
+                    record_batch_outcome(task, task_id, ctx, stats, classified);
+                }
             }
-            TaskResult::Failed(reason) => TaskExecution::new(
-                record_failed_outcome(task, task_id, ctx, &reason),
-                TaskOutcome::Failed,
-            ),
-            TaskResult::Batch(stats) => {
-                let batch_status = record_batch_outcome(task, task_id, ctx, &stats);
-                TaskExecution::new(
-                    batch_status,
-                    if batch_status == TaskStatus::Failed {
-                        TaskOutcome::Failed
-                    } else {
-                        TaskOutcome::Satisfied
-                    },
-                )
-            }
-        },
+            classified.execution
+        }
         Err(e) => {
             if let Some(report) = e.downcast_ref::<BatchReport>() {
                 return record_stopped_batch(task, task_id, ctx, &e, report);
@@ -256,10 +297,19 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
             }
             let message = format!("{e:#}");
             ctx.log()
-                .run_task_event(LogEvent::TaskFail, &task.log_key(), &message);
+                .run_task_event(LogEvent::TaskFail, task_id, &message);
             let summary = concise_failure(&e);
             ctx.log().error(&summary);
-            TaskExecution::new(rec(TaskStatus::Failed, Some(&summary)), TaskOutcome::Failed)
+            let status = record(
+                task,
+                task_id,
+                ctx,
+                TaskStatus::Failed,
+                Some(&summary),
+                ActionCounts::default(),
+                false,
+            );
+            TaskExecution::new(status, TaskOutcome::Failed)
         }
     }
 }
@@ -335,23 +385,20 @@ fn record_failed_outcome(
     task_id: &str,
     ctx: &Context,
     reason: &str,
-) -> TaskStatus {
-    let actions = ActionCounts {
-        failed: 1,
-        ..ActionCounts::default()
-    };
+    classified: ClassifiedResult,
+) {
     ctx.log()
-        .run_task_event(LogEvent::TaskFail, &task.log_key(), reason);
+        .run_task_event(LogEvent::TaskFail, task_id, reason);
     ctx.log().warn(format!("failed: {reason}"));
     record(
         task,
         task_id,
         ctx,
-        TaskStatus::Failed,
+        classified.execution.status,
         Some(reason),
-        actions,
+        classified.actions,
         false,
-    )
+    );
 }
 
 fn record_batch_outcome(
@@ -359,46 +406,36 @@ fn record_batch_outcome(
     task_id: &str,
     ctx: &Context,
     stats: &TaskStats,
-) -> TaskStatus {
+    classified: ClassifiedResult,
+) {
     let message = stats
         .message()
         .map_or_else(|| stats.summary(ctx.dry_run()), str::to_string);
-    let actions = batch_actions(stats, ctx.dry_run());
-    let outcome = if stats.failed_count() > 0 {
-        TaskStatus::Failed
-    } else if ctx.dry_run() && stats.changed_count() > 0 {
-        TaskStatus::DryRun
-    } else if stats.changed_count() > 0 {
-        TaskStatus::Changed
-    } else if stats.skipped_count() > 0 {
-        TaskStatus::Skipped
-    } else {
-        TaskStatus::Ok
-    };
-
-    let event = if outcome == TaskStatus::Failed {
+    let display_status = classified.execution.status;
+    let event = if display_status == TaskStatus::Failed {
         LogEvent::TaskFail
     } else {
         LogEvent::TaskDone
     };
-    ctx.log().run_task_event(event, &task.log_key(), &message);
-    if outcome == TaskStatus::Failed {
+    ctx.log().run_task_event(event, task_id, &message);
+    if display_status == TaskStatus::Failed {
         ctx.log().warn(format!("failed: {message}"));
     } else if stats.message().is_none() {
         ctx.log().summary(&message);
     } else {
         ctx.log().info(&message);
     }
-    let recorded_message = batch_reason(stats, outcome, &message);
+    let recorded_message = batch_reason(stats, display_status, &message);
     record(
         task,
         task_id,
         ctx,
-        outcome,
+        display_status,
         recorded_message.as_deref(),
-        actions,
-        stats.message().is_none() && matches!(outcome, TaskStatus::Changed | TaskStatus::Failed),
-    )
+        classified.actions,
+        stats.message().is_none()
+            && matches!(display_status, TaskStatus::Changed | TaskStatus::Failed),
+    );
 }
 
 fn batch_actions(stats: &TaskStats, dry_run: bool) -> ActionCounts {
@@ -437,5 +474,191 @@ fn batch_reason(stats: &TaskStats, outcome: TaskStatus, message: &str) -> Option
         | TaskStatus::NotApplicable
         | TaskStatus::Blocked
         | TaskStatus::Interrupted => None,
+    }
+}
+
+#[cfg(test)]
+mod classification_tests {
+    use super::*;
+
+    #[test]
+    fn classification_preserves_completion_policy() {
+        let cases = [
+            (
+                "ok",
+                TaskResult::Ok,
+                false,
+                false,
+                TaskStatus::Ok,
+                TaskOutcome::Satisfied,
+                (0, 0, 0, 0),
+            ),
+            (
+                "unquantified preview",
+                TaskResult::DryRun,
+                false,
+                false,
+                TaskStatus::DryRun,
+                TaskOutcome::Satisfied,
+                (0, 0, 0, 0),
+            ),
+            (
+                "check",
+                TaskResult::CheckPassed,
+                false,
+                true,
+                TaskStatus::Passed,
+                TaskOutcome::Satisfied,
+                (0, 0, 0, 0),
+            ),
+            (
+                "not applicable",
+                TaskResult::NotApplicable("empty".into()),
+                false,
+                true,
+                TaskStatus::NotApplicable,
+                TaskOutcome::Satisfied,
+                (0, 0, 0, 0),
+            ),
+            (
+                "benign strict skip",
+                TaskResult::skipped("optional"),
+                false,
+                true,
+                TaskStatus::Skipped,
+                TaskOutcome::Satisfied,
+                (0, 0, 0, 0),
+            ),
+            (
+                "unmet skip",
+                TaskResult::unmet("unavailable"),
+                false,
+                false,
+                TaskStatus::Skipped,
+                TaskOutcome::Unmet,
+                (0, 0, 0, 0),
+            ),
+            (
+                "strict unmet preview",
+                TaskResult::unmet("unavailable"),
+                true,
+                true,
+                TaskStatus::Failed,
+                TaskOutcome::Unmet,
+                (0, 0, 0, 1),
+            ),
+            (
+                "failure",
+                TaskResult::Failed("failed".into()),
+                true,
+                false,
+                TaskStatus::Failed,
+                TaskOutcome::Failed,
+                (0, 0, 0, 1),
+            ),
+        ];
+        assert_cases(cases);
+    }
+
+    #[test]
+    fn batch_classification_preserves_precedence() {
+        let cases = [
+            (
+                "empty batch",
+                TaskStats::new().finish(),
+                false,
+                true,
+                TaskStatus::Ok,
+                TaskOutcome::Satisfied,
+                (0, 0, 0, 0),
+            ),
+            (
+                "current batch",
+                TaskStats::from_counts(0, 3, 0, 0).finish(),
+                true,
+                true,
+                TaskStatus::Ok,
+                TaskOutcome::Satisfied,
+                (0, 0, 0, 0),
+            ),
+            (
+                "skipped batch",
+                TaskStats::from_counts(0, 0, 2, 0).finish(),
+                false,
+                true,
+                TaskStatus::Skipped,
+                TaskOutcome::Satisfied,
+                (0, 0, 2, 0),
+            ),
+            (
+                "changes precede skips",
+                TaskStats::from_counts(3, 1, 2, 0).finish(),
+                false,
+                true,
+                TaskStatus::Changed,
+                TaskOutcome::Satisfied,
+                (3, 0, 2, 0),
+            ),
+            (
+                "planned changes",
+                TaskStats::from_counts(3, 1, 2, 0).finish(),
+                true,
+                true,
+                TaskStatus::DryRun,
+                TaskOutcome::Satisfied,
+                (0, 3, 2, 0),
+            ),
+            (
+                "failure precedes changes",
+                TaskStats::from_counts(3, 1, 2, 1).finish(),
+                false,
+                false,
+                TaskStatus::Failed,
+                TaskOutcome::Failed,
+                (3, 0, 2, 1),
+            ),
+            (
+                "failure precedes preview",
+                TaskStats::from_counts(3, 1, 2, 1).finish(),
+                true,
+                true,
+                TaskStatus::Failed,
+                TaskOutcome::Failed,
+                (0, 3, 2, 1),
+            ),
+        ];
+        assert_cases(cases);
+    }
+
+    type Case = (
+        &'static str,
+        TaskResult,
+        bool,
+        bool,
+        TaskStatus,
+        TaskOutcome,
+        (u32, u32, u32, u32),
+    );
+
+    fn assert_cases<const N: usize>(cases: [Case; N]) {
+        for (case, result, dry_run, strict, display_status, outcome, counters) in cases {
+            let classified = classify_result(&result, dry_run, strict);
+            assert_eq!(
+                classified.execution,
+                TaskExecution::new(display_status, outcome),
+                "{case}"
+            );
+            assert_eq!(
+                classified.actions,
+                ActionCounts {
+                    applied: counters.0,
+                    planned: counters.1,
+                    skipped: counters.2,
+                    failed: counters.3,
+                    ..ActionCounts::default()
+                },
+                "{case}"
+            );
+        }
     }
 }

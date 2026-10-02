@@ -415,7 +415,7 @@ symlinks = [
         platform(Os::Linux, false),
         Arc::new(common::StubExecutor),
     );
-    let symlinks = ec.store.symlinks.read();
+    let symlinks = ec.store.symlinks.get();
     let expected: Vec<_> = symlinks
         .iter()
         .map(|symlink| {
@@ -425,7 +425,6 @@ symlinks = [
             )
         })
         .collect();
-    drop(symlinks);
 
     let first = test_api::tasks::files::symlinks::InstallSymlinks::new(ec.store.symlinks.clone())
         .run(&ec.ctx)

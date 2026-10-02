@@ -34,15 +34,15 @@ impl Task for ConfigureSystemd {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().supports_systemd() && !self.config.read().is_empty() && !ctx.is_ci()
+        ctx.platform().supports_systemd() && !self.config.get().is_empty() && !ctx.is_ci()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        system_unit_needs_change(ctx, &self.config.read())
+        system_unit_needs_change(ctx, self.config.get())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let units = self.config.read().to_vec();
+        let units = self.config.get();
         if units.is_empty() {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
@@ -53,8 +53,8 @@ impl Task for ConfigureSystemd {
             return Ok(TaskResult::NotApplicable("systemd unavailable".to_string()));
         }
 
-        let user_manager_available = user_manager_available(ctx, &units);
-        let system_reload_required = system_unit_needs_change(ctx, &units);
+        let user_manager_available = user_manager_available(ctx, units);
+        let system_reload_required = system_unit_needs_change(ctx, units);
         reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
         let executor = ctx.executor_arc();

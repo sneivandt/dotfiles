@@ -126,8 +126,8 @@ impl CommandRunner {
     #[must_use]
     pub fn overlay_script_tasks(&self) -> Vec<Box<dyn Task>> {
         self.ctx.overlay().map_or_else(Vec::new, |root| {
-            let scripts = self.store.scripts.read();
-            crate::domains::overlay::scripts::overlay_script_tasks(&scripts, root)
+            let scripts = self.store.scripts.get();
+            crate::domains::overlay::scripts::overlay_script_tasks(scripts, root)
         })
     }
 
@@ -135,8 +135,8 @@ impl CommandRunner {
     #[must_use]
     pub fn overlay_script_removal_tasks(&self) -> Vec<Box<dyn Task>> {
         self.ctx.overlay().map_or_else(Vec::new, |root| {
-            let scripts = self.store.scripts.read();
-            crate::domains::overlay::scripts::overlay_script_removal_tasks(&scripts, root)
+            let scripts = self.store.scripts.get();
+            crate::domains::overlay::scripts::overlay_script_removal_tasks(scripts, root)
         })
     }
 

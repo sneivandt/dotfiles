@@ -78,8 +78,8 @@ impl Task for InstallSymlinks {
             return false;
         }
 
-        let symlinks = self.config.read().to_vec();
-        build_resources(ctx, &symlinks).iter().any(|resource| {
+        let symlinks = self.config.get();
+        build_resources(ctx, symlinks).iter().any(|resource| {
             resource.source.is_file()
                 && matches!(
                     resource.current_state(),
@@ -89,8 +89,8 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let symlinks = self.config.read();
-        let resources = build_resources(ctx, &symlinks);
+        let symlinks = self.config.get();
+        let resources = build_resources(ctx, symlinks);
         run_resource_task(ctx, resources, &ProcessOpts::strict("link"))
     }
 }
@@ -115,12 +115,12 @@ impl Task for UninstallSymlinks {
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
-        !self.config.read().is_empty()
+        !self.config.get().is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let symlinks = self.config.read();
-        process_resources_remove(ctx, build_resources(ctx, &symlinks), "materialize")
+        let symlinks = self.config.get();
+        process_resources_remove(ctx, build_resources(ctx, symlinks), "materialize")
     }
 }
 

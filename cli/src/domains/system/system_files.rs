@@ -25,7 +25,7 @@ impl ConfigureSystemFiles {
 
     fn resources(&self, ctx: &Context) -> Vec<SystemFileResource> {
         self.files
-            .read()
+            .get()
             .iter()
             .cloned()
             .map(|entry| SystemFileResource::new(entry, ctx.executor_arc()))
@@ -40,7 +40,7 @@ impl Task for ConfigureSystemFiles {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        ctx.platform().is_linux() && !ctx.is_ci() && !self.files.read().is_empty()
+        ctx.platform().is_linux() && !ctx.is_ci() && !self.files.get().is_empty()
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {

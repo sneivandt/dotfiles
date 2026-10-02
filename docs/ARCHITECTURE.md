@@ -149,10 +149,10 @@ fails if any remain. Do not silently turn diagnostics into defaults or make
 every warning a load-time error.
 
 [`ConfigStore`](../cli/src/app/config/store.rs) distributes
-[`Arc`-backed handles](../cli/src/infra/config/handle.rs). `read()` clones an
-immutable handle, not the underlying data; it neither locks mutable state nor
-reloads disk. Tasks, including dynamic overlay tasks, are constructed once from
-that snapshot.
+[`Arc`-backed handles](../cli/src/infra/config/handle.rs). `get()` borrows the
+immutable snapshot; cloning a handle shares ownership without copying the data.
+Neither operation locks mutable state or reloads disk. Tasks, including dynamic
+overlay tasks, are constructed once from that snapshot.
 
 ### Repository updates are a restart boundary
 

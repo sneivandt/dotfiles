@@ -105,8 +105,8 @@ fn configured_source_validation_keeps_overlay_origins_and_unfiltered_sources() {
     let task = ValidateSymlinkSources::new(store.aggregate.clone());
     let ctx = make_linux_context(empty_config(root));
 
-    assert!(store.symlinks.read().is_empty());
-    assert!(store.chmod.read().is_empty());
+    assert!(store.symlinks.get().is_empty());
+    assert!(store.chmod.get().is_empty());
     assert!(
         task.should_run(&ctx),
         "unfiltered sources must still be checked"

@@ -54,7 +54,7 @@ impl Task for ReportOverlayScriptSnapshot {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let count = self.config.read().len();
+        let count = self.config.get().len();
         if count == 0 {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }

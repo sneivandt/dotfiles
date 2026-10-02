@@ -65,9 +65,9 @@ marker rule. Legacy Windows exit-pause/interrupt policy remains separate.
 - Use `Operation` plus `process_operation()` for workflow-shaped work.
 - An operation computes one immutable plan in `current_state()` and passes that
   exact plan to `preview()` or `apply()`; never recompute it.
-- `ConfigHandle::read()` returns a cheap `Arc` clone of an immutable snapshot,
-  not a reloadable lock. Give domain tasks only their typed slice; do not
-  introduce mutable shared configuration or unnecessary deep config copies.
+- `ConfigHandle::get()` borrows the immutable snapshot; clone the handle when
+  sharing ownership. Give domain tasks only their typed slice; do not introduce
+  mutable shared configuration or unnecessary deep config copies.
 - Task parallelism uses scoped threads; resource parallelism uses Rayon.
   `ctx.parallel()` gates both. Resource `.sequential()` protects shared-file or
   lock-bound writes; cross-task contention needs explicit graph policy.

@@ -68,7 +68,7 @@ impl Task for InstallApmPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        apm_task_should_run(ctx, &self.fragments.read())
+        apm_task_should_run(ctx, self.fragments.get())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -76,7 +76,7 @@ impl Task for InstallApmPackages {
             return Ok(skip(missing_apm_reason(ctx)));
         }
 
-        let fragments = discover_effective_fragment_files(ctx.home(), &self.fragments.read())?;
+        let fragments = discover_effective_fragment_files(ctx.home(), self.fragments.get())?;
         if fragments.is_empty() {
             return Ok(skip("no manifest fragments found under ~/.apm/config/"));
         }

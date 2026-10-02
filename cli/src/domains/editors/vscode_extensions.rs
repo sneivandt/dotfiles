@@ -33,7 +33,7 @@ impl Task for InstallVsCodeExtensions {
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
-        !self.config.read().is_empty()
+        !self.config.get().is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -53,7 +53,7 @@ impl Task for InstallVsCodeExtensions {
         };
 
         ctx.debug_fmt(|| format!("using VS Code CLI: {cmd}"));
-        let extensions: Vec<_> = self.config.read().to_vec();
+        let extensions = self.config.get();
         ctx.trace_fmt(|| {
             format!(
                 "batch-checking {} extensions with a single query",

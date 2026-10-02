@@ -29,12 +29,12 @@ impl ConfigureAgentSettings {
         Self { config }
     }
 
-    fn resource(setting: AgentSetting, home: &Path) -> AgentSettingResource {
+    fn resource(setting: &AgentSetting, home: &Path) -> AgentSettingResource {
         let (format, path) = target_document(setting.target, home);
         AgentSettingResource::new(
             setting.target.name().to_string(),
-            setting.key,
-            setting.value,
+            setting.key.clone(),
+            setting.value.clone(),
             format,
             path,
         )
@@ -61,12 +61,12 @@ impl Task for ConfigureAgentSettings {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let settings = self.config.read().to_vec();
-        if let Some(conflict) = validate_conflicts(&settings).first() {
+        let settings = self.config.get();
+        if let Some(conflict) = validate_conflicts(settings).first() {
             anyhow::bail!("{}: {}", conflict.item, conflict.message);
         }
         let resources = settings
-            .into_iter()
+            .iter()
             .map(|setting| Self::resource(setting, ctx.home()))
             .collect();
         run_resource_task(

@@ -40,7 +40,7 @@ impl Task for ValidateConfigWarnings {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let diagnostics = self.config.read().validate(ctx.platform());
+        let diagnostics = self.config.get().validate(ctx.platform());
         if diagnostics.is_empty() {
             ctx.log().info("no configuration diagnostics found");
             return Ok(TaskResult::CheckPassed);
@@ -85,12 +85,12 @@ impl Task for ValidateSymlinkSources {
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {
-        let config = self.config.read();
+        let config = self.config.get();
         !config.validation_symlinks.is_empty() || !config.validation_chmod.is_empty()
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let config = self.config.read();
+        let config = self.config.get();
         let symlinks = &config.validation_symlinks;
         let chmod = &config.validation_chmod;
         let repo_root = &config.root;

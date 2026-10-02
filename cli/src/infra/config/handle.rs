@@ -19,10 +19,10 @@ impl<T> ConfigHandle<T> {
         }
     }
 
-    /// Return a cheap clone of the startup snapshot.
+    /// Borrow the immutable startup snapshot.
     #[must_use]
-    pub fn read(&self) -> Arc<T> {
-        Arc::clone(&self.inner)
+    pub fn get(&self) -> &T {
+        &self.inner
     }
 }
 
@@ -48,8 +48,8 @@ mod tests {
     fn cloned_handles_share_the_startup_snapshot_without_cloning_the_value() {
         struct NotClone;
         let handle = ConfigHandle::new(NotClone);
-        assert!(Arc::ptr_eq(&handle.read(), &handle.read()));
+        assert!(std::ptr::eq(handle.get(), handle.get()));
         let cloned = handle.clone();
-        assert!(Arc::ptr_eq(&handle.read(), &cloned.read()));
+        assert!(std::ptr::eq(handle.get(), cloned.get()));
     }
 }

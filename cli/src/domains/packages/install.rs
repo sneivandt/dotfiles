@@ -52,15 +52,15 @@ impl Task for InstallPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        PackageTaskKind::Native.should_run(ctx, &self.config.read())
+        PackageTaskKind::Native.should_run(ctx, self.config.get())
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        PackageTaskKind::Native.needs_elevation(ctx, &self.config.read())
+        PackageTaskKind::Native.needs_elevation(ctx, self.config.get())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        PackageTaskKind::Native.run(ctx, &self.config.read())
+        PackageTaskKind::Native.run(ctx, self.config.get())
     }
 }
 
@@ -163,15 +163,15 @@ impl Task for InstallAurPackages {
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
-        PackageTaskKind::Aur.should_run(ctx, &self.config.read())
+        PackageTaskKind::Aur.should_run(ctx, self.config.get())
     }
 
     fn needs_elevation(&self, ctx: &Context) -> bool {
-        PackageTaskKind::Aur.needs_elevation(ctx, &self.config.read())
+        PackageTaskKind::Aur.needs_elevation(ctx, self.config.get())
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        PackageTaskKind::Aur.run(ctx, &self.config.read())
+        PackageTaskKind::Aur.run(ctx, self.config.get())
     }
 }
 

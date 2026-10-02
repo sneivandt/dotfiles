@@ -621,22 +621,16 @@ fn precomputed_assessment_is_reused_during_execution() {
 }
 
 #[test]
-fn empty_resource_task_bodies_skip_building_and_discovery() {
+fn empty_resource_task_bodies_skip_discovery() {
     let (ctx, _) = make_static_context(empty_config("/fixture".into()));
-    let builds = AtomicUsize::new(0);
     let loads = AtomicUsize::new(0);
     let checks = AtomicUsize::new(0);
-    let build = |(), _: &Context| {
-        builds.fetch_add(1, Ordering::SeqCst);
-        DummyResource
-    };
     let opts = ProcessOpts::strict("install");
 
-    let direct = run_resource_task(&ctx, vec![], build, &opts).unwrap();
+    let direct = run_resource_task(&ctx, Vec::<DummyResource>::new(), &opts).unwrap();
     let batch = run_batch_resource_task(
         &ctx,
-        vec![],
-        build,
+        Vec::<DummyResource>::new(),
         |_, _| {
             loads.fetch_add(1, Ordering::SeqCst);
             Ok(())
@@ -654,28 +648,20 @@ fn empty_resource_task_bodies_skip_building_and_discovery() {
             TaskResult::NotApplicable(reason) if reason == "nothing configured"
         ));
     }
-    assert_eq!(builds.load(Ordering::SeqCst), 0);
     assert_eq!(loads.load(Ordering::SeqCst), 0);
     assert_eq!(checks.load(Ordering::SeqCst), 0);
 }
 
 #[test]
-fn resource_task_builds_every_configured_item_once() {
+fn resource_task_records_one_outcome_per_prepared_resource() {
     let (ctx, _) = make_static_context(empty_config("/fixture".into()));
-    let mut built = Vec::new();
     let result = run_resource_task(
         &ctx,
-        vec![3, 1, 2],
-        |item, build_ctx| {
-            assert!(std::ptr::eq(build_ctx, &raw const ctx));
-            built.push(item);
-            DummyResource
-        },
+        vec![DummyResource, DummyResource, DummyResource],
         &ProcessOpts::strict("install"),
     )
     .unwrap();
 
-    assert_eq!(built, [3, 1, 2]);
     let TaskResult::Batch(stats) = result else {
         panic!("expected one outcome per configured item");
     };
@@ -691,16 +677,11 @@ fn failed_batch_load_never_checks_or_applies_resources() {
         for dry_run in [false, true] {
             let (ctx, _) = make_static_context(empty_config("/fixture".into()));
             let ctx = ctx.with_parallel(parallel).with_dry_run(dry_run);
-            let mut built = Vec::new();
             let loads = AtomicUsize::new(0);
             let checks = AtomicUsize::new(0);
             let error = run_batch_resource_task(
                 &ctx,
-                vec![3, 1, 2],
-                |item, _| {
-                    built.push(item);
-                    DummyResource
-                },
+                vec![DummyResource, DummyResource, DummyResource],
                 |resources, _| {
                     loads.fetch_add(1, Ordering::SeqCst);
                     assert_eq!(resources.len(), 3);
@@ -720,7 +701,6 @@ fn failed_batch_load_never_checks_or_applies_resources() {
             )
             .unwrap_err();
 
-            assert_eq!(built, [3, 1, 2]);
             assert_eq!(loads.load(Ordering::SeqCst), 1);
             assert_eq!(checks.load(Ordering::SeqCst), 0);
             let cause = error.downcast_ref::<std::io::Error>().unwrap();

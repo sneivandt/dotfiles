@@ -45,12 +45,11 @@ impl Task for ApplyFilePermissions {
             .iter()
             .map(|resource| resource.target.clone())
             .collect();
-        run_resource_task(
-            ctx,
-            resources,
-            |resource, _| resource.excluding(&targets),
-            &ProcessOpts::fix_existing("configure"),
-        )
+        let resources = resources
+            .into_iter()
+            .map(|resource| resource.excluding(&targets))
+            .collect();
+        run_resource_task(ctx, resources, &ProcessOpts::fix_existing("configure"))
     }
 }
 

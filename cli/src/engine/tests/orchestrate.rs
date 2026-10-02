@@ -808,7 +808,6 @@ fn batch_discovery_loads_once_and_uses_the_shared_cache_in_both_modes() {
             let result = crate::engine::run_batch_resource_task(
                 &ctx,
                 resources,
-                |resource, _| resource,
                 |resources, _| {
                     loads.fetch_add(1, Ordering::SeqCst);
                     assert_eq!(resources.len(), 2);

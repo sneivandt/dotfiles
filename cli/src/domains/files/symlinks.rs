@@ -89,16 +89,9 @@ impl Task for InstallSymlinks {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let symlinks = self.config.read().to_vec();
-        run_resource_task(
-            ctx,
-            symlinks,
-            |s, ctx| {
-                let executor = ctx.executor_arc();
-                build_resource(&s, ctx.root(), ctx.home(), &executor)
-            },
-            &ProcessOpts::strict("link"),
-        )
+        let symlinks = self.config.read();
+        let resources = build_resources(ctx, &symlinks);
+        run_resource_task(ctx, resources, &ProcessOpts::strict("link"))
     }
 }
 

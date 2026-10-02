@@ -36,11 +36,15 @@ impl Task for ApplyRegistry {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        let entries = self.config.read().to_vec();
+        let resources = self
+            .config
+            .read()
+            .iter()
+            .map(RegistryResource::from_entry)
+            .collect();
         run_batch_resource_task(
             ctx,
-            entries,
-            |entry, _ctx| RegistryResource::from_entry(&entry),
+            resources,
             |resources, _ctx| batch_check_values(resources),
             |r, cached| {
                 let val = cached.get(&r.cache_key()).and_then(Option::as_ref);

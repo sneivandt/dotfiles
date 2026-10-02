@@ -65,11 +65,13 @@ impl Task for ConfigureAgentSettings {
         if let Some(conflict) = validate_conflicts(&settings).first() {
             anyhow::bail!("{}: {}", conflict.item, conflict.message);
         }
-        let home = ctx.home().to_path_buf();
+        let resources = settings
+            .into_iter()
+            .map(|setting| Self::resource(setting, ctx.home()))
+            .collect();
         run_resource_task(
             ctx,
-            settings,
-            move |setting, _ctx| Self::resource(setting, &home),
+            resources,
             &ProcessOpts::strict("configure").sequential(),
         )
     }

@@ -51,25 +51,23 @@ impl Task for ConfigureGit {
         let manages_autocrlf = settings
             .iter()
             .any(|setting| setting.key.eq_ignore_ascii_case("core.autocrlf"));
-        let mut resources = settings
+        let autocrlf_cleanup = (ctx.platform().is_windows() && !manages_autocrlf)
+            .then(|| GitConfigResource::absent("core.autocrlf".to_string()));
+        let resources = settings
             .into_iter()
             .map(|setting| GitConfigResource::new(setting.key, setting.value))
-            .collect::<Vec<_>>();
-
-        if ctx.platform().is_windows() && !manages_autocrlf {
-            resources.push(GitConfigResource::absent("core.autocrlf".to_string()));
-        }
-
-        run_resource_task(
-            ctx,
-            resources,
-            |resource, _ctx| {
+            .chain(autocrlf_cleanup)
+            .map(|resource| {
                 if let Some(path) = &self.config_path {
                     resource.using_config_path(path.clone())
                 } else {
                     resource
                 }
-            },
+            })
+            .collect();
+        run_resource_task(
+            ctx,
+            resources,
             &ProcessOpts::strict("configure").sequential(),
         )
     }

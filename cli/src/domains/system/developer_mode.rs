@@ -35,8 +35,7 @@ impl Task for EnableDeveloperMode {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         run_resource_task(
             ctx,
-            vec![()],
-            |(), _ctx| DeveloperModeResource::new(),
+            vec![DeveloperModeResource::new()],
             &ProcessOpts::lenient("enable"),
         )
     }

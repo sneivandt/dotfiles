@@ -61,36 +61,33 @@ macro_rules! task_metadata {
 
 pub(crate) use task_metadata;
 
-/// Run the body shared by resource tasks: skip empty item lists, then build
-/// and process one resource per configured item.
+/// Run the body shared by resource tasks: skip empty resource lists, then
+/// process the resources prepared by the domain.
 ///
 /// Keeping this in a normal function rather than in macro expansion means the
 /// shared behaviour is written, type-checked, and debugged once, not per task.
-pub(crate) fn run_resource_task<Item, R>(
+pub(crate) fn run_resource_task<R>(
     ctx: &crate::engine::Context,
-    items: Vec<Item>,
-    mut build: impl FnMut(Item, &crate::engine::Context) -> R,
+    resources: Vec<R>,
     opts: &crate::engine::ProcessOpts,
 ) -> ::anyhow::Result<crate::engine::TaskResult>
 where
     R: crate::engine::IntrinsicState + Send,
 {
-    if items.is_empty() {
+    if resources.is_empty() {
         return Ok(crate::engine::TaskResult::NotApplicable(
             "nothing configured".to_string(),
         ));
     }
 
-    let resources = items.into_iter().map(|item| build(item, ctx));
     crate::engine::process_resources(ctx, resources, opts)
 }
 
 /// Run a resource task whose state for every resource comes from one shared
 /// query rather than from each resource individually.
-pub(crate) fn run_batch_resource_task<Item, Cache, R>(
+pub(crate) fn run_batch_resource_task<Cache, R>(
     ctx: &crate::engine::Context,
-    items: Vec<Item>,
-    mut build: impl FnMut(Item, &crate::engine::Context) -> R,
+    resources: Vec<R>,
     load: impl Fn(&[R], &crate::engine::Context) -> ::anyhow::Result<Cache> + Sync,
     state: impl for<'a> Fn(&'a R, &Cache) -> crate::engine::ResourceResult<crate::engine::ResourceState>
     + Sync,
@@ -100,7 +97,7 @@ where
     R: crate::engine::Resource + Send,
     Cache: Sync,
 {
-    if items.is_empty() {
+    if resources.is_empty() {
         return Ok(crate::engine::TaskResult::NotApplicable(
             "nothing configured".to_string(),
         ));
@@ -108,11 +105,10 @@ where
     ctx.trace_fmt(|| {
         format!(
             "batch-checking {} resources with a single query",
-            items.len()
+            resources.len()
         )
     });
 
-    let resources: Vec<R> = items.into_iter().map(|item| build(item, ctx)).collect();
     let cache = load(&resources, ctx)?;
     crate::engine::process_resources_with_cache(ctx, resources, &cache, state, opts)
 }

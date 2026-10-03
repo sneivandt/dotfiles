@@ -34,20 +34,24 @@ mod tests {
     use super::*;
     use crate::engine::Task;
     use crate::infra::platform::Os;
-    use crate::test_helpers::{ContextBuilder, empty_config};
+    use crate::test_helpers::ContextBuilder;
     use std::path::PathBuf;
 
     #[test]
     fn should_run_on_linux() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = ContextBuilder::new(config).os(Os::Linux).build();
+        let ctx = ContextBuilder::new(PathBuf::from("/tmp"))
+            .overlay(None)
+            .os(Os::Linux)
+            .build();
         assert!(ConfigurePath.should_run(&ctx));
     }
 
     #[test]
     fn should_run_on_windows() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = ContextBuilder::new(config).os(Os::Windows).build();
+        let ctx = ContextBuilder::new(PathBuf::from("/tmp"))
+            .overlay(None)
+            .os(Os::Windows)
+            .build();
         assert!(ConfigurePath.should_run(&ctx));
     }
 

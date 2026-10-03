@@ -13,7 +13,7 @@ use crate::infra::ConfigHandle;
 use std::path::Path;
 
 macro_rules! define_config_store {
-    ($($field:ident: $ty:ty => $count:expr;)+) => {
+    ($($field:ident: $ty:ty, doc: $doc:literal, file: [$($file:path)?], decode: [$($decode:path)?] => $count:expr;)+) => {
         /// Shared immutable configuration split into per-domain handles.
         ///
         /// Cloning is cheap (each field is an `Arc`-backed [`ConfigHandle`]) and

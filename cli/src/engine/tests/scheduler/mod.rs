@@ -8,7 +8,7 @@ use super::*;
 use crate::engine::{TaskMeta, TaskResult, TaskStats};
 use crate::infra::exec::{ExecError, ExecResult};
 use crate::infra::logging::TaskEntry;
-use crate::test_helpers::{ContextBuilder, empty_config};
+use crate::test_helpers::ContextBuilder;
 
 mod conformance;
 mod output;
@@ -128,7 +128,8 @@ fn fixture(
     log.set_verbose(verbose);
     let log = Arc::new(log);
     let output: Arc<dyn Log> = Arc::<Logger>::clone(&log);
-    let ctx = ContextBuilder::new(empty_config(root.path().to_path_buf()))
+    let ctx = ContextBuilder::new(root.path().to_path_buf())
+        .overlay(None)
         .build()
         .with_log(output)
         .with_parallel(matches!(mode, Mode::Parallel));

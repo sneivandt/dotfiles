@@ -9,20 +9,13 @@ use crate::{domains::files::config::chmod::ChmodEntry, infra::ConfigHandle};
 #[test]
 fn display_diagnostics_formats_severity_and_code() {
     use crate::infra::config::DiagnosticCode;
-    use crate::infra::logging::{MsgKind, Output};
+    use crate::infra::logging::MsgKind;
 
-    #[derive(Default)]
-    struct CapturingOutput(std::sync::Mutex<Vec<(MsgKind, String)>>);
-
-    impl Output for CapturingOutput {
-        fn emit(&self, kind: MsgKind, message: std::borrow::Cow<'_, str>) {
-            self.0.lock().unwrap().push((kind, message.into_owned()));
-        }
-    }
+    use crate::test_helpers::CapturingOutput;
 
     let output = CapturingOutput::default();
     display_diagnostics(&[], &output);
-    assert!(output.0.lock().unwrap().is_empty());
+    assert!(output.messages().is_empty());
     let diagnostics = vec![
         Diagnostic::warning(
             "pkg.toml",
@@ -40,7 +33,7 @@ fn display_diagnostics_formats_severity_and_code() {
 
     display_diagnostics(&diagnostics, &output);
     assert_eq!(
-        *output.0.lock().unwrap(),
+        output.messages(),
         [
             (MsgKind::Warn, "found 2 configuration diagnostic(s):".into()),
             (
@@ -62,7 +55,7 @@ fn configured_source_validation_rejects_missing_chmod_source() {
     let mut config = empty_config(root.clone());
     config.validation_chmod = vec![ChmodEntry::new("755", "config/missing.sh")];
     let task = ValidateSymlinkSources::new(ConfigHandle::new(config));
-    let ctx = make_linux_context(empty_config(root));
+    let ctx = make_linux_context(root, None);
 
     let error = task
         .run(&ctx)
@@ -103,7 +96,7 @@ fn configured_source_validation_keeps_overlay_origins_and_unfiltered_sources() {
     config.validation_chmod = vec![ChmodEntry::new("755", "overlay-only.sh")];
     let store = crate::app::config::store::ConfigStore::from_config(config);
     let task = ValidateSymlinkSources::new(store.aggregate.clone());
-    let ctx = make_linux_context(empty_config(root));
+    let ctx = make_linux_context(root, None);
 
     assert!(store.symlinks.get().is_empty());
     assert!(store.chmod.get().is_empty());
@@ -219,7 +212,8 @@ fn apm_validation_checks_each_plugin_and_aggregates_findings() {
                 });
         }
         let ctx = make_context(
-            empty_config(dir.path().to_path_buf()),
+            dir.path().to_path_buf(),
+            None,
             crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
             std::sync::Arc::new(executor),
         );
@@ -413,7 +407,8 @@ fn linters_reject_invalid_discovery_directories_before_running() {
             .return_const(true);
         executor.expect_execute().never();
         let ctx = make_context(
-            empty_config(dir.path().to_path_buf()),
+            dir.path().to_path_buf(),
+            None,
             crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
             std::sync::Arc::new(executor),
         );
@@ -440,7 +435,8 @@ fn linters_accept_missing_optional_input_directories_without_execution() {
             .return_const(true);
         executor.expect_execute().never();
         let ctx = make_context(
-            empty_config(dir.path().to_path_buf()),
+            dir.path().to_path_buf(),
+            None,
             crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
             std::sync::Arc::new(executor),
         );
@@ -458,7 +454,8 @@ fn linter_passes_without_running_the_tool_when_there_is_nothing_to_lint() {
     let mut executor = MockExecutor::new();
     executor.expect_execute().never();
     let ctx = make_context(
-        empty_config(dir.path().to_path_buf()),
+        dir.path().to_path_buf(),
+        None,
         crate::infra::platform::Platform::detect(),
         std::sync::Arc::new(executor),
     );
@@ -511,7 +508,8 @@ fn linter_execution_preserves_command_contract_and_failure_kind() {
             response
         });
         let ctx = make_context(
-            empty_config("fixture-root".into()),
+            "fixture-root".into(),
+            None,
             crate::infra::platform::Platform::new(crate::infra::platform::Os::Linux, false),
             std::sync::Arc::new(executor),
         );
@@ -552,7 +550,7 @@ fn linter_execution_preserves_command_contract_and_failure_kind() {
 #[test]
 fn configured_source_validation_is_inapplicable_without_sources() {
     let config = empty_config("/fixture".into());
-    let ctx = make_linux_context(config.clone());
+    let ctx = make_linux_context(config.root.clone(), config.overlay.clone());
     let task = ValidateSymlinkSources::new(ConfigHandle::new(config));
     assert!(!task.should_run(&ctx));
 }

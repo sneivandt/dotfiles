@@ -1,7 +1,7 @@
 use super::*;
 use crate::infra::logging::Logger;
 use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
-use crate::test_helpers::{empty_config, make_linux_context};
+use crate::test_helpers::make_linux_context;
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -20,8 +20,7 @@ impl TaskRecorder for SilentLog {
 
 #[test]
 fn derived_paths_use_the_configured_root() {
-    let config = empty_config(PathBuf::from("/dotfiles"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None);
     assert_eq!(ctx.root(), Path::new("/dotfiles"));
     assert_eq!(ctx.symlinks_dir(), Path::new("/dotfiles/symlinks"));
     assert_eq!(ctx.hooks_dir(), Path::new("/dotfiles/hooks"));
@@ -29,8 +28,7 @@ fn derived_paths_use_the_configured_root() {
 
 #[test]
 fn task_log_context_shares_paths_environment_and_cancellation() {
-    let config = empty_config(PathBuf::from("/dotfiles"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None);
     let new_log: Arc<dyn Log> = Arc::new(SilentLog);
     let ctx2 = ctx.with_log(Arc::clone(&new_log));
     assert!(Arc::ptr_eq(&ctx.paths, &ctx2.paths));
@@ -47,8 +45,7 @@ fn task_log_context_shares_paths_environment_and_cancellation() {
 
 #[test]
 fn debug_fmt_skips_closure_when_debug_logging_is_disabled() {
-    let config = empty_config(PathBuf::from("/dotfiles"));
-    let ctx = make_linux_context(config).with_log(Arc::new(SilentLog));
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None).with_log(Arc::new(SilentLog));
     let called = std::sync::atomic::AtomicBool::new(false);
     ctx.debug_fmt(|| {
         called.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -162,8 +159,7 @@ fn windows_home_prefers_userprofile_and_falls_back_to_home() {
 fn with_env_swaps_the_environment_without_touching_other_fields() {
     use crate::infra::env::MapEnv;
 
-    let config = empty_config(PathBuf::from("/dotfiles"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None);
     let swapped = ctx.with_env(MapEnv::new().with("SHELL", "/bin/fish").into_handle());
 
     assert_eq!(swapped.env().var("SHELL"), Some("/bin/fish".to_string()));

@@ -1,7 +1,7 @@
 //! Scheduler-owned stage ordering and result recording (not console styling).
 
 use super::*;
-use crate::infra::logging::{MsgKind, TaskRecorder, TaskResultDisplay, TaskVisibility};
+use crate::infra::logging::{MsgKind, TaskResultDisplay, TaskVisibility};
 
 fn with_recording_metadata(mut task: TestTask) -> TestTask {
     task.metadata = Some(
@@ -232,34 +232,18 @@ fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
 
 #[test]
 fn dependency_block_reason_is_owned_by_recorded_task_result() {
-    #[derive(Default)]
-    struct RecordingLog {
-        messages: std::sync::Mutex<Vec<(MsgKind, String)>>,
-        records: std::sync::Mutex<Vec<TaskEntry>>,
-    }
+    use crate::test_helpers::CapturingOutput;
 
-    impl logging::Output for RecordingLog {
-        fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
-            self.messages.lock().unwrap().push((kind, msg.into_owned()));
-        }
-    }
-
-    impl TaskRecorder for RecordingLog {
-        fn record_task(&self, task: TaskEntry) {
-            self.records.lock().unwrap().push(task);
-        }
-    }
-
-    let log = RecordingLog::default();
+    let log = CapturingOutput::default();
     let task = TestTask::new("blocked");
     record_scheduler_skip(&task, &log, "dependency failed", TaskStatus::Blocked);
     assert_eq!(
-        *log.messages.lock().unwrap(),
+        log.messages(),
         [(MsgKind::Debug, "dependency failed".to_string())],
         "keep the reason in the persistent debug log, not a premature info line"
     );
     {
-        let records = log.records.lock().unwrap();
+        let records = log.records();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].status, TaskStatus::Blocked);
         assert_eq!(records[0].message.as_deref(), Some("dependency failed"));

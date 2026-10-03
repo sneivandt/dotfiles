@@ -3,28 +3,50 @@ mod error;
 mod preflight;
 pub mod profiles;
 
+// One inventory owns section fields, required files, ordinary loading, handles,
+// counts and empty unit fixtures. Special loaders stay explicit in Config::load.
 macro_rules! config_section_inventory {
     ($apply:ident) => {
         $apply! {
-            packages: Vec<crate::domains::packages::config::packages::Package> =>
+            packages: Vec<crate::domains::packages::config::packages::Package>,
+                doc: "Packages to install via system package managers.",
+                file: [packages::PACKAGES_TOML], decode: [packages::decode] =>
                 |config: &Config| SectionCount::new("package", "packages", config.packages.len());
-            symlinks: Vec<crate::domains::files::config::symlinks::Symlink> =>
+            symlinks: Vec<crate::domains::files::config::symlinks::Symlink>,
+                doc: "Symlinks to create in the user's home directory.",
+                file: [symlinks::SYMLINKS_TOML], decode: [] =>
                 |config: &Config| SectionCount::new("symlink", "symlinks", config.symlinks.len());
-            registry: Vec<crate::domains::system::config::registry::RegistryEntry> =>
+            registry: Vec<crate::domains::system::config::registry::RegistryEntry>,
+                doc: "Windows registry entries to configure.",
+                file: [registry::REGISTRY_TOML], decode: [] =>
                 |config: &Config| SectionCount::new("registry entry", "registry entries", config.registry.len());
-            units: Vec<crate::domains::system::config::systemd_units::SystemdUnit> =>
+            units: Vec<crate::domains::system::config::systemd_units::SystemdUnit>,
+                doc: "Systemd user units to enable.",
+                file: [systemd_units::SYSTEMD_UNITS_TOML], decode: [] =>
                 |config: &Config| SectionCount::new("systemd unit", "systemd units", config.units.len());
-            system_files: Vec<crate::domains::system::config::system_files::SystemFile> =>
+            system_files: Vec<crate::domains::system::config::system_files::SystemFile>,
+                doc: "Privileged files to merge below `/etc`.",
+                file: [system_files::SYSTEM_FILES_TOML], decode: [] =>
                 |config: &Config| SectionCount::new("system file", "system files", config.system_files.len());
-            chmod: Vec<crate::domains::files::config::chmod::ChmodEntry> =>
+            chmod: Vec<crate::domains::files::config::chmod::ChmodEntry>,
+                doc: "File permissions to apply (chmod).",
+                file: [chmod::CHMOD_TOML], decode: [] =>
                 |config: &Config| SectionCount::new("chmod entry", "chmod entries", config.chmod.len());
-            vscode_extensions: Vec<String> =>
+            vscode_extensions: Vec<String>,
+                doc: "VS Code extensions to install.",
+                file: [vscode_extensions::VSCODE_EXTENSIONS_TOML], decode: [vscode_extensions::decode] =>
                 |config: &Config| SectionCount::new("vscode extension", "vscode extensions", config.vscode_extensions.len());
-            git_settings: Vec<crate::domains::git::config::git_config::GitSetting> =>
+            git_settings: Vec<crate::domains::git::config::git_config::GitSetting>,
+                doc: "Git configuration settings to apply globally.",
+                file: [git_config::GIT_CONFIG_TOML], decode: [git_config::decode] =>
                 |config: &Config| SectionCount::new("git setting", "git settings", config.git_settings.len());
-            agent_settings: Vec<crate::domains::ai::config::agent_settings::AgentSetting> =>
+            agent_settings: Vec<crate::domains::ai::config::agent_settings::AgentSetting>,
+                doc: "User settings to converge for supported agent harnesses.",
+                file: [agent_settings::AGENT_SETTINGS_TOML], decode: [agent_settings::decode] =>
                 |config: &Config| SectionCount::new("agent setting", "agent settings", config.agent_settings.len());
-            scripts: Vec<crate::domains::overlay::config::scripts::ScriptEntry> =>
+            scripts: Vec<crate::domains::overlay::config::scripts::ScriptEntry>,
+                doc: "Custom scripts from the overlay repository.",
+                file: [], decode: [] =>
                 |config: &Config| SectionCount::new("overlay script", "overlay scripts", config.scripts.len());
         }
     };
@@ -47,17 +69,14 @@ use crate::infra::config::toml_loader::{ConfigDocument, filter_by_categories, re
 use crate::infra::config::{Diagnostic, category_matcher};
 use crate::infra::platform::Platform;
 
-pub(crate) const REQUIRED_CONFIG_FILES: &[&str] = &[
-    "chmod.toml",
-    "agent-settings.toml",
-    "git-config.toml",
-    "packages.toml",
-    "registry.toml",
-    "symlinks.toml",
-    "system-files.toml",
-    "systemd-units.toml",
-    "vscode-extensions.toml",
-];
+macro_rules! required_config_files {
+    ($($field:ident: $ty:ty, doc: $doc:literal,
+       file: [$($file:path)?], decode: [$($decode:path)?] => $count:expr;)+) => {
+        pub(crate) const REQUIRED_CONFIG_FILES: &[&str] = &[$($($file,)?)+];
+    };
+}
+
+config_section_inventory!(required_config_files);
 
 #[derive(Debug, Clone, Copy)]
 enum ConfigSource {
@@ -227,43 +246,47 @@ impl SectionCount {
     }
 }
 
-/// All loaded configuration for a resolved profile.
-#[derive(Debug, Clone)]
-pub struct Config {
-    /// Root directory of the dotfiles repository.
-    pub root: PathBuf,
-    /// Optional path to a private overlay repository.
-    pub overlay: Option<PathBuf>,
-    /// The resolved profile, used to reload configuration after repository updates.
-    pub profile: profiles::Profile,
-    /// Packages to install via system package managers.
-    pub packages: Vec<packages::Package>,
-    /// Symlinks to create in the user's home directory.
-    pub symlinks: Vec<symlinks::Symlink>,
-    /// Main and overlay symlink definitions before category filtering.
-    /// Used by repository validation to inspect every declared source.
-    pub validation_symlinks: Vec<symlinks::Symlink>,
-    /// Windows registry entries to configure.
-    pub registry: Vec<registry::RegistryEntry>,
-    /// Systemd user units to enable.
-    pub units: Vec<systemd_units::SystemdUnit>,
-    /// Privileged files to merge below `/etc`.
-    pub system_files: Vec<system_files::SystemFile>,
-    /// Main and overlay system-file definitions before category filtering.
-    pub validation_system_files: Vec<system_files::SystemFile>,
-    /// File permissions to apply (chmod).
-    pub chmod: Vec<chmod::ChmodEntry>,
-    /// Main and overlay chmod definitions before category filtering.
-    pub validation_chmod: Vec<chmod::ChmodEntry>,
-    /// VS Code extensions to install.
-    pub vscode_extensions: Vec<String>,
-    /// Git configuration settings to apply globally.
-    pub git_settings: Vec<git_config::GitSetting>,
-    /// User settings to converge for supported agent harnesses.
-    pub agent_settings: Vec<agent_settings::AgentSetting>,
-    /// Custom scripts from the overlay repository.
-    pub scripts: Vec<scripts::ScriptEntry>,
+macro_rules! define_config {
+    ($($field:ident: $ty:ty, doc: $doc:literal,
+       file: [$($file:path)?], decode: [$($decode:path)?] => $count:expr;)+) => {
+        /// All loaded configuration for a resolved profile.
+        #[derive(Debug, Clone)]
+        pub struct Config {
+            /// Root directory of the dotfiles repository.
+            pub root: PathBuf,
+            /// Optional path to a private overlay repository.
+            pub overlay: Option<PathBuf>,
+            /// The resolved profile, used to reload configuration after repository updates.
+            pub profile: profiles::Profile,
+            /// Main and overlay symlink definitions before category filtering.
+            /// Used by repository validation to inspect every declared source.
+            pub validation_symlinks: Vec<symlinks::Symlink>,
+            /// Main and overlay system-file definitions before category filtering.
+            pub validation_system_files: Vec<system_files::SystemFile>,
+            /// Main and overlay chmod definitions before category filtering.
+            pub validation_chmod: Vec<chmod::ChmodEntry>,
+            $(#[doc = $doc] pub $field: $ty,)+
+        }
+
+        impl Config {
+            /// Build an empty configuration for isolated unit fixtures.
+            #[cfg(test)]
+            pub(crate) const fn empty(root: PathBuf, profile: profiles::Profile) -> Self {
+                Self {
+                    root,
+                    overlay: None,
+                    profile,
+                    validation_symlinks: Vec::new(),
+                    validation_system_files: Vec::new(),
+                    validation_chmod: Vec::new(),
+                    $($field: Vec::new(),)+
+                }
+            }
+        }
+    };
 }
+
+config_section_inventory!(define_config);
 
 impl Config {
     /// Load all configuration for the given profile from the conf/ directory,
@@ -298,37 +321,52 @@ impl Config {
             system_files::decode,
             system_files::set_origin,
         )?;
-        let mut config = Self {
-            root: root.to_path_buf(),
-            overlay: overlay.map(Path::to_path_buf),
-            profile: profile.clone(),
-            packages: sections.collect_filtered(packages::PACKAGES_TOML, packages::decode)?,
-            symlinks,
-            validation_symlinks,
-            registry: if platform.has_registry() {
-                registry
-            } else {
-                Vec::new()
-            },
-            units: if platform.supports_systemd() {
-                units
-            } else {
-                Vec::new()
-            },
-            system_files,
-            validation_system_files,
-            chmod,
-            validation_chmod,
-            vscode_extensions: sections.collect_filtered(
-                vscode_extensions::VSCODE_EXTENSIONS_TOML,
-                vscode_extensions::decode,
-            )?,
-            git_settings: sections
-                .collect_filtered(git_config::GIT_CONFIG_TOML, git_config::decode)?,
-            agent_settings: sections
-                .collect_filtered(agent_settings::AGENT_SETTINGS_TOML, agent_settings::decode)?,
-            scripts: sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::decode)?,
-        };
+        macro_rules! load_section {
+            ($field:ident, [$file:path], [$decode:path]) => {
+                sections.collect_filtered($file, $decode)?
+            };
+            (symlinks, [$file:path], []) => {
+                symlinks
+            };
+            (chmod, [$file:path], []) => {
+                chmod
+            };
+            (system_files, [$file:path], []) => {
+                system_files
+            };
+            (registry, [$file:path], []) => {
+                if platform.has_registry() {
+                    registry
+                } else {
+                    Vec::new()
+                }
+            };
+            (units, [$file:path], []) => {
+                if platform.supports_systemd() {
+                    units
+                } else {
+                    Vec::new()
+                }
+            };
+            (scripts, [], []) => {
+                sections.collect_overlay_only(scripts::SCRIPTS_TOML, scripts::decode)?
+            };
+        }
+        macro_rules! load_config {
+            ($($field:ident: $ty:ty, doc: $doc:literal,
+               file: [$($file:path)?], decode: [$($decode:path)?] => $count:expr;)+) => {
+                Self {
+                    root: root.to_path_buf(),
+                    overlay: overlay.map(Path::to_path_buf),
+                    profile: profile.clone(),
+                    validation_symlinks,
+                    validation_system_files,
+                    validation_chmod,
+                    $($field: load_section!($field, [$($file)?], [$($decode)?]),)+
+                }
+            };
+        }
+        let mut config = config_section_inventory!(load_config);
 
         config.symlinks = symlinks::expand_glob_patterns(&config.symlinks, root)
             .context("expanding symlink glob patterns")?;
@@ -372,7 +410,7 @@ impl Config {
     #[must_use]
     pub(crate) fn section_counts(&self) -> Vec<SectionCount> {
         macro_rules! collect_section_counts {
-            ($($field:ident: $ty:ty => $count:expr;)+) => {
+            ($($field:ident: $ty:ty, doc: $doc:literal, file: [$($file:path)?], decode: [$($decode:path)?] => $count:expr;)+) => {
                 vec![$(($count)(self)),+]
             };
         }

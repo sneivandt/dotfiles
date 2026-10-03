@@ -26,7 +26,13 @@ fn should_run_false_on_windows() {
         enabled: true,
     });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_platform_context_with_which(config, Os::Windows, false, true);
+    let ctx = make_platform_context_with_which(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Windows,
+        false,
+        true,
+    );
     assert!(!ConfigureSystemd::new(units).should_run(&ctx));
 }
 
@@ -34,7 +40,7 @@ fn should_run_false_on_windows() {
 fn should_run_false_when_units_empty() {
     let config = empty_config(PathBuf::from("/tmp"));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_platform_context_with_which(config, Os::Linux, false, true);
+    let ctx = make_platform_context_with_which(config.root, config.overlay, Os::Linux, false, true);
     assert!(!ConfigureSystemd::new(units).should_run(&ctx));
 }
 
@@ -47,7 +53,7 @@ fn missing_systemctl_is_checked_at_run_time() {
         enabled: true,
     });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_linux_context(config); // which() returns false
+    let ctx = make_linux_context(config.root.clone(), config.overlay.clone()); // which() returns false
     let task = ConfigureSystemd::new(units);
     assert!(task.should_run(&ctx));
     for dry_run in [false, true] {
@@ -71,7 +77,8 @@ fn should_run_false_when_ci() {
         enabled: true,
     });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = ContextBuilder::new(config)
+    let ctx = ContextBuilder::new(config.root.clone())
+        .overlay(config.overlay.clone())
         .os(Os::Linux)
         .which(true)
         .ci(true)
@@ -88,7 +95,8 @@ fn should_run_true_on_linux_with_units_and_systemctl() {
         enabled: true,
     });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = ContextBuilder::new(config)
+    let ctx = ContextBuilder::new(config.root.clone())
+        .overlay(config.overlay.clone())
         .os(Os::Linux)
         .which(true)
         .ci(false)
@@ -101,12 +109,21 @@ fn should_run_true_on_linux_with_units_and_systemctl() {
 // ------------------------------------------------------------------
 
 /// Build a context backed by `MockExecutor` for `run()` tests.
-fn make_systemd_context(config: crate::Config, mut executor: MockExecutor) -> Context {
+fn make_systemd_context(
+    root: PathBuf,
+    overlay: Option<PathBuf>,
+    mut executor: MockExecutor,
+) -> Context {
     executor
         .expect_which()
         .with(mockall::predicate::eq("systemctl"))
         .return_const(true);
-    make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
+    make_context(
+        root,
+        overlay,
+        Platform::new(Os::Linux, false),
+        Arc::new(executor),
+    )
 }
 
 #[test]
@@ -173,7 +190,7 @@ fn run_calls_daemon_reload_before_enabling_unit() {
         })
         .returning(|_| Ok(ExecResult::success("")));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
     let task = ConfigureSystemd::new(units);
     assert!(
         task.should_run(&ctx),
@@ -211,7 +228,8 @@ fn unavailable_wsl_manager_is_checked_at_run_time() {
         })
         .returning(|_| Ok(ExecResult::failure("offline", "", Some(1))));
     let ctx = make_context(
-        config,
+        config.root.clone(),
+        config.overlay.clone(),
         Platform {
             os: Os::Linux,
             is_arch: false,
@@ -259,7 +277,7 @@ fn run_skips_daemon_reload_in_dry_run() {
             });
     }
     let units = ConfigHandle::new(config.units.clone());
-    let mut ctx = make_systemd_context(config, mock);
+    let mut ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
     ctx = ctx.with_dry_run(true);
 
     let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
@@ -303,7 +321,7 @@ fn run_propagates_user_daemon_reload_failure() {
             ))
         });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     let error = ConfigureSystemd::new(units)
         .run(&ctx)
@@ -344,7 +362,8 @@ fn run_enables_user_units_offline_when_the_user_manager_is_unavailable() {
             ))
         });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock).with_home(home.path().to_path_buf());
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock)
+        .with_home(home.path().to_path_buf());
 
     let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
 
@@ -378,16 +397,20 @@ fn arch_chroot_provisioning_never_probes_the_user_manager() {
         enabled: true,
     });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, MockExecutor::new())
-        .with_home(home.path().to_path_buf())
-        .with_env(
-            MapEnv::new()
-                .with(
-                    crate::infra::provisioning::ENV_VAR,
-                    crate::infra::provisioning::ARCH_CHROOT,
-                )
-                .into_handle(),
-        );
+    let ctx = make_systemd_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        MockExecutor::new(),
+    )
+    .with_home(home.path().to_path_buf())
+    .with_env(
+        MapEnv::new()
+            .with(
+                crate::infra::provisioning::ENV_VAR,
+                crate::infra::provisioning::ARCH_CHROOT,
+            )
+            .into_handle(),
+    );
 
     let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
 
@@ -437,7 +460,7 @@ fn run_propagates_system_daemon_reload_failure() {
             ))
         });
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     let error = ConfigureSystemd::new(units)
         .run(&ctx)
@@ -467,7 +490,7 @@ fn needs_sudo_true_for_disabled_system_scope_unit() {
         })
         .returning(|_| Ok(disabled_result()));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     assert!(crate::engine::requires_elevation(
         &ConfigureSystemd::new(units),
@@ -506,7 +529,7 @@ fn needs_sudo_false_for_enabled_system_scope_unit() {
             })
             .returning(|_| Ok(ExecResult::success("ActiveState=active\n")));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     assert!(!crate::engine::requires_elevation(
         &ConfigureSystemd::new(units),
@@ -532,7 +555,7 @@ fn needs_sudo_true_for_system_unit_that_should_be_disabled() {
         })
         .returning(|_| Ok(ExecResult::success("enabled\n")));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     assert!(crate::engine::requires_elevation(
         &ConfigureSystemd::new(units),
@@ -571,7 +594,7 @@ fn run_does_not_reload_enabled_system_scope_units() {
             })
             .returning(|_| Ok(ExecResult::success("ActiveState=active\n")));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
 
@@ -628,7 +651,7 @@ fn run_reloads_and_enables_system_scope_units_with_sudo() {
         })
         .returning(|_| Ok(ExecResult::success("")));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
     assert!(
@@ -684,7 +707,7 @@ fn run_reloads_and_disables_system_scope_units_with_sudo() {
         })
         .returning(|_| Ok(ExecResult::success("")));
     let units = ConfigHandle::new(config.units.clone());
-    let ctx = make_systemd_context(config, mock);
+    let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
 
     let result = ConfigureSystemd::new(units).run(&ctx).unwrap();
     assert!(
@@ -763,7 +786,7 @@ fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
                 Ok(ExecResult::success(""))
             });
         let task = ConfigureSystemd::new(ConfigHandle::new(config.units.clone()));
-        let ctx = make_systemd_context(config, mock);
+        let ctx = make_systemd_context(config.root.clone(), config.overlay.clone(), mock);
         assert!(
             task.needs_elevation(&ctx),
             "runtime drift needs system privileges"

@@ -8,7 +8,6 @@ use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
 use crate::engine::{ProcessOpts, TaskResult, process_resources, process_resources_remove};
-use crate::test_helpers::empty_config;
 
 use super::{bail_opts, default_opts, dry_run_context, test_context};
 
@@ -68,14 +67,12 @@ impl IntrinsicState for ContractResource {
 }
 
 fn contract_context() -> crate::engine::Context {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let (ctx, _log) = test_context(PathBuf::from("/tmp"), None);
     ctx
 }
 
 fn dry_run_contract_context() -> crate::engine::Context {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = dry_run_context(config);
+    let (ctx, _log) = dry_run_context(PathBuf::from("/tmp"), None);
     ctx
 }
 

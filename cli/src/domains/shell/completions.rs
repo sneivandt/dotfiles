@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use crate::engine::Task;
     use crate::infra::platform::Os;
-    use crate::test_helpers::{ContextBuilder, empty_config, make_linux_context};
+    use crate::test_helpers::{ContextBuilder, make_linux_context};
     use std::path::PathBuf;
 
     const SAMPLE_ZSH_COMPLETION: &str = "#compdef dotfiles\n# generated completion for dotfiles\n";
@@ -135,15 +135,16 @@ mod tests {
 
     #[test]
     fn should_run_true_on_windows() {
-        let config = empty_config(PathBuf::from("/repo"));
-        let ctx = ContextBuilder::new(config).os(Os::Windows).build();
+        let ctx = ContextBuilder::new(PathBuf::from("/repo"))
+            .overlay(None)
+            .os(Os::Windows)
+            .build();
         assert!(task().should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_on_linux() {
-        let config = empty_config(PathBuf::from("/repo"));
-        let ctx = make_linux_context(config);
+        let ctx = make_linux_context(PathBuf::from("/repo"), None);
         assert!(task().should_run(&ctx));
     }
 
@@ -155,7 +156,8 @@ mod tests {
         let dir = tempfile::tempdir_in(".").unwrap();
         let root = dir.path().join("repo");
         let home = dir.path().join("home");
-        let ctx = ContextBuilder::new(empty_config(root.clone()))
+        let ctx = ContextBuilder::new(root.clone())
+            .overlay(None)
             .os(os)
             .build()
             .with_home(home.clone());

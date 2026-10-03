@@ -84,7 +84,7 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::exec::{ExecResult, MockExecutor};
     use crate::infra::platform::{Os, Platform};
-    use crate::test_helpers::{empty_config, make_context, make_linux_context, task_batch};
+    use crate::test_helpers::{make_context, make_linux_context, task_batch};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
@@ -165,7 +165,8 @@ mod tests {
                 );
             }
             let ctx = make_context(
-                empty_config(root.path().to_path_buf()),
+                root.path().to_path_buf(),
+                None,
                 Platform::new(Os::Linux, false),
                 Arc::new(mock),
             )
@@ -192,13 +193,13 @@ mod tests {
 
     #[test]
     fn should_run_false_when_no_extensions_configured() {
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         assert!(!InstallVsCodeExtensions::new(ConfigHandle::new(vec![])).should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_when_extensions_configured() {
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
         assert!(task.should_run(&ctx));
     }
@@ -207,7 +208,7 @@ mod tests {
     fn run_skips_when_vscode_cli_not_found() {
         // Default make_linux_context uses TestExecutor with which_result=false,
         // so find_code_command returns None for both "code-insiders" and "code".
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
         let result = task.run(&ctx).unwrap();
         assert!(
@@ -223,7 +224,7 @@ mod tests {
     #[test]
     fn arch_chroot_provisioning_creates_a_first_session_marker() {
         let home = tempfile::tempdir().unwrap();
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")))
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None)
             .with_home(home.path().to_path_buf())
             .with_env(
                 MapEnv::new()
@@ -260,7 +261,7 @@ mod tests {
                 crate::infra::provisioning::ARCH_CHROOT,
             )
             .into_handle();
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")))
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None)
             .with_home(home.path().to_path_buf())
             .with_env(env);
         let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
@@ -282,7 +283,8 @@ mod tests {
     fn arch_chroot_preview_neither_probes_cli_nor_creates_a_marker() {
         let home = tempfile::tempdir_in(".").unwrap();
         let ctx = make_context(
-            empty_config(home.path().to_path_buf()),
+            home.path().to_path_buf(),
+            None,
             Platform::new(Os::Linux, false),
             Arc::new(MockExecutor::new()),
         )

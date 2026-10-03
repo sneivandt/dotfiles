@@ -26,9 +26,11 @@ pub fn numeric_task_id(key: impl ToString) -> TaskId {
 }
 
 mod failure;
+mod output;
 mod scripted;
 
 pub use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
+pub use output::CapturingOutput;
 pub use scripted::ScriptedExecutor;
 
 /// Build a [`Config`] with all lists empty and `root` set to `root`.
@@ -38,33 +40,22 @@ pub use scripted::ScriptedExecutor;
     reason = "test helper: setup failures should abort the calling test"
 )]
 pub fn empty_config(root: PathBuf) -> Config {
-    Config {
+    Config::empty(
         root,
-        overlay: None,
-        profile: Profile {
+        Profile {
             name: "test".to_string(),
             active_categories: vec![Category::Base],
         },
-        packages: vec![],
-        symlinks: vec![],
-        validation_symlinks: vec![],
-        registry: vec![],
-        units: vec![],
-        system_files: vec![],
-        validation_system_files: vec![],
-        chmod: vec![],
-        validation_chmod: vec![],
-        vscode_extensions: vec![],
-        git_settings: vec![],
-        agent_settings: vec![],
-        scripts: vec![],
-    }
+    )
 }
 
-/// Build a [`Context`] from the given config, platform and executor.
-pub fn make_context(config: Config, platform: Platform, executor: Arc<dyn Executor>) -> Context {
-    let root = config.root;
-    let overlay = config.overlay;
+/// Build a [`Context`] from explicit repository paths, platform and executor.
+pub fn make_context(
+    root: PathBuf,
+    overlay: Option<PathBuf>,
+    platform: Platform,
+    executor: Arc<dyn Executor>,
+) -> Context {
     Context::from_raw(
         root,
         overlay,
@@ -108,7 +99,7 @@ pub fn stub_executor(which_result: bool) -> MockExecutor {
 /// # Example
 ///
 /// ```ignore
-/// let ctx = ContextBuilder::new(config)
+/// let ctx = ContextBuilder::new("/fixture".into())
 ///     .os(crate::infra::platform::Os::Linux)
 ///     .arch(true)
 ///     .which(true)
@@ -118,7 +109,8 @@ pub fn stub_executor(which_result: bool) -> MockExecutor {
 #[must_use]
 #[allow(clippy::struct_excessive_bools, reason = "test fixture")]
 pub struct ContextBuilder {
-    config: Config,
+    root: PathBuf,
+    overlay: Option<PathBuf>,
     os: crate::infra::platform::Os,
     is_arch: bool,
     is_wsl: bool,
@@ -128,15 +120,22 @@ pub struct ContextBuilder {
 
 impl ContextBuilder {
     /// Create a new builder with Linux, non-arch, `which = false` defaults.
-    pub fn new(config: Config) -> Self {
+    pub fn new(root: PathBuf) -> Self {
         Self {
-            config,
+            root,
+            overlay: None,
             os: crate::infra::platform::Os::Linux,
             is_arch: false,
             is_wsl: false,
             which_result: false,
             is_ci: false,
         }
+    }
+
+    /// Set the optional overlay repository path.
+    pub fn overlay(mut self, overlay: Option<PathBuf>) -> Self {
+        self.overlay = overlay;
+        self
     }
 
     /// Set the target OS.
@@ -170,7 +169,8 @@ impl ContextBuilder {
     #[must_use]
     pub fn build(self) -> Context {
         make_context(
-            self.config,
+            self.root,
+            self.overlay,
             Platform {
                 os: self.os,
                 is_arch: self.is_arch,
@@ -189,12 +189,14 @@ impl ContextBuilder {
 /// availability via `ctx.executor().which(...)`.
 #[must_use]
 pub fn make_platform_context_with_which(
-    config: Config,
+    root: PathBuf,
+    overlay: Option<PathBuf>,
     os: crate::infra::platform::Os,
     is_arch: bool,
     which_result: bool,
 ) -> Context {
-    ContextBuilder::new(config)
+    ContextBuilder::new(root)
+        .overlay(overlay)
         .os(os)
         .arch(is_arch)
         .which(which_result)
@@ -205,16 +207,17 @@ pub fn make_platform_context_with_which(
 ///
 /// Convenience shorthand for tests that only need a plain Linux context.
 #[must_use]
-pub fn make_linux_context(config: Config) -> Context {
-    ContextBuilder::new(config).build()
+pub fn make_linux_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
+    ContextBuilder::new(root).overlay(overlay).build()
 }
 
 /// Build a [`Context`] with a Windows platform and default [`MockExecutor`].
 ///
 /// Convenience shorthand for tests that only need a plain Windows context.
 #[must_use]
-pub fn make_windows_context(config: Config) -> Context {
-    ContextBuilder::new(config)
+pub fn make_windows_context(root: PathBuf, overlay: Option<PathBuf>) -> Context {
+    ContextBuilder::new(root)
+        .overlay(overlay)
         .os(crate::infra::platform::Os::Windows)
         .build()
 }
@@ -223,10 +226,10 @@ pub fn make_windows_context(config: Config) -> Context {
 /// default [`MockExecutor`], also returning the [`Logger`] so tests can
 /// inspect recorded task state.
 #[must_use]
-pub fn make_static_context(config: Config) -> (Context, Arc<Logger>) {
+pub fn make_static_context(root: PathBuf, overlay: Option<PathBuf>) -> (Context, Arc<Logger>) {
     let log = Arc::new(Logger::new("test"));
     let log_output: Arc<dyn crate::infra::logging::Log> = Arc::<Logger>::clone(&log);
-    let ctx = make_linux_context(config).with_log(log_output);
+    let ctx = make_linux_context(root, overlay).with_log(log_output);
     (ctx, log)
 }
 

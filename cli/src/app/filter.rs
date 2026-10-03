@@ -207,8 +207,6 @@ mod tests {
     use crate::engine::{Context, TaskId, TaskMeta, TaskResult, TaskVisibility};
     use crate::infra::logging::MsgKind;
     use anyhow::Result;
-    use std::borrow::Cow;
-    use std::sync::Mutex;
 
     struct SampleTask;
 
@@ -282,31 +280,7 @@ mod tests {
         }
     }
 
-    /// Collects warnings so filter diagnostics can be asserted directly.
-    #[derive(Debug, Default)]
-    struct RecordingOutput {
-        warnings: Mutex<Vec<String>>,
-    }
-
-    impl RecordingOutput {
-        fn warnings(&self) -> Vec<String> {
-            self.warnings
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone()
-        }
-    }
-
-    impl Output for RecordingOutput {
-        fn emit(&self, kind: MsgKind, msg: Cow<'_, str>) {
-            if kind == MsgKind::Warn {
-                self.warnings
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(msg.into_owned());
-            }
-        }
-    }
+    use crate::test_helpers::CapturingOutput;
 
     #[test]
     fn task_matches_filter_uses_explicit_selector() {
@@ -426,7 +400,7 @@ mod tests {
     #[test]
     fn omitted_dependencies_are_reported_without_expanding_the_filter() {
         let all: Vec<Box<dyn Task>> = vec![Box::new(SampleTask), Box::new(DependentTask)];
-        let log = RecordingOutput::default();
+        let log = CapturingOutput::default();
 
         let filtered = apply_task_filters(
             &all,
@@ -449,7 +423,7 @@ mod tests {
         );
         warn_omitted_dependencies(&dependencies, &log);
         assert_eq!(
-            log.warnings(),
+            log.messages_of(MsgKind::Warn),
             vec![
                 "task 'Dependent' will run without filtered prerequisite 'Home symlinks'; assuming it is already satisfied"
                     .to_string()

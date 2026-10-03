@@ -8,7 +8,7 @@ use crate::infra::ConfigHandle;
 use crate::infra::env::MapEnv;
 use crate::infra::exec::{CommandSpec, ExecResult, MockExecutor};
 use crate::infra::platform::{Os, Platform};
-use crate::test_helpers::{empty_config, make_context};
+use crate::test_helpers::make_context;
 
 use super::fragments::{discover_fragment_files, merge_fragments};
 use super::install::{ApmPackageMode, InstallApmPackages};
@@ -47,12 +47,8 @@ pub fn write_copilot_app_db(home: &Path) -> PathBuf {
 }
 
 pub fn make_context_with_home(home: &Path, platform: Platform, executor: MockExecutor) -> Context {
-    make_context(
-        empty_config(home.to_path_buf()),
-        platform,
-        Arc::new(executor),
-    )
-    .with_home(home.to_path_buf())
+    make_context(home.to_path_buf(), None, platform, Arc::new(executor))
+        .with_home(home.to_path_buf())
 }
 
 pub fn make_windows_cowork_context(home: &Path, executor: MockExecutor) -> Context {

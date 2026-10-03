@@ -1,151 +1,195 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="598" viewBox="0 0 760 598" role="img" aria-labelledby="title desc">
-  <title id="title">dotfiles — an install from command to completion</title>
-  <desc id="desc">An animated, illustrative incremental install on Arch Linux with an already selected desktop profile. The command dotfiles install is typed, then the live Running row tracks concurrent tasks and the remaining count. Completed tasks show linked Git and Zsh configuration, installed neovim and zsh packages, and the default shell configured to zsh. After system packages finish, Paru and AUR checks precede their dependent tasks. Already current tasks stay quiet. The run ends with 3 changed, 14 current, and 18.6 seconds, matching the elapsed playback from the startup header to this summary, then returns to the two-line shell prompt with the home-directory marker above the cursor. Playback pauses on the result before repeating; typing and this pause are outside the reported run duration. Reduced motion shows the completed output.</desc>
-  <defs>
-    <linearGradient id="backdrop" x2="1" y2="1">
-      <stop stop-color="#24283b"/>
-      <stop offset="1" stop-color="#151621"/>
-    </linearGradient>
-    <radialGradient id="violet-glow" cx="0" cy="0" r="1">
-      <stop stop-color="#bb9af7" stop-opacity="0.18"/>
-      <stop offset="1" stop-color="#bb9af7" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="blue-glow" cx="1" cy="1" r="0.8">
-      <stop stop-color="#7aa2f7" stop-opacity="0.12"/>
-      <stop offset="1" stop-color="#7aa2f7" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="terminal" x2="0" y2="1">
-      <stop stop-color="#1c1e2d"/>
-      <stop offset="1" stop-color="#1a1b26"/>
-    </linearGradient>
-    <linearGradient id="chrome" x2="0" y2="1">
-      <stop stop-color="#2a2e43"/>
-      <stop offset="1" stop-color="#24283b"/>
-    </linearGradient>
-    <linearGradient id="border" x2="0.8" y2="1">
-      <stop stop-color="#737aa2" stop-opacity="0.5"/>
-      <stop offset="0.5" stop-color="#414868" stop-opacity="0.4"/>
-      <stop offset="1" stop-color="#7aa2f7" stop-opacity="0.2"/>
-    </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0b0c14" flood-opacity="0.55"/>
-    </filter>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="494" viewBox="0 0 760 494" role="img" aria-labelledby="title desc">
+  <title id="title">Restore configuration links, then verify they are current</title>
+  <desc id="desc">Illustrative terminal session on an existing Arch Linux desktop with the desktop profile selected and the repository up to date. The user types dotfiles install --only symlinks to restore two missing Git and Zsh configuration links. Home symlinks is one changed task, taking 0.8 seconds. Running the same command again reports one current task in 0.2 seconds. Output appears on a fixed terminal grid; the live status is replaced in place and the shell prompt returns after each run. The 20-second loop holds the completed session for reading. Reduced motion displays the completed transcript without blinking.</desc>
   <style>
-    /* One 30.4-second loop: type, run for 18.6 seconds, hold the result, then replay. */
-    @keyframes char-0 { 0.0000%, 2.2960% { opacity: 0; } 2.3026%, 100.0000% { opacity: 1; } }
-    .char-0 { animation: char-0 30.4s linear infinite; }
-    @keyframes char-1 { 0.0000%, 2.6250% { opacity: 0; } 2.6316%, 100.0000% { opacity: 1; } }
-    .char-1 { animation: char-1 30.4s linear infinite; }
-    @keyframes char-2 { 0.0000%, 2.9539% { opacity: 0; } 2.9605%, 100.0000% { opacity: 1; } }
-    .char-2 { animation: char-2 30.4s linear infinite; }
-    @keyframes char-3 { 0.0000%, 3.2829% { opacity: 0; } 3.2895%, 100.0000% { opacity: 1; } }
-    .char-3 { animation: char-3 30.4s linear infinite; }
-    @keyframes char-4 { 0.0000%, 3.6118% { opacity: 0; } 3.6184%, 100.0000% { opacity: 1; } }
-    .char-4 { animation: char-4 30.4s linear infinite; }
-    @keyframes char-5 { 0.0000%, 3.9408% { opacity: 0; } 3.9473%, 100.0000% { opacity: 1; } }
-    .char-5 { animation: char-5 30.4s linear infinite; }
-    @keyframes char-6 { 0.0000%, 4.2697% { opacity: 0; } 4.2763%, 100.0000% { opacity: 1; } }
-    .char-6 { animation: char-6 30.4s linear infinite; }
-    @keyframes char-7 { 0.0000%, 4.5987% { opacity: 0; } 4.6052%, 100.0000% { opacity: 1; } }
-    .char-7 { animation: char-7 30.4s linear infinite; }
-    @keyframes char-8 { 0.0000%, 4.9276% { opacity: 0; } 4.9342%, 100.0000% { opacity: 1; } }
-    .char-8 { animation: char-8 30.4s linear infinite; }
-    @keyframes char-9 { 0.0000%, 5.2566% { opacity: 0; } 5.2631%, 100.0000% { opacity: 1; } }
-    .char-9 { animation: char-9 30.4s linear infinite; }
-    @keyframes char-10 { 0.0000%, 5.5855% { opacity: 0; } 5.5921%, 100.0000% { opacity: 1; } }
-    .char-10 { animation: char-10 30.4s linear infinite; }
-    @keyframes char-11 { 0.0000%, 5.9145% { opacity: 0; } 5.9210%, 100.0000% { opacity: 1; } }
-    .char-11 { animation: char-11 30.4s linear infinite; }
-    @keyframes char-12 { 0.0000%, 6.2434% { opacity: 0; } 6.2500%, 100.0000% { opacity: 1; } }
-    .char-12 { animation: char-12 30.4s linear infinite; }
-    @keyframes char-13 { 0.0000%, 6.5724% { opacity: 0; } 6.5789%, 100.0000% { opacity: 1; } }
-    .char-13 { animation: char-13 30.4s linear infinite; }
-    @keyframes char-14 { 0.0000%, 6.9013% { opacity: 0; } 6.9079%, 100.0000% { opacity: 1; } }
-    .char-14 { animation: char-14 30.4s linear infinite; }
-    @keyframes char-15 { 0.0000%, 7.2303% { opacity: 0; } 7.2368%, 100.0000% { opacity: 1; } }
-    .char-15 { animation: char-15 30.4s linear infinite; }
-    @keyframes context { 0.0000%, 9.2040% { opacity: 0; } 9.2106%, 100.0000% { opacity: 1; } }
-    .context { animation: context 30.4s linear infinite; }
-    @keyframes links { 0.0000%, 23.5949% { opacity: 0; } 23.6069%, 100.0000% { opacity: 1; } }
-    .links { animation: links 30.4s linear infinite; }
-    @keyframes packages { 0.0000%, 54.7867% { opacity: 0; } 54.7987%, 100.0000% { opacity: 1; } }
-    .packages { animation: packages 30.4s linear infinite; }
-    @keyframes shell { 0.0000%, 66.7836% { opacity: 0; } 66.7956%, 100.0000% { opacity: 1; } }
-    .shell { animation: shell 30.4s linear infinite; }
-    @keyframes totals { 0.0000%, 70.3827% { opacity: 0; } 70.3947%, 100.0000% { opacity: 1; } }
-    .totals { animation: totals 30.4s linear infinite; }
-    @keyframes prompt { 0.0000%, 72.3618% { opacity: 0; } 72.3684%, 100.0000% { opacity: 1; } }
-    .prompt { animation: prompt 30.4s linear infinite; }
-    @keyframes typing-cursor { 0.0000%, 8.2171% { opacity: 1; } 8.2237%, 100.0000% { opacity: 0; } }
-    .typing-cursor { opacity: 0; animation: typing-cursor 30.4s linear infinite; }
-    @keyframes caret-position { 0.0000%, 2.2960% { transform: translateX(0px); } 2.3026%, 2.6250% { transform: translateX(10.8px); } 2.6316%, 2.9539% { transform: translateX(21.6px); } 2.9605%, 3.2829% { transform: translateX(32.4px); } 3.2895%, 3.6118% { transform: translateX(43.2px); } 3.6184%, 3.9408% { transform: translateX(54.0px); } 3.9473%, 4.2697% { transform: translateX(64.8px); } 4.2763%, 4.5987% { transform: translateX(75.6px); } 4.6052%, 4.9276% { transform: translateX(86.4px); } 4.9342%, 5.2566% { transform: translateX(97.2px); } 5.2631%, 5.5855% { transform: translateX(108.0px); } 5.5921%, 5.9145% { transform: translateX(118.8px); } 5.9210%, 6.2434% { transform: translateX(129.6px); } 6.2500%, 6.5724% { transform: translateX(140.4px); } 6.5789%, 6.9013% { transform: translateX(151.2px); } 6.9079%, 7.2303% { transform: translateX(162.0px); } 7.2368%, 7.5592% { transform: translateX(172.8px); } 7.5658%, 100.0000% { transform: translateX(172.8px); } }
-    .typing-cursor { animation: typing-cursor 30.4s linear infinite, caret-position 30.4s linear infinite; }
-    @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
-    .cursor-blink { animation: blink 1s step-end infinite; }
-    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } .typing-cursor, .live-progress { display: none; } .cursor-blink { opacity: 1; } }
-    @keyframes running-0 { 0.0000%, 9.2040% { opacity: 0; } 9.2106%, 14.5971% { opacity: 1; } 14.6092%, 100.0000% { opacity: 0; } }
-    .running-0 { opacity: 0; animation: running-0 30.4s linear infinite; }
-    @keyframes running-1 { 0.0000%, 14.5971% { opacity: 0; } 14.6092%, 18.7960% { opacity: 1; } 18.8080%, 100.0000% { opacity: 0; } }
-    .running-1 { opacity: 0; animation: running-1 30.4s linear infinite; }
-    @keyframes running-2 { 0.0000%, 18.7960% { opacity: 0; } 18.8080%, 23.5949% { opacity: 1; } 23.6069%, 100.0000% { opacity: 0; } }
-    .running-2 { opacity: 0; animation: running-2 30.4s linear infinite; }
-    @keyframes running-3 { 0.0000%, 23.5949% { opacity: 0; } 23.6069%, 28.9934% { opacity: 1; } 29.0055%, 100.0000% { opacity: 0; } }
-    .running-3 { opacity: 0; animation: running-3 30.4s linear infinite; }
-    @keyframes running-4 { 0.0000%, 28.9934% { opacity: 0; } 29.0055%, 36.1915% { opacity: 1; } 36.2035%, 100.0000% { opacity: 0; } }
-    .running-4 { opacity: 0; animation: running-4 30.4s linear infinite; }
-    @keyframes running-5 { 0.0000%, 36.1915% { opacity: 0; } 36.2035%, 43.9895% { opacity: 1; } 44.0015%, 100.0000% { opacity: 0; } }
-    .running-5 { opacity: 0; animation: running-5 30.4s linear infinite; }
-    @keyframes running-6 { 0.0000%, 43.9895% { opacity: 0; } 44.0015%, 54.7867% { opacity: 1; } 54.7987%, 100.0000% { opacity: 0; } }
-    .running-6 { opacity: 0; animation: running-6 30.4s linear infinite; }
-    @keyframes running-7 { 0.0000%, 54.7867% { opacity: 0; } 54.7987%, 58.3858% { opacity: 1; } 58.3978%, 100.0000% { opacity: 0; } }
-    .running-7 { opacity: 0; animation: running-7 30.4s linear infinite; }
-    @keyframes running-8 { 0.0000%, 58.3858% { opacity: 0; } 58.3978%, 61.9849% { opacity: 1; } 61.9969%, 100.0000% { opacity: 0; } }
-    .running-8 { opacity: 0; animation: running-8 30.4s linear infinite; }
-    @keyframes running-9 { 0.0000%, 61.9849% { opacity: 0; } 61.9969%, 64.3843% { opacity: 1; } 64.3963%, 100.0000% { opacity: 0; } }
-    .running-9 { opacity: 0; animation: running-9 30.4s linear infinite; }
-    @keyframes running-10 { 0.0000%, 64.3843% { opacity: 0; } 64.3963%, 66.7836% { opacity: 1; } 66.7956%, 100.0000% { opacity: 0; } }
-    .running-10 { opacity: 0; animation: running-10 30.4s linear infinite; }
+    /* 20-second loop. Run times exclude typing and the final reading pause.
+       4.1–4.9s: restore links; 9.8–10.0s: verify the repeat run.
+       All rows use a 9px character cell and a 23px line height. */
+    @keyframes first-0 { 0% { opacity: 0; } 4.46875%, 100% { opacity: 1; } }
+    .first-0 { animation: first-0 20s step-end infinite; }
+    @keyframes first-1 { 0% { opacity: 0; } 4.9375%, 100% { opacity: 1; } }
+    .first-1 { animation: first-1 20s step-end infinite; }
+    @keyframes first-2 { 0% { opacity: 0; } 5.40625%, 100% { opacity: 1; } }
+    .first-2 { animation: first-2 20s step-end infinite; }
+    @keyframes first-3 { 0% { opacity: 0; } 5.875%, 100% { opacity: 1; } }
+    .first-3 { animation: first-3 20s step-end infinite; }
+    @keyframes first-4 { 0% { opacity: 0; } 6.34375%, 100% { opacity: 1; } }
+    .first-4 { animation: first-4 20s step-end infinite; }
+    @keyframes first-5 { 0% { opacity: 0; } 6.8125%, 100% { opacity: 1; } }
+    .first-5 { animation: first-5 20s step-end infinite; }
+    @keyframes first-6 { 0% { opacity: 0; } 7.28125%, 100% { opacity: 1; } }
+    .first-6 { animation: first-6 20s step-end infinite; }
+    @keyframes first-7 { 0% { opacity: 0; } 7.75%, 100% { opacity: 1; } }
+    .first-7 { animation: first-7 20s step-end infinite; }
+    @keyframes first-8 { 0% { opacity: 0; } 8.21875%, 100% { opacity: 1; } }
+    .first-8 { animation: first-8 20s step-end infinite; }
+    @keyframes first-9 { 0% { opacity: 0; } 8.6875%, 100% { opacity: 1; } }
+    .first-9 { animation: first-9 20s step-end infinite; }
+    @keyframes first-10 { 0% { opacity: 0; } 9.15625%, 100% { opacity: 1; } }
+    .first-10 { animation: first-10 20s step-end infinite; }
+    @keyframes first-11 { 0% { opacity: 0; } 9.625%, 100% { opacity: 1; } }
+    .first-11 { animation: first-11 20s step-end infinite; }
+    @keyframes first-12 { 0% { opacity: 0; } 10.0938%, 100% { opacity: 1; } }
+    .first-12 { animation: first-12 20s step-end infinite; }
+    @keyframes first-13 { 0% { opacity: 0; } 10.5625%, 100% { opacity: 1; } }
+    .first-13 { animation: first-13 20s step-end infinite; }
+    @keyframes first-14 { 0% { opacity: 0; } 11.0312%, 100% { opacity: 1; } }
+    .first-14 { animation: first-14 20s step-end infinite; }
+    @keyframes first-15 { 0% { opacity: 0; } 11.5%, 100% { opacity: 1; } }
+    .first-15 { animation: first-15 20s step-end infinite; }
+    @keyframes first-16 { 0% { opacity: 0; } 11.9688%, 100% { opacity: 1; } }
+    .first-16 { animation: first-16 20s step-end infinite; }
+    @keyframes first-17 { 0% { opacity: 0; } 12.4375%, 100% { opacity: 1; } }
+    .first-17 { animation: first-17 20s step-end infinite; }
+    @keyframes first-18 { 0% { opacity: 0; } 12.9062%, 100% { opacity: 1; } }
+    .first-18 { animation: first-18 20s step-end infinite; }
+    @keyframes first-19 { 0% { opacity: 0; } 13.375%, 100% { opacity: 1; } }
+    .first-19 { animation: first-19 20s step-end infinite; }
+    @keyframes first-20 { 0% { opacity: 0; } 13.8438%, 100% { opacity: 1; } }
+    .first-20 { animation: first-20 20s step-end infinite; }
+    @keyframes first-21 { 0% { opacity: 0; } 14.3125%, 100% { opacity: 1; } }
+    .first-21 { animation: first-21 20s step-end infinite; }
+    @keyframes first-22 { 0% { opacity: 0; } 14.7812%, 100% { opacity: 1; } }
+    .first-22 { animation: first-22 20s step-end infinite; }
+    @keyframes first-23 { 0% { opacity: 0; } 15.25%, 100% { opacity: 1; } }
+    .first-23 { animation: first-23 20s step-end infinite; }
+    @keyframes first-24 { 0% { opacity: 0; } 15.7188%, 100% { opacity: 1; } }
+    .first-24 { animation: first-24 20s step-end infinite; }
+    @keyframes first-25 { 0% { opacity: 0; } 16.1875%, 100% { opacity: 1; } }
+    .first-25 { animation: first-25 20s step-end infinite; }
+    @keyframes first-26 { 0% { opacity: 0; } 16.6562%, 100% { opacity: 1; } }
+    .first-26 { animation: first-26 20s step-end infinite; }
+    @keyframes first-27 { 0% { opacity: 0; } 17.125%, 100% { opacity: 1; } }
+    .first-27 { animation: first-27 20s step-end infinite; }
+    @keyframes first-28 { 0% { opacity: 0; } 17.5938%, 100% { opacity: 1; } }
+    .first-28 { animation: first-28 20s step-end infinite; }
+    @keyframes first-29 { 0% { opacity: 0; } 18.0625%, 100% { opacity: 1; } }
+    .first-29 { animation: first-29 20s step-end infinite; }
+    @keyframes first-30 { 0% { opacity: 0; } 18.5312%, 100% { opacity: 1; } }
+    .first-30 { animation: first-30 20s step-end infinite; }
+    @keyframes first-31 { 0% { opacity: 0; } 19%, 100% { opacity: 1; } }
+    .first-31 { animation: first-31 20s step-end infinite; }
+    @keyframes first-cursor { 0% { opacity: 0; } 2.5% { opacity: 1; } 20.5%, 100% { opacity: 0; } }
+    .first-cursor { animation: first-cursor 20s step-end infinite; }
+    @keyframes first-position { 0% { transform: translateX(0px); } 4.46875% { transform: translateX(9px); } 4.9375% { transform: translateX(18px); } 5.40625% { transform: translateX(27px); } 5.875% { transform: translateX(36px); } 6.34375% { transform: translateX(45px); } 6.8125% { transform: translateX(54px); } 7.28125% { transform: translateX(63px); } 7.75% { transform: translateX(72px); } 8.21875% { transform: translateX(81px); } 8.6875% { transform: translateX(90px); } 9.15625% { transform: translateX(99px); } 9.625% { transform: translateX(108px); } 10.0938% { transform: translateX(117px); } 10.5625% { transform: translateX(126px); } 11.0312% { transform: translateX(135px); } 11.5% { transform: translateX(144px); } 11.9688% { transform: translateX(153px); } 12.4375% { transform: translateX(162px); } 12.9062% { transform: translateX(171px); } 13.375% { transform: translateX(180px); } 13.8438% { transform: translateX(189px); } 14.3125% { transform: translateX(198px); } 14.7812% { transform: translateX(207px); } 15.25% { transform: translateX(216px); } 15.7188% { transform: translateX(225px); } 16.1875% { transform: translateX(234px); } 16.6562% { transform: translateX(243px); } 17.125% { transform: translateX(252px); } 17.5938% { transform: translateX(261px); } 18.0625% { transform: translateX(270px); } 18.5312% { transform: translateX(279px); } 19% { transform: translateX(288px); } }
+    .first-position { animation: first-position 20s step-end infinite; }
+    @keyframes header-one { 0% { opacity: 0; } 20.5%, 100% { opacity: 1; } }
+    .header-one { animation: header-one 20s step-end infinite; }
+    @keyframes running-one { 0% { opacity: 0; } 20.5% { opacity: 1; } 24.5%, 100% { opacity: 0; } }
+    .running-one { animation: running-one 20s step-end infinite; }
+    @keyframes changed { 0% { opacity: 0; } 24.5%, 100% { opacity: 1; } }
+    .changed { animation: changed 20s step-end infinite; }
+    @keyframes prompt-two { 0% { opacity: 0; } 25.5%, 100% { opacity: 1; } }
+    .prompt-two { animation: prompt-two 20s step-end infinite; }
+    @keyframes second-0 { 0% { opacity: 0; } 32.9688%, 100% { opacity: 1; } }
+    .second-0 { animation: second-0 20s step-end infinite; }
+    @keyframes second-1 { 0% { opacity: 0; } 33.4375%, 100% { opacity: 1; } }
+    .second-1 { animation: second-1 20s step-end infinite; }
+    @keyframes second-2 { 0% { opacity: 0; } 33.9062%, 100% { opacity: 1; } }
+    .second-2 { animation: second-2 20s step-end infinite; }
+    @keyframes second-3 { 0% { opacity: 0; } 34.375%, 100% { opacity: 1; } }
+    .second-3 { animation: second-3 20s step-end infinite; }
+    @keyframes second-4 { 0% { opacity: 0; } 34.8438%, 100% { opacity: 1; } }
+    .second-4 { animation: second-4 20s step-end infinite; }
+    @keyframes second-5 { 0% { opacity: 0; } 35.3125%, 100% { opacity: 1; } }
+    .second-5 { animation: second-5 20s step-end infinite; }
+    @keyframes second-6 { 0% { opacity: 0; } 35.7812%, 100% { opacity: 1; } }
+    .second-6 { animation: second-6 20s step-end infinite; }
+    @keyframes second-7 { 0% { opacity: 0; } 36.25%, 100% { opacity: 1; } }
+    .second-7 { animation: second-7 20s step-end infinite; }
+    @keyframes second-8 { 0% { opacity: 0; } 36.7188%, 100% { opacity: 1; } }
+    .second-8 { animation: second-8 20s step-end infinite; }
+    @keyframes second-9 { 0% { opacity: 0; } 37.1875%, 100% { opacity: 1; } }
+    .second-9 { animation: second-9 20s step-end infinite; }
+    @keyframes second-10 { 0% { opacity: 0; } 37.6562%, 100% { opacity: 1; } }
+    .second-10 { animation: second-10 20s step-end infinite; }
+    @keyframes second-11 { 0% { opacity: 0; } 38.125%, 100% { opacity: 1; } }
+    .second-11 { animation: second-11 20s step-end infinite; }
+    @keyframes second-12 { 0% { opacity: 0; } 38.5938%, 100% { opacity: 1; } }
+    .second-12 { animation: second-12 20s step-end infinite; }
+    @keyframes second-13 { 0% { opacity: 0; } 39.0625%, 100% { opacity: 1; } }
+    .second-13 { animation: second-13 20s step-end infinite; }
+    @keyframes second-14 { 0% { opacity: 0; } 39.5312%, 100% { opacity: 1; } }
+    .second-14 { animation: second-14 20s step-end infinite; }
+    @keyframes second-15 { 0% { opacity: 0; } 40%, 100% { opacity: 1; } }
+    .second-15 { animation: second-15 20s step-end infinite; }
+    @keyframes second-16 { 0% { opacity: 0; } 40.4688%, 100% { opacity: 1; } }
+    .second-16 { animation: second-16 20s step-end infinite; }
+    @keyframes second-17 { 0% { opacity: 0; } 40.9375%, 100% { opacity: 1; } }
+    .second-17 { animation: second-17 20s step-end infinite; }
+    @keyframes second-18 { 0% { opacity: 0; } 41.4062%, 100% { opacity: 1; } }
+    .second-18 { animation: second-18 20s step-end infinite; }
+    @keyframes second-19 { 0% { opacity: 0; } 41.875%, 100% { opacity: 1; } }
+    .second-19 { animation: second-19 20s step-end infinite; }
+    @keyframes second-20 { 0% { opacity: 0; } 42.3438%, 100% { opacity: 1; } }
+    .second-20 { animation: second-20 20s step-end infinite; }
+    @keyframes second-21 { 0% { opacity: 0; } 42.8125%, 100% { opacity: 1; } }
+    .second-21 { animation: second-21 20s step-end infinite; }
+    @keyframes second-22 { 0% { opacity: 0; } 43.2812%, 100% { opacity: 1; } }
+    .second-22 { animation: second-22 20s step-end infinite; }
+    @keyframes second-23 { 0% { opacity: 0; } 43.75%, 100% { opacity: 1; } }
+    .second-23 { animation: second-23 20s step-end infinite; }
+    @keyframes second-24 { 0% { opacity: 0; } 44.2188%, 100% { opacity: 1; } }
+    .second-24 { animation: second-24 20s step-end infinite; }
+    @keyframes second-25 { 0% { opacity: 0; } 44.6875%, 100% { opacity: 1; } }
+    .second-25 { animation: second-25 20s step-end infinite; }
+    @keyframes second-26 { 0% { opacity: 0; } 45.1562%, 100% { opacity: 1; } }
+    .second-26 { animation: second-26 20s step-end infinite; }
+    @keyframes second-27 { 0% { opacity: 0; } 45.625%, 100% { opacity: 1; } }
+    .second-27 { animation: second-27 20s step-end infinite; }
+    @keyframes second-28 { 0% { opacity: 0; } 46.0938%, 100% { opacity: 1; } }
+    .second-28 { animation: second-28 20s step-end infinite; }
+    @keyframes second-29 { 0% { opacity: 0; } 46.5625%, 100% { opacity: 1; } }
+    .second-29 { animation: second-29 20s step-end infinite; }
+    @keyframes second-30 { 0% { opacity: 0; } 47.0312%, 100% { opacity: 1; } }
+    .second-30 { animation: second-30 20s step-end infinite; }
+    @keyframes second-31 { 0% { opacity: 0; } 47.5%, 100% { opacity: 1; } }
+    .second-31 { animation: second-31 20s step-end infinite; }
+    @keyframes second-cursor { 0% { opacity: 0; } 31% { opacity: 1; } 49%, 100% { opacity: 0; } }
+    .second-cursor { animation: second-cursor 20s step-end infinite; }
+    @keyframes second-position { 0% { transform: translateX(0px); } 32.9688% { transform: translateX(9px); } 33.4375% { transform: translateX(18px); } 33.9062% { transform: translateX(27px); } 34.375% { transform: translateX(36px); } 34.8438% { transform: translateX(45px); } 35.3125% { transform: translateX(54px); } 35.7812% { transform: translateX(63px); } 36.25% { transform: translateX(72px); } 36.7188% { transform: translateX(81px); } 37.1875% { transform: translateX(90px); } 37.6562% { transform: translateX(99px); } 38.125% { transform: translateX(108px); } 38.5938% { transform: translateX(117px); } 39.0625% { transform: translateX(126px); } 39.5312% { transform: translateX(135px); } 40% { transform: translateX(144px); } 40.4688% { transform: translateX(153px); } 40.9375% { transform: translateX(162px); } 41.4062% { transform: translateX(171px); } 41.875% { transform: translateX(180px); } 42.3438% { transform: translateX(189px); } 42.8125% { transform: translateX(198px); } 43.2812% { transform: translateX(207px); } 43.75% { transform: translateX(216px); } 44.2188% { transform: translateX(225px); } 44.6875% { transform: translateX(234px); } 45.1562% { transform: translateX(243px); } 45.625% { transform: translateX(252px); } 46.0938% { transform: translateX(261px); } 46.5625% { transform: translateX(270px); } 47.0312% { transform: translateX(279px); } 47.5% { transform: translateX(288px); } }
+    .second-position { animation: second-position 20s step-end infinite; }
+    @keyframes waiting { 0% { opacity: 0; } 25.5% { opacity: 1; } 31%, 100% { opacity: 0; } }
+    .waiting { animation: waiting 20s step-end infinite; }
+    @keyframes header-two { 0% { opacity: 0; } 49%, 100% { opacity: 1; } }
+    .header-two { animation: header-two 20s step-end infinite; }
+    @keyframes running-two { 0% { opacity: 0; } 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+    .running-two { animation: running-two 20s step-end infinite; }
+    @keyframes current { 0% { opacity: 0; } 50%, 100% { opacity: 1; } }
+    .current { animation: current 20s step-end infinite; }
+    @keyframes prompt-final { 0% { opacity: 0; } 51%, 100% { opacity: 1; } }
+    .prompt-final { animation: prompt-final 20s step-end infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    .blink { animation: blink 1s step-end infinite; }
+    .transient, .running-one, .running-two, .waiting { opacity: 0; }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+      .transient, .running-one, .running-two, .waiting { display: none; }
+    }
   </style>
-  <rect width="760" height="598" rx="28" fill="url(#backdrop)"/>
-  <rect width="760" height="598" rx="28" fill="url(#violet-glow)"/>
-  <rect width="760" height="598" rx="28" fill="url(#blue-glow)"/>
-  <rect x="24" y="24" width="712" height="550" rx="16" fill="url(#terminal)" filter="url(#shadow)"/>
-  <path d="M40 24h680a16 16 0 0 1 16 16v36H24V40a16 16 0 0 1 16-16z" fill="url(#chrome)"/>
-  <path d="M25 76h710" stroke="#414868" stroke-opacity="0.65"/>
-  <rect x="24.5" y="24.5" width="711" height="549" rx="15.5" fill="none" stroke="url(#border)"/>
-  <circle cx="50" cy="50" r="6" fill="#f7768e"/>
-  <circle cx="70" cy="50" r="6" fill="#e0af68"/>
-  <circle cx="90" cy="50" r="6" fill="#9ece6a"/>
-  <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace">
-    <text x="380" y="55" fill="#a9b1d6" font-size="13" text-anchor="middle" letter-spacing="0.4">dotfiles — zsh</text>
-    <g font-size="18" fill="#c0caf5" xml:space="preserve">
-<text x="56" y="110"><tspan fill="#e0af68">~</tspan></text>
-<text x="56" y="136"><tspan fill="#8992b5">$ </tspan><tspan class="char-0" x="77.6" fill="#9ece6a">d</tspan><tspan class="char-1" x="88.4" fill="#9ece6a">o</tspan><tspan class="char-2" x="99.2" fill="#9ece6a">t</tspan><tspan class="char-3" x="110.0" fill="#9ece6a">f</tspan><tspan class="char-4" x="120.8" fill="#9ece6a">i</tspan><tspan class="char-5" x="131.6" fill="#9ece6a">l</tspan><tspan class="char-6" x="142.4" fill="#9ece6a">e</tspan><tspan class="char-7" x="153.2" fill="#9ece6a">s</tspan><tspan class="char-8" x="164.0" fill="#c0caf5"> </tspan><tspan class="char-9" x="174.8" fill="#c0caf5">i</tspan><tspan class="char-10" x="185.6" fill="#c0caf5">n</tspan><tspan class="char-11" x="196.4" fill="#c0caf5">s</tspan><tspan class="char-12" x="207.2" fill="#c0caf5">t</tspan><tspan class="char-13" x="218.0" fill="#c0caf5">a</tspan><tspan class="char-14" x="228.8" fill="#c0caf5">l</tspan><tspan class="char-15" x="239.6" fill="#c0caf5">l</tspan></text>
-<g class="typing-cursor"><rect class="cursor-blink" x="77.6" y="120" width="10" height="20" rx="1" fill="#c0caf5"/></g>
-<g class="context"><text x="56" y="162"><tspan font-weight="700">Install</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
-<g class="links"><text x="56" y="206"><tspan fill="#9ece6a">✓</tspan><tspan x="78" font-weight="700">Home symlinks</tspan></text>
-<text x="78" y="232">link ~/.config/git/config → symlinks/config/git/config</text>
-<text x="78" y="258">link ~/.zshrc → symlinks/zshrc</text></g>
-<g class="packages"><text x="56" y="310"><tspan fill="#9ece6a">✓</tspan><tspan x="78" font-weight="700">System packages</tspan></text>
-<text x="78" y="336">install neovim</text>
-<text x="78" y="362">install zsh</text></g>
-<g class="shell"><text x="56" y="414"><tspan fill="#9ece6a">✓</tspan><tspan x="78" font-weight="700">Default shell</tspan></text>
-<text x="78" y="440">configure default shell → zsh</text></g>
-<g class="live-progress running-0"><text x="56" y="206"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 16 remaining · </tspan>Home symlinks, System packages</text></g>
-<g class="live-progress running-1"><text x="56" y="206"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 13 remaining · </tspan>Home symlinks, System packages</text></g>
-<g class="live-progress running-2"><text x="56" y="206"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 12 remaining · </tspan>Home symlinks, System packages</text></g>
-<g class="live-progress running-3"><text x="56" y="310"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 11 remaining · </tspan>System packages, Git settings</text></g>
-<g class="live-progress running-4"><text x="56" y="310"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 10 remaining · </tspan>System packages, File permissions</text></g>
-<g class="live-progress running-5"><text x="56" y="310"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 9 remaining · </tspan>System packages, Shell completions</text></g>
-<g class="live-progress running-6"><text x="56" y="310"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 8 remaining · </tspan>System packages</text></g>
-<g class="live-progress running-7"><text x="56" y="414"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 7 remaining · </tspan>Paru package manager, Default shel …</text></g>
-<g class="live-progress running-8"><text x="56" y="414"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 6 remaining · </tspan>Default shell, System files, AUR p …</text></g>
-<g class="live-progress running-9"><text x="56" y="414"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 4 remaining · </tspan>Default shell, Systemd units, VS C …</text></g>
-<g class="live-progress running-10"><text x="56" y="414"><tspan font-weight="700">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>Default shell</text></g>
-<g class="totals"><text x="56" y="492"><tspan fill="#9ece6a" font-weight="700">3 changed</tspan><tspan fill="#8992b5"> · 14 current · 18.6s</tspan></text></g>
-<g class="prompt"><text x="56" y="518" fill="#e0af68">~</text><text x="56" y="544"><tspan fill="#8992b5">$ </tspan></text><rect class="cursor-blink" x="77.6" y="528" width="10" height="20" rx="1" fill="#c0caf5"/></g>
-    </g>
+  <rect x="0.5" y="0.5" width="759" height="493" rx="8" fill="#1a1b26" stroke="#414868"/>
+  <path d="M8 1h744a7 7 0 0 1 7 7v30H1V8a7 7 0 0 1 7-7z" fill="#24283b"/>
+  <path d="M1 38h758" stroke="#414868"/>
+  <g fill="#a9b1d6" font-family="DejaVu Sans Mono, Liberation Mono, Consolas, monospace" font-size="12">
+    <text x="18" y="24">~ : zsh</text>
+    <path d="M666 21h10m25-5h9v9h-9z m33-1 9 9m0-9-9 9" fill="none" stroke="#8992b5"/>
+  </g>
+  <g font-family="DejaVu Sans Mono, Liberation Mono, Consolas, monospace" font-size="15" fill="#c0caf5" xml:space="preserve">
+<text x="24" y="76" fill="#e0af68">~</text>
+<text x="24" y="99" fill="#a9b1d6">$</text>
+<text x="24" y="99"><tspan class="first-0" x="42" fill="#9ece6a">d</tspan><tspan class="first-1" x="51" fill="#9ece6a">o</tspan><tspan class="first-2" x="60" fill="#9ece6a">t</tspan><tspan class="first-3" x="69" fill="#9ece6a">f</tspan><tspan class="first-4" x="78" fill="#9ece6a">i</tspan><tspan class="first-5" x="87" fill="#9ece6a">l</tspan><tspan class="first-6" x="96" fill="#9ece6a">e</tspan><tspan class="first-7" x="105" fill="#9ece6a">s</tspan><tspan class="first-8" x="114" fill="#c0caf5"> </tspan><tspan class="first-9" x="123" fill="#c0caf5">i</tspan><tspan class="first-10" x="132" fill="#c0caf5">n</tspan><tspan class="first-11" x="141" fill="#c0caf5">s</tspan><tspan class="first-12" x="150" fill="#c0caf5">t</tspan><tspan class="first-13" x="159" fill="#c0caf5">a</tspan><tspan class="first-14" x="168" fill="#c0caf5">l</tspan><tspan class="first-15" x="177" fill="#c0caf5">l</tspan><tspan class="first-16" x="186" fill="#c0caf5"> </tspan><tspan class="first-17" x="195" fill="#7dcfff">-</tspan><tspan class="first-18" x="204" fill="#7dcfff">-</tspan><tspan class="first-19" x="213" fill="#7dcfff">o</tspan><tspan class="first-20" x="222" fill="#7dcfff">n</tspan><tspan class="first-21" x="231" fill="#7dcfff">l</tspan><tspan class="first-22" x="240" fill="#7dcfff">y</tspan><tspan class="first-23" x="249" fill="#c0caf5"> </tspan><tspan class="first-24" x="258" fill="#c0caf5">s</tspan><tspan class="first-25" x="267" fill="#c0caf5">y</tspan><tspan class="first-26" x="276" fill="#c0caf5">m</tspan><tspan class="first-27" x="285" fill="#c0caf5">l</tspan><tspan class="first-28" x="294" fill="#c0caf5">i</tspan><tspan class="first-29" x="303" fill="#c0caf5">n</tspan><tspan class="first-30" x="312" fill="#c0caf5">k</tspan><tspan class="first-31" x="321" fill="#c0caf5">s</tspan></text>
+    <g class="transient first-cursor"><g class="first-position"><rect class="blink" x="42" y="84" width="9" height="19" fill="#c0caf5"/></g></g>
+    <g class="header-one"><text x="24" y="122"><tspan font-weight="bold">Install</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
+    <g class="running-one"><text x="24" y="168"><tspan font-weight="bold">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>Home symlinks</text></g>
+    <g class="changed"><text x="24" y="168"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="bold">Home symlinks</tspan></text><text x="42" y="191">link ~/.config/git/config → symlinks/config/git/config</text><text x="42" y="214">link ~/.zshrc → symlinks/zshrc</text><text x="24" y="260"><tspan fill="#9ece6a" font-weight="bold">1 changed</tspan><tspan fill="#8992b5"> · 0.8s</tspan></text></g>
+    <g class="prompt-two"><text x="24" y="306" fill="#e0af68">~</text><text x="24" y="329" fill="#a9b1d6">$</text></g>
+<text x="24" y="329"><tspan class="second-0" x="42" fill="#9ece6a">d</tspan><tspan class="second-1" x="51" fill="#9ece6a">o</tspan><tspan class="second-2" x="60" fill="#9ece6a">t</tspan><tspan class="second-3" x="69" fill="#9ece6a">f</tspan><tspan class="second-4" x="78" fill="#9ece6a">i</tspan><tspan class="second-5" x="87" fill="#9ece6a">l</tspan><tspan class="second-6" x="96" fill="#9ece6a">e</tspan><tspan class="second-7" x="105" fill="#9ece6a">s</tspan><tspan class="second-8" x="114" fill="#c0caf5"> </tspan><tspan class="second-9" x="123" fill="#c0caf5">i</tspan><tspan class="second-10" x="132" fill="#c0caf5">n</tspan><tspan class="second-11" x="141" fill="#c0caf5">s</tspan><tspan class="second-12" x="150" fill="#c0caf5">t</tspan><tspan class="second-13" x="159" fill="#c0caf5">a</tspan><tspan class="second-14" x="168" fill="#c0caf5">l</tspan><tspan class="second-15" x="177" fill="#c0caf5">l</tspan><tspan class="second-16" x="186" fill="#c0caf5"> </tspan><tspan class="second-17" x="195" fill="#7dcfff">-</tspan><tspan class="second-18" x="204" fill="#7dcfff">-</tspan><tspan class="second-19" x="213" fill="#7dcfff">o</tspan><tspan class="second-20" x="222" fill="#7dcfff">n</tspan><tspan class="second-21" x="231" fill="#7dcfff">l</tspan><tspan class="second-22" x="240" fill="#7dcfff">y</tspan><tspan class="second-23" x="249" fill="#c0caf5"> </tspan><tspan class="second-24" x="258" fill="#c0caf5">s</tspan><tspan class="second-25" x="267" fill="#c0caf5">y</tspan><tspan class="second-26" x="276" fill="#c0caf5">m</tspan><tspan class="second-27" x="285" fill="#c0caf5">l</tspan><tspan class="second-28" x="294" fill="#c0caf5">i</tspan><tspan class="second-29" x="303" fill="#c0caf5">n</tspan><tspan class="second-30" x="312" fill="#c0caf5">k</tspan><tspan class="second-31" x="321" fill="#c0caf5">s</tspan></text>
+    <g class="transient second-cursor"><g class="second-position"><rect class="blink" x="42" y="314" width="9" height="19" fill="#c0caf5"/></g></g>
+    <g class="waiting"><rect class="blink" x="42" y="314" width="9" height="19" fill="#c0caf5"/></g>
+    <g class="header-two"><text x="24" y="352"><tspan font-weight="bold">Install</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
+    <g class="running-two"><text x="24" y="398"><tspan font-weight="bold">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>Home symlinks</text></g>
+    <g class="current"><text x="24" y="398"><tspan font-weight="bold">No changes</tspan><tspan fill="#8992b5"> · 1 current · 0.2s</tspan></text></g>
+    <g class="prompt-final"><text x="24" y="444" fill="#e0af68">~</text><text x="24" y="467" fill="#a9b1d6">$</text><rect class="blink" x="42" y="452" width="9" height="19" fill="#c0caf5"/></g>
   </g>
 </svg>

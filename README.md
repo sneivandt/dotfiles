@@ -22,7 +22,7 @@ Desired state lives in [conf/](conf/), with app configuration under
 [symlinks/](symlinks/).
 
 <p align="center">
-  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated example of dotfiles install: command typing, live task progress, completed changes, and the final summary">
+  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: restore Git and Zsh configuration links, then rerun to verify everything is current">
 </p>
 
 ## What it manages

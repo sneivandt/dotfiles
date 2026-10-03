@@ -120,7 +120,6 @@
   <circle cx="90" cy="50" r="6" fill="#9ece6a"/>
   <g font-family="Cascadia Mono, JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace">
     <text x="380" y="55" fill="#a9b1d6" font-size="13" text-anchor="middle" letter-spacing="0.4">dotfiles — zsh</text>
-    <text x="380" y="596" fill="#8992b5" font-size="11" text-anchor="middle">Illustrative incremental install · Arch Linux</text>
     <g font-size="18" fill="#c0caf5" xml:space="preserve">
 <text x="56" y="110"><tspan fill="#e0af68">~</tspan></text>
 <text x="56" y="136"><tspan fill="#8992b5">$ </tspan><tspan class="char-0" x="77.6" fill="#9ece6a">d</tspan><tspan class="char-1" x="88.4" fill="#9ece6a">o</tspan><tspan class="char-2" x="99.2" fill="#9ece6a">t</tspan><tspan class="char-3" x="110.0" fill="#9ece6a">f</tspan><tspan class="char-4" x="120.8" fill="#9ece6a">i</tspan><tspan class="char-5" x="131.6" fill="#9ece6a">l</tspan><tspan class="char-6" x="142.4" fill="#9ece6a">e</tspan><tspan class="char-7" x="153.2" fill="#9ece6a">s</tspan><tspan class="char-8" x="164.0" fill="#c0caf5"> </tspan><tspan class="char-9" x="174.8" fill="#c0caf5">i</tspan><tspan class="char-10" x="185.6" fill="#c0caf5">n</tspan><tspan class="char-11" x="196.4" fill="#c0caf5">s</tspan><tspan class="char-12" x="207.2" fill="#c0caf5">t</tspan><tspan class="char-13" x="218.0" fill="#c0caf5">a</tspan><tspan class="char-14" x="228.8" fill="#c0caf5">l</tspan><tspan class="char-15" x="239.6" fill="#c0caf5">l</tspan></text>

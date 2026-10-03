@@ -844,12 +844,12 @@ fn outcome_events_and_warnings_follow_failure_status() {
             *output.events.lock().unwrap(),
             [LogEvent::TaskStart, event, LogEvent::TaskTiming]
         );
-        let messages = output.messages.lock().unwrap();
-        assert_eq!(
-            messages
-                .iter()
-                .any(|(kind, message)| *kind == MsgKind::Warn && message.starts_with("failed: ")),
-            warns
-        );
+        let warned = output
+            .messages
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(kind, message)| *kind == MsgKind::Warn && message.starts_with("failed: "));
+        assert_eq!(warned, warns);
     }
 }

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="610" viewBox="0 0 760 610" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="598" viewBox="0 0 760 598" role="img" aria-labelledby="title desc">
   <title id="title">dotfiles — an install from command to completion</title>
   <desc id="desc">An animated, illustrative incremental install on Arch Linux with an already selected desktop profile. The command dotfiles install is typed, then the live Running row tracks concurrent tasks and the remaining count. Completed tasks show linked Git and Zsh configuration, installed neovim and zsh packages, and the default shell configured to zsh. After system packages finish, Paru and AUR checks precede their dependent tasks. Already current tasks stay quiet. The run ends with 3 changed, 14 current, and 18.6 seconds, matching the elapsed playback from the startup header to this summary, then returns to the two-line shell prompt with the home-directory marker above the cursor. Playback pauses on the result before repeating; typing and this pause are outside the reported run duration. Reduced motion shows the completed output.</desc>
   <defs>
@@ -108,9 +108,9 @@
     @keyframes running-10 { 0.0000%, 64.3843% { opacity: 0; } 64.3963%, 66.7836% { opacity: 1; } 66.7956%, 100.0000% { opacity: 0; } }
     .running-10 { opacity: 0; animation: running-10 30.4s linear infinite; }
   </style>
-  <rect width="760" height="610" rx="28" fill="url(#backdrop)"/>
-  <rect width="760" height="610" rx="28" fill="url(#violet-glow)"/>
-  <rect width="760" height="610" rx="28" fill="url(#blue-glow)"/>
+  <rect width="760" height="598" rx="28" fill="url(#backdrop)"/>
+  <rect width="760" height="598" rx="28" fill="url(#violet-glow)"/>
+  <rect width="760" height="598" rx="28" fill="url(#blue-glow)"/>
   <rect x="24" y="24" width="712" height="550" rx="16" fill="url(#terminal)" filter="url(#shadow)"/>
   <path d="M40 24h680a16 16 0 0 1 16 16v36H24V40a16 16 0 0 1 16-16z" fill="url(#chrome)"/>
   <path d="M25 76h710" stroke="#414868" stroke-opacity="0.65"/>

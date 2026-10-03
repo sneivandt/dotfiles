@@ -88,8 +88,7 @@ mod tests {
 
     #[test]
     fn run_is_not_applicable_without_settings() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config);
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         let result = ConfigureAgentSettings::new(ConfigHandle::new(vec![]))
             .run(&ctx)
             .unwrap();
@@ -100,7 +99,7 @@ mod tests {
     fn run_with_settings_converges() {
         let dir = tempfile::tempdir().unwrap();
         let config = empty_config(dir.path().to_path_buf());
-        let ctx = make_linux_context(config)
+        let ctx = make_linux_context(config.root.clone(), config.overlay)
             .with_home(dir.path().to_path_buf())
             .with_parallel(true);
         let task = ConfigureAgentSettings::new(ConfigHandle::new(vec![
@@ -170,7 +169,7 @@ mod tests {
                     std::fs::write(path, content).unwrap();
                 }
             }
-            let ctx = make_linux_context(empty_config(home.path().to_path_buf()))
+            let ctx = make_linux_context(home.path().to_path_buf(), None)
                 .with_home(home.path().to_path_buf())
                 .with_dry_run(true);
             let settings = [AgentHarness::Copilot, AgentHarness::Codex]
@@ -210,7 +209,7 @@ mod tests {
                         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
                         std::fs::write(&path, before).unwrap();
                     }
-                    let ctx = make_linux_context(empty_config(home.path().to_path_buf()))
+                    let ctx = make_linux_context(home.path().to_path_buf(), None)
                         .with_home(home.path().to_path_buf())
                         .with_dry_run(dry_run);
                     let task = ConfigureAgentSettings::new(ConfigHandle::new(vec![

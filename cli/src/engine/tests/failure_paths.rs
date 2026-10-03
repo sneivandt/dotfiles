@@ -18,9 +18,7 @@ use crate::engine::{
     process_resources, process_resources_remove,
 };
 use crate::infra::exec::{CommandSpec, Executor};
-use crate::test_helpers::{
-    FailAt, FailingExecutor, FailingResource, ResourceErrorKind, empty_config,
-};
+use crate::test_helpers::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
 
 use super::{bail_opts, test_context};
 
@@ -60,7 +58,7 @@ fn systemd_units(count: usize, executor: &Arc<dyn Executor>) -> Vec<SystemdUnitR
 
 #[test]
 fn a_failing_executor_call_aborts_the_batch_it_belongs_to() {
-    let (ctx, _log) = test_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = test_context("/dotfiles".into(), None);
     // `is-enabled` reports "disabled", so every unit needs applying; the third
     // systemctl invocation then fails.
     let failing = Arc::new(
@@ -147,7 +145,7 @@ fn which_result_is_configurable_for_availability_gated_code() {
 
 #[test]
 fn a_lenient_batch_records_failures_and_keeps_going() {
-    let (ctx, _log) = test_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = test_context("/dotfiles".into(), None);
     let resources = vec![
         FailingResource::new("first", FailAt::Never),
         FailingResource::new("second", FailAt::Always),
@@ -164,7 +162,7 @@ fn a_lenient_batch_records_failures_and_keeps_going() {
 
 #[test]
 fn a_strict_batch_stops_at_the_first_failure() {
-    let (ctx, _log) = test_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = test_context("/dotfiles".into(), None);
     let resources = vec![
         FailingResource::new("first", FailAt::Always),
         FailingResource::new("second", FailAt::Never),
@@ -214,7 +212,7 @@ fn call_scoped_failures_only_trip_the_chosen_attempt() {
 
 #[test]
 fn remove_failures_are_injected_independently_of_apply() {
-    let (ctx, _log) = test_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = test_context("/dotfiles".into(), None);
     let resources = vec![
         FailingResource::new("keep", FailAt::Never).with_state(ResourceState::Correct),
         FailingResource::new("stuck", FailAt::Never)
@@ -232,7 +230,7 @@ fn remove_failures_are_injected_independently_of_apply() {
 
 #[test]
 fn removal_skips_resources_that_are_not_in_the_desired_state() {
-    let (ctx, _log) = test_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = test_context("/dotfiles".into(), None);
     let resource = FailingResource::new("absent", FailAt::Never).with_state(ResourceState::Missing);
 
     let result =

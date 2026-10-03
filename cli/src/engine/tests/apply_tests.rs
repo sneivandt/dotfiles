@@ -2,7 +2,6 @@ use crate::engine::apply;
 use crate::engine::mode::ProcessOpts;
 use crate::engine::{Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
-use crate::test_helpers::empty_config;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -125,7 +124,7 @@ fn process_single_classifies_resource_states() {
     ];
 
     for (case, state, opts, expected) in cases {
-        let (ctx, _) = test_context(empty_config(PathBuf::from("/tmp")));
+        let (ctx, _) = test_context(PathBuf::from("/tmp"), None);
         let resource = MockResource::new(state.clone());
         let stats = apply::process_single(&ctx, &resource, &state, &opts).unwrap();
         assert_eq!(counts(&stats), expected, "{case}");
@@ -134,8 +133,7 @@ fn process_single_classifies_resource_states() {
 
 #[test]
 fn process_single_reports_unmet_work_as_a_warning() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let (ctx, _log) = test_context(PathBuf::from("/tmp"), None);
     let events = Arc::new(Mutex::new(Vec::new()));
     let ctx = ctx.with_log(Arc::new(OrderedEventLog {
         events: Arc::clone(&events),
@@ -169,7 +167,7 @@ fn process_single_dry_run_never_applies() {
             current: "old-value".to_string(),
         },
     ] {
-        let (ctx, _) = dry_run_context(empty_config(PathBuf::from("/tmp")));
+        let (ctx, _) = dry_run_context(PathBuf::from("/tmp"), None);
         let resource =
             MockResource::new(state.clone()).with_apply(Err("should not call".to_string()));
         let stats = apply::process_single(&ctx, &resource, &state, &default_opts()).unwrap();
@@ -179,8 +177,7 @@ fn process_single_dry_run_never_applies() {
 
 #[test]
 fn process_single_warns_before_destructive_apply() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let (ctx, _log) = test_context(PathBuf::from("/tmp"), None);
     let events = Arc::new(Mutex::new(Vec::new()));
     let ctx = ctx.with_log(Arc::new(OrderedEventLog {
         events: Arc::clone(&events),
@@ -214,8 +211,7 @@ fn process_single_warns_before_destructive_apply() {
 
 #[test]
 fn process_single_dry_run_neither_warns_nor_applies() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = dry_run_context(config);
+    let (ctx, _log) = dry_run_context(PathBuf::from("/tmp"), None);
     let events = Arc::new(Mutex::new(Vec::new()));
     let ctx = ctx.with_log(Arc::new(OrderedEventLog {
         events: Arc::clone(&events),
@@ -249,7 +245,7 @@ fn process_single_dry_run_neither_warns_nor_applies() {
 fn failed_warning_discovery_prevents_mutation_but_is_not_queried_in_dry_run() {
     for opts in [default_opts(), bail_opts()] {
         for dry_run in [false, true] {
-            let (ctx, _) = test_context(empty_config("/fixture".into()));
+            let (ctx, _) = test_context("/fixture".into(), None);
             let events = Arc::new(Mutex::new(Vec::new()));
             let ctx = ctx
                 .with_dry_run(dry_run)
@@ -336,7 +332,7 @@ fn process_single_classifies_apply_outcomes_in_each_mode() {
     ];
 
     for (case, outcome, opts, expected) in cases {
-        let (ctx, _) = test_context(empty_config(PathBuf::from("/tmp")));
+        let (ctx, _) = test_context(PathBuf::from("/tmp"), None);
         let resource = MockResource::new(ResourceState::Missing).with_apply(outcome);
         let stats = apply::process_single(&ctx, &resource, &ResourceState::Missing, &opts).unwrap();
         assert_eq!(counts(&stats), expected, "{case}");
@@ -345,7 +341,7 @@ fn process_single_classifies_apply_outcomes_in_each_mode() {
 
 #[test]
 fn process_single_strict_apply_error_propagates() {
-    let (ctx, _) = test_context(empty_config(PathBuf::from("/tmp")));
+    let (ctx, _) = test_context(PathBuf::from("/tmp"), None);
     let resource =
         MockResource::new(ResourceState::Missing).with_apply(Err("critical".to_string()));
     let error = apply::process_single(&ctx, &resource, &ResourceState::Missing, &bail_opts())
@@ -355,8 +351,7 @@ fn process_single_strict_apply_error_propagates() {
 
 #[test]
 fn process_single_apply_error_names_the_failing_resource() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let (ctx, _log) = test_context(PathBuf::from("/tmp"), None);
     let resource = MockResource::new(ResourceState::Missing)
         .with_desc("~/.bashrc")
         .with_apply(Err("critical".to_string()));
@@ -375,8 +370,7 @@ fn process_single_apply_error_names_the_failing_resource() {
 
 #[test]
 fn process_single_apply_error_preserves_typed_category() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let (ctx, _log) = test_context(PathBuf::from("/tmp"), None);
     let resource = TypedErrorResource {
         error_variant: "command_failed",
     };
@@ -424,7 +418,7 @@ fn remove_single_classifies_resource_states() {
     ];
 
     for (case, state, expected) in cases {
-        let (ctx, _) = test_context(empty_config(PathBuf::from("/tmp")));
+        let (ctx, _) = test_context(PathBuf::from("/tmp"), None);
         let resource = MockResource::new(state.clone());
         let stats = apply::remove_single(&ctx, &resource, &state, "unlink").unwrap();
         assert_eq!(counts(&stats), expected, "{case}");
@@ -433,8 +427,7 @@ fn remove_single_classifies_resource_states() {
 
 #[test]
 fn remove_single_dry_run_does_not_call_remove() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = dry_run_context(config);
+    let (ctx, _log) = dry_run_context(PathBuf::from("/tmp"), None);
     // remove() would error if called, but dry-run skips it
     let resource =
         MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into()));
@@ -444,8 +437,7 @@ fn remove_single_dry_run_does_not_call_remove() {
 
 #[test]
 fn remove_single_error_propagates() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _log) = test_context(config);
+    let (ctx, _log) = test_context(PathBuf::from("/tmp"), None);
     let resource =
         MockResource::new(ResourceState::Correct).with_remove(Err("remove failed".into()));
     let result = apply::remove_single(&ctx, &resource, &ResourceState::Correct, "unlink");
@@ -461,7 +453,7 @@ fn typed_resource_errors_are_nonfatal_in_lenient_mode() {
         "conflicting_state",
         "not_supported",
     ] {
-        let (ctx, _) = test_context(empty_config(PathBuf::from("/tmp")));
+        let (ctx, _) = test_context(PathBuf::from("/tmp"), None);
         let resource = TypedErrorResource {
             error_variant: variant,
         };
@@ -482,7 +474,7 @@ fn typed_resource_errors_propagate_in_strict_mode() {
     ];
 
     for (variant, expected) in cases {
-        let (ctx, _) = test_context(empty_config(PathBuf::from("/tmp")));
+        let (ctx, _) = test_context(PathBuf::from("/tmp"), None);
         let resource = TypedErrorResource {
             error_variant: variant,
         };
@@ -497,7 +489,7 @@ fn typed_resource_errors_propagate_in_strict_mode() {
 
 #[test]
 fn cancellation_propagates_in_lenient_mode() {
-    let (ctx, _) = test_context(empty_config(PathBuf::from("/tmp")));
+    let (ctx, _) = test_context(PathBuf::from("/tmp"), None);
     let resource = TypedErrorResource {
         error_variant: "cancelled",
     };
@@ -521,7 +513,7 @@ fn cancellation_propagates_in_lenient_mode() {
 #[test]
 fn process_single_uses_resource_description() {
     for dry_run in [false, true] {
-        let (ctx, _) = test_context(empty_config("/fixture".into()));
+        let (ctx, _) = test_context("/fixture".into(), None);
         let events = Arc::new(Mutex::new(Vec::new()));
         let ctx = ctx
             .with_dry_run(dry_run)

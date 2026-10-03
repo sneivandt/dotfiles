@@ -43,21 +43,20 @@ mod tests {
     use crate::engine::Task;
     use crate::infra::platform::Os;
     use crate::test_helpers::{
-        ContextBuilder, empty_config, make_linux_context, make_platform_context_with_which,
+        ContextBuilder, make_linux_context, make_platform_context_with_which,
     };
     use std::path::PathBuf;
 
     #[test]
     fn should_run_false_on_windows() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_platform_context_with_which(config, Os::Windows, false, true);
+        let ctx =
+            make_platform_context_with_which(PathBuf::from("/tmp"), None, Os::Windows, false, true);
         assert!(!ConfigureShell.should_run(&ctx));
     }
 
     #[test]
     fn run_reports_missing_zsh_as_unmet_work() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config); // which() returns false
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None); // which() returns false
         assert!(ConfigureShell.should_run(&ctx));
         assert!(matches!(
             ConfigureShell.run(&ctx).unwrap(),
@@ -107,9 +106,10 @@ mod tests {
                     "test-user:x:1000:1000::/home/test-user:/usr/bin/zsh",
                 ))
             });
-        let config = empty_config(PathBuf::from("/tmp"));
+
         let ctx = crate::test_helpers::make_context(
-            config,
+            PathBuf::from("/tmp"),
+            None,
             Platform::new(Os::Linux, false),
             Arc::new(executor),
         )
@@ -124,9 +124,9 @@ mod tests {
 
     #[test]
     fn should_run_false_when_ci() {
-        let config = empty_config(PathBuf::from("/tmp"));
         // Use ContextBuilder.ci(true) — no env var mutation required.
-        let ctx = ContextBuilder::new(config)
+        let ctx = ContextBuilder::new(PathBuf::from("/tmp"))
+            .overlay(None)
             .os(Os::Linux)
             .which(true)
             .ci(true)
@@ -139,8 +139,8 @@ mod tests {
 
     #[test]
     fn should_run_true_on_linux_with_zsh_outside_ci() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = ContextBuilder::new(config)
+        let ctx = ContextBuilder::new(PathBuf::from("/tmp"))
+            .overlay(None)
             .os(Os::Linux)
             .which(true)
             .ci(false)

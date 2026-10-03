@@ -7,7 +7,6 @@ use crate::engine::{
 };
 use crate::infra::exec::{ExecError, ExecResult};
 use crate::infra::logging::TaskStatus;
-use crate::test_helpers::empty_config;
 
 use super::test_context;
 
@@ -170,7 +169,7 @@ fn stopped_batches_retain_counts_and_typed_causes() {
             vec![0, 1],
         ),
     ] {
-        let (ctx, _) = test_context(empty_config("/fixture".into()));
+        let (ctx, _) = test_context("/fixture".into(), None);
         let ctx = ctx.with_dry_run(dry_run);
         let task = BatchTask::new(&[Behavior::Apply, behavior, Behavior::Apply]);
         let error = task.run(&ctx).unwrap_err().context("task context");
@@ -202,7 +201,7 @@ fn task_records_keep_partial_failure_and_interruption_counts() {
             (Behavior::Interrupt, TaskStatus::Interrupted, 0, 1, 1),
             (Behavior::CancelAfterApply, TaskStatus::Interrupted, 0, 0, 1),
         ] {
-            let (ctx, log) = test_context(empty_config("/fixture".into()));
+            let (ctx, log) = test_context("/fixture".into(), None);
             let mut task = BatchTask::new(&[Behavior::Apply, behavior, Behavior::Apply]);
             task.remove = remove;
             assert_eq!(crate::engine::execute(&task, &ctx), status);
@@ -223,7 +222,7 @@ fn task_records_keep_partial_failure_and_interruption_counts() {
 
 #[test]
 fn a_fully_processed_batch_is_not_relabelled_by_late_cancellation() {
-    let (ctx, log) = test_context(empty_config("/fixture".into()));
+    let (ctx, log) = test_context("/fixture".into(), None);
     let task = BatchTask::new(&[Behavior::Current, Behavior::CancelAfterApply]);
     assert_eq!(crate::engine::execute(&task, &ctx), TaskStatus::Changed);
     assert!(ctx.is_cancelled());
@@ -234,7 +233,7 @@ fn a_fully_processed_batch_is_not_relabelled_by_late_cancellation() {
 fn unknown_removal_state_fails_without_mutating_in_both_execution_modes() {
     for parallel in [false, true] {
         for dry_run in [false, true] {
-            let (ctx, log) = test_context(empty_config("/fixture".into()));
+            let (ctx, log) = test_context("/fixture".into(), None);
             let ctx = ctx.with_parallel(parallel).with_dry_run(dry_run);
             let mut task = BatchTask::new(&[Behavior::Unknown, Behavior::Current]);
             task.remove = true;
@@ -256,7 +255,7 @@ fn unknown_removal_state_fails_without_mutating_in_both_execution_modes() {
 
 #[test]
 fn stopped_preview_records_plans_without_applied_changes() {
-    let (ctx, log) = test_context(empty_config("/fixture".into()));
+    let (ctx, log) = test_context("/fixture".into(), None);
     let task = BatchTask::new(&[Behavior::Apply, Behavior::ProbeFail, Behavior::Apply]);
     assert_eq!(
         crate::engine::execute(&task, &ctx.with_dry_run(true)),
@@ -273,7 +272,7 @@ fn stopped_preview_records_plans_without_applied_changes() {
 #[test]
 fn lenient_failure_is_retained_when_later_work_is_interrupted() {
     for behavior in [Behavior::Interrupt, Behavior::CancelAfterApply] {
-        let (ctx, log) = test_context(empty_config("/fixture".into()));
+        let (ctx, log) = test_context("/fixture".into(), None);
         let mut task = BatchTask::new(&[Behavior::Fail, behavior, Behavior::Apply]);
         task.opts = ProcessOpts::lenient("apply");
         assert_eq!(crate::engine::execute(&task, &ctx), TaskStatus::Failed);
@@ -299,7 +298,7 @@ fn parallel_failure_joins_and_accounts_for_other_in_flight_work() {
         .build()
         .unwrap();
     for behavior in [Behavior::Apply, Behavior::Interrupt] {
-        let (ctx, log) = test_context(empty_config("/fixture".into()));
+        let (ctx, log) = test_context("/fixture".into(), None);
         let ctx = ctx.with_parallel(true);
         let mut task = BatchTask::new(&[behavior, Behavior::Fail]);
         task.barrier = Some(Arc::new(Barrier::new(2)));

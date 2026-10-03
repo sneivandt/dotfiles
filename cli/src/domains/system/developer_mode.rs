@@ -45,27 +45,24 @@ impl Task for EnableDeveloperMode {
 mod tests {
     use super::*;
     use crate::engine::Task;
-    use crate::test_helpers::{empty_config, make_linux_context, make_windows_context};
+    use crate::test_helpers::{make_linux_context, make_windows_context};
     use std::path::PathBuf;
 
     #[test]
     fn should_run_false_on_linux() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config);
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         assert!(!EnableDeveloperMode.should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_on_windows() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_windows_context(config);
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         assert!(EnableDeveloperMode.should_run(&ctx));
     }
 
     #[test]
     fn needs_elevation_false_on_linux() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config);
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         assert!(
             !EnableDeveloperMode.needs_elevation(&ctx),
             "developer mode is a Windows-only concept"
@@ -75,8 +72,7 @@ mod tests {
     #[test]
     #[cfg(not(windows))]
     fn needs_elevation_true_on_windows_when_developer_mode_is_unset() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_windows_context(config);
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         // Off Windows the flag can never be observed as set and the process is
         // never elevated, so this exercises the first-run branch.
         assert!(

@@ -18,7 +18,7 @@ use crate::engine::{
 };
 use crate::infra::cancellation::CancellationToken;
 use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
-use crate::test_helpers::{FailAt, FailingResource, empty_config};
+use crate::test_helpers::{FailAt, FailingResource};
 
 use super::{bail_opts, parallel_context};
 
@@ -170,7 +170,7 @@ impl IntrinsicState for CancellingResource {
 
 #[test]
 fn parallel_apply_accounts_for_every_resource_exactly_once() {
-    let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = parallel_context("/dotfiles".into(), None);
     let in_flight = Arc::new(AtomicUsize::new(0));
     let peak = Arc::new(AtomicUsize::new(0));
     let calls = Arc::new(Mutex::new(Vec::new()));
@@ -211,7 +211,7 @@ fn parallel_apply_accounts_for_every_resource_exactly_once() {
 
 #[test]
 fn parallel_apply_merges_mixed_outcomes_without_losing_counts() {
-    let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = parallel_context("/dotfiles".into(), None);
 
     // A third need work, a third are already converged, a third fail.
     let resources: Vec<FailingResource> = (0..BATCH)
@@ -239,7 +239,7 @@ fn parallel_apply_merges_mixed_outcomes_without_losing_counts() {
 
 #[test]
 fn parallel_remove_accounts_for_every_resource_exactly_once() {
-    let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = parallel_context("/dotfiles".into(), None);
 
     let resources: Vec<FailingResource> = (0..BATCH)
         .map(|idx| {
@@ -262,7 +262,7 @@ fn parallel_remove_accounts_for_every_resource_exactly_once() {
 
 #[test]
 fn parallel_apply_propagates_the_first_failure_in_strict_mode() {
-    let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = parallel_context("/dotfiles".into(), None);
 
     let resources: Vec<FailingResource> = (0..BATCH)
         .map(|idx| {
@@ -293,7 +293,7 @@ fn cancellation_mid_batch_stops_dispatching_new_remove_work() {
         .num_threads(2)
         .build()
         .unwrap();
-    let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = parallel_context("/dotfiles".into(), None);
     let token = CancellationToken::new();
     let ctx = ctx.with_cancellation(token.clone());
     let recorder = Arc::new(RecordingLog::default());
@@ -352,7 +352,7 @@ fn cancellation_mid_batch_stops_dispatching_new_remove_work() {
 
 #[test]
 fn cancellation_before_dispatch_performs_no_work() {
-    let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+    let (ctx, _log) = parallel_context("/dotfiles".into(), None);
     let token = CancellationToken::new();
     token.cancel();
     let ctx = ctx.with_cancellation(token);
@@ -384,7 +384,7 @@ fn processing_emits_exactly_one_action_per_changed_resource() {
     for parallel in [false, true] {
         for dry_run in [false, true] {
             for (verb, remove) in [("install", false), ("remove", true)] {
-                let (ctx, _log) = parallel_context(empty_config("/dotfiles".into()));
+                let (ctx, _log) = parallel_context("/dotfiles".into(), None);
                 let recorder = Arc::new(RecordingLog::default());
                 let log: Arc<dyn crate::infra::logging::Log> =
                     Arc::<RecordingLog>::clone(&recorder);

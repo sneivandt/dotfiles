@@ -101,11 +101,14 @@ do not add another execution layer. For a genuinely new section:
 
 1. Add the typed decoder and semantic validation in the owning domain. Test
    invalid input as well as accepted shorthand/forms.
-2. Wire loading, overlay behavior, provenance and any active/unfiltered
-   validation views in [`app/config`](../cli/src/app/config). Add it to required
-   configuration inventory only if it is actually required.
-3. Publish the task's typed slice through
-   [`ConfigStore`](../cli/src/app/config/store.rs).
+2. Declare the section in `config_section_inventory!` in
+   [`app/config`](../cli/src/app/config). It supplies the field, typed
+   [`ConfigStore`](../cli/src/app/config/store.rs) handle, summary count and empty
+   unit fixture. Set `file` for required main configuration and `decode` for
+   ordinary category-filtered loading.
+3. Keep special loading, overlay-only behavior, provenance, platform filtering
+   and active/unfiltered validation views explicit in `Config::load`.
+   Wire semantic validation in `Config::validate`.
 4. Implement a resource or operation using the existing lifecycle helpers.
    Keep discovery read-only, apply idempotent and preview non-mutating.
 5. Wire the task and module exports, add real `conf/` data, and extend

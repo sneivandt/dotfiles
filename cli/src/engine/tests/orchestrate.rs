@@ -4,7 +4,6 @@ use crate::engine::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
 };
 use crate::engine::{TaskResult, process_resources, process_resources_remove};
-use crate::test_helpers::empty_config;
 use std::{
     path::PathBuf,
     sync::{
@@ -93,15 +92,15 @@ fn process_precomputed_states(
 }
 
 fn test_ctx() -> crate::engine::Context {
-    test_context(empty_config(PathBuf::from("/tmp"))).0
+    test_context(PathBuf::from("/tmp"), None).0
 }
 
 fn parallel_ctx() -> crate::engine::Context {
-    parallel_context(empty_config(PathBuf::from("/tmp"))).0
+    parallel_context(PathBuf::from("/tmp"), None).0
 }
 
 fn dry_ctx() -> crate::engine::Context {
-    dry_run_context(empty_config(PathBuf::from("/tmp"))).0
+    dry_run_context(PathBuf::from("/tmp"), None).0
 }
 
 // -----------------------------------------------------------------------

@@ -181,7 +181,7 @@ fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Mutex, PoisonError};
+    use crate::infra::logging::MsgKind;
 
     use super::*;
 
@@ -273,60 +273,24 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct CapturingOutput {
-        errors: Mutex<Vec<String>>,
-        startup: Mutex<Vec<String>>,
-        logger: Option<logging::Logger>,
-    }
-
-    impl logging::Output for CapturingOutput {
-        fn run_log(&self) -> Option<&logging::RunLog> {
-            self.logger.as_ref().and_then(logging::Output::run_log)
-        }
-        fn emit(&self, kind: logging::MsgKind, msg: std::borrow::Cow<'_, str>) {
-            let sink = match kind {
-                logging::MsgKind::Error => &self.errors,
-                logging::MsgKind::Startup => &self.startup,
-                logging::MsgKind::Stage
-                | logging::MsgKind::TaskStage
-                | logging::MsgKind::Info
-                | logging::MsgKind::Summary
-                | logging::MsgKind::Debug
-                | logging::MsgKind::Context
-                | logging::MsgKind::Trace
-                | logging::MsgKind::Always
-                | logging::MsgKind::Warn
-                | logging::MsgKind::DryRun => return,
-            };
-            sink.lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(msg.into_owned());
-        }
-    }
+    use crate::test_helpers::CapturingOutput;
 
     #[test]
     fn aggregate_task_failure_only_prints_dim_log_hint() {
         let tmp = tempfile::tempdir().unwrap();
         let logger = logging::Logger::new_in("install", tmp.path());
         let id = logger.run_log().unwrap().id();
-        let log = CapturingOutput {
-            logger: Some(logger),
-            ..CapturingOutput::default()
-        };
+        let log = CapturingOutput::with_logger(logger);
         let error = anyhow::Error::from(commands::error::TaskFailures::new(2));
 
         report_failure(&error, &log);
 
         assert!(
-            log.errors
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .is_empty(),
+            log.messages_of(MsgKind::Error).is_empty(),
             "aggregate task failure should not repeat the failed task count"
         );
         assert_eq!(
-            *log.startup.lock().unwrap_or_else(PoisonError::into_inner),
+            log.messages_of(MsgKind::Startup),
             [format!("Run 'dotfiles log --id {id} -v' for details.")],
             "log hint should use the always-visible dim channel"
         );
@@ -337,21 +301,18 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let logger = logging::Logger::new_in("install", tmp.path());
         let id = logger.run_log().unwrap().id();
-        let log = CapturingOutput {
-            logger: Some(logger),
-            ..CapturingOutput::default()
-        };
+        let log = CapturingOutput::with_logger(logger);
         let error = anyhow::anyhow!("configuration failed");
 
         report_failure(&error, &log);
 
         assert_eq!(
-            *log.errors.lock().unwrap_or_else(PoisonError::into_inner),
+            log.messages_of(MsgKind::Error),
             ["configuration failed"],
             "unexpected command failures should remain visible as errors"
         );
         assert_eq!(
-            *log.startup.lock().unwrap_or_else(PoisonError::into_inner),
+            log.messages_of(MsgKind::Startup),
             [format!("Run 'dotfiles log --id {id} -v' for details.")],
             "log hint should use the always-visible dim channel"
         );
@@ -360,8 +321,8 @@ mod tests {
     fn unavailable_log_never_offers_a_misleading_failure_hint() {
         let log = CapturingOutput::default();
         report_failure(&anyhow::anyhow!("configuration failed"), &log);
-        assert!(log.startup.lock().unwrap().is_empty());
-        assert_eq!(*log.errors.lock().unwrap(), ["configuration failed"]);
+        assert!(log.messages_of(MsgKind::Startup).is_empty());
+        assert_eq!(log.messages_of(MsgKind::Error), ["configuration failed"]);
     }
 
     #[test]
@@ -415,10 +376,7 @@ mod tests {
             ),
         ] {
             let root = tempfile::tempdir_in(".").unwrap();
-            let log = CapturingOutput {
-                logger: Some(logging::Logger::new_in("install", root.path())),
-                ..CapturingOutput::default()
-            };
+            let log = CapturingOutput::with_logger(logging::Logger::new_in("install", root.path()));
             let run = log.run_log().unwrap();
             run.start_run("install", None);
 
@@ -449,11 +407,11 @@ mod tests {
             );
             if outcome == RunOutcome::Interrupted {
                 assert!(
-                    log.errors.lock().unwrap().is_empty(),
+                    log.messages_of(MsgKind::Error).is_empty(),
                     "{name}: interruption is not a failure-shaped error"
                 );
                 assert!(
-                    log.startup.lock().unwrap().is_empty(),
+                    log.messages_of(MsgKind::Startup).is_empty(),
                     "{name}: interruption must not offer a failure-log hint"
                 );
             }
@@ -471,7 +429,7 @@ mod tests {
         );
 
         assert_eq!(exit_code, ExitCode::from(130));
-        assert!(log.errors.lock().unwrap().is_empty());
-        assert!(log.startup.lock().unwrap().is_empty());
+        assert!(log.messages_of(MsgKind::Error).is_empty());
+        assert!(log.messages_of(MsgKind::Startup).is_empty());
     }
 }

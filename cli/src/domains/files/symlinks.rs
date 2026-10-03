@@ -168,7 +168,7 @@ mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
     use crate::engine::{RemovableResource as _, Resource as _, ResourceChange};
-    use crate::test_helpers::{empty_config, make_linux_context};
+    use crate::test_helpers::make_linux_context;
     use std::path::PathBuf;
 
     fn sym(source: &str, target: Option<&str>) -> Symlink {
@@ -246,7 +246,7 @@ mod tests {
         std::fs::write(root.join("symlinks/bashrc"), "source").unwrap();
         let outside = fixture.path().join("bashrc");
         std::fs::write(&outside, "must survive").unwrap();
-        let ctx = make_linux_context(empty_config(root.clone())).with_home(home.clone());
+        let ctx = make_linux_context(root.clone(), None).with_home(home.clone());
         let resource = build_resource(&sym("./bashrc", None), &root, &home, &ctx.executor_arc());
 
         assert_eq!(resource.target, home.join(".bashrc"));
@@ -269,7 +269,7 @@ mod tests {
             target: None,
             origin: Some(overlay),
         };
-        let ctx = make_linux_context(empty_config(root.clone())).with_home(home);
+        let ctx = make_linux_context(root.clone(), None).with_home(home);
         let resource = build_resource(&symlink, &root, ctx.home(), &ctx.executor_arc());
 
         assert_eq!(
@@ -300,7 +300,7 @@ mod tests {
             index.add(&entry).unwrap();
             index.write().unwrap();
         }
-        let ctx = make_linux_context(empty_config(root.clone())).with_home(home.clone());
+        let ctx = make_linux_context(root.clone(), None).with_home(home.clone());
         for origin in [None, Some(overlay)] {
             let symlink = Symlink {
                 source: "placeholder".into(),
@@ -348,13 +348,13 @@ mod tests {
 
     #[test]
     fn uninstall_should_run_false_when_no_symlinks_configured() {
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         assert!(!UninstallSymlinks::new(handle(vec![])).should_run(&ctx));
     }
 
     #[test]
     fn uninstall_should_run_true_when_symlinks_configured() {
-        let ctx = make_linux_context(empty_config(PathBuf::from("/tmp")));
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         let task = UninstallSymlinks::new(handle(vec![sym("bashrc", None)]));
         assert!(task.should_run(&ctx));
     }
@@ -374,7 +374,7 @@ mod tests {
         std::fs::create_dir(&symlinks_dir).unwrap();
         std::fs::write(symlinks_dir.join("bashrc"), "# bash config").unwrap();
 
-        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+        let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
         let task = InstallSymlinks::new(handle(vec![sym("bashrc", None)]));
@@ -402,7 +402,7 @@ mod tests {
         let outside = repo_dir.path().join("outside");
         std::fs::write(&outside, "outside").unwrap();
 
-        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+        let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
         let task = InstallSymlinks::new(handle(vec![sym("../outside", Some("escaped-source"))]));
@@ -426,7 +426,7 @@ mod tests {
         std::fs::write(&outside, "outside").unwrap();
         std::os::unix::fs::symlink(&outside, symlinks_dir.join("escaped")).unwrap();
 
-        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+        let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
         let task = InstallSymlinks::new(handle(vec![sym("escaped", None)]));
 
@@ -448,8 +448,7 @@ mod tests {
         std::fs::create_dir(&symlinks_dir).unwrap();
         std::fs::write(symlinks_dir.join("bashrc"), "# bash config").unwrap();
         let outside_target = home_dir.path().join("..").join("outside-target");
-
-        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+        let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
         let task = InstallSymlinks::new(handle(vec![sym("bashrc", Some("../outside-target"))]));
@@ -476,7 +475,7 @@ mod tests {
         let link = home_dir.path().join(".bashrc");
         std::os::unix::fs::symlink(symlinks_dir.join("bashrc"), &link).unwrap();
 
-        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+        let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
         let task = UninstallSymlinks::new(handle(vec![sym("bashrc", None)]));
@@ -504,7 +503,7 @@ mod tests {
         std::fs::write(symlinks_dir.join("config"), "# git config").unwrap();
 
         let target = home_dir.path().join(".config/git/config");
-        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+        let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
         let result = UninstallSymlinks::new(handle(vec![sym("config/git/config", None)]))
@@ -545,7 +544,7 @@ mod tests {
             .unwrap();
         std::os::unix::fs::symlink(symlinks_dir.join("clean-home-tmp.timer"), &timer_link).unwrap();
 
-        let ctx = make_linux_context(empty_config(repo_dir.path().to_path_buf()))
+        let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf())
             .with_parallel(true);
 

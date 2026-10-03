@@ -62,7 +62,7 @@ mod tests {
     use crate::engine::Task;
     use crate::engine::TaskResult;
     use crate::infra::ConfigHandle;
-    use crate::test_helpers::{empty_config, make_linux_context, make_windows_context};
+    use crate::test_helpers::{make_linux_context, make_windows_context};
     use std::path::PathBuf;
 
     fn entry() -> RegistryEntry {
@@ -77,22 +77,19 @@ mod tests {
 
     #[test]
     fn should_run_false_on_linux() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config);
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         assert!(!ApplyRegistry::new(ConfigHandle::new(vec![])).should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_on_windows_when_guard_passes() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_windows_context(config);
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         assert!(ApplyRegistry::new(ConfigHandle::new(vec![])).should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_on_windows_with_registry_entries() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_windows_context(config);
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         let task = ApplyRegistry::new(ConfigHandle::new(vec![entry()]));
         assert!(task.should_run(&ctx));
     }
@@ -103,8 +100,7 @@ mod tests {
 
     #[test]
     fn run_with_empty_registry_returns_not_applicable() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_windows_context(config);
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         let result = ApplyRegistry::new(ConfigHandle::new(vec![]))
             .run(&ctx)
             .unwrap();
@@ -121,8 +117,8 @@ mod tests {
         // as a non-fatal failure rather than propagating the error.
         // Use a Windows-platform context so the task logic runs (should_run
         // would normally gate this, but run() is called directly in unit tests).
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_windows_context(config);
+
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         let result = ApplyRegistry::new(ConfigHandle::new(vec![entry()]))
             .run(&ctx)
             .unwrap();

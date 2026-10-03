@@ -24,8 +24,7 @@ fn cancelled_git_error() -> ExecError {
 
 #[test]
 fn should_run_false_when_git_dir_missing() {
-    let config = empty_config(PathBuf::from("/nonexistent/repo"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(PathBuf::from("/nonexistent/repo"), None);
     let task = UpdateRepository::new(UpdateSignal::new());
     assert!(!task.should_run(&ctx));
 }
@@ -34,8 +33,8 @@ fn should_run_false_when_git_dir_missing() {
 fn should_run_true_when_git_dir_exists() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(dir.path().join(".git")).unwrap();
-    let config = empty_config(dir.path().to_path_buf());
-    let ctx = make_linux_context(config);
+
+    let ctx = make_linux_context(dir.path().to_path_buf(), None);
     let task = UpdateRepository::new(UpdateSignal::new());
     assert!(task.should_run(&ctx));
 }
@@ -47,8 +46,8 @@ fn should_run_true_when_git_dir_exists() {
 fn should_run_true_when_git_is_a_file() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join(".git"), "gitdir: ../.git/worktrees/my-wt\n").unwrap();
-    let config = empty_config(dir.path().to_path_buf());
-    let ctx = make_linux_context(config);
+
+    let ctx = make_linux_context(dir.path().to_path_buf(), None);
     let task = UpdateRepository::new(UpdateSignal::new());
     assert!(task.should_run(&ctx));
 }
@@ -59,16 +58,24 @@ fn should_run_true_when_git_is_a_file() {
 
 /// Build a context that uses the given executor double so we can control git
 /// responses. Accepts both [`ScriptedExecutor`] and [`MockExecutor`].
-fn make_update_context(config: crate::Config, executor: impl Executor + 'static) -> Context {
-    make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
+fn make_update_context(
+    root: PathBuf,
+    overlay: Option<PathBuf>,
+    executor: impl Executor + 'static,
+) -> Context {
+    make_context(
+        root,
+        overlay,
+        Platform::new(Os::Linux, false),
+        Arc::new(executor),
+    )
 }
 
 #[test]
 fn run_returns_not_applicable_when_detached_head() {
-    let config = empty_config(PathBuf::from("/tmp"));
     // First call (symbolic-ref): fails → detached HEAD
     let exec = ScriptedExecutor::new().err(git_non_zero("simulated failure"));
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -85,9 +92,8 @@ fn run_returns_not_applicable_when_detached_head() {
 
 #[test]
 fn run_propagates_symbolic_ref_operational_failure() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let exec = ScriptedExecutor::new().err(git_error("git could not start"));
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
 
     let err = UpdateRepository::new(UpdateSignal::new())
         .run(&ctx)
@@ -116,8 +122,8 @@ fn symbolic_ref_fatal_exit_is_not_detached_in_apply_or_preview() {
                     ExecResult::failure("", "fatal: could not read repository configuration", code),
                 )),
             );
-            let ctx = make_update_context(empty_config(root.path().to_path_buf()), mock)
-                .with_dry_run(dry_run);
+            let ctx =
+                make_update_context(root.path().to_path_buf(), None, mock).with_dry_run(dry_run);
             let signal = UpdateSignal::new();
 
             let error = UpdateRepository::new(signal.clone())
@@ -165,7 +171,7 @@ fn run_with_git_output(outputs: &[&str]) -> (TaskResult, bool) {
         .fold(ScriptedExecutor::new(), |exec, (stdout, args)| {
             exec.git(root.path(), args, *stdout)
         });
-    let ctx = make_update_context(empty_config(root.path().to_path_buf()), exec);
+    let ctx = make_update_context(root.path().to_path_buf(), None, exec);
     let signal = UpdateSignal::new();
     let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
     (result, signal.was_updated())
@@ -250,20 +256,24 @@ fn run_classifies_repository_state_from_git_output() {
 #[test]
 fn worktree_has_local_changes_ignores_untracked_files() {
     let root = tempfile::tempdir_in(".").unwrap();
-    let config = empty_config(root.path().to_path_buf());
+
     let executor = ScriptedExecutor::new().git(
         root.path(),
         &["status", "--porcelain", "--untracked-files=no"],
         "",
     );
-    let ctx = make_context(config, Platform::new(Os::Linux, false), Arc::new(executor));
+    let ctx = make_context(
+        root.path().to_path_buf(),
+        None,
+        Platform::new(Os::Linux, false),
+        Arc::new(executor),
+    );
 
     assert!(!worktree_has_local_changes(&ctx, root.path()).unwrap());
 }
 
 #[test]
 fn run_returns_failed_when_fetch_fails() {
-    let config = empty_config(PathBuf::from("/tmp"));
     // 1. symbolic-ref → on a branch
     // 2. status → clean worktree
     // 3. fetch → fails
@@ -271,7 +281,7 @@ fn run_returns_failed_when_fetch_fails() {
         .ok("refs/heads/main")
         .ok("")
         .err(git_error("simulated fetch failure"));
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated);
 
@@ -281,12 +291,11 @@ fn run_returns_failed_when_fetch_fails() {
 
 #[test]
 fn run_propagates_fetch_cancellation() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let exec = ScriptedExecutor::new()
         .ok("refs/heads/main")
         .ok("")
         .err(cancelled_git_error());
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
 
     let err = UpdateRepository::new(UpdateSignal::new())
         .run(&ctx)
@@ -322,7 +331,7 @@ fn run_does_not_retry_cancelled_fetch_with_transient_output() {
     ] {
         expect_git(&mut mock, &mut sequence, root.path(), args, result);
     }
-    let ctx = make_update_context(empty_config(root.path().to_path_buf()), mock);
+    let ctx = make_update_context(root.path().to_path_buf(), None, mock);
     let signal = UpdateSignal::new();
 
     let error = UpdateRepository::new(signal.clone())
@@ -340,7 +349,6 @@ fn run_does_not_retry_cancelled_fetch_with_transient_output() {
 
 #[test]
 fn run_retries_transient_fetch_failure() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let exec = ScriptedExecutor::new()
         .ok("refs/heads/main")
         .ok("")
@@ -351,7 +359,7 @@ fn run_retries_transient_fetch_failure() {
         .ok("")
         .ok("abc123")
         .ok("abc123");
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -363,14 +371,13 @@ fn run_retries_transient_fetch_failure() {
 
 #[test]
 fn run_stops_after_transient_fetch_retries_are_exhausted() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let exec = ScriptedExecutor::new()
         .ok("refs/heads/main")
         .ok("")
         .err(git_error("connection reset by peer"))
         .err(git_error("connection reset by peer"))
         .err(git_error("connection reset by peer"));
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(PathBuf::from("/tmp"), None, exec);
     let task = UpdateRepository::new(UpdateSignal::new());
 
     let result = task.run(&ctx).unwrap();
@@ -409,7 +416,7 @@ fn run_skips_when_overlay_has_local_changes() {
             "M  private.toml",
         );
 
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(config.root, config.overlay, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -469,7 +476,7 @@ fn run_updates_overlay_repository_when_behind_upstream() {
             "Updating def456..fed654\nFast-forward",
         );
 
-    let ctx = make_update_context(config, exec);
+    let ctx = make_update_context(config.root, config.overlay, exec);
     let repo_updated = UpdateSignal::new();
     let task = UpdateRepository::new(repo_updated.clone());
 
@@ -516,7 +523,7 @@ fn parallel_fetch_visits_every_repository() {
         }
     });
 
-    let ctx = make_update_context(config, mock).with_parallel(true);
+    let ctx = make_update_context(config.root, config.overlay, mock).with_parallel(true);
     let repo_updated = UpdateSignal::new();
     let result = UpdateRepository::new(repo_updated).run(&ctx).unwrap();
 
@@ -546,7 +553,7 @@ fn parallel_fetch_failure_reports_the_first_declared_repository() {
         }
     });
 
-    let ctx = make_update_context(config, mock).with_parallel(true);
+    let ctx = make_update_context(config.root, config.overlay, mock).with_parallel(true);
     let repo_updated = UpdateSignal::new();
     let result = UpdateRepository::new(repo_updated).run(&ctx).unwrap();
 
@@ -585,7 +592,7 @@ fn partial_multi_repository_merge_failure_records_that_the_checkout_changed() {
         .ok("0")
         .ok("updated")
         .err(git_error("second merge failed"));
-    let ctx = make_update_context(empty_config(PathBuf::from("/tmp")), executor);
+    let ctx = make_update_context(PathBuf::from("/tmp"), None, executor);
     let signal = UpdateSignal::new();
 
     let result = apply_repository_updates(&ctx, &repositories, &signal).unwrap();
@@ -665,8 +672,7 @@ fn dry_run_queries_remote_without_fetch_merge_or_restart() {
                 ],
                 format!("{remote_sha}\trefs/heads/feature/test\n"),
             );
-        let ctx =
-            make_update_context(empty_config(root.path().to_path_buf()), exec).with_dry_run(true);
+        let ctx = make_update_context(root.path().to_path_buf(), None, exec).with_dry_run(true);
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
 
@@ -707,8 +713,7 @@ fn dry_run_falls_back_to_cached_upstream_and_plans_unknown_state() {
         ] {
             expect_git(&mut mock, &mut sequence, root.path(), &args, result);
         }
-        let ctx =
-            make_update_context(empty_config(root.path().to_path_buf()), mock).with_dry_run(true);
+        let ctx = make_update_context(root.path().to_path_buf(), None, mock).with_dry_run(true);
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
         if changed {
@@ -756,7 +761,7 @@ fn merge_failure_or_cancellation_does_not_signal_a_successful_update() {
                 git_non_zero("merge rejected")
             }),
         );
-        let ctx = make_update_context(empty_config(root.path().to_path_buf()), mock);
+        let ctx = make_update_context(root.path().to_path_buf(), None, mock);
         let signal = UpdateSignal::new();
         let result = UpdateRepository::new(signal.clone()).run(&ctx);
         if cancelled {

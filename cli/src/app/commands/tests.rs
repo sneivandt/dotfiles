@@ -123,25 +123,11 @@ mod reexec_tests {
 #[cfg(test)]
 mod startup_log_tests {
     use super::runner::{emit_config_summary, emit_startup_context, startup_context_line};
-    use crate::infra::logging::{MsgKind, Output};
+    use crate::infra::logging::MsgKind;
     use crate::infra::platform::{Os, Platform};
-    use std::borrow::Cow;
     use std::path::Path;
-    use std::sync::Mutex;
 
-    #[derive(Default)]
-    struct CapturingOutput {
-        messages: Mutex<Vec<(MsgKind, String)>>,
-    }
-
-    impl Output for CapturingOutput {
-        fn emit(&self, kind: MsgKind, message: Cow<'_, str>) {
-            self.messages
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .push((kind, message.into_owned()));
-        }
-    }
+    use crate::test_helpers::CapturingOutput;
 
     #[test]
     fn repository_restart_does_not_repeat_startup_context() {
@@ -150,11 +136,7 @@ mod startup_log_tests {
         emit_startup_context(&output, "Update · profile desktop · Arch Linux", true);
 
         assert!(
-            output
-                .messages
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_empty(),
+            output.messages().is_empty(),
             "the restarted child must keep context in the run log without repeating it on the console"
         );
     }
@@ -167,10 +149,7 @@ mod startup_log_tests {
         emit_startup_context(&output, context, false);
 
         assert_eq!(
-            *output
-                .messages
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            output.messages(),
             vec![(MsgKind::Startup, context.to_string())]
         );
     }
@@ -184,10 +163,7 @@ mod startup_log_tests {
         emit_config_summary(&output, &config);
 
         assert_eq!(
-            *output
-                .messages
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            output.messages(),
             vec![
                 (MsgKind::Context, "Loaded configuration".to_string()),
                 (MsgKind::Context, "  2 vscode extensions".to_string()),

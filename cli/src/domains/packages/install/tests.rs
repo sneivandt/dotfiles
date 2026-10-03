@@ -17,7 +17,6 @@ use std::path::PathBuf;
 #[test]
 fn aur_preview_uses_package_database_without_requiring_paru() {
     for query_fails in [false, true] {
-        let config = empty_config(PathBuf::from("/tmp"));
         let packages = ConfigHandle::new(vec![Package {
             name: "example-aur".into(),
             is_aur: true,
@@ -35,7 +34,8 @@ fn aur_preview_uses_package_database_without_requiring_paru() {
                     ExecResult::success("already-installed 1.0\n")
                 })
             });
-        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(true);
+        let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock)
+            .with_dry_run(true);
         let result = InstallAurPackages::new(packages).run(&ctx);
         if query_fails {
             assert!(
@@ -105,7 +105,13 @@ fn package_task_applicability_follows_platform_and_package_kind() {
             })
             .collect();
         let packages = ConfigHandle::new(config.packages.clone());
-        let ctx = make_platform_context_with_which(config, os, arch, false);
+        let ctx = make_platform_context_with_which(
+            config.root.clone(),
+            config.overlay.clone(),
+            os,
+            arch,
+            false,
+        );
         let actual = [
             InstallPackages::new(packages.clone()).should_run(&ctx),
             InstallAurPackages::new(packages).should_run(&ctx),
@@ -131,7 +137,13 @@ fn install_packages_run_reports_the_missing_native_manager() {
             is_aur: false,
         });
         let packages = ConfigHandle::new(config.packages.clone());
-        let ctx = make_platform_context_with_which(config, os, false, false);
+        let ctx = make_platform_context_with_which(
+            config.root.clone(),
+            config.overlay.clone(),
+            os,
+            false,
+            false,
+        );
         let result = InstallPackages::new(packages).run(&ctx).unwrap();
         let reason = task_skipped(&result);
         assert_eq!(reason, format!("{manager} not found"), "{os:?}");
@@ -140,22 +152,20 @@ fn install_packages_run_reports_the_missing_native_manager() {
 
 #[test]
 fn installed_target_paru_is_accepted_when_host_path_lookup_would_miss() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
     expect_installed_paru_package(&mut mock, 1);
     expect_healthy_paru(&mut mock, 1);
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     let result = InstallParu.run(&ctx).unwrap();
     assert_task_ok(&result);
 }
 
 #[test]
 fn install_paru_run_returns_ok_when_already_installed_in_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
     expect_installed_paru_package(&mut mock, 1);
     expect_healthy_paru(&mut mock, 1);
-    let mut ctx = make_package_context(config, Os::Linux, true, mock);
+    let mut ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
     let result = InstallParu.run(&ctx).unwrap();
     assert_task_ok(&result);
@@ -163,11 +173,10 @@ fn install_paru_run_returns_ok_when_already_installed_in_dry_run() {
 
 #[test]
 fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
     expect_missing_paru_package(&mut mock, 1);
     expect_missing_paru_path(&mut mock, 1);
-    let mut ctx = make_package_context(config, Os::Linux, true, mock);
+    let mut ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
     let result = InstallParu.run(&ctx).unwrap();
     assert_task_changed(&result);
@@ -182,7 +191,7 @@ fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
     let unrelated = fixture.path().join("unrelated");
     std::fs::create_dir(&unrelated).unwrap();
     std::fs::write(unrelated.join("keep"), "unrelated content").unwrap();
-    let config = empty_config(fixture.path().to_path_buf());
+
     let mut mock = MockExecutor::new();
     let package_queries = Arc::new(AtomicUsize::new(0));
     mock.expect_execute()
@@ -214,7 +223,7 @@ fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
         .returning(|_| Ok(ExecResult::success("")));
     expect_healthy_paru(&mut mock, 1);
 
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = run_paru_install(&ctx, &build_dir).unwrap();
     let stats = task_batch(&result);
     assert!(
@@ -243,7 +252,7 @@ fn paru_preview_and_completed_state_preserve_existing_build_files() {
         std::fs::create_dir(&build_dir).unwrap();
         let marker = build_dir.join("keep");
         std::fs::write(&marker, "existing checkout").unwrap();
-        let config = empty_config(fixture.path().to_path_buf());
+
         let mut mock = MockExecutor::new();
         if installed {
             expect_installed_paru_package(&mut mock, 1);
@@ -252,7 +261,8 @@ fn paru_preview_and_completed_state_preserve_existing_build_files() {
             expect_missing_paru_package(&mut mock, 1);
             expect_missing_paru_path(&mut mock, 1);
         }
-        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+        let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock)
+            .with_dry_run(dry_run);
 
         let result = run_paru_install(&ctx, &build_dir).unwrap();
 
@@ -275,7 +285,7 @@ fn failed_paru_clone_cleans_only_its_partial_checkout() {
     let build_dir = fixture.path().join("paru-build");
     let marker = fixture.path().join("keep");
     std::fs::write(&marker, "unrelated content").unwrap();
-    let config = empty_config(fixture.path().to_path_buf());
+
     let mut mock = MockExecutor::new();
     expect_missing_paru_package(&mut mock, 1);
     expect_missing_paru_path(&mut mock, 1);
@@ -292,7 +302,7 @@ fn failed_paru_clone_cleans_only_its_partial_checkout() {
                 ExecResult::failure("", "fixture clone failed", Some(128)),
             ))
         });
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
 
     let error = run_paru_install(&ctx, &build_dir).unwrap_err();
 
@@ -321,7 +331,13 @@ fn install_aur_packages_errors_when_paru_disappears_after_bootstrap() {
     let mut mock = MockExecutor::new();
     expect_missing_paru_package(&mut mock, 1);
     expect_missing_paru_path(&mut mock, 1);
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Linux,
+        true,
+        mock,
+    );
     let error = InstallAurPackages::new(packages).run(&ctx).unwrap_err();
     assert!(
         error.to_string().contains("became unavailable"),
@@ -509,7 +525,6 @@ fn paru_health_marks_path_executable_without_target_package_broken() {
 
 #[test]
 fn paru_prerequisites_reject_missing_cargo_with_arch_guidance() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
     expect_paru_native_build_tools(&mut mock);
     mock.expect_which_path()
@@ -517,7 +532,7 @@ fn paru_prerequisites_reject_missing_cargo_with_arch_guidance() {
         .with(mockall::predicate::eq("cargo"))
         .returning(|_| anyhow::bail!("cargo not found on PATH"));
 
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     let error = check_prerequisites(&ctx).unwrap_err();
     let message = format!("{error:#}");
 
@@ -549,8 +564,15 @@ fn paru_inventory_failure_never_plans_a_bootstrap_or_rebuild() {
                     Some(1),
                 ))
             });
-        let config = empty_config(PathBuf::from("fixture-repository"));
-        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+
+        let ctx = make_package_context(
+            PathBuf::from("fixture-repository"),
+            None,
+            Os::Linux,
+            true,
+            mock,
+        )
+        .with_dry_run(dry_run);
 
         let error = InstallParu.run(&ctx).unwrap_err();
 
@@ -630,8 +652,15 @@ fn paru_probe_errors_are_not_converted_to_rebuild_plans() {
                             },
                         })
                     });
-                let config = empty_config(PathBuf::from("fixture-repository"));
-                let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+
+                let ctx = make_package_context(
+                    PathBuf::from("fixture-repository"),
+                    None,
+                    Os::Linux,
+                    true,
+                    mock,
+                )
+                .with_dry_run(dry_run);
 
                 let error = InstallParu.run(&ctx).unwrap_err();
 
@@ -661,15 +690,20 @@ fn paru_probe_failure_does_not_request_elevation() {
                 std::io::Error::from(std::io::ErrorKind::PermissionDenied),
             ))
         });
-    let config = empty_config(PathBuf::from("fixture-repository"));
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+
+    let ctx = make_package_context(
+        PathBuf::from("fixture-repository"),
+        None,
+        Os::Linux,
+        true,
+        mock,
+    );
 
     assert!(!InstallParu.needs_elevation(&ctx));
 }
 
 #[test]
 fn paru_prerequisites_reject_unconfigured_rustup_cargo() {
-    let config = empty_config(PathBuf::from("/tmp"));
     let mut mock = MockExecutor::new();
     expect_paru_native_build_tools(&mut mock);
     expect_cargo_path(&mut mock);
@@ -687,7 +721,7 @@ fn paru_prerequisites_reject_unconfigured_rustup_cargo() {
             ))
         });
 
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     let error = check_prerequisites(&ctx).unwrap_err();
     let message = format!("{error:#}");
 
@@ -703,7 +737,7 @@ fn paru_prerequisites_reject_unconfigured_rustup_cargo() {
 fn broken_paru_is_rebuilt_and_revalidated() {
     let fixture = tempfile::tempdir_in(".").unwrap();
     let build_dir = fixture.path().join("paru-build");
-    let config = empty_config(fixture.path().to_path_buf());
+
     let mut mock = MockExecutor::new();
     expect_installed_paru_package(&mut mock, 2);
     let checks = Arc::new(AtomicUsize::new(0));
@@ -726,7 +760,7 @@ fn broken_paru_is_rebuilt_and_revalidated() {
         .withf(is_makepkg(build_dir.clone()))
         .returning(|_| Ok(ExecResult::success("")));
 
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = run_paru_install(&ctx, &build_dir).unwrap();
     let stats = task_batch(&result);
 
@@ -741,11 +775,11 @@ fn broken_paru_is_rebuilt_and_revalidated() {
 fn failed_paru_rebuild_returns_clear_root_error() {
     let fixture = tempfile::tempdir_in(".").unwrap();
     let build_dir = fixture.path().join("paru-build");
-    let config = empty_config(fixture.path().to_path_buf());
+
     let mut mock = MockExecutor::new();
     expect_failed_paru_rebuild(&mut mock, &build_dir);
 
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
     let error = run_paru_install(&ctx, &build_dir).unwrap_err();
     let message = format!("{error:#}");
 
@@ -799,7 +833,14 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
     let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
     let log = Arc::new(log);
     let log_output: Arc<dyn Log> = Arc::<crate::infra::logging::Logger>::clone(&log);
-    let ctx = make_package_context(config, Os::Linux, true, mock).with_log(log_output);
+    let ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Linux,
+        true,
+        mock,
+    )
+    .with_log(log_output);
     let install_paru = FixtureParuTask {
         inner: InstallParu,
         build_dir: build_dir.clone(),
@@ -920,13 +961,19 @@ fn expect_paru_build_prerequisites(mock: &mut MockExecutor) {
 /// This lets tests exercise the `process_packages` batch install path without
 /// being short-circuited by the "tool not found" guard in `run()`.
 fn make_package_context(
-    config: crate::Config,
+    root: PathBuf,
+    overlay: Option<PathBuf>,
     os: Os,
     is_arch: bool,
     executor: MockExecutor,
 ) -> Context {
     use crate::infra::platform::Platform;
-    crate::test_helpers::make_context(config, Platform::new(os, is_arch), Arc::new(executor))
+    crate::test_helpers::make_context(
+        root,
+        overlay,
+        Platform::new(os, is_arch),
+        Arc::new(executor),
+    )
 }
 
 fn is_native_inventory(spec: &CommandSpec) -> bool {
@@ -985,7 +1032,13 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
         .withf(is_native_git_install)
         .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Linux,
+        true,
+        mock,
+    );
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
     assert!(
@@ -1011,7 +1064,13 @@ fn install_packages_all_already_installed_returns_ok() {
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("git 2.40\n")));
     let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(config, Os::Linux, false, mock);
+    let ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Linux,
+        false,
+        mock,
+    );
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert_task_ok(&result);
 }
@@ -1033,7 +1092,13 @@ fn install_packages_dry_run_reports_missing_packages() {
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
-    let mut ctx = make_package_context(config, Os::Linux, true, mock);
+    let mut ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Linux,
+        true,
+        mock,
+    );
     ctx = ctx.with_dry_run(true);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
@@ -1051,7 +1116,7 @@ fn install_packages_dry_run_reports_missing_packages() {
 fn native_inventory_failure_prevents_planning_and_installation() {
     for dry_run in [false, true] {
         let fixture = tempfile::tempdir_in(".").unwrap();
-        let config = empty_config(fixture.path().to_path_buf());
+
         let packages = ConfigHandle::new(vec![Package {
             name: "git".into(),
             is_aur: false,
@@ -1071,7 +1136,8 @@ fn native_inventory_failure_prevents_planning_and_installation() {
                     Some(42),
                 ))
             });
-        let ctx = make_package_context(config, Os::Linux, true, mock).with_dry_run(dry_run);
+        let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock)
+            .with_dry_run(dry_run);
         let error = InstallPackages::new(packages).run(&ctx).unwrap_err();
         let details = format!("{error:#}");
         assert!(details.contains("fixture corrupt database"), "{details}");
@@ -1114,7 +1180,13 @@ fn install_packages_returns_failed_when_batch_install_fails() {
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Linux,
+        true,
+        mock,
+    );
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
     assert_eq!(
@@ -1129,7 +1201,6 @@ fn install_packages_returns_failed_when_batch_install_fails() {
 
 #[test]
 fn partial_package_batch_preserves_changed_and_already_installed_counts() {
-    let config = empty_config(PathBuf::from("fixture-repository"));
     let packages = ConfigHandle::new(
         ["first", "second", "existing"]
             .into_iter()
@@ -1168,7 +1239,13 @@ fn partial_package_batch_preserves_changed_and_already_installed_counts() {
         .in_sequence(&mut sequence)
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("existing 1.0\nfirst 1.0\n")));
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(
+        PathBuf::from("fixture-repository"),
+        None,
+        Os::Linux,
+        true,
+        mock,
+    );
 
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
@@ -1210,7 +1287,13 @@ fn install_packages_propagates_batch_cancellation() {
             })
         });
     let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(config, Os::Linux, true, mock);
+    let ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Linux,
+        true,
+        mock,
+    );
 
     let err = InstallPackages::new(packages)
         .run(&ctx)
@@ -1275,7 +1358,13 @@ fn install_packages_winget_installs_per_package() {
         })
         .returning(|_| Ok(ExecResult::success("")));
     let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(config, Os::Windows, false, mock);
+    let ctx = make_package_context(
+        config.root.clone(),
+        config.overlay.clone(),
+        Os::Windows,
+        false,
+        mock,
+    );
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
     assert!(
@@ -1286,7 +1375,6 @@ fn install_packages_winget_installs_per_package() {
 
 #[test]
 fn winget_already_current_after_discovery_is_not_an_install_failure() {
-    let config = empty_config(PathBuf::from("fixture-repository"));
     let packages = ConfigHandle::new(vec![Package {
         name: "Git.Git".into(),
         is_aur: false,
@@ -1339,7 +1427,13 @@ fn winget_already_current_after_discovery_is_not_an_install_failure() {
                 Some(-1_978_335_189),
             ))
         });
-    let ctx = make_package_context(config, Os::Windows, false, mock);
+    let ctx = make_package_context(
+        PathBuf::from("fixture-repository"),
+        None,
+        Os::Windows,
+        false,
+        mock,
+    );
 
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
@@ -1357,7 +1451,6 @@ fn winget_already_current_after_discovery_is_not_an_install_failure() {
 #[test]
 fn winget_discovery_parse_failure_never_attempts_installation() {
     for dry_run in [false, true] {
-        let config = empty_config(PathBuf::from("fixture-repository"));
         let packages = ConfigHandle::new(vec![Package {
             name: "Git.Git".to_string(),
             is_aur: false,
@@ -1382,7 +1475,14 @@ fn winget_discovery_parse_failure_never_attempts_installation() {
                     "Name  Identifier  Version\nGit   Git.Git     2.51.0\n",
                 ))
             });
-        let ctx = make_package_context(config, Os::Windows, false, mock).with_dry_run(dry_run);
+        let ctx = make_package_context(
+            PathBuf::from("fixture-repository"),
+            None,
+            Os::Windows,
+            false,
+            mock,
+        )
+        .with_dry_run(dry_run);
 
         let error = InstallPackages::new(packages)
             .run(&ctx)
@@ -1417,7 +1517,7 @@ fn package_elevation_requires_missing_packages_on_a_supported_platform() {
                         "other-package 1.0\n"
                     }))
                 });
-            let ctx = make_package_context(empty_config("/fixture".into()), os, arch, mock);
+            let ctx = make_package_context("/fixture".into(), None, os, arch, mock);
             let task: Box<dyn Task> = if is_aur {
                 Box::new(InstallAurPackages::new(packages))
             } else {

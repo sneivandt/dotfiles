@@ -767,7 +767,7 @@ fn offline_install_targets_reset_each_relationship_list_independently() {
 #[test]
 fn offline_enablement_does_not_recreate_reset_install_targets() {
     use crate::engine::{ProcessOpts, TaskResult, process_resources};
-    use crate::test_helpers::{ContextBuilder, empty_config};
+    use crate::test_helpers::ContextBuilder;
 
     let fixture = tempfile::tempdir_in(".").unwrap();
     let home = fixture.path().canonicalize().unwrap();
@@ -786,7 +786,7 @@ fn offline_enablement_does_not_recreate_reset_install_targets() {
     };
     let resource =
         || SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
-    let ctx = ContextBuilder::new(empty_config(home.clone())).build();
+    let ctx = ContextBuilder::new(home.clone()).overlay(None).build();
     let preview = process_resources(
         &ctx.with_dry_run(true),
         [resource()],
@@ -856,7 +856,7 @@ fn offline_user_unit_can_be_disabled() {
 #[test]
 fn offline_disable_removes_stale_links_without_requiring_install_metadata() {
     use crate::engine::{ProcessOpts, TaskResult, process_resources};
-    use crate::test_helpers::{ContextBuilder, empty_config};
+    use crate::test_helpers::ContextBuilder;
 
     for (label, definition) in [
         ("changed targets", Some("[Install]\nWantedBy=new.target\n")),
@@ -904,7 +904,8 @@ fn offline_disable_removes_stale_links_without_requiring_install_metadata() {
             ),
             "{label}"
         );
-        let ctx = ContextBuilder::new(empty_config(home.clone()))
+        let ctx = ContextBuilder::new(home.clone())
+            .overlay(None)
             .build()
             .with_dry_run(true);
         let result =

@@ -133,8 +133,7 @@ impl Task for DelegatedTask {
 
 #[test]
 fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
+    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
     let calls = Arc::new(DelegationCalls::default());
     let existing = TaskId::Type(TypeId::of::<u8>());
     let additional = TaskId::Type(TypeId::of::<u16>());
@@ -190,8 +189,7 @@ fn task_with_extra_deps_merges_both_edge_kinds() {
 
 #[test]
 fn execute_skips_non_applicable_task() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "test-task",
         should_run: false,
@@ -208,8 +206,7 @@ fn execute_skips_non_applicable_task() {
 
 #[test]
 fn execute_records_ok_task() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "ok-task",
         should_run: true,
@@ -228,8 +225,7 @@ fn execute_records_ok_task() {
 
 #[test]
 fn execute_records_check_passed_task_as_passed() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
 
     execute(&CheckPassedTask, &ctx);
 
@@ -242,7 +238,7 @@ fn execute_records_check_passed_task_as_passed() {
 #[test]
 fn execute_records_ok_task_with_message() {
     let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(config.root.clone(), config.overlay);
     let task = MockTask {
         name: "ok-task",
         should_run: true,
@@ -260,8 +256,7 @@ fn execute_records_ok_task_with_message() {
 
 #[test]
 fn execute_records_failed_task() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "fail-task",
         should_run: true,
@@ -278,8 +273,7 @@ fn execute_records_failed_task() {
 
 #[test]
 fn execute_records_skipped_task() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "skip-task",
         should_run: true,
@@ -297,8 +291,7 @@ fn execute_records_skipped_task() {
 
 #[test]
 fn strict_completion_escalates_unmet_task_skip() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let ctx = ctx.with_require_complete(true);
     let task = MockTask {
         name: "missing-tool",
@@ -312,8 +305,7 @@ fn strict_completion_escalates_unmet_task_skip() {
 
 #[test]
 fn execute_records_batch_action_counts() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "batch-task",
         should_run: true,
@@ -331,8 +323,7 @@ fn execute_records_batch_action_counts() {
 
 #[test]
 fn execute_records_dry_run_batch_as_planned_actions() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let ctx = ctx.with_dry_run(true);
     let task = MockTask {
         name: "batch-task",
@@ -349,8 +340,7 @@ fn execute_records_dry_run_batch_as_planned_actions() {
 
 #[test]
 fn execute_records_unquantified_dry_run_without_planned_actions() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let ctx = ctx.with_dry_run(true);
     let task = MockTask {
         name: "dry-task",
@@ -366,8 +356,7 @@ fn execute_records_unquantified_dry_run_without_planned_actions() {
 
 #[test]
 fn execute_records_failed_batch_and_preserves_action_counts() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "batch-task",
         should_run: true,
@@ -384,8 +373,7 @@ fn execute_records_failed_batch_and_preserves_action_counts() {
 
 #[test]
 fn execute_records_skipped_only_batch_as_skipped() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "batch-task",
         should_run: true,
@@ -398,8 +386,7 @@ fn execute_records_skipped_only_batch_as_skipped() {
 
 #[test]
 fn execute_preserves_batch_failure_when_cancellation_was_requested_separately() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     ctx.cancellation_token().cancel();
     let task = MockTask {
         name: "batch-task",
@@ -433,8 +420,7 @@ fn execute_detects_cancellation_through_resource_error_wrappers() {
         }
     }
 
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
 
     assert_eq!(
         execute(&WrappedCancellationTask, &ctx),
@@ -445,8 +431,7 @@ fn execute_detects_cancellation_through_resource_error_wrappers() {
 
 #[test]
 fn execute_records_task_result_failed_as_failure() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let task = MockTask {
         name: "failed-task",
         should_run: true,
@@ -460,8 +445,7 @@ fn execute_records_task_result_failed_as_failure() {
 
 #[test]
 fn execute_records_dry_run_task() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let ctx = ctx.with_dry_run(true);
     let task = MockTask {
         name: "dry-task",
@@ -476,8 +460,7 @@ fn execute_records_dry_run_task() {
 
 #[test]
 fn execute_checks_applicability_before_running_task() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config);
+    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let ran = Arc::new(AtomicBool::new(false));
     let task = GatedTask {
         ran: Arc::clone(&ran),
@@ -493,8 +476,7 @@ fn execute_checks_applicability_before_running_task() {
 
 #[test]
 fn requires_elevation_respects_prediction_and_dry_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
+    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
     let ran = Arc::new(AtomicBool::new(false));
     let task = GatedTask {
         ran,
@@ -508,8 +490,7 @@ fn requires_elevation_respects_prediction_and_dry_run() {
 
 #[test]
 fn requires_elevation_respects_prediction() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
+    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
     let ran = Arc::new(AtomicBool::new(false));
     let task = GatedTask {
         ran,
@@ -522,8 +503,7 @@ fn requires_elevation_respects_prediction() {
 
 #[test]
 fn requires_elevation_respects_should_run() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
+    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
     let ran = Arc::new(AtomicBool::new(false));
     let task = GatedTask {
         ran,
@@ -553,8 +533,7 @@ fn assessment_evaluates_applicability_once_for_unelevated_tasks() {
         }
     }
 
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
+    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
     let should_run_calls = Arc::new(AtomicUsize::new(0));
     let task = CountingGate {
         should_run_calls: Arc::clone(&should_run_calls),
@@ -597,8 +576,7 @@ fn precomputed_assessment_is_reused_during_execution() {
         }
     }
 
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, _) = make_static_context(config);
+    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
     let should_run_calls = Arc::new(AtomicUsize::new(0));
     let elevation_calls = Arc::new(AtomicUsize::new(0));
     let ran = Arc::new(AtomicBool::new(false));
@@ -622,7 +600,7 @@ fn precomputed_assessment_is_reused_during_execution() {
 
 #[test]
 fn empty_resource_task_bodies_skip_discovery() {
-    let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+    let (ctx, _) = make_static_context("/fixture".into(), None);
     let loads = AtomicUsize::new(0);
     let checks = AtomicUsize::new(0);
     let opts = ProcessOpts::strict("install");
@@ -654,7 +632,7 @@ fn empty_resource_task_bodies_skip_discovery() {
 
 #[test]
 fn resource_task_records_one_outcome_per_prepared_resource() {
-    let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+    let (ctx, _) = make_static_context("/fixture".into(), None);
     let result = run_resource_task(
         &ctx,
         vec![DummyResource, DummyResource, DummyResource],
@@ -675,7 +653,7 @@ fn resource_task_records_one_outcome_per_prepared_resource() {
 fn failed_batch_load_never_checks_or_applies_resources() {
     for parallel in [false, true] {
         for dry_run in [false, true] {
-            let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+            let (ctx, _) = make_static_context("/fixture".into(), None);
             let ctx = ctx.with_parallel(parallel).with_dry_run(dry_run);
             let loads = AtomicUsize::new(0);
             let checks = AtomicUsize::new(0);
@@ -731,7 +709,7 @@ fn task_wrapper_forwards_custom_assessment_without_reassessing_hooks() {
         }
     }
 
-    let (ctx, log) = make_static_context(empty_config("/fixture".into()));
+    let (ctx, log) = make_static_context("/fixture".into(), None);
     let wrapped = TaskWithExtraDeps::new(Box::new(CustomAssessment), &[], &[]);
     assert_eq!(execute(&wrapped, &ctx), TaskStatus::NotApplicable);
     let entries = log.task_entries();
@@ -830,7 +808,7 @@ fn outcome_events_and_warnings_follow_failure_status() {
         ),
     ] {
         let output = Arc::new(Captured::default());
-        let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+        let (ctx, _) = make_static_context("/fixture".into(), None);
         let ctx = ctx
             .with_log(Arc::<Captured>::clone(&output))
             .with_require_complete(strict);

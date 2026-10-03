@@ -67,7 +67,7 @@ mod tests {
     use super::*;
     use crate::domains::system::config::system_files::MergeStrategy;
     use crate::infra::platform::Os;
-    use crate::test_helpers::{ContextBuilder, empty_config};
+    use crate::test_helpers::ContextBuilder;
     use std::path::PathBuf;
 
     fn configured() -> ConfigHandle<Vec<SystemFile>> {
@@ -81,11 +81,15 @@ mod tests {
 
     #[test]
     fn runs_only_for_nonempty_linux_configuration_outside_ci() {
-        let linux = ContextBuilder::new(empty_config(PathBuf::from("/tmp"))).build();
-        let windows = ContextBuilder::new(empty_config(PathBuf::from("/tmp")))
+        let linux = ContextBuilder::new(PathBuf::from("/tmp"))
+            .overlay(None)
+            .build();
+        let windows = ContextBuilder::new(PathBuf::from("/tmp"))
+            .overlay(None)
             .os(Os::Windows)
             .build();
-        let ci = ContextBuilder::new(empty_config(PathBuf::from("/tmp")))
+        let ci = ContextBuilder::new(PathBuf::from("/tmp"))
+            .overlay(None)
             .ci(true)
             .build();
         assert!(ConfigureSystemFiles::new(configured()).should_run(&linux));

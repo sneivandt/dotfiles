@@ -35,7 +35,12 @@ fn shell_script_fixture() -> (tempfile::TempDir, ScriptEntry, String) {
 fn context_with_executor(overlay: &Path, executor: MockExecutor) -> Context {
     let mut config = empty_config(overlay.to_path_buf());
     config.overlay = Some(overlay.to_path_buf());
-    make_context(config, Platform::new(Os::Linux, false), Arc::new(executor))
+    make_context(
+        config.root.clone(),
+        config.overlay,
+        Platform::new(Os::Linux, false),
+        Arc::new(executor),
+    )
 }
 
 fn expect_shell_script(
@@ -61,8 +66,7 @@ fn expect_shell_script(
 
 #[test]
 fn snapshot_report_should_run_false_without_overlay() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(PathBuf::from("/tmp"), None);
     assert!(!ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![])).should_run(&ctx));
 }
 
@@ -70,7 +74,7 @@ fn snapshot_report_should_run_false_without_overlay() {
 fn snapshot_report_should_run_true_with_overlay() {
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(config.root.clone(), config.overlay);
     assert!(ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![])).should_run(&ctx));
 }
 
@@ -78,7 +82,7 @@ fn snapshot_report_should_run_true_with_overlay() {
 fn snapshot_report_returns_not_applicable_when_empty() {
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(config.root.clone(), config.overlay);
     let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![]));
 
     assert!(matches!(
@@ -91,7 +95,7 @@ fn snapshot_report_returns_not_applicable_when_empty() {
 fn snapshot_report_succeeds_with_configured_scripts() {
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(config.root.clone(), config.overlay);
     let task = ReportOverlayScriptSnapshot::new(ConfigHandle::new(vec![script_entry(
         "Setup test",
         "scripts/test.sh",
@@ -117,8 +121,7 @@ fn script_task_name_matches_entry() {
 
 #[test]
 fn script_task_should_run_false_without_overlay() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(PathBuf::from("/tmp"), None);
     let entry = ScriptEntry {
         name: "test".to_string(),
         path: "scripts/test.sh".to_string(),
@@ -132,7 +135,7 @@ fn script_task_should_run_false_without_overlay() {
 fn script_task_should_run_true_with_overlay() {
     let mut config = empty_config(PathBuf::from("/tmp"));
     config.overlay = Some(PathBuf::from("/overlay"));
-    let ctx = make_linux_context(config);
+    let ctx = make_linux_context(config.root.clone(), config.overlay);
     let entry = ScriptEntry {
         name: "test".to_string(),
         path: "scripts/test.sh".to_string(),

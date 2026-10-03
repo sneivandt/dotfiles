@@ -101,34 +101,16 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
 mod tests {
     use std::path::PathBuf;
     use std::sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicUsize, Ordering},
     };
 
     use super::*;
     use crate::engine::TaskStats;
-    use crate::infra::logging::{MsgKind, Output, TaskEntry, TaskRecorder};
-    use crate::test_helpers::{empty_config, make_linux_context};
+    use crate::infra::logging::MsgKind;
+    use crate::test_helpers::make_linux_context;
 
-    #[derive(Default)]
-    struct CapturingLog {
-        info: Mutex<Vec<String>>,
-    }
-
-    impl Output for CapturingLog {
-        fn emit(&self, kind: MsgKind, msg: std::borrow::Cow<'_, str>) {
-            if kind == MsgKind::Info {
-                self.info
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(msg.into_owned());
-            }
-        }
-    }
-
-    impl TaskRecorder for CapturingLog {
-        fn record_task(&self, _task: TaskEntry) {}
-    }
+    use crate::test_helpers::CapturingOutput;
 
     #[derive(Debug, Clone)]
     struct TestOperation {
@@ -200,7 +182,7 @@ mod tests {
     }
 
     fn test_context() -> Context {
-        make_linux_context(empty_config(PathBuf::from("/tmp")))
+        make_linux_context(PathBuf::from("/tmp"), None)
     }
 
     #[test]
@@ -244,8 +226,8 @@ mod tests {
 
     #[test]
     fn blocked_operation_skips_without_preview_or_apply() {
-        let log = Arc::new(CapturingLog::default());
-        let ctx = test_context().with_log(Arc::<CapturingLog>::clone(&log));
+        let log = Arc::new(CapturingOutput::default());
+        let ctx = test_context().with_log(Arc::<CapturingOutput>::clone(&log));
         let operation = TestOperation::new(OperationState::blocked("local changes present"));
 
         let result = process_operation(&ctx, &operation).unwrap();
@@ -258,10 +240,7 @@ mod tests {
             } if reason == "local changes present"
         ));
         assert!(
-            log.info
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .is_empty(),
+            log.messages_of(MsgKind::Info).is_empty(),
             "task execution owns rendering the skipped outcome"
         );
         assert_eq!(operation.preview_calls(), 0);

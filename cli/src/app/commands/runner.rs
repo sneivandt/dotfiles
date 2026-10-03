@@ -385,7 +385,10 @@ mod root_tests {
                     path: "scripts/fixture.sh".into(),
                     description: None,
                 });
-            let (ctx, log) = crate::test_helpers::make_static_context(config.clone());
+            let (ctx, log) = crate::test_helpers::make_static_context(
+                config.root.clone(),
+                config.overlay.clone(),
+            );
             let runner = CommandRunner {
                 _run_lock: None,
                 ctx,
@@ -427,7 +430,7 @@ mod root_tests {
     fn relative_environment_root_creates_resolvable_home_symlinks() {
         use crate::domains::files::config::symlinks::Symlink;
         use crate::domains::files::symlinks::InstallSymlinks;
-        use crate::test_helpers::{assert_task_changed, empty_config, make_linux_context};
+        use crate::test_helpers::{assert_task_changed, make_linux_context};
 
         let fixture = tempfile::tempdir_in(".").unwrap();
         let fixture_root = crate::infra::fs::canonicalize(fixture.path()).unwrap();
@@ -440,8 +443,7 @@ mod root_tests {
         let relative_root = root.strip_prefix(&cwd).unwrap();
         let env = MapEnv::new().with("DOTFILES_ROOT", relative_root);
         let resolved = resolve_root_from_dir(None, Some(&cwd), &env).unwrap();
-        let config = empty_config(resolved.clone());
-        let ctx = make_linux_context(config).with_home(home.clone());
+        let ctx = make_linux_context(resolved.clone(), None).with_home(home.clone());
         let task = InstallSymlinks::new(ConfigHandle::new(vec![Symlink {
             source: "example".into(),
             target: None,

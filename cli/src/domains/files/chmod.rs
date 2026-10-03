@@ -64,22 +64,20 @@ mod tests {
 
     #[test]
     fn should_run_false_on_windows() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_windows_context(config);
+        let ctx = make_windows_context(PathBuf::from("/tmp"), None);
         assert!(!ApplyFilePermissions::new(ConfigHandle::new(vec![])).should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_on_linux_when_guard_passes() {
-        let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config);
+        let ctx = make_linux_context(PathBuf::from("/tmp"), None);
         assert!(ApplyFilePermissions::new(ConfigHandle::new(vec![])).should_run(&ctx));
     }
 
     #[test]
     fn should_run_true_when_chmod_entries_present_on_linux() {
         let config = empty_config(PathBuf::from("/tmp"));
-        let ctx = make_linux_context(config);
+        let ctx = make_linux_context(config.root.clone(), config.overlay);
         let task = ApplyFilePermissions::new(ConfigHandle::new(vec![ChmodEntry::new(
             "600",
             "ssh/config",
@@ -122,7 +120,7 @@ mod tests {
                     entries.reverse();
                 }
                 let task = ApplyFilePermissions::new(ConfigHandle::new(entries));
-                let ctx = make_linux_context(empty_config(fixture.path().to_path_buf()))
+                let ctx = make_linux_context(fixture.path().to_path_buf(), None)
                     .with_home(home)
                     .with_parallel(parallel);
                 let preview = task.run(&ctx.clone().with_dry_run(true)).unwrap();

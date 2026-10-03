@@ -362,7 +362,7 @@ pub(super) fn build_elevated_child_args(args: &[String], selectors: &[&str]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{empty_config, make_static_context};
+    use crate::test_helpers::make_static_context;
 
     #[test]
     fn sudo_primes_foreground_credentials_for_single_and_sequential_tasks() {
@@ -373,7 +373,7 @@ mod tests {
             ("multiple parallel", true, &["System files", "Packages"]),
         ];
         for &(case, parallel, names) in cases {
-            let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+            let (ctx, log) = make_static_context("fixture-root".into(), None);
             let ctx = ctx.with_parallel(parallel).with_non_interactive(false);
             let primed = std::cell::Cell::new(false);
             let plan = prepare_sudo_elevation(
@@ -409,7 +409,7 @@ mod tests {
                 },
             ),
         ] {
-            let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+            let (ctx, log) = make_static_context("fixture-root".into(), None);
             let ctx = ctx.with_non_interactive(non_interactive);
             let plan = prepare_sudo_elevation(
                 &ctx,
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn sudo_unavailable_does_not_check_credentials_or_prompt() {
-        let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+        let (ctx, log) = make_static_context("fixture-root".into(), None);
         let plan = prepare_sudo_elevation(
             &ctx,
             &log,
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn sudo_priming_failure_leaves_elevation_unavailable() {
         for result in [Ok(false), Err(std::io::Error::other("fixture failure"))] {
-            let (ctx, log) = make_static_context(empty_config("fixture-root".into()));
+            let (ctx, log) = make_static_context("fixture-root".into(), None);
             let ctx = ctx.with_parallel(false).with_non_interactive(false);
             let plan =
                 prepare_sudo_elevation(&ctx, &log, &["System files"], true, || false, || result);

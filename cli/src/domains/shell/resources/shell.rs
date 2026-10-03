@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn unavailable_account_shell_is_repaired_and_converges() {
         use crate::engine::{ProcessOpts, process_resources};
-        use crate::test_helpers::{empty_config, make_linux_context, task_batch};
+        use crate::test_helpers::{make_linux_context, task_batch};
 
         for dry_run in [true, false] {
             let mut mock = MockExecutor::new();
@@ -337,8 +337,7 @@ mod tests {
                     .return_const(true);
             }
             let executor: Arc<dyn Executor> = Arc::new(mock);
-            let ctx =
-                make_linux_context(empty_config(PathBuf::from("/repo"))).with_dry_run(dry_run);
+            let ctx = make_linux_context(PathBuf::from("/repo"), None).with_dry_run(dry_run);
             let run = || {
                 process_resources(
                     &ctx,

@@ -180,7 +180,7 @@ fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
                 origin: None,
             });
             let log = Arc::new(Logger::new("test"));
-            let ctx = make_windows_context(config.clone())
+            let ctx = make_windows_context(config.root.clone(), config.overlay.clone())
                 .with_home(home.clone())
                 .with_log(Arc::<Logger>::clone(&log))
                 .with_non_interactive(true)
@@ -542,7 +542,7 @@ fn cancelled_command() -> crate::infra::exec::ExecError {
 }
 
 fn sequential_context() -> (Context, Arc<Logger>) {
-    let (ctx, log) = make_static_context(empty_config(std::path::PathBuf::from("fixture-root")));
+    let (ctx, log) = make_static_context(std::path::PathBuf::from("fixture-root"), None);
     // Sequential execution keeps the recorded trace deterministic, so
     // ordering assertions describe dependency edges rather than thread
     // scheduling luck.

@@ -22,7 +22,7 @@ Desired state lives in [conf/](conf/), with app configuration under
 [symlinks/](symlinks/).
 
 <p align="center">
-  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Example install output showing changed symlinks, packages, and the default shell, followed by a summary">
+  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated example of dotfiles install: command typing, live task progress, completed changes, and the final summary">
 </p>
 
 ## What it manages

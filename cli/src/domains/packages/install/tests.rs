@@ -1391,3 +1391,43 @@ fn winget_discovery_parse_failure_never_attempts_installation() {
         assert!(error.to_string().contains("could not parse winget list"));
     }
 }
+
+#[test]
+fn package_elevation_requires_missing_packages_on_a_supported_platform() {
+    for is_aur in [false, true] {
+        for (os, arch, installed, expected) in [
+            (Os::Linux, true, false, true),
+            (Os::Linux, true, true, false),
+            (Os::Linux, false, false, false),
+            (Os::Windows, false, false, false),
+        ] {
+            let packages = ConfigHandle::new(vec![Package {
+                name: "fixture-package".into(),
+                is_aur,
+            }]);
+            let mut mock = MockExecutor::new();
+            mock.expect_which().returning(|_| true);
+            mock.expect_execute()
+                .times(usize::from(arch))
+                .withf(is_native_inventory)
+                .returning(move |_| {
+                    Ok(ExecResult::success(if installed {
+                        "fixture-package 1.0\n"
+                    } else {
+                        "other-package 1.0\n"
+                    }))
+                });
+            let ctx = make_package_context(empty_config("/fixture".into()), os, arch, mock);
+            let task: Box<dyn Task> = if is_aur {
+                Box::new(InstallAurPackages::new(packages))
+            } else {
+                Box::new(InstallPackages::new(packages))
+            };
+            assert_eq!(
+                task.needs_elevation(&ctx),
+                expected,
+                "{os:?}, Arch={arch}, AUR={is_aur}, installed={installed}"
+            );
+        }
+    }
+}

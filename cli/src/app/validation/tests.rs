@@ -548,3 +548,11 @@ fn linter_execution_preserves_command_contract_and_failure_kind() {
         }
     }
 }
+
+#[test]
+fn configured_source_validation_is_inapplicable_without_sources() {
+    let config = empty_config("/fixture".into());
+    let ctx = make_linux_context(config.clone());
+    let task = ValidateSymlinkSources::new(ConfigHandle::new(config));
+    assert!(!task.should_run(&ctx));
+}

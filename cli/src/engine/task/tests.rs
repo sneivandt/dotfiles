@@ -773,3 +773,83 @@ fn persistent_task_identity_preserves_dynamic_kind_and_wrapper_identity() {
     let decorated = TaskWithExtraDeps::new(Box::new(named), &[], &[]);
     assert_eq!(decorated.log_key(), key);
 }
+
+#[test]
+fn outcome_events_and_warnings_follow_failure_status() {
+    use crate::infra::logging::{LogEvent, MsgKind, Output, TaskEntry, TaskRecorder};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Captured {
+        messages: Mutex<Vec<(MsgKind, String)>>,
+        events: Mutex<Vec<LogEvent>>,
+    }
+    impl Output for Captured {
+        fn emit(&self, kind: MsgKind, message: std::borrow::Cow<'_, str>) {
+            self.messages
+                .lock()
+                .unwrap()
+                .push((kind, message.into_owned()));
+        }
+        fn run_task_event(&self, event: LogEvent, _task: &str, _message: &str) {
+            self.events.lock().unwrap().push(event);
+        }
+    }
+    impl TaskRecorder for Captured {
+        fn record_task(&self, _task: TaskEntry) {}
+    }
+
+    for (result, strict, status, event, warns) in [
+        (
+            TaskResult::unmet("missing tool"),
+            false,
+            TaskStatus::Skipped,
+            LogEvent::TaskSkip,
+            false,
+        ),
+        (
+            TaskResult::unmet("missing tool"),
+            true,
+            TaskStatus::Failed,
+            LogEvent::TaskFail,
+            true,
+        ),
+        (
+            TaskResult::Batch(TaskStats::from_counts(1, 0, 0, 0)),
+            false,
+            TaskStatus::Changed,
+            LogEvent::TaskDone,
+            false,
+        ),
+        (
+            TaskResult::Batch(TaskStats::from_counts(1, 0, 0, 1)),
+            false,
+            TaskStatus::Failed,
+            LogEvent::TaskFail,
+            true,
+        ),
+    ] {
+        let output = Arc::new(Captured::default());
+        let (ctx, _) = make_static_context(empty_config("/fixture".into()));
+        let ctx = ctx
+            .with_log(Arc::<Captured>::clone(&output))
+            .with_require_complete(strict);
+        let task = MockTask {
+            name: "outcome",
+            should_run: true,
+            result: Ok(result),
+        };
+        assert_eq!(execute(&task, &ctx), status);
+        assert_eq!(
+            *output.events.lock().unwrap(),
+            [LogEvent::TaskStart, event, LogEvent::TaskTiming]
+        );
+        let messages = output.messages.lock().unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .any(|(kind, message)| *kind == MsgKind::Warn && message.starts_with("failed: ")),
+            warns
+        );
+    }
+}

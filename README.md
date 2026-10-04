@@ -22,7 +22,7 @@ Desired state lives in [conf/](conf/), with app configuration under
 [symlinks/](symlinks/).
 
 <p align="center">
-  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles install links configuration, refreshes shell completions, and installs missing packages">
+  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles install first updates the CLI, then links configuration, refreshes shell completions, and installs missing packages">
 </p>
 
 ## What it manages

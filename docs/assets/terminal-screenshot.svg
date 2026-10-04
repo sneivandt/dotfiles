@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="476" viewBox="0 0 760 476" role="img" aria-labelledby="title desc">
-  <title id="title">One dotfiles install on an Arch Linux desktop</title>
-  <desc id="desc">Illustrative incremental install on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles install. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The run finishes with 3 changed and 14 current tasks in 10.0 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing and a reading pause. Reduced motion shows the completed transcript.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="500" viewBox="0 0 760 500" role="img" aria-labelledby="title desc">
+  <title id="title">CLI self-update and one dotfiles install on an Arch Linux desktop</title>
+  <desc id="desc">Illustrative incremental install on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles install. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the install. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The install finishes with 3 changed and 14 current tasks in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
   <style>
     /* Alacritty colors, Source Code Pro, a 10px cell and 24px terminal rows.
-       One install: startup at 2.4s, summary at 12.4s, then hold to 20s.
+       One install: self-update at 2.4s, install at 4.4s, summary at 10.5s.
+       System packages completes at 8.6s; hold the completed output to 20s.
        Step timing replaces terminal rows atomically, without crossfades. */
     @keyframes char-0 { 0% { opacity: 0; } 3.425%, 100% { opacity: 1; }  }
     .char-0 { animation: char-0 20s step-end infinite; }
@@ -42,33 +43,37 @@
     .typing { animation: typing 20s step-end infinite; }
     @keyframes caret { 0% { transform: translateX(0px); } 3.425% { transform: translateX(10px); } 3.85% { transform: translateX(20px); } 4.275% { transform: translateX(30px); } 4.7% { transform: translateX(40px); } 5.125% { transform: translateX(50px); } 5.55% { transform: translateX(60px); } 5.975% { transform: translateX(70px); } 6.4% { transform: translateX(80px); } 6.825% { transform: translateX(90px); } 7.25% { transform: translateX(100px); } 7.675% { transform: translateX(110px); } 8.1% { transform: translateX(120px); } 8.525% { transform: translateX(130px); } 8.95% { transform: translateX(140px); } 9.375% { transform: translateX(150px); } 9.8% { transform: translateX(160px); } }
     .caret { animation: caret 20s step-end infinite; }
-    @keyframes startup { 0% { opacity: 0; } 12% { opacity: 1; }  }
+    @keyframes updating { 0% { opacity: 0; } 12% { opacity: 1; } 21%, 100% { opacity: 0; } }
+    .updating { animation: updating 20s step-end infinite; }
+    @keyframes upgraded { 0% { opacity: 0; } 21% { opacity: 1; } }
+    .upgraded { animation: upgraded 20s step-end infinite; }
+    @keyframes startup { 0% { opacity: 0; } 22% { opacity: 1; }  }
     .startup { animation: startup 20s step-end infinite; }
-    @keyframes links { 0% { opacity: 0; } 17% { opacity: 1; }  }
+    @keyframes links { 0% { opacity: 0; } 27% { opacity: 1; }  }
     .links { animation: links 20s step-end infinite; }
-    @keyframes completions { 0% { opacity: 0; } 21% { opacity: 1; }  }
+    @keyframes completions { 0% { opacity: 0; } 31% { opacity: 1; }  }
     .completions { animation: completions 20s step-end infinite; }
-    @keyframes packages { 0% { opacity: 0; } 52.5% { opacity: 1; }  }
+    @keyframes packages { 0% { opacity: 0; } 43% { opacity: 1; }  }
     .packages { animation: packages 20s step-end infinite; }
-    @keyframes live-0 { 0% { opacity: 0; } 12% { opacity: 1; } 17%, 100% { opacity: 0; } }
+    @keyframes live-0 { 0% { opacity: 0; } 22% { opacity: 1; } 27%, 100% { opacity: 0; } }
     .live-0 { animation: live-0 20s step-end infinite; }
-    @keyframes live-1 { 0% { opacity: 0; } 17% { opacity: 1; } 21%, 100% { opacity: 0; } }
+    @keyframes live-1 { 0% { opacity: 0; } 27% { opacity: 1; } 31%, 100% { opacity: 0; } }
     .live-1 { animation: live-1 20s step-end infinite; }
-    @keyframes live-2 { 0% { opacity: 0; } 21% { opacity: 1; } 25.5%, 100% { opacity: 0; } }
+    @keyframes live-2 { 0% { opacity: 0; } 31% { opacity: 1; } 35.5%, 100% { opacity: 0; } }
     .live-2 { animation: live-2 20s step-end infinite; }
-    @keyframes live-3 { 0% { opacity: 0; } 25.5% { opacity: 1; } 52.5%, 100% { opacity: 0; } }
+    @keyframes live-3 { 0% { opacity: 0; } 35.5% { opacity: 1; } 43%, 100% { opacity: 0; } }
     .live-3 { animation: live-3 20s step-end infinite; }
-    @keyframes live-4 { 0% { opacity: 0; } 52.5% { opacity: 1; } 54.5%, 100% { opacity: 0; } }
+    @keyframes live-4 { 0% { opacity: 0; } 43% { opacity: 1; } 45%, 100% { opacity: 0; } }
     .live-4 { animation: live-4 20s step-end infinite; }
-    @keyframes live-5 { 0% { opacity: 0; } 54.5% { opacity: 1; } 57%, 100% { opacity: 0; } }
+    @keyframes live-5 { 0% { opacity: 0; } 45% { opacity: 1; } 47.5%, 100% { opacity: 0; } }
     .live-5 { animation: live-5 20s step-end infinite; }
-    @keyframes live-6 { 0% { opacity: 0; } 57% { opacity: 1; } 59.5%, 100% { opacity: 0; } }
+    @keyframes live-6 { 0% { opacity: 0; } 47.5% { opacity: 1; } 50%, 100% { opacity: 0; } }
     .live-6 { animation: live-6 20s step-end infinite; }
-    @keyframes live-7 { 0% { opacity: 0; } 59.5% { opacity: 1; } 62%, 100% { opacity: 0; } }
+    @keyframes live-7 { 0% { opacity: 0; } 50% { opacity: 1; } 52.5%, 100% { opacity: 0; } }
     .live-7 { animation: live-7 20s step-end infinite; }
-    @keyframes summary { 0% { opacity: 0; } 62% { opacity: 1; }  }
+    @keyframes summary { 0% { opacity: 0; } 52.5% { opacity: 1; }  }
     .summary { animation: summary 20s step-end infinite; }
-    @keyframes prompt { 0% { opacity: 0; } 62.5% { opacity: 1; }  }
+    @keyframes prompt { 0% { opacity: 0; } 53% { opacity: 1; }  }
     .prompt { animation: prompt 20s step-end infinite; }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
     .blink { animation: blink 1s step-end infinite; }
@@ -80,25 +85,27 @@
       .transient, [class^="live-"] { display: none; }
     }
   </style>
-  <rect x="0.5" y="0.5" width="759" height="475" rx="8" fill="#1a1b26" stroke="#414868"/>
+  <rect x="0.5" y="0.5" width="759" height="499" rx="8" fill="#1a1b26" stroke="#414868"/>
   <g font-family="Source Code Pro, DejaVu Sans Mono, Consolas, monospace" font-size="16.6667" fill="#c0caf5" xml:space="preserve">
 <text x="26" y="41"><tspan fill="#e0af68">~</tspan></text>
 <text x="26" y="65"><tspan fill="#a9b1d6">$</tspan></text>
 <text class="char-0" x="46" y="65" fill="#9ece6a">d</text><text class="char-1" x="56" y="65" fill="#9ece6a">o</text><text class="char-2" x="66" y="65" fill="#9ece6a">t</text><text class="char-3" x="76" y="65" fill="#9ece6a">f</text><text class="char-4" x="86" y="65" fill="#9ece6a">i</text><text class="char-5" x="96" y="65" fill="#9ece6a">l</text><text class="char-6" x="106" y="65" fill="#9ece6a">e</text><text class="char-7" x="116" y="65" fill="#9ece6a">s</text><text class="char-8" x="126" y="65" fill="#c0caf5"> </text><text class="char-9" x="136" y="65" fill="#c0caf5">i</text><text class="char-10" x="146" y="65" fill="#c0caf5">n</text><text class="char-11" x="156" y="65" fill="#c0caf5">s</text><text class="char-12" x="166" y="65" fill="#c0caf5">t</text><text class="char-13" x="176" y="65" fill="#c0caf5">a</text><text class="char-14" x="186" y="65" fill="#c0caf5">l</text><text class="char-15" x="196" y="65" fill="#c0caf5">l</text>
     <g class="typing transient"><g class="caret"><path class="blink" d="M46 49v20" stroke="#c0caf5" stroke-width="2"/></g></g>
-    <g class="startup"><text x="26" y="89"><tspan font-weight="600">Install</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
-    <g class="links"><text x="26" y="137"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Home symlinks</tspan></text><text x="46" y="161">link ~/.config/git/config → symlinks/config/git/config</text><text x="46" y="185">link ~/.zshrc → symlinks/zshrc</text></g>
-    <g class="completions"><text x="26" y="233"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Shell completions</tspan></text><text x="46" y="257">zsh completions written</text></g>
-    <g class="packages"><text x="26" y="305"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">System packages</tspan></text><text x="46" y="329">install fd</text><text x="46" y="353">install ripgrep</text></g>
-    <g class="live-0"><text x="26" y="137"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 16 remaining · </tspan>Home symlinks, System packages</text></g>
-    <g class="live-1"><text x="26" y="233"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 12 remaining · </tspan>System packages, Shell completions</text></g>
-    <g class="live-2"><text x="26" y="305"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 10 remaining · </tspan>System packages, File permissions</text></g>
-    <g class="live-3"><text x="26" y="305"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 8 remaining · </tspan>System packages</text></g>
-    <g class="live-4"><text x="26" y="401"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 7 remaining · </tspan>Paru package manager, Default shell</text></g>
-    <g class="live-5"><text x="26" y="401"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 5 remaining · </tspan>AUR packages, System files</text></g>
-    <g class="live-6"><text x="26" y="401"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 3 remaining · </tspan>Systemd units, APM packages</text></g>
-    <g class="live-7"><text x="26" y="401"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>APM packages</text></g>
-    <g class="summary"><text x="26" y="401"><tspan fill="#9ece6a" font-weight="600">3 changed</tspan><tspan fill="#8992b5"> · 14 current · 10.0s</tspan></text></g>
-    <g class="prompt"><text x="26" y="425"><tspan fill="#e0af68">~</tspan></text><text x="26" y="449"><tspan fill="#a9b1d6">$</tspan></text><path class="blink" d="M46 433v20" stroke="#c0caf5" stroke-width="2"/></g>
+    <g class="updating transient"><text x="26" y="89" fill="#8992b5">Updating to v2026.01.01-2</text></g>
+    <g class="upgraded"><text x="26" y="89"><tspan font-weight="600">CLI upgraded</tspan><tspan fill="#8992b5"> · v2026.01.01-1 → v2026.01.01-2</tspan></text></g>
+    <g class="startup"><text x="26" y="113"><tspan font-weight="600">Install</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
+    <g class="links"><text x="26" y="161"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Home symlinks</tspan></text><text x="46" y="185">link ~/.config/git/config → symlinks/config/git/config</text><text x="46" y="209">link ~/.zshrc → symlinks/zshrc</text></g>
+    <g class="completions"><text x="26" y="257"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Shell completions</tspan></text><text x="46" y="281">zsh completions written</text></g>
+    <g class="packages"><text x="26" y="329"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">System packages</tspan></text><text x="46" y="353">install fd</text><text x="46" y="377">install ripgrep</text></g>
+    <g class="live-0"><text x="26" y="161"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 16 remaining · </tspan>Home symlinks, System packages</text></g>
+    <g class="live-1"><text x="26" y="257"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 12 remaining · </tspan>System packages, Shell completions</text></g>
+    <g class="live-2"><text x="26" y="329"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 10 remaining · </tspan>System packages, File permissions</text></g>
+    <g class="live-3"><text x="26" y="329"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 8 remaining · </tspan>System packages</text></g>
+    <g class="live-4"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 7 remaining · </tspan>Paru package manager, Default shell</text></g>
+    <g class="live-5"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 5 remaining · </tspan>AUR packages, System files</text></g>
+    <g class="live-6"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 3 remaining · </tspan>Systemd units, APM packages</text></g>
+    <g class="live-7"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>APM packages</text></g>
+    <g class="summary"><text x="26" y="425"><tspan fill="#9ece6a" font-weight="600">3 changed</tspan><tspan fill="#8992b5"> · 14 current · 6.1s</tspan></text></g>
+    <g class="prompt"><text x="26" y="449"><tspan fill="#e0af68">~</tspan></text><text x="26" y="473"><tspan fill="#a9b1d6">$</tspan></text><path class="blink" d="M46 457v20" stroke="#c0caf5" stroke-width="2"/></g>
   </g>
 </svg>

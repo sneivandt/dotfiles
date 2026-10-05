@@ -71,9 +71,9 @@ With no stage names, each script runs its default stages:
 | `clippy` | Host `cargo clippy --profile ci --all-targets -- -D warnings` | Does not include cross-target Clippy |
 | `test` | `cargo test --profile ci` | Does not run shell/PowerShell CI integration scripts |
 | `config` | CLI `check --profile desktop --only config-warnings,symlink-sources,config-files` | Intentionally excludes external APM/linters |
-| `docs` | Relative inline Markdown links/heading anchors and static task-selector inventory | Linux entrypoint only |
+| `docs` | Relative inline Markdown links/heading anchors and static task-selector inventory | Linux entrypoint only; selector check requires Cargo |
 | `ci` | CI/release scheduling contracts, changed-path and release-baseline fixtures, and aggregate result-gate behavior | Linux entrypoint only; requires Python 3 plus Git/POSIX shell for fixtures |
-| `shell` | Shared ShellCheck file discovery in `test-static-analysis.sh` | Requires ShellCheck; Windows also needs POSIX `sh` |
+| `shell` | Shared ShellCheck discovery and rules in `cli/src/app/validation/scripts/shellcheck.sh` | Requires ShellCheck; Windows also needs POSIX `sh` |
 | `powershell` | Repository PowerShell analysis at Warning/Error severity | See the different missing-module behavior below |
 | `audit` | `cargo audit` for `cli/Cargo.lock` | Requires cargo-audit |
 | `deny` | `cargo deny check all` | Requires cargo-deny |

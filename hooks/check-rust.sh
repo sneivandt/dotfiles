@@ -6,7 +6,7 @@
 #   3. cargo clippy --target x86_64-pc-windows-gnu
 #                                              (cross-platform linting, full mode)
 #   4. cargo test                              (unit/integration tests, full mode)
-#   5. PSScriptAnalyzer                        (PowerShell linting, on .ps1/.psm1)
+#   5. PSScriptAnalyzer                        (PowerShell linting, on .ps1/.psm1/.psd1)
 #
 # Full-mode checks run only when DOTFILES_HOOKS_FULL=1 so ordinary commits stay
 # fast. PSScriptAnalyzer is skipped when pwsh is unavailable, but a missing or
@@ -53,7 +53,7 @@ STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
 RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- '*.rs')
 
 # Check an exported index rather than temporarily replacing the working tree.
-if [ -z "$RUST_CHANGED" ] && ! printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1)$'; then
+if [ -z "$RUST_CHANGED" ] && ! printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1|psd1)$'; then
   exit 0
 fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -125,28 +125,16 @@ if [ -n "$RUST_CHANGED" ]; then
 fi
 
 # ── PowerShell checks ─────────────────────────────────
-if printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1)$'; then
+if printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1|psd1)$'; then
   if command -v pwsh >/dev/null 2>&1; then
     printf "Running PSScriptAnalyzer...\n"
-    PS_FILES=$(printf '%s\n' "$STAGED" | grep -E '\.(ps1|psm1)$' | tr '\n' ';')
-    export PS_FILES
-    # shellcheck disable=SC2016  # PowerShell variables are expanded by pwsh.
-    if ! (cd "$CHECK_ROOT" && pwsh -NoProfile -Command '
-      $ErrorActionPreference = "Stop"
-      if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-        throw "PSScriptAnalyzer module is not installed"
-      }
-      Import-Module PSScriptAnalyzer -Force -ErrorAction Stop
-      $hasErrors = $false
-      $env:PS_FILES.Split(";") | Where-Object { $_ -ne "" } | ForEach-Object {
-        $results = Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error -ErrorAction Stop
-        if ($results) {
-          $results | Format-Table -AutoSize
-          $hasErrors = $true
-        }
-      }
-      if ($hasErrors) { exit 1 }
-    ' 2>&1); then
+    set --
+    while IFS= read -r file; do
+      case "$file" in *.ps1|*.psm1|*.psd1) set -- "$@" "$CHECK_ROOT/$file" ;; esac
+    done <<EOF
+$STAGED
+EOF
+    if ! pwsh -NoProfile -File "$(dirname -- "$0")/../cli/src/app/validation/scripts/psscriptanalyzer.ps1" "$@" 2>&1; then
       printf '\n%s======================================================%s\n' "$RED" "$NC"
       printf '%sCommit aborted: PSScriptAnalyzer reported issues.%s\n' "$RED" "$NC"
       printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"

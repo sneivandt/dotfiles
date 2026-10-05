@@ -10,12 +10,9 @@ use crate::engine::{Context, Task, TaskResult, task_metadata};
 use crate::infra::ConfigHandle;
 use crate::infra::exec::CommandSpec;
 
-use super::discovery::{
-    discover_apm_plugin_dirs, discover_linter_inputs, discover_powershell_scripts,
-    discover_shell_scripts,
-};
+use super::discovery::discover_apm_plugin_dirs;
 use super::linters::{
-    build_psscriptanalyzer_command, build_shellcheck_args, log_exec_output, run_linter,
+    SHELLCHECK_SCRIPT, build_psscriptanalyzer_command, log_exec_output, run_linter,
 };
 use crate::infra::logging::OutputExt as _;
 
@@ -255,19 +252,19 @@ impl Task for RunShellcheck {
         if !ctx.which("shellcheck") {
             return Ok(TaskResult::unmet("shellcheck not found in PATH"));
         }
-        let scripts = discover_linter_inputs(
-            ctx.root(),
-            &["dotfiles.sh"],
-            &["symlinks", "hooks", ".github"],
-            discover_shell_scripts,
-        )?;
+        if !ctx.which("sh") {
+            return Ok(TaskResult::unmet("sh not found in PATH"));
+        }
         run_linter(
             ctx,
             "shellcheck",
-            "shellcheck",
-            "shell scripts",
-            &scripts,
-            build_shellcheck_args,
+            CommandSpec::new("sh").args(&[
+                "-c",
+                SHELLCHECK_SCRIPT,
+                "dotfiles-shellcheck",
+                "--root",
+                &ctx.root().to_string_lossy(),
+            ]),
         )
     }
 }
@@ -286,25 +283,11 @@ impl Task for RunPSScriptAnalyzer {
         if !ctx.which("pwsh") {
             return Ok(TaskResult::unmet("pwsh not found in PATH"));
         }
-        let ps_files = discover_linter_inputs(
-            ctx.root(),
-            &["dotfiles.ps1"],
-            &["symlinks", "hooks"],
-            discover_powershell_scripts,
-        )?;
+        let command = build_psscriptanalyzer_command(ctx.root());
         run_linter(
             ctx,
-            "pwsh",
             "PSScriptAnalyzer",
-            "PowerShell scripts",
-            &ps_files,
-            |paths| {
-                vec![
-                    "-NoProfile".to_owned(),
-                    "-Command".to_owned(),
-                    build_psscriptanalyzer_command(paths),
-                ]
-            },
+            CommandSpec::new("pwsh").args(&["-NoProfile", "-Command", &command]),
         )
     }
 }

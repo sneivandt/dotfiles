@@ -27,11 +27,3 @@ retry_cmd() {
     _i=$((_i + 1))
   done
 }
-
-is_shell_script() {
-  [ -f "$1" ] || return 1
-  case "$(head -n 1 "$1")" in
-    '#!/bin/sh'*|'#!/bin/bash'*|'#!/usr/bin/env sh'*|'#!/usr/bin/env bash'*) return 0 ;;
-  esac
-  return 1
-}

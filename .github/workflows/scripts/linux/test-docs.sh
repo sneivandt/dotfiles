@@ -124,65 +124,13 @@ docs_links()
   [ "$failures" -eq 0 ] || log_error "$failures broken documentation link(s) or anchor(s)"
 )}
 
-# Verify that the static public task selectors and docs/TASKS.md agree.
-#
-# Domain tasks and app-owned validation tasks declare selectors through the task
-# macros or TaskMeta builders. Dynamic overlay selectors are documented by
-# convention because their concrete values come from overlay configuration.
+# Compare documentation to the real public catalog in an isolated Rust fixture.
 docs_task_selectors()
-{(
-  tasks_doc="$DIR/docs/TASKS.md"
-  if [ ! -f "$tasks_doc" ] || [ ! -d "$DIR/cli/src" ]; then
-    log_verbose "Skipping task selector check: docs/TASKS.md or cli/src missing"
-    return 0
-  fi
-
+{
   log_stage "Checking documented task selectors"
-
-  code_selectors="$(mktemp)"
-  documented_selectors="$(mktemp)"
-  trap 'rm -f "$code_selectors" "$documented_selectors"' EXIT HUP INT TERM
-
-  # Public static tasks live in domains, except for app-owned validation tasks.
-  # Stop at each file's inline test module so fixture selectors do not enter
-  # the inventory. Test-only imports may appear earlier in a production file.
-  {
-    find "$DIR/cli/src/domains" -name '*.rs' -type f -print
-    printf '%s\n' "$DIR/cli/src/app/validation/checks.rs"
-  } | while IFS= read -r source; do
-    awk '
-      previous == "#[cfg(test)]" && /^mod tests \{/ { exit }
-      { print; previous = $0 }
-    ' "$source"
-  done | {
-    grep -E 'selector: "[a-z0-9-]+"|with_selector\("[a-z0-9-]+"\)' || true
-  } | sed 's/.*"\([a-z0-9-]*\)".*/\1/' | sort -u > "$code_selectors"
-
-  if [ ! -s "$code_selectors" ]; then
-    log_error "No public task selectors found in CLI sources"
-  fi
-
-  # Selector column of the catalog tables: rows beginning with | `selector` |
-  grep -oE '^\| `[a-z0-9-]+`' "$tasks_doc" | tr -d '|` ' | sort -u > "$documented_selectors"
-
-  failures=0
-  while IFS= read -r selector || [ -n "$selector" ]; do
-    if ! grep -qx "$selector" "$code_selectors"; then
-      printf "   docs/TASKS.md documents unknown selector: %s\n" "$selector"
-      failures=$((failures + 1))
-    fi
-  done < "$documented_selectors"
-
-  while IFS= read -r selector || [ -n "$selector" ]; do
-    if ! grep -qx "$selector" "$documented_selectors"; then
-      printf "   docs/TASKS.md is missing public selector: %s\n" "$selector"
-      failures=$((failures + 1))
-    fi
-  done < "$code_selectors"
-
-  log_verbose "Compared $(wc -l < "$documented_selectors" | tr -d ' ') documented selectors with $(wc -l < "$code_selectors" | tr -d ' ') public selectors"
-  [ "$failures" -eq 0 ] || log_error "$failures task selector documentation mismatch(es)"
-)}
+  (cd "$DIR/cli" && cargo test --quiet --profile ci --lib \
+    app::commands::tasks::tests::documented_selectors_match_catalog -- --exact)
+}
 
 # Execute one or more tests when run directly: sh test-docs.sh <function_name>...
 case "$0" in

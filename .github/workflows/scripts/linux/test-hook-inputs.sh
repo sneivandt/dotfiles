@@ -292,8 +292,10 @@ EOF
 cat > "$fixture/mock-bin/pwsh" <<'EOF'
 #!/bin/sh
 set -eu
-file=${PS_FILES%;}
-[ "$(cat "$file")" = valid-staged ]
+[ "$1" = -NoProfile ] && [ "$2" = -File ]
+shift 3
+[ "$#" -eq 1 ]
+[ "$(cat "$1")" = valid-staged ]
 printf 'powershell\n' >> "$HOOK_INPUT_LOG"
 EOF
 cat > "$fixture/mock-bin/shellcheck" <<'EOF'

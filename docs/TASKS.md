@@ -396,7 +396,7 @@ Required main files are `agent-settings.toml`, `chmod.toml`, `git-config.toml`,
 `packages.toml`, `registry.toml`, `symlinks.toml`, `system-files.toml`,
 `systemd-units.toml`, and `vscode-extensions.toml`, all under `conf/`.
 
-Missing `apm`, `shellcheck`, or `pwsh` produces a visible skip; strict policy
+Missing `apm`, `shellcheck`, `sh`, or `pwsh` produces a visible skip; strict policy
 (`--fail-on-skip` or CI) fails on these. If `pwsh` exists but its
 PSScriptAnalyzer module does not, the analyzer fails. Local package-shape
 checks are not complete validation of remote APM dependencies or every private

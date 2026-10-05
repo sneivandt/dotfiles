@@ -152,7 +152,7 @@ $StageActions = @{
     }
 
     # Delegated to the POSIX twin so the linted file list has a single
-    # definition (in .github/workflows/scripts/linux/test-static-analysis.sh).
+    # definition (in cli/src/app/validation/scripts/shellcheck.sh).
     shell    = {
         if (-not (Test-ToolAvailable 'shellcheck'))
         {
@@ -175,14 +175,11 @@ $StageActions = @{
             Write-Note 'PSScriptAnalyzer not installed; skipping (Install-Module PSScriptAnalyzer -Scope CurrentUser)'
             return 'skip'
         }
-        Import-Module PSScriptAnalyzer -Force
-        $findings = Invoke-ScriptAnalyzer -Path $RepoRoot -Recurse -Severity Warning, Error
-        if ($findings)
-        {
-            $findings | Format-Table -AutoSize | Out-String | Out-Host
-            return 'FAIL'
-        }
-        return 'pass'
+        return Invoke-Tool -FilePath 'pwsh' -ToolArguments @(
+            '-NoProfile', '-File',
+            (Join-Path $RepoRoot 'cli/src/app/validation/scripts/psscriptanalyzer.ps1'),
+            '-Root', $RepoRoot
+        )
     }
 
     audit    = {

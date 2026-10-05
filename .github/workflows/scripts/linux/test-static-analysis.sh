@@ -1,84 +1,25 @@
 #!/bin/sh
-set -o errexit
-set -o nounset
-
-# -----------------------------------------------------------------------------
-# test-static-analysis.sh — ShellCheck and PSScriptAnalyzer CI tests.
-# Dependencies: test-helpers.sh
-# Expected:     DIR (repository root)
-# -----------------------------------------------------------------------------
+set -eu
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=lib/test-helpers.sh
-. "$SCRIPT_DIR"/lib/test-helpers.sh
+. "$SCRIPT_DIR/lib/test-helpers.sh"
+LINTER_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/../../../../cli/src/app/validation/scripts" && pwd)
 
-# Run PSScriptAnalyzer on all .ps1/.psm1 files.
 test_psscriptanalyzer()
-{(
-  if ! is_program_installed "pwsh"; then
+{
+  if ! is_program_installed pwsh; then
     log_verbose "Skipping PSScriptAnalyzer: pwsh not installed"
     return 0
   fi
-  log_stage "Running PSScriptAnalyzer"
-  pwsh -NoProfile -Command "
-    \$ErrorActionPreference = 'Stop'
-    if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-      throw 'PSScriptAnalyzer module is not installed'
-    }
-    Import-Module PSScriptAnalyzer -Force -ErrorAction Stop
-    \$hasErrors = \$false
-    Get-ChildItem -Path '$DIR' -Include '*.ps1','*.psm1' -Recurse -File | ForEach-Object {
-      \$results = Invoke-ScriptAnalyzer -Path \$_.FullName -Severity Warning,Error -ErrorAction Stop
-      if (\$results) {
-        \$results | Format-Table -AutoSize
-        \$hasErrors = \$true
-      }
-    }
-    if (\$hasErrors) { exit 1 }
-  "
-)}
+  pwsh -NoProfile -File "$LINTER_DIR/psscriptanalyzer.ps1" -Root "$DIR"
+}
 
-# Run shellcheck on all shell scripts in the repository.
 test_shellcheck()
-{(
-  if ! is_program_installed "shellcheck"; then
-    log_error "shellcheck not installed"
-  fi
-  log_stage "Running shellcheck"
+{
+  sh "$LINTER_DIR/shellcheck.sh" --root "$DIR"
+}
 
-  set -- "$DIR/dotfiles.sh"
-
-  # Collect .sh files from key directories
-  for search_dir in "$DIR"/.github "$DIR"/hooks; do
-    [ -d "$search_dir" ] || continue
-    while IFS= read -r f; do
-      is_shell_script "$f" && set -- "$@" "$f"
-    done <<EOF
-$(find "$search_dir" -type f -name "*.sh")
-EOF
-  done
-
-  # Add shell scripts from symlinks/
-  if [ -d "$DIR/symlinks" ]; then
-    while IFS= read -r f; do
-      is_shell_script "$f" && set -- "$@" "$f"
-    done <<EOF
-$(find "$DIR/symlinks" -type f -name "*.sh" 2>/dev/null)
-EOF
-  fi
-
-  log_verbose "Checking $# shell scripts"
-  shellcheck \
-    --severity=warning \
-    --shell=sh \
-    --exclude=SC1090,SC1091,SC3043,SC2154 \
-    --enable=avoid-nullary-conditions \
-    "$@"
-)}
-
-# Execute a specific test when run directly: sh test-static-analysis.sh <function_name>
-case "$0" in
-  *test-static-analysis.sh)
-    [ $# -ge 1 ] && "$1"
-    ;;
-esac
+for test_name in "$@"; do
+  "$test_name"
+done

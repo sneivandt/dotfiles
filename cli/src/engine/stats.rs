@@ -244,10 +244,6 @@ impl TaskStats {
     }
 
     /// Merge another stats delta into this one, saturating each counter.
-    ///
-    /// Prefer this over `+=` at call sites: it performs the same saturating
-    /// addition as [`AddAssign`](std::ops::AddAssign) but as a plain method
-    /// call, so it does not trip the `arithmetic_side_effects` lint.
     pub const fn merge(&mut self, other: &Self) {
         self.changed = self.changed.saturating_add(other.changed);
         self.already_ok = self.already_ok.saturating_add(other.already_ok);
@@ -258,11 +254,5 @@ impl TaskStats {
     /// Return these counters as a structured task result.
     pub const fn finish(self) -> TaskResult {
         TaskResult::Batch(self)
-    }
-}
-
-impl std::ops::AddAssign for TaskStats {
-    fn add_assign(&mut self, other: Self) {
-        self.merge(&other);
     }
 }

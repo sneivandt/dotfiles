@@ -409,6 +409,34 @@ mod tests {
     }
 
     #[test]
+    fn documented_selectors_match_catalog() {
+        let store = ConfigStore::from_config(empty_config(PathBuf::from("/fixture")));
+        let actual: HashSet<_> = collect_listings(&store, None)
+            .expect("collect static public tasks")
+            .into_iter()
+            .map(|listing| listing.selector)
+            .collect();
+        let documented: HashSet<_> = include_str!("../../../../docs/TASKS.md")
+            .lines()
+            .filter_map(|line| {
+                line.strip_prefix("| `")?
+                    .split_once("` |")
+                    .map(|(selector, _)| selector)
+                    .filter(|selector| {
+                        selector.bytes().all(|byte| {
+                            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+                        })
+                    })
+                    .map(str::to_owned)
+            })
+            .collect();
+        assert_eq!(
+            documented, actual,
+            "docs/TASKS.md must list exactly the public catalog selectors"
+        );
+    }
+
+    #[test]
     fn task_membership_merges_by_selector() {
         let tasks: Vec<Box<dyn Task>> = vec![Box::new(VisibleTask)];
         let mut listings = Vec::new();

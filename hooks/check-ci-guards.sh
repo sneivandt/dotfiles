@@ -151,10 +151,10 @@ run_shell_guards() {
     done <<EOF
 $shell_files
 EOF
-    if ! shellcheck --severity=warning --shell=sh "$@"; then
+    if ! sh "$(dirname -- "$0")/../cli/src/app/validation/scripts/shellcheck.sh" "$@"; then
       abort_with_hint \
         "ShellCheck reported issues." \
-        "shellcheck --severity=warning --shell=sh <staged shell files>"
+        "sh cli/src/app/validation/scripts/shellcheck.sh <staged shell files>"
     fi
   else
     printf '%sSkipping ShellCheck: shellcheck not installed.%s\n' "$DIM" "$NC"

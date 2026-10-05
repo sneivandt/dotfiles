@@ -67,32 +67,25 @@ fn finish_preserves_all_batch_counts() {
 }
 
 #[test]
-fn add_assign_accumulates_and_zero_is_identity() {
+fn merge_accumulates_and_zero_is_identity() {
     let mut stats = TaskStats::from_counts(1, 2, 3, 4);
-    stats += TaskStats::from_counts(10, 20, 30, 40);
+    stats.merge(&TaskStats::from_counts(10, 20, 30, 40));
     assert_eq!(counts(&stats), (11, 22, 33, 44));
 
-    stats += TaskStats::new();
+    stats.merge(&TaskStats::new());
     assert_eq!(counts(&stats), (11, 22, 33, 44));
 }
 
 #[test]
 fn merging_saturates_each_counter_without_overflowing_others() {
-    for use_add_assign in [false, true] {
-        for (initial, expected) in [
-            ((u32::MAX - 1, 2, 3, 4), (u32::MAX, 12, 13, 14)),
-            ((1, u32::MAX - 1, 3, 4), (11, u32::MAX, 13, 14)),
-            ((1, 2, u32::MAX - 1, 4), (11, 12, u32::MAX, 14)),
-            ((1, 2, 3, u32::MAX - 1), (11, 12, 13, u32::MAX)),
-        ] {
-            let mut stats = TaskStats::from_counts(initial.0, initial.1, initial.2, initial.3);
-            let delta = TaskStats::from_counts(10, 10, 10, 10);
-            if use_add_assign {
-                stats += delta;
-            } else {
-                stats.merge(&delta);
-            }
-            assert_eq!(counts(&stats), expected, "add_assign={use_add_assign}");
-        }
+    for (initial, expected) in [
+        ((u32::MAX - 1, 2, 3, 4), (u32::MAX, 12, 13, 14)),
+        ((1, u32::MAX - 1, 3, 4), (11, u32::MAX, 13, 14)),
+        ((1, 2, u32::MAX - 1, 4), (11, 12, u32::MAX, 14)),
+        ((1, 2, 3, u32::MAX - 1), (11, 12, 13, u32::MAX)),
+    ] {
+        let mut stats = TaskStats::from_counts(initial.0, initial.1, initial.2, initial.3);
+        stats.merge(&TaskStats::from_counts(10, 10, 10, 10));
+        assert_eq!(counts(&stats), expected);
     }
 }

@@ -34,7 +34,7 @@ The sensitive scan always runs first. The remaining work depends on staged paths
 |---|---|
 | Added/modified/renamed text | Sensitive-pattern scan of added lines |
 | `.rs` change, including deletion or rename away from `.rs` | Whole-crate formatting and host Clippy (`ci` profile, all targets, warnings denied) |
-| Present `.ps1`/`.psm1` change | PSScriptAnalyzer on those staged files, if `pwsh` exists |
+| Present `.ps1`/`.psm1`/`.psd1` change | PSScriptAnalyzer on those staged files, if `pwsh` exists |
 | Only a Cargo manifest/lockfile, TOML data, shell script or workflow | No Rust compilation solely because of that path; use full guards/local checks as applicable |
 
 Missing `pwsh` skips PowerShell analysis. If `pwsh` exists but PSScriptAnalyzer

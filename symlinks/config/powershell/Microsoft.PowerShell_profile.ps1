@@ -154,7 +154,7 @@ if (Get-Command "codex" -ErrorAction SilentlyContinue)
 {
     function Invoke-CodexChat
     {
-        codex --approve-for-me @args
+        codex @args
     }
 
     Set-Alias -Name ai -Value Invoke-CodexChat

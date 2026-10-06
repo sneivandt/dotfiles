@@ -73,5 +73,5 @@ fi
 
 # AI CLI aliases
 if command -v codex >/dev/null 2>&1; then
-  alias ai="codex --approve-for-me"
+  alias ai="codex"
 fi

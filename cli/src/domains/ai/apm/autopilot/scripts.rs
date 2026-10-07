@@ -2,12 +2,16 @@
 
 use std::collections::HashSet;
 
+/// Read-only probe of which lockfile-owned workflows still exist in the App.
+pub(in crate::domains::ai::apm) const WORKFLOW_PRESENT_IDS_SCRIPT: &str =
+    include_str!("../scripts/workflow_present_ids.py");
+
 /// Build the workflow script arguments, including optional source cron JSON.
 ///
 /// The workflow ids are passed as discrete process arguments (never shell
 /// interpolated) and bound as `sqlite3` query parameters inside the script, so
-/// they cannot be misinterpreted as SQL. Callers guarantee `ids` is non-empty
-/// so the scripts never build an empty `IN ()` clause.
+/// they cannot be misinterpreted as SQL. An empty id set matches no rows,
+/// including when all lockfile entries refer to removed workflows.
 pub(super) fn build_workflow_script_args<'a>(
     script: &'a str,
     db: &'a str,

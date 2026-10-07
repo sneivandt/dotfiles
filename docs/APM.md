@@ -219,6 +219,9 @@ expression invalidates the old next run; removing it from the source removes
 the database cron schedule. Only exact workflow IDs in that dependency's
 `deployed_files` are eligible. Missing or invalid source metadata is reported
 as a repair failure rather than silently treating the workflow as manual.
+Source lookup is limited to managed workflow IDs still present in the App
+database: stale lockfile entries for removed prompts cannot block restoration
+of the remaining workflows.
 Remote dependencies without `local_path` retain native APM scheduling behavior.
 
 Existing database cron schedules without a local source remain intact.

@@ -51,7 +51,7 @@ use schedules::read_source_cron_schedules;
 pub(super) use scripts::{WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT};
 #[cfg(not(test))]
 use scripts::{WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT};
-use scripts::{build_workflow_script_args, parse_desired_ids};
+use scripts::{WORKFLOW_PRESENT_IDS_SCRIPT, build_workflow_script_args, parse_desired_ids};
 
 fn run_workflow_script(
     ctx: &Context,
@@ -60,13 +60,31 @@ fn run_workflow_script(
     script: &str,
     ids: &[String],
 ) -> Result<ExecResult> {
-    let schedules = read_source_cron_schedules(ctx.home(), ids)?;
+    // APM can retain deleted prompts in its lockfile after removing their rows.
+    // Only surviving workflows need source metadata for schedule restoration.
+    let scope_args = build_workflow_script_args(WORKFLOW_PRESENT_IDS_SCRIPT, db_str, ids, None);
+    let scope = ctx.executor().execute(
+        CommandSpec::new(python)
+            .args(&scope_args)
+            .current_dir(ctx.home())
+            .unchecked(),
+    )?;
+    if !scope.success {
+        return Ok(scope);
+    }
+    let present = parse_desired_ids(&scope.stdout);
+    let existing: Vec<String> = ids
+        .iter()
+        .filter(|id| present.contains(*id))
+        .cloned()
+        .collect();
+    let schedules = read_source_cron_schedules(ctx.home(), &existing)?;
     let schedules_json = if schedules.is_empty() {
         None
     } else {
         Some(serde_json::to_string(&schedules)?)
     };
-    let args = build_workflow_script_args(script, db_str, ids, schedules_json.as_deref());
+    let args = build_workflow_script_args(script, db_str, &existing, schedules_json.as_deref());
     Ok(ctx.executor().execute(
         CommandSpec::new(python)
             .args(&args)

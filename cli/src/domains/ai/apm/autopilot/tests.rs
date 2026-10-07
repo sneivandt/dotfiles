@@ -8,8 +8,8 @@ use crate::test_helpers::{assert_task_changed, assert_task_ok, task_skipped};
 use super::super::test_fixture::{
     expect_apm_install, expect_apm_update, expect_copilot_app_enable,
     expect_copilot_app_workflow_install, expect_cowork_enable, expect_which_apm, install_task,
-    make_home_context_with_executor, make_windows_cowork_context, update_task,
-    write_copilot_app_db, write_current_manifest_and_lock, write_home_fragment,
+    make_context_with_home, make_home_context_with_executor, make_windows_cowork_context,
+    update_task, write_copilot_app_db, write_current_manifest_and_lock, write_home_fragment,
 };
 use super::DesiredApmWorkflows;
 use super::lockfile::parse_deployed_workflow_ids;
@@ -158,7 +158,7 @@ fn parse_deployed_workflow_ids_empty_cases() {
 #[test]
 fn build_workflow_script_args_appends_ids_in_order() {
     let ids = vec!["apm--a".to_string(), "apm--b".to_string()];
-    let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, "/db", &ids);
+    let args = build_workflow_script_args(WORKFLOW_AUTOPILOT_SCRIPT, "/db", &ids, None);
     assert_eq!(
         args,
         ["-c", WORKFLOW_AUTOPILOT_SCRIPT, "/db", "apm--a", "apm--b"]
@@ -528,6 +528,216 @@ print(next_local.isoweekday() <= 5)
     );
 }
 
+fn write_local_cron_prompt(prompt: &Path, cron: Option<&str>) {
+    let metadata = cron.map_or_else(String::new, |cron| format!("cron_expression: \"{cron}\"\n"));
+    std::fs::write(
+        prompt,
+        format!("---\ninterval: manual\n{metadata}---\nFixture review prompt"),
+    )
+    .unwrap();
+}
+
+fn write_local_cron_fixture(home: &Path, python: &str) -> PathBuf {
+    let prompts = home
+        .join(".apm")
+        .join("plugins")
+        .join("fixture")
+        .join(".apm")
+        .join("prompts");
+    std::fs::create_dir_all(&prompts).unwrap();
+    let prompt = prompts.join("review.prompt.md");
+    write_local_cron_prompt(&prompt, Some("15 7,11,15 * * 1-5"));
+    std::fs::write(
+        home.join(".apm").join("apm.lock.yaml"),
+        "dependencies:\n- local_path: ~/.apm/plugins/fixture\n  deployed_files:\n  \
+         - copilot-app-db://workflows/apm--_local--fixture--review\n",
+    )
+    .unwrap();
+    std::fs::create_dir(home.join(".copilot")).unwrap();
+    let db_path = home.join(".copilot").join("data.db");
+    let db = db_path.to_str().unwrap();
+    let setup = run_python_script(
+        python,
+        r#"
+import sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+con.execute("CREATE TABLE workflows (id TEXT PRIMARY KEY, name TEXT, prompt TEXT, mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT, cron_expression TEXT)")
+con.executemany(
+    "INSERT INTO workflows VALUES (?, 'Review', 'prompt', 'interactive', 0, 'manual', 9, 0, 1, NULL, NULL)",
+    [("apm--_local--fixture--review",), ("apm--foreign--fixture--review",)],
+)
+con.commit()
+"#,
+        &[db],
+    );
+    assert!(
+        setup.status.success(),
+        "{}",
+        String::from_utf8_lossy(&setup.stderr)
+    );
+    prompt
+}
+
+fn query_local_cron_fixture(python: &str, db: &str) -> serde_json::Value {
+    let output = run_python_script(
+        python,
+        r#"
+import json, sqlite3, sys
+from datetime import datetime
+con = sqlite3.connect(sys.argv[1])
+row = con.execute(
+    "SELECT mode, enabled, interval, cron_expression, next_run_at FROM workflows WHERE id=?",
+    ("apm--_local--fixture--review",),
+).fetchone()
+if row[3]:
+    next_local = datetime.fromisoformat(row[4].replace("Z", "+00:00")).astimezone()
+    fields = row[3].split()
+    assert next_local > datetime.now().astimezone(), row
+    assert next_local.minute == int(fields[0]), row
+    assert next_local.hour in {int(hour) for hour in fields[1].split(",")}, row
+    assert next_local.isoweekday() <= 5, row
+print(json.dumps(row))
+assert con.execute(
+    "SELECT mode, enabled, cron_expression, next_run_at FROM workflows WHERE id=?",
+    ("apm--foreign--fixture--review",),
+).fetchone() == ("interactive", 0, None, None)
+"#,
+        &[db],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
+#[test]
+fn local_source_cron_schedules_converge_through_snapshot_and_fixup() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let home = dir.path();
+    let prompt = write_local_cron_fixture(home, python);
+    let db_path = home.join(".copilot").join("data.db");
+    let db = db_path.to_str().unwrap();
+    let mut mock = MockExecutor::new();
+    expect_python3(&mut mock, 11, true);
+    let script_home = home.to_path_buf();
+    mock.expect_execute().times(11).returning(move |spec| {
+        assert!(!spec.is_checked());
+        assert_eq!(spec.working_dir(), Some(script_home.as_path()));
+        let output = std::process::Command::new(python)
+            .args(spec.arguments())
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        if output.status.success() {
+            Ok(ExecResult::success(stdout))
+        } else {
+            Ok(ExecResult::failure(stdout, stderr, output.status.code()))
+        }
+    });
+    let ctx = make_context_with_home(
+        home,
+        crate::infra::platform::Platform::new(crate::infra::platform::Os::Windows, false),
+        mock,
+    );
+    let id = "apm--_local--fixture--review";
+    let before = super::snapshot_desired_apm_workflow_ids(&ctx);
+    assert_eq!(before, DesiredApmWorkflows::Known(id_set(&[])));
+    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before));
+    let desired = super::snapshot_desired_apm_workflow_ids(&ctx);
+    assert_eq!(desired, DesiredApmWorkflows::Known(id_set(&[id])));
+
+    let initial = query_local_cron_fixture(python, db);
+    assert_eq!(initial[0], "autopilot");
+    assert_eq!(initial[1], 1);
+    assert_eq!(initial[2], "manual");
+    assert_eq!(initial[3], "15 7,11,15 * * 1-5");
+    assert!(initial[4].is_string(), "{initial}");
+    assert!(!super::apply_workflow_autopilot_fixup(&ctx, &desired));
+    assert_eq!(
+        query_local_cron_fixture(python, db),
+        initial,
+        "repeat fixup must preserve next_run_at"
+    );
+
+    write_local_cron_prompt(&prompt, Some("45 18 * * 1-5"));
+    let before_change = super::snapshot_desired_apm_workflow_ids(&ctx);
+    assert_eq!(before_change, DesiredApmWorkflows::Known(id_set(&[])));
+    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before_change));
+    assert_eq!(
+        super::snapshot_desired_apm_workflow_ids(&ctx),
+        DesiredApmWorkflows::Known(id_set(&[id]))
+    );
+    let changed = query_local_cron_fixture(python, db);
+    assert_eq!(changed[3], "45 18 * * 1-5");
+    assert_ne!(
+        changed[4], initial[4],
+        "changed cron must invalidate the old next run"
+    );
+
+    write_local_cron_prompt(&prompt, Some("99 18 * * 1-5"));
+    let before_invalid = super::snapshot_desired_apm_workflow_ids(&ctx);
+    assert!(!super::apply_workflow_autopilot_fixup(
+        &ctx,
+        &before_invalid
+    ));
+    assert_eq!(
+        query_local_cron_fixture(python, db),
+        changed,
+        "invalid cron must roll back all writes"
+    );
+
+    write_local_cron_prompt(&prompt, None);
+    let before_removal = super::snapshot_desired_apm_workflow_ids(&ctx);
+    assert_eq!(before_removal, DesiredApmWorkflows::Known(id_set(&[])));
+    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before_removal));
+    let removed = query_local_cron_fixture(python, db);
+    assert!(removed[3].is_null(), "{removed}");
+    assert!(removed[4].is_null(), "{removed}");
+}
+
+#[test]
+fn workflow_source_cron_requires_schema_support_without_mutation() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let output = run_python_script(
+        python,
+        r#"
+import contextlib, io, json, sqlite3, sys
+from unittest.mock import patch
+source = sys.argv[1]
+connection = sqlite3.connect(":memory:")
+connection.execute("CREATE TABLE workflows (id TEXT, name TEXT, prompt TEXT, mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT)")
+connection.execute("INSERT INTO workflows VALUES ('apm--fixture', 'Review', 'prompt', 'interactive', 0, 'manual', 9, 0, 1, NULL)")
+connection.commit()
+with (
+    patch("sqlite3.connect", return_value=connection),
+    patch.object(sys, "argv", ["fixup", ":memory:", "--cron-schedules", json.dumps({"apm--fixture": "0 9 * * *"}), "apm--fixture"]),
+    contextlib.redirect_stdout(io.StringIO()),
+):
+    try:
+        exec(compile(source, "workflow_autopilot.py", "exec"), {})
+    except ValueError as error:
+        assert "no cron_expression column" in str(error), error
+    else:
+        raise AssertionError("missing cron schema must fail explicitly")
+assert connection.execute("SELECT mode, enabled, next_run_at FROM workflows").fetchone() == ("interactive", 0, None)
+"#,
+        &[WORKFLOW_AUTOPILOT_SCRIPT],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// Regression guard: the embedded Python scripts must keep the `print`
 /// body indented under its `for` loop. Rust string `\`-continuations strip
 /// the leading whitespace of the next source line, which previously
@@ -538,7 +748,7 @@ print(next_local.isoweekday() <= 5)
 fn workflow_scripts_keep_python_indentation() {
     for script in [WORKFLOW_DESIRED_IDS_SCRIPT, WORKFLOW_AUTOPILOT_SCRIPT] {
         assert!(
-            script.contains("):\n    print(row[0])\n"),
+            script.contains("\n    print(row[0])\n"),
             "script must indent the for-loop body by four spaces:\n{script}"
         );
         assert!(

@@ -40,11 +40,13 @@ use crate::infra::logging::OutputExt as _;
 mod db;
 mod lockfile;
 mod outcome;
+mod schedules;
 mod scripts;
 
 use db::{WorkflowDbProbe, probe_workflow_db};
 use lockfile::read_deployed_workflow_ids;
 use outcome::{FixupExecution, FixupOutcome, interpret_fixup_result, report_fixup_execution};
+use schedules::read_source_cron_schedules;
 #[cfg(test)]
 pub(super) use scripts::{WORKFLOW_AUTOPILOT_SCRIPT, WORKFLOW_DESIRED_IDS_SCRIPT};
 #[cfg(not(test))]
@@ -58,7 +60,13 @@ fn run_workflow_script(
     script: &str,
     ids: &[String],
 ) -> Result<ExecResult> {
-    let args = build_workflow_script_args(script, db_str, ids);
+    let schedules = read_source_cron_schedules(ctx.home(), ids)?;
+    let schedules_json = if schedules.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&schedules)?)
+    };
+    let args = build_workflow_script_args(script, db_str, ids, schedules_json.as_deref());
     Ok(ctx.executor().execute(
         CommandSpec::new(python)
             .args(&args)
@@ -76,7 +84,8 @@ fn run_workflow_script(
 /// will not fire until a human re-enables it in the App's Workflows tab.  For
 /// the dotfiles-managed workflows that is undesirable -- they are meant to be
 /// hands-off -- so after an `apm install` or `apm update` attempt we
-/// flip exactly those rows to `mode='autopilot'` and `enabled=1`.
+/// flip exactly those rows to `mode='autopilot'` and `enabled=1`, restore
+/// local source cron metadata omitted by APM, and arm their schedules.
 ///
 /// The set of dotfiles-managed workflow ids is read fresh from
 /// `~/.apm/apm.lock.yaml` (see [`lockfile::read_deployed_workflow_ids`]) -- the

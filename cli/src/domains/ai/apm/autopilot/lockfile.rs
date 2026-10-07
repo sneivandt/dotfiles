@@ -10,7 +10,7 @@ use crate::engine::Context;
 /// Each `deployed_files` entry of this shape encodes the workflow's database
 /// primary key after the prefix, i.e.
 /// `copilot-app-db://workflows/apm--<owner>--<pkg>--<prompt>`.
-const COPILOT_APP_WORKFLOW_URI_PREFIX: &str = "copilot-app-db://workflows/";
+pub(super) const COPILOT_APP_WORKFLOW_URI_PREFIX: &str = "copilot-app-db://workflows/";
 
 /// Read the workflow ids this dotfiles install deployed from
 /// `~/.apm/apm.lock.yaml`.

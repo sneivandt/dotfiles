@@ -211,9 +211,19 @@ the corresponding managed `apm--_local--<package>--<prompt>` and its definition
 match. Foreign workflows and independent IDs remain untouched even when their
 visible definitions match.
 
-Custom cron expressions are retained, including the App's representation as
-`interval: manual` plus `cron_expression`. Future local schedules use the UTC
-offset at the scheduled date, including daylight-saving transitions.
+APM 0.33.0 does not deploy `cron_expression` from prompt frontmatter. For
+managed local dependencies, dotfiles reads the prompt sources identified by
+the lockfile's `local_path` and restores that field, including the App's
+representation as `interval: manual` plus `cron_expression`. A changed cron
+expression invalidates the old next run; removing it from the source removes
+the database cron schedule. Only exact workflow IDs in that dependency's
+`deployed_files` are eligible. Missing or invalid source metadata is reported
+as a repair failure rather than silently treating the workflow as manual.
+Remote dependencies without `local_path` retain native APM scheduling behavior.
+
+Existing database cron schedules without a local source remain intact.
+Future local schedules use the UTC offset at the scheduled date, including
+daylight-saving transitions.
 
 Restoration is attempted even after an APM or Cowork failure, since an earlier
 step may already have reset workflows. It is best-effort: failures are reported

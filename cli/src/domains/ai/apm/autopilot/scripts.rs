@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-/// Build the `python -c <script> <db_path> <id>...` argument vector.
+/// Build the workflow script arguments, including optional source cron JSON.
 ///
 /// The workflow ids are passed as discrete process arguments (never shell
 /// interpolated) and bound as `sqlite3` query parameters inside the script, so
@@ -12,11 +12,15 @@ pub(super) fn build_workflow_script_args<'a>(
     script: &'a str,
     db: &'a str,
     ids: &'a [String],
+    schedules_json: Option<&'a str>,
 ) -> Vec<&'a str> {
-    let mut args = Vec::with_capacity(ids.len().saturating_add(3));
+    let mut args = Vec::with_capacity(ids.len().saturating_add(5));
     args.push("-c");
     args.push(script);
     args.push(db);
+    if let Some(schedules) = schedules_json {
+        args.extend(["--cron-schedules", schedules]);
+    }
     args.extend(ids.iter().map(String::as_str));
     args
 }
@@ -55,6 +59,8 @@ pub(in crate::domains::ai::apm) const WORKFLOW_DESIRED_IDS_SCRIPT: &str =
 ///
 /// Custom cron rows are included in scheduler repair. The App represents them
 /// as `interval='manual'` plus a non-empty `cron_expression`.
+/// Local source metadata is passed with `--cron-schedules <json>` to restore
+/// cron fields that native APM does not deploy.
 ///
 /// The program lives in `scripts/workflow_autopilot.py` and is embedded at
 /// build time via [`include_str!`] so its real four-space indentation survives

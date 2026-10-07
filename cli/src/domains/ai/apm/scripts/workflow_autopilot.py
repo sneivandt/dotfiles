@@ -3,6 +3,7 @@
 # Flips the dotfiles-managed Copilot App workflows to autopilot.
 #
 # Invoked as: python -c <script> <db_path> <id>...
+# Optional --cron-schedules <json> before the ids supplies local source metadata.
 # The trailing arguments are the dotfiles-managed workflow ids. It first removes
 # duplicate rows for those managed workflow definitions, then prints two
 # space-separated integers -- the number of those rows present and the number it
@@ -18,13 +19,13 @@
 # Custom cron schedules are stored as interval='manual' plus cron_expression and
 # must be handled before the ordinary interval schedule.
 #
-# Schema contract (version 4): the Copilot App sqlite `workflows` table must
+# Schema contract (version 5): the Copilot App sqlite `workflows` table must
 # expose `id`, `name`, `prompt`, `mode`, and `enabled`, plus the scheduling
 # columns `interval`, `schedule_hour`/`schedule_minute`/`schedule_day`, and
 # `next_run_at` (TEXT, ISO-8601 UTC). `cron_expression` is additive and detected
 # at runtime so older App schemas retain interval-only repair. If the required
 # contract changes, bump this version and update the Rust callers in autopilot.rs.
-import sqlite3, sys
+import json, sqlite3, sys
 from datetime import datetime, timedelta, timezone
 
 
@@ -190,9 +191,31 @@ def dedupe_managed_workflows(connection, workflow_ids, placeholders):
 con = sqlite3.connect(sys.argv[1], timeout=5)
 con.execute("PRAGMA busy_timeout=5000")
 ids = sys.argv[2:]
+source_crons = {}
+if ids and ids[0] == "--cron-schedules":
+    source_crons = json.loads(ids[1])
+    ids = ids[2:]
 ph = ",".join("?" for _ in ids)
+columns = {row[1] for row in con.execute("PRAGMA table_info(workflows)")}
+if "cron_expression" not in columns and any(source_crons.get(wid) for wid in ids):
+    raise ValueError("the workflows table has no cron_expression column; update the Copilot App")
 matched = con.execute("SELECT COUNT(*) FROM workflows WHERE id IN (" + ph + ")", ids).fetchone()[0]
 dedupe_managed_workflows(con, ids, ph)
+if "cron_expression" in columns:
+    for wid in ids:
+        if wid not in source_crons:
+            continue
+        cron = source_crons[wid]
+        # APM 0.33 ignores source cron metadata. Restore it before arming, and
+        # invalidate the old fire time when the source schedule changes.
+        con.execute(
+            "UPDATE workflows SET cron_expression=?, "
+            "interval=CASE WHEN ? IS NOT NULL THEN 'manual' ELSE interval END, "
+            "next_run_at=NULL WHERE id=? AND "
+            "(NULLIF(trim(cron_expression), '') IS NOT ? "
+            "OR (? IS NOT NULL AND interval IS NOT 'manual'))",
+            (cron, cron, wid, cron, cron),
+        )
 cur = con.execute("UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN (" + ph + ") AND (mode IS NOT 'autopilot' OR enabled IS NOT 1)", ids)
 # Arm the scheduler: set next_run_at on managed rows that are unarmed (NULL) or
 # overdue (<= now), so the app fires them on schedule. A valid future next_run_at
@@ -202,7 +225,6 @@ cur = con.execute("UPDATE workflows SET mode='autopilot', enabled=1 WHERE id IN 
 # that date's local offset, not retain today's fixed UTC offset across DST.
 now_local = datetime.now()
 now_utc = datetime.now(timezone.utc)
-columns = {row[1] for row in con.execute("PRAGMA table_info(workflows)")}
 cron_column = "cron_expression" if "cron_expression" in columns else "NULL"
 sched = con.execute(
     "SELECT id, interval, " + cron_column + ", schedule_hour, schedule_minute, "

@@ -229,7 +229,26 @@ fn write_graph(
         return Ok(());
     }
     if format == DiscoveryFormat::Table {
-        writeln!(out, "SELECTOR\tTASK\tBLOCKING\tAFTER\tINTERNAL\tSELECTION")?;
+        writeln!(out, "Dependencies (predecessors first)")?;
+        writeln!(out, "  requires <- must succeed; after <- wait only")?;
+        for listing in listings {
+            writeln!(out)?;
+            writeln!(
+                out,
+                "{} [{}{}] — {}",
+                listing.selector,
+                selection_label(listing.selection),
+                if listing.internal { ", internal" } else { "" },
+                listing.task,
+            )?;
+            for predecessor in &listing.blocking {
+                writeln!(out, "  requires <- {predecessor}")?;
+            }
+            for predecessor in &listing.after {
+                writeln!(out, "  after    <- {predecessor}")?;
+            }
+        }
+        return Ok(());
     }
     for listing in listings {
         writeln!(
@@ -240,16 +259,20 @@ fn write_graph(
             listing.blocking.join(","),
             listing.after.join(","),
             listing.internal,
-            match listing.selection {
-                GraphSelection::Default => "default",
-                GraphSelection::Requested => "requested",
-                GraphSelection::Dependency => "dependency",
-                GraphSelection::Filtered => "filtered",
-                GraphSelection::Skipped => "skipped",
-            }
+            selection_label(listing.selection)
         )?;
     }
     Ok(())
+}
+
+const fn selection_label(selection: GraphSelection) -> &'static str {
+    match selection {
+        GraphSelection::Default => "default",
+        GraphSelection::Requested => "requested",
+        GraphSelection::Dependency => "dependency",
+        GraphSelection::Filtered => "filtered",
+        GraphSelection::Skipped => "skipped",
+    }
 }
 
 fn collect_listings(
@@ -258,8 +281,7 @@ fn collect_listings(
 ) -> Result<Vec<TaskListing>> {
     let mut listings = Vec::new();
 
-    // The complete update catalog preserves row order even for update-only
-    // tasks. Membership remains in canonical install/update/uninstall/check order.
+    // Merge command membership before sorting the unique public selectors.
     for command in [
         TaskGraphCommand::Update,
         TaskGraphCommand::Remove,
@@ -269,6 +291,7 @@ fn collect_listings(
         add_tasks(&mut listings, &tasks, command)?;
     }
 
+    listings.sort_by(|left, right| left.selector.cmp(&right.selector));
     Ok(listings)
 }
 
@@ -342,25 +365,32 @@ fn write_table(listings: &[TaskListing], out: &mut dyn std::io::Write) -> Result
         .max()
         .unwrap_or(8)
         .max("SELECTOR".len());
-    let task_width = listings
-        .iter()
-        .map(|listing| listing.task.len())
-        .max()
-        .unwrap_or(4)
-        .max("TASK".len());
-    writeln!(
-        out,
-        "{:<selector_width$}  {:<task_width$}  COMMANDS",
-        "SELECTOR", "TASK"
-    )?;
-    for listing in listings {
-        writeln!(
-            out,
-            "{:<selector_width$}  {:<task_width$}  {}",
-            listing.selector,
-            listing.task,
-            command_membership(listing)
-        )?;
+    let mut first = true;
+    for command in [
+        TaskGraphCommand::Update,
+        TaskGraphCommand::Remove,
+        TaskGraphCommand::Check,
+    ] {
+        let rows = listings
+            .iter()
+            .filter(|listing| listing.commands.contains(&command))
+            .collect::<Vec<_>>();
+        if rows.is_empty() {
+            continue;
+        }
+        if !first {
+            writeln!(out)?;
+        }
+        first = false;
+        writeln!(out, "{}", command.label())?;
+        writeln!(out, "{:<selector_width$}  TASK", "SELECTOR")?;
+        for listing in rows {
+            writeln!(
+                out,
+                "{:<selector_width$}  {}",
+                listing.selector, listing.task
+            )?;
+        }
     }
     Ok(())
 }
@@ -592,21 +622,11 @@ mod tests {
             .expect("overlay script listing");
         assert_eq!(command_membership(script), "update, remove");
 
-        let catalog = crate::app::catalog::all_install_tasks(&store);
-        let expected_order = catalog
-            .iter()
-            .filter(|task| task.visibility().is_visible())
-            .map(|task| task.selector())
-            .chain(std::iter::once("script-private-tools"))
-            .collect::<Vec<_>>();
-        assert_eq!(
+        assert!(
             listings
-                .iter()
-                .take(expected_order.len())
-                .map(|listing| listing.selector.as_str())
-                .collect::<Vec<_>>(),
-            expected_order,
-            "complete catalog order must precede overlay scripts"
+                .windows(2)
+                .all(|pair| pair[0].selector < pair[1].selector),
+            "public selectors must be unique and alphabetical, including overlay scripts"
         );
         for command in [
             TaskGraphCommand::Update,
@@ -658,7 +678,7 @@ mod tests {
         write_listings(&listings, DiscoveryFormat::Table, &mut table).expect("table output");
         assert_eq!(
             String::from_utf8(table).unwrap(),
-            "SELECTOR  TASK          COMMANDS\nvisible   Visible task  update\n"
+            "update\nSELECTOR  TASK\nvisible   Visible task\n"
         );
 
         let mut plain = Vec::new();
@@ -679,6 +699,78 @@ mod tests {
                 "commands": ["update"],
             }])
         );
+    }
+
+    #[test]
+    fn table_groups_shared_tasks_under_each_command_alphabetically() {
+        let store = ConfigStore::from_config(empty_config(PathBuf::from("/fixture")));
+        let listings = collect_listings(&store, None).unwrap();
+        let mut output = Vec::new();
+        write_table(&listings, &mut output).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        let mut sections = output.split("\n\n");
+        for command in [
+            TaskGraphCommand::Update,
+            TaskGraphCommand::Remove,
+            TaskGraphCommand::Check,
+        ] {
+            let section = sections.next().unwrap();
+            let mut lines = section.lines();
+            assert_eq!(lines.next(), Some(command.label()));
+            assert!(lines.next().unwrap().starts_with("SELECTOR"));
+            let selectors = lines
+                .map(|line| line.split_whitespace().next().unwrap())
+                .collect::<Vec<_>>();
+            assert!(selectors.windows(2).all(|pair| pair[0] < pair[1]));
+            let expected = listings
+                .iter()
+                .filter(|listing| listing.commands.contains(&command))
+                .map(|listing| listing.selector.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                selectors,
+                expected,
+                "all members of {} must appear",
+                command.label()
+            );
+        }
+        assert!(sections.next().is_none());
+        assert_eq!(
+            output
+                .lines()
+                .filter(|line| line.starts_with("symlinks "))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn graph_table_explains_edges_and_keeps_selection_and_internal_nodes_visible() {
+        let tasks: Vec<Box<dyn Task>> = vec![
+            Box::new(DependentTask),
+            Box::new(InternalTask),
+            Box::new(VisibleTask),
+        ];
+        let graph =
+            collect_graph(&tasks, &["dependent".into()], &["visible".into()], false).unwrap();
+        let mut output = Vec::new();
+        write_graph(&graph, DiscoveryFormat::Table, &mut output).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.contains("requires <- must succeed; after <- wait only"));
+        assert!(output.contains("dependent [requested]"));
+        assert!(output.contains("internal [filtered, internal]"));
+        assert!(output.contains("visible [skipped]"));
+        assert!(output.contains("\n  requires <- visible\n  after    <- internal\n"));
+        assert!(
+            !output.contains('\t'),
+            "human output must not depend on tab stops"
+        );
+
+        let mut plain = Vec::new();
+        write_graph(&graph, DiscoveryFormat::Plain, &mut plain).unwrap();
+        let plain = String::from_utf8(plain).unwrap();
+        assert!(plain.lines().all(|line| line.split('\t').count() == 6));
+        assert!(plain.contains("visible\tinternal\tfalse\trequested"));
     }
 
     #[test]

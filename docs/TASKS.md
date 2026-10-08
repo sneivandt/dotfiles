@@ -14,6 +14,11 @@ Discovery loads the selected profile and overlay and hides tasks clearly
 inapplicable to the platform or with no configured work. Use `--all` to see
 the complete public catalog. It does not probe machine state or execute tasks;
 uncertain cases remain visible, and missing prerequisites do not hide work.
+The default table groups tasks by command (`update`, `remove`, then `check`),
+with selectors in alphabetical order within each section. Shared tasks appear
+in each command they belong to. Plain and JSON listings contain each selector
+once, alphabetically, with its command membership.
+
 Dependency graphs always retain all nodes and cannot be combined with `--all`.
 For command syntax, selection rules, and preview side effects, see
 [Usage](USAGE.md#select-tasks).
@@ -22,10 +27,10 @@ For command syntax, selection rules, and preview side effects, see
 
 Tasks are connected by two kinds of dependencies:
 
-| Graph column | Meaning when both tasks are selected |
+| Graph edge | Meaning when both tasks are selected |
 |---|---|
-| `BLOCKING` | The predecessor must succeed; failure or unmet work blocks its dependents |
-| `AFTER` | Wait for the predecessor, but still check this task if it fails |
+| `requires <-` (`blocking` in JSON) | The predecessor must succeed; failure or unmet work blocks its dependents |
+| `after <-` (`after` in JSON) | Wait for the predecessor, but still check this task if it fails |
 
 For example, AUR installation requires a healthy Paru bootstrap. Systemd waits
 for package, AUR, symlink, and permission work, but unrelated failures there do
@@ -44,10 +49,14 @@ dotfiles list --root . --profile desktop --graph update \
   --only systemd --with-deps --format json
 ```
 
-Graph output retains filtered nodes and edges and marks their `SELECTION`.
-It also includes internal orchestration (`INTERNAL`), hidden from normal
-discovery and task totals. It is a dependency/selection view, not a machine
-change plan. For a graph without repository work, use `--skip repository`;
+The default graph output shows one block per task, with predecessors first.
+Each block lists its incoming dependency edges and marks its selection
+(`default`, `requested`, `dependency`, `filtered`, or `skipped`). Filtered nodes
+and edges remain visible. Internal orchestration is marked `internal` and is
+hidden from normal discovery and task totals. Plain output keeps tab-separated
+rows; JSON keeps structured edges and selection fields. It is a
+dependency/selection view, not a machine change plan. For a graph without
+repository work, use `--skip repository`;
 `list` does not accept `--no-repo-update`.
 
 Independent ready tasks can run concurrently, and console rows appear in

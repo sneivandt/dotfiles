@@ -102,6 +102,11 @@ Before replacing a binary, distinguish expected behavior from a failed update:
 - Failed release lookup leaves the existing binary usable; inspect diagnostics
   for API rate limits, DNS, or proxy failures.
 
+For repeated anonymous release-check rate limits, run `gh auth login --hostname
+github.com` once. The updater automatically reuses that login when neither
+`GH_TOKEN` nor `GITHUB_TOKEN` is set to a non-empty value. Explicit tokens take
+precedence; an expired or denied token can still cause an anonymous fallback.
+
 If an old binary predates support for the current release-tag format, its
 updater may never recognize a new release. After confirming the executable path
 and saving any needed binary, move only that checkout's `bin/dotfiles` or

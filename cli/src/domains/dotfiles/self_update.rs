@@ -62,6 +62,7 @@ fn nibble_to_upper(n: u8) -> char {
 use anyhow::Result;
 
 use crate::infra::env::{Env, SystemEnv};
+use crate::infra::exec::{CommandSpec, Executor, OutputLog, ProcessExecutor};
 use crate::infra::logging::Output;
 use crate::infra::logging::OutputExt as _;
 /// GitHub repository used for release lookups.
@@ -81,10 +82,46 @@ fn self_update_skipped(env: &dyn Env) -> bool {
     env.var(SKIP_SELF_UPDATE_ENV).as_deref() == Some("1")
 }
 
-fn github_token(env: &dyn Env) -> Option<String> {
-    [GH_TOKEN_ENV, GITHUB_TOKEN_ENV]
+/// Prefer explicit credentials, then reuse the active github.com CLI login.
+/// This optional, non-interactive probe must never retain credential output.
+fn github_token(env: &dyn Env, executor: &dyn Executor) -> Option<String> {
+    if let Some(token) = [GH_TOKEN_ENV, GITHUB_TOKEN_ENV]
         .into_iter()
         .find_map(|key| env.var(key).filter(|value| !value.is_empty()))
+    {
+        return Some(token);
+    }
+    if !executor.which("gh") {
+        return None;
+    }
+    // A non-zero exit means gh could not supply a token (for example, no
+    // saved login). Anonymous release checks remain available in that case.
+    let request = CommandSpec::new("gh")
+        .args(&["auth", "token", "--hostname", "github.com"])
+        .unchecked()
+        .output_log(OutputLog::Omit)
+        .timeout(std::time::Duration::from_secs(10));
+    match executor.execute(request) {
+        Ok(result) if result.success => {
+            let token = result.stdout.trim();
+            if token.is_empty() {
+                tracing::debug!("GitHub CLI returned no token; checking releases anonymously");
+                None
+            } else {
+                Some(token.to_string())
+            }
+        }
+        Ok(_) => {
+            tracing::debug!("GitHub CLI has no usable token; checking releases anonymously");
+            None
+        }
+        Err(_) => {
+            // Do not render errors from a credential command: captured output
+            // can contain secrets even when execution fails or times out.
+            tracing::debug!("GitHub CLI token lookup could not run; checking releases anonymously");
+            None
+        }
+    }
 }
 
 /// Result of checking for an available update.
@@ -230,8 +267,8 @@ pub fn pre_update(
         return Ok(false);
     }
     let client = default_http_client();
-    let token = github_token(&SystemEnv);
     let check = with_status(log, "Checking for updates", || {
+        let token = github_token(&SystemEnv, &ProcessExecutor::system());
         check_for_update(root, &client, token.as_deref())
     });
     match check {
@@ -270,6 +307,7 @@ mod tests {
     use super::http::test_support::MockHttpClient;
     use super::*;
     use crate::infra::env::MapEnv;
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 
     #[test]
     fn self_update_skip_requires_explicit_one() {
@@ -284,16 +322,75 @@ mod tests {
 
     #[test]
     fn github_token_prefers_gh_token_and_ignores_empty_values() {
+        // No executor calls are expected when explicit credentials exist.
+        let executor = MockExecutor::new();
         let env = MapEnv::new()
             .with(GH_TOKEN_ENV, "gh-token")
             .with(GITHUB_TOKEN_ENV, "github-token");
-        assert_eq!(github_token(&env).as_deref(), Some("gh-token"));
+        assert_eq!(github_token(&env, &executor).as_deref(), Some("gh-token"));
 
         let fallback_env = MapEnv::new()
             .with(GH_TOKEN_ENV, "")
             .with(GITHUB_TOKEN_ENV, "github-token");
-        assert_eq!(github_token(&fallback_env).as_deref(), Some("github-token"));
-        assert_eq!(github_token(&MapEnv::new()), None);
+        assert_eq!(
+            github_token(&fallback_env, &executor).as_deref(),
+            Some("github-token")
+        );
+    }
+
+    #[test]
+    fn github_token_is_optional_without_gh() {
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_which()
+            .withf(|program| program == "gh")
+            .once()
+            .return_const(false);
+        assert_eq!(github_token(&MapEnv::new(), &executor), None);
+    }
+
+    #[test]
+    fn github_token_uses_saved_login_and_handles_unavailable_credentials() {
+        for (result, expected) in [
+            (
+                Ok(ExecResult::success("saved-token\n")),
+                Some("saved-token"),
+            ),
+            (Ok(ExecResult::success(" \n")), None),
+            (Ok(ExecResult::failure("secret", "no login", Some(1))), None),
+            (Ok(ExecResult::failure("secret", "terminated", None)), None),
+            (
+                Err(ExecError::TimedOut {
+                    command: "gh auth token".into(),
+                    timeout: std::time::Duration::from_secs(10),
+                    result: ExecResult::failure("secret", "secret", None),
+                }),
+                None,
+            ),
+        ] {
+            let mut executor = MockExecutor::new();
+            executor
+                .expect_which()
+                .withf(|program| program == "gh")
+                .once()
+                .return_const(true);
+            executor
+                .expect_execute()
+                .withf(|request| {
+                    *request
+                        == CommandSpec::new("gh")
+                            .args(&["auth", "token", "--hostname", "github.com"])
+                            .unchecked()
+                            .output_log(OutputLog::Omit)
+                            .timeout(std::time::Duration::from_secs(10))
+                })
+                .once()
+                .return_once(|_| result);
+            let env = MapEnv::new()
+                .with(GH_TOKEN_ENV, "")
+                .with(GITHUB_TOKEN_ENV, "");
+            assert_eq!(github_token(&env, &executor).as_deref(), expected);
+        }
     }
 
     #[test]

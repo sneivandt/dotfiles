@@ -198,6 +198,12 @@ output directory. A restarted child does not repeat the self-update check.
 An unwritable release-check cache produces a warning but does not invalidate a
 successful version check or prevent restarting into a verified binary update.
 
+Release checks authenticate with a non-empty `GH_TOKEN`, then `GITHUB_TOKEN`,
+then the active GitHub CLI login for `github.com`. If you already use
+`gh auth login`, no token export is needed. Without usable credentials, the
+check falls back to anonymous access, which has a lower GitHub API rate limit.
+Tokens obtained from GitHub CLI are never retained in command logs.
+
 ### Select tasks
 
 Discover before filtering:

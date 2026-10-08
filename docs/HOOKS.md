@@ -134,9 +134,9 @@ No output/status 1 from the first command means no configured override.
 When you deliberately want to deploy the hook:
 
 ```bash
-dotfiles install --root . --no-repo-update --only git-hooks --dry-run
-dotfiles install --root . --no-repo-update --only git-hooks
-dotfiles uninstall --root . --only git-hooks --dry-run
+dotfiles update --root . --no-repo-update --only git-hooks --dry-run
+dotfiles update --root . --no-repo-update --only git-hooks
+dotfiles remove --root . --only git-hooks --dry-run
 ```
 
 These are installation commands, not tests. Install can replace a differing
@@ -144,7 +144,7 @@ hook at the destination; inspect custom hooks first. A changed copied
 `pre-commit` requires reinstalling that entrypoint. Helper-only edits are picked
 up immediately from the checkout.
 
-In the full install graph the catalog orders hook installation after repository
+In the full update graph the catalog orders hook installation after repository
 update; it is an ordering-only edge, not failure propagation. Missing `hooks/`
 or Git metadata makes the task inapplicable; repository validation warns about
 missing `hooks/`.

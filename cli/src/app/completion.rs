@@ -6,6 +6,19 @@ use std::process::Command as ProcessCommand;
 use clap_complete::CompletionCandidate;
 use serde::Deserialize;
 
+/// Completion syntax also exposes update options when its command is omitted.
+/// Parsing still uses the canonical CLI so top-level help stays compact.
+pub(super) fn command() -> clap::Command {
+    use clap::CommandFactory as _;
+    let command = super::cli::Cli::command();
+    let options = command
+        .find_subcommand("update")
+        .into_iter()
+        .flat_map(|update| update.get_arguments().cloned())
+        .collect::<Vec<_>>();
+    command.args(options)
+}
+
 const COMPLETION_ENV: &str = "DOTFILES_COMPLETE";
 
 const POWERSHELL_DOT_COMPLETER: &str = r"
@@ -75,7 +88,7 @@ pub fn profile_candidates() -> Vec<CompletionCandidate> {
         .collect()
 }
 
-/// Complete task selectors from the same read-only discovery path as `dotfiles tasks`.
+/// Complete task selectors from the same read-only discovery path as `dotfiles list`.
 pub fn task_candidates() -> Vec<CompletionCandidate> {
     let words = completion_words(std::env::args_os().collect());
     let memberships = task_memberships(&words);
@@ -84,7 +97,7 @@ pub fn task_candidates() -> Vec<CompletionCandidate> {
         return Vec::new();
     };
     let Ok(output) = ProcessCommand::new(executable)
-        .args(["tasks", "--format", "json"])
+        .args(["list", "--format", "json"])
         .args(repository_args)
         .env_remove(COMPLETION_ENV)
         .output()
@@ -106,20 +119,12 @@ fn completion_words(args: Vec<OsString>) -> Vec<OsString> {
 }
 
 fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
-    let command = words.iter().find_map(|word| match word.to_str()? {
-        "install" => Some("install"),
-        "update" => Some("update"),
-        "uninstall" => Some("uninstall"),
-        "check" => Some("check"),
-        _ => None,
-    });
-    match command {
-        Some("install") if words.iter().any(|word| word == "--update") => &["update"],
-        Some("install") => &["install"],
-        Some("update") => &["update"],
-        Some("uninstall") => &["uninstall"],
+    match words.get(1).and_then(|word| word.to_str()) {
+        Some("update") | None => &["update"],
+        Some("remove") => &["remove"],
         Some("check") => &["check"],
-        Some(_) | None => &[],
+        Some(word) if word.starts_with('-') => &["update"],
+        Some(_) => &[],
     }
 }
 
@@ -167,6 +172,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_update_options_are_available_to_completion() {
+        let mut command = command();
+        command.build();
+        for id in ["profile", "only", "dry_run", "no_repo_update"] {
+            assert!(command.get_arguments().any(|arg| arg.get_id() == id));
+        }
+    }
+
+    #[test]
     fn profile_candidates_have_descriptions() {
         let profiles = profile_candidates();
         assert_eq!(
@@ -187,7 +201,7 @@ mod tests {
     fn repository_options_are_forwarded_to_task_discovery() {
         let words = [
             "dotfiles",
-            "install",
+            "update",
             "--profile=desktop",
             "--root",
             "/repo",
@@ -231,10 +245,7 @@ mod tests {
 
     #[test]
     fn update_modes_complete_normal_and_update_only_tasks() {
-        for words in [
-            vec!["dotfiles", "update"],
-            vec!["dotfiles", "install", "--update"],
-        ] {
+        for words in [vec!["dotfiles", "update"], vec!["dotfiles", "--dry-run"]] {
             let words = words.into_iter().map(OsString::from).collect::<Vec<_>>();
             assert_eq!(task_memberships(&words), ["update"]);
         }
@@ -242,28 +253,20 @@ mod tests {
 
     #[test]
     fn uninstall_completes_uninstall_tasks() {
-        let words = ["dotfiles", "uninstall"]
+        let words = ["dotfiles", "remove"]
             .into_iter()
             .map(OsString::from)
             .collect::<Vec<_>>();
-        assert_eq!(task_memberships(&words), ["uninstall"]);
+        assert_eq!(task_memberships(&words), ["remove"]);
     }
 
     #[test]
     fn task_candidates_follow_command_membership() {
         let json = br#"[
-            {"selector":"symlinks","task":"Home symlinks","commands":["install","update","uninstall"]},
+            {"selector":"symlinks","task":"Home symlinks","commands":["update","remove"]},
             {"selector":"shellcheck","task":"Shellcheck","commands":["check"]},
             {"selector":"pin-only","task":"Pin updater","commands":["update"]}
         ]"#;
-
-        let install = task_candidates_from_json(json, &["install"]);
-        assert_eq!(install.len(), 1);
-        assert_eq!(install[0].get_value(), "symlinks");
-        assert_eq!(
-            install[0].get_help().map(ToString::to_string).as_deref(),
-            Some("Home symlinks")
-        );
 
         let update = task_candidates_from_json(json, &["update"]);
         assert_eq!(update.len(), 2);

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="500" viewBox="0 0 760 500" role="img" aria-labelledby="title desc">
-  <title id="title">CLI self-update and one dotfiles install on an Arch Linux desktop</title>
-  <desc id="desc">Illustrative incremental install on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles install. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the install. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The install finishes with 3 changed and 14 current tasks in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
+  <title id="title">CLI self-update and one dotfiles update on an Arch Linux desktop</title>
+  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The update finishes with 3 changed and 14 current tasks in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
   <style>
     /* Alacritty colors, Source Code Pro, a 10px cell and 24px terminal rows.
-       One install: self-update at 2.4s, install at 4.4s, summary at 10.5s.
+       One update: self-update at 2.4s, update at 4.4s, summary at 10.5s.
        System packages completes at 8.6s; hold the completed output to 20s.
        Step timing replaces terminal rows atomically, without crossfades. */
     @keyframes char-0 { 0% { opacity: 0; } 3.425%, 100% { opacity: 1; }  }
@@ -37,11 +37,9 @@
     .char-13 { animation: char-13 20s step-end infinite; }
     @keyframes char-14 { 0% { opacity: 0; } 9.375%, 100% { opacity: 1; }  }
     .char-14 { animation: char-14 20s step-end infinite; }
-    @keyframes char-15 { 0% { opacity: 0; } 9.8%, 100% { opacity: 1; }  }
-    .char-15 { animation: char-15 20s step-end infinite; }
     @keyframes typing { 0% { opacity: 0; } 0.05% { opacity: 1; } 11%, 100% { opacity: 0; } }
     .typing { animation: typing 20s step-end infinite; }
-    @keyframes caret { 0% { transform: translateX(0px); } 3.425% { transform: translateX(10px); } 3.85% { transform: translateX(20px); } 4.275% { transform: translateX(30px); } 4.7% { transform: translateX(40px); } 5.125% { transform: translateX(50px); } 5.55% { transform: translateX(60px); } 5.975% { transform: translateX(70px); } 6.4% { transform: translateX(80px); } 6.825% { transform: translateX(90px); } 7.25% { transform: translateX(100px); } 7.675% { transform: translateX(110px); } 8.1% { transform: translateX(120px); } 8.525% { transform: translateX(130px); } 8.95% { transform: translateX(140px); } 9.375% { transform: translateX(150px); } 9.8% { transform: translateX(160px); } }
+    @keyframes caret { 0% { transform: translateX(0px); } 3.425% { transform: translateX(10px); } 3.85% { transform: translateX(20px); } 4.275% { transform: translateX(30px); } 4.7% { transform: translateX(40px); } 5.125% { transform: translateX(50px); } 5.55% { transform: translateX(60px); } 5.975% { transform: translateX(70px); } 6.4% { transform: translateX(80px); } 6.825% { transform: translateX(90px); } 7.25% { transform: translateX(100px); } 7.675% { transform: translateX(110px); } 8.1% { transform: translateX(120px); } 8.525% { transform: translateX(130px); } 8.95% { transform: translateX(140px); } 9.375% { transform: translateX(150px); } 9.8% { transform: translateX(150px); } }
     .caret { animation: caret 20s step-end infinite; }
     @keyframes updating { 0% { opacity: 0; } 12% { opacity: 1; } 21%, 100% { opacity: 0; } }
     .updating { animation: updating 20s step-end infinite; }
@@ -89,11 +87,11 @@
   <g font-family="Source Code Pro, DejaVu Sans Mono, Consolas, monospace" font-size="16.6667" fill="#c0caf5" xml:space="preserve">
 <text x="26" y="41"><tspan fill="#e0af68">~</tspan></text>
 <text x="26" y="65"><tspan fill="#a9b1d6">$</tspan></text>
-<text class="char-0" x="46" y="65" fill="#9ece6a">d</text><text class="char-1" x="56" y="65" fill="#9ece6a">o</text><text class="char-2" x="66" y="65" fill="#9ece6a">t</text><text class="char-3" x="76" y="65" fill="#9ece6a">f</text><text class="char-4" x="86" y="65" fill="#9ece6a">i</text><text class="char-5" x="96" y="65" fill="#9ece6a">l</text><text class="char-6" x="106" y="65" fill="#9ece6a">e</text><text class="char-7" x="116" y="65" fill="#9ece6a">s</text><text class="char-8" x="126" y="65" fill="#c0caf5"> </text><text class="char-9" x="136" y="65" fill="#c0caf5">i</text><text class="char-10" x="146" y="65" fill="#c0caf5">n</text><text class="char-11" x="156" y="65" fill="#c0caf5">s</text><text class="char-12" x="166" y="65" fill="#c0caf5">t</text><text class="char-13" x="176" y="65" fill="#c0caf5">a</text><text class="char-14" x="186" y="65" fill="#c0caf5">l</text><text class="char-15" x="196" y="65" fill="#c0caf5">l</text>
+<text class="char-0" x="46" y="65" fill="#9ece6a">d</text><text class="char-1" x="56" y="65" fill="#9ece6a">o</text><text class="char-2" x="66" y="65" fill="#9ece6a">t</text><text class="char-3" x="76" y="65" fill="#9ece6a">f</text><text class="char-4" x="86" y="65" fill="#9ece6a">i</text><text class="char-5" x="96" y="65" fill="#9ece6a">l</text><text class="char-6" x="106" y="65" fill="#9ece6a">e</text><text class="char-7" x="116" y="65" fill="#9ece6a">s</text><text class="char-8" x="126" y="65" fill="#c0caf5"> </text><text class="char-9" x="136" y="65" fill="#c0caf5">u</text><text class="char-10" x="146" y="65" fill="#c0caf5">p</text><text class="char-11" x="156" y="65" fill="#c0caf5">d</text><text class="char-12" x="166" y="65" fill="#c0caf5">a</text><text class="char-13" x="176" y="65" fill="#c0caf5">t</text><text class="char-14" x="186" y="65" fill="#c0caf5">e</text>
     <g class="typing transient"><g class="caret"><path class="blink" d="M46 49v20" stroke="#c0caf5" stroke-width="2"/></g></g>
     <g class="updating transient"><text x="26" y="89" fill="#8992b5">Updating to v2026.01.01-2</text></g>
     <g class="upgraded"><text x="26" y="89"><tspan font-weight="600">CLI upgraded</tspan><tspan fill="#8992b5"> · v2026.01.01-1 → v2026.01.01-2</tspan></text></g>
-    <g class="startup"><text x="26" y="113"><tspan font-weight="600">Install</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
+    <g class="startup"><text x="26" y="113"><tspan font-weight="600">Update</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
     <g class="links"><text x="26" y="161"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Home symlinks</tspan></text><text x="46" y="185">link ~/.config/git/config → symlinks/config/git/config</text><text x="46" y="209">link ~/.zshrc → symlinks/zshrc</text></g>
     <g class="completions"><text x="26" y="257"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Shell completions</tspan></text><text x="46" y="281">zsh completions written</text></g>
     <g class="packages"><text x="26" y="329"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">System packages</tspan></text><text x="46" y="353">install fd</text><text x="46" y="377">install ripgrep</text></g>

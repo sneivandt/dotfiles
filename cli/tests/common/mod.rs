@@ -73,7 +73,7 @@ pub(crate) fn cli_command(
             command.arg("--overlay").arg(overlay);
         }
     }
-    if verb == "install" {
+    if verb == "update" {
         command.arg("--no-repo-update");
     }
     command
@@ -413,7 +413,7 @@ pub(crate) fn run_install_dry_run(
         repo.root_path(),
         home.path(),
         None,
-        "install",
+        "update",
         &only.join(","),
     );
     command.arg("--dry-run");

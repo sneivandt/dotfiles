@@ -64,7 +64,7 @@ pub fn generate_powershell_completions() -> String {
     crate::app::completion::registration(clap_complete::Shell::PowerShell)
 }
 
-/// The complete set of tasks run by the uninstall command.
+/// The complete set of tasks run by the remove command.
 #[must_use]
 pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     vec![
@@ -74,7 +74,7 @@ pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     ]
 }
 
-/// The complete set of tasks run by the install command.
+/// The complete set of tasks run by the update command.
 ///
 /// Order within the list is arbitrary — the scheduler derives execution order
 /// from each task's [`Task::dependencies`] declaration merged with the

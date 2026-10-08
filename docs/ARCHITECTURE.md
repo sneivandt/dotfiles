@@ -39,7 +39,7 @@ infra:                    filesystem / executor / platform adapters
 
 **A concrete trace: home symlinks**
 
-1. [`app/run.rs`](../cli/src/app/run.rs) parses an install command and resolves
+1. [`app/run.rs`](../cli/src/app/run.rs) parses an update command (the default) and resolves
    startup policy. [`CommandRunner`](../cli/src/app/commands/runner.rs) resolves
    root, overlay and profile, loads configuration, and builds the context.
 2. [`Config::load`](../cli/src/app/config/mod.rs) decodes
@@ -80,7 +80,7 @@ directory convention.
 [`dotfiles.sh`](../dotfiles.sh) and [`dotfiles.ps1`](../dotfiles.ps1) locate the
 checkout and binary, consume `--build`, build or download when necessary, export
 bootstrap context, and forward the remaining arguments. They must not implement
-install, update, selection or profile semantics independently of Rust.
+update, selection or profile semantics independently of Rust.
 
 Building uses Cargo's reported executable artifact rather than assuming a
 particular target directory. Downloaded binaries receive checksum and provenance
@@ -91,8 +91,7 @@ An already available binary is not proof that it matches edited Rust source.
 
 [`cli.rs`](../cli/src/app/cli.rs) defines public syntax.
 [`run.rs`](../cli/src/app/run.rs) separates engine commands from standalone
-`tasks`, `log` and completion commands. `update` and `install --update` enter
-the same install pipeline with update membership enabled.
+`list`, `log` and completion commands. `update` applies all desired state with pinned dependency advancement enabled.
 
 Engine commands resolve one immutable
 [`RuntimePolicy`](../cli/src/app/commands/runtime.rs) **before logging starts**.
@@ -112,7 +111,7 @@ Important distinctions:
   policy.
 
 [`CommandRunner`](../cli/src/app/commands/runner.rs) holds the run lock, immutable
-configuration store and execution context. Static install/uninstall tasks come
+configuration store and execution context. Static update/remove tasks come
 from [`catalog.rs`](../cli/src/app/catalog.rs); check tasks come from
 [`commands/check.rs`](../cli/src/app/commands/check.rs). The
 [`execution coordinator`](../cli/src/app/commands/execution/mod.rs) owns the
@@ -156,7 +155,7 @@ overlay tasks, are constructed once from that snapshot.
 
 ### Repository updates are a restart boundary
 
-An install may synchronize the checkout before applying the rest of its tasks.
+An update may synchronize the checkout before applying the rest of its tasks.
 Changing files beneath an already-built task catalog would leave stale inputs,
 so the coordinator first executes the dependency closure ending at repository
 update. When that phase successfully changes content, it starts the **current
@@ -202,7 +201,7 @@ threads; resource batches can independently use Rayon. `ctx.parallel()` gates
 both. Resource `.sequential()` protects shared-file or lock-bound writes within
 one task; it cannot serialize separate tasks. Those need graph edges.
 
-[`tasks`](../cli/src/app/commands/tasks.rs) loads a read-only configuration
+[`list`](../cli/src/app/commands/tasks.rs) loads a read-only configuration
 snapshot and exposes selectors and graph relationships without a run log, lock,
 or persisted selections. Its graph describes selection, not actual runtime
 applicability. Internal tasks can appear in graph diagnostics but are not public

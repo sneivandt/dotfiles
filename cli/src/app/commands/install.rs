@@ -1,4 +1,4 @@
-//! Install command implementation.
+//! Update command implementation.
 use anyhow::Result;
 use std::sync::Arc;
 
@@ -16,7 +16,7 @@ pub(super) fn includes_task(task: &dyn Task, update_pins: bool) -> bool {
     update_pins || !task.update_only()
 }
 
-/// Run the install command.
+/// Run the update command.
 ///
 /// Converges the system to the declared state and optionally advances locked
 /// dependency versions when `update_pins` is set.
@@ -42,7 +42,7 @@ pub fn run(
     let repository_update = RepositoryUpdateSignal::new();
     let mut all_tasks = runner.install_tasks_for_run(&repository_update, apm_mode);
 
-    // Version-advancing tasks are scheduled only with `--update`. Filter
+    // Version-advancing tasks are included in every update run. Filter
     // membership before user filters so warnings reflect eligible tasks.
     all_tasks.retain(|task| includes_task(task.as_ref(), update_pins));
     let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());

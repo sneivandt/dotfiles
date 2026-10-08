@@ -58,7 +58,7 @@ behavior should not require copying the same contract into several documents.
 |---|---|
 | What should this machine contain? | [`conf/`](../conf/), with application sources in [`symlinks/`](../symlinks/) and administrator-file fragments in [`system/`](../system/) |
 | How do I operate the CLI? | [Usage](USAGE.md); argument definitions in [`app/cli.rs`](../cli/src/app/cli.rs) |
-| Which tasks exist? | [Task reference](TASKS.md); install/uninstall catalog in [`app/catalog.rs`](../cli/src/app/catalog.rs), validation list in [`app/commands/check.rs`](../cli/src/app/commands/check.rs) |
+| Which tasks exist? | [Task reference](TASKS.md); update/remove catalog in [`app/catalog.rs`](../cli/src/app/catalog.rs), validation list in [`app/commands/check.rs`](../cli/src/app/commands/check.rs) |
 | How should a human make a change? | [Contributing](CONTRIBUTING.md) |
 | What are the runtime and layer contracts? | [Architecture](ARCHITECTURE.md) |
 | Which checks should run, and what does CI cover? | [Testing](TESTING.md); executable scripts and jobs in [`.github/workflows/`](../.github/workflows/) |

@@ -17,7 +17,7 @@ fn completions_report_changes_then_current() {
             repo.root_path(),
             home.path(),
             Some(overlay.path()),
-            "install",
+            "update",
             "completions",
         );
         command.arg("--no-symbols");
@@ -64,7 +64,7 @@ fn overlay_check_failures_are_visible_in_both_schedulers() {
                 repo.root_path(),
                 home.path(),
                 Some(overlay.path()),
-                "install",
+                "update",
                 "script-audit-script",
             );
             command.args(["--no-symbols", "--fail-on-skip"]);

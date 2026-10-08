@@ -108,7 +108,7 @@ fn reject_unmatched_filters(tasks: &[&dyn Task], filters: &[&str], flag: &str) -
         })
         .collect::<Vec<_>>();
     bail!(
-        "{flag} did not match a task selector: {}. Run 'dotfiles tasks' to list selectors",
+        "{flag} did not match a task selector: {}. Run 'dotfiles list' to list selectors",
         messages.join(", ")
     )
 }
@@ -534,7 +534,7 @@ mod tests {
                 )),
                 "{message}"
             );
-            assert!(message.ends_with("Run 'dotfiles tasks' to list selectors"));
+            assert!(message.ends_with("Run 'dotfiles list' to list selectors"));
         }
     }
 }

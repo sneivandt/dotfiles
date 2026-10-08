@@ -212,7 +212,7 @@ fn check_summary_uses_check_vocabulary_and_omits_not_run() {
 
 #[test]
 fn no_op_mutation_commands_skip_extra_blank() {
-    for command in ["install", "update", "uninstall"] {
+    for command in ["install", "update", "uninstall", "remove"] {
         assert!(
             !should_space_before_totals(command, false),
             "{command} no-op runs should not add an extra separator"

@@ -9,11 +9,11 @@
     binary is present, then runs it. The binary handles its own updates.
     --build: builds the Rust binary from source (requires cargo).
 .EXAMPLE
-    PS> .\dotfiles.ps1 install --profile base --dry-run --only symlinks
+    PS> .\dotfiles.ps1 update --profile base --dry-run --only symlinks
 .EXAMPLE
-    PS> .\dotfiles.ps1 install --profile desktop --update
+    PS> .\dotfiles.ps1 update --profile desktop
 .EXAMPLE
-    PS> .\dotfiles.ps1 --build install --profile desktop
+    PS> .\dotfiles.ps1 --build update --profile desktop
 #>
 
 $ErrorActionPreference = 'Stop'

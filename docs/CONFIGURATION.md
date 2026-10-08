@@ -4,7 +4,7 @@ Edit desired state in [`conf/`](../conf/), application files in
 [`symlinks/`](../symlinks/), and administrator-file fragments in
 [`system/`](../system/). Do not edit generated output to make a persistent
 configuration change. Installed application files may be live links into this
-checkout, so an edit can take effect before another `dotfiles install`.
+checkout, so an edit can take effect before another `dotfiles update`.
 
 This guide describes file formats and their consequences. See
 [Usage](USAGE.md) for commands, [Profiles](PROFILES.md) for selection, and
@@ -126,7 +126,7 @@ rejected rather than replacing the source itself.
 **Back up existing files before applying.** Installation warns and replaces a
 regular file or empty directory at a managed target without making a backup.
 A nonempty real directory fails rather than being recursively deleted. Read
-the [installation and uninstall behavior](USAGE.md) before managing an existing
+the [installation and remove behavior](USAGE.md) before managing an existing
 application configuration.
 
 ### Glob patterns
@@ -181,7 +181,7 @@ Regular Arch packages use pacman; `aur = true` sends a package to the separate
 AUR task. Windows entries are winget identifiers. A package declaration is
 platform-specific desired state, not a portable package-name translation.
 When configured packages are missing, the pacman task uses `-Syu`: an ordinary
-install can synchronize package databases and upgrade installed system packages
+update can synchronize package databases and upgrade installed system packages
 as well as add missing ones. See the [task reference](TASKS.md) for provider
 prerequisites and update behavior.
 
@@ -298,7 +298,7 @@ login, not started immediately. The search order is `~/.config/systemd/user`,
 `/etc/systemd/user`, `/run/systemd/user`, `/usr/local/lib/systemd/user`,
 `/usr/lib/systemd/user`, then `/lib/systemd/user`. Enablement links are created
 in the user's unit directory, including for packaged units. Links to managed
-units retain their installed home path so materializing them during uninstall
+units retain their installed home path so materializing them during remove
 does not leave an enablement link pointing into a removed checkout.
 Offline disabling removes matching existing `.wants` and `.requires` links,
 even if the unit file has disappeared or its `[Install]` directives changed.
@@ -431,7 +431,7 @@ Implement the complete protocol:
 
 Install checks first and applies or previews only if needed. Uninstall uses the
 same check: `0` means there is state to remove, `1` means nothing to remove.
-An uninstall dry run checks and reports the removal but never invokes
+An remove dry run checks and reports the removal but never invokes
 `--remove` or `--dryrun`.
 
 **Script dry-run safety is cooperative, not sandboxed.** Both inspection and
@@ -453,7 +453,7 @@ Git settings, registry values, service state, agent settings, and merged system
 files are not generally removed just because their declarations disappear.
 
 For a managed link or overlay script, keep its declaration active while
-performing the intended [uninstall](USAGE.md), then remove the declaration.
+performing the intended [remove](USAGE.md), then remove the declaration.
 Uninstall materializes matching managed links as local copies; it does not
 restore arbitrary pre-install state. It can also create a local copy when the
 configured target is absent; existing non-link files and directories are

@@ -22,7 +22,7 @@ Desired state lives in [conf/](conf/), with app configuration under
 [symlinks/](symlinks/).
 
 <p align="center">
-  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles install first updates the CLI, then links configuration, refreshes shell completions, and installs missing packages">
+  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles update first updates the CLI, then links configuration, refreshes shell completions, and installs missing packages">
 </p>
 
 ## What it manages
@@ -51,28 +51,28 @@ to build from source.
 On Linux:
 
 ```sh
-./dotfiles.sh install --profile base --dry-run
+./dotfiles.sh update --profile base --dry-run
 ```
 
 On Windows:
 
 ```powershell
-.\dotfiles.ps1 install --profile desktop --dry-run
+.\dotfiles.ps1 update --profile desktop --dry-run
 ```
 
 After installation, `dotfiles` is available directly in a new shell.
 
 | Command | What it does |
 |---|---|
-| `dotfiles install` | Syncs the repository and applies the selected configuration |
-| `dotfiles update` | Installs the configuration and updates pinned dependencies |
-| `dotfiles uninstall` | Replaces managed symlinks with local copies, removes managed hooks and the launcher, and runs active overlay scripts with `--remove` |
+| `dotfiles` / `dotfiles update` | Syncs the repository, applies configuration, and updates pinned dependencies |
+| `dotfiles remove` | Replaces managed symlinks with local copies, removes managed hooks and the launcher, and runs active overlay scripts with `--remove` |
+| `dotfiles list` | Lists task selectors and command dependency graphs |
 | `dotfiles check` | Checks configuration and runs available script analyzers |
 | `dotfiles log` | Shows saved run logs |
 
 Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.
-Uninstall leaves packages, services, and registry values in place.
+Remove leaves packages, services, and registry values in place.
 
 ## Documentation
 

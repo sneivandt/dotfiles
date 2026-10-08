@@ -482,7 +482,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Dry-run install
-        run: ./bin/dotfiles install --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
+        run: ./bin/dotfiles update --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
       - name: Run validation
         # Linters have dedicated jobs; APM is not provisioned in this matrix.
         run: ./bin/dotfiles check --root . -p ${{ matrix.profile }} --skip shellcheck,psscriptanalyzer,apm-plugins
@@ -504,7 +504,7 @@ jobs:
           path: bin/
       - name: Dry-run install
         shell: bash
-        run: ./bin/dotfiles.exe install --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
+        run: ./bin/dotfiles.exe update --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
       - name: Run validation
         shell: bash
         # Linters have dedicated jobs; APM is not provisioned in this matrix.
@@ -568,7 +568,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Install dotfiles with base profile
-        run: ./bin/dotfiles install --root . -p base -v --skip apm
+        run: ./bin/dotfiles update --root . -p base -v --skip apm
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}
@@ -598,7 +598,7 @@ jobs:
         # Skip unavailable external installers: winget installs fail inside CI
         # and windows-latest does not provide a VS Code CLI launcher. This job
         # validates the git symlink and config chain instead.
-        run: .\bin\dotfiles.exe install --root . -p base -v --skip apm,packages,vscode-extensions
+        run: .\bin\dotfiles.exe update --root . -p base -v --skip apm,packages,vscode-extensions
       - name: Test ${{ matrix.application }}
         shell: pwsh
         env:

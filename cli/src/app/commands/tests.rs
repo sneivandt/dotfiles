@@ -1,16 +1,15 @@
 use super::*;
 
 pub(super) fn global(args: &[&str]) -> crate::app::cli::GlobalOpts {
-    use clap::Parser as _;
     let cli = crate::app::cli::Cli::parse_from(
-        ["dotfiles", "install"]
+        ["dotfiles", "update"]
             .into_iter()
             .chain(args.iter().copied()),
     );
-    let crate::app::cli::Command::Install(opts) = cli.command else {
+    let crate::app::cli::Command::Update(opts) = cli.command else {
         panic!("expected install command");
     };
-    opts.into_engine_parts(false).0
+    opts.into_engine_parts().0
 }
 
 #[cfg(test)]
@@ -36,7 +35,7 @@ mod reexec_tests {
         for (guard, args) in [
             (
                 SELF_UPDATE_REEXEC_GUARD_VAR,
-                ["install", "--profile", "desktop"],
+                ["update", "--profile", "desktop"],
             ),
             (
                 REPOSITORY_REEXEC_GUARD_VAR,

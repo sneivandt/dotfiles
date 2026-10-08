@@ -172,7 +172,7 @@ pub struct TaskMeta<'a> {
     pub visibility: TaskVisibility,
     /// How the completed task result is presented on the console.
     pub result_display: TaskResultDisplay,
-    /// Whether the task is included only by `install --update`.
+    /// Whether the task is included only by `update`.
     pub update_only: bool,
 }
 
@@ -210,7 +210,7 @@ impl<'a> TaskMeta<'a> {
         self
     }
 
-    /// Mark the task as included only by `install --update`.
+    /// Mark the task as included only by `update`.
     #[must_use]
     pub const fn with_update_only(mut self, update_only: bool) -> Self {
         self.update_only = update_only;

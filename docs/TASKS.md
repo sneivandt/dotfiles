@@ -5,8 +5,8 @@ Selectors do not select individual packages, files, or services.
 From the repository root, with an existing CLI on PATH:
 
 ```bash
-dotfiles tasks --root . --profile desktop
-dotfiles tasks --root . --profile desktop --graph install
+dotfiles list --root . --profile desktop
+dotfiles list --root . --profile desktop --graph update
 ```
 
 Discovery loads the selected profile and overlay but does not probe machine
@@ -29,14 +29,14 @@ not stop it inspecting each unit.
 
 `--only` selects exact normalized selectors or full labels; it does not
 automatically select prerequisites. Filtering out a blocking prerequisite
-warns and assumes it is satisfied. On install/update, `--with-deps` recursively
+warns and assumes it is satisfied. On update, `--with-deps` recursively
 includes both kinds of predecessor. `--skip` can remove them again.
 Unknown selectors and explicit empty selections are errors.
 
 Inspect expansion before applying it:
 
 ```bash
-dotfiles tasks --root . --profile desktop --graph install \
+dotfiles list --root . --profile desktop --graph update \
   --only systemd --with-deps --format json
 ```
 
@@ -44,7 +44,7 @@ Graph output retains filtered nodes and edges and marks their `SELECTION`.
 It also includes internal orchestration (`INTERNAL`), hidden from normal
 discovery and task totals. It is a dependency/selection view, not a machine
 change plan. For a graph without repository work, use `--skip repository`;
-`tasks` does not accept `--no-repo-update`.
+`list` does not accept `--no-repo-update`.
 
 Independent ready tasks can run concurrently, and console rows appear in
 completion order. `--no-parallel` disables parallel execution; catalog order
@@ -59,11 +59,10 @@ External overlay scripts must implement their own safety contract.
 
 ### Catalog overview
 
-All rows below belong to both **install** and **update**. The APM task changes
-mode for updates. Rows marked “yes” also belong to uninstall; no other static
-install task is reversed by uninstall.
+All rows below belong to **update**. Rows marked “yes” also belong to
+**remove**; no other static update task is reversed by remove.
 
-| Selector | Console label | Inputs / affected state | Uninstall |
+| Selector | Console label | Inputs / affected state | Remove |
 |---|---|---|---|
 | `developer-mode` | Windows Developer Mode | Windows machine symlink capability | — |
 | `repository` | Dotfiles repository | Main checkout and Git overlay | — |
@@ -118,13 +117,13 @@ when needed. On Windows, updates the user PATH while preserving registry value
 type and expandable tokens. Start a new shell before relying on the change.
 Comments and example text do not satisfy Linux PATH persistence; detection
 requires the standalone managed export line.
-Uninstall leaves the PATH addition in place.
+Remove leaves the PATH addition in place.
 
 ### Repository and source tasks
 
 #### Dotfiles repository
 
-Both install and update consider the main checkout and an overlay with a
+Update considers the main checkout and an overlay with a
 `.git` entry. Tracked local changes prevent synchronization; untracked files
 are ignored by that readiness check. Detached HEAD is inapplicable. Missing
 upstream or local-only/diverged commits are reported as unmet work rather than
@@ -141,7 +140,7 @@ Cancellation is not retried, even if Git also emitted a transient-network
 error message.
 
 Dry-run may query remote refs with `git ls-remote`; it does not fetch or merge.
-`--no-repo-update` removes this task from install/update, including dependency
+`--no-repo-update` removes this task from update, including dependency
 expansion, and keeps the current checkout as the source. It does not disable
 binary self-update or other network access.
 
@@ -301,7 +300,7 @@ per-user enablement links offline and leaves startup to a real login. An
 Converges declared current-user values without deleting undeclared values.
 This task is separate from machine-level Developer Mode and does not request
 brokered elevation. Some settings are only read at application/session startup.
-Uninstall does not restore their former values.
+Remove does not restore their former values.
 
 #### VS Code extensions
 
@@ -321,8 +320,7 @@ availability can be rechecked after package installation.
 
 | Command mode | Native convergence |
 |---|---|
-| Ordinary install | `apm install -g` |
-| update / install `--update` | `apm update -g --yes`, without a preceding install pass |
+| update | `apm update -g --yes`, without a preceding install pass |
 | Update preview with current generated manifest | `apm update -g --dry-run` |
 | Update preview needing a new generated manifest | Reports manifest write and delegated update; does not plan against stale input |
 
@@ -336,7 +334,7 @@ Only an overlay can provide `conf/scripts.toml`. Each active script gets:
 
 - Its configured `name` as the display label.
 - A stable `script-<normalized-name>` selector.
-- Install, update, and uninstall membership.
+- Update and remove membership.
 - A separate task result and captured output.
 
 Discovery happens during configuration startup and repeats in a child after
@@ -347,17 +345,17 @@ repository synchronization.
 | Check | `--check` | Exit 0: desired/managed state present; exit 1: work needed/state absent |
 | Apply | No flag | Apply desired state when the install check returns 1 |
 | Preview | `--dryrun` | Preview needed install work without mutation |
-| Remove | `--remove` | Remove state on uninstall when the check returns 0 |
+| Remove | `--remove` | Remove state on remove when the check returns 0 |
 
-A missing script or other check exit fails the task. Uninstall dry-run still
+A missing script or other check exit fails the task. Remove dry-run still
 checks state but does not execute `--remove`.
 The engine cannot prevent side effects from a script that violates check or
 preview mode. Review it before running even a dry run.
 See [Overlay scripts](CONFIGURATION.md#overlay-scripts) for authoring rules.
 
-## Uninstall tasks
+## Remove tasks
 
-Uninstall uses **the currently selected configuration**, not a historical
+Remove uses **the currently selected configuration**, not a historical
 inventory. Keep the original profile, overlay, checkout, and sources available
 until removal is complete.
 
@@ -370,7 +368,7 @@ until removal is complete.
 
 This is not restoration from backups. Packages, services, registry, global Git
 settings, harness settings, shell selection, permissions, completions, WSL,
-editor extensions, and APM deployment are not reversed by static uninstall
+editor extensions, and APM deployment are not reversed by static remove
 tasks. Nested symlinks in materialized directory trees are recreated as links,
 not flattened copies of everything they reference.
 Materialization rechecks link ownership after copying and before unlinking, so
@@ -379,7 +377,7 @@ owner-only access on Unix, then receive the source permissions before publicatio
 
 ## Validation tasks
 
-`check` uses a separate task set, not the install graph. All commands load
+`check` uses a separate task set, not the update graph. All commands load
 configuration before task filtering, so `--only` is not a workaround for a
 malformed required file.
 
@@ -411,15 +409,15 @@ All examples below preview rather than apply; run from the intended checkout.
 
 ```bash
 # Just selected home links; prerequisites are assumed satisfied.
-dotfiles install --root . --profile base --no-repo-update --only symlinks --dry-run
+dotfiles update --root . --profile base --no-repo-update --only symlinks --dry-run
 
 # Inspect every prerequisite that would be added.
-dotfiles tasks --root . --profile desktop --graph update --only apm --with-deps
+dotfiles list --root . --profile desktop --graph update --only apm --with-deps
 
 # Preview configured regular packages and APM updates, without AUR tasks.
 dotfiles update --root . --profile desktop --no-repo-update --only "packages,apm" --dry-run
 ```
 
 For an overlay script, pass the real overlay root, discover its generated
-selector with `tasks`, then use that exact `script-…` value with `--only`.
+selector with `list`, then use that exact `script-…` value with `--only`.
 Remember that previewing a script executes its check/preview code.

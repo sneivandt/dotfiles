@@ -1,4 +1,4 @@
-//! Uninstall command implementation.
+//! Remove command implementation.
 use anyhow::Result;
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use crate::app::cli::UninstallOpts;
 use crate::app::filter::apply_task_filters;
 use crate::infra::logging::Logger;
 
-/// Run the uninstall command.
+/// Run the remove command.
 ///
 /// # Errors
 ///

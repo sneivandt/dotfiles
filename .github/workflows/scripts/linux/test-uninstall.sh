@@ -91,7 +91,7 @@ test_install_uninstall_base_profile()
 
   # Run install
   log_verbose "Running install..."
-  "$BINARY_PATH" install --root "$DIR" -p base --skip apm
+  "$BINARY_PATH" update --root "$DIR" -p base --skip apm
   log_verbose "Install complete"
 
   # Verify representative symlinks were created
@@ -107,7 +107,7 @@ test_install_uninstall_base_profile()
 
   # Run uninstall
   log_verbose "Running uninstall..."
-  "$BINARY_PATH" uninstall --root "$DIR" -p base
+  "$BINARY_PATH" remove --root "$DIR" -p base
   log_verbose "Uninstall complete"
 
   # After uninstall symlinks should be materialized as real files

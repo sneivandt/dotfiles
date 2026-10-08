@@ -8,8 +8,6 @@
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use clap::{CommandFactory, Parser};
-
 use crate::infra::{elevation, logging};
 
 use super::{cli, commands, interrupt};
@@ -23,7 +21,7 @@ use crate::infra::logging::{Output as _, OutputExt as _};
 /// cancellation, elevation handling, and command dispatch live in one place.
 #[must_use]
 pub fn run() -> ExitCode {
-    clap_complete::CompleteEnv::with_factory(cli::Cli::command)
+    clap_complete::CompleteEnv::with_factory(super::completion::command)
         .var(super::completion::environment_variable())
         .complete();
     drop(enable_ansi_support::enable_ansi_support()); // best-effort; no-op on non-Windows
@@ -41,14 +39,13 @@ pub fn run() -> ExitCode {
         cli::Command::Log(opts) => {
             return standalone(commands::log::run(&opts, opts.verbose));
         }
-        cli::Command::Tasks(opts) => {
+        cli::Command::List(opts) => {
             return standalone(commands::tasks::run(&opts));
         }
-        cli::Command::Install(opts) => install_command(opts, false),
-        cli::Command::Update(opts) => install_command(opts, true),
-        cli::Command::Uninstall(opts) => {
+        cli::Command::Update(opts) => update_command(opts),
+        cli::Command::Remove(opts) => {
             let (global, opts, verbose) = opts.into_engine_parts();
-            cli::EngineCommand::Uninstall {
+            cli::EngineCommand::Remove {
                 global,
                 opts,
                 verbose,
@@ -67,9 +64,9 @@ pub fn run() -> ExitCode {
     run_engine(&command, args.parent_run_id.as_deref())
 }
 
-fn install_command(opts: cli::InstallCommandOpts, force_update_pins: bool) -> cli::EngineCommand {
-    let (global, opts, update_pins, verbose) = opts.into_engine_parts(force_update_pins);
-    cli::EngineCommand::Install {
+fn update_command(opts: cli::UpdateCommandOpts) -> cli::EngineCommand {
+    let (global, opts, update_pins, verbose) = opts.into_engine_parts();
+    cli::EngineCommand::Update {
         global,
         opts,
         update_pins,
@@ -120,10 +117,10 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
     interrupt::install(&token, &log);
 
     let result = match command {
-        cli::EngineCommand::Install {
+        cli::EngineCommand::Update {
             opts, update_pins, ..
         } => commands::install::run(&runtime, opts, *update_pins, &log, &token),
-        cli::EngineCommand::Uninstall { opts, .. } => {
+        cli::EngineCommand::Remove { opts, .. } => {
             commands::uninstall::run(&runtime, opts, &log, &token)
         }
         cli::EngineCommand::Check { opts, .. } => {
@@ -229,12 +226,10 @@ mod tests {
     }
 
     #[test]
-    fn update_command_and_install_flag_select_the_same_pipeline() {
-        for (args, expected_update) in [
-            (vec!["dotfiles", "install"], false),
-            (vec!["dotfiles", "install", "--update"], true),
-            (vec!["dotfiles", "update"], true),
-        ] {
+    fn default_and_explicit_update_select_the_same_pipeline() {
+        for (args, expected_update) in
+            [(vec!["dotfiles"], true), (vec!["dotfiles", "update"], true)]
+        {
             let mut invocation = args.clone();
             invocation.extend([
                 "--only",
@@ -244,19 +239,15 @@ mod tests {
                 "--no-repo-update",
             ]);
             let command = match cli::Cli::parse_from(invocation).command {
-                cli::Command::Install(opts) => install_command(opts, false),
-                cli::Command::Update(opts) => install_command(opts, true),
-                cli::Command::Uninstall(_)
+                cli::Command::Update(opts) => update_command(opts),
+                cli::Command::Remove(_)
                 | cli::Command::Check(_)
-                | cli::Command::Tasks(_)
+                | cli::Command::List(_)
                 | cli::Command::Log(_)
                 | cli::Command::Completions(_) => panic!("expected install or update"),
             };
-            assert_eq!(
-                command.name(),
-                if expected_update { "update" } else { "install" }
-            );
-            let cli::EngineCommand::Install {
+            assert_eq!(command.name(), "update");
+            let cli::EngineCommand::Update {
                 global,
                 opts,
                 update_pins,
@@ -278,7 +269,7 @@ mod tests {
     #[test]
     fn aggregate_task_failure_only_prints_dim_log_hint() {
         let tmp = tempfile::tempdir().unwrap();
-        let logger = logging::Logger::new_in("install", tmp.path());
+        let logger = logging::Logger::new_in("update", tmp.path());
         let id = logger.run_log().unwrap().id();
         let log = CapturingOutput::with_logger(logger);
         let error = anyhow::Error::from(commands::error::TaskFailures::new(2));
@@ -299,7 +290,7 @@ mod tests {
     #[test]
     fn unexpected_failure_still_prints_error_and_dim_log_hint() {
         let tmp = tempfile::tempdir().unwrap();
-        let logger = logging::Logger::new_in("install", tmp.path());
+        let logger = logging::Logger::new_in("update", tmp.path());
         let id = logger.run_log().unwrap().id();
         let log = CapturingOutput::with_logger(logger);
         let error = anyhow::anyhow!("configuration failed");
@@ -376,9 +367,9 @@ mod tests {
             ),
         ] {
             let root = tempfile::tempdir_in(".").unwrap();
-            let log = CapturingOutput::with_logger(logging::Logger::new_in("install", root.path()));
+            let log = CapturingOutput::with_logger(logging::Logger::new_in("update", root.path()));
             let run = log.run_log().unwrap();
-            run.start_run("install", None);
+            run.start_run("update", None);
 
             let actual = finish_engine_run(&result, cancelled, &log);
 

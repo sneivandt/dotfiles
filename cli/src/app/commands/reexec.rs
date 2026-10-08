@@ -157,9 +157,9 @@ mod tests {
             (130, RunOutcome::Interrupted),
         ] {
             let dir = tempfile::tempdir().unwrap();
-            let log = crate::infra::logging::Logger::new_in("install", dir.path());
+            let log = crate::infra::logging::Logger::new_in("update", dir.path());
             let run = log.run_log().unwrap();
-            run.start_run("install", None);
+            run.start_run("update", None);
 
             finish_reexec(&log, code);
 

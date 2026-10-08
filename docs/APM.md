@@ -82,8 +82,7 @@ The merge implementation and its examples live in
 3. If introducing a fragment, select its link in the same categories as its
    required local plugins. Keep target compatibility in the package declaration.
 4. Follow [validation](#validation), then preview against the edited checkout.
-5. Apply ordinary install to reconcile declarations. Use update only when
-   advancing dependency refs is intended.
+5. Run `dotfiles update` to reconcile declarations and advance eligible dependency refs.
 
 The base fragment illustrates the local-package form:
 
@@ -101,7 +100,7 @@ dependencies:
 This is a fragment example, not a second file to add alongside the existing
 base fragment.
 
-## Install behavior
+## Update behavior
 
 The `apm` task runs after regular packages, AUR packages, and symlinks so its
 executable and managed sources can be available. A scoped invocation still
@@ -115,41 +114,41 @@ lag [upstream releases](https://github.com/microsoft/apm/releases): on
 fallback. A package update only supplies the version available from AUR, and
 `apm update -g` updates agent dependencies, not the APM executable.
 
-On an ordinary apply, dotfiles:
+On an update, dotfiles:
 
 1. Discovers effective fragments and produces a deterministic manifest.
 2. Writes `~/.apm/apm.yml` atomically only when its contents differ. An existing
    symlink at that generated path is rejected, not followed.
-3. Runs `apm install -g` without a primary `--target` override.
+3. Runs `apm update -g --yes` without a primary `--target` override.
 4. Reconciles available Copilot App and Cowork targets as described below.
 5. Compares the exact before/after `~/.apm/apm.lock.yaml` and adapter state to
    report changes.
 
 Native APM owns package resolution, local-source verification, and stale
-deployment cleanup. Install does not intentionally advance pinned dependencies.
+deployment cleanup. Update advances eligible dependency refs.
 It still invokes APM when the manifest is unchanged, so deployment drift can be
 repaired.
 
 Run from the repository root with an already available CLI:
 
 ```bash
-dotfiles install --root . --no-repo-update --only apm --dry-run --verbose
+dotfiles update --root . --no-repo-update --only apm --dry-run --verbose
 ```
 
 After reviewing the plan, the applying command is:
 
 ```bash
-dotfiles install --root . --no-repo-update --only apm
+dotfiles update --root . --no-repo-update --only apm
 ```
 
-Ordinary install dry-run describes the manifest, native command, and target
-work without invoking the native install or writing those artifacts. It can
+Update dry-run describes the manifest, native command, and target
+work without invoking the native update or writing those artifacts. It can
 preview installation even before `apm` is present. This does not make wrapper
 bootstrap or all CLI bookkeeping read-only; see [Usage](USAGE.md).
 
 ## Pin-update behavior
 
-`dotfiles update` (or `install --update`) changes the native operation to
+`dotfiles update` uses
 `apm update -g --yes`. APM advances eligible refs and converges the resulting
 dependency graph in that pass.
 

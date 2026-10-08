@@ -36,7 +36,7 @@ fn uninstall_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>>
 #[test]
 fn uninstall_task_catalog_satisfies_structural_contract() {
     let tasks = uninstall_tasks();
-    common::assert_task_catalog_contract("uninstall", &tasks);
+    common::assert_task_catalog_contract("remove", &tasks);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ fn invalid_uninstall_selection_fails_without_removing_managed_hooks() {
         std::fs::write(&hook, "#!/bin/sh\nexit 0\n").unwrap();
         let home = tempfile::tempdir().unwrap();
         let mut command =
-            common::cli_command(repo.root_path(), home.path(), None, "uninstall", selector);
+            common::cli_command(repo.root_path(), home.path(), None, "remove", selector);
         if let Some(skip) = skip {
             command.args(["--skip", skip]);
         }
@@ -176,7 +176,7 @@ fn uninstall_removes_active_overlay_script_state_by_default() {
             repo.root_path(),
             home.path(),
             Some(overlay.path()),
-            "uninstall",
+            "remove",
             "script-private-tools",
         );
         if dry_run {

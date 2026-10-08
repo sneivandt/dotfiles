@@ -133,5 +133,5 @@ fn push_count(
 /// totals. Standard mutation commands hide current task rows, so their no-op
 /// runs reuse the startup separator.
 pub(super) fn should_space_before_totals(command: &str, task_output_emitted: bool) -> bool {
-    task_output_emitted || !matches!(command, "install" | "update" | "uninstall")
+    task_output_emitted || !matches!(command, "install" | "update" | "uninstall" | "remove")
 }

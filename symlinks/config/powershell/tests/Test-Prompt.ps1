@@ -161,14 +161,14 @@ foreach ($case in $cases)
     Write-Output 'PASS: Unix root and Windows non-root identity cases'
 
     Set-Item Function:dotfiles -Value { , $args }
-    $actual = dot install -v
-    if (($actual | ConvertTo-Json -Compress) -cne '["install","-v"]')
+    $actual = dot update -v
+    if (($actual | ConvertTo-Json -Compress) -cne '["update","-v"]')
     {
         throw 'dot must not consume -v as a PowerShell common parameter.'
     }
     foreach ($arguments in @(
-            @('install', '-v'),
-            @('install', '--verbose', '--dry-run'),
+            @('update', '-v'),
+            @('update', '--verbose', '--dry-run'),
             @('-d', '--', '--help', 'two words', '"quoted"', '', [string][char]0x03BB)
         ))
     {
@@ -203,9 +203,9 @@ foreach ($case in $cases)
     Register-ArgumentCompleter -Native -CommandName dotfiles -ScriptBlock {
         param($wordToComplete)
 
-        if ($wordToComplete -eq '' -or $wordToComplete -like 'ins*')
+        if ($wordToComplete -eq '' -or $wordToComplete -like 'upd*')
         {
-            [Management.Automation.CompletionResult]::new('install', 'install', 'ParameterValue', 'Mock install')
+            [Management.Automation.CompletionResult]::new('update', 'update', 'ParameterValue', 'Mock update')
         }
         if ($wordToComplete -like '--on*')
         {
@@ -217,12 +217,12 @@ foreach ($case in $cases)
         }
     }
     foreach ($case in @(
-            @{ Text = 'dot ins'; Expected = 'install' }
-            @{ Text = 'dot install --on'; Expected = '--only' }
-            @{ Text = 'dot install --ver'; Expected = '--verbose' }
-            @{ Text = 'Write-Output ignored; dot ins'; Expected = 'install' }
-            @{ Text = 'dot ins trailing'; Cursor = 'dot ins'.Length; Expected = 'install' }
-            @{ Text = 'dot '; Expected = 'install' }
+            @{ Text = 'dot upd'; Expected = 'update' }
+            @{ Text = 'dot update --on'; Expected = '--only' }
+            @{ Text = 'dot update --ver'; Expected = '--verbose' }
+            @{ Text = 'Write-Output ignored; dot upd'; Expected = 'update' }
+            @{ Text = 'dot upd trailing'; Cursor = 'dot upd'.Length; Expected = 'update' }
+            @{ Text = 'dot '; Expected = 'update' }
         ))
     {
         $cursorColumn = if ($case.ContainsKey('Cursor')) { $case.Cursor } else { $case.Text.Length }

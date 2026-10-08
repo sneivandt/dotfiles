@@ -11,9 +11,10 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     disable_version_flag = true,
     after_help = "\
 Examples:
-  dotfiles install
-  dotfiles install --dry-run
-  dotfiles install --only symlinks
+  dotfiles                 # defaults to update
+  dotfiles update
+  dotfiles update --dry-run
+  dotfiles update --only symlinks
   dotfiles check",
     help_template = "\
 {about-with-newline}
@@ -35,28 +36,68 @@ pub struct Cli {
     pub version: Option<bool>,
 }
 
+impl Cli {
+    /// Parse arguments, defaulting to update when the command is omitted.
+    pub(crate) fn parse() -> Self {
+        Self::parse_from(std::env::args_os())
+    }
+
+    /// Parse an explicit argument sequence with the same default command.
+    pub(crate) fn parse_from<I, T>(args: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        Self::try_parse_from(args).unwrap_or_else(|error| error.exit())
+    }
+
+    /// Parse arguments without exiting on invalid input.
+    pub(crate) fn try_parse_from<I, T>(args: I) -> Result<Self, clap::Error>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+    {
+        let mut args: Vec<std::ffi::OsString> = args.into_iter().map(Into::into).collect();
+        // Only the first command position is inspected: option values may
+        // themselves be command names (for example --profile list).
+        let mut position = 1;
+        while let Some(arg) = args.get(position).and_then(|arg| arg.to_str()) {
+            if arg == "--parent-run-id" {
+                position = position.saturating_add(2);
+            } else if arg.starts_with("--parent-run-id=") {
+                position = position.saturating_add(1);
+            } else {
+                break;
+            }
+        }
+        let first = args.get(position).and_then(|arg| arg.to_str());
+        if first
+            .is_none_or(|arg| arg.starts_with('-') && !matches!(arg, "--help" | "-h" | "--version"))
+        {
+            args.insert(position.min(args.len()), "update".into());
+        }
+        <Self as Parser>::try_parse_from(args)
+    }
+}
+
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Apply dotfiles and system configuration
-    Install(InstallCommandOpts),
-
     /// Apply configuration and advance pinned dependencies
-    #[command(after_help = "Equivalent to dotfiles install --update.")]
-    Update(InstallCommandOpts),
+    Update(UpdateCommandOpts),
 
     /// Remove managed integrations while preserving user files
     #[command(after_help = "\
 Removes managed home symlinks, repository Git hooks, the installed launcher,
 and active overlay script state through each script's --remove action.
 Packages, services, registry values, and shell selection remain.")]
-    Uninstall(UninstallCommandOpts),
+    Remove(RemoveCommandOpts),
 
     /// Validate configuration and run repository checks
     Check(CheckCommandOpts),
 
     /// List available task selectors and command membership
-    Tasks(TasksOpts),
+    List(TasksOpts),
 
     /// Show a retained run log
     Log(LogOpts),
@@ -127,13 +168,13 @@ impl Default for ExecutionOpts {
     }
 }
 
-/// Options shared by the `install` and `update` commands.
+/// Options for the `update` command.
 #[derive(Args, Debug, Clone)]
 #[allow(
     clippy::struct_excessive_bools,
     reason = "CLI switches are independent user choices rather than state-machine states"
 )]
-pub struct InstallCommandOpts {
+pub struct UpdateCommandOpts {
     /// Repository and profile selection.
     #[command(flatten)]
     pub repository: RepositoryOpts,
@@ -149,10 +190,6 @@ pub struct InstallCommandOpts {
     /// Preview changes without applying them
     #[arg(short = 'n', long)]
     pub dry_run: bool,
-
-    /// Advance pinned dependencies during convergence
-    #[arg(long = "update")]
-    pub update_pins: bool,
 
     /// Use the current checkout without synchronizing its repository
     #[arg(long)]
@@ -184,10 +221,10 @@ pub struct CheckCommandOpts {
     pub tasks: CheckOpts,
 }
 
-/// Options for the `uninstall` command.
+/// Options for the `remove` command.
 #[derive(Args, Debug, Clone)]
 #[command(group(clap::ArgGroup::new("CheckOpts").args(["skip", "only"]).multiple(true)))]
-pub struct UninstallCommandOpts {
+pub struct RemoveCommandOpts {
     /// Repository and profile selection.
     #[command(flatten)]
     pub repository: RepositoryOpts,
@@ -225,16 +262,14 @@ pub enum DiscoveryFormat {
     Json,
 }
 
-/// Command whose task dependency graph is shown by `tasks --graph`.
+/// Command whose task dependency graph is shown by `list --graph`.
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskGraphCommand {
-    /// Normal installation.
-    Install,
     /// Installation with pinned dependency updates.
     Update,
     /// Removal of managed integrations.
-    Uninstall,
+    Remove,
     /// Repository validation.
     Check,
 }
@@ -242,15 +277,14 @@ pub enum TaskGraphCommand {
 impl TaskGraphCommand {
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::Install => "install",
             Self::Update => "update",
-            Self::Uninstall => "uninstall",
+            Self::Remove => "remove",
             Self::Check => "check",
         }
     }
 }
 
-/// Options for the `tasks` command.
+/// Options for the `list` command.
 #[derive(Args, Debug, Clone)]
 pub struct TasksOpts {
     /// Repository and profile selection.
@@ -337,15 +371,12 @@ impl GlobalOpts {
     }
 }
 
-impl InstallCommandOpts {
+impl UpdateCommandOpts {
     /// Split parsed options into engine context, task filters, and output policy.
     #[must_use]
-    pub fn into_engine_parts(
-        self,
-        force_update_pins: bool,
-    ) -> (GlobalOpts, InstallOpts, bool, bool) {
+    pub fn into_engine_parts(self) -> (GlobalOpts, InstallOpts, bool, bool) {
         let verbose = self.execution.verbose;
-        let update_pins = self.update_pins || force_update_pins;
+        let update_pins = true;
         let global = GlobalOpts {
             dry_run: self.dry_run,
             no_repo_update: self.no_repo_update,
@@ -367,7 +398,7 @@ impl CheckCommandOpts {
     }
 }
 
-impl UninstallCommandOpts {
+impl RemoveCommandOpts {
     /// Split parsed options into engine context and output policy.
     #[must_use]
     pub fn into_engine_parts(self) -> (GlobalOpts, UninstallOpts, bool) {
@@ -386,7 +417,7 @@ impl UninstallCommandOpts {
 #[derive(Debug)]
 pub enum EngineCommand {
     /// Apply dotfiles and system configuration.
-    Install {
+    Update {
         /// Shared task-engine options.
         global: GlobalOpts,
         /// Task selectors.
@@ -397,7 +428,7 @@ pub enum EngineCommand {
         verbose: bool,
     },
     /// Remove managed integrations.
-    Uninstall {
+    Remove {
         /// Shared task-engine options.
         global: GlobalOpts,
         /// Uninstall options.
@@ -421,11 +452,8 @@ impl EngineCommand {
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
-            Self::Install {
-                update_pins: true, ..
-            } => "update",
-            Self::Install { .. } => "install",
-            Self::Uninstall { .. } => "uninstall",
+            Self::Update { .. } => "update",
+            Self::Remove { .. } => "remove",
             Self::Check { .. } => "check",
         }
     }
@@ -434,8 +462,8 @@ impl EngineCommand {
     #[must_use]
     pub const fn global(&self) -> &GlobalOpts {
         match self {
-            Self::Install { global, .. }
-            | Self::Uninstall { global, .. }
+            Self::Update { global, .. }
+            | Self::Remove { global, .. }
             | Self::Check { global, .. } => global,
         }
     }
@@ -444,14 +472,14 @@ impl EngineCommand {
     #[must_use]
     pub const fn verbose(&self) -> bool {
         match self {
-            Self::Install { verbose, .. }
-            | Self::Uninstall { verbose, .. }
+            Self::Update { verbose, .. }
+            | Self::Remove { verbose, .. }
             | Self::Check { verbose, .. } => *verbose,
         }
     }
 }
 
-/// Task selection for `install` and `update`.
+/// Task selection for `update`.
 #[derive(Args, Debug, Clone, Default)]
 #[group(args = ["skip", "only", "with_deps"])]
 pub struct InstallOpts {
@@ -501,7 +529,9 @@ pub enum LogCommand {
     Install,
     /// Configuration and dependency update runs.
     Update,
-    /// Uninstallation runs.
+    /// Managed integration removal runs.
+    Remove,
+    /// Historical uninstallation runs.
     Uninstall,
     /// Validation runs, including legacy `test` runs.
     Check,
@@ -514,6 +544,7 @@ impl LogCommand {
         match self {
             Self::Install => stored == "install",
             Self::Update => stored == "update",
+            Self::Remove => stored == "remove",
             Self::Uninstall => stored == "uninstall",
             Self::Check => matches!(stored, "check" | "test"),
         }
@@ -581,6 +612,55 @@ mod tests {
     }
 
     #[test]
+    fn omitted_command_is_update_with_the_same_options() {
+        for args in [
+            vec!["dotfiles"],
+            vec![
+                "dotfiles",
+                "--dry-run",
+                "--profile",
+                "list",
+                "--only",
+                "apm",
+            ],
+            vec!["dotfiles", "--parent-run-id", "run-id", "--dry-run"],
+        ] {
+            let parsed = Cli::try_parse_from(args).unwrap();
+            let Command::Update(_) = parsed.command else {
+                panic!("expected update")
+            };
+        }
+        for old in ["install", "uninstall", "tasks"] {
+            assert_eq!(
+                Cli::try_parse_from(["dotfiles", old]).unwrap_err().kind(),
+                ErrorKind::InvalidSubcommand
+            );
+        }
+        assert_eq!(
+            Cli::try_parse_from(["dotfiles", "update", "--update"])
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnknownArgument
+        );
+    }
+
+    #[test]
+    fn historical_log_filters_remain_available() {
+        for (name, stored) in [
+            ("install", "install"),
+            ("uninstall", "uninstall"),
+            ("remove", "remove"),
+            ("update", "update"),
+        ] {
+            let parsed = Cli::parse_from(["dotfiles", "log", "--command", name]);
+            let Command::Log(opts) = parsed.command else {
+                panic!("expected log")
+            };
+            assert!(opts.command.unwrap().matches(stored));
+        }
+    }
+
+    #[test]
     fn verify_cli() {
         Cli::command().debug_assert();
     }
@@ -592,14 +672,12 @@ mod tests {
         let expected = command.get_version().expect("CLI version");
         assert_eq!(version, format!("dotfiles {expected}\n"));
 
-        for unsupported in ["-V", "--verbose"] {
-            let error = Cli::try_parse_from(["dotfiles", unsupported])
-                .expect_err("top-level option should be unavailable");
-            assert_eq!(error.kind(), ErrorKind::UnknownArgument);
-        }
+        let error = Cli::try_parse_from(["dotfiles", "-V"])
+            .expect_err("short version option should be unavailable");
+        assert_eq!(error.kind(), ErrorKind::UnknownArgument);
 
-        let cli = Cli::parse_from(["dotfiles", "install", "-v"]);
-        let Command::Install(opts) = cli.command else {
+        let cli = Cli::parse_from(["dotfiles", "update", "-v"]);
+        let Command::Update(opts) = cli.command else {
             panic!("expected install command");
         };
         assert!(opts.execution.verbose);
@@ -610,13 +688,12 @@ mod tests {
         let help = display_output(&["dotfiles", "--help"], ErrorKind::DisplayHelp);
 
         for text in [
-            "install    Apply dotfiles and system configuration",
-            "update     Apply configuration and advance pinned dependencies",
-            "uninstall  Remove managed integrations while preserving user files",
-            "check      Validate configuration and run repository checks",
-            "tasks      List available task selectors and command membership",
-            "log        Show a retained run log",
-            "help       Print this message or the help of the given subcommand(s)",
+            "update  Apply configuration and advance pinned dependencies",
+            "remove  Remove managed integrations while preserving user files",
+            "check   Validate configuration and run repository checks",
+            "list    List available task selectors and command membership",
+            "log     Show a retained run log",
+            "help    Print this message or the help of the given subcommand(s)",
             "dotfiles check",
         ] {
             assert!(
@@ -637,7 +714,6 @@ mod tests {
         let help = display_output(&["dotfiles", "update", "--help"], ErrorKind::DisplayHelp);
         for text in [
             "Usage: dotfiles update",
-            "Equivalent to dotfiles install --update.",
             "--dry-run",
             "--only",
             "--with-deps",
@@ -652,23 +728,21 @@ mod tests {
     fn install_accepts_scoped_options_and_new_names() {
         let cli = Cli::parse_from([
             "dotfiles",
-            "install",
+            "update",
             "-p",
             "desktop",
             "-n",
-            "--update",
             "--no-repo-update",
             "--fail-on-skip",
             "--only",
             "symlinks,git-hooks",
             "--with-deps",
         ]);
-        let Command::Install(opts) = cli.command else {
+        let Command::Update(opts) = cli.command else {
             panic!("expected install command");
         };
         assert_eq!(opts.repository.profile.as_deref(), Some("desktop"));
         assert!(opts.dry_run);
-        assert!(opts.update_pins);
         assert!(opts.no_repo_update);
         assert!(opts.execution.require_complete);
         assert_eq!(opts.tasks.filters.only, ["symlinks", "git-hooks"]);
@@ -684,7 +758,7 @@ mod tests {
             "--retry-failed",
             "--update-pins",
         ] {
-            let error = Cli::try_parse_from(["dotfiles", "install", old])
+            let error = Cli::try_parse_from(["dotfiles", "update", old])
                 .expect_err("removed option should fail");
             assert_eq!(error.kind(), ErrorKind::UnknownArgument, "{old}");
         }
@@ -730,8 +804,8 @@ mod tests {
 
     #[test]
     fn tasks_have_discovery_options() {
-        let tasks = Cli::parse_from(["dotfiles", "tasks", "--profile", "base", "--format", "json"]);
-        let Command::Tasks(opts) = tasks.command else {
+        let tasks = Cli::parse_from(["dotfiles", "list", "--profile", "base", "--format", "json"]);
+        let Command::List(opts) = tasks.command else {
             panic!("expected tasks command");
         };
         assert_eq!(opts.repository.profile.as_deref(), Some("base"));
@@ -743,7 +817,7 @@ mod tests {
     fn tasks_accept_graph_command() {
         let cli = Cli::parse_from([
             "dotfiles",
-            "tasks",
+            "list",
             "--graph",
             "update",
             "--format",
@@ -752,7 +826,7 @@ mod tests {
             "symlinks",
             "--with-deps",
         ]);
-        let Command::Tasks(opts) = cli.command else {
+        let Command::List(opts) = cli.command else {
             panic!("expected tasks command");
         };
         assert_eq!(opts.graph, Some(TaskGraphCommand::Update));
@@ -764,12 +838,12 @@ mod tests {
     #[test]
     fn selection_options_enforce_their_required_companions() {
         for (args, required) in [
-            (&["dotfiles", "install", "--with-deps"][..], "--only"),
             (&["dotfiles", "update", "--with-deps"][..], "--only"),
-            (&["dotfiles", "tasks", "--only", "symlinks"][..], "--graph"),
-            (&["dotfiles", "tasks", "--skip", "symlinks"][..], "--graph"),
+            (&["dotfiles", "update", "--with-deps"][..], "--only"),
+            (&["dotfiles", "list", "--only", "symlinks"][..], "--graph"),
+            (&["dotfiles", "list", "--skip", "symlinks"][..], "--graph"),
             (
-                &["dotfiles", "tasks", "--graph", "install", "--with-deps"][..],
+                &["dotfiles", "list", "--graph", "update", "--with-deps"][..],
                 "--only",
             ),
         ] {
@@ -781,7 +855,7 @@ mod tests {
 
     #[test]
     fn repeated_and_comma_delimited_selectors_are_all_preserved() {
-        for name in ["install", "update", "check", "uninstall"] {
+        for name in ["update", "check", "remove"] {
             let cli = Cli::parse_from([
                 "dotfiles",
                 name,
@@ -795,12 +869,10 @@ mod tests {
                 "chmod",
             ]);
             let (only, skip) = match cli.command {
-                Command::Install(opts) | Command::Update(opts) => {
-                    (opts.tasks.filters.only, opts.tasks.filters.skip)
-                }
+                Command::Update(opts) => (opts.tasks.filters.only, opts.tasks.filters.skip),
                 Command::Check(opts) => (opts.tasks.only, opts.tasks.skip),
-                Command::Uninstall(opts) => (opts.tasks.only, opts.tasks.skip),
-                Command::Tasks(_) | Command::Log(_) | Command::Completions(_) => {
+                Command::Remove(opts) => (opts.tasks.only, opts.tasks.skip),
+                Command::List(_) | Command::Log(_) | Command::Completions(_) => {
                     panic!("expected execution command")
                 }
             };
@@ -811,7 +883,7 @@ mod tests {
 
     #[test]
     fn execution_commands_keep_dependency_expansion_scoped_to_install_and_update() {
-        for name in ["install", "update", "check", "uninstall"] {
+        for name in ["update", "check", "remove"] {
             for selected in [false, true] {
                 let mut args = vec!["dotfiles", name, "--with-deps"];
                 if selected {
@@ -819,16 +891,14 @@ mod tests {
                 }
                 let result = Cli::try_parse_from(args);
                 match (name, selected) {
-                    ("install" | "update", true) => {
-                        let (Command::Install(opts) | Command::Update(opts)) =
-                            result.unwrap().command
-                        else {
+                    ("update", true) => {
+                        let Command::Update(opts) = result.unwrap().command else {
                             panic!("expected install or update");
                         };
                         assert!(opts.tasks.with_deps, "{name}");
                         assert_eq!(opts.tasks.filters.only, ["symlinks"], "{name}");
                     }
-                    ("install" | "update", false) => {
+                    ("update", false) => {
                         let error = result.unwrap_err();
                         assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument, "{name}");
                         assert!(error.to_string().contains("--only"), "{name}: {error}");
@@ -847,7 +917,7 @@ mod tests {
     fn execution_selector_arguments_keep_ids_completion_and_group_membership() {
         let mut command = Cli::command();
         command.build();
-        for name in ["install", "update", "check", "uninstall"] {
+        for name in ["update", "check", "remove"] {
             let command = command.find_subcommand(name).unwrap();
             for id in ["skip", "only"] {
                 let argument = command
@@ -868,7 +938,7 @@ mod tests {
                     "{name}: {id} must retain task completion"
                 );
             }
-            let (id, expected) = if matches!(name, "install" | "update") {
+            let (id, expected) = if matches!(name, "update") {
                 ("InstallOpts", vec!["skip", "only", "with_deps"])
             } else {
                 ("CheckOpts", vec!["skip", "only"])
@@ -900,7 +970,6 @@ mod tests {
 ";
         const INSTALL_OPTIONS: &str = "      --with-deps          Include blocking and ordering predecessors selected by `--only`
   -n, --dry-run            Preview changes without applying them
-      --update             Advance pinned dependencies during convergence
       --no-repo-update     Use the current checkout without synchronizing its repository
       --skip-attestation   Skip self-update build provenance verification
 ";
@@ -910,16 +979,10 @@ mod tests {
 ";
         for (name, about, options, after_help) in [
             (
-                "install",
-                "Apply dotfiles and system configuration",
-                INSTALL_OPTIONS,
-                "",
-            ),
-            (
                 "update",
                 "Apply configuration and advance pinned dependencies",
                 INSTALL_OPTIONS,
-                "\nEquivalent to dotfiles install --update.\n",
+                "",
             ),
             (
                 "check",
@@ -928,7 +991,7 @@ mod tests {
                 "",
             ),
             (
-                "uninstall",
+                "remove",
                 "Remove managed integrations while preserving user files",
                 UNINSTALL_OPTIONS,
                 "\nRemoves managed home symlinks, repository Git hooks, the installed launcher,\n\
@@ -950,7 +1013,7 @@ Packages, services, registry values, and shell selection remain.\n",
 
     #[test]
     fn uninstall_help_states_what_remains() {
-        let help = display_output(&["dotfiles", "uninstall", "--help"], ErrorKind::DisplayHelp);
+        let help = display_output(&["dotfiles", "remove", "--help"], ErrorKind::DisplayHelp);
         assert!(help.contains("Packages, services, registry values"));
         assert!(help.contains("-n, --dry-run"));
         assert!(help.contains("--only <SELECTOR>"));
@@ -960,12 +1023,12 @@ Packages, services, registry values, and shell selection remain.\n",
 
     #[test]
     fn log_only_accepts_log_output_options() {
-        let cli = Cli::parse_from(["dotfiles", "log", "2", "-c", "install", "-v"]);
+        let cli = Cli::parse_from(["dotfiles", "log", "2", "-c", "update", "-v"]);
         let Command::Log(opts) = cli.command else {
             panic!("expected log command");
         };
         assert_eq!(opts.run, Some(2));
-        assert_eq!(opts.command, Some(LogCommand::Install));
+        assert_eq!(opts.command, Some(LogCommand::Update));
         assert!(opts.verbose);
     }
 
@@ -977,7 +1040,7 @@ Packages, services, registry values, and shell selection remain.\n",
                 ErrorKind::ArgumentConflict,
             ),
             (
-                &["dotfiles", "log", "--id", "run-id", "--command", "install"][..],
+                &["dotfiles", "log", "--id", "run-id", "--command", "update"][..],
                 ErrorKind::ArgumentConflict,
             ),
             (
@@ -1031,8 +1094,8 @@ Packages, services, registry values, and shell selection remain.\n",
 
     #[test]
     fn help_subcommand_uses_conventional_clap_behavior() {
-        let help = display_output(&["dotfiles", "help", "install"], ErrorKind::DisplayHelp);
-        assert!(help.contains("Usage: dotfiles install [OPTIONS]"));
+        let help = display_output(&["dotfiles", "help", "update"], ErrorKind::DisplayHelp);
+        assert!(help.contains("Usage: dotfiles update [OPTIONS]"));
     }
 
     #[test]
@@ -1047,7 +1110,7 @@ Packages, services, registry values, and shell selection remain.\n",
 
     #[test]
     fn engine_option_conversion_preserves_command_and_output_flags() {
-        for name in ["install", "update", "uninstall", "check"] {
+        for name in ["update", "remove", "check"] {
             let mut args = vec![
                 "dotfiles",
                 name,
@@ -1063,22 +1126,21 @@ Packages, services, registry values, and shell selection remain.\n",
                 "--non-interactive",
                 "--no-symbols",
             ];
-            let mutating = matches!(name, "install" | "update" | "uninstall");
+            let mutating = matches!(name, "update" | "remove");
             if mutating {
                 args.extend(["--dry-run", "--skip-attestation", "--elevated-child"]);
             }
-            if matches!(name, "install" | "update") {
+            if matches!(name, "update") {
                 args.push("--no-repo-update");
             }
             let (global, verbose) = match Cli::parse_from(args).command {
-                Command::Install(opts) | Command::Update(opts) => {
-                    let (global, _, update_pins, verbose) =
-                        opts.into_engine_parts(name == "update");
+                Command::Update(opts) => {
+                    let (global, _, update_pins, verbose) = opts.into_engine_parts();
                     assert_eq!(update_pins, name == "update");
                     assert!(global.no_repo_update);
                     (global, verbose)
                 }
-                Command::Uninstall(opts) => {
+                Command::Remove(opts) => {
                     let (global, _, verbose) = opts.into_engine_parts();
                     assert!(!global.no_repo_update);
                     (global, verbose)
@@ -1088,7 +1150,7 @@ Packages, services, registry values, and shell selection remain.\n",
                     assert!(!global.no_repo_update);
                     (global, verbose)
                 }
-                Command::Tasks(_) | Command::Log(_) | Command::Completions(_) => {
+                Command::List(_) | Command::Log(_) | Command::Completions(_) => {
                     panic!("expected engine command")
                 }
             };

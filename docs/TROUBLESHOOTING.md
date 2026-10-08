@@ -87,7 +87,7 @@ They still write build artifacts and may download Cargo dependencies.
 
 ## The binary never self-updates
 
-`--version`, help, `tasks`, `log`, and `check` do not trigger CLI self-update.
+`--version`, help, `list`, `log`, and `check` do not trigger CLI self-update.
 Before replacing a binary, distinguish expected behavior from a failed update:
 
 - The binary must run from the selected checkout's `bin/`, not a Cargo output
@@ -150,7 +150,7 @@ chroot, so fixing only the live ISO's Cargo or Paru does not repair the target.
 Use an explicit profile for an unattended or diagnostic invocation:
 
 ```bash
-dotfiles tasks --root . --profile base
+dotfiles list --root . --profile base
 git config --local --get dotfiles.profile
 ```
 
@@ -159,7 +159,7 @@ an interactive prompt. The first chosen value must be exactly `base` or
 `desktop`; a typo in the environment does not fall back to saved configuration.
 Empty environment values are ignored; whitespace around a name is not.
 
-`tasks` never opens the profile prompt. Engine commands also require an existing
+`list` never opens the profile prompt. Engine commands also require an existing
 selection with non-terminal stdin, `--non-interactive`, or any present `CI`
 variable (even `CI=false`). An explicit `--profile` overrides a saved choice
 without updating it. See [Profiles](PROFILES.md#resolution-priority).
@@ -174,7 +174,7 @@ Read the complete filename and diagnostic before editing. Common causes are:
 - Conflicting desired state, an unsafe path, or a missing source.
 - An invalid main or overlay contribution.
 
-Configuration loads before task filtering, including for `tasks`, so
+Configuration loads before task filtering, including for `list`, so
 `--only symlinks` cannot bypass malformed package configuration.
 Inactive category sections are not a safe place to leave malformed data;
 validation also checks source definitions outside the active role.
@@ -192,7 +192,7 @@ with the real overlay root. For example, if it is the sibling directory
 
 ```bash
 git config --local --get dotfiles.overlay
-dotfiles tasks --root . --profile desktop --overlay ../dotfiles-private
+dotfiles list --root . --profile desktop --overlay ../dotfiles-private
 ```
 
 Check the following in order:
@@ -208,8 +208,8 @@ Check the following in order:
 
 Missing optional overlay files contribute nothing. A misspelled selection can
 therefore look like an empty overlay rather than an override failure.
-`tasks` does not persist the path, but an explicit overlay on install, check,
-or uninstall **does**, even in dry-run.
+`list` does not persist the path, but an explicit overlay on update, check,
+or remove **does**, even in dry-run.
 
 An explicit linked-worktree overlay asks for confirmation and is rejected
 without a usable interactive terminal. Use a stable primary checkout for
@@ -221,14 +221,14 @@ See [Overlays](CONFIGURATION.md#overlays).
 First discover its exact selector and inspect selection without executing it:
 
 ```bash
-dotfiles tasks --root . --profile desktop
-dotfiles tasks --root . --profile desktop --graph install --only systemd
+dotfiles list --root . --profile desktop
+dotfiles list --root . --profile desktop --graph update --only systemd
 ```
 
 | Observation | Likely cause / next step |
 |---|---|
 | Unknown selector | Use the stable selector or full normalized label, not a substring or package name |
-| Not in this command | Check the `COMMANDS` column; install and check have different task sets |
+| Not in this command | Check the `COMMANDS` column; update and check have different task sets |
 | `filtered` / `skipped` in graph | Inspect both `--only` and `--skip` |
 | Prerequisite warning | `--only` omitted a blocking dependency; decide whether to include `--with-deps` |
 | No normal console row | It can be current or inapplicable; inspect verbose output/logs |
@@ -239,12 +239,12 @@ dotfiles tasks --root . --profile desktop --graph install --only systemd
 For a focused preview after identifying the cause:
 
 ```bash
-dotfiles install --root . --profile desktop --no-repo-update --only systemd --dry-run --verbose
+dotfiles update --root . --profile desktop --no-repo-update --only systemd --dry-run --verbose
 ```
 
 Add `--with-deps` only after reviewing how much it expands the run. It can add
 packages, AUR setup, symlinks, and permissions.
-Use `update --only apm` rather than ordinary install when the intended work is
+Use `update --only apm` to scope the run when the intended work is
 advancing eligible APM refs.
 
 ## A symlink cannot be created on Windows
@@ -261,7 +261,7 @@ Distinguish missing capability, a conflicting target, and a bad source checkout:
 Preview Developer Mode with the link task:
 
 ```powershell
-dotfiles install --root . --profile desktop --no-repo-update --only symlinks --with-deps --dry-run --verbose
+dotfiles update --root . --profile desktop --no-repo-update --only symlinks --with-deps --dry-run --verbose
 ```
 
 See [Windows symlinks](WINDOWS.md#developer-mode-and-symlinks) for read-only
@@ -273,7 +273,7 @@ target conflict.
 The PAM fragments are selected for **Arch + desktop**. Preview their task:
 
 ```bash
-dotfiles install --root . --profile desktop --no-repo-update --only system-files --dry-run --verbose
+dotfiles update --root . --profile desktop --no-repo-update --only system-files --dry-run --verbose
 ```
 
 If the preview shows needed PAM changes, review them before deliberately
@@ -317,11 +317,11 @@ merely to make a run green. See [Windows elevation](WINDOWS.md#elevation).
 
 ## Another run holds the repository lock
 
-Install, update, uninstall, and check—including previews—share a repository
+Update, remove, and check—including previews—share a repository
 lock. Linked worktrees use the same common Git directory. The error identifies
 the lock and, when readable, the owner PID, command, and start time.
 
-Wait for the owner or inspect it before interrupting it. `tasks` and `log`
+Wait for the owner or inspect it before interrupting it. `list` and `log`
 remain usable. **Do not delete the lock file to force concurrent runs**:
 the live lock is held by the process, not inferred from file existence.
 Owner text left after a completed process does not itself prevent a new lock.
@@ -370,7 +370,7 @@ The regular Linux provider looks for pacman; there is no apt/dnf adapter.
 Windows uses winget. AUR work requires Arch and a healthy target-system Paru.
 
 ```bash
-dotfiles install --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
+dotfiles update --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
 ```
 
 A failed installed-package query is not an empty inventory. Correct the
@@ -393,12 +393,12 @@ package ID, broken inventory output, or a prohibited installer.
 dotfiles update --root . --profile desktop --no-repo-update --only apm --dry-run --verbose
 ```
 
-This previews pin advancement, not ordinary installation. Apply uses
+Update previews configuration convergence and pin advancement. Apply uses
 `apm update -g --yes`, without a preceding `apm install -g` pass.
 
 - If symlinks were filtered out, confirm the fragment inputs are present or
   preview `--with-deps` expansion.
-- If `apm` is missing, provide it deliberately. Ordinary install preview can
+- If `apm` is missing, provide it deliberately. Update preview can
   describe planned APM work without it; update preview needs the executable.
 - Authentication failures can be unmet/skipped work. Check the named
   authentication requirement without publishing credentials.
@@ -469,9 +469,9 @@ wsl --shutdown
 This terminates **all running WSL distributions**, not just the one being
 configured. Reopen the intended distribution afterward.
 
-## Uninstall did not restore machine defaults
+## Remove did not restore machine defaults
 
-That is expected: uninstall is not a machine snapshot restore. It materializes
+That is expected: remove is not a machine snapshot restore. It materializes
 currently selected home links, removes hooks and the launcher still matching
 their managed state, and invokes active overlay removal scripts. Modified
 hooks/launchers and unrelated hook names are preserved. It leaves packages, registry,
@@ -481,4 +481,4 @@ extensions, and APM state.
 Use the original profile and overlay so the intended resources are selected.
 Do not delete the checkout until materialization succeeds, and remember that
 materialized content is the configured source, not your pre-install file.
-See [Uninstall tasks](TASKS.md#uninstall-tasks).
+See [Remove tasks](TASKS.md#remove-tasks).

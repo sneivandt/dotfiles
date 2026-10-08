@@ -174,7 +174,7 @@ EOF
 
   status=0
   PATH="$wrapper_path" DOTFILES_SKIP_ATTESTATION=1 \
-    "$tmpdir/dotfiles.sh" install -p desktop -n > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
+    "$tmpdir/dotfiles.sh" update -p desktop -n > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
   if [ "${WRAPPER_EXPECT_RELEASE_ERROR:-0}" = 1 ]; then
     [ "$status" -ne 0 ] || log_error "Wrapper accepted an unsuccessful release lookup"
     [ ! -e "$tmpdir/download-path" ] || log_error "Failed release lookup downloaded an asset"
@@ -186,7 +186,7 @@ EOF
   [ "$status" -eq 0 ] || log_error "Bootstrap failed: $(cat "$tmpdir/stderr")"
 
   expected=$(cat <<'EOF'
-install
+update
 -p
 desktop
 -n
@@ -258,10 +258,10 @@ printf '%s\n' "$@" > "$DOTFILES_ROOT/forwarded-args.txt"
 EOF
   chmod +x "$tmpdir/cli/target/dev-opt/dotfiles"
 
-  PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --build install -p desktop -n -v
+  PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --build update -p desktop -n -v
 
   expected=$(cat <<EOF
-install
+update
 -p
 desktop
 -n
@@ -302,10 +302,10 @@ EOF
   chmod +x "$tmpdir/cli/target/dev-opt/dotfiles"
 
   PATH="$tmpdir/fake-bin:$PATH" \
-    "$tmpdir/dotfiles.sh" --build install --skip symlinks --only packages --no-parallel
+    "$tmpdir/dotfiles.sh" --build update --skip symlinks --only packages --no-parallel
 
   expected=$(cat <<'EOF'
-install
+update
 --skip
 symlinks
 --only
@@ -357,12 +357,12 @@ EOF
     set --
     [ "$mode" != build ] || set -- --build
     status=0
-    "$tmpdir/dotfiles.sh" "$@" install --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "" \
+    "$tmpdir/dotfiles.sh" "$@" update --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "" \
       > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
     [ "$status" -eq 7 ] || log_error "$mode wrapper lost the child exit code"
     [ "$(cat "$tmpdir/child-cwd")" = "$PWD" ] || log_error "$mode wrapper changed the child cwd"
     [ "$(cat "$tmpdir/child-context")" = "$(printf '%s\n' "$tmpdir" sh 1)" ] || log_error "$mode wrapper changed runtime context"
-    expected=$(printf '%s\n' install --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "")
+    expected=$(printf '%s\n' update --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "")
     [ "$(cat "$tmpdir/child-argc")" -eq 12 ] || log_error "$mode wrapper changed the argument count"
     [ "$(cat "$tmpdir/child-args")" = "$expected" ] || log_error "$mode wrapper changed arguments"
     [ "$(cat "$tmpdir/stdout")" = 'child stdout' ] || log_error "$mode wrapper changed stdout"

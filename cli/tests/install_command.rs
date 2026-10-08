@@ -75,7 +75,7 @@ fn nested_cli_fixture_preserves_ancestor_settings_and_run_lock() {
             &root,
             home.path(),
             Some(overlay.path()),
-            "install",
+            "update",
             "completions",
         )
         .output()
@@ -148,7 +148,7 @@ fn install_console_separates_tasks_and_keeps_no_op_compact() {
                 repo.root_path(),
                 home.path(),
                 Some(overlay.path()),
-                "install",
+                "update",
                 "symlinks,file-permissions",
             );
             if verbose {
@@ -240,7 +240,7 @@ fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
                 repo.root_path(),
                 home.path(),
                 Some(overlay.path()),
-                "install",
+                "update",
                 "symlinks",
             );
             if dry_run {
@@ -285,7 +285,7 @@ fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
 #[test]
 fn install_task_catalog_satisfies_structural_contract() {
     let tasks = install_tasks();
-    common::assert_task_catalog_contract("install", &tasks);
+    common::assert_task_catalog_contract("update", &tasks);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +316,7 @@ fn skip_filters_exclude_any_matching_selector_and_preserve_nonmatches() {
                 repo.root_path(),
                 home.path(),
                 None,
-                "install",
+                "update",
                 "symlinks,git-hooks",
             );
             command.args(["--dry-run", "--skip", skip, "--verbose", "--no-symbols"]);
@@ -496,7 +496,7 @@ fn install_run_unknown_filters_return_actionable_errors() {
             message.contains(&format!("{flag} did not match a task selector")),
             "{message}"
         );
-        assert!(message.contains("dotfiles tasks"), "{message}");
+        assert!(message.contains("dotfiles list"), "{message}");
     }
 }
 
@@ -522,7 +522,7 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
         repo.root_path(),
         home.path(),
         Some(overlay.path()),
-        "install",
+        "update",
         "symlinks",
     );
     command.arg("--dry-run");
@@ -624,7 +624,7 @@ fn startup_failure_writes_finished_history_and_an_exact_diagnostic_hint() {
         repo.root_path(),
         home.path(),
         Some(overlay.path()),
-        "install",
+        "update",
         "symlinks",
     )
     .arg("--dry-run")

@@ -44,7 +44,7 @@ symlinks: editing `symlinks/` can immediately affect an auto-reloading
 application. Edit tracked sources, not installed copies, and do not restart
 services or deploy the change merely to validate it.
 
-Use fixtures for mutation tests. A real install/uninstall can modify your home,
+Use fixtures for mutation tests. A real update/remove can modify your home,
 Git settings, packages, registry or system files; it is not the default test
 procedure. Do not use private overlay content, credentials or raw machine logs
 as public examples or regression fixtures.
@@ -76,8 +76,8 @@ to review.
 
 Test the failure you are fixing, not just the happy path. For state-changing
 behavior, show what happens on repeat execution, dry-run, missing prerequisites
-and partial failure. Include uninstall only where the feature actually promises
-removal; uninstall is not a universal undo operation.
+and partial failure. Include remove only where the feature actually promises
+removal; remove is not a universal undo operation.
 
 ### 4. Validate and review the exact patch
 
@@ -119,7 +119,7 @@ do not add another execution layer. For a genuinely new section:
 
 Define stable selector, display label, scheduler identity and visibility
 separately. Decide command membership, applicability, elevation and prerequisites
-explicitly. Register static install/uninstall tasks in the catalog;
+explicitly. Register static update/remove tasks in the catalog;
 command-specific tasks belong in that command's task list.
 
 Use failure-blocking edges only when success is required. Use ordering-only

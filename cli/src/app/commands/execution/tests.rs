@@ -25,12 +25,12 @@ fn blocked_dependents<'task>(
 
 #[test]
 fn elevated_child_args_scope_the_run_to_the_elevating_selectors() {
-    let built = build_elevated_child_args(&args(&["install"]), &["developer-mode", "symlinks"]);
+    let built = build_elevated_child_args(&args(&["update"]), &["developer-mode", "symlinks"]);
 
     assert_eq!(
         built,
         args(&[
-            "install",
+            "update",
             "--only",
             "developer-mode,symlinks",
             "--no-parallel",
@@ -43,7 +43,7 @@ fn elevated_child_args_scope_the_run_to_the_elevating_selectors() {
 fn elevated_child_args_preserve_configuration_flags() {
     let built = build_elevated_child_args(
         &args(&[
-            "install",
+            "update",
             "--profile",
             "desktop",
             "--root",
@@ -57,7 +57,7 @@ fn elevated_child_args_preserve_configuration_flags() {
     assert_eq!(
         &built[..7],
         &args(&[
-            "install",
+            "update",
             "--profile",
             "desktop",
             "--root",
@@ -72,8 +72,8 @@ fn elevated_child_args_preserve_configuration_flags() {
 #[test]
 fn elevated_child_args_drop_inherited_task_filters() {
     for filters in [
-        args(&["install", "--only", "packages", "--skip", "registry"]),
-        args(&["install", "--only=packages", "--skip=registry"]),
+        args(&["update", "--only", "packages", "--skip", "registry"]),
+        args(&["update", "--only=packages", "--skip=registry"]),
     ] {
         let built = build_elevated_child_args(&filters, &["developer-mode"]);
 
@@ -85,11 +85,9 @@ fn elevated_child_args_drop_inherited_task_filters() {
 
 #[test]
 fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
-    use clap::Parser as _;
-
     let built = build_elevated_child_args(
         &args(&[
-            "install",
+            "update",
             "--only",
             "symlinks",
             "--with-deps",
@@ -101,7 +99,7 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
     let parsed =
         crate::app::cli::Cli::try_parse_from(std::iter::once("dotfiles".to_string()).chain(built))
             .expect("elevated arguments must remain valid CLI input");
-    let crate::app::cli::Command::Install(opts) = parsed.command else {
+    let crate::app::cli::Command::Update(opts) = parsed.command else {
         panic!("elevation must preserve the install command");
     };
     let store = crate::app::config::store::ConfigStore::from_config(empty_config(
@@ -132,7 +130,7 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
 #[test]
 fn elevated_child_args_do_not_duplicate_repeated_flags() {
     let built = build_elevated_child_args(
-        &args(&["install", "--no-parallel", "--elevated-child"]),
+        &args(&["update", "--no-parallel", "--elevated-child"]),
         &["developer-mode"],
     );
 

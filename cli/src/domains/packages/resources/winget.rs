@@ -173,7 +173,7 @@ const fn classify_install(code: Option<i32>) -> InstallVerdict {
         ) => InstallVerdict::AlreadyInstalled,
         Some(exit_code::INSTALL_REBOOT_REQUIRED_TO_FINISH) => InstallVerdict::Installed,
         Some(exit_code::COMMAND_REQUIRES_ADMIN) => InstallVerdict::Skipped(
-            "requires administrator; re-run `dotfiles install --only packages` from an elevated shell",
+            "requires administrator; re-run `dotfiles update --only packages` from an elevated shell",
         ),
         Some(exit_code::INSTALL_CANCELLED_BY_USER) => {
             InstallVerdict::Skipped("installer elevation was declined")

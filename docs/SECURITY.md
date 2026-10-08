@@ -18,7 +18,7 @@ private disclosure service.
 | Elevation | The selected privileged tasks and all code they call | A sandbox around a task or protection from an already-compromised account |
 | Logs and diagnostics | Paths, command arguments and captured output before sharing | Automatic removal of every secret or private value |
 
-Review the selected work and its sources before install/update. Selection,
+Review the selected work and its sources before update. Selection,
 idempotency and dry-run are operational controls, not trust decisions.
 
 ## Release downloads

@@ -35,10 +35,10 @@ then preview configuration:
 
 ```powershell
 # Downloads/verifies the CLI if it is missing; does not run install tasks.
-.\dotfiles.ps1 tasks --root . --profile desktop
+.\dotfiles.ps1 list --root . --profile desktop
 
 # Use the binary directly once available.
-.\bin\dotfiles.exe install --root . --profile desktop --no-repo-update --dry-run --verbose
+.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --dry-run --verbose
 ```
 
 Use `base` instead of `desktop` for the shell-focused role. The explicit profile
@@ -53,7 +53,7 @@ without leaving the environment changed:
 $previousSkipSelfUpdate = $env:DOTFILES_SKIP_SELF_UPDATE
 try {
     $env:DOTFILES_SKIP_SELF_UPDATE = '1'
-    .\bin\dotfiles.exe install --root . --profile desktop --no-repo-update --dry-run --verbose
+    .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --dry-run --verbose
 } finally {
     $env:DOTFILES_SKIP_SELF_UPDATE = $previousSkipSelfUpdate
 }
@@ -63,7 +63,7 @@ Only after reviewing planned changes and backing up affected files, **apply**
 the current checkout:
 
 ```powershell
-.\bin\dotfiles.exe install --root . --profile desktop --no-repo-update
+.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update
 ```
 
 This can update the CLI binary before applying tasks. `--no-repo-update` keeps
@@ -73,7 +73,7 @@ See [Dry-run scope](USAGE.md#dry-run-scope).
 For a source build that only discovers tasks:
 
 ```powershell
-.\dotfiles.ps1 --build tasks --root . --profile desktop
+.\dotfiles.ps1 --build list --root . --profile desktop
 ```
 
 The wrapper executes Cargo's actual artifact, including custom target/output
@@ -103,8 +103,8 @@ Pending file links still require an appropriate capability or elevation.
 To inspect both operations rather than assuming Developer Mode is ready:
 
 ```powershell
-.\bin\dotfiles.exe tasks --root . --profile desktop --graph install --only symlinks --with-deps
-.\bin\dotfiles.exe install --root . --profile desktop --no-repo-update --only symlinks --with-deps --dry-run --verbose
+.\bin\dotfiles.exe list --root . --profile desktop --graph update --only symlinks --with-deps
+.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only symlinks --with-deps --dry-run --verbose
 ```
 
 `--only symlinks` without `--with-deps` deliberately omits the Developer Mode
@@ -167,7 +167,7 @@ policy/consent issue, rerun from the ordinary terminal. If you intentionally
 use an elevated terminal for Developer Mode only, scope the actual mutation:
 
 ```powershell
-.\bin\dotfiles.exe install --root . --profile desktop --no-repo-update --only developer-mode
+.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only developer-mode
 ```
 
 Then return to the ordinary terminal for the rest. Do not routinely run the
@@ -181,7 +181,7 @@ state and installs only missing configured packages; selecting `update` does
 not request `winget upgrade --all`.
 
 ```powershell
-.\bin\dotfiles.exe install --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
+.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
 ```
 
 If `winget list` fails or its `Id` column cannot be parsed, the task fails
@@ -218,7 +218,7 @@ named settings groups, not role categories. Review them even for the `base`
 profile.
 
 ```powershell
-.\bin\dotfiles.exe install --root . --profile desktop --no-repo-update --only registry --dry-run --verbose
+.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only registry --dry-run --verbose
 ```
 
 Current settings include console, regional formatting, Explorer, taskbar,
@@ -277,12 +277,12 @@ wsl --shutdown
 Then reopen the distribution. Until that restart, the systemd task can remain
 inapplicable because editing the configuration did not start the manager.
 
-## Uninstall
+## Remove
 
 Preview with the original profile/overlay while the sources remain available:
 
 ```powershell
-.\bin\dotfiles.exe uninstall --root . --profile desktop --dry-run --verbose
+.\bin\dotfiles.exe remove --root . --profile desktop --dry-run --verbose
 ```
 
 After review, removing `--dry-run` materializes configured home links and
@@ -290,4 +290,4 @@ removes hooks and the launcher still matching their managed state. Modified
 hooks/launchers and unrelated hook names are preserved. Active overlay scripts
 can also run their removal actions. This is **not** restoration of original Windows
 settings: winget packages, Developer Mode, registry values, PATH, editor
-extensions, and APM state remain. See [Uninstall tasks](TASKS.md#uninstall-tasks).
+extensions, and APM state remain. See [Remove tasks](TASKS.md#remove-tasks).

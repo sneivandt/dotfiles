@@ -35,7 +35,7 @@ There are three different kinds of check:
   source/configuration. Cargo writes build caches; dependency audits can use
   the network. The CLI can write run logs and persist profile/overlay choices
   even though `check` does not apply managed resources.
-- **Host integration:** install/uninstall and application jobs, and the full
+- **Host integration:** update/remove and application jobs, and the full
   commit-hook suite, intentionally mutate their environment. Use a disposable
   checkout **and** a disposable home/runner/VM as appropriate. A clean Git tree
   does not make your real home safe.
@@ -129,7 +129,7 @@ the host-mutating CI integration jobs:
 |---|---|
 | `config_drift` | Real configuration/source/category invariants |
 | `domain_boundaries` | Allowed architectural dependencies and platform/environment boundaries |
-| `install_command`, `uninstall_command`, `test_command` | Command task sets, selection, loading and outcomes (`test_command` tests `check`) |
+| `install_command`, `uninstall_command`, `test_command` | Command task sets, selection, loading and outcomes (`install_command` tests `update`, `uninstall_command` tests `remove`, `test_command` tests `check`) |
 | `task_execution` | Filesystem-backed task/resource convergence and dry-run |
 | `task_output` | Visible statuses, reasons, logs and exit behavior |
 | `lifecycle_contracts` | Shared real-task dry-run, apply/repeat, retry and conservative-removal contracts |
@@ -229,11 +229,11 @@ Preview the smallest affected task set with the **current build**:
 
 ```bash
 cd cli
-cargo run --profile ci -- install --root .. --profile desktop \
+cargo run --profile ci -- update --root .. --profile desktop \
   --no-repo-update --only symlinks --dry-run --verbose
-cargo run --profile ci -- install --root .. --profile desktop \
-  --no-repo-update --update --only apm --dry-run --verbose
-cargo run --profile ci -- uninstall --root .. --profile desktop \
+cargo run --profile ci -- update --root .. --profile desktop \
+  --no-repo-update --only apm --dry-run --verbose
+cargo run --profile ci -- remove --root .. --profile desktop \
   --only symlinks --dry-run --verbose
 ```
 
@@ -487,7 +487,7 @@ history fail explicitly. Release asset names, checksums, provenance, and the
 |---|---|---|---|
 | Rust build/Clippy/tests | Yes | Yes, subject to selection above | Other architectures' runtime behavior |
 | `base`/`desktop` preview and config check | Yes | Yes | Real external installs omitted by those jobs |
-| Install/uninstall round-trip | Yes | Yes | Every possible pre-existing user configuration |
+| Update/remove round-trip | Yes | Yes | Every possible pre-existing user configuration |
 | Wrapper integration | POSIX wrapper | PowerShell wrapper | All network/authentication environments |
 | Applications | Git, zsh, Vim, Neovim | Git | Full Windows package/VS Code installation |
 | Managed Python/PowerShell scripts | Yes | Yes | Native compositor/network/lock session |

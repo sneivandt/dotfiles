@@ -107,7 +107,7 @@ This changes local repository settings, not tracked configuration. Linked
 worktrees can share this local Git configuration; use `--profile` for an
 unambiguous per-run selection.
 
-`tasks` never opens the profile prompt or persists a selection. It requires a
+`list` never opens the profile prompt or persists a selection. It requires a
 profile from the first three sources. Engine commands also require one of
 those sources when stdin is not a terminal, `--non-interactive` is passed, or
 `CI` is present. `log` and help/version output do not require a profile.
@@ -119,8 +119,8 @@ those sources when stdin is not a terminal, `--non-interactive` is passed, or
 With an existing CLI on PATH, run from the repository root:
 
 ```bash
-dotfiles tasks --root . --profile desktop
-dotfiles install --root . --profile desktop --no-repo-update --dry-run --verbose
+dotfiles list --root . --profile desktop
+dotfiles update --root . --profile desktop --no-repo-update --dry-run --verbose
 ```
 
 The second command previews task changes, but still has the bookkeeping and
@@ -129,10 +129,10 @@ It does not update the saved profile.
 
 **Switching roles is not a migration or cleanup operation.** Selecting `base`
 after installing `desktop` stops selecting desktop-only entries; it does not
-uninstall their packages, disable their services, or remove previously
+remove their packages, disable their services, or remove previously
 installed links. Plan any cleanup while the original profile and sources are
-still available. `uninstall` also uses the current selection and only removes
-the integrations in [Uninstall tasks](TASKS.md#uninstall-tasks).
+still available. `remove` also uses the current selection and only removes
+the integrations in [Remove tasks](TASKS.md#remove-tasks).
 
 If configuration seems missing, distinguish:
 

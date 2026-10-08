@@ -238,7 +238,7 @@ function Test-InstallArgumentForwarding {
     try {
         $originalGuard = $env:DOTFILES_REEXEC_GUARD
         $env:DOTFILES_REEXEC_GUARD = '1'
-        $output = & $wrapper install -p base -n --skip vscode-extensions 2>&1
+        $output = & $wrapper update -p base -n --skip vscode-extensions 2>&1
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 
@@ -268,7 +268,7 @@ function Test-AdvancedFlagForwarding {
     try {
         $originalGuard = $env:DOTFILES_REEXEC_GUARD
         $env:DOTFILES_REEXEC_GUARD = '1'
-        $output = & $wrapper install -p base -n --skip symlinks --only packages --no-parallel 2>&1
+        $output = & $wrapper update -p base -n --skip symlinks --only packages --no-parallel 2>&1
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 
@@ -475,7 +475,7 @@ function Test-IsolatedWrapperPath {
         $env:WRAPPER_TEST_BUILD_EXIT = '0'
         $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
         Set-Location -LiteralPath $caller
-        $arguments = @('install', '--dry-run', '--root', '.', '--overlay', '../overlay dir', '', '--BUILD', '--', 'literal value', '--build', '')
+        $arguments = @('update', '--dry-run', '--root', '.', '--overlay', '../overlay dir', '', '--BUILD', '--', 'literal value', '--build', '')
         foreach ($mode in @('cached', 'build', 'bootstrap')) {
             $wrapperArguments = $arguments
             if ($mode -eq 'build') { $wrapperArguments = @('--build') + $arguments }

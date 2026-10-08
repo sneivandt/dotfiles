@@ -133,6 +133,7 @@ no short alias. `dotfiles <command> --help` gives that command's full syntax.
 | `--skip-attestation` | update, remove | Explicitly bypass self-update provenance verification, not checksum verification |
 | `--format table\|plain\|json` | list; log with `--list` | Format discovery/history output |
 | `--graph update\|remove\|check` | list | Inspect that command's graph |
+| `--all` | list without `--graph` | Include tasks clearly inapplicable to the current platform or profile |
 
 `--skip-attestation` is a CLI self-update option, not a bootstrap option.
 `DOTFILES_SKIP_ATTESTATION=1` bypasses provenance checks in both layers. Neither
@@ -245,13 +246,17 @@ working directory cannot select a different lock.
 
 ```bash
 dotfiles list --root . --profile desktop --format json
+dotfiles list --root . --profile desktop --all
 dotfiles list --root . --profile desktop --graph update
 dotfiles list --root . --profile desktop --graph update --only symlinks --with-deps
 ```
 
 The normal list contains `SELECTOR`, `TASK`, and `COMMANDS`. It combines the
-update, remove, check, and active overlay task sets. Listing a task
-does **not** mean it applies on this host.
+update, remove, check, and active overlay task sets. Tasks clearly inapplicable
+to the platform or with no configured work are hidden by default; `--all`
+shows the complete public catalog. Uncertain cases remain visible without
+probing tools or executing scripts. Listing a task does **not** guarantee
+it can run or needs changes on this host.
 
 Graph output includes internal nodes. `BLOCKING` predecessors must succeed;
 `AFTER` predecessors provide ordering only. `SELECTION` distinguishes default,

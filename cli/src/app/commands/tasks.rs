@@ -49,9 +49,9 @@ impl TaskListing {
     }
 }
 
-/// List available visible task selectors without predicting runtime
-/// applicability, creating a run log, acquiring the run lock, or persisting
-/// profile and overlay selections.
+/// List visible task selectors, omitting clearly inapplicable tasks by default.
+/// Discovery never executes tasks, probes runtime prerequisites, creates a run
+/// log, acquires the run lock, or persists profile and overlay selections.
 ///
 /// # Errors
 ///
@@ -83,8 +83,40 @@ pub fn run(opts: &TasksOpts) -> Result<()> {
         let listings = collect_graph(&tasks, &opts.only, &opts.skip, opts.with_deps)?;
         write_graph(&listings, opts.format, &mut stdout.lock())
     } else {
-        let listings = collect_listings(&store, overlay.as_deref())?;
+        let mut listings = collect_listings(&store, overlay.as_deref())?;
+        if !opts.all {
+            listings.retain(|listing| {
+                potentially_applicable(&listing.selector, store.aggregate.get(), platform)
+            });
+        }
         write_listings(&listings, opts.format, &mut stdout.lock())
+    }
+}
+
+/// Only reject tasks whose platform or immutable configuration proves there
+/// is no work. Keep unknown tasks and filesystem/runtime-dependent cases.
+fn potentially_applicable(selector: &str, config: &Config, platform: Platform) -> bool {
+    match selector {
+        "developer-mode" => platform.is_windows(),
+        "registry" => platform.has_registry() && !config.registry.is_empty(),
+        "file-permissions" => platform.supports_chmod() && !config.chmod.is_empty(),
+        "packages" => config.packages.iter().any(|package| !package.is_aur),
+        "aur-packages" => {
+            platform.supports_aur() && config.packages.iter().any(|package| package.is_aur)
+        }
+        "paru" => platform.uses_pacman(),
+        "system-files" => platform.is_linux() && !config.system_files.is_empty(),
+        "systemd" => platform.supports_systemd() && !config.units.is_empty(),
+        "shell" => platform.is_linux(),
+        "vscode-extensions" => !config.vscode_extensions.is_empty(),
+        "agent-settings" => !config.agent_settings.is_empty(),
+        "symlinks" => !config.symlinks.is_empty(),
+        // Windows also removes an unmanaged core.autocrlf setting.
+        "git" => platform.is_windows() || !config.git_settings.is_empty(),
+        "symlink-sources" => {
+            !config.validation_symlinks.is_empty() || !config.validation_chmod.is_empty()
+        }
+        _ => true,
     }
 }
 
@@ -351,6 +383,94 @@ mod tests {
     use std::path::PathBuf;
 
     struct VisibleTask;
+
+    #[test]
+    fn discovery_filters_only_proven_inapplicability() {
+        use crate::infra::platform::Os;
+
+        let config = empty_config(PathBuf::from("/fixture"));
+        for platform in [
+            Platform::new(Os::Linux, true),
+            Platform::new(Os::Windows, false),
+        ] {
+            for selector in [
+                "registry",
+                "file-permissions",
+                "packages",
+                "aur-packages",
+                "system-files",
+                "systemd",
+                "vscode-extensions",
+                "agent-settings",
+                "symlinks",
+                "symlink-sources",
+            ] {
+                assert!(
+                    !potentially_applicable(selector, &config, platform),
+                    "{selector} on {platform}"
+                );
+            }
+            for selector in [
+                "apm",
+                "repository",
+                "git-hooks",
+                "launcher",
+                "path",
+                "shellcheck",
+                "psscriptanalyzer",
+                "apm-plugins",
+                "config-files",
+                "config-warnings",
+                "script-example",
+                "unknown",
+            ] {
+                assert!(
+                    potentially_applicable(selector, &config, platform),
+                    "uncertain or unconditional {selector} on {platform}"
+                );
+            }
+            assert_eq!(
+                potentially_applicable("developer-mode", &config, platform),
+                platform.is_windows()
+            );
+            assert_eq!(
+                potentially_applicable("shell", &config, platform),
+                platform.is_linux()
+            );
+            assert_eq!(
+                potentially_applicable("paru", &config, platform),
+                platform.uses_pacman()
+            );
+            assert_eq!(
+                potentially_applicable("git", &config, platform),
+                platform.is_windows(),
+                "Windows git cleanup applies with empty configuration"
+            );
+        }
+    }
+
+    #[test]
+    fn configured_packages_remain_visible_without_tool_probes() {
+        use crate::domains::packages::config::packages::Package;
+        use crate::infra::platform::Os;
+
+        let mut config = empty_config(PathBuf::from("/fixture"));
+        config.packages = vec![Package {
+            name: "example".into(),
+            is_aur: true,
+        }];
+        let arch = Platform::new(Os::Linux, true);
+        let windows = Platform::new(Os::Windows, false);
+        assert!(potentially_applicable("aur-packages", &config, arch));
+        assert!(!potentially_applicable("aur-packages", &config, windows));
+        assert!(!potentially_applicable("packages", &config, arch));
+        config.packages.push(Package {
+            name: "native-example".into(),
+            is_aur: false,
+        });
+        assert!(potentially_applicable("packages", &config, arch));
+        assert!(potentially_applicable("packages", &config, windows));
+    }
 
     impl Task for VisibleTask {
         fn meta(&self) -> TaskMeta<'_> {

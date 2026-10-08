@@ -295,6 +295,10 @@ pub struct TasksOpts {
     #[arg(long, value_enum, default_value_t)]
     pub format: DiscoveryFormat,
 
+    /// Include tasks clearly inapplicable to this platform or profile
+    #[arg(long, conflicts_with = "graph")]
+    pub all: bool,
+
     /// Show the dependency graph for one command, including internal tasks
     #[arg(long, value_enum, value_name = "COMMAND")]
     pub graph: Option<TaskGraphCommand>,
@@ -811,6 +815,10 @@ mod tests {
         assert_eq!(opts.repository.profile.as_deref(), Some("base"));
         assert_eq!(opts.format, DiscoveryFormat::Json);
         assert_eq!(opts.graph, None);
+        assert!(!opts.all);
+        let all = Cli::parse_from(["dotfiles", "list", "--all"]);
+        assert!(matches!(all.command, Command::List(all_opts) if all_opts.all));
+        assert!(Cli::try_parse_from(["dotfiles", "list", "--all", "--graph", "update"]).is_err());
     }
 
     #[test]

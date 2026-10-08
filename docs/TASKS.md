@@ -6,11 +6,15 @@ From the repository root, with an existing CLI on PATH:
 
 ```bash
 dotfiles list --root . --profile desktop
+dotfiles list --root . --profile desktop --all
 dotfiles list --root . --profile desktop --graph update
 ```
 
-Discovery loads the selected profile and overlay but does not probe machine
-state or execute tasks. A task appearing here may be inapplicable on your host.
+Discovery loads the selected profile and overlay and hides tasks clearly
+inapplicable to the platform or with no configured work. Use `--all` to see
+the complete public catalog. It does not probe machine state or execute tasks;
+uncertain cases remain visible, and missing prerequisites do not hide work.
+Dependency graphs always retain all nodes and cannot be combined with `--all`.
 For command syntax, selection rules, and preview side effects, see
 [Usage](USAGE.md#select-tasks).
 

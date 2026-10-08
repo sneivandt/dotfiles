@@ -97,7 +97,7 @@ pub fn task_candidates() -> Vec<CompletionCandidate> {
         return Vec::new();
     };
     let Ok(output) = ProcessCommand::new(executable)
-        .args(["list", "--format", "json"])
+        .args(["list", "--all", "--format", "json"])
         .args(repository_args)
         .env_remove(COMPLETION_ENV)
         .output()

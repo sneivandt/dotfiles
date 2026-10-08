@@ -238,7 +238,7 @@ function Test-UpdateArgumentForwarding {
     try {
         $originalGuard = $env:DOTFILES_REEXEC_GUARD
         $env:DOTFILES_REEXEC_GUARD = '1'
-        $output = & $wrapper update -p base -n --skip apm,vscode-extensions 2>&1
+        $output = & $wrapper update -p base -n --skip 'apm,vscode-extensions' 2>&1
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 

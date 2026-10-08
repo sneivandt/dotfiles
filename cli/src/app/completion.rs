@@ -261,6 +261,15 @@ mod tests {
     }
 
     #[test]
+    fn standalone_and_unknown_commands_have_no_execution_task_membership() {
+        for command in ["list", "log", "completions", "help", "unknown"] {
+            let words = ["dotfiles", command].map(OsString::from);
+            let expected: &[&str] = &[];
+            assert_eq!(task_memberships(&words), expected, "{command}");
+        }
+    }
+
+    #[test]
     fn task_candidates_follow_command_membership() {
         let json = br#"[
             {"selector":"symlinks","task":"Home symlinks","commands":["update","remove"]},

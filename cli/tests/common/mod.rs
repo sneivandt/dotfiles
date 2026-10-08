@@ -63,9 +63,10 @@ pub(crate) fn cli_command(
         // Fixtures may live below a real checkout; prevent Git discovery from
         // falling through to that checkout's profile, hooks, or run lock.
         initialize_git_repo(repo);
-        command
-            .args(["--profile", "base", "--non-interactive", "--root"])
-            .arg(repo);
+        command.args(["--profile", "base", "--root"]).arg(repo);
+        if verb != "list" {
+            command.arg("--non-interactive");
+        }
         if !selector.is_empty() {
             command.args(["--only", selector]);
         }

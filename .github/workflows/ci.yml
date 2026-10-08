@@ -481,8 +481,9 @@ jobs:
           path: bin/
       - name: Make binary executable
         run: chmod +x bin/dotfiles
-      - name: Dry-run install
-        run: ./bin/dotfiles update --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
+      - name: Dry-run update
+        # APM is not provisioned in this profile matrix.
+        run: ./bin/dotfiles update --root . -p ${{ matrix.profile }} -n --skip apm,vscode-extensions
       - name: Run validation
         # Linters have dedicated jobs; APM is not provisioned in this matrix.
         run: ./bin/dotfiles check --root . -p ${{ matrix.profile }} --skip shellcheck,psscriptanalyzer,apm-plugins
@@ -502,9 +503,10 @@ jobs:
         with:
           name: dotfiles-windows
           path: bin/
-      - name: Dry-run install
+      - name: Dry-run update
+        # APM is not provisioned in this profile matrix.
         shell: bash
-        run: ./bin/dotfiles.exe update --root . -p ${{ matrix.profile }} -n --skip vscode-extensions
+        run: ./bin/dotfiles.exe update --root . -p ${{ matrix.profile }} -n --skip apm,vscode-extensions
       - name: Run validation
         shell: bash
         # Linters have dedicated jobs; APM is not provisioned in this matrix.

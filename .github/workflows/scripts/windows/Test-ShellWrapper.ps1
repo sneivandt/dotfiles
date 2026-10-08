@@ -226,8 +226,8 @@ function Test-ArgumentForwarding {
     }
 }
 
-function Test-InstallArgumentForwarding {
-    Write-TestStage "Testing install argument forwarding through wrapper"
+function Test-UpdateArgumentForwarding {
+    Write-TestStage "Testing update argument forwarding through wrapper"
 
     $wrapper = Join-Path $PSScriptRoot "..\..\..\..\dotfiles.ps1"
     if (-not (Test-Path $wrapper)) {
@@ -238,19 +238,19 @@ function Test-InstallArgumentForwarding {
     try {
         $originalGuard = $env:DOTFILES_REEXEC_GUARD
         $env:DOTFILES_REEXEC_GUARD = '1'
-        $output = & $wrapper update -p base -n --skip vscode-extensions 2>&1
+        $output = & $wrapper update -p base -n --skip apm,vscode-extensions 2>&1
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 
         if ($LASTEXITCODE -eq 0 -and $plain -match 'profile\s+base') {
-            Write-TestPass "Install arguments forwarded correctly"
+            Write-TestPass "Update arguments forwarded correctly"
             return $true
         }
 
-        Write-TestFail "Install forwarding output unexpected: $text"
+        Write-TestFail "Update forwarding output unexpected: $text"
         return $false
     } catch {
-        Write-TestFail "Install argument forwarding failed: $_"
+        Write-TestFail "Update argument forwarding failed: $_"
         return $false
     } finally {
         if ($null -eq $originalGuard) {
@@ -632,7 +632,7 @@ function Invoke-TestSuite {
     $results += Test-ChecksumVerification
     $results += Test-OfflineFallback
     $results += Test-ArgumentForwarding
-    $results += Test-InstallArgumentForwarding
+    $results += Test-UpdateArgumentForwarding
     $results += Test-AdvancedFlagForwarding
     $results += Test-VersionPinnedBootstrapUrl
     $results += Test-AttestationVerification

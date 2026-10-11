@@ -536,7 +536,7 @@ permissions = [
 }
 
 #[test]
-fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
+fn pacman_task_uses_host_config_and_installs_only_missing_packages_in_one_batch() {
     let repo = common::TestContextBuilder::new()
         .with_config_file(
             "packages.toml",
@@ -544,13 +544,6 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
         )
         .with_symlink_source_content("config/pacman.conf", "[options]\nColor\n")
         .build();
-    let pacman_config = repo
-        .root_path()
-        .join("symlinks")
-        .join("config")
-        .join("pacman.conf")
-        .to_string_lossy()
-        .into_owned();
     let executor = Arc::new(RecordingExecutor::new(
         &["pacman", "sudo"],
         vec![
@@ -563,15 +556,7 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
             expect(
                 CallKind::Run,
                 "sudo",
-                &[
-                    "pacman",
-                    "--config",
-                    &pacman_config,
-                    "-Syu",
-                    "--needed",
-                    "--noconfirm",
-                    "ripgrep",
-                ],
+                &["pacman", "-Syu", "--needed", "--noconfirm", "ripgrep"],
                 ok(""),
             ),
         ],
@@ -601,7 +586,7 @@ fn pacman_task_installs_only_missing_native_packages_in_one_batch() {
 }
 
 #[test]
-fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
+fn paru_task_uses_host_config_and_installs_only_missing_aur_packages_without_sudo_wrapper() {
     let repo = common::TestContextBuilder::new()
         .with_config_file(
             "packages.toml",
@@ -609,13 +594,6 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
         )
         .with_symlink_source_content("config/pacman.conf", "[options]\nColor\n")
         .build();
-    let pacman_config = repo
-        .root_path()
-        .join("symlinks")
-        .join("config")
-        .join("pacman.conf")
-        .to_string_lossy()
-        .into_owned();
     let executor = Arc::new(RecordingExecutor::new(
         &[],
         vec![
@@ -640,14 +618,7 @@ fn paru_task_installs_only_missing_aur_packages_without_sudo_wrapper() {
             expect(
                 CallKind::Run,
                 "/usr/bin/paru",
-                &[
-                    "--config",
-                    &pacman_config,
-                    "-S",
-                    "--needed",
-                    "--noconfirm",
-                    "powershell-bin",
-                ],
+                &["-S", "--needed", "--noconfirm", "powershell-bin"],
                 ok(""),
             ),
         ],

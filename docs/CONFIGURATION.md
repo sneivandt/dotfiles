@@ -180,6 +180,8 @@ packages = ["Git.Git", "Microsoft.PowerShell"]
 Regular Arch packages use pacman; `aur = true` sends a package to the separate
 AUR task. Windows entries are winget identifiers. A package declaration is
 platform-specific desired state, not a portable package-name translation.
+Pacman and paru use the host's package-manager configuration, preserving its
+repositories and policies such as `IgnorePkg`.
 When configured packages are missing, the pacman task uses `-Syu`: an ordinary
 update can synchronize package databases and upgrade installed system packages
 as well as add missing ones. See the [task reference](TASKS.md) for provider

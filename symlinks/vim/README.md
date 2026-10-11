@@ -99,10 +99,12 @@ From the repository root, run:
 python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
 ```
 
-These checks use isolated homes beneath the working directory and source only
-the shared `vimrc`, never the plugin bootstrap. They verify that Go's whitespace
-display and snippets' fold level remain local when changing buffers, filetypes,
-or windows. The bootstrap pin is also checked against the tracked lockfile.
+These checks use isolated homes beneath the working directory. Filetype tests
+source the shared `vimrc` and verify that Go's whitespace display and snippets'
+fold level remain local when changing buffers, filetypes, or windows. A Neovim
+startup test loads `init.vim` and `nvimrc` with plugin loading stubbed, checking
+mappings and terminal window transitions without downloading plugins. The
+bootstrap pin is also checked against the tracked lockfile.
 
 CI restores plugins with `:Lazy! restore`, verifies installed commits against
 the tracked lockfile, and rejects lockfile changes during application tests.

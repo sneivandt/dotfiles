@@ -92,21 +92,13 @@ pub(super) fn build_install_plan(
     });
 
     let installed = get_installed_packages(manager, ctx.executor())?;
-    let provider_config = match manager {
-        PackageManager::Pacman | PackageManager::Paru => {
-            let path = ctx.symlinks_dir().join("config").join("pacman.conf");
-            path.is_file().then(|| path.to_string_lossy().into_owned())
-        }
-        PackageManager::Winget => None,
-    };
     let mut missing = Vec::new();
     let mut already_ok = 0usize;
 
     for pkg in packages {
-        let mut resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor_arc());
-        if let Some(path) = &provider_config {
-            resource = resource.with_provider_config(path.clone());
-        }
+        // Use the package manager's host configuration, including repository
+        // selection and policies such as IgnorePkg, for the whole transaction.
+        let resource = PackageResource::new(pkg.name.clone(), manager, ctx.executor_arc());
         if matches!(
             resource.state_from_installed(&installed),
             ResourceState::Correct

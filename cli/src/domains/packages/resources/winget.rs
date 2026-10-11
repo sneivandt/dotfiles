@@ -246,12 +246,7 @@ impl PackageProvider for WingetProvider {
     /// UAC prompt at all. Packages that only ship a machine-scope installer
     /// report `NO_APPLICABLE_INSTALLER`, and are retried unscoped so winget can
     /// raise its own elevation prompt for just that package.
-    fn install(
-        &self,
-        name: &str,
-        executor: &dyn Executor,
-        _config_path: Option<&str>,
-    ) -> Result<ResourceChange> {
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
         let mut result = executor.execute(
             CommandSpec::new("winget")
                 .args(&install_args(name, Some("user")))
@@ -325,7 +320,7 @@ mod tests {
             assert_install_command(&spec, true);
             Ok(result)
         });
-        WingetProvider.install("Git.Git", &mock, None).unwrap()
+        WingetProvider.install("Git.Git", &mock).unwrap()
     }
 
     fn skipped_reason(change: ResourceChange) -> String {
@@ -458,7 +453,7 @@ mod tests {
             })
             .returning(|_| Ok(ExecResult::failure("No package found", "", Some(1))));
 
-        let change = WingetProvider.install("Git.Git", &mock, None).unwrap();
+        let change = WingetProvider.install("Git.Git", &mock).unwrap();
 
         assert_eq!(
             change,
@@ -510,7 +505,7 @@ mod tests {
             });
 
         assert_eq!(
-            WingetProvider.install("Git.Git", &mock, None).unwrap(),
+            WingetProvider.install("Git.Git", &mock).unwrap(),
             ResourceChange::Applied,
         );
     }
@@ -533,7 +528,7 @@ mod tests {
         }
 
         let ResourceChange::Skipped { reason, kind } =
-            WingetProvider.install("Git.Git", &mock, None).unwrap()
+            WingetProvider.install("Git.Git", &mock).unwrap()
         else {
             panic!("expected a skip");
         };
@@ -589,7 +584,7 @@ mod tests {
         }
 
         assert_eq!(
-            WingetProvider.install("Git.Git", &mock, None).unwrap(),
+            WingetProvider.install("Git.Git", &mock).unwrap(),
             ResourceChange::AlreadyCorrect,
         );
     }
@@ -635,7 +630,7 @@ mod tests {
         }
 
         assert_eq!(
-            WingetProvider.install("Git.Git", &mock, None).unwrap(),
+            WingetProvider.install("Git.Git", &mock).unwrap(),
             ResourceChange::unusable("winget install failed: \nno applicable installer"),
         );
     }
@@ -661,7 +656,7 @@ mod tests {
                 assert_install_command(&spec, true);
                 Err(error)
             });
-            let observed = WingetProvider.install("Git.Git", &mock, None).unwrap_err();
+            let observed = WingetProvider.install("Git.Git", &mock).unwrap_err();
             assert_eq!(observed.to_string(), expected, "{label}");
             assert!(observed.downcast_ref::<ExecError>().is_some(), "{label}");
         }

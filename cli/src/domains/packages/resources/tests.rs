@@ -361,30 +361,6 @@ fn native_batch_install_uses_one_checked_command() {
 }
 
 #[test]
-fn inconsistent_provider_configs_are_rejected_before_commands_or_progress() {
-    for manager in [
-        PackageManager::Pacman,
-        PackageManager::Paru,
-        PackageManager::Winget,
-    ] {
-        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::new());
-        let first = PackageResource::new("first".into(), manager, Arc::clone(&executor))
-            .with_provider_config("first.conf".into());
-        let second = PackageResource::new("second".into(), manager, Arc::clone(&executor))
-            .with_provider_config("second.conf".into());
-        let error = install_missing_packages(manager, &[&first, &second], &*executor, &|_| {
-            panic!("invalid batch must not announce an install")
-        })
-        .unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "package batch contains inconsistent provider configuration",
-            "{manager}"
-        );
-    }
-}
-
-#[test]
 fn batch_install_propagates_pacman_error() {
     let mut mock = MockExecutor::new();
     expect_sudo_lookup_if_needed(&mut mock);
@@ -597,12 +573,7 @@ fn install_report_counts_already_correct_packages_separately_from_applied() {
             Ok(HashSet::new())
         }
 
-        fn install(
-            &self,
-            _name: &str,
-            _executor: &dyn Executor,
-            _config_path: Option<&str>,
-        ) -> Result<ResourceChange> {
+        fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
             Ok(ResourceChange::AlreadyCorrect)
         }
     }
@@ -639,12 +610,7 @@ fn install_report_propagates_cancellation_without_starting_later_packages() {
             Ok(HashSet::new())
         }
 
-        fn install(
-            &self,
-            _name: &str,
-            _executor: &dyn Executor,
-            _config_path: Option<&str>,
-        ) -> Result<ResourceChange> {
+        fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Err(ExecError::Cancelled {
                 command: "package install".to_string(),

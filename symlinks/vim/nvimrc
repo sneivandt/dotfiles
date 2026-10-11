@@ -4,8 +4,8 @@
 " Terminal navigation
 augroup NeovimTerminal
   autocmd!
-  autocmd BufWinEnter,WinEnter term:* startinsert
-  autocmd BufLeave term:* stopinsert
+  autocmd TermOpen,BufWinEnter,WinEnter term://* startinsert
+  autocmd BufLeave term://* stopinsert
 augroup END
 
 tnoremap <esc> <C-\><C-n><C-w><C-p>

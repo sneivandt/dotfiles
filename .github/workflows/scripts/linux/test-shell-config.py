@@ -119,6 +119,61 @@ class ShellConfigTests(unittest.TestCase):
         )
         self.assertIn(str(self.home / ".local/bin"), result.stdout.strip().split(":"))
 
+    def test_path_moves_existing_user_directories_ahead_of_system_commands(self):
+        user_paths = [str(self.home / suffix) for suffix in
+                      (".local/bin", ".bin", "src/go/bin", ".cargo/bin")]
+        inherited = ["/usr/bin", user_paths[3], "", "/literal [*] path", "/bin",
+                     user_paths[0], user_paths[3], ""]
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                self.env["PATH"] = ":".join(inherited)
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/path.sh"\n'
+                    'initial_path=$PATH\n'
+                    '. "$ROOT/symlinks/config/shell/path.sh"\n'
+                    '[ "$PATH" = "$initial_path" ] || exit 1\n'
+                    'printf "%s\\n" "$PATH"\n', shell=shell,
+                )
+                self.assertEqual(result.stdout.rstrip("\n").split(":"),
+                                 user_paths + [part for part in inherited if part not in user_paths])
+
+    def test_qt_backend_respects_overrides_and_session(self):
+        for shell in ("bash", "zsh"):
+            for display, backend, expected in (
+                ("wayland-1", "offscreen", "offscreen"),
+                ("wayland-1", "xcb", "xcb"),
+                ("wayland-1", None, "wayland;xcb"),
+                (None, None, "unset"),
+            ):
+                with self.subTest(shell=shell, display=display, backend=backend):
+                    self.env.pop("WAYLAND_DISPLAY", None)
+                    self.env.pop("QT_QPA_PLATFORM", None)
+                    if display is not None:
+                        self.env["WAYLAND_DISPLAY"] = display
+                    if backend is not None:
+                        self.env["QT_QPA_PLATFORM"] = backend
+                    result = self.run_shell(
+                        '. "$ROOT/symlinks/config/shell/profile-arch-desktop.sh"\n'
+                        'printf "%s\\n" "${QT_QPA_PLATFORM-unset}"\n', shell=shell,
+                    )
+                    self.assertEqual(result.stdout.strip(), expected)
+
+    def test_pacman_alias_does_not_override_host_configuration(self):
+        self.write(self.home / ".config/pacman.conf", "[options]\nColor\n")
+        binary = self.write(
+            self.fixture / "bin/pacman", '#!/bin/sh\nprintf "%s\\n" "$@"\n',
+            executable=True,
+        )
+        self.env["PATH"] = str(binary.parent) + ":/usr/bin:/bin"
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/aliases.sh"\n'
+                    'if alias pacman >/dev/null 2>&1; then exit 1; fi\n'
+                    'pacman -Q\n', shell=shell,
+                )
+                self.assertEqual(result.stdout.strip(), "-Q")
+
     def test_interactive_shell_refreshes_gpg_tty(self):
         self.env["GPG_TTY"] = "/dev/pts/inherited"
         for shell, rc in (("bash", "bashrc"), ("zsh", "zshrc")):

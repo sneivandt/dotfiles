@@ -43,13 +43,8 @@ const fn is_root() -> bool {
 fn pacman_invocation<'a>(
     args: &[&'a str],
     executor: &dyn Executor,
-    config_path: Option<&'a str>,
 ) -> Result<(&'static str, Vec<&'a str>)> {
-    let mut pacman_args = Vec::new();
-    if let Some(path) = config_path {
-        pacman_args.extend(["--config", path]);
-    }
-    pacman_args.extend(["-Syu", "--needed", "--noconfirm"]);
+    let mut pacman_args = vec!["-Syu", "--needed", "--noconfirm"];
     pacman_args.extend_from_slice(args);
 
     if is_root() {
@@ -76,13 +71,8 @@ impl PackageProvider for PacmanProvider {
         query_names(executor, "pacman", &["-Q"]).context("querying installed pacman packages")
     }
 
-    fn install(
-        &self,
-        name: &str,
-        executor: &dyn Executor,
-        config_path: Option<&str>,
-    ) -> Result<ResourceChange> {
-        let (program, args) = pacman_invocation(&[name], executor, config_path)?;
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
+        let (program, args) = pacman_invocation(&[name], executor)?;
         executor.execute(CommandSpec::new(program).args(&args))?;
         Ok(ResourceChange::Applied)
     }
@@ -91,9 +81,8 @@ impl PackageProvider for PacmanProvider {
         &self,
         names: &[&'a str],
         executor: &dyn Executor,
-        config_path: Option<&'a str>,
     ) -> Result<Option<(PathBuf, Vec<&'a str>)>> {
-        pacman_invocation(names, executor, config_path)
+        pacman_invocation(names, executor)
             .map(|(program, args)| Some((PathBuf::from(program), args)))
     }
 }
@@ -152,7 +141,7 @@ mod tests {
             .withf(|program| program == "sudo")
             .returning(|_| false);
 
-        let err = pacman_invocation(&["git"], &mock, None).unwrap_err();
+        let err = pacman_invocation(&["git"], &mock).unwrap_err();
 
         assert!(err.to_string().contains("sudo not found"));
     }
@@ -169,7 +158,7 @@ mod tests {
             .withf(|program| program == "sudo")
             .returning(|_| true);
 
-        let (program, args) = pacman_invocation(&["git", "vim"], &mock, None).unwrap();
+        let (program, args) = pacman_invocation(&["git", "vim"], &mock).unwrap();
 
         assert_eq!(program, "sudo");
         assert_eq!(
@@ -179,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    fn pacman_invocation_uses_explicit_config() {
+    fn pacman_invocation_uses_host_config() {
         let mut mock = MockExecutor::new();
         if !is_root() {
             mock.expect_which()
@@ -188,36 +177,14 @@ mod tests {
                 .returning(|_| true);
         }
 
-        let (program, args) =
-            pacman_invocation(&["git"], &mock, Some("/repo/symlinks/config/pacman.conf")).unwrap();
+        let (program, args) = pacman_invocation(&["git"], &mock).unwrap();
 
         if is_root() {
             assert_eq!(program, "pacman");
-            assert_eq!(
-                args,
-                [
-                    "--config",
-                    "/repo/symlinks/config/pacman.conf",
-                    "-Syu",
-                    "--needed",
-                    "--noconfirm",
-                    "git"
-                ]
-            );
+            assert_eq!(args, ["-Syu", "--needed", "--noconfirm", "git"]);
         } else {
             assert_eq!(program, "sudo");
-            assert_eq!(
-                args,
-                [
-                    "pacman",
-                    "--config",
-                    "/repo/symlinks/config/pacman.conf",
-                    "-Syu",
-                    "--needed",
-                    "--noconfirm",
-                    "git"
-                ]
-            );
+            assert_eq!(args, ["pacman", "-Syu", "--needed", "--noconfirm", "git"]);
         }
     }
 }

@@ -52,12 +52,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the installation command fails.
-    fn install(
-        &self,
-        name: &str,
-        executor: &dyn Executor,
-        config_path: Option<&str>,
-    ) -> Result<ResourceChange>;
+    fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange>;
 
     /// Build a single command invocation that installs every name in `names`.
     ///
@@ -74,9 +69,8 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         &self,
         names: &[&'a str],
         executor: &dyn Executor,
-        config_path: Option<&'a str>,
     ) -> Result<Option<(PathBuf, Vec<&'a str>)>> {
-        let _ = (names, executor, config_path);
+        let _ = (names, executor);
         Ok(None)
     }
 
@@ -111,17 +105,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
             .iter()
             .map(|resource| resource.name.as_str())
             .collect();
-        let config_path = resources
-            .first()
-            .and_then(|resource| resource.provider_config.as_deref());
-        if resources
-            .iter()
-            .any(|resource| resource.provider_config.as_deref() != config_path)
-        {
-            anyhow::bail!("package batch contains inconsistent provider configuration");
-        }
-
-        if let Some((program, args)) = self.batch_invocation(&names, executor, config_path)? {
+        if let Some((program, args)) = self.batch_invocation(&names, executor)? {
             for name in &names {
                 progress(name);
             }
@@ -146,7 +130,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         let mut report = PackageInstallReport::new();
         for resource in resources {
             progress(&resource.name);
-            match self.install(&resource.name, executor, config_path) {
+            match self.install(&resource.name, executor) {
                 Ok(ResourceChange::Applied) => {
                     report.record_applied(resource.name.clone());
                 }
@@ -246,8 +230,6 @@ pub struct PackageResource {
     pub manager: PackageManager,
     /// Provider implementation for this package manager.
     provider: &'static dyn PackageProvider,
-    /// Optional package-manager configuration file.
-    provider_config: Option<String>,
     /// Executor for running package manager commands.
     executor: Arc<dyn Executor>,
 }
@@ -260,16 +242,8 @@ impl PackageResource {
             name,
             manager,
             provider: manager.provider(),
-            provider_config: None,
             executor,
         }
-    }
-
-    /// Use an explicit package-manager configuration file for mutations.
-    #[must_use]
-    pub fn with_provider_config(mut self, config_path: String) -> Self {
-        self.provider_config = Some(config_path);
-        self
     }
 
     /// Determine the resource state from a pre-fetched set of installed package names.
@@ -330,7 +304,7 @@ impl Resource for PackageResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         self.provider
-            .install(&self.name, &*self.executor, self.provider_config.as_deref())
+            .install(&self.name, &*self.executor)
             .map_err(|err| {
                 crate::engine::resource::ResourceError::command_failed(
                     self.provider.name(),

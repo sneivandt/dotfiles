@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 import uuid
 
@@ -49,6 +50,36 @@ class VimConfigTests(unittest.TestCase):
 
     def test_neovim_filetype_options(self):
         self.check_filetype_options("nvim")
+
+    def test_neovim_startup_and_terminal_navigation(self):
+        executable = shutil.which("nvim")
+        if executable is None:
+            self.skipTest("nvim is not available")
+        with tempfile.TemporaryDirectory(prefix=".nvim-startup-test-", dir=Path.cwd()) as directory:
+            fixture = Path(directory)
+            home = fixture / "home with spaces"
+            home.mkdir()
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            for key in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "TMPDIR"):
+                path = fixture / key.lower()
+                path.mkdir()
+                env[key] = str(path)
+            for key in ("VIMINIT", "EXINIT", "NVIM_APPNAME"):
+                env.pop(key, None)
+            env["NVIM_LOG_FILE"] = str(fixture / "nvim.log")
+            env["DOTFILES_NVIM_STARTUP_TEST"] = str(CONFIG / "tests/test_startup.lua")
+            (home / ".vim").symlink_to(CONFIG, target_is_directory=True)
+            (Path(env["XDG_CONFIG_HOME"]) / "nvim").symlink_to(CONFIG, target_is_directory=True)
+            # Exercise the actual entry points without installing or loading plugins.
+            stub = 'lua package.preload["lazy-bootstrap"] = function() vim.g.test_bootstrap_loaded = true; return {} end'
+            result = subprocess.run(
+                [executable, "--headless", "-i", "NONE", "-n", "--noplugin",
+                 "--cmd", stub, "-c", "lua dofile(vim.env.DOTFILES_NVIM_STARTUP_TEST)"],
+                cwd=fixture, env=env, text=True, capture_output=True, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse((Path(env["XDG_DATA_HOME"]) / "nvim/lazy").exists())
 
 
 if __name__ == "__main__":

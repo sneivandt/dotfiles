@@ -1,6 +1,6 @@
 //! Processing strategy and action types for the resource lifecycle state machine.
 
-/// Processing strategy that determines how each [`ResourceState`] variant is handled.
+/// Processing strategy that determines how each [`ResourceState`](crate::engine::resource::ResourceState) variant is handled.
 ///
 /// Each variant encodes a specific combination of behaviours — which states
 /// are fixable and whether errors are fatal — so the intent is explicit

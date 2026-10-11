@@ -50,7 +50,10 @@ fi
 # renamed with edits still gets formatted, linted, and tested.
 STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
 # Deletions and renames away from .rs can also break the crate.
-RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- '*.rs')
+RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- \
+  '*.rs' cli/Cargo.toml cli/Cargo.lock \
+  cli/rust-toolchain.toml cli/rust-toolchain rust-toolchain.toml rust-toolchain \
+  cli/.cargo/config.toml cli/.cargo/config .cargo/config.toml .cargo/config)
 
 # Check an exported index rather than temporarily replacing the working tree.
 if [ -z "$RUST_CHANGED" ] && ! printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1|psd1)$'; then
@@ -72,6 +75,7 @@ export CARGO_TARGET_DIR
 if [ -n "$RUST_CHANGED" ]; then
   CLI_ROOT="$CHECK_ROOT/cli"
   MANIFEST="$CLI_ROOT/Cargo.toml"
+  sh "$(dirname -- "$0")/check-toolchain.sh" "$CLI_ROOT"
 
   printf "Running cargo fmt --check...\n"
   if ! run_cargo fmt --manifest-path "$MANIFEST" --check 2>&1; then
@@ -85,7 +89,7 @@ if [ -n "$RUST_CHANGED" ]; then
   fi
 
   printf "Running cargo clippy (host)...\n"
-  if ! run_cargo clippy --profile ci --manifest-path "$MANIFEST" --all-targets -- -D warnings 2>&1; then
+  if ! run_cargo clippy --locked --profile ci --manifest-path "$MANIFEST" --all-targets -- -D warnings 2>&1; then
     printf '\n%s======================================================%s\n' "$RED" "$NC"
     printf '%sCommit aborted: cargo clippy reported warnings.%s\n' "$RED" "$NC"
     printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
@@ -99,7 +103,7 @@ if [ -n "$RUST_CHANGED" ]; then
     if run_rustc --print target-list 2>/dev/null | grep -qx "$WIN_TARGET" \
        && run_rustc --print sysroot 2>/dev/null | xargs -I{} test -d "{}/lib/rustlib/$WIN_TARGET"; then
       printf "Running cargo clippy (%s)...\n" "$WIN_TARGET"
-      if ! run_cargo clippy --profile ci --manifest-path "$MANIFEST" --target "$WIN_TARGET" --all-targets -- -D warnings 2>&1; then
+      if ! run_cargo clippy --locked --profile ci --manifest-path "$MANIFEST" --target "$WIN_TARGET" --all-targets -- -D warnings 2>&1; then
         printf '\n%s======================================================%s\n' "$RED" "$NC"
         printf '%sCommit aborted: cargo clippy reported warnings on %s.%s\n' "$RED" "$WIN_TARGET" "$NC"
         printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"
@@ -112,7 +116,7 @@ if [ -n "$RUST_CHANGED" ]; then
     fi
 
     printf "Running cargo test...\n"
-    if ! run_cargo test --profile ci --manifest-path "$MANIFEST" 2>&1; then
+    if ! run_cargo test --locked --profile ci --manifest-path "$MANIFEST" 2>&1; then
       printf '\n%s======================================================%s\n' "$RED" "$NC"
       printf '%sCommit aborted: cargo test failed.%s\n' "$RED" "$NC"
       printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"

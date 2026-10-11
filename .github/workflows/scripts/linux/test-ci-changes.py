@@ -244,7 +244,7 @@ class GateTests(unittest.TestCase):
             CONTRACT["check_release"](release.replace("run_release == 'true'", "true"))
         for platform in ("linux", "windows"):
             build = CONTRACT["job_blocks"](workflow)["build-" + platform]
-            for step in ("Clippy", "Tests"):
+            for step in (("Clippy", "Tests", "Rustdoc") if platform == "linux" else ("Clippy", "Tests")):
                 self.assertIn(
                     f"- name: {step}\n        if: needs.classify-changes.outputs.run_rust_checks == 'true'",
                     build,

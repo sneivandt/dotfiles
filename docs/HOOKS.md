@@ -60,11 +60,13 @@ The sensitive scan always runs first. The remaining work depends on staged paths
 | Added/modified/renamed text | Sensitive-pattern scan of added lines |
 | `.rs` change, including deletion or rename away from `.rs` | Whole-crate formatting and host Clippy (`ci` profile, all targets, warnings denied) |
 | Present `.ps1`/`.psm1`/`.psd1` change | PSScriptAnalyzer on those staged files, if `pwsh` exists |
-| Only a Cargo manifest/lockfile, TOML data, shell script or workflow | No Rust compilation solely because of that path; use full guards/local checks as applicable |
+| Cargo manifest/lockfile, toolchain, or Cargo configuration (including deletion/rename) | Whole-crate formatting and host Clippy, using the staged compiler pin |
+| Only TOML data, shell script or workflow | No Rust compilation solely because of that path; use full guards/local checks as applicable |
 
 Missing `pwsh` skips PowerShell analysis. If `pwsh` exists but PSScriptAnalyzer
 is missing or broken, the check fails. The hook does not install tools for you;
-Rust-triggered checks require the configured Cargo toolchain.
+Rust-triggered checks reject a compiler version that differs from the staged
+`cli/rust-toolchain.toml` pin; they do not switch or install toolchains.
 
 ## Scan scope
 

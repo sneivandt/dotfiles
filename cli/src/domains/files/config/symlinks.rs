@@ -39,9 +39,9 @@ pub struct Symlink {
     /// Used to resolve `source` against `<origin>/symlinks/`.
     ///
     /// `None` only transiently while a section is being loaded; [`set_origin`]
-    /// runs as the post-load step in [`Config::load`](super::Config::load) and
+    /// runs as the post-load step in [`Config::load`](crate::app::config::Config::load) and
     /// stamps every entry with its originating root (main or overlay), so the
-    /// field is always `Some` by the time a [`Config`](super::Config) is
+    /// field is always `Some` by the time a [`Config`](crate::app::config::Config) is
     /// returned. [`resolve_symlinks_dir`] falls back to a supplied root for the
     /// remaining `None` window.
     pub origin: Option<PathBuf>,
@@ -82,7 +82,7 @@ config_section! {
 /// Stamp the originating repository root onto every symlink entry.
 ///
 /// This is the post-load provenance step invoked by
-/// [`Config::load`](super::Config::load) once a section has been parsed: main
+/// [`Config::load`](crate::app::config::Config::load) once a section has been parsed: main
 /// entries get the repo root and overlay entries get the overlay root, so
 /// [`resolve_symlinks_dir`] can locate each entry's `symlinks/` directory.
 pub(crate) fn set_origin(symlinks: &mut [Symlink], root: &Path) {

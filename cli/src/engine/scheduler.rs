@@ -1,6 +1,6 @@
 //! Dependency-driven parallel task scheduling.
 //!
-//! Provides [`run_tasks_parallel`](crate::engine::scheduler::run_tasks_parallel) for executing tasks concurrently using OS
+//! Provides `run_tasks_parallel` for executing tasks concurrently using OS
 //! threads.
 
 use std::collections::HashMap;

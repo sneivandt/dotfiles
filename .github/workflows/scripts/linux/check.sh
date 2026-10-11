@@ -2,9 +2,8 @@
 #
 # check.sh — canonical local verification entry point.
 #
-# Runs the same checks CI runs, in one command, so "passed locally" and
-# "passed in CI" mean the same thing. Every stage is optional-tool aware: if a
-# stage's tool is not installed it is reported as SKIP rather than failing, so
+# Runs the core repository checks used by CI in one command. Every stage is
+# optional-tool aware: if a stage's tool is not installed it is reported as SKIP rather than failing, so
 # the script stays usable on a minimal machine.
 #
 # Usage:
@@ -27,7 +26,7 @@ cd "$REPO_ROOT/cli" || exit 1
 CARGO_PROFILE=ci
 
 # Stages run when no stage arguments are given.
-DEFAULT_STAGES="fmt clippy test config docs ci shell powershell audit deny"
+DEFAULT_STAGES="fmt clippy test rustdoc config docs ci shell powershell audit deny"
 
 # Stages only run when explicitly requested or via --all. `msrv` downloads a
 # second toolchain; `qml` requires Qt >= 6.8 Quick Test.
@@ -100,12 +99,14 @@ run_stage()
 stage_fmt()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
+  sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo fmt --check --manifest-path "$MANIFEST"
 }
 
 stage_clippy()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
+  sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo clippy --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
     --all-targets -- -D warnings
 }
@@ -113,13 +114,23 @@ stage_clippy()
 stage_test()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
+  sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo test --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST"
+}
+
+stage_rustdoc()
+{
+  have cargo || { note "cargo not installed; skipping"; return 2; }
+  sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
+  cargo doc --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
+    --no-deps --document-private-items
 }
 
 # Runs the CLI's own repository validator against this working tree.
 stage_config()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
+  sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo run --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" -- \
     check --root "$REPO_ROOT" --profile desktop --only config-warnings,symlink-sources,config-files
 }
@@ -127,6 +138,9 @@ stage_config()
 # Mirrors the CI documentation consistency job.
 stage_docs()
 {
+  if have cargo; then
+    sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
+  fi
   DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-docs.sh" \
     docs_links docs_task_selectors
 }

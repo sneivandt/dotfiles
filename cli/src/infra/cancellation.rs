@@ -1,9 +1,9 @@
 //! Process-wide cancellation flag for graceful shutdown.
 //!
-//! `CancellationToken` wraps an [`AtomicFlag`](AtomicFlag)
+//! `CancellationToken` wraps an `AtomicFlag`
 //! and exposes only the two operations needed for cooperative cancellation:
-//! [`CancellationToken::cancel`] (called by the signal handler) and
-//! [`CancellationToken::is_cancelled`] (polled by processing loops before each
+//! `CancellationToken::cancel` (called by the signal handler) and
+//! `CancellationToken::is_cancelled` (polled by processing loops before each
 //! work item).
 
 use super::atomic_flag::AtomicFlag;
@@ -12,7 +12,7 @@ use super::atomic_flag::AtomicFlag;
 /// has been asked to shut down (e.g. via Ctrl-C).
 ///
 /// Create one instance with [`CancellationToken::new`] and clone it for the
-/// signal handler and the execution [`Context`](super::Context).
+/// signal handler and the execution [`Context`](crate::engine::context::Context).
 #[derive(Debug, Clone, Default)]
 pub struct CancellationToken {
     flag: AtomicFlag,

@@ -51,7 +51,7 @@ pub(super) fn create_symlink(target: &Path, link: &Path, executor: &dyn Executor
 /// command shell.
 ///
 /// The `remove_dir_all` retry is confined to link-like entries. Callers such as
-/// [`super::SymlinkResource::apply`] invoke this on whatever currently occupies
+/// [`Resource::apply`](crate::engine::resource::Resource::apply) invoke this on whatever currently occupies
 /// the target, which may be a real user directory; recursing into one because
 /// it happened to be access-denied would destroy user data. `remove_dir_all` on
 /// a directory symlink removes only the link, so restricting the retry keeps

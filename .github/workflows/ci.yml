@@ -301,6 +301,9 @@ jobs:
       - name: Tests
         if: needs.classify-changes.outputs.run_rust_checks == 'true'
         run: cargo test --locked --profile ci
+      - name: Rustdoc
+        if: needs.classify-changes.outputs.run_rust_checks == 'true'
+        run: cargo doc --locked --profile ci --no-deps --document-private-items
       - name: Configuration drift tests
         if: needs.classify-changes.outputs.run_config_drift == 'true' && needs.classify-changes.outputs.run_rust_checks != 'true'
         run: cargo test --locked --profile ci --test config_drift

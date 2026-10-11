@@ -53,6 +53,7 @@ They share CI's Cargo profile, but **do not run the entire CI workflow**.
 For stages that use Rust, first
 [select and verify the pinned toolchain](CONTRIBUTING.md#selecting-the-pinned-toolchain).
 The scripts use Cargo from PATH; they do not switch toolchains themselves.
+Compiler stages reject a `rustc` version that differs from the repository pin.
 
 ```bash
 sh .github/workflows/scripts/linux/check.sh --list
@@ -72,6 +73,7 @@ With no stage names, each script runs its default stages:
 |---|---|---|
 | `fmt` | `cargo fmt --check` | Requires Cargo and rustfmt |
 | `clippy` | Host `cargo clippy --profile ci --all-targets -- -D warnings` | Does not include cross-target Clippy |
+| `rustdoc` | `cargo doc --locked --profile ci --no-deps --document-private-items` | Checks configured rustdoc lints; does not publish docs |
 | `test` | `cargo test --profile ci` | Does not run shell/PowerShell CI integration scripts |
 | `config` | CLI `check --profile desktop --only config-warnings,symlink-sources,config-files` | Intentionally excludes external APM/linters |
 | `docs` | Relative inline Markdown links/heading anchors and static task-selector inventory | Linux entrypoint only; selector check requires Cargo |

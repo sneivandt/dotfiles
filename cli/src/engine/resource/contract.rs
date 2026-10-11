@@ -180,7 +180,7 @@ pub enum ResourceChange {
     /// `kind` mirrors [`ApplyOperation::Skip`] in the planning layer: a skip
     /// decided at apply time is not automatically a failure.
     ///
-    /// [`ApplyOperation::Skip`]: crate::engine::ApplyOperation::Skip
+    /// [`ApplyOperation::Skip`]: crate::engine::plan::ApplyOperation::Skip
     Skipped {
         /// Reason why the resource was skipped.
         reason: String,

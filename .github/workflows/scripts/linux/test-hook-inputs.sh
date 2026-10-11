@@ -284,10 +284,15 @@ printf '%s\n' "$1" >> "$HOOK_INPUT_LOG"
 [ "$(cat src/lib.rs)" = valid-staged ]
 [ "$(cat ../conf/fixture.toml)" = staged-config ]
 [ ! -e src/untracked.rs ]
+exit "${MOCK_CARGO_EXIT:-0}"
 EOF
 cat > "$fixture/mock-bin/rustc" <<'EOF'
 #!/bin/sh
-exit 1
+if [ "$1" = --version ]; then
+  printf 'rustc %s (fixture)\n' "${MOCK_RUST_VERSION:-1.95.0}"
+else
+  exit 1
+fi
 EOF
 cat > "$fixture/mock-bin/pwsh" <<'EOF'
 #!/bin/sh
@@ -319,6 +324,7 @@ log_stage "Checking index-only Rust and PowerShell hook inputs"
   cd "$fixture/index repo"
   init_fixture_repository
   printf '[package]\nname = "fixture"\nversion = "0.1.0"\n' > cli/Cargo.toml
+  printf '[toolchain]\nchannel = "1.95.0"\n' > cli/rust-toolchain.toml
   printf 'invalid-staged\n' > cli/src/lib.rs
   printf 'valid-staged\n' > 'script with spaces.ps1'
   printf 'staged-config\n' > conf/fixture.toml
@@ -346,6 +352,71 @@ log_stage "Checking index-only Rust and PowerShell hook inputs"
     log_error "PowerShell hook accepted invalid staged content hidden by an unstaged fix"
   fi
   grep -q 'PSScriptAnalyzer reported issues' "$fixture/output" || log_error "PowerShell hook failure was not explained"
+)
+
+log_stage "Checking compiler pin and Cargo-only staged changes"
+(
+  cd "$fixture/index repo"
+  init_fixture_repository
+  rm -f cli/src/untracked.rs
+  # Restore the previously staged valid fixture; commit only inside this fixture.
+  printf 'valid-staged\n' > cli/src/lib.rs
+  printf 'valid-staged\n' > 'script with spaces.ps1'
+  printf 'staged-config\n' > conf/fixture.toml
+  git add cli conf 'script with spaces.ps1'
+  git -c user.name=Fixture -c user.email=fixture@test.local commit -qm baseline
+  for path in cli/Cargo.toml cli/Cargo.lock cli/rust-toolchain.toml cli/.cargo/config.toml .cargo/config.toml; do
+    mkdir -p "$(dirname "$path")"
+    printf '\n# staged change\n' >> "$path"
+    git add "$path"
+    : > "$HOOK_INPUT_LOG"
+    sh "$DIR/hooks/check-rust.sh"
+    [ "$(cat "$HOOK_INPUT_LOG")" = "$(printf '%s\n' fmt clippy)" ] ||
+      log_error "Cargo-only change did not trigger checks: $path"
+    git -c user.name=Fixture -c user.email=fixture@test.local commit -qm fixture
+  done
+  git rm -q cli/.cargo/config.toml
+  : > "$HOOK_INPUT_LOG"
+  sh "$DIR/hooks/check-rust.sh"
+  [ "$(cat "$HOOK_INPUT_LOG")" = "$(printf '%s\n' fmt clippy)" ] ||
+    log_error "Deleted Cargo configuration did not trigger checks"
+  : > "$HOOK_INPUT_LOG"
+  if MOCK_RUST_VERSION=1.99.0 sh "$DIR/hooks/check-rust.sh" > "$fixture/output" 2>&1; then
+    log_error "Hook accepted the wrong compiler"
+  fi
+  grep -q 'Pinned Rust 1.95.0 required' "$fixture/output" || log_error "Missing compiler mismatch explanation"
+  [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Cargo ran before the compiler guard"
+  # A working-tree pin must not override the staged pin.
+  printf '[toolchain]\nchannel = "1.99.0"\n' > cli/rust-toolchain.toml
+  sh "$DIR/hooks/check-rust.sh"
+  git restore cli/rust-toolchain.toml
+  git -c user.name=Fixture -c user.email=fixture@test.local commit -qm deletion
+  git mv .cargo/config.toml .cargo/config
+  : > "$HOOK_INPUT_LOG"
+  sh "$DIR/hooks/check-rust.sh"
+  [ "$(cat "$HOOK_INPUT_LOG")" = "$(printf '%s\n' fmt clippy)" ] ||
+    log_error "Renamed Cargo configuration did not trigger checks"
+  git -c user.name=Fixture -c user.email=fixture@test.local commit -qm rename
+  : > "$HOOK_INPUT_LOG"
+  sh "$DIR/hooks/check-rust.sh"
+  [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Empty staged diff triggered Cargo"
+
+  # Exercise canonical local stages using the same mock compiler and Cargo.
+  mkdir -p .github/workflows/scripts/linux hooks
+  cp "$DIR/.github/workflows/scripts/linux/check.sh" .github/workflows/scripts/linux/check.sh
+  cp "$DIR/hooks/check-toolchain.sh" hooks/check-toolchain.sh
+  : > "$HOOK_INPUT_LOG"
+  sh .github/workflows/scripts/linux/check.sh fmt rustdoc
+  [ "$(cat "$HOOK_INPUT_LOG")" = "$(printf '%s\n' fmt doc)" ] ||
+    log_error "Local rustdoc stage did not invoke Cargo"
+  : > "$HOOK_INPUT_LOG"
+  if MOCK_RUST_VERSION=1.99.0 sh .github/workflows/scripts/linux/check.sh rustdoc > "$fixture/output" 2>&1; then
+    log_error "Local check accepted the wrong compiler"
+  fi
+  [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Local Cargo ran before the compiler guard"
+  if MOCK_CARGO_EXIT=1 sh .github/workflows/scripts/linux/check.sh rustdoc > "$fixture/output" 2>&1; then
+    log_error "Local check ignored a rustdoc failure"
+  fi
 )
 
 log_stage "Checking ShellCheck paths containing spaces and glob characters"

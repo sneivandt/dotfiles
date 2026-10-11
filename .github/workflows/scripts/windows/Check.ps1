@@ -3,9 +3,8 @@
     Canonical local verification entry point (PowerShell twin of .github/workflows/scripts/linux/check.sh).
 
 .DESCRIPTION
-    Runs the same checks CI runs, in one command, so "passed locally" and
-    "passed in CI" mean the same thing. Every stage is optional-tool aware: if
-    a stage's tool is not installed it is reported as SKIP rather than
+    Runs the core repository checks used by CI in one command. Every stage is
+    optional-tool aware: if a stage's tool is not installed it is reported as SKIP rather than
     failing, so the script stays usable on a minimal machine.
 
     Exit status is non-zero if any stage failed.
@@ -50,7 +49,7 @@ Set-Location (Join-Path $RepoRoot 'cli') -ErrorAction Stop
 # Match the profile CI builds with so local failures reproduce CI failures.
 $CargoProfile = 'ci'
 
-$DefaultStages = @('fmt', 'clippy', 'test', 'config', 'shell', 'powershell', 'audit', 'deny')
+$DefaultStages = @('fmt', 'clippy', 'test', 'rustdoc', 'config', 'shell', 'powershell', 'audit', 'deny')
 
 # Stages only run when explicitly requested or via -All. 'msrv' downloads a
 # second toolchain, which is too slow for the default loop.
@@ -99,6 +98,31 @@ function Invoke-Tool
     return 'pass'
 }
 
+function Test-PinnedToolchain
+{
+    $pin = Select-String -Path (Join-Path $RepoRoot 'cli/rust-toolchain.toml') -Pattern '^channel\s*=\s*"([^"]+)"' |
+        Select-Object -First 1
+    if (-not $pin)
+    {
+        Write-Note 'Cannot read pinned Rust version from cli/rust-toolchain.toml'
+        return $false
+    }
+    $expected = $pin.Matches[0].Groups[1].Value
+    if (-not (Test-ToolAvailable 'rustc'))
+    {
+        Write-Note 'rustc not installed'
+        return $false
+    }
+    $actual = & rustc --version
+    if ($LASTEXITCODE -ne 0 -or $actual -notlike "rustc $expected *")
+    {
+        Write-Note "Pinned Rust $expected required; PATH selected $actual."
+        Write-Note 'Select the pinned toolchain as described in docs/CONTRIBUTING.md#selecting-the-pinned-toolchain.'
+        return $false
+    }
+    return $true
+}
+
 function Invoke-CargoStage
 {
     param([Parameter(Mandatory = $true)][string[]]$ToolArguments)
@@ -107,6 +131,10 @@ function Invoke-CargoStage
     {
         Write-Note 'cargo not installed; skipping'
         return 'skip'
+    }
+    if (-not (Test-PinnedToolchain))
+    {
+        return 'FAIL'
     }
     return Invoke-Tool -FilePath 'cargo' -ToolArguments $ToolArguments
 }
@@ -140,6 +168,13 @@ $StageActions = @{
 
     test     = {
         Invoke-CargoStage @('test', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest)
+    }
+
+    rustdoc  = {
+        Invoke-CargoStage @(
+            'doc', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest,
+            '--no-deps', '--document-private-items'
+        )
     }
 
     # Runs the CLI's own repository validator against this working tree.

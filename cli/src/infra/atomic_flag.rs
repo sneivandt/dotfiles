@@ -1,6 +1,6 @@
 //! Shared one-shot boolean flag backing cross-thread signalling primitives.
 //!
-//! [`AtomicFlag`] wraps an `Arc<AtomicBool>` and is the common implementation
+//! `AtomicFlag` wraps an `Arc<AtomicBool>` and is the common implementation
 //! behind cancellation and command-restart signals. It is cheaply clonable;
 //! all clones share the same underlying flag.
 

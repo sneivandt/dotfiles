@@ -5,19 +5,18 @@ import Quickshell
 import Quickshell.Io
 import "Theme.js" as Theme
 
-Row {
+BarGroup {
     id: root
 
     required property var items
     required property var anchorWindow
     required property var menuController
-    readonly property var regularItems: items.filter(item => item && !appName(item))
-    readonly property var assistantItems: items.filter(item => appName(item))
+    readonly property var shownItems: items.filter(item => item)
     property string copilotError: ""
     property bool _copilotActive: false
 
-    spacing: Theme.spacing
-    visible: regularItems.length + assistantItems.length > 0
+    implicitWidth: shownItems.length * Theme.barControlHeight
+    visible: shownItems.length > 0
 
     function openCopilot() {
         if (_copilotActive || copilotProcess.running)
@@ -68,39 +67,20 @@ Row {
         return "";
     }
 
-    BarGroup {
-        visible: root.regularItems.length > 0
-        implicitWidth: root.regularItems.length * Theme.barControlHeight
-        Row {
-            Repeater {
-                model: root.regularItems
-                TrayButton {
-                    required property var modelData
-                    trayItem: modelData
-                    anchorWindow: root.anchorWindow
-                    menuController: root.menuController
-                }
-            }
-        }
-    }
-
-    BarGroup {
-        visible: root.assistantItems.length > 0
-        implicitWidth: root.assistantItems.length * Theme.barControlHeight
-        Row {
-            Repeater {
-                model: root.assistantItems
-                TrayButton {
-                    required property var modelData
-                    trayItem: modelData
-                    anchorWindow: root.anchorWindow
-                    menuController: root.menuController
-                    appName: root.appName(modelData)
-                    customIcon: Qt.resolvedUrl(appName === "GitHub Copilot" ? "icons/copilot.svg" : "icons/chatgpt.svg")
-                    customActivation: appName === "GitHub Copilot"
-                    activationError: customActivation ? root.copilotError : ""
-                    onActivationRequested: root.openCopilot()
-                }
+    Row {
+        objectName: "trayRow"
+        Repeater {
+            model: root.shownItems
+            TrayButton {
+                required property var modelData
+                trayItem: modelData
+                anchorWindow: root.anchorWindow
+                menuController: root.menuController
+                appName: root.appName(modelData)
+                customIcon: appName ? Qt.resolvedUrl(appName === "GitHub Copilot" ? "icons/copilot.svg" : "icons/chatgpt.svg") : ""
+                customActivation: appName === "GitHub Copilot"
+                activationError: customActivation ? root.copilotError : ""
+                onActivationRequested: root.openCopilot()
             }
         }
     }

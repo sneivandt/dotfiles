@@ -72,24 +72,28 @@ Item {
             });
         }
 
-        function test_partition_and_custom_icons() {
+        function trayButton(tray, index) {
+            return findChild(tray, "trayRow").children[index];
+        }
+
+        function test_single_tray_and_custom_icons() {
             const regular = item();
             const copilot = item({ title: "github" });
             const chatgpt = item({ id: "chrome_status_icon_1", tooltipTitle: "ChatGPT" });
             const tray = group([regular, chatgpt, copilot]);
-            compare(tray.regularItems.length, 1);
-            compare(tray.regularItems[0], regular);
-            compare(tray.assistantItems.length, 2);
-            compare(tray.assistantItems[0], chatgpt);
-            compare(tray.assistantItems[1], copilot);
-            tryCompare(tray, "implicitWidth", 92);
+            compare(tray.shownItems.length, 3);
+            compare(tray.shownItems[0], regular);
+            compare(tray.shownItems[1], chatgpt);
+            compare(tray.shownItems[2], copilot);
+            tryCompare(tray, "implicitWidth", 84);
 
-            const regularGroup = tray.children[0];
-            const assistantGroup = tray.children[1];
-            verify(assistantGroup.x > regularGroup.x + regularGroup.width);
-            const regularButton = regularGroup.children[0].children[0];
-            const chatgptButton = assistantGroup.children[0].children[0];
-            const copilotButton = assistantGroup.children[0].children[1];
+            const regularButton = trayButton(tray, 0);
+            const chatgptButton = trayButton(tray, 1);
+            const copilotButton = trayButton(tray, 2);
+            compare(regularButton.parent, chatgptButton.parent);
+            compare(chatgptButton.parent, copilotButton.parent);
+            compare(chatgptButton.x, regularButton.x + regularButton.width);
+            compare(copilotButton.x, chatgptButton.x + chatgptButton.width);
             compare(regularButton.customIcon, "");
             compare(chatgptButton.appName, "ChatGPT");
             verify(chatgptButton.customIcon.endsWith("/icons/chatgpt.svg"));
@@ -121,20 +125,20 @@ Item {
         function test_lifecycle_and_reactive_metadata() {
             const delayed = item({ id: "chrome_status_icon_1" });
             const tray = group([null, delayed]);
-            compare(tray.regularItems.length, 1);
-            compare(tray.assistantItems.length, 0);
+            compare(tray.shownItems.length, 1);
+            compare(trayButton(tray, 0).appName, "");
             tryCompare(tray, "implicitWidth", 28);
 
             delayed.tooltipTitle = "ChatGPT";
-            compare(tray.regularItems.length, 0);
-            compare(tray.assistantItems.length, 1);
+            compare(tray.shownItems.length, 1);
+            compare(trayButton(tray, 0).appName, "ChatGPT");
             tryCompare(tray, "implicitWidth", 28);
 
             const copilot = item({ title: "github" });
             tray.items = [copilot, delayed];
             tryCompare(tray, "implicitWidth", 56);
             tray.items = [delayed, copilot];
-            compare(tray.assistantItems[0], delayed);
+            compare(tray.shownItems[0], delayed);
             tray.items = [copilot];
             tryCompare(tray, "implicitWidth", 28);
             tray.items = [];
@@ -148,12 +152,14 @@ Item {
             const second = group([app]);
             second.x = 100;
             second.width = 28;
-            compare(first.assistantItems[0], second.assistantItems[0]);
+            compare(first.shownItems[0], second.shownItems[0]);
             tryCompare(first, "implicitWidth", 28);
             tryCompare(second, "implicitWidth", 28);
             app.tooltipTitle = "";
-            compare(first.regularItems.length, 1);
-            compare(second.regularItems.length, 1);
+            compare(first.shownItems.length, 1);
+            compare(second.shownItems.length, 1);
+            compare(trayButton(first, 0).appName, "");
+            compare(trayButton(second, 0).appName, "");
         }
 
         function test_button_actions() {
@@ -193,9 +199,8 @@ Item {
             const copilot = item({ title: "github", onlyMenu: true });
             const chatgpt = item({ tooltipTitle: "ChatGPT" });
             const tray = group([copilot, chatgpt]);
-            const row = tray.children[1].children[0];
-            const copilotButton = row.children[0];
-            const chatgptButton = row.children[1];
+            const copilotButton = trayButton(tray, 0);
+            const chatgptButton = trayButton(tray, 1);
             const process = findChild(tray, "copilotTrayProcess");
             verify(process !== null);
 
@@ -223,7 +228,7 @@ Item {
 
         function test_copilot_launcher_failure_is_visible_and_retryable() {
             const tray = group([item({ title: "github" })]);
-            const button = tray.children[1].children[0].children[0];
+            const button = trayButton(tray, 0);
             const process = findChild(tray, "copilotTrayProcess");
             tray.openCopilot();
             ignoreWarning("GitHub Copilot: Cannot start the Copilot launcher.");

@@ -3,6 +3,9 @@
 
 # Find file
 
+# Keep failure handling local to this autoloaded function.
+setopt localoptions pipefail
+
 command -v fzf >/dev/null 2>&1 || { echo "ERROR: fzf not installed" 1>&2 && return 1; }
 
 if ! command -v locate >/dev/null 2>&1 && ! command -v fd >/dev/null 2>&1; then
@@ -21,13 +24,14 @@ do
       edit=true
       ;;
     --)
-      query="$2"
+      shift
+      break
       ;;
   esac
   shift
 done
 
-if [ -z "$query" ]
+if [ $# -ne 1 ] || [ -z "$1" ]
 then
   echo "Usage: ff <file> [<options>]"
   echo
@@ -36,12 +40,16 @@ then
   echo " -e :  Edit the file"
   return 1
 fi
+query="$1"
 
 if command -v fd >/dev/null 2>&1; then
-  file="$(fd --type f "$query" | fzf -0 -1)" || return 1
+  file="$(fd -0 --type f -- "$query" | fzf --read0 --print0 --no-multi -0 -1)" || return $?
 else
-  file="$(locate "$query" | fzf -0 -1)" || return 1
+  file="$(locate -0 -- "$query" | fzf --read0 --print0 --no-multi -0 -1)" || return $?
 fi
+# Zsh preserves the NUL terminator in command substitution. Remove only that
+# terminator so filenames ending in newlines retain their exact spelling.
+file=${file%$'\0'}
 
 if [ -z "$file" ]; then
   return 1
@@ -49,7 +57,7 @@ fi
 
 if [ -z "$edit" ]
 then
-  echo "$file"
+  print -r -- "$file"
 elif [ -f "$file" ]
 then
   if [ -w "$file" ]

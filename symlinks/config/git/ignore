@@ -6,7 +6,6 @@
 /tags
 *.sw[op]
 *~
-*.log
 .DS_Store
 Thumbs.db
 .idea/

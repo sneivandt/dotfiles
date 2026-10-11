@@ -61,7 +61,11 @@ if command -v tldr >/dev/null 2>&1; then
   alias tl="tldr"
 fi
 
-if command -v xclip >/dev/null 2>&1; then
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-copy >/dev/null 2>&1 && command -v wl-paste >/dev/null 2>&1; then
+  alias clip="wl-copy"
+  alias pbcopy="wl-copy"
+  alias pbpaste="wl-paste --no-newline"
+elif command -v xclip >/dev/null 2>&1; then
   alias clip="xclip -selection clipboard"
   alias pbcopy="xclip -selection clipboard -in"
   alias pbpaste="xclip -selection clipboard -out"

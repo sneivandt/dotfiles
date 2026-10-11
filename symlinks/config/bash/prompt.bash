@@ -18,12 +18,7 @@ fi
 __bash_git_prompt()
 {
   local branch
-  # Fast check: only run if in git repo
-  if ! git rev-parse --git-dir >/dev/null 2>&1; then
-    return
-  fi
-
-  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return
   if [ -n "$branch" ]; then
     printf " %s" "$branch"
   fi

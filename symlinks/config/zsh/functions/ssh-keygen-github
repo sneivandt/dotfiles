@@ -18,6 +18,12 @@ if ! email=$(git config --global user.email) || [[ -z ${email//[[:space:]]/} ]];
   return 1
 fi
 
-mkdir -p -m 700 "$HOME/.ssh/github" || return $?
+# Do not change permissions on directories reached through user-owned links.
+if [[ -L "$HOME/.ssh" || -L "$HOME/.ssh/github" ]]; then
+  echo "ERROR: refusing to change permissions through an SSH directory symlink" >&2
+  return 1
+fi
+mkdir -p -m 700 -- "$HOME/.ssh" "$HOME/.ssh/github" || return $?
+chmod 700 -- "$HOME/.ssh" "$HOME/.ssh/github" || return $?
 
 ssh-keygen -t ed25519 -C "$email" -f "$key"

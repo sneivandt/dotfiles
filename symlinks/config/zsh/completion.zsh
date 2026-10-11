@@ -53,7 +53,19 @@ zstyle ':completion:*:processes' command 'ps -au$USER'
 # use /etc/hosts and known_hosts for hostname completion
 typeset -g _ZSH_HOSTS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/hosts.cache"
 
+# Reuse the daily cache only while its input files are unchanged.
+_zsh_hosts_fresh=false
 if [[ -f "$_ZSH_HOSTS_CACHE" && -n ${_ZSH_HOSTS_CACHE}(#qNmh-24) ]]; then
+  _zsh_hosts_fresh=true
+  for _zsh_hosts_source in /etc/hosts /etc/ssh/ssh_known_hosts ~/.ssh/known_hosts ~/.ssh/config; do
+    if [[ "$_zsh_hosts_source" -nt "$_ZSH_HOSTS_CACHE" ]]; then
+      _zsh_hosts_fresh=false
+      break
+    fi
+  done
+fi
+
+if [[ "$_zsh_hosts_fresh" == true ]]; then
   source "$_ZSH_HOSTS_CACHE"
 else
   [ -r /etc/ssh/ssh_known_hosts ] && _global_ssh_hosts=(${${${${(f)"$(</etc/ssh/ssh_known_hosts)"}:#[\|]*}%%\ *}%%,*}) || _global_ssh_hosts=()
@@ -81,4 +93,5 @@ else
     mv "$tmp_hosts_cache" "$_ZSH_HOSTS_CACHE"
   fi
 fi
+unset _zsh_hosts_fresh _zsh_hosts_source
 zstyle ':completion:*:hosts' hosts $hosts

@@ -2,6 +2,7 @@
 """Isolated regressions for managed shell startup and command helpers."""
 
 import gzip
+import json
 import http.server
 import os
 import pty
@@ -257,6 +258,81 @@ class ShellConfigTests(unittest.TestCase):
         ])
         self.assertEqual((self.home / ".ssh/github").stat().st_mode & 0o777, 0o700)
 
+    def test_ssh_helpers_secure_existing_directories(self):
+        ssh = self.home / ".ssh"
+        github = ssh / "github"
+        github.mkdir(parents=True)
+        for helper in ("ssh-keygen-github", "ssh-wsl"):
+            with self.subTest(helper=helper):
+                ssh.chmod(0o777)
+                github.chmod(0o777)
+                self.run_shell(
+                    'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+                    f'autoload -Uz {helper}\n'
+                    'git() { print -r -- fixture@test.local; }\n'
+                    'ssh-keygen() { return 0; }\n'
+                    'wslpath() { return 0; }\n'
+                    'WINHOME="$HOME/windows"\n'
+                    f'{helper}\n'
+                )
+                self.assertEqual(ssh.stat().st_mode & 0o777, 0o700)
+                if helper == "ssh-keygen-github":
+                    self.assertEqual(github.stat().st_mode & 0o777, 0o700)
+
+    def test_ssh_helpers_do_not_chmod_linked_directories(self):
+        outside = self.fixture / "linked-directory"
+        outside.mkdir(mode=0o755)
+        for helper, link in (("ssh-keygen-github", ".ssh"),
+                             ("ssh-keygen-github", ".ssh/github"),
+                             ("ssh-wsl", ".ssh")):
+            with self.subTest(helper=helper, link=link):
+                target = self.home / link
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.symlink_to(outside, target_is_directory=True)
+                try:
+                    result = self.run_shell(
+                        'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+                        f'autoload -Uz {helper}\n'
+                        'git() { print -r -- fixture@test.local; }\n'
+                        'ssh-keygen() { print -r -- "unexpected key generation"; }\n'
+                        'wslpath() { return 0; }\n'
+                        'WINHOME="$HOME/windows"\n'
+                        f'{helper}\n', expected=1,
+                    )
+                    self.assertIn("SSH directory symlink", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(outside.stat().st_mode & 0o777, 0o755)
+                finally:
+                    target.unlink()
+                    if link == ".ssh/github":
+                        target.parent.rmdir()
+
+    def test_ssh_permission_failure_stops_key_generation(self):
+        result = self.run_shell(
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ssh-keygen-github\n'
+            'git() { print -r -- fixture@test.local; }\n'
+            'chmod() { return 23; }\n'
+            'ssh-keygen() { print -r -- "unexpected key generation"; }\n'
+            'ssh-keygen-github\n', expected=23,
+        )
+        self.assertEqual(result.stdout, "")
+
+    def test_bash_prompt_uses_one_git_lookup_and_suppresses_failures(self):
+        calls = self.fixture / "prompt-git-calls"
+        self.env["PROMPT_GIT_CALLS"] = str(calls)
+        for status, output, expected in ((0, "main", " main"), (128, "partial", "")):
+            with self.subTest(status=status):
+                calls.unlink(missing_ok=True)
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/bash/prompt.bash"\n'
+                    'git() { printf "%s\\n" "$*" >> "$PROMPT_GIT_CALLS"; '
+                    f'printf %s {output}; return {status}; }}\n'
+                    '__bash_git_prompt\n', shell="bash", expected=status,
+                )
+                self.assertEqual(result.stdout, expected)
+                self.assertEqual(calls.read_text().splitlines(), ["rev-parse --abbrev-ref HEAD"])
+
     def test_sudo_widget_preserves_command_and_adjusts_cursor(self):
         for buffer in ("echo fixture", "sudo echo fixture"):
             for cursor in (0, 2, 5, 8, len(buffer)):
@@ -456,6 +532,32 @@ class ShellConfigTests(unittest.TestCase):
         )
         self.assertFalse(Path(str(dump) + ".checked").exists())
 
+    def test_hostname_cache_refreshes_after_ssh_source_changes(self):
+        for source, contents, hostname in (
+            ("config", "Host new-config-alias\n  HostName example.test\n", "new-config-alias"),
+            ("known_hosts", "new-known-host ssh-ed25519 fixture\n", "new-known-host"),
+        ):
+            with self.subTest(source=source):
+                if "ZSH_COMPDUMP" not in self.env:
+                    self.prepare_completion()
+                cache = self.home / ".cache/zsh/hosts.cache"
+                self.write(cache, "typeset -ga hosts=(localhost)\n")
+                changed = self.write(self.home / ".ssh" / source, contents)
+                stamp = int(time.time()) - 20
+                os.utime(cache, (stamp, stamp))
+                os.utime(changed, (stamp + 2, stamp + 2))
+                script = (
+                    'setopt extendedglob\n'
+                    'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
+                    'print -rl -- "${hosts[@]}"\n'
+                )
+                result = self.run_shell(script)
+                self.assertIn(hostname, result.stdout.splitlines())
+                updated = cache.stat().st_mtime_ns
+                self.run_shell(script)
+                self.assertEqual(cache.stat().st_mtime_ns, updated,
+                                 "unchanged sources should reuse the refreshed cache")
+
     def test_docker_clean_preserves_each_failure(self):
         for failed in ("container", "network", "image", "none"):
             with self.subTest(failed=failed):
@@ -476,7 +578,7 @@ class ShellConfigTests(unittest.TestCase):
         self.env["SELECTED"] = str(file)
         self.env["EDITOR"] = "missing-editor-for-fixture"
         helpers = (
-            'fd() { print -r -- "$SELECTED"; }\n'
+            'fd() { printf "%s\\0" "$SELECTED"; }\n'
             'fzf() { cat; }\n'
             'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
             'autoload -Uz ff\n'
@@ -490,6 +592,180 @@ class ShellConfigTests(unittest.TestCase):
             helpers + 'fixture-editor() { print -r -- "edited: $1"; }\nff -e selected\n'
         )
         self.assertEqual(result.stdout.strip(), "edited: " + str(file))
+
+    def test_clipboard_aliases_choose_available_session_backend(self):
+        binary_dir = self.fixture / "bin"
+        clipboard = self.fixture / "clipboard"
+        calls = self.fixture / "clipboard-calls"
+        backend = (
+            "#!/usr/bin/python3\n"
+            "import json, os, sys\n"
+            "from pathlib import Path\n"
+            "name = Path(sys.argv[0]).name\n"
+            "with open(os.environ['CLIPBOARD_CALLS'], 'a') as log:\n"
+            "    log.write(json.dumps([name, *sys.argv[1:]]) + '\\n')\n"
+            "clipboard = Path(os.environ['CLIPBOARD'])\n"
+            "if name == 'wl-paste' or '-out' in sys.argv:\n"
+            "    sys.stdout.buffer.write(clipboard.read_bytes())\n"
+            "else:\n"
+            "    clipboard.write_bytes(sys.stdin.buffer.read())\n"
+        )
+        self.env.update(PATH=str(binary_dir) + ":/usr/bin:/bin",
+                        CLIPBOARD=str(clipboard), CLIPBOARD_CALLS=str(calls),
+                        CLIPBOARD_BIN=str(binary_dir))
+        for shell in ("bash", "zsh"):
+            for wayland, tools, expected in (
+                (True, ("wl-copy", "wl-paste", "xclip"), "wl-copy"),
+                (True, ("wl-copy", "wl-paste"), "wl-copy"),
+                (False, ("wl-copy", "wl-paste", "xclip"), "xclip"),
+                (True, ("wl-copy", "xclip"), "xclip"),
+            ):
+                with self.subTest(shell=shell, wayland=wayland, tools=tools):
+                    for name in ("wl-copy", "wl-paste", "xclip"):
+                        binary = binary_dir / name
+                        if name in tools:
+                            self.write(binary, backend, executable=True)
+                        else:
+                            binary.unlink(missing_ok=True)
+                    calls.unlink(missing_ok=True)
+                    self.env["WAYLAND_DISPLAY"] = "wayland-fixture" if wayland else ""
+                    # Hide host tools while keeping the fixture capabilities real.
+                    result = self.run_shell(
+                        ('shopt -s expand_aliases\n' if shell == "bash" else "") +
+                        'command() {\n'
+                        '  if [ "$1" = -v ]; then\n'
+                        '    case "$2" in wl-copy|wl-paste|xclip) [ -x "$CLIPBOARD_BIN/$2" ]; return $?;; esac\n'
+                        '  fi\n'
+                        '  builtin command "$@"\n'
+                        '}\n'
+                        '. "$ROOT/symlinks/config/shell/aliases.sh"\n'
+                        'eval \'printf %s "clipboard without trailing newline" | pbcopy\'\n'
+                        'eval pbpaste\n', shell=shell,
+                    )
+                    self.assertEqual(result.stdout, "clipboard without trailing newline")
+                    invocations = [json.loads(line) for line in calls.read_text().splitlines()]
+                    self.assertEqual(invocations[0][0], expected)
+                    if expected == "wl-copy":
+                        self.assertEqual(invocations[1], ["wl-paste", "--no-newline"])
+
+    def test_global_git_ignore_keeps_log_fixtures_visible(self):
+        subprocess.run(["git", "init", "-q", str(self.fixture)],
+                       env=self.env, check=True)
+        result = subprocess.run(
+            ["git", "-c", "core.excludesfile=" + str(ROOT / "symlinks/config/git/ignore"),
+             "check-ignore", "--no-index", "tests/fixtures/parser.log"],
+            cwd=self.fixture, env=self.env, text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_ff_edits_exact_filename_with_embedded_and_trailing_newlines(self):
+        self.assertIsNotNone(shutil.which("fzf"), "fzf is required for selection coverage")
+        selected = self.write(self.fixture / "needle\nreport\\literal.txt\n", "fixture\n")
+        output = self.fixture / "edited-path"
+        self.env.update(SELECTED=str(selected), EDITED_PATH=str(output),
+                        EDITOR="fixture-editor", FZF_DEFAULT_OPTS="--filter=needle")
+        helpers = (
+            'fd() { printf "%s\\0" "$SELECTED"; }\n'
+            'locate() { printf "%s\\0" "$SELECTED"; }\n'
+            'fixture-editor() { printf %s "$1" > "$EDITED_PATH"; }\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ff\n'
+        )
+        for backend_name in ("fd", "locate"):
+            with self.subTest(backend=backend_name):
+                select_backend = (
+                    'command() {\n'
+                    '  [[ "$1" == -v && "$2" == fd ]] && return 1\n'
+                    '  builtin command "$@"\n'
+                    '}\n'
+                ) if backend_name == "locate" else ""
+                self.run_shell(helpers + select_backend + 'ff -e needle\n')
+                self.assertEqual(output.read_text(), str(selected))
+                result = self.run_shell(helpers + select_backend + 'ff needle\n')
+                self.assertEqual(result.stdout, str(selected) + "\n")
+
+    def test_ff_requires_exactly_one_nonempty_query(self):
+        helpers = (
+            'fd() { print -r -- "search must not run"; }\n'
+            'fzf() { cat; }\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ff\n'
+        )
+        for args in ("", "''", "needle extra", "-e needle extra"):
+            with self.subTest(args=args):
+                result = self.run_shell(helpers + f"ff {args}\n", expected=1)
+                self.assertIn("Usage: ff", result.stdout)
+                self.assertNotIn("search must not run", result.stdout)
+
+    def test_ff_propagates_pipeline_failures_without_changing_caller_options(self):
+        for backend in ("fd", "locate"):
+            for failed in ("search", "selection"):
+                with self.subTest(backend=backend, failed=failed):
+                    result = self.run_shell(
+                        'unsetopt pipefail\n'
+                        'fd() { printf "partial-match\\0"; return ' +
+                        ('23' if failed == "search" else '0') + '; }\n'
+                        'locate() { fd "$@"; }\n'
+                        'fzf() { cat; return ' + ('29' if failed == "selection" else '0') + '; }\n'
+                        'command() {\n'
+                        '  [[ "$1" == -v && "$2" == fd && "$BACKEND" == locate ]] && return 1\n'
+                        '  builtin command "$@"\n'
+                        '}\n'
+                        f'BACKEND={backend}\n'
+                        'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+                        'autoload -Uz ff\n'
+                        'ff needle\n'
+                        'result=$?\n'
+                        '[[ -o pipefail ]] && exit 99\n'
+                        'exit "$result"\n', expected=23 if failed == "search" else 29,
+                    )
+                    self.assertEqual(result.stdout, "")
+
+    def test_ff_keeps_option_like_queries_as_search_patterns(self):
+        backend = self.write(
+            self.fixture / "search.py",
+            "import argparse\n"
+            "parser = argparse.ArgumentParser()\n"
+            "parser.add_argument('--version', action='version', version='backend version')\n"
+            "parser.add_argument('--type')\n"
+            "parser.add_argument('-0', action='store_true')\n"
+            "parser.add_argument('query')\n"
+            "args = parser.parse_args()\n"
+            "print(args.query, end='\\0' if getattr(args, '0') else '\\n')\n",
+        )
+        self.env["SEARCH_BACKEND"] = str(backend)
+        helpers = (
+            'fd() { python3 "$SEARCH_BACKEND" "$@"; }\n'
+            'locate() { python3 "$SEARCH_BACKEND" "$@"; }\n'
+            'fzf() { cat; }\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ff\n'
+        )
+        for backend_name in ("fd", "locate"):
+            for query in ("--version", "-needle", "two words"):
+                with self.subTest(backend=backend_name, query=query):
+                    self.env["QUERY"] = query
+                    select_backend = (
+                        'command() {\n'
+                        '  [[ "$1" == -v && "$2" == fd ]] && return 1\n'
+                        '  builtin command "$@"\n'
+                        '}\n'
+                    ) if backend_name == "locate" else ""
+                    result = self.run_shell(helpers + select_backend + 'ff -- "$QUERY"\n')
+                    self.assertEqual(result.stdout.strip(), query)
+
+    def test_tmux_terminal_has_word_navigation_bindings(self):
+        for term in ("screen-256color", "tmux-256color", "xterm-256color"):
+            with self.subTest(term=term):
+                self.env["TERM"] = term
+                result = self.run_shell(
+                    'source "$ROOT/symlinks/config/zsh/key-bindings.zsh"\n'
+                    'bindkey "\\e[1;5D"\n'
+                    'bindkey "\\e[1;5C"\n'
+                    'bindkey "\\e[3;5~"\n'
+                )
+                self.assertEqual([line.split()[-1] for line in result.stdout.splitlines()],
+                                 ["backward-word", "forward-word", "kill-word"])
 
     def write_rpm(self, members):
         payload = bytearray()
@@ -528,6 +804,29 @@ class ShellConfigTests(unittest.TestCase):
         archive = self.write_rpm([("nested/file with spaces", b"fixture\n")])
         self.run_extract(archive)
         self.assertEqual((self.home / "nested/file with spaces").read_bytes(), b"fixture\n")
+
+    def test_extract_option_like_relative_archive_name(self):
+        archive = self.home / "-sample with spaces.gz"
+        archive.write_bytes(gzip.compress(b"fixture\n"))
+        self.run_extract(archive.name)
+        self.assertEqual((self.home / "-sample with spaces").read_bytes(), b"fixture\n")
+
+    def test_extract_rejects_multiple_archives_before_changing_any_files(self):
+        archives = [self.home / name for name in ("first.gz", "second.gz")]
+        payload = gzip.compress(b"fixture\n")
+        for archive in archives:
+            archive.write_bytes(payload)
+        result = self.run_shell(
+            'cd "$HOME"\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz extract\n'
+            'extract first.gz second.gz\n', expected=1,
+        )
+        self.assertIn("Usage: extract", result.stdout)
+        self.assertEqual(sorted(path.name for path in self.home.iterdir()),
+                         ["first.gz", "second.gz"])
+        for archive in archives:
+            self.assertEqual(archive.read_bytes(), payload)
 
     def test_extract_rpm_confines_member_paths(self):
         target = self.write(self.fixture / "outside", "original\n")

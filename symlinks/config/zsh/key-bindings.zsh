@@ -12,7 +12,7 @@ then
   bindkey '\e[3^'   kill-word          # Ctrl + Delete
   bindkey '\e[1;5D' backward-word      # Ctrl + Left
   bindkey '\e[1;5C' forward-word       # Ctrl + Right
-elif [[ "$TERM" == (screen*) ]]
+elif [[ "$TERM" == (screen*|tmux*) ]]
 then
   bindkey '\e[1~'   beginning-of-line  # Home
   bindkey '\e[4~'   end-of-line        # End

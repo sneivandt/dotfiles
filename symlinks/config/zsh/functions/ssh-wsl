@@ -7,7 +7,12 @@ command -v wslpath >/dev/null 2>&1 || { echo "ERROR: Not in WSL Environment" 1>&
 
 local i source_path target_path
 
-mkdir -p -m 700 "$HOME/.ssh" || return 1
+if [[ -L "$HOME/.ssh" ]]; then
+  echo "ERROR: refusing to change permissions through an SSH directory symlink" >&2
+  return 1
+fi
+mkdir -p -m 700 -- "$HOME/.ssh" || return $?
+chmod 700 -- "$HOME/.ssh" || return $?
 
 for i in github github_internal ado
 do

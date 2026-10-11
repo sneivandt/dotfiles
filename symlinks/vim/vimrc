@@ -235,15 +235,19 @@ noremap <leader>z zMzvzz
 set foldmethod=marker
 set foldtext=FoldText()
 function! FoldText() " {{{
-  let line = getline(v:foldstart)
-  let nucolwidth = &fdc + &number * &numberwidth
-  let windowwidth = winwidth(0) - nucolwidth - 1
-  let foldedlinecount = v:foldend - v:foldstart
-  let onetab = strpart('          ', 0, &tabstop)
-  let line = substitute(line, '\t', onetab, 'g')
-  let line = strpart(line, 0, windowwidth - 2 - len(foldedlinecount))
-  let fillcharcount = windowwidth - len(line) - len(foldedlinecount)
-  return line . repeat(' ', fillcharcount) . foldedlinecount . ' '
+  let windowwidth = max([0, winwidth(0) - getwininfo(win_getid())[0].textoff])
+  let suffix = (v:foldend - v:foldstart + 1) . ' '
+  let available = max([0, windowwidth - strdisplaywidth(suffix)])
+  let line = ''
+  let header = substitute(getline(v:foldstart), '\t', repeat(' ', &tabstop), 'g')
+  for character in split(header, '\zs')
+    if strdisplaywidth(line . character) > available
+      break
+    endif
+    let line .= character
+  endfor
+  let fillcharcount = max([0, available - strdisplaywidth(line)])
+  return line . repeat(' ', fillcharcount) . suffix
 endfunction " }}}
 
 " }}}

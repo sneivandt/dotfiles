@@ -78,9 +78,17 @@ jobs:
           HEAD_SHA: ${{ steps.range.outputs.head_sha }}
         run: sh .github/workflows/scripts/linux/classify-ci-changes.sh
       - name: Install actionlint
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
-        with:
-          tool: actionlint@1.7.12
+        run: |
+          version=1.7.12
+          archive="actionlint_${version}_linux_amd64.tar.gz"
+          checksums="actionlint_${version}_checksums.txt"
+          base_url="https://github.com/rhysd/actionlint/releases/download/v${version}"
+          install_dir="$(mktemp -d)"
+          curl --fail --location --retry 3 "$base_url/$archive" -o "$install_dir/$archive"
+          curl --fail --location --retry 3 "$base_url/$checksums" -o "$install_dir/$checksums"
+          (cd "$install_dir" && sha256sum --check --ignore-missing "$checksums")
+          tar -xzf "$install_dir/$archive" -C "$install_dir" actionlint
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
       - name: Check workflow syntax and expressions
         run: sh .github/workflows/scripts/linux/test-workflows.sh
       - name: Check CI job gate

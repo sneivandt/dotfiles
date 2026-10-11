@@ -506,6 +506,20 @@ placement, dismissal, scrolling, and focus; one bar popup is open at a time
 across monitors. The bar reserves space for tiled windows, sits below floating
 windows, and hides on fullscreen workspaces.
 
+GitHub Copilot and ChatGPT tray items appear in a dedicated group immediately
+to the right of the regular tray, using monochrome GitHub and OpenAI brand icons from
+[`quickshell/icons/`](../symlinks/config/quickshell/icons). The group only appears
+while these apps expose tray items. Matching uses tray IDs, titles, and tooltip
+titles (including Copilot's `github` title and ChatGPT's generic Chrome tray ID
+with a `ChatGPT` tooltip); other tray items retain their application icons.
+Both groups preserve activation, context menus, middle-click, and scrolling.
+Left-clicking Copilot uses `hypr/scripts/launch-github.sh` to invoke its
+**Open GitHub Copilot** tray action, because the app does not restore its window
+through normal tray activation. ChatGPT uses normal tray activation. Copilot
+launcher failures are logged and shown in its icon tooltip.
+The SVGs are Font Awesome Free brand icons, licensed under CC BY 4.0 with
+attribution in each file.
+
 Mako's margins in [`mako/config`](../symlinks/config/mako/config) align
 notifications with the tiled window frame without duplicating the bar offset.
 

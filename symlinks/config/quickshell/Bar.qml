@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Hyprland
@@ -10,7 +9,6 @@ import Quickshell.Services.Mpris
 import Quickshell.Services.SystemTray
 import Quickshell.Services.UPower
 import Quickshell.Wayland
-import Quickshell.Widgets
 import "Theme.js" as Theme
 
 PanelWindow {
@@ -101,70 +99,11 @@ PanelWindow {
             }
         }
 
-        BarGroup {
+        TrayGroup {
             id: trayGroup
-            visible: SystemTray.items.values.length > 0
-            implicitWidth: visible ? trayRow.implicitWidth : 0
-            Row {
-                id: trayRow
-                Repeater {
-                    model: SystemTray.items
-                    AbstractButton {
-                        id: trayItem
-                        required property var modelData
-                        implicitWidth: Theme.barControlHeight
-                        implicitHeight: Theme.barControlHeight
-                        hoverEnabled: true
-                        focusPolicy: Qt.StrongFocus
-                        Accessible.name: modelData.tooltipTitle || modelData.title || modelData.id
-                        function showMenu() {
-                            bar.menuController.dismiss();
-                            const point = bar.contentItem.mapFromItem(trayItem, 0, trayItem.height);
-                            modelData.display(bar, point.x, point.y);
-                        }
-                        onClicked: {
-                            if (modelData.onlyMenu)
-                                showMenu();
-                            else
-                                modelData.activate();
-                        }
-                        Keys.onMenuPressed: showMenu()
-                        Keys.onReturnPressed: clicked()
-                        background: Rectangle {
-                            radius: Theme.controlRadius
-                            color: trayItem.hovered || trayItem.down ? Theme.hover : "transparent"
-                            border.width: trayItem.visualFocus ? 1 : 0
-                            border.color: Theme.blue
-                        }
-                        contentItem: Item {
-                            IconImage {
-                                anchors.centerIn: parent
-                                width: 16
-                                height: 16
-                                source: trayItem.modelData.icon
-                            }
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            acceptedButtons: Qt.MiddleButton | Qt.RightButton
-                            onClicked: event => {
-                                if (event.button === Qt.MiddleButton)
-                                    trayItem.modelData.secondaryActivate();
-                                else
-                                    trayItem.showMenu();
-                            }
-                            onWheel: event => trayItem.modelData.scroll(event.angleDelta.y, false)
-                        }
-                        ShellToolTip {
-                            text: trayItem.Accessible.name
-                            visible: trayItem.hovered || trayItem.visualFocus
-                        }
-                        HoverHandler {
-                            cursorShape: Qt.PointingHandCursor
-                        }
-                    }
-                }
-            }
+            items: SystemTray.items.values
+            anchorWindow: bar
+            menuController: bar.menuController
         }
 
         BarGroup {

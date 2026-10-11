@@ -1,7 +1,7 @@
 [Desktop Entry]
 Categories=
 Comment=Tauri Copilot Application
-Exec=env GDK_BACKEND=x11 GTK_CSD=0 github %u
+Exec=sh -c "exec \\"\\$HOME/.config/hypr/scripts/launch-github.sh\\" \\"\\$@\\"" sh %u
 Icon=github
 MimeType=x-scheme-handler/github-app;x-scheme-handler/ghapp;x-scheme-handler/gh
 Name=GitHub Copilot

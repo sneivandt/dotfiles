@@ -4,8 +4,10 @@
 import gzip
 import http.server
 import os
+import pty
 from pathlib import Path
 import shutil
+import select
 import struct
 import subprocess
 import threading
@@ -157,6 +159,140 @@ class ShellConfigTests(unittest.TestCase):
                         'printf "%s\\n" "${QT_QPA_PLATFORM-unset}"\n', shell=shell,
                     )
                     self.assertEqual(result.stdout.strip(), expected)
+
+    def test_desktop_profile_paths_and_overrides(self):
+        config = self.home / "custom config"
+        cache = self.home / "custom cache"
+        self.env.update(XDG_CONFIG_HOME=str(config), XDG_CACHE_HOME=str(cache))
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/profile-desktop.sh"\n'
+                    'printf "%s\\n" "${GTK2_RC_FILES-unset}" "$__GL_SHADER_DISK_CACHE_PATH"\n',
+                    shell=shell,
+                )
+                self.assertEqual(result.stdout.splitlines(), ["unset", str(cache / "GLCache")])
+                gtk = self.write(config / "gtk-2.0/gtkrc-2.0", "fixture\n")
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/profile-desktop.sh"\n'
+                    'printf "%s\\n" "$GTK2_RC_FILES"\n', shell=shell,
+                )
+                self.assertEqual(result.stdout.strip(), str(gtk))
+                for override in ("", "/explicit override"):
+                    self.env.update(GTK2_RC_FILES=override, __GL_SHADER_DISK_CACHE_PATH=override)
+                    result = self.run_shell(
+                        '. "$ROOT/symlinks/config/shell/profile-desktop.sh"\n'
+                        'printf "%s\\n" "$GTK2_RC_FILES" "$__GL_SHADER_DISK_CACHE_PATH"\n',
+                        shell=shell,
+                    )
+                    self.assertEqual(result.stdout.splitlines(), [override, override])
+                self.env.pop("GTK2_RC_FILES")
+                self.env.pop("__GL_SHADER_DISK_CACHE_PATH")
+                gtk.unlink()
+
+    def test_github_key_generation_stops_on_prerequisite_failures(self):
+        setup = (
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ssh-keygen-github\n'
+            'ssh-keygen() { print -r -- "unexpected key generation"; return 0; }\n'
+        )
+        for git, mkdir, expected in (
+            ('return 19', 'return 0', 1),
+            ('print -r -- "   "', 'return 0', 1),
+            ('print -r -- fixture@test.local', 'return 23', 23),
+        ):
+            with self.subTest(git=git, mkdir=mkdir):
+                result = self.run_shell(
+                    setup + f'git() {{ {git}; }}\nmkdir() {{ {mkdir}; }}\nssh-keygen-github\n',
+                    expected=expected,
+                )
+                self.assertEqual(result.stdout, "")
+                self.assertFalse((self.home / ".ssh").exists())
+
+    def test_github_key_generation_preserves_existing_key_paths(self):
+        directory = self.home / ".ssh/github"
+        directory.mkdir(parents=True)
+        for filename in ("id_ed25519", "id_ed25519.pub"):
+            for kind in ("file", "directory", "dangling-link"):
+                with self.subTest(filename=filename, kind=kind):
+                    path = directory / filename
+                    if kind == "file":
+                        path.write_text("existing key fixture\n")
+                    elif kind == "directory":
+                        path.mkdir()
+                    else:
+                        path.symlink_to(directory / "missing")
+                    result = self.run_shell(
+                        'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+                        'autoload -Uz ssh-keygen-github\n'
+                        'git() { print -r -- "unexpected Git call"; }\n'
+                        'ssh-keygen() { print -r -- "unexpected key generation"; }\n'
+                        'ssh-keygen-github\n', expected=1,
+                    )
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("Key already exists", result.stderr)
+                    if kind == "file":
+                        self.assertEqual(path.read_text(), "existing key fixture\n")
+                    elif kind == "dangling-link":
+                        self.assertTrue(path.is_symlink())
+                    if kind == "directory":
+                        path.rmdir()
+                    else:
+                        path.unlink()
+
+    def test_github_key_generation_arguments_and_exit_status(self):
+        result = self.run_shell(
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ssh-keygen-github\n'
+            'git() { [[ "$*" == "config --global user.email" ]] || return 1; '
+            'print -r -- fixture@test.local; }\n'
+            'ssh-keygen() { printf "%s\\n" "$@"; return 29; }\n'
+            'ssh-keygen-github\n', expected=29,
+        )
+        self.assertEqual(result.stdout.splitlines(), [
+            "-t", "ed25519", "-C", "fixture@test.local", "-f",
+            str(self.home / ".ssh/github/id_ed25519"),
+        ])
+        self.assertEqual((self.home / ".ssh/github").stat().st_mode & 0o777, 0o700)
+
+    def test_sudo_widget_preserves_command_and_adjusts_cursor(self):
+        for buffer in ("echo fixture", "sudo echo fixture"):
+            for cursor in (0, 2, 5, 8, len(buffer)):
+                with self.subTest(buffer=buffer, cursor=cursor):
+                    output = self.fixture / "widget-result"
+                    self.env.update(TEST_BUFFER=buffer, TEST_CURSOR=str(cursor), RESULT=str(output))
+                    master, slave = pty.openpty()
+                    process = subprocess.Popen(
+                        ["zsh", "-dfi", "-c",
+                         'source "$ROOT/symlinks/config/zsh/key-bindings.zsh"\n'
+                         'probe() { BUFFER=$TEST_BUFFER; CURSOR=$TEST_CURSOR; '
+                         'sudo-command-line; printf "%s\\n" "$BUFFER" "$CURSOR" > "$RESULT"; exit; }\n'
+                         'zle -N probe; bindkey "^G" probe; vared -c -p "READY>" fixture_input'],
+                        stdin=slave, stdout=slave, stderr=slave, env=self.env, cwd=self.fixture,
+                    )
+                    os.close(slave)
+                    try:
+                        received = b""
+                        deadline = time.monotonic() + 5
+                        while b"READY>" not in received:
+                            self.assertLess(time.monotonic(), deadline, "ZLE did not start")
+                            if select.select([master], [], [], 0.1)[0]:
+                                try:
+                                    received += os.read(master, 4096)
+                                except OSError:
+                                    self.fail(f"ZLE exited before starting: {received!r}")
+                        os.write(master, b"\x07")
+                        self.assertEqual(process.wait(timeout=5), 0)
+                    finally:
+                        if process.poll() is None:
+                            process.kill()
+                            process.wait()
+                        os.close(master)
+                    removing = buffer.startswith("sudo ")
+                    self.assertEqual(output.read_text().splitlines(), [
+                        buffer[5:] if removing else "sudo " + buffer,
+                        str(max(0, cursor - 5) if removing else cursor + 5),
+                    ])
 
     def test_pacman_alias_does_not_override_host_configuration(self):
         self.write(self.home / ".config/pacman.conf", "[options]\nColor\n")

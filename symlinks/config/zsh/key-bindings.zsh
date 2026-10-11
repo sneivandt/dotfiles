@@ -56,10 +56,13 @@ bindkey '^R' history-incremental-search-backward
 sudo-command-line()
 {
   [[ -z $BUFFER ]] && zle up-history
+  local cursor=$CURSOR
   if [[ $BUFFER == sudo\ * ]]; then
-    LBUFFER="${LBUFFER#sudo }"
+    BUFFER="${BUFFER#sudo }"
+    CURSOR=$(( cursor > 5 ? cursor - 5 : 0 ))
   else
-    LBUFFER="sudo $LBUFFER"
+    BUFFER="sudo $BUFFER"
+    CURSOR=$(( cursor + 5 ))
   fi
 }
 zle -N sudo-command-line

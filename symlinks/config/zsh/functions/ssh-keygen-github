@@ -5,11 +5,19 @@
 command -v git        >/dev/null 2>&1 || { echo "ERROR: git not installed"        1>&2 && return 1; }
 command -v ssh-keygen >/dev/null 2>&1 || { echo "ERROR: ssh-keygen not installed" 1>&2 && return 1; }
 
-mkdir -p -m 700 "$HOME"/.ssh/github
+local key="$HOME/.ssh/github/id_ed25519"
+local email
 
-if [ -f "$HOME/.ssh/github/id_ed25519" ]; then
-  echo "Key already exists: $HOME/.ssh/github/id_ed25519"
+if [[ -e $key || -L $key || -e $key.pub || -L $key.pub ]]; then
+  echo "Key already exists: $key or $key.pub" >&2
   return 1
 fi
 
-ssh-keygen -t ed25519 -C "$(git config --global user.email)" -f "$HOME"/.ssh/github/id_ed25519
+if ! email=$(git config --global user.email) || [[ -z ${email//[[:space:]]/} ]]; then
+  echo "ERROR: set a global Git user.email before generating a GitHub key" >&2
+  return 1
+fi
+
+mkdir -p -m 700 "$HOME/.ssh/github" || return $?
+
+ssh-keygen -t ed25519 -C "$email" -f "$key"

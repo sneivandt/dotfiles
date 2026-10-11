@@ -31,7 +31,12 @@ pub fn validate(extensions: &[String]) -> Vec<Diagnostic> {
                         "extension ID is empty",
                     ),
                     check(
-                        !id.contains('.'),
+                        !id.split_once('.').is_some_and(|(publisher, name)| {
+                            !publisher.is_empty()
+                                && !name.is_empty()
+                                && !name.contains('.')
+                                && !id.chars().any(char::is_whitespace)
+                        }),
                         VSCODE_INVALID_ID_FORMAT,
                         "extension ID should be in format 'publisher.name'",
                     ),
@@ -92,6 +97,37 @@ extensions = ["github.copilot-chat"]
             warnings[0].message,
             "extension ID should be in format 'publisher.name'"
         );
+    }
+
+    #[test]
+    fn validate_rejects_incomplete_or_whitespace_extension_ids() {
+        for id in [
+            ".",
+            "publisher.",
+            ".extension",
+            "publisher.name.extra",
+            " publisher.name",
+            "publisher.name ",
+            "publisher.na me",
+            "publisher.\tname",
+        ] {
+            let warnings = validate(&[id.to_string()]);
+            assert_eq!(warnings.len(), 1, "ID: {id:?}");
+            assert_eq!(warnings[0].source, VSCODE_EXTENSIONS_TOML);
+            assert_eq!(warnings[0].item, id);
+            assert_eq!(warnings[0].code, VSCODE_INVALID_ID_FORMAT);
+        }
+    }
+
+    #[test]
+    fn validate_accepts_complete_extension_ids() {
+        for id in [
+            "ms-vscode.cpptools",
+            "github.vscode-pull-request-github",
+            "Publisher.Name",
+        ] {
+            assert!(validate(&[id.to_string()]).is_empty(), "ID: {id}");
+        }
     }
 
     #[test]

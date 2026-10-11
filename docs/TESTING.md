@@ -50,6 +50,9 @@ The canonical entrypoints are
 [`linux/check.sh`](../.github/workflows/scripts/linux/check.sh) and
 [`windows/Check.ps1`](../.github/workflows/scripts/windows/Check.ps1).
 They share CI's Cargo profile, but **do not run the entire CI workflow**.
+For stages that use Rust, first
+[select and verify the pinned toolchain](CONTRIBUTING.md#selecting-the-pinned-toolchain).
+The scripts use Cargo from PATH; they do not switch toolchains themselves.
 
 ```bash
 sh .github/workflows/scripts/linux/check.sh --list
@@ -91,8 +94,10 @@ compile check, not a second full test suite. Request it explicitly, or use
 `--all` on Linux / `-All` on Windows. Those options can download a toolchain;
 they still do not enable host integration, coverage or mutation testing.
 
-Run individual Rust checks from `cli/` so the repository's pinned
-[`rust-toolchain.toml`](../cli/rust-toolchain.toml) applies:
+Run individual Rust checks from `cli/` after
+[selecting the pinned toolchain](CONTRIBUTING.md#selecting-the-pinned-toolchain).
+Entering `cli/` applies `rust-toolchain.toml` only with rustup-managed commands;
+system Cargo and rustc ignore it.
 
 ```bash
 cd cli

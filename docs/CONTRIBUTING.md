@@ -6,9 +6,10 @@ You do not need to learn the whole engine to change one application's config.
 
 ## Development setup
 
-Work in a checkout with Git and Rust available. Rust commands should run from
-`cli/`, where [`rust-toolchain.toml`](../cli/rust-toolchain.toml) selects the
-pinned compiler, rustfmt, Clippy and cross-target components.
+Work in a checkout with Git and Rust available. Before running Rust checks,
+select the toolchain declared in
+[`rust-toolchain.toml`](../cli/rust-toolchain.toml) using the instructions below.
+Run Rust commands from `cli/`.
 [`Cargo.toml`](../cli/Cargo.toml) declares the separately tested minimum Rust
 version and lint policy.
 
@@ -26,6 +27,54 @@ Install optional tools only for the checks you need: ShellCheck for POSIX
 scripts, PowerShell 7 with PSScriptAnalyzer for PowerShell, and the Cargo
 audit/deny tools for dependency checks. Tool availability and skips are
 documented in [Testing](TESTING.md#fast-local-sequence).
+
+### Selecting the pinned toolchain
+
+The pin is honored automatically only when `cargo` and `rustc` on PATH are
+rustup proxies. Distribution-managed binaries such as Arch's `/usr/bin/cargo`
+and `/usr/bin/rustc` ignore `rust-toolchain.toml`, even from `cli/`.
+
+With rustup-managed commands, enter `cli/` and verify the selected toolchain:
+
+```bash
+cd cli
+rustup show active-toolchain
+cargo --version
+rustc --version
+```
+
+If rustup is installed but system binaries come first on PATH, put rustup's
+proxy directory first for this shell (`~/.cargo/bin` by default):
+
+```bash
+export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+```
+
+In PowerShell, the default proxy directory can be selected with
+`$env:PATH = "$HOME\.cargo\bin;$env:PATH"`; use `$env:CARGO_HOME` instead of
+`$HOME\.cargo` if customized. Then verify from `cli/` as above.
+
+If rustup itself is unavailable but the pinned toolchain is already installed,
+put that toolchain's `bin` directory first instead. For example, with the
+current pin on x86-64 Linux:
+
+```bash
+export PATH="$HOME/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin:$PATH"
+cd cli
+cargo --version
+rustc --version
+```
+
+Adjust the directory for the version in `rust-toolchain.toml`, your host target,
+and a custom `RUSTUP_HOME` if used. This selects Cargo, rustc, rustfmt and Clippy
+together for the shell, including subprocesses launched by the local check
+scripts. Changing directory or invoking only the pinned Cargo by absolute path
+does not select a matching compiler when system Rust remains on PATH.
+
+Before validation, confirm both reported versions match the pin. If the pinned
+toolchain or a required component/target is missing, provision it explicitly
+with rustup or report the affected check as unavailable. Do not fall back to a
+different host compiler and treat its results as pinned-toolchain validation.
 
 ## Contribution workflow
 

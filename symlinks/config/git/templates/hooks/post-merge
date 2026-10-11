@@ -1,8 +1,9 @@
 #!/bin/sh
+set -eu
 
 hook="$HOME"/.config/git/templates/hooks.local/post-merge
 
 if [ -f "$hook" ]
 then
-  . "$hook"
+  sh "$hook" "$@"
 fi

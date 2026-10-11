@@ -112,8 +112,12 @@ test_nvim_plugins()
   log_stage "Testing nvim plugins"
 
   lazy_dir="$HOME/.local/share/nvim/lazy"
-  timeout 180 nvim --headless '+Lazy! sync' '+qa!' </dev/null >/dev/null 2>&1 || { printf "%sERROR: lazy.nvim failed to synchronize plugins%s\n" "${RED}" "${NC}" >&2; return 1; }
+  timeout 180 nvim --headless '+Lazy! restore' '+qa!' </dev/null >/dev/null 2>&1 || { printf "%sERROR: lazy.nvim failed to restore locked plugins%s\n" "${RED}" "${NC}" >&2; return 1; }
   [ -d "$lazy_dir/lazy.nvim" ] || { printf "%sERROR: lazy.nvim not bootstrapped: %s%s\n" "${RED}" "$lazy_dir/lazy.nvim" "${NC}" >&2; return 1; }
+
+  DIR="$DIR" timeout 30 nvim --headless \
+    -c 'lua local ok, err = pcall(dofile, vim.env.DIR .. "/.github/workflows/scripts/linux/test-nvim-lock.lua"); if not ok then vim.api.nvim_err_writeln(tostring(err)); vim.cmd("cquit") end' \
+    -c 'qa!' </dev/null || return 1
 
   count=$(find "$lazy_dir" -mindepth 1 -maxdepth 1 -type d | wc -l)
   log_verbose "Found $count plugin directories"
@@ -229,8 +233,18 @@ case "$0" in
   *test-applications.sh)
     if [ $# -ge 2 ]; then
       _app="$1"; shift
+      if [ "$_app" = nvim ]; then
+        _lock_snapshot=$(mktemp)
+        trap 'rm -f "$_lock_snapshot"' EXIT
+        cp "$DIR/symlinks/vim/lazy-lock.json" "$_lock_snapshot"
+      fi
       for _t in "$@"; do
         "test_${_app}_${_t}"
+        if [ "$_app" = nvim ]; then
+          cmp "$DIR/symlinks/vim/lazy-lock.json" "$_lock_snapshot" || {
+            log_error "Neovim tests changed the tracked plugin lockfile"
+          }
+        fi
       done
     fi
     ;;

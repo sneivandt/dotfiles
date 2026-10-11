@@ -115,7 +115,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("hook_inputs", "build_linux")
         elif path == LINUX + "test-stocks.sh":
             enable("stocks")
-        elif path == LINUX + "test-git-hooks.sh" or path.startswith("hooks/"):
+        elif path in {LINUX + "test-git-hooks.sh", LINUX + "test-maintenance.py"} or path.startswith("hooks/"):
             enable("git_hooks", "hook_inputs")
         elif path in {"dotfiles.sh", LINUX + "test-shell-wrapper.sh"}:
             enable("wrapper_linux")
@@ -129,7 +129,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             apps.update(APPS)
         elif path == WINDOWS + "Test-Applications.ps1":
             enable("app_windows")
-        elif path == LINUX + "test-nvim-config.lua":
+        elif path in {LINUX + "test-nvim-config.lua", LINUX + "test-nvim-lock.lua"}:
             apps.add("nvim")
         elif path == LINUX + "test-shell-config.py":
             apps.add("zsh")
@@ -161,6 +161,11 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
         elif path.startswith("symlinks/"):
             # Config-drift tests inspect managed content as well as source paths.
             enable("validate_config", "config_drift")
+            if path.startswith("symlinks/config/git/templates/") or path in {
+                "symlinks/config/systemd/user/clean-home-tmp.service",
+                "symlinks/config/systemd/user/clean-screenshots.service",
+            }:
+                enable("git_hooks")
             if path.startswith("symlinks/config/git/"):
                 apps.add("git")
                 enable("app_windows")

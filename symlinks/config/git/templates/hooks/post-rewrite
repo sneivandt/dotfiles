@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+hook="$HOME"/.config/git/templates/hooks.local/post-rewrite
+if [ -f "$hook" ]; then
+  sh "$hook" "$@"
+fi

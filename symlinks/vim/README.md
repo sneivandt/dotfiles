@@ -104,6 +104,10 @@ the shared `vimrc`, never the plugin bootstrap. They verify that Go's whitespace
 display and snippets' fold level remain local when changing buffers, filetypes,
 or windows. The bootstrap pin is also checked against the tracked lockfile.
 
+CI restores plugins with `:Lazy! restore`, verifies installed commits against
+the tracked lockfile, and rejects lockfile changes during application tests.
+Plugin updates remain an explicit maintenance action.
+
 Use [Testing](../../docs/TESTING.md) for repository validation and application
 coverage. Avoid using the installed editor profile for checks that are meant
 to leave the live configuration unchanged.

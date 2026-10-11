@@ -336,6 +336,26 @@ Inspect and remove only `.hook-test-repo` afterward; never stage it. Do not
 reuse a failed fixture: its committed test data can turn the next run into an
 empty diff and give misleading results.
 
+## Cleanup retention and Git templates
+
+```bash
+python3 -B .github/workflows/scripts/linux/test-maintenance.py
+```
+
+The suite creates isolated Git repositories and runs the cleanup services'
+`find` commands against temporary directories, without starting systemd units.
+It verifies merge/rebase cleanup, worktree and unmerged-branch preservation,
+protected destination branches, and file/link/directory retention. CI runs it
+with the Git hook suite when the templates or cleanup services change.
+
+Both cleanup services age regular files, symlinks, and empty directories by
+modification time: `find -mtime +7` for `~/tmp`, `-mtime +30` for
+`~/screenshots`. These expressions use completed 24-hour periods: removal starts
+at eight and thirty-one days, respectively. Symlinks are removed without
+following their targets. Empty directories must meet the same age threshold;
+deleting their contents may refresh directory modification time and delay their
+removal. Nonempty directories are preserved.
+
 ## Desktop shell
 
 These checks do not require installing the managed configuration.

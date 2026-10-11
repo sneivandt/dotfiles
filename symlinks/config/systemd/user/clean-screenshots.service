@@ -24,4 +24,5 @@ LockPersonality=true
 MemoryDenyWriteExecute=true
 CapabilityBoundingSet=
 SystemCallArchitectures=native
-ExecStart=/usr/bin/find %h/screenshots -xdev -mindepth 1 -type f -mtime +30 -delete
+ExecStart=/usr/bin/find %h/screenshots -xdev -mindepth 1 '(' -type f -o -type l ')' -mtime +30 -delete
+ExecStart=/usr/bin/find %h/screenshots -xdev -mindepth 1 -depth -type d -mtime +30 -empty -delete

@@ -21,6 +21,31 @@ Application-wide Git templates under
 [`symlinks/config/git/templates/`](../symlinks/config/git/templates) are a
 separate mechanism, not extra entrypoints selected from this `hooks/` directory.
 
+## Application-wide templates
+
+The `post-merge` and `post-rewrite` (rebase only) templates share
+`hooks.local/clean-merged-branches`. Cleanup preserves the current branch,
+`origin/HEAD`'s default branch, `main`, `master`, `dev`, `develop`, branches
+checked out in worktrees, and branches that Git refuses to delete safely.
+Without `origin/HEAD`, cleanup does nothing. Amend does not trigger cleanup.
+
+The `pre-push` template exempts repositories owned by `github.user` (or
+`github.username`). Elsewhere it protects `main`, `master`, `develop`, and the
+actual destination remote's default branch. It first uses that remote's cached
+HEAD; when absent, a read-only `ls-remote --symref` lookup runs without consuming
+push input or prompting for credentials. If discovery fails, the named branch
+protections still apply. Configure additional exact branch names with:
+
+```bash
+git config --add dotfiles.protectedBranch release/stable
+git config --add dotfiles.protectedBranch dev
+```
+
+Git copies template entrypoints when initializing or cloning repositories.
+Existing repositories need the new `post-rewrite` entrypoint installed explicitly
+before rebase cleanup is available; preserve any existing repository-specific
+hook. Shared helpers resolve from the managed template directory at runtime.
+
 ## Default pre-commit flow
 
 ```text

@@ -305,6 +305,7 @@ test_pre_push_protection() {
   git init -q "$repo"
   git -C "$repo" config github.user ci-owner
   git -C "$repo" remote add origin https://github.com/ci-owner/repo.git
+  git -C "$repo" symbolic-ref refs/remotes/upstream/HEAD refs/remotes/upstream/main
 
   if (
     cd "$repo"
@@ -359,6 +360,7 @@ sh "$(dirname "$0")/test-hook-inputs.sh"
 
 printf "Testing pre-push protection...\n"
 test_pre_push_protection
+python3 -B "$(dirname "$0")/test-maintenance.py"
 
 # Test AWS credentials
 printf "Testing AWS patterns...\n"

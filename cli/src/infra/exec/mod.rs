@@ -545,7 +545,7 @@ fn execute_spec(
             return Err(error);
         }
     };
-    log_command_output(&label, &result, policy, started.elapsed());
+    log_command_output(&label, &result, policy, started.elapsed(), checked);
     if policy == OutputLog::Omit && checked && !result.success {
         result.stdout = "[output omitted]".into();
         result.stderr = "[output omitted]".into();

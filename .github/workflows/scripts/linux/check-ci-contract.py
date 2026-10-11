@@ -15,6 +15,7 @@ JOB_CONDITIONS = {
     "lint": "run_lint",
     "managed-script-regressions": "run_managed_scripts",
     "docs": "run_docs_checks",
+    "desktop-qml": "run_desktop_qml",
     "validate-config": "run_validate_config",
     "audit": "run_audit",
     "deny": "run_deny",

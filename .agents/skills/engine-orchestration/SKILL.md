@@ -54,7 +54,7 @@ marker rule. Legacy Windows exit-pause/interrupt policy remains separate.
 - Applicability and elevation are assessed once per execution phase. Keep
   `should_run()` and `needs_elevation()` read-only and use phase-stable state;
   avoid unnecessary expensive probes. Check state produced by a prerequisite
-  in `run()` after it finishes. The executor owns stage announcements; tasks
+  in `run()` after it finishes. The executor owns task-start records; tasks
   return `NotApplicable` when they have no configured work.
 - Removing unmet work before graph execution must also skip its transitive
   dependents; an absent node does not propagate failure.
@@ -91,7 +91,7 @@ ordering-only continuation, internal visibility, and sequential/parallel parity
 as applicable. Add shared scheduler contracts to
 [`conformance.rs`](../../../cli/src/engine/tests/scheduler/conformance.rs);
 its harness runs both modes and compares outcomes and records. Keep
-concurrency-only synchronization in `parallel.rs` and stage/result ordering in
+concurrency-only synchronization in `parallel.rs` and start/result ordering in
 `output.rs`. Use `task_execution` for filesystem-backed task behavior and the
 affected command suites listed under
 [Integration test suites](../../../docs/TESTING.md#integration-test-suites).

@@ -49,6 +49,25 @@ if [ -f "$ALLOWLIST_FILE" ]; then
   ' "$ALLOWLIST_FILE")
 fi
 
+# Validate every detection rule even when the staged diff is empty. grep's
+# status 1 means no match; any other failure means the scan cannot be trusted.
+while IFS= read -r pattern; do
+  case "$pattern" in
+    ''|'#'*|'['*']') continue ;;
+  esac
+  if grep -iE -- "$pattern" /dev/null >/dev/null 2>&1; then
+    :
+  else
+    status=$?
+    if [ "$status" -ne 1 ]; then
+      printf 'ERROR: Cannot validate sensitive-data detection rules (grep status %s).\n' "$status" >&2
+      exit 1
+    fi
+  fi
+done <<PATTERNS_EOF
+$PATTERNS
+PATTERNS_EOF
+
 if git rev-parse --verify HEAD >/dev/null 2>&1; then
   against=HEAD
 else
@@ -60,105 +79,91 @@ found_secrets=0
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
-changes="$tmpdir/changes"
+diff_file="$tmpdir/diff"
 content="$tmpdir/content"
 linenos="$tmpdir/linenos"
+filenames="$tmpdir/filenames"
+: > "$content"
+: > "$linenos"
+: > "$filenames"
 
-# Enumerate staged changes as "newpath[<TAB>oldpath]" records. Deletions are
-# excluded (lowercase 'd'); every other status is scanned, including renames.
-# A rename that also introduces a secret must not escape the scan, so R/C
-# records keep the old path too: passing both paths to `git diff` lets rename
-# detection pair them, so only the genuinely added lines are reported.
-git diff --cached --name-status --diff-filter=d -z "$against" | awk '
-  BEGIN { RS = "\0"; state = 0 }
-  state == 0 { state = ($0 ~ /^[RC]/) ? 2 : 1; next }
-  state == 2 { old = $0; state = 3; next }
-  state == 3 { print $0 "\t" old; state = 0; next }
-  state == 1 { print $0; state = 0; next }
-' > "$changes"
+# Scan one staged patch rather than splitting filenames into shell records.
+# Git quotes tabs/newlines in patch headers; keep those escaped names for
+# diagnostics only. No pathname is decoded or passed back to Git. Taking the
+# complete diff also preserves rename detection and staged-only content.
+git diff --cached --unified=0 --inter-hunk-context=0 --no-color --no-ext-diff --no-textconv \
+  --src-prefix=a/ --dst-prefix=b/ "$against" -- > "$diff_file"
 
-while IFS="$(printf '\t')" read -r file old; do
-  [ -z "$file" ] && continue
+# Keep content, source line numbers and display filenames in aligned files.
+# Anchored detection rules bind to the added content itself, not metadata.
+awk -v content="$content" -v linenos="$linenos" -v filenames="$filenames" '
+  /^diff --git / { in_hunk = 0; next }
+  !in_hunk && /^\+\+\+ / {
+    file = substr($0, 5)
+    sub(/\t$/, "", file)
+    sub(/^b\//, "", file)
+    sub(/^"b\//, "\"", file)
+    next
+  }
+  /^@@ / {
+    s = $3
+    sub(/^\+/, "", s)
+    sub(/,.*/, "", s)
+    lineno = s + 0
+    in_hunk = 1
+    next
+  }
+  # The +++ header precedes the first hunk. Added content beginning with ++
+  # still belongs to the scan once inside a hunk.
+  in_hunk && /^\+/ {
+    print substr($0, 2) > content
+    print lineno > linenos
+    print file > filenames
+    lineno++
+  }
+' "$diff_file"
 
-  if [ -n "$old" ]; then
-    diff_output=$(git diff --cached --unified=0 "$against" -- "$old" "$file" || true)
-  else
-    diff_output=$(git diff --cached --unified=0 "$against" -- "$file" || true)
+if [ -n "$ALLOWLIST_RE" ]; then
+  # Use a control character so patterns can contain unescaped '/'. Also
+  # validate the allowlist on empty input: broken exceptions must fail closed.
+  sed_delim=$(printf '\001')
+  if ! sed -E "s${sed_delim}${ALLOWLIST_RE}${sed_delim}<allowlisted>${sed_delim}gI" \
+    "$content" > "$content.redacted"; then
+    printf 'ERROR: Cannot apply sensitive-data allowlist.\n' >&2
+    exit 1
   fi
+  mv "$content.redacted" "$content"
+fi
 
-  if [ -z "$diff_output" ]; then
-    continue
-  fi
+while IFS= read -r pattern; do
+  case "$pattern" in
+    ''|'#'*|'['*']') continue ;;
+  esac
 
-  # Split added lines into two line-aligned files: raw content and its line
-  # number. Patterns are matched against content alone so that '^' and '$'
-  # anchors bind to the start and end of the added line itself.
-  echo "$diff_output" | awk -v content="$content" -v linenos="$linenos" '
-    /^diff --git / { in_hunk = 0; next }
-    /^@@ / {
-      # Parse +start from @@ -a,b +c,d @@
-      s = $3
-      sub(/^\+/, "", s)
-      sub(/,.*/, "", s)
-      lineno = s + 0
-      in_hunk = 1
-      next
-    }
-    # Only body lines of a hunk are additions. The "+++ b/file" header always
-    # precedes the first "@@", so position excludes it without also discarding
-    # added content that happens to begin with "++".
-    in_hunk && /^\+/ {
-      print substr($0, 2) > content
-      print lineno > linenos
-      lineno++
-    }
-  '
-
-  if [ ! -s "$content" ]; then
-    : > "$content"
-    : > "$linenos"
-    continue
-  fi
-
-  if [ -n "$ALLOWLIST_RE" ]; then
-    # Use a control character as the sed delimiter so allow-list patterns may
-    # contain '/' (action references) without escaping.
-    sed_delim=$(printf '\001')
-    sed -E "s${sed_delim}${ALLOWLIST_RE}${sed_delim}<allowlisted>${sed_delim}gI" \
-      "$content" > "$content.redacted"
-    mv "$content.redacted" "$content"
-  fi
-
-  while IFS= read -r pattern; do
-    case "$pattern" in
-      ''|'#'*|'['*']') continue ;;
-    esac
-
-    # -n numbers matches by position within the added-line list, which maps
-    # back to the real file line number through the aligned linenos file.
-    matches=$(grep -inE -- "$pattern" "$content" 2>/dev/null || true)
-
-    if [ -n "$matches" ]; then
-        if [ "$found_secrets" -eq 0 ]; then
-          printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
-          printf '%s======================================================%s\n\n' "$RED" "$NC"
-          found_secrets=1
-        fi
-
-        printf '%sIn file: %s%s\n' "$YELLOW" "$file" "$NC"
-        echo "$matches" | while IFS=: read -r index _text; do
-          lineno=$(sed -n "${index}p" "$linenos")
-          printf '%s  Line %s: <redacted>%s\n' "$YELLOW" "$lineno" "$NC"
-        done
-        printf '\n'
+  if matches=$(grep -inE -- "$pattern" "$content" 2>/dev/null); then
+    if [ "$found_secrets" -eq 0 ]; then
+      printf '%sERROR: Potential sensitive information detected!%s\n' "$RED" "$NC"
+      printf '%s======================================================%s\n\n' "$RED" "$NC"
+      found_secrets=1
     fi
-  done <<PATTERNS_EOF
+
+    printf '%s\n' "$matches" | while IFS=: read -r index _text; do
+      file=$(sed -n "${index}p" "$filenames")
+      lineno=$(sed -n "${index}p" "$linenos")
+      printf '%sIn file: %s%s\n' "$YELLOW" "$file" "$NC"
+      printf '%s  Line %s: <redacted>%s\n' "$YELLOW" "$lineno" "$NC"
+    done
+    printf '\n'
+  else
+    status=$?
+    if [ "$status" -ne 1 ]; then
+      printf 'ERROR: Sensitive-data scan failed (grep status %s).\n' "$status" >&2
+      exit 1
+    fi
+  fi
+done <<PATTERNS_EOF
 $PATTERNS
 PATTERNS_EOF
-
-  : > "$content"
-  : > "$linenos"
-done < "$changes"
 
 if [ "$found_secrets" -eq 1 ]; then
   printf '%s======================================================%s\n' "$RED" "$NC"

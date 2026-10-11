@@ -76,7 +76,7 @@ class ClassificationTests(unittest.TestCase):
             ("symlinks/config/hypr/hypridle.conf",
              config | {"managed_scripts", "lock"}),
             ("symlinks/config/quickshell/network_helper.py",
-             config | {"managed_scripts", "desktop_python"}),
+             config | {"managed_scripts", "desktop_python", "desktop_qml"}),
             ("symlinks/config/hypr/scripts/stocks.sh",
              config | {"stocks", "lint", "managed_scripts", "lock"}),
             ("symlinks/config/hypr/scripts/screenshot.sh",
@@ -89,6 +89,14 @@ class ClassificationTests(unittest.TestCase):
             ("hooks/sensitive-patterns.ini", {"git_hooks", "hook_inputs"}),
             (LINUX + "test-stocks.sh", {"stocks", "lint"}),
             (LINUX + "test-docs.sh", {"lint"}),
+            (LINUX + "test-workflows.sh", {"lint"}),
+            (LINUX + "test-desktop-qml.sh", {"lint", "desktop_qml"}),
+            ("symlinks/config/quickshell/Bar.qml",
+             config | {"managed_scripts", "desktop_python", "desktop_qml"}),
+            ("symlinks/config/quickshell/Theme.js",
+             config | {"managed_scripts", "desktop_python", "desktop_qml"}),
+            ("symlinks/config/quickshell/tests/qml/mocks/Quickshell/Io/qmldir",
+             config | {"managed_scripts", "desktop_python", "desktop_qml"}),
             (LINUX + "test-uninstall.sh", {"roundtrip_linux", "build_linux", "lint"}),
             (WINDOWS + "Test-ShellWrapper.ps1", {"wrapper_windows", "build_windows", "lint"}),
             (WINDOWS + "Test-InstallUninstall.ps1", {"roundtrip_windows", "build_windows", "lint"}),
@@ -191,7 +199,8 @@ class GateTests(unittest.TestCase):
         return needs
 
     def test_intentional_skips(self):
-        for paths in (["README.md"], ["dotfiles.ps1"], ["conf/packages.toml"], ["cli/src/main.rs"]):
+        for paths in (["README.md"], ["dotfiles.ps1"], ["conf/packages.toml"], ["cli/src/main.rs"],
+                      ["symlinks/config/quickshell/Bar.qml"]):
             with self.subTest(paths=paths):
                 CONTRACT["check_results"](self.results(paths))
 
@@ -210,6 +219,14 @@ class GateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CONTRACT["check_results"](needs)
 
+    def test_qml_failures_and_skips_block_gate(self):
+        for result in ("failure", "cancelled", "skipped"):
+            with self.subTest(result=result):
+                needs = self.results(["symlinks/config/quickshell/Bar.qml"])
+                needs["desktop-qml"]["result"] = result
+                with self.assertRaises(ValueError):
+                    CONTRACT["check_results"](needs)
+
     def test_workflow_contracts(self):
         workflow = CONTRACT["WORKFLOW"].read_text(encoding="utf-8")
         CONTRACT["check"](workflow)
@@ -217,6 +234,7 @@ class GateTests(unittest.TestCase):
         CONTRACT["check_release"](release)
         for broken in (
             workflow.replace("      - docs\n", ""),
+            workflow.replace("      - desktop-qml\n", ""),
             workflow.replace("run_build_windows == 'true'", "run_build_linux == 'true'"),
             workflow.replace("check-ci-contract.py --results", "echo success"),
         ):

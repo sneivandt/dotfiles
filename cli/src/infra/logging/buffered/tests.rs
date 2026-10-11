@@ -65,9 +65,8 @@ fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
         let mut previous = 0;
         for (kind, event) in [
             (MsgKind::Stage, "stage"),
-            (MsgKind::TaskStage, "stage"),
             (MsgKind::Info, "info"),
-            (MsgKind::Summary, "info"),
+            (MsgKind::Summary, "summary"),
             (MsgKind::Debug, "debug"),
             (MsgKind::Context, "debug"),
             (MsgKind::Trace, "debug"),
@@ -95,7 +94,7 @@ fn direct_and_buffered_messages_are_persisted_once_in_emission_order() {
                 previous = position;
             }
         }
-        assert_eq!(buf.entries.lock().unwrap().len(), 12);
+        assert_eq!(buf.entries.lock().unwrap().len(), 11);
         let before_flush = fs::read_to_string(log.log_path().unwrap()).unwrap();
         buf.flush();
         buf.flush();
@@ -260,7 +259,6 @@ fn flush_and_complete_clears_progress_rows() {
 fn buffered_presentation_golden_matrix() {
     for (kind, verbose, warning, detail) in [
         (MsgKind::Stage, false, false, false),
-        (MsgKind::TaskStage, false, false, false),
         (MsgKind::Info, true, false, true),
         (MsgKind::Summary, false, false, false),
         (MsgKind::Debug, true, false, false),
@@ -422,7 +420,7 @@ fn verbose_flush_keeps_not_applicable_task_output_off_console() {
         TaskStatus::NotApplicable,
         ActionCounts::default(),
     ));
-    buf.task_stage("windows-only-task");
+    buf.stage("windows-only-task");
     buf.debug("not applicable: requires Windows");
 
     buf.flush_and_complete("windows-only-task", "windows-only-task");
@@ -445,7 +443,7 @@ fn non_verbose_flush_keeps_unchanged_task_output_off_console() {
         TaskStatus::Ok,
         ActionCounts::default(),
     ));
-    buf.task_stage("current-task");
+    buf.stage("current-task");
     buf.summary("0 changed, 1 already ok");
 
     buf.flush_and_complete("current-task", "current-task");
@@ -531,7 +529,7 @@ fn restart_notice_suppresses_the_completed_row_but_retains_verbose_details() {
         log.set_symbols(false);
         let log = Arc::new(log);
         let buf = BufferedLog::new(Arc::clone(&log));
-        buf.task_stage("repository");
+        buf.stage("repository");
         buf.action("update", "repository", false, "update repository");
         buf.record_task(
             task_entry("repository", TaskStatus::Changed, ActionCounts::default())
@@ -575,7 +573,7 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
                 ("last", TaskStatus::Passed),
             ] {
                 let buf = BufferedLog::new(Arc::clone(&log));
-                buf.task_stage(name);
+                buf.stage(name);
                 if name == "actions" {
                     buf.action("link", "z", false, "link z");
                     buf.action("link", "a", false, "link a");

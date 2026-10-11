@@ -295,7 +295,10 @@ non-applicable tasks stay out of normal rows/totals. Completed rows retain
 completion order rather than being sorted after execution.
 
 Run logs retain chronological, schema-versioned records for task identity,
-actions, duration and commands. Restarted/elevated processes have their own run
+actions, duration, requested task scope and commands. Each executed task has one
+start entry naming the task, one structured result and one structured duration;
+process-wide stages are separate. Unchecked command nonzero exits remain neutral
+until interpreted by the caller. Restarted/elevated processes have their own run
 IDs linked to a parent. A missing finish record means unfinished, not a proven
 crash. `dotfiles log` reads these records without creating a new run and can
 also read legacy text logs. The newest 50 process logs are retained.

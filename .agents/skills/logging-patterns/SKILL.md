@@ -94,13 +94,19 @@ description: >
   versions explicit; preserve unknown records and legacy text in the viewer.
 - Use stable task keys, not labels or `TypeId` debug text. Task decorators must
   forward `log_key()` and worker threads must inherit the owning task's context.
-- Record run start, resolved context, and finish independently of console totals.
+- Record run start, requested scope, resolved context, and finish independently of
+  console totals. Each executed task has one readable start entry and one
+  structured result/duration; do not add a task-stage header or text duplicates.
+  Retain full error chains as debug diagnostics alongside the concise outcome.
   Restarted and elevated children receive the parent ID through `child_args`.
   A missing finish record means unfinished, not necessarily crashed.
 - Failure hints select the exact run with `--id` and diagnostics with `-v`.
   Do not offer a hint when the persistent sink is unavailable or degraded.
 - Preserve multiline messages and command streams in storage. Normal log viewing
-  includes failed command diagnostics and successful stderr. `--raw` reads stored
+  emphasizes actions/outcomes and includes checked command failures and nonempty
+  stderr. Starts, resource checks, timings and debug details require `-v`.
+  Unchecked nonzero exits use `nonzero_exit`, not a failure classification; retain
+  their streams for verbose/raw diagnostics. `--raw` reads stored
   records; `--task` filters by stable public selector or exact stored identity.
 - Test lifecycle and parent linkage, stable selection after newer runs,
   task filtering, legacy/unknown records, output retention, and multiline parity.

@@ -174,7 +174,7 @@ pub(in crate::infra::logging) fn ui_line_with_style(
 ) -> Option<String> {
     let msg = style.clean(msg);
     match kind {
-        MsgKind::Stage | MsgKind::TaskStage => verbose.then_some(msg),
+        MsgKind::Stage => verbose.then_some(msg),
         MsgKind::Info => verbose.then(|| format!("  {msg}")),
         MsgKind::Debug => verbose.then(|| style.paint(TextStyle::Dim, &format!("  {msg}"))),
         MsgKind::Context => verbose.then(|| style.paint(TextStyle::Dim, &msg)),

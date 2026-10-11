@@ -17,7 +17,7 @@ FLAGS = (
     "run_roundtrip_linux", "run_roundtrip_windows", "run_app_tests",
     "run_app_windows", "run_git_hooks", "run_hook_inputs", "run_wrapper_linux",
     "run_wrapper_windows", "run_lint", "run_managed_scripts", "run_prompt",
-    "run_lock", "run_desktop_python", "run_stocks", "run_release",
+    "run_lock", "run_desktop_qml", "run_desktop_python", "run_stocks", "run_release",
 )
 APPS = {
     "git": {"application": "git", "packages": "git", "tests": "config aliases behavior clean"},
@@ -107,6 +107,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             pass  # Always executed by classify-changes.
         elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
+        elif path == LINUX + "test-desktop-qml.sh":
+            enable("desktop_qml")
+        elif path == LINUX + "test-workflows.sh":
+            pass  # Always executed by classify-changes.
         elif path == LINUX + "test-docs.sh":
             pass
         elif path == LINUX + "test-static-analysis.sh":
@@ -184,7 +188,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             ):
                 enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
-                enable("desktop_python")
+                enable("desktop_python", "desktop_qml")
             if path == "symlinks/config/hypr/scripts/stocks.sh":
                 enable("stocks")
         elif path.startswith(".github/workflows/") and not path.startswith(SCRIPTS):

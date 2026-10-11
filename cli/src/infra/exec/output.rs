@@ -8,6 +8,7 @@ pub(super) fn log_command_output(
     result: &ExecResult,
     policy: OutputLog,
     elapsed: Duration,
+    checked: bool,
 ) {
     log_result(
         label,
@@ -16,8 +17,10 @@ pub(super) fn log_command_output(
         elapsed,
         if result.success {
             "succeeded"
-        } else {
+        } else if checked || result.code.is_none() {
             "failed"
+        } else {
+            "nonzero_exit"
         },
     );
 }

@@ -432,6 +432,7 @@ fn output_retention_records_streams_and_preserves_multiline_boundaries() {
             &result,
             policy,
             Duration::from_millis(123),
+            true,
         );
         let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
         let records: Vec<_> = content
@@ -500,7 +501,7 @@ fn omitted_unchecked_output_is_available_to_caller_but_not_persisted() {
     assert!(matches!(
         &records[0].record,
         Record::Command { stdout: None, stderr: None, stdout_bytes, exit_code: Some(3), outcome, .. }
-            if *stdout_bytes == result.stdout.len() && outcome == "failed"
+            if *stdout_bytes == result.stdout.len() && outcome == "nonzero_exit"
     ));
 }
 
@@ -600,4 +601,38 @@ fn command_failure_summary_prefers_diagnostics_over_notices() {
 fn empty_command_failure_output_has_no_diagnostic_suffix() {
     let error = ExecError::non_zero("example", ExecResult::failure(" \n", "\n", Some(1)));
     assert_eq!(error.concise_message(), "example failed (exit 1)");
+}
+
+#[test]
+fn unchecked_nonzero_exit_is_neutral_but_checked_and_signal_failures_remain_failures() {
+    use crate::infra::logging::records::{Record, StoredRecord};
+    for (checked, code, expected) in [
+        (false, Some(1), "nonzero_exit"),
+        (true, Some(1), "failed"),
+        (false, None, "failed"),
+    ] {
+        let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+        let result = ExecResult {
+            stdout: "disabled\n".into(),
+            stderr: String::new(),
+            success: false,
+            code,
+        };
+        log_command_output(
+            "fixture-probe",
+            &result,
+            OutputLog::Diagnostics,
+            Duration::ZERO,
+            checked,
+        );
+        let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        let records: Vec<_> = content
+            .lines()
+            .filter_map(StoredRecord::from_line)
+            .collect();
+        assert_eq!(records.len(), 1);
+        assert!(matches!(&records[0].record,
+            Record::Command { outcome, exit_code, stdout: Some(stdout), .. }
+            if outcome == expected && *exit_code == code && stdout == "disabled\n"));
+    }
 }

@@ -1,4 +1,4 @@
-//! Scheduler-owned stage ordering and result recording (not console styling).
+//! Scheduler-owned start ordering and result recording (not console styling).
 
 use super::*;
 use crate::infra::logging::{MsgKind, TaskResultDisplay, TaskVisibility};
@@ -153,10 +153,10 @@ impl Task for DetailTask {
 }
 
 #[test]
-fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
+fn starts_precede_stats_and_results_and_durations_are_recorded_once() {
     for verbose in [false, true] {
         conformance_with_verbosity(
-            "stage, stats, detail, and timing",
+            "start, stats, detail, and timing",
             verbose,
             |mode, ctx, log| {
                 let cases = [
@@ -187,7 +187,7 @@ fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
                 log.print_summary();
                 let contents = std::fs::read_to_string(log.log_path().expect("run log")).unwrap();
                 for (task, &(_, count)) in stats.iter().zip(&cases) {
-                    let stage = format!("[stage] {}", task.name());
+                    let stage = format!("[task_start] {}", task.name());
                     assert_eq!(contents.matches(&stage).count(), 1, "{stage}: {contents}");
                     let info = format!("0 changed, {count} already ok");
                     assert!(
@@ -201,21 +201,45 @@ fn stages_precede_stats_and_details_are_not_repeated_in_summary() {
                     "task details must not repeat in the final file summary: {contents}"
                 );
                 assert_eq!(
-                    contents.matches("[task_timing] elapsed ").count(),
+                    contents
+                        .lines()
+                        .filter_map(logging::records::StoredRecord::from_line)
+                        .filter(|stored| matches!(
+                            stored.record,
+                            logging::records::Record::TaskDuration { .. }
+                        ))
+                        .count(),
                     6,
                     "each executed task records one duration: {contents}"
                 );
-                let empty_stage = "[stage] empty-config";
+                assert!(!contents.contains("[stage]"));
+                assert!(!contents.contains("[task_done]"));
+                assert!(!contents.contains("[task_skip]"));
+                assert!(!contents.contains("[task_timing]"));
+                let records: Vec<_> = contents
+                    .lines()
+                    .filter_map(logging::records::StoredRecord::from_line)
+                    .collect();
+                for task in &tasks {
+                    assert_eq!(
+                        records
+                            .iter()
+                            .filter(|stored| matches!(&stored.record,
+                        logging::records::Record::TaskResult { task_id, .. }
+                        if task_id == &task.log_key()))
+                            .count(),
+                        1
+                    );
+                }
+                let empty_stage = "[task_start] empty-config";
                 assert_eq!(contents.matches(empty_stage).count(), 1);
                 assert!(
                     contents.find(empty_stage).unwrap()
-                        < contents
-                            .find("[task_skip] nothing configured")
-                            .expect("empty outcome")
+                        < contents.find("nothing configured").expect("empty outcome")
                 );
                 assert!(
-                    !contents.contains("[stage] no-stage"),
-                    "inapplicable work has no stage"
+                    !contents.contains("[task_start] no-stage"),
+                    "inapplicable work has no start"
                 );
                 assert!(
                     log.task_entries()
@@ -250,4 +274,56 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
         drop(records);
     }
     task.assert_ran(false);
+}
+
+#[test]
+fn full_error_chain_remains_in_diagnostics_after_outcome_deduplication() {
+    struct FailureTask;
+    impl Task for FailureTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("fixture failure")
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Err(anyhow::Error::new(ExecError::NonZero {
+                command: "fixture-command".into(),
+                result: ExecResult {
+                    stdout: "synthetic extra stdout".into(),
+                    stderr: "error: synthetic cause".into(),
+                    success: false,
+                    code: Some(1),
+                },
+            })
+            .context("fixture operation context"))
+        }
+    }
+    conformance("retained error chain", |mode, ctx, log| {
+        let task = FailureTask;
+        let summary = mode.run(&[&task], ctx, log, None);
+        let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert!(!content.contains("[task_fail]"));
+        assert!(content.contains("[debug] fixture operation context"));
+        assert!(content.contains("synthetic extra stdout"));
+        assert!(content.contains("error: synthetic cause"));
+        let records: Vec<_> = content
+            .lines()
+            .filter_map(logging::records::StoredRecord::from_line)
+            .collect();
+        assert_eq!(
+            records
+                .iter()
+                .filter(|r| matches!(&r.record, logging::records::Record::TaskResult { .. }))
+                .count(),
+            1
+        );
+        let entries = log.task_entries();
+        assert_eq!(entries[0].status, TaskStatus::Failed);
+        assert!(
+            !entries[0]
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("synthetic extra stdout")
+        );
+        summary
+    });
 }

@@ -128,7 +128,7 @@ docs_links()
 docs_task_selectors()
 {
   log_stage "Checking documented task selectors"
-  (cd "$DIR/cli" && cargo test --quiet --profile ci --lib \
+  (cd "$DIR/cli" && cargo test --locked --quiet --profile ci --lib \
     app::commands::tasks::tests::documented_selectors_match_catalog -- --exact)
 }
 

@@ -225,7 +225,6 @@ fn dependency_outcome(
 fn record_scheduler_skip(task: &dyn Task, log: &dyn Log, reason: &str, status: TaskStatus) {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
-    log.run_task_event(LogEvent::TaskSkip, &task.log_key(), reason);
     log.debug(reason);
     log.record_task(task_entry(
         task,
@@ -271,7 +270,6 @@ fn run_task_buffered(
                         .map(|s| format!("task panicked: {s}"))
                 })
                 .unwrap_or_else(|| "task panicked".to_string());
-            log.run_task_event(LogEvent::TaskFail, &task.log_key(), &msg);
             buf.error(format!("{}: {msg}", task.name()));
             log.record_task(task_entry(
                 task,

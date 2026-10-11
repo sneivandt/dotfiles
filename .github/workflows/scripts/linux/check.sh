@@ -30,8 +30,8 @@ CARGO_PROFILE=ci
 DEFAULT_STAGES="fmt clippy test config docs ci shell powershell audit deny"
 
 # Stages only run when explicitly requested or via --all. `msrv` downloads a
-# second toolchain, which is too slow for the default loop.
-OPTIONAL_STAGES="msrv"
+# second toolchain; `qml` requires Qt >= 6.8 Quick Test.
+OPTIONAL_STAGES="msrv qml"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   C_RED=$(printf '\033[31m')
@@ -106,21 +106,21 @@ stage_fmt()
 stage_clippy()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
-  cargo clippy --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
+  cargo clippy --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
     --all-targets -- -D warnings
 }
 
 stage_test()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
-  cargo test --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST"
+  cargo test --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST"
 }
 
 # Runs the CLI's own repository validator against this working tree.
 stage_config()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
-  cargo run --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" -- \
+  cargo run --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" -- \
     check --root "$REPO_ROOT" --profile desktop --only config-warnings,symlink-sources,config-files
 }
 
@@ -135,7 +135,9 @@ stage_ci()
 {
   have python3 || { note "python3 not installed; skipping"; return 2; }
   python3 "$REPO_ROOT/.github/workflows/scripts/linux/check-ci-contract.py" &&
-    python3 -B "$REPO_ROOT/.github/workflows/scripts/linux/test-ci-changes.py"
+    python3 -B "$REPO_ROOT/.github/workflows/scripts/linux/test-ci-changes.py" || return 1
+  have actionlint || { note "actionlint not installed; workflow lint skipped"; return 2; }
+  sh "$REPO_ROOT/.github/workflows/scripts/linux/test-workflows.sh"
 }
 
 stage_shell()
@@ -172,6 +174,17 @@ stage_deny()
   cargo deny --manifest-path "$MANIFEST" check all
 }
 
+# Uses inert Quickshell mocks; no live desktop or services are started.
+stage_qml()
+{
+  if [ ! -x "${QT_ROOT_DIR:-}/bin/qmltestrunner" ] &&
+     [ ! -x /usr/lib/qt6/bin/qmltestrunner ] && ! have qmltestrunner; then
+    note "Qt Quick Test not installed; skipping (requires Qt >= 6.8)"
+    return 2
+  fi
+  sh "$REPO_ROOT/.github/workflows/scripts/linux/test-desktop-qml.sh"
+}
+
 # Checks the crate still compiles on the declared minimum toolchain.
 stage_msrv()
 {
@@ -183,7 +196,7 @@ stage_msrv()
   fi
   note "MSRV from Cargo.toml: $msrv"
   rustup toolchain install "$msrv" --profile minimal >/dev/null 2>&1 || true
-  cargo "+$msrv" check --manifest-path "$MANIFEST" --all-targets
+  cargo "+$msrv" check --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" --all-targets
 }
 
 # ── Argument handling ─────────────────────────────────

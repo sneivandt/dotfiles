@@ -57,18 +57,19 @@ fn run_log_file_name(command: &str, stamp: &str, pid: u32) -> String {
 
 /// Parse a run-log file name, or return `None` if it is not one.
 ///
-/// Command names never contain `-`, so splitting into exactly three parts is
-/// unambiguous. The stamp must match the fixed-width `YYYYMMDDTHHMMSSZ` format.
+/// Split the timestamp from the left and PID from the right so hyphenated
+/// diagnostic/test command names round-trip. The timestamp must match the
+/// fixed-width `YYYYMMDDTHHMMSSZ` format.
 /// Files that do not match are ignored rather than pruned or listed, so
 /// unrelated files in the log directory are left alone.
 pub(crate) fn parse_run_log_file_name(name: &str) -> Option<RunLogName<'_>> {
     let stem = name.strip_suffix(".log")?;
-    let mut parts = stem.split('-');
-    let stamp = parts.next()?;
-    let command = parts.next()?;
-    let pid = parts.next()?;
-    if parts.next().is_some()
-        || command.is_empty()
+    let (stamp, rest) = stem.split_once('-')?;
+    let (command, pid) = rest.rsplit_once('-')?;
+    if command.is_empty()
+        || !command
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
         || stamp.len() != 16
         || !stamp.bytes().enumerate().all(|(index, byte)| match index {
             8 => byte == b'T',
@@ -452,11 +453,12 @@ mod tests {
 
     #[test]
     fn run_log_file_name_round_trips() {
-        let name = run_log_file_name("install", "20260731T154210Z", 4321);
-        assert_eq!(name, "20260731T154210Z-install-4321.log");
-        let parsed = parse_run_log_file_name(&name).expect("name should parse");
-        assert_eq!(parsed.stamp, "20260731T154210Z");
-        assert_eq!(parsed.command, "install");
+        for command in ["install", "test-install-dry-run", "behavioral-ci"] {
+            let name = run_log_file_name(command, "20260731T154210Z", 4321);
+            let parsed = parse_run_log_file_name(&name).expect("name should parse");
+            assert_eq!(parsed.stamp, "20260731T154210Z");
+            assert_eq!(parsed.command, command);
+        }
     }
 
     #[test]
@@ -518,6 +520,30 @@ mod tests {
             ],
             "the oldest run should be pruned first"
         );
+    }
+
+    #[test]
+    fn retention_includes_hyphenated_test_runs_and_preserves_foreign_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = "20260730T154210Z-test-install-dry-run-1.log";
+        let newest = "20260731T154210Z-behavioral-ci-2.log";
+        for name in [
+            old,
+            newest,
+            "backup-notes-1.log",
+            "20260731T154210Z-test-command-notapid.log",
+        ] {
+            fs::write(tmp.path().join(name), "fixture").unwrap();
+        }
+        prune_run_logs(tmp.path(), 1);
+        assert!(!tmp.path().join(old).exists());
+        for name in [
+            newest,
+            "backup-notes-1.log",
+            "20260731T154210Z-test-command-notapid.log",
+        ] {
+            assert!(tmp.path().join(name).exists(), "preserve {name}");
+        }
     }
 
     #[test]
@@ -728,9 +754,9 @@ mod tests {
     #[test]
     fn explicit_task_event_preserves_context() {
         let (run_log, _tmp) = isolated_run_log();
-        run_log.emit_task(LogEvent::TaskDone, "typed-task", "complete");
+        run_log.emit_task(LogEvent::TaskStart, "typed-task", "complete");
         let contents = fs::read_to_string(run_log.path()).unwrap();
-        assert!(contents.contains("[typed-task] [task_done] complete"));
+        assert!(contents.contains("[typed-task] [task_start] complete"));
     }
 
     #[test]
@@ -783,11 +809,10 @@ mod tests {
         assert_eq!(LogEvent::Info.name(), "info");
         assert_eq!(LogEvent::Stage.name(), "stage");
         assert_eq!(LogEvent::TaskStart.name(), "task_start");
-        assert_eq!(LogEvent::TaskDone.name(), "task_done");
+        assert_eq!(LogEvent::Summary.name(), "summary");
         assert_eq!(LogEvent::ResourceApply.name(), "resource_apply");
         assert_eq!(LogEvent::Warn.name(), "warn");
         assert_eq!(LogEvent::Error.name(), "error");
-        assert_eq!(LogEvent::TaskFail.name(), "task_fail");
     }
 
     #[test]
@@ -828,7 +853,7 @@ mod tests {
     #[test]
     fn run_log_omits_blank_messages() {
         let (run_log, _tmp) = isolated_run_log();
-        run_log.emit_task(LogEvent::TaskDone, "task-name", "");
+        run_log.emit_task(LogEvent::TaskStart, "task-name", "");
         run_log.emit(LogEvent::Debug, "   \t");
         run_log.emit(LogEvent::Info, "after blanks");
         let contents = fs::read_to_string(run_log.path()).unwrap();

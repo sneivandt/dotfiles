@@ -146,6 +146,27 @@ fn write_selected_contents(
         }
         identities
     });
+    // Older runs wrote text completion/timing events alongside structured facts.
+    // Prefer the structured facts without altering raw or unknown-schema output.
+    let mut results = HashSet::new();
+    let mut durations = HashSet::new();
+    for stored in contents.lines().filter_map(StoredRecord::from_line) {
+        match stored.record {
+            Record::TaskResult { .. } => {
+                results.insert(stored.context);
+            }
+            Record::TaskDuration { .. } => {
+                durations.insert(stored.context);
+            }
+            Record::RunStart { .. }
+            | Record::RunContext { .. }
+            | Record::RunScope { .. }
+            | Record::RunFinish { .. }
+            | Record::Action { .. }
+            | Record::Command { .. }
+            | Record::Message { .. } => {}
+        }
+    }
     let mut wrote_line = false;
     for line in contents.lines() {
         let record = StoredRecord::from_line(line);
@@ -172,7 +193,9 @@ fn write_selected_contents(
                 writeln!(out, "{prefix} [{event}] {message}").context("writing log output")?;
                 wrote_line = true;
             }
-        } else if verbose || line_event(line) != Some("debug") {
+        } else if !legacy_duplicate(line, context, &results, &durations)
+            && (verbose || line_event(line).is_none_or(|event| !diagnostic_event(event)))
+        {
             // Old logs and unknown schemas remain readable rather than disappearing.
             writeln!(out, "{line}").context("writing log output")?;
             wrote_line = true;
@@ -182,6 +205,37 @@ fn write_selected_contents(
         anyhow::bail!("No records match the requested task selector or identity");
     }
     Ok(())
+}
+
+/// Plumbing remains available in verbose/raw viewing, including legacy logs.
+fn diagnostic_event(event: &str) -> bool {
+    matches!(
+        event,
+        "debug"
+            | "trace"
+            | "stage"
+            | "task_wait"
+            | "task_start"
+            | "task_timing"
+            | "resource_check"
+            | "summary"
+    )
+}
+
+fn legacy_duplicate(
+    line: &str,
+    context: Option<&str>,
+    results: &HashSet<String>,
+    durations: &HashSet<String>,
+) -> bool {
+    let Some(context) = context else {
+        return false;
+    };
+    match line_event(line) {
+        Some("task_done" | "task_skip") => results.contains(context),
+        Some("task_timing") => durations.contains(context),
+        _ => false,
+    }
 }
 
 /// Human labels differ from stable enum names only for current and planned work.
@@ -220,6 +274,19 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
             "run_context",
             format!("profile={profile} platform={platform} dry_run={dry_run}"),
         ),
+        Record::RunScope {
+            only,
+            skip,
+            with_deps,
+            no_repo_update,
+        } => (
+            "run_scope",
+            format!(
+                "only={} skip={} with_deps={with_deps} no_repo_update={no_repo_update}",
+                selector_list(&only, "all"),
+                selector_list(&skip, "none")
+            ),
+        ),
         Record::RunFinish {
             outcome,
             elapsed_us,
@@ -250,7 +317,12 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
         Record::TaskDuration {
             task_id: _,
             elapsed_us,
-        } => ("task_timing", format_duration(elapsed_us)),
+        } => {
+            if !verbose {
+                return None;
+            }
+            ("task_timing", format_duration(elapsed_us))
+        }
         Record::Action { message, .. } => ("action", message),
         Record::Command {
             command,
@@ -262,35 +334,65 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
             stdout_bytes,
             stderr_bytes,
         } => {
-            if !verbose && outcome == "succeeded" && stderr.as_deref().is_none_or(str::is_empty) {
-                return None;
-            }
-            let mut lines = vec![format!(
-                "{command}: {outcome}, exit={}, elapsed={}",
-                exit_code.map_or_else(|| "none".into(), |code| code.to_string()),
-                format_duration(elapsed_us)
-            )];
-            for (stream, text, bytes) in [
-                ("stdout", stdout, stdout_bytes),
-                ("stderr", stderr, stderr_bytes),
-            ] {
-                match text {
-                    Some(text) if !text.is_empty() => {
-                        lines.push(format!("{stream}:\n{text}"));
-                    }
-                    None if bytes > 0 => {
-                        lines.push(format!("{stream}: {bytes} bytes omitted"));
-                    }
-                    _ => {}
-                }
-            }
-            ("command", lines.join("\n"))
+            return render_command(
+                &command,
+                &outcome,
+                exit_code,
+                elapsed_us,
+                [
+                    ("stdout", stdout, stdout_bytes),
+                    ("stderr", stderr, stderr_bytes),
+                ],
+                verbose,
+            );
         }
         Record::Message { event, text } => {
-            return (verbose || event != "debug").then_some((event, text));
+            return (verbose || !diagnostic_event(&event)).then_some((event, text));
         }
     };
     Some((rendered.0.into(), rendered.1))
+}
+
+fn selector_list(selectors: &[String], empty: &str) -> String {
+    if selectors.is_empty() {
+        empty.into()
+    } else {
+        selectors.join(",")
+    }
+}
+
+fn render_command(
+    command: &str,
+    outcome: &str,
+    exit_code: Option<i32>,
+    elapsed_us: u64,
+    streams: [(&str, Option<String>, usize); 2],
+    verbose: bool,
+) -> Option<(String, String)> {
+    if !verbose
+        && matches!(outcome, "succeeded" | "nonzero_exit")
+        && streams[1].1.as_deref().is_none_or(str::is_empty)
+    {
+        return None;
+    }
+    let label = if outcome == "nonzero_exit" {
+        "nonzero exit (unchecked)"
+    } else {
+        outcome
+    };
+    let mut lines = vec![format!(
+        "{command}: {label}, exit={}, elapsed={}",
+        exit_code.map_or_else(|| "none".into(), |code| code.to_string()),
+        format_duration(elapsed_us)
+    )];
+    for (stream, text, bytes) in streams {
+        match text {
+            Some(text) if !text.is_empty() => lines.push(format!("{stream}:\n{text}")),
+            None if bytes > 0 => lines.push(format!("{stream}: {bytes} bytes omitted")),
+            _ => {}
+        }
+    }
+    Some(("command".into(), lines.join("\n")))
 }
 
 fn format_duration(micros: u64) -> String {
@@ -514,7 +616,8 @@ fn read_run_metadata(run: &mut RunEntry) -> Result<()> {
                     run.outcome = Some(outcome);
                     run.elapsed_us = Some(elapsed_us);
                 }
-                Record::TaskResult { .. }
+                Record::RunScope { .. }
+                | Record::TaskResult { .. }
                 | Record::TaskDuration { .. }
                 | Record::Action { .. }
                 | Record::Command { .. }
@@ -965,6 +1068,113 @@ mod tests {
         let selected = String::from_utf8(selected).unwrap();
         assert!(selected.contains("cause"));
         assert!(!selected.contains("warning"));
+    }
+
+    #[test]
+    fn normal_view_hides_plumbing_and_verbose_deduplicates_legacy_facts() {
+        use std::fmt::Write as _;
+        let mut content = String::new();
+        for event in [
+            "stage",
+            "task_start",
+            "task_wait",
+            "resource_check",
+            "debug",
+            "trace",
+            "summary",
+        ] {
+            writeln!(
+                content,
+                "000001 +10 stamp [task-a] [{event}] plumbing-{event}"
+            )
+            .unwrap();
+        }
+        for event in ["task_done", "task_skip", "task_timing"] {
+            writeln!(
+                content,
+                "000001 +10 stamp [task-a] [{event}] duplicate-{event}"
+            )
+            .unwrap();
+        }
+        content.push_str(&record(
+            "task-a",
+            Record::TaskResult {
+                task_id: "task-a".into(),
+                selector: Some("demo".into()),
+                name: "Demo task".into(),
+                status: TaskStatus::Changed,
+                reason: Some("changed fixture".into()),
+                actions: crate::infra::logging::ActionCounts::default(),
+            },
+        ));
+        content.push_str(&record(
+            "task-a",
+            Record::TaskDuration {
+                task_id: "task-a".into(),
+                elapsed_us: 1_000_000,
+            },
+        ));
+        content.push_str("000001 +10 stamp [legacy] [task_done] legacy-outcome\n");
+        content.push_str("000001 +10 stamp [main] [record] {\"schema\":99,\"type\":\"future\"}\n");
+        for verbose in [false, true] {
+            let mut out = Vec::new();
+            write_selected_contents(&content, verbose, false, None, &mut out).unwrap();
+            let out = String::from_utf8(out).unwrap();
+            assert!(out.contains("Demo task: Changed: changed fixture"));
+            assert!(out.contains("legacy-outcome"));
+            assert!(out.contains("future"), "unknown records remain readable");
+            assert!(!out.contains("duplicate-"));
+            assert_eq!(out.contains("plumbing-"), verbose);
+            assert_eq!(out.matches("[task_timing]").count(), usize::from(verbose));
+        }
+        let mut raw = Vec::new();
+        write_selected_contents(&content, false, true, None, &mut raw).unwrap();
+        assert_eq!(String::from_utf8(raw).unwrap(), content);
+        let mut selected = Vec::new();
+        write_selected_contents(&content, false, false, Some("demo"), &mut selected).unwrap();
+        let selected = String::from_utf8(selected).unwrap();
+        assert!(selected.contains("Demo task"));
+        assert!(!selected.contains("legacy-outcome"));
+    }
+
+    #[test]
+    fn nonzero_probe_diagnostics_are_verbose_unless_stderr_needs_attention() {
+        for stderr in ["", "probe warning"] {
+            let record = || Record::Command {
+                command: "fixture-probe".into(),
+                outcome: "nonzero_exit".into(),
+                exit_code: Some(1),
+                elapsed_us: 100,
+                stdout: Some("disabled\n".into()),
+                stderr: Some(stderr.into()),
+                stdout_bytes: 9,
+                stderr_bytes: stderr.len(),
+            };
+            assert_eq!(render_record(record(), false).is_some(), !stderr.is_empty());
+            let (_, verbose) = render_record(record(), true).unwrap();
+            assert!(verbose.contains("nonzero exit (unchecked), exit=1"));
+            assert!(verbose.contains("disabled\n"));
+        }
+    }
+
+    #[test]
+    fn scope_records_are_readable_with_legacy_context_records() {
+        let old = "000001 +10 stamp [main] [record] {\"schema\":1,\"context\":\"main\",\"type\":\"run_context\",\"profile\":\"desktop\",\"platform\":\"Linux\",\"dry_run\":true}\n";
+        let content = old.to_owned()
+            + &record(
+                "main",
+                Record::RunScope {
+                    only: vec!["symlinks".into()],
+                    skip: vec!["packages".into()],
+                    with_deps: true,
+                    no_repo_update: true,
+                },
+            );
+        let mut out = Vec::new();
+        write_selected_contents(&content, false, false, None, &mut out).unwrap();
+        let out = String::from_utf8(out).unwrap();
+        assert!(out.contains("profile=desktop platform=Linux dry_run=true"));
+        assert!(out.contains("only=symlinks skip=packages with_deps=true no_repo_update=true"));
     }
 
     #[test]

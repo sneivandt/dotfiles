@@ -133,19 +133,19 @@ $StageActions = @{
 
     clippy   = {
         Invoke-CargoStage @(
-            'clippy', '--profile', $CargoProfile, '--manifest-path', $Manifest,
+            'clippy', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest,
             '--all-targets', '--', '-D', 'warnings'
         )
     }
 
     test     = {
-        Invoke-CargoStage @('test', '--profile', $CargoProfile, '--manifest-path', $Manifest)
+        Invoke-CargoStage @('test', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest)
     }
 
     # Runs the CLI's own repository validator against this working tree.
     config   = {
         Invoke-CargoStage @(
-            'run', '--profile', $CargoProfile, '--manifest-path', $Manifest,
+            'run', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest,
             '--', 'check', '--root', $RepoRoot, '--profile', 'desktop',
             '--only', 'config-warnings,symlink-sources,config-files'
         )
@@ -232,7 +232,7 @@ $StageActions = @{
         Write-Note "MSRV from Cargo.toml: $msrv"
         & rustup toolchain install $msrv --profile minimal *> $null
         return Invoke-Tool -FilePath 'cargo' -ToolArguments @(
-            "+$msrv", 'check', '--manifest-path', $Manifest, '--all-targets'
+            "+$msrv", 'check', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest, '--all-targets'
         )
     }
 }

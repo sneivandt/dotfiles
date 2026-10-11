@@ -112,7 +112,6 @@ fn run_log_layer_omits_empty_messages() {
 fn message_presentation_golden_matrix() {
     for (kind, verbose_only, plain, colored) in [
         (MsgKind::Stage, true, "detail", "detail"),
-        (MsgKind::TaskStage, true, "detail", "detail"),
         (MsgKind::Info, true, "  detail", "  detail"),
         (MsgKind::Debug, true, "  detail", "\x1b[2m  detail\x1b[0m"),
         (MsgKind::Context, true, "detail", "\x1b[2mdetail\x1b[0m"),

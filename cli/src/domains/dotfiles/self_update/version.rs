@@ -27,13 +27,33 @@ fn parse_version(v: &str) -> Option<[u64; COMPONENT_COUNT]> {
         // `get_mut` yields `None` once the tag exceeds the supported width,
         // rejecting over-long tags without indexing.
         let slot = components.get_mut(count)?;
+        let width = if count == 0 { 4 } else { 2 };
+        if part.len() != width || !part.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
         *slot = part.parse::<u64>().ok()?;
         count = count.checked_add(1)?;
     }
     if count != COMPONENT_COUNT - 1 {
         return None;
     }
+    if increment.is_empty() || !increment.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
     *components.last_mut()? = increment.parse::<u64>().ok()?;
+    let [year, month, day, counter] = components;
+    let leap_year =
+        year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap_year => 29,
+        2 => 28,
+        _ => return None,
+    };
+    if year == 0 || day == 0 || day > days_in_month || counter == 0 {
+        return None;
+    }
     Some(components)
 }
 
@@ -57,6 +77,35 @@ mod tests {
         assert!(is_release_version("v2026.07.25-1"));
         assert!(is_release_version("v2026.12.31-14"));
         assert!(is_release_version("2026.01.02-1"));
+        assert!(is_release_version("v2024.02.29-1"));
+        assert!(is_release_version("v2000.02.29-1"));
+    }
+
+    #[test]
+    fn malformed_dates_and_counters_cannot_participate_in_updates() {
+        let invalid_tags = [
+            "v2026.99.99-1",
+            "v2026.00.01-1",
+            "v2026.01.00-1",
+            "v2026.04.31-1",
+            "v2026.02.30-1",
+            "v2026.02.29-1",
+            "v1900.02.29-1",
+            "v0000.01.01-1",
+            "v2026.7.01-1",
+            "v2026.07.1-1",
+            "v02026.07.01-1",
+            "v+2026.07.01-1",
+            "v2026.07.01-+1",
+            "v2026.07.01-0",
+            "v2026.07.01-",
+            concat!("v2026.07.01-", "18446", "74407", "37095", "51616"),
+        ];
+        for tag in invalid_tags {
+            assert!(!is_release_version(tag), "accepted malformed tag: {tag}");
+            assert!(!is_newer(tag, "v2026.01.01-1"), "invalid latest: {tag}");
+            assert!(!is_newer("v2026.12.31-1", tag), "invalid current: {tag}");
+        }
     }
 
     #[test]

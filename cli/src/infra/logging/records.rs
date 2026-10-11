@@ -61,6 +61,12 @@ pub(crate) enum Record {
         platform: String,
         dry_run: bool,
     },
+    RunScope {
+        only: Vec<String>,
+        skip: Vec<String>,
+        with_deps: bool,
+        no_repo_update: bool,
+    },
     RunFinish {
         outcome: RunOutcome,
         elapsed_us: u64,
@@ -126,6 +132,11 @@ impl Record {
             } => {
                 text(profile);
                 text(platform);
+            }
+            Self::RunScope { only, skip, .. } => {
+                for selector in only.iter_mut().chain(skip.iter_mut()) {
+                    text(selector);
+                }
             }
             Self::RunFinish { .. } => {}
             Self::TaskResult {

@@ -31,6 +31,12 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
+    super::record_scope(
+        log,
+        &opts.filters,
+        opts.with_deps,
+        runtime.global.no_repo_update,
+    );
     let apm_mode = if update_pins {
         ApmPackageMode::UpdatePins
     } else {

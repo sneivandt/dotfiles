@@ -18,6 +18,7 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
+    super::record_scope(log, opts, false, false);
     let run_lock = super::prepare_self_update(runtime, log)?;
     let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
     let tasks = runner.uninstall_tasks();

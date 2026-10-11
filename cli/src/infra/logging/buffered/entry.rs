@@ -96,7 +96,7 @@ impl LogEntry {
     ) -> Option<(MsgKind, &str)> {
         if matches!(
             self.kind(),
-            MsgKind::TaskStage | MsgKind::Stage | MsgKind::Trace | MsgKind::Summary
+            MsgKind::Stage | MsgKind::Trace | MsgKind::Summary
         ) || duplicates_task_message(self.message(), task_message)
         {
             return None;
@@ -110,7 +110,6 @@ impl LogEntry {
             MsgKind::Info | MsgKind::DryRun | MsgKind::Always => Some(self.message()),
             MsgKind::Warn | MsgKind::Error if status == TaskStatus::Failed => Some(self.message()),
             MsgKind::Stage
-            | MsgKind::TaskStage
             | MsgKind::Debug
             | MsgKind::Context
             | MsgKind::Trace

@@ -176,8 +176,6 @@ pub enum TaskStatus {
 pub enum MsgKind {
     /// A stage header (major section).
     Stage,
-    /// A task name, without major-section emphasis.
-    TaskStage,
     /// An informational message.
     Info,
     /// Aggregate counters retained in the run log, not repeated on the console.
@@ -217,8 +215,9 @@ impl MsgKind {
     #[must_use]
     pub(in crate::infra::logging) const fn log_event(self) -> LogEvent {
         match self {
-            Self::Stage | Self::TaskStage => LogEvent::Stage,
-            Self::Info | Self::Summary | Self::Always | Self::Startup => LogEvent::Info,
+            Self::Stage => LogEvent::Stage,
+            Self::Info | Self::Always | Self::Startup => LogEvent::Info,
+            Self::Summary => LogEvent::Summary,
             Self::Debug | Self::Context | Self::Trace => LogEvent::Debug,
             Self::Warn => LogEvent::Warn,
             Self::Error => LogEvent::Error,
@@ -234,6 +233,8 @@ pub enum LogEvent {
     Record,
     /// Informational message.
     Info,
+    /// Aggregate counters retained for diagnostics.
+    Summary,
     /// Debug-level message.
     Debug,
     /// Warning message.
@@ -248,14 +249,6 @@ pub enum LogEvent {
     TaskWait,
     /// A task's execution begins.
     TaskStart,
-    /// A task finished executing.
-    TaskDone,
-    /// A task was skipped.
-    TaskSkip,
-    /// A task failed.
-    TaskFail,
-    /// How long a task spent executing.
-    TaskTiming,
     /// Resource state check.
     ResourceCheck,
     /// Resource apply mutation.
@@ -273,6 +266,7 @@ impl LogEvent {
         match self {
             Self::Record => "record",
             Self::Info => "info",
+            Self::Summary => "summary",
             Self::Debug => "debug",
             Self::Warn => "warn",
             Self::Error => "error",
@@ -280,10 +274,6 @@ impl LogEvent {
             Self::DryRun => "dry_run",
             Self::TaskWait => "task_wait",
             Self::TaskStart => "task_start",
-            Self::TaskDone => "task_done",
-            Self::TaskSkip => "task_skip",
-            Self::TaskFail => "task_fail",
-            Self::TaskTiming => "task_timing",
             Self::ResourceCheck => "resource_check",
             Self::ResourceApply => "resource_apply",
             Self::ResourceResult => "resource_result",
@@ -401,10 +391,6 @@ pub trait OutputExt: Output {
     /// Log a stage header (major section).
     fn stage<'a>(&self, msg: impl Into<Cow<'a, str>>) {
         self.emit(MsgKind::Stage, msg.into());
-    }
-    /// Log a task name without major-section emphasis.
-    fn task_stage<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::TaskStage, msg.into());
     }
     /// Log an informational message.
     fn info<'a>(&self, msg: impl Into<Cow<'a, str>>) {

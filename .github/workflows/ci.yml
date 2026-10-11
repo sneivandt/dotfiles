@@ -48,6 +48,7 @@ jobs:
       run_managed_scripts: ${{ steps.classify.outputs.run_managed_scripts }}
       run_prompt: ${{ steps.classify.outputs.run_prompt }}
       run_lock: ${{ steps.classify.outputs.run_lock }}
+      run_desktop_qml: ${{ steps.classify.outputs.run_desktop_qml }}
       run_desktop_python: ${{ steps.classify.outputs.run_desktop_python }}
       run_stocks: ${{ steps.classify.outputs.run_stocks }}
     steps:
@@ -76,6 +77,12 @@ jobs:
           BASE_SHA: ${{ steps.range.outputs.base_sha }}
           HEAD_SHA: ${{ steps.range.outputs.head_sha }}
         run: sh .github/workflows/scripts/linux/classify-ci-changes.sh
+      - name: Install actionlint
+        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        with:
+          tool: actionlint@1.7.12
+      - name: Check workflow syntax and expressions
+        run: sh .github/workflows/scripts/linux/test-workflows.sh
       - name: Check CI job gate
         run: python3 .github/workflows/scripts/linux/check-ci-contract.py
       - name: Test change classification and release selection
@@ -143,6 +150,22 @@ jobs:
       - name: Check desktop network and power actions
         if: needs.classify-changes.outputs.run_desktop_python == 'true'
         run: python -B -m unittest discover -s symlinks/config/quickshell/tests/python -p 'test_*.py'
+
+  desktop-qml:
+    name: "Regression: Quickshell QML"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [classify-changes]
+    if: needs.classify-changes.outputs.run_desktop_qml == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Qt Quick Test
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        with:
+          version: '6.8.3'
+          arch: linux_gcc_64
+      - name: Test QML with inert Quickshell mocks
+        run: sh .github/workflows/scripts/linux/test-desktop-qml.sh
 
   # ── Documentation Consistency ─────────────────────────
   docs:
@@ -263,16 +286,16 @@ jobs:
           cache-on-failure: true
       - name: Build CI binary
         if: needs.classify-changes.outputs.run_rust_checks != 'true' && needs.classify-changes.outputs.run_config_drift != 'true'
-        run: cargo build --profile ci
+        run: cargo build --locked --profile ci
       - name: Clippy
         if: needs.classify-changes.outputs.run_rust_checks == 'true'
-        run: cargo clippy --profile ci --all-targets -- -D warnings
+        run: cargo clippy --locked --profile ci --all-targets -- -D warnings
       - name: Tests
         if: needs.classify-changes.outputs.run_rust_checks == 'true'
-        run: cargo test --profile ci
+        run: cargo test --locked --profile ci
       - name: Configuration drift tests
         if: needs.classify-changes.outputs.run_config_drift == 'true' && needs.classify-changes.outputs.run_rust_checks != 'true'
-        run: cargo test --profile ci --test config_drift
+        run: cargo test --locked --profile ci --test config_drift
       - name: Test build-version Git dependencies
         if: needs.classify-changes.outputs.run_rust_checks == 'true' || needs.classify-changes.outputs.run_hook_inputs == 'true'
         run: sh ../.github/workflows/scripts/linux/test-hook-inputs.sh test_build_version_ref_triggers
@@ -314,7 +337,7 @@ jobs:
       - name: Check against MSRV
         env:
           MSRV: ${{ steps.msrv.outputs.version }}
-        run: cargo "+$MSRV" check --all-targets
+        run: cargo "+$MSRV" check --locked --profile ci --all-targets
 
   # ── Coverage (informational, non-gating) ──────────────
   coverage:
@@ -347,7 +370,7 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - name: Generate coverage report
-        run: cargo llvm-cov --profile ci --all-targets --summary-only
+        run: cargo llvm-cov --locked --profile ci --all-targets --summary-only
       - name: Generate HTML coverage report
         run: cargo llvm-cov report --profile ci --html
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -413,7 +436,7 @@ jobs:
         if: steps.diff.outputs.has_changes == 'true'
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
-        run: cargo mutants --in-place --no-shuffle --in-diff mutants.diff --shard "$MUTATION_SHARD/8" --cargo-arg=--profile=ci
+        run: cargo mutants --in-place --no-shuffle --in-diff mutants.diff --shard "$MUTATION_SHARD/8" --cargo-arg=--profile=ci --cargo-arg=--locked
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -450,13 +473,13 @@ jobs:
       # changes still need an artifact for the downstream Windows jobs.
       - name: Build CI binary
         if: needs.classify-changes.outputs.run_rust_checks != 'true'
-        run: cargo build --profile ci
+        run: cargo build --locked --profile ci
       - name: Clippy
         if: needs.classify-changes.outputs.run_rust_checks == 'true'
-        run: cargo clippy --profile ci --all-targets -- -D warnings
+        run: cargo clippy --locked --profile ci --all-targets -- -D warnings
       - name: Tests
         if: needs.classify-changes.outputs.run_rust_checks == 'true'
-        run: cargo test --profile ci
+        run: cargo test --locked --profile ci
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dotfiles-windows
@@ -669,6 +692,7 @@ jobs:
       - rust-fmt
       - lint
       - managed-script-regressions
+      - desktop-qml
       - docs
       - validate-config
       - audit

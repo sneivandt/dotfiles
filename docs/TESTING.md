@@ -375,6 +375,9 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QML_DISABLE_DISK_CACHE=1 \
   -input symlinks/config/quickshell/tests/qml
 ```
 
+The opt-in local `check.sh qml` stage runs the same suite through
+[`test-desktop-qml.sh`](../.github/workflows/scripts/linux/test-desktop-qml.sh).
+
 The mock import is required: it supplies inert Quickshell process and window
 types, so no installed Quickshell runtime or live services are used.
 
@@ -395,7 +398,9 @@ forwarding, completion, home abbreviation, root detection and exit status.
 The native GLib case
 skips when its runtime is unavailable; mocked Python cases still run. When their
 inputs change, CI selects the affected Python/PowerShell regression steps on
-Linux and Windows, **not** the QML runner or a native desktop session.
+Linux and Windows. Quickshell changes also select a gating Linux QML job
+using pinned Qt 6.8.3 and the inert mocks above; it does not start a native
+desktop session.
 
 Shell startup, completion, utility failure handling and download regressions
 use isolated homes, mock commands and a loopback-only HTTP server. Vim
@@ -433,7 +438,9 @@ pending. [`classify-ci-changes.sh`](../.github/workflows/scripts/linux/classify-
 delegates selection to the standard-library-only
 [`Python classifier`](../.github/workflows/scripts/linux/classify-ci-changes.py).
 Documentation checks, scheduling-contract checks and classifier regressions
-remain always-on, including for documentation-only changes.
+remain always-on, including for documentation-only changes. Pinned actionlint
+also validates both workflows for syntax, expression types and action inputs;
+the local `ci` stage runs it when installed.
 
 The `ci-success` job runs with `always()` and depends on every gating job.
 [`check-ci-contract.py`](../.github/workflows/scripts/linux/check-ci-contract.py)
@@ -461,7 +468,7 @@ checks rather than replacing them.
 | `conf/` | Configuration validation, drift tests, and profile/round-trip integration; application tests for package, symlink, or Git config changes |
 | `system/` | Linux configuration and profile/round-trip checks |
 | Managed application configuration | Configuration validation/drift checks and affected Git, Zsh, Vim, or Neovim application entries |
-| PowerShell prompt, session lock, Quickshell | Configuration checks plus the affected managed-script regressions on Linux and Windows |
+| PowerShell prompt, session lock, Quickshell | Configuration checks plus the affected managed-script regressions on Linux and Windows; Quickshell also selects Linux QML tests |
 | Stock helper | Configuration checks and the isolated stock regression |
 | Wrapper or platform-specific integration script | Its platform's build and relevant integration job |
 | Hooks | Hook and isolated staged-input regressions; hook-only changes do not request CLI builds |
@@ -473,6 +480,10 @@ Changed paths include deletions and both sides of renames. An invalid Git range
 fails classification rather than silently skipping checks. A valid empty diff
 runs only the always-on checks. Manual/missing-range full CI is a separate
 fallback; it does not itself request publication or mutation testing.
+
+CI Cargo builds, tests, Clippy, coverage, MSRV and mutation checks use
+`--locked` so stale or missing lockfiles fail rather than silently resolving
+different dependencies. Local Cargo verification stages follow the same policy.
 
 Both build jobs run Clippy and the full Rust suite only when the classifier
 requests Rust checks: Rust inputs or the conservative full-CI fallback.
@@ -528,7 +539,7 @@ history fail explicitly. Release asset names, checksums, provenance, and the
 | Wrapper integration | POSIX wrapper | PowerShell wrapper | All network/authentication environments |
 | Applications | Git, zsh, Vim, Neovim | Git | Full Windows package/VS Code installation |
 | Managed Python/PowerShell scripts | Yes | Yes | Native compositor/network/lock session |
-| QML Quick Test | No (local command above) | No | Rendered desktop integration |
+| QML Quick Test | Yes, offscreen with mocks | No | Rendered desktop integration |
 | Commit-hook sensitive scan | Yes | No native hook job | Git-for-Windows hook runtime |
 | ShellCheck/PSScriptAnalyzer, audit/deny/MSRV | Linux jobs | No duplicate jobs | Native behavior beyond static/compile checks |
 

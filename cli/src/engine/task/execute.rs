@@ -7,9 +7,7 @@
 use crate::engine::batch::is_interrupted;
 use crate::engine::{BatchCompletion, BatchReport, Context, TaskResult, TaskStats};
 use crate::infra::exec::ExecError;
-use crate::infra::logging::{
-    ActionCounts, LogEvent, TaskEntry, TaskStatus, format_elapsed, log_task_context,
-};
+use crate::infra::logging::{ActionCounts, LogEvent, TaskEntry, TaskStatus, log_task_context};
 
 use super::{Task, TaskAssessment};
 use crate::infra::logging::OutputExt as _;
@@ -44,9 +42,6 @@ impl TaskExecution {
 /// `should_run` check and there is nothing more specific to say; the `N/A`
 /// status is the whole explanation in that case, so no reason is invented.
 fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: Option<&str>) {
-    let event_detail = reason.unwrap_or("not applicable");
-    ctx.log()
-        .run_task_event(LogEvent::TaskSkip, &task.log_key(), event_detail);
     record(
         task,
         task_id,
@@ -68,10 +63,8 @@ fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: 
 /// with an "interrupted" message. Other failures remain failures even if the
 /// global cancellation token was requested independently.
 ///
-/// Every executed task also emits a [`LogEvent::TaskTiming`] entry recording
-/// how long it ran. Under parallel scheduling the interleaved run log cannot
-/// be used to infer per-task duration by subtracting timestamps, so the
-/// measurement is taken here.
+/// Each executed task records its measured duration once. Parallel interleaving
+/// makes subtracting timestamps from unrelated log entries unreliable.
 pub fn execute(task: &dyn Task, ctx: &Context) -> TaskStatus {
     let assessment = task.assess(ctx);
     execute_assessed(task, &assessment, ctx).status
@@ -93,16 +86,11 @@ pub(crate) fn execute_assessed(
     }
 
     ctx.log()
-        .run_task_event(LogEvent::TaskStart, &task.log_key(), "executing");
+        .run_task_event(LogEvent::TaskStart, &task_id, task.name());
     let started = std::time::Instant::now();
     let execution = record_run_outcome(task, &task_id, ctx);
     let elapsed = started.elapsed();
     ctx.log().record_task_duration(&task_id, elapsed);
-    ctx.log().run_task_event(
-        LogEvent::TaskTiming,
-        &task.log_key(),
-        &format!("elapsed {}", format_elapsed(elapsed)),
-    );
     execution
 }
 
@@ -154,8 +142,6 @@ fn record_interrupted(
     detail: &str,
     actions: ActionCounts,
 ) -> TaskStatus {
-    ctx.log()
-        .run_task_event(LogEvent::TaskSkip, &task.log_key(), "interrupted");
     ctx.log().warn(format!("interrupted: {detail}"));
     record(
         task,
@@ -232,7 +218,6 @@ fn classify_result(result: &TaskResult, dry_run: bool, require_complete: bool) -
 /// Typed executor cancellation remains interrupted; unrelated failures retain
 /// their failure semantics even when cancellation was requested independently.
 fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExecution {
-    ctx.log().task_stage(task.name());
     match task.run(ctx) {
         Ok(result) => {
             let classified = classify_result(&result, ctx.dry_run(), ctx.require_complete());
@@ -248,31 +233,16 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
                 )
             };
             match &result {
-                TaskResult::Ok => {
-                    ctx.log().run_task_event(LogEvent::TaskDone, task_id, "ok");
-                    rec(None);
-                }
-                TaskResult::DryRun => {
-                    ctx.log()
-                        .run_task_event(LogEvent::TaskDone, task_id, "planned");
-                    rec(None);
-                }
-                TaskResult::CheckPassed => {
-                    ctx.log()
-                        .run_task_event(LogEvent::TaskDone, task_id, "passed");
+                TaskResult::Ok | TaskResult::DryRun | TaskResult::CheckPassed => {
                     rec(None);
                 }
                 TaskResult::NotApplicable(reason) => {
-                    ctx.log()
-                        .run_task_event(LogEvent::TaskSkip, task_id, reason);
                     rec(Some(reason));
                 }
                 TaskResult::Skipped { reason, .. } => {
                     if classified.execution.status == TaskStatus::Failed {
                         record_failed_outcome(task, task_id, ctx, reason, classified);
                     } else {
-                        ctx.log()
-                            .run_task_event(LogEvent::TaskSkip, task_id, reason);
                         rec(Some(reason));
                     }
                 }
@@ -296,8 +266,7 @@ fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExec
                 );
             }
             let message = format!("{e:#}");
-            ctx.log()
-                .run_task_event(LogEvent::TaskFail, task_id, &message);
+            ctx.log().run_task_event(LogEvent::Debug, task_id, &message);
             let summary = concise_failure(&e);
             ctx.log().error(&summary);
             let status = record(
@@ -336,15 +305,8 @@ fn record_stopped_batch(
     } else {
         format!("interrupted: {summary}")
     };
-    ctx.log().run_task_event(
-        if failed {
-            LogEvent::TaskFail
-        } else {
-            LogEvent::TaskSkip
-        },
-        task_id,
-        &format!("{message}\n{error:#}"),
-    );
+    ctx.log()
+        .run_task_event(LogEvent::Debug, task_id, &format!("{message}\n{error:#}"));
     ctx.log().warn(&message);
     TaskExecution::new(
         record(task, task_id, ctx, status, Some(&message), actions, false),
@@ -387,8 +349,6 @@ fn record_failed_outcome(
     reason: &str,
     classified: ClassifiedResult,
 ) {
-    ctx.log()
-        .run_task_event(LogEvent::TaskFail, task_id, reason);
     ctx.log().warn(format!("failed: {reason}"));
     record(
         task,
@@ -412,12 +372,6 @@ fn record_batch_outcome(
         .message()
         .map_or_else(|| stats.summary(ctx.dry_run()), str::to_string);
     let display_status = classified.execution.status;
-    let event = if display_status == TaskStatus::Failed {
-        LogEvent::TaskFail
-    } else {
-        LogEvent::TaskDone
-    };
-    ctx.log().run_task_event(event, task_id, &message);
     if display_status == TaskStatus::Failed {
         ctx.log().warn(format!("failed: {message}"));
     } else if stats.message().is_none() {

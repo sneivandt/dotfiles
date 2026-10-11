@@ -753,7 +753,7 @@ fn persistent_task_identity_preserves_dynamic_kind_and_wrapper_identity() {
 }
 
 #[test]
-fn outcome_events_and_warnings_follow_failure_status() {
+fn structured_outcomes_replace_duplicate_events_and_preserve_warnings() {
     use crate::infra::logging::{LogEvent, MsgKind, Output, TaskEntry, TaskRecorder};
     use std::sync::Mutex;
 
@@ -761,6 +761,7 @@ fn outcome_events_and_warnings_follow_failure_status() {
     struct Captured {
         messages: Mutex<Vec<(MsgKind, String)>>,
         events: Mutex<Vec<LogEvent>>,
+        results: Mutex<Vec<TaskEntry>>,
     }
     impl Output for Captured {
         fn emit(&self, kind: MsgKind, message: std::borrow::Cow<'_, str>) {
@@ -774,36 +775,34 @@ fn outcome_events_and_warnings_follow_failure_status() {
         }
     }
     impl TaskRecorder for Captured {
-        fn record_task(&self, _task: TaskEntry) {}
+        fn record_task(&self, task: TaskEntry) {
+            self.results.lock().unwrap().push(task);
+        }
     }
 
-    for (result, strict, status, event, warns) in [
+    for (result, strict, status, warns) in [
         (
             TaskResult::unmet("missing tool"),
             false,
             TaskStatus::Skipped,
-            LogEvent::TaskSkip,
             false,
         ),
         (
             TaskResult::unmet("missing tool"),
             true,
             TaskStatus::Failed,
-            LogEvent::TaskFail,
             true,
         ),
         (
             TaskResult::Batch(TaskStats::from_counts(1, 0, 0, 0)),
             false,
             TaskStatus::Changed,
-            LogEvent::TaskDone,
             false,
         ),
         (
             TaskResult::Batch(TaskStats::from_counts(1, 0, 0, 1)),
             false,
             TaskStatus::Failed,
-            LogEvent::TaskFail,
             true,
         ),
     ] {
@@ -818,10 +817,11 @@ fn outcome_events_and_warnings_follow_failure_status() {
             result: Ok(result),
         };
         assert_eq!(execute(&task, &ctx), status);
-        assert_eq!(
-            *output.events.lock().unwrap(),
-            [LogEvent::TaskStart, event, LogEvent::TaskTiming]
-        );
+        assert_eq!(*output.events.lock().unwrap(), [LogEvent::TaskStart]);
+        let results = output.results.lock().unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, status);
+        drop(results);
         let warned = output
             .messages
             .lock()

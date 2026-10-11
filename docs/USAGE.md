@@ -402,8 +402,17 @@ Command filters accept `update`, `remove`, and `check`, plus historical
 `install` and `uninstall` filters. The check filter also
 recognizes legacy `test` logs.
 
-Failed stdout/stderr and successful stderr are visible by default. Other
-diagnostics require `--verbose`. Successful stdout is normally retained only
+Normal viewing shows actions, task outcomes, warnings, run context and requested
+scope (`--only`, `--skip`, dependency inclusion and repository-update policy).
+Task starts, resource checks, debug details and task timings require `--verbose`.
+Task results and timings are stored once; human viewing also suppresses their
+duplicate text entries in older structured logs. `--raw` preserves original records.
+
+Checked command failures and successful stderr are visible by default. Unchecked
+commands with a nonzero exit are labeled `nonzero exit (unchecked)`: the caller
+interprets the exit protocol, so this alone does not mean the task failed. Their
+streams remain available with `--verbose`; nonempty stderr remains visible by
+default. Successful stdout is normally retained only
 as a byte count unless a command requests full capture; `--raw` cannot recover
 uncaptured output. Sanitize paths, private configuration, and tool output
 before sharing logs.

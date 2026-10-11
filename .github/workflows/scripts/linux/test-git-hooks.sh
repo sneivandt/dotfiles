@@ -295,6 +295,147 @@ EOF
   rm -rf "$repo"
 }
 
+test_sensitive_scan_unusual_paths() {
+  key_header=$(printf '%s%s' '-----BEGIN ' 'PRIVATE KEY-----')
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  repo="$(mktemp -d)"
+  git init -q --template= "$repo"
+  git -C "$repo" config user.name "Hook Test"
+  git -C "$repo" config user.email "ci@test.local"
+  mkdir -p "$repo/hooks"
+  cp "$repo_root/hooks/check-sensitive.sh" "$repo/hooks/"
+  cp "$repo_root/hooks/sensitive-patterns.ini" "$repo/hooks/"
+  cp "$repo_root/hooks/sensitive-allowlist.ini" "$repo/hooks/"
+  printf 'baseline\n' > "$repo/baseline"
+  git -C "$repo" add baseline
+  git -C "$repo" -c core.hooksPath=/dev/null commit -qm baseline
+
+  for file in 'space name.txt' "$(printf 'tab\tname.txt')" \
+    "$(printf 'line\nname.txt')" 'back\slash.txt' '-leading-dash.txt'; do
+    printf 'safe line\n%s\n' "$key_header" > "$repo/$file"
+    git -C "$repo" add -- "$file"
+    if scan_output=$(cd "$repo" && sh hooks/check-sensitive.sh 2>&1); then
+      fail "Sensitive scan allowed content in an unusual filename"
+    elif ! printf '%s\n' "$scan_output" | grep -Fq 'Line 2: <redacted>'; then
+      fail "Sensitive scan did not report the correct line in an unusual filename"
+    else
+      pass "Sensitive scan blocks content in an unusual filename"
+    fi
+    git -C "$repo" reset -q HEAD -- "$file"
+    rm -- "$repo/$file"
+  done
+
+  printf 'safe line\n%s\n' "$key_header" > "$repo/first.txt"
+  printf 'safe line\nanother safe line\n++%s\n' "$key_header" > "$repo/second space.txt"
+  git -C "$repo" add -- first.txt 'second space.txt'
+  if scan_output=$(cd "$repo" && sh hooks/check-sensitive.sh 2>&1); then
+    fail "Sensitive scan allowed additions across multiple files"
+  elif ! printf '%s\n' "$scan_output" | grep -Fq 'In file: first.txt' ||
+       ! printf '%s\n' "$scan_output" | grep -Fq 'In file: second space.txt' ||
+       ! printf '%s\n' "$scan_output" | grep -Fq 'Line 2: <redacted>' ||
+       ! printf '%s\n' "$scan_output" | grep -Fq 'Line 3: <redacted>'; then
+    fail "Sensitive scan lost filenames, line numbers or ++ prefixed content"
+  else
+    pass "Sensitive scan reports additions across multiple files, including ++ content"
+  fi
+  git -C "$repo" reset -q HEAD -- first.txt 'second space.txt'
+  rm -- "$repo/first.txt" "$repo/second space.txt"
+
+  old="$(printf 'old\tname.txt')"
+  new="$(printf 'new\nname.txt')"
+  # Enough unchanged content to exercise Git's actual rename detection.
+  seq 1 30 | sed 's/^/safe line /' > "$repo/$old"
+  git -C "$repo" add -- "$old"
+  git -C "$repo" -c core.hooksPath=/dev/null commit -qm 'rename baseline'
+  mv -- "$repo/$old" "$repo/$new"
+  printf '%s\n' "$key_header" >> "$repo/$new"
+  git -C "$repo" add -A -- "$old" "$new"
+  if ! git -C "$repo" diff --cached --summary | grep -q rename; then
+    fail "Unusual-path fixture did not produce a rename"
+  elif scan_output=$(cd "$repo" && sh hooks/check-sensitive.sh 2>&1); then
+    fail "Sensitive scan allowed new content in a renamed file"
+  elif ! printf '%s\n' "$scan_output" | grep -Fq 'Line 31: <redacted>'; then
+    fail "Sensitive scan did not report the renamed file's added line"
+  else
+    pass "Sensitive scan blocks new content in a renamed unusual path"
+  fi
+
+  git -C "$repo" -c core.hooksPath=/dev/null commit -qm 'deletion baseline'
+  rm -- "$repo/$new"
+  git -C "$repo" add -A -- "$new"
+  if (cd "$repo" && sh hooks/check-sensitive.sh >/dev/null 2>&1); then
+    pass "Sensitive scan allows deletion of sensitive content in an unusual path"
+  else
+    fail "Sensitive scan blocked a deletion"
+  fi
+  rm -rf "$repo"
+}
+
+test_sensitive_scan_errors() {
+  repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
+  repo="$(mktemp -d)"
+  git init -q --template= "$repo"
+  mkdir -p "$repo/hooks" "$repo/bin"
+  cp "$repo_root/hooks/check-sensitive.sh" "$repo/hooks/"
+  printf '(unterminated\n' > "$repo/hooks/sensitive-patterns.ini"
+
+  if scan_output=$(cd "$repo" && sh hooks/check-sensitive.sh 2>&1); then
+    fail "Sensitive scan accepted an invalid rule with an empty diff"
+  elif printf '%s\n' "$scan_output" | grep -q 'Cannot validate'; then
+    pass "Sensitive scan rejects invalid rules even with an empty diff"
+  else
+    fail "Sensitive scan failed without explaining the invalid rule"
+  fi
+
+  printf 'sensitive-marker\n' > "$repo/hooks/sensitive-patterns.ini"
+  printf '(unterminated\n' > "$repo/hooks/sensitive-allowlist.ini"
+  if (cd "$repo" && sh hooks/check-sensitive.sh >/dev/null 2>&1); then
+    fail "Sensitive scan accepted an invalid allowlist with an empty diff"
+  else
+    pass "Sensitive scan rejects an invalid allowlist with an empty diff"
+  fi
+  rm "$repo/hooks/sensitive-allowlist.ini"
+
+  printf 'safe content\n' > "$repo/test-file.txt"
+  git -C "$repo" add test-file.txt
+  cat > "$repo/bin/grep" <<'EOF'
+#!/bin/sh
+# Preflight succeeds with no match, but scanning the content fails.
+for argument do
+  if [ "$argument" = /dev/null ]; then
+    exit 1
+  fi
+done
+exit 2
+EOF
+  chmod +x "$repo/bin/grep"
+  if scan_output=$(cd "$repo" && PATH="$repo/bin:$PATH" sh hooks/check-sensitive.sh 2>&1); then
+    fail "Sensitive scan ignored a grep execution error"
+  elif printf '%s\n' "$scan_output" | grep -q 'scan failed'; then
+    pass "Sensitive scan reports and rejects grep execution errors"
+  else
+    fail "Sensitive scan failed without explaining the grep error"
+  fi
+  rm "$repo/bin/grep"
+
+  cat > "$repo/bin/git" <<'EOF'
+#!/bin/sh
+case "$1" in
+  rev-parse) exit 1 ;;
+  hash-object) printf 'unused-tree\n' ;;
+  diff) exit 2 ;;
+  *) exit 2 ;;
+esac
+EOF
+  chmod +x "$repo/bin/git"
+  if (cd "$repo" && PATH="$repo/bin:$PATH" sh hooks/check-sensitive.sh >/dev/null 2>&1); then
+    fail "Sensitive scan ignored a Git diff error"
+  else
+    pass "Sensitive scan rejects Git diff errors"
+  fi
+  rm -rf "$repo"
+}
+
 test_pre_push_protection() {
   repo_root="${DIR:-$(git rev-parse --show-toplevel)}"
   hook="$repo_root/symlinks/config/git/templates/hooks.local/pre-push"
@@ -354,6 +495,8 @@ test_release_workflow_guards
 
 printf "Testing hook portability...\n"
 test_sensitive_scan_without_paste
+test_sensitive_scan_unusual_paths
+test_sensitive_scan_errors
 
 printf "Testing staged and whitespace-safe hook inputs...\n"
 sh "$(dirname "$0")/test-hook-inputs.sh"

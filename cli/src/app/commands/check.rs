@@ -23,6 +23,7 @@ pub fn run(
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
+    super::record_scope(log, opts, false, false);
     let runner = super::CommandRunner::new(runtime, log, token)?;
     let tasks = validation_tasks(runner.config_handle());
     let filtered = apply_task_filters(&tasks, &[], &opts.only, &opts.skip, false, log)?;

@@ -104,7 +104,7 @@
 
 
   # List aliases
-  alias         = !git config -l | grep ^alias. | cut -c 7- | sort
+  alias         = !git config --get-regexp '^alias[.]' | sed -e 's/^alias[.]//' -e 's/ /=/' | sort
 
   # List contributors
   contributors  = shortlog --summary --numbered

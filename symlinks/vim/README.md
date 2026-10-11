@@ -50,6 +50,12 @@ Normal startup does not install parsers or wait for downloads. The plugin's
 missing parser produces a warning directing you to `:TSInstallConfigured`;
 it is not a reason to delete the plugin tree.
 
+## Terminal navigation
+
+In a Neovim terminal, Escape leaves terminal input mode and keeps the terminal
+window focused so you can inspect output. Alt+Escape leaves terminal input and
+returns to the previous window. Re-entering a terminal window restores input mode.
+
 ## Plugin management
 
 | Neovim command | Purpose |

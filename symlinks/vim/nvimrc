@@ -8,7 +8,9 @@ augroup NeovimTerminal
   autocmd BufLeave term://* stopinsert
 augroup END
 
-tnoremap <esc> <C-\><C-n><C-w><C-p>
+" Escape keeps the terminal focused for inspection; Alt+Escape returns to the editor.
+tnoremap <esc> <C-\><C-n>
+tnoremap <M-Esc> <C-\><C-n><C-w><C-p>
 
 " <C-h> fix for tmux-navigator
 " Neovim terminal mode requires this specific mapping for proper tmux integration

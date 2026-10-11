@@ -48,7 +48,7 @@ zstyle ':completion:*::::' completer _expand _complete _ignored _approximate
 zstyle ':completion:*:kill:*' force-list always
 zstyle ':completion:*:killall:*' force-list always
 zstyle ':completion:*:manuals' separate-sections true
-zstyle ':completion:*:processes' command 'ps -au$USER'
+zstyle ':completion:*:processes' command 'ps -u "$USER" -o pid,tty,time,args'
 
 # use /etc/hosts and known_hosts for hostname completion
 typeset -g _ZSH_HOSTS_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/hosts.cache"

@@ -28,10 +28,8 @@ fi
 export GOPATH=~/src/go
 
 # locale
-# Set LANG (and LANGUAGE) rather than LC_ALL; LC_ALL overrides every locale
-# category and prevents per-category customization.
-export LANG=en_US.UTF-8
-export LANGUAGE=en_US.UTF-8
+# Preserve the session locale and message-language preference. Default only LANG.
+export LANG="${LANG:-en_US.UTF-8}"
 
 # less
 # Hardcoded SGR sequences rather than tput: querying terminfo cost one
@@ -83,9 +81,6 @@ fi
 
 # readline
 export INPUTRC="$XDG_CONFIG_HOME"/readline/inputrc
-
-# _shellcheck
-export SHELLCHECK_OPTS="-e SC1090 -e SC1091"
 
 # terminfo
 export TERMINFO="$XDG_DATA_HOME"/terminfo

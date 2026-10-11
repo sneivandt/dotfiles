@@ -1,38 +1,33 @@
 #!/usr/bin/env zsh
 
-# Movement keys
-bindkey '\e[3~'     delete-char        # Delete
-if [[ "$TERM" == (rxvt*) ]]
-then
-  bindkey '\e[7~'   beginning-of-line  # Home
-  bindkey '\e[8~'   end-of-line        # End
-  bindkey '\e[7^'   beginning-of-line  # Ctrl + Home
-  bindkey '\e[8^'   end-of-line        # Ctrl + End
-  bindkey '^H'      backward-kill-word # Ctrl + Backspace
-  bindkey '\e[3^'   kill-word          # Ctrl + Delete
-  bindkey '\e[1;5D' backward-word      # Ctrl + Left
-  bindkey '\e[1;5C' forward-word       # Ctrl + Right
-elif [[ "$TERM" == (screen*|tmux*) ]]
-then
-  bindkey '\e[1~'   beginning-of-line  # Home
-  bindkey '\e[4~'   end-of-line        # End
-  bindkey '\e[1;5H' beginning-of-line  # Ctrl + Home
-  bindkey '\e[1;5F' end-of-line        # Ctrl + End
-                                       # Ctrl + Backspace
-  bindkey '\e[3;5~' kill-word          # Ctrl + Delete
-  bindkey '\e[1;5D' backward-word      # Ctrl + Left
-  bindkey '\e[1;5C' forward-word       # Ctrl + Right
-elif [[ "$TERM" == (xterm*|alacritty*) ]]
-then
-  bindkey '\e[H'    beginning-of-line  # Home
-  bindkey '\e[F'    end-of-line        # End
-  bindkey '\e[1;5H' beginning-of-line  # Ctrl + Home
-  bindkey '\e[1;5F' end-of-line        # Ctrl + End
-  bindkey '^H'      backward-kill-word # Ctrl + Backspace
-  bindkey '\e[3;5~' kill-word          # Ctrl + Delete
-  bindkey '\e[1;5D' backward-word      # Ctrl + Left
-  bindkey '\e[1;5C' forward-word       # Ctrl + Right
+# Keep shell editing independent of EDITOR/VISUAL (which otherwise select viins).
+bindkey -e
+
+# Standard navigation uses terminfo, with common normal-mode sequences as fallbacks.
+bindkey '\e[H' beginning-of-line
+bindkey '\e[F' end-of-line
+bindkey '\e[1~' beginning-of-line
+bindkey '\e[4~' end-of-line
+bindkey '\e[3~' delete-char
+if zmodload zsh/terminfo 2>/dev/null; then
+  [[ -z ${terminfo[khome]} ]] || bindkey "${terminfo[khome]}" beginning-of-line
+  [[ -z ${terminfo[kend]} ]] || bindkey "${terminfo[kend]}" end-of-line
+  [[ -z ${terminfo[kdch1]} ]] || bindkey "${terminfo[kdch1]}" delete-char
 fi
+
+# Modified keys lack portable terminfo entries. Retain rxvt and CSI conventions.
+bindkey '\e[7~' beginning-of-line
+bindkey '\e[8~' end-of-line
+bindkey '\e[7^' beginning-of-line
+bindkey '\e[8^' end-of-line
+bindkey '\e[1;5H' beginning-of-line
+bindkey '\e[1;5F' end-of-line
+bindkey '\e[3^' kill-word
+bindkey '\e[3;5~' kill-word
+bindkey '\e[1;5D' backward-word
+bindkey '\e[1;5C' forward-word
+# tmux reserves C-h for pane navigation; ESC DEL works inside and outside tmux.
+[[ "$TERM" == (screen*|tmux*) ]] || bindkey '^H' backward-kill-word
 
 # Ctrl + Backspace (ESC DEL).
 # The bare ^H bindings above only work outside tmux: tmux claims C-h at the

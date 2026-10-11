@@ -163,6 +163,93 @@ class ShellConfigTests(unittest.TestCase):
                     )
                     self.assertEqual(result.stdout.strip(), expected)
 
+    def test_profile_preserves_locale_and_scoped_linter_preferences(self):
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                self.env.update(LANG="C.UTF-8", LANGUAGE="fr:en", SHELLCHECK_OPTS="-e SC2034")
+                self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                    '[ "$LANG" = C.UTF-8 ] && [ "$LANGUAGE" = fr:en ]\n'
+                    '[ "$SHELLCHECK_OPTS" = "-e SC2034" ]\n', shell=shell,
+                )
+                for variable in ("LANG", "LANGUAGE", "SHELLCHECK_OPTS"):
+                    self.env.pop(variable)
+                self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                    '[ "$LANG" = en_US.UTF-8 ]\n'
+                    '[ "${LANGUAGE+x}" != x ] && [ "${SHELLCHECK_OPTS+x}" != x ]\n',
+                    shell=shell,
+                )
+
+    def test_history_retains_duplicate_expiration_headroom(self):
+        result = self.run_shell(
+            'source "$ROOT/symlinks/zshrc"\n'
+            '[[ -o hist_expire_dups_first ]] && (( HISTSIZE > SAVEHIST ))\n'
+            'print -r -- "$SAVEHIST"\n', interactive=True,
+        )
+        self.assertEqual(result.stdout.strip(), "100000")
+
+    def test_process_completion_selects_only_the_current_user(self):
+        self.prepare_completion()
+        self.env["USER"] = "fixture user"
+        result = self.run_shell(
+            'setopt extendedglob\n'
+            'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
+            'zstyle -s ":completion:fixture:processes" command invocation || exit 1\n'
+            'ps() { print -rl -- "$@"; }\n'
+            'eval "$invocation"\n',
+        )
+        self.assertEqual(result.stdout.splitlines(), ["-u", "fixture user", "-o", "pid,tty,time,args"])
+
+    def test_git_alias_listing_excludes_similarly_named_sections(self):
+        subprocess.run(["git", "init", "-q", str(self.fixture)], env=self.env, check=True)
+        command = ["git", "-c", "include.path=" + str(ROOT / "symlinks/config/git/aliases"),
+                   "-c", "aliasx.fixture=unexpected", "-c", "alias.fixture=log --oneline"]
+        result = subprocess.run(command + ["alias"], cwd=self.fixture, env=self.env,
+                                text=True, capture_output=True, check=True)
+        self.assertIn("fixture=log --oneline", result.stdout.splitlines())
+        self.assertNotIn("unexpected", result.stdout)
+        self.assertEqual(result.stdout.splitlines(), sorted(result.stdout.splitlines()))
+
+    def test_shared_vscode_snippets_are_visible_but_local_state_is_ignored(self):
+        subprocess.run(["git", "init", "-q", str(self.fixture)], env=self.env, check=True)
+        command = ["git", "-c", "core.excludesfile=" + str(ROOT / "symlinks/config/git/ignore"),
+                   "check-ignore", "--no-index"]
+        for name, ignored in ((".vscode/project.code-snippets", False),
+                              (".vscode/local-state.json", True)):
+            with self.subTest(name=name):
+                result = subprocess.run(command + [name], cwd=self.fixture, env=self.env,
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0 if ignored else 1, result.stderr)
+
+    def test_keymaps_are_stable_across_editors_and_terminal_capabilities(self):
+        for editor in ("nvim", "nano"):
+            for term in ("xterm-256color", "screen-256color", "tmux-256color", "linux"):
+                with self.subTest(editor=editor, term=term):
+                    self.env.update(EDITOR=editor, VISUAL=editor, TERM=term)
+                    result = self.run_shell(
+                        'source "$ROOT/symlinks/config/zsh/key-bindings.zsh"\n'
+                        'bindkey -lL main\n'
+                        'bindkey "^A"; bindkey "^E"\n'
+                        'for capability in khome kend kdch1; do\n'
+                        '  [[ -z ${terminfo[$capability]} ]] || bindkey "${terminfo[$capability]}"\n'
+                        'done\n', interactive=True,
+                    )
+                    lines = result.stdout.splitlines()
+                    self.assertEqual(lines[0], "bindkey -A emacs main")
+                    self.assertEqual([line.split()[-1] for line in lines[1:3]],
+                                     ["beginning-of-line", "end-of-line"])
+                    self.assertTrue(all(line.split()[-1] in
+                                        ("beginning-of-line", "end-of-line", "delete-char")
+                                        for line in lines[3:]))
+        result = self.run_shell(
+            'zmodload() { return 1; }\n'
+            'source "$ROOT/symlinks/config/zsh/key-bindings.zsh"\n'
+            'bindkey "\\e[H"; bindkey "\\e[F"; bindkey "\\e[3~"\n',
+        )
+        self.assertEqual([line.split()[-1] for line in result.stdout.splitlines()],
+                         ["beginning-of-line", "end-of-line", "delete-char"])
+
     def test_desktop_profile_paths_and_overrides(self):
         config = self.home / "custom config"
         cache = self.home / "custom cache"
@@ -753,6 +840,40 @@ class ShellConfigTests(unittest.TestCase):
                     ) if backend_name == "locate" else ""
                     result = self.run_shell(helpers + select_backend + 'ff -- "$QUERY"\n')
                     self.assertEqual(result.stdout.strip(), query)
+
+    def test_tmux_panes_load_login_profile_without_starting_the_desktop(self):
+        if shutil.which("tmux") is None:
+            self.skipTest("tmux is not available")
+        self.install_profile()
+        self.env["LOGIN_MARKER"] = str(self.fixture / "login-profile-loaded")
+        self.env["DESKTOP_MARKER"] = str(self.fixture / "desktop-started")
+        self.env["SHELL"] = "/usr/bin/zsh"
+        self.write(
+            self.home / ".zprofile",
+            'source "$ROOT/symlinks/zprofile"\n'
+            'print -r -- "$EDITOR" > "$LOGIN_MARKER"\n'
+            'exec /usr/bin/sleep 60\n',
+        )
+        self.write(self.home / ".local/bin/uwsm",
+                   '#!/bin/sh\nprintf invoked > "$DESKTOP_MARKER"\nexit 99\n',
+                   executable=True)
+        # A private socket and fixture HOME keep existing tmux sessions untouched.
+        command = ["tmux", "-S", str(self.fixture / "tmux.sock"),
+                   "-f", str(ROOT / "symlinks/config/tmux/tmux.conf")]
+        try:
+            result = subprocess.run(command + ["new-session", "-d", "-s", "fixture"],
+                                    env=self.env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            marker = Path(self.env["LOGIN_MARKER"])
+            deadline = time.monotonic() + 5
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(marker.exists(), "new panes must load the login profile")
+            self.assertEqual(marker.read_text().strip(), "nvim")
+            self.assertFalse(Path(self.env["DESKTOP_MARKER"]).exists())
+        finally:
+            subprocess.run(command + ["kill-server"], env=self.env,
+                           capture_output=True, timeout=10)
 
     def test_tmux_terminal_has_word_navigation_bindings(self):
         for term in ("screen-256color", "tmux-256color", "xterm-256color"):

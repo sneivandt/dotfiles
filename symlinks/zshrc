@@ -33,7 +33,8 @@ setopt sharehistory
 setopt extendedglob
 [ -d "${XDG_CACHE_HOME:-$HOME/.cache}/zsh" ] || mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
 HISTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/history"
-HISTSIZE=100000
+# Keep a duplicate-entry cushion above the saved history limit.
+HISTSIZE=120000
 SAVEHIST=100000
 
 # Various options

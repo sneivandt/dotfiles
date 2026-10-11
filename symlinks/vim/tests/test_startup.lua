@@ -39,18 +39,20 @@ await_state(function() return vim.api.nvim_get_mode().mode == "t" end,
   "Entering a terminal must start terminal input", function()
     vim.api.nvim_input("<Esc>")
     await_state(function()
-      return vim.api.nvim_get_current_win() == original_window
-        and vim.api.nvim_get_mode().mode == "n"
-    end, "Escape must return to the previous window in normal mode", function()
-      vim.api.nvim_set_current_win(terminal_window)
+      return vim.api.nvim_get_current_win() == terminal_window
+        and vim.api.nvim_get_mode().mode == "nt"
+    end, "Escape must keep the terminal focused in normal mode", function()
+      vim.cmd("startinsert")
       await_state(function() return vim.api.nvim_get_mode().mode == "t" end,
         "Re-entering a terminal must restore terminal input", function()
-          vim.api.nvim_set_current_win(original_window)
-          await_state(function() return vim.api.nvim_get_mode().mode == "n" end,
-            "Leaving a terminal must restore normal mode", function()
-              vim.fn.jobstop(job)
-              vim.cmd("qa!")
-            end)
+          vim.api.nvim_input("<M-Esc>")
+          await_state(function()
+            return vim.api.nvim_get_current_win() == original_window
+              and vim.api.nvim_get_mode().mode == "n"
+          end, "Alt+Escape must return to the previous window in normal mode", function()
+            vim.fn.jobstop(job)
+            vim.cmd("qa!")
+          end)
         end)
     end)
   end)

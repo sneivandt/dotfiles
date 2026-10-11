@@ -67,10 +67,9 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
     /// when a required privilege-escalation helper is unavailable.
     fn batch_invocation<'a>(
         &self,
-        names: &[&'a str],
-        executor: &dyn Executor,
+        _names: &[&'a str],
+        _executor: &dyn Executor,
     ) -> Result<Option<(PathBuf, Vec<&'a str>)>> {
-        let _ = (names, executor);
         Ok(None)
     }
 

@@ -72,7 +72,10 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
                 "{text}"
             );
         }
-        assert!(blocks.last().unwrap().starts_with("2 passed"), "{text}");
+        assert!(
+            blocks.last().unwrap().starts_with("2 tasks passed"),
+            "{text}"
+        );
     }
 }
 
@@ -117,5 +120,5 @@ fn check_command_fails_on_config_warnings() {
         text.contains("invalid_no_dot") && text.contains("vscode-extensions.toml"),
         "{text}"
     );
-    assert!(text.contains("1 failed"), "{text}");
+    assert!(text.contains("1 task failed"), "{text}");
 }

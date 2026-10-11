@@ -64,7 +64,7 @@ pub(super) fn apply_repository_updates(
                 ctx.log()
                     .debug(format!("git merge output: {}", r.stdout.trim()));
                 ctx.log()
-                    .info(format!("{} updated", plan.target.description()));
+                    .info(format!("update {}", plan.target.description()));
                 repo_updated.mark_updated();
             }
             Err(e) => {

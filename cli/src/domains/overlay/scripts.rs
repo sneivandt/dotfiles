@@ -106,7 +106,7 @@ impl Operation for OverlayScriptTask {
 
     fn preview(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         if self.mode == ScriptTaskMode::Remove {
-            ctx.log().dry_run("would remove overlay script state");
+            ctx.log().dry_run("remove overlay script state");
         } else {
             let (_change, output) = self.resource(ctx)?.preview_with_output()?;
             emit_script_lines(ctx, &output, true);

@@ -182,9 +182,9 @@ fn install_console_separates_tasks_and_keeps_no_op_compact() {
                 if changed || verbose {
                     let status = match (changed, symbols) {
                         (true, true) => "✓",
-                        (true, false) => "CHANGE",
+                        (true, false) => "CHANGED",
                         (false, true) => "○",
-                        (false, false) => "OK",
+                        (false, false) => "CURRENT",
                     };
                     for (block, name) in blocks[1..3]
                         .iter()
@@ -195,9 +195,9 @@ fn install_console_separates_tasks_and_keeps_no_op_compact() {
                 }
                 assert!(
                     blocks.last().unwrap().starts_with(if changed {
-                        "2 changed"
+                        "2 tasks changed"
                     } else {
-                        "No changes · 2 current"
+                        "No changes · 2 tasks current"
                     }),
                     "{text}"
                 );
@@ -332,7 +332,7 @@ fn skip_filters_exclude_any_matching_selector_and_preserve_nonmatches() {
             );
             let mut names: Vec<_> = text
                 .lines()
-                .filter_map(|line| line.strip_prefix("DRYRUN "))
+                .filter_map(|line| line.strip_prefix("PLANNED "))
                 .map(|line| line.split_once(" · ").expect("task row duration").0)
                 .collect();
             names.sort_unstable();

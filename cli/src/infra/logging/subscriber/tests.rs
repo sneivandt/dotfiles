@@ -114,7 +114,7 @@ fn message_presentation_golden_matrix() {
         (MsgKind::Stage, true, "detail", "detail"),
         (MsgKind::TaskStage, true, "detail", "detail"),
         (MsgKind::Info, true, "  detail", "  detail"),
-        (MsgKind::Debug, true, "  detail", "  detail"),
+        (MsgKind::Debug, true, "  detail", "\x1b[2m  detail\x1b[0m"),
         (MsgKind::Context, true, "detail", "\x1b[2mdetail\x1b[0m"),
         (MsgKind::Trace, false, "", ""),
         (MsgKind::Summary, false, "", ""),
@@ -122,17 +122,17 @@ fn message_presentation_golden_matrix() {
             MsgKind::Warn,
             false,
             "WARN  detail",
-            "\x1b[33mWARN\x1b[0m  detail",
+            "\x1b[1;33mWARN\x1b[0m  detail",
         ),
         (
             MsgKind::Error,
             false,
             "ERROR detail",
-            "\x1b[31mERROR\x1b[0m detail",
+            "\x1b[1;31mERROR\x1b[0m detail",
         ),
         (MsgKind::DryRun, false, "  detail", "  detail"),
         (MsgKind::Always, false, "detail", "detail"),
-        (MsgKind::Startup, false, "detail", "\x1b[2mdetail\x1b[0m"),
+        (MsgKind::Startup, false, "detail", "detail"),
     ] {
         for (terminal, no_color, ansi) in [
             (false, false, false),
@@ -194,12 +194,12 @@ fn raw_tracing_presentation_golden_matrix() {
         (
             tracing::Level::ERROR,
             Some("ERROR detail"),
-            Some("\x1b[31mERROR\x1b[0m detail"),
+            Some("\x1b[1;31mERROR\x1b[0m detail"),
         ),
         (
             tracing::Level::WARN,
             Some("WARN  detail"),
-            Some("\x1b[33mWARN\x1b[0m  detail"),
+            Some("\x1b[1;33mWARN\x1b[0m  detail"),
         ),
         (tracing::Level::INFO, Some("  detail"), Some("  detail")),
         (tracing::Level::DEBUG, None, None),
@@ -303,4 +303,35 @@ fn another_logger_cannot_change_the_active_subscribers_verbosity() {
         log.captured_lines(),
         ["WARN  visible warning", "  verbose info"]
     );
+}
+
+#[test]
+fn dry_run_header_highlights_mode_and_recovery_hint_keeps_contrast() {
+    for (message, colored) in [
+        (
+            "Update · dry run · profile desktop · Arch Linux",
+            "\x1b[1mUpdate\x1b[0m\x1b[2m · \x1b[0m\x1b[35mdry run\x1b[0m\x1b[2m · profile desktop · Arch Linux\x1b[0m",
+        ),
+        (
+            "Run 'dotfiles log --id fixture -v' for details.",
+            "Run 'dotfiles log --id fixture -v' for details.",
+        ),
+    ] {
+        for (terminal, no_color, expected) in [
+            (true, false, colored),
+            (true, true, message),
+            (false, false, message),
+        ] {
+            assert_eq!(
+                crate::infra::logging::console::ui_line_with_style(
+                    MsgKind::Startup,
+                    message,
+                    StyleChoice::auto(terminal, no_color),
+                    false,
+                )
+                .as_deref(),
+                Some(expected),
+            );
+        }
+    }
 }

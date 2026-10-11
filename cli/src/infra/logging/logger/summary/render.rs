@@ -128,12 +128,29 @@ fn format_task_line_with_reason(task: &TaskEntry, opts: RowOpts, show_reason: bo
         opts.style.paint(TextStyle::Bold, &task.name)
     );
 
+    let annotation = status::annotation(task.status);
+    if opts.symbols
+        && let Some((word, color)) = annotation
+    {
+        line.push_str(&opts.style.paint(TextStyle::Dim, " · "));
+        line.push_str(&opts.style.paint(color, word));
+    }
     if show_reason && let Some(reason) = row_reason(task) {
-        line.push_str(
-            &opts
-                .style
-                .paint(TextStyle::Dim, &format!(" \u{00b7} {reason}")),
-        );
+        // The state is already named by the annotation or words-only label.
+        if !annotation.is_some_and(|(word, _)| reason.eq_ignore_ascii_case(word)) {
+            if matches!(
+                task.status,
+                TaskStatus::Failed
+                    | TaskStatus::Skipped
+                    | TaskStatus::Blocked
+                    | TaskStatus::Interrupted
+            ) {
+                line.push_str(&opts.style.paint(TextStyle::Dim, " · "));
+                line.push_str(&opts.style.clean(reason));
+            } else {
+                line.push_str(&opts.style.paint(TextStyle::Dim, &format!(" · {reason}")));
+            }
+        }
     }
     // A not-applicable task never ran, so its timing is either absent or a
     // meaningless `0.0s`. Suppressing it keeps `⁃` rows uniform whether the

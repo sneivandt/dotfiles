@@ -300,10 +300,10 @@ impl Operation for ParuInstallOperation<'_> {
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
         match plan {
-            ParuInstallPlan::Install { reason } => ctx.log().info(format!(
+            ParuInstallPlan::Install { reason } => ctx.log().debug(format!(
                 "paru install attempted · missing from target · {reason}"
             )),
-            ParuInstallPlan::Rebuild { path, reason } => ctx.log().info(format!(
+            ParuInstallPlan::Rebuild { path, reason } => ctx.log().debug(format!(
                 "paru rebuild attempted · executable {} · {reason}",
                 path.display()
             )),
@@ -321,8 +321,8 @@ impl Operation for ParuInstallOperation<'_> {
                 package,
                 version,
             } => ctx.log().info(format!(
-                "{} paru passed target validation · package {package} · executable {} · {version}",
-                plan.completed_action(),
+                "{} paru · target validated · package {package} · executable {} · {version}",
+                plan.action(),
                 path.display()
             )),
             ParuHealth::Missing { reason } => anyhow::bail!(

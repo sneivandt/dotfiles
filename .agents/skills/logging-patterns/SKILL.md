@@ -30,10 +30,20 @@ description: >
   verbose output; compact consecutive one-line check rows. A check task with
   details keeps a blank line on both sides. Hidden tasks add no spacing.
 - Task names, structured startup labels such as `CLI upgraded`, live `Running`,
-  and the first summary outcome are bold. Action details, active task names, and
-  transient self-update work use normal contrast. Startup metadata, progress
-  counts, context, reasons, and timing stay dim. `No changes` is bold in the
-  default foreground. Plain output preserves spacing without ANSI styling.
+  and the first summary outcome are bold. Every incomplete summary
+  outcome is bold and colored. Standalone `WARN`/`ERROR` labels combine bold
+  with yellow/red; explanations use normal foreground and keep aligned columns.
+- Action details, informational explanations, active task names, transient
+  self-update work, recovery hints, and reasons for failed/skipped/blocked/
+  interrupted tasks use normal contrast. Startup metadata, progress counts,
+  verbose debug/context, successful/current reasons, and timing stay dim.
+  Highlight startup `dry run` in magenta. Plain output preserves wording and
+  spacing without ANSI styling.
+- Symbol rows name `planned` (magenta), `skipped`, `blocked`, and `interrupted`
+  (yellow) after the task name, even without a reason. Words-only rows use
+  `CHANGED`, `PLANNED`, `CURRENT`, `PASSED`, `SKIPPED`, `BLOCKED`, `INTERRUPTED`,
+  and `FAILED` without repeating the state after the name. Do not repeat a
+  reason consisting only of the named state; retain the original run record.
 - Non-verbose mode shows reportable outcomes; verbose mode also shows current
   tasks plus elapsed time. Not-applicable tasks stay out of console output in
   both modes but remain in persistent run records and progress accounting.
@@ -48,7 +58,14 @@ description: >
   with `with_summary_message`. Custom reasons remain visible even if they resemble
   counter text.
 - Resource descriptions read `subject -> value`; symlinks are `target -> source`.
-- Final summaries count tasks, not detail lines or parsed display text.
+- Final summaries name `task`/`tasks` in every count and order outcomes as
+  failed, interrupted, blocked, skipped, changed/planned, current, elapsed.
+  Check summaries use passed counts. `No changes` is bold in the default
+  foreground and only appears when no tasks failed, were interrupted, blocked,
+  or skipped and no applied/planned actions remain. Keep task and action counts
+  independent; never derive totals from detail lines or parsed display text.
+- Apply the shared contract across update/remove/check. The human log
+  viewer calls Ok/DryRun states Current/Planned; raw records keep stored names.
 - Progress uses `Running · {remaining} remaining · {active}`. The count covers
   unfinished scheduled visible tasks within a phase. Non-applicable tasks reduce
   it when they finish but do not contribute to final totals.
@@ -61,7 +78,7 @@ description: >
 | Intent | Use |
 |---|---|
 | `trace` | plumbing that never reaches the console |
-| `debug` | diagnostic item detail |
+| `debug` | dim diagnostic item detail, verbose only |
 | `context` | dim contextual block visible only in verbose output; caller owns indentation |
 | `action` | applied or planned item detail with explicit verb and subject |
 | `info` | informational detail, not an inferred action |
@@ -69,7 +86,7 @@ description: >
 | `warn` / `error` | visible problems |
 | `dry_run` | planned mutation |
 | `always` | output that must be visible |
-| `startup` | a structured startup notice; label bold before ` · `, metadata dim |
+| `startup` | structured notice: bold label, dim metadata, magenta dry run; unstructured recovery hints use normal contrast |
 
 ## Persistent records
 

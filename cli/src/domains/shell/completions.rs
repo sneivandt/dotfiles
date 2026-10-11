@@ -44,7 +44,7 @@ impl Operation for CompletionOperation<'_> {
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
         crate::infra::fs::write_with_parent(&self.destination, self.content)?;
         ctx.log()
-            .info(format!("{} completions written", self.shell_name));
+            .info(format!("write {} completions", self.shell_name));
         Ok(TaskStats::changed().finish())
     }
 }

@@ -26,7 +26,7 @@ fn completions_report_changes_then_current() {
                 .env("DOTFILES_REEXEC_GUARD", "1")
                 .env("DOTFILES_REPOSITORY_REEXEC_GUARD", "1");
         }
-        for expected in ["CHANGE Shell completions", "No changes · 1 current"] {
+        for expected in ["CHANGED Shell completions", "No changes · 1 task current"] {
             let output = command.output().unwrap();
             let stdout = String::from_utf8(output.stdout).unwrap();
             assert!(
@@ -135,7 +135,11 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
                 "{stdout}"
             );
             assert!(
-                stdout.contains(if strict { "1 failed" } else { "1 skipped" }),
+                stdout.contains(if strict {
+                    "1 task failed"
+                } else {
+                    "1 task skipped"
+                }),
                 "{stdout}"
             );
         }

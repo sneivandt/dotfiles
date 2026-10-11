@@ -182,7 +182,7 @@ pub enum MsgKind {
     Info,
     /// Aggregate counters retained in the run log, not repeated on the console.
     Summary,
-    /// Diagnostic item detail; rendered on the console in verbose mode.
+    /// Diagnostic item detail; rendered dim on the console in verbose mode.
     Debug,
     /// De-emphasised context; rendered dim on the console in verbose mode.
     ///
@@ -205,11 +205,10 @@ pub enum MsgKind {
     ///
     /// Used for structural output such as the version banner and summary.
     Always,
-    /// De-emphasised context about the run itself.
+    /// Always-visible run context or recovery instructions.
     ///
-    /// Always visible, like [`MsgKind::Always`], but rendered dim because it
-    /// describes the run rather than reporting its results. Used for the
-    /// startup context header, self-update notice, and failure log hint.
+    /// Structured notices have a bold label and dim metadata, with dry-run
+    /// mode in magenta. Unstructured recovery hints use normal contrast.
     Startup,
 }
 

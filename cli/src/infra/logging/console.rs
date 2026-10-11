@@ -175,11 +175,18 @@ pub(in crate::infra::logging) fn ui_line_with_style(
     let msg = style.clean(msg);
     match kind {
         MsgKind::Stage | MsgKind::TaskStage => verbose.then_some(msg),
-        MsgKind::Info | MsgKind::Debug => verbose.then(|| format!("  {msg}")),
+        MsgKind::Info => verbose.then(|| format!("  {msg}")),
+        MsgKind::Debug => verbose.then(|| style.paint(TextStyle::Dim, &format!("  {msg}"))),
         MsgKind::Context => verbose.then(|| style.paint(TextStyle::Dim, &msg)),
         MsgKind::Trace | MsgKind::Summary => None,
-        MsgKind::Warn => Some(format!("{}  {msg}", style.paint(TextStyle::Yellow, "WARN"))),
-        MsgKind::Error => Some(format!("{} {msg}", style.paint(TextStyle::Red, "ERROR"))),
+        MsgKind::Warn => Some(format!(
+            "{}  {msg}",
+            style.paint_bold(TextStyle::Yellow, "WARN")
+        )),
+        MsgKind::Error => Some(format!(
+            "{} {msg}",
+            style.paint_bold(TextStyle::Red, "ERROR")
+        )),
         MsgKind::DryRun => Some(format!("  {msg}")),
         MsgKind::Always => Some(msg),
         MsgKind::Startup => Some(startup_line_with_style(&msg, style)),
@@ -187,16 +194,23 @@ pub(in crate::infra::logging) fn ui_line_with_style(
 }
 
 /// Give structured startup notices a visible label while keeping their
-/// metadata subdued. Unstructured hints retain the original dim treatment.
+/// metadata subdued. Recovery hints retain normal foreground contrast.
 fn startup_line_with_style(msg: &str, style: StyleChoice) -> String {
     let Some((label, metadata)) = msg.split_once(" · ") else {
-        return style.paint(TextStyle::Dim, msg);
+        return style.clean(msg);
     };
-    format!(
-        "{}{}",
-        style.paint(TextStyle::Bold, label),
-        style.paint(TextStyle::Dim, &format!(" · {metadata}"))
-    )
+    let metadata = metadata.strip_prefix("dry run · ").map_or_else(
+        || style.paint(TextStyle::Dim, &format!(" · {metadata}")),
+        |rest| {
+            format!(
+                "{}{}{}",
+                style.paint(TextStyle::Dim, " · "),
+                style.paint(TextStyle::Magenta, "dry run"),
+                style.paint(TextStyle::Dim, &format!(" · {rest}")),
+            )
+        },
+    );
+    format!("{}{metadata}", style.paint(TextStyle::Bold, label))
 }
 
 #[cfg(test)]

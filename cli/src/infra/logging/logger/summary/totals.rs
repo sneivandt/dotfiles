@@ -67,64 +67,79 @@ pub(super) fn format_summary_lines(
     style: StyleChoice,
 ) -> Vec<String> {
     let mut parts = Vec::new();
-    push_count(&mut parts, counts.failed, TextStyle::Red, "failed", style);
+    for (count, label, color) in [
+        (counts.failed, "failed", TextStyle::Red),
+        (counts.interrupted, "interrupted", TextStyle::Yellow),
+        (counts.blocked, "blocked", TextStyle::Yellow),
+        (counts.skipped, "skipped", TextStyle::Yellow),
+    ] {
+        push_count(&mut parts, count, color, label, style, true);
+    }
     match mode {
         SummaryMode::Standard => {
-            if counts.dry_run > 0 {
-                push_count(
-                    &mut parts,
-                    counts.dry_run,
-                    TextStyle::Magenta,
-                    "would change",
-                    style,
-                );
-            } else if counts.changed > 0 {
-                push_count(
-                    &mut parts,
-                    counts.changed,
-                    TextStyle::Green,
-                    "changed",
-                    style,
-                );
-            } else if counts.failed == 0
-                && counts.actions.applied == 0
-                && counts.actions.planned == 0
-            {
-                parts.push("No changes".to_string());
+            push_count(
+                &mut parts,
+                counts.changed,
+                TextStyle::Green,
+                "changed",
+                style,
+                false,
+            );
+            push_count(
+                &mut parts,
+                counts.dry_run,
+                TextStyle::Magenta,
+                "would change",
+                style,
+                false,
+            );
+            if parts.is_empty() && counts.actions.applied == 0 && counts.actions.planned == 0 {
+                parts.push(style.paint(TextStyle::Bold, "No changes"));
             }
-            push_count(&mut parts, counts.ok, TextStyle::Dim, "current", style);
+            push_count(
+                &mut parts,
+                counts.ok,
+                TextStyle::Dim,
+                "current",
+                style,
+                false,
+            );
         }
         SummaryMode::Check => {
-            push_count(&mut parts, counts.passed, TextStyle::Green, "passed", style);
+            push_count(
+                &mut parts,
+                counts.passed,
+                TextStyle::Green,
+                "passed",
+                style,
+                false,
+            );
         }
     }
-    for (count, label) in [
-        (counts.blocked, "blocked"),
-        (counts.interrupted, "interrupted"),
-        (counts.skipped, "skipped"),
-    ] {
-        push_count(&mut parts, count, TextStyle::Yellow, label, style);
-    }
     if parts.is_empty() && mode == SummaryMode::Check {
-        parts.push("No checks ran".to_string());
-    }
-    if let Some(outcome) = parts.first_mut() {
-        *outcome = style.paint(TextStyle::Bold, outcome);
+        parts.push(style.paint(TextStyle::Bold, "No checks ran"));
     }
     parts.push(style.paint(TextStyle::Dim, elapsed));
     vec![parts.join(&format!(" {} ", style.paint(TextStyle::Dim, "\u{00b7}")))]
 }
 
-/// Append a styled `"<count> <label>"` fragment, skipping zero counts.
+/// Name the task unit and emphasize the first outcome plus all incomplete work.
 fn push_count(
     parts: &mut Vec<String>,
     count: u32,
     text_style: TextStyle,
     label: &str,
     style: StyleChoice,
+    incomplete: bool,
 ) {
     if count > 0 {
-        parts.push(style.paint(text_style, &format!("{count} {label}")));
+        let unit = if count == 1 { "task" } else { "tasks" };
+        let text = format!("{count} {unit} {label}");
+        parts.push(if incomplete || parts.is_empty() {
+            style.paint_bold(text_style, &text)
+        } else {
+            style.paint(text_style, &text)
+        });
     }
 }
 

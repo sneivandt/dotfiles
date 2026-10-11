@@ -474,7 +474,11 @@ fn non_verbose_dry_run_flush_keeps_detail_in_persistent_log() {
 
     assert_eq!(
         log.captured_lines(),
-        ["", "~ Configure Copilot", "  would configure beep = true"]
+        [
+            "",
+            "~ Configure Copilot · planned",
+            "  would configure beep = true"
+        ]
     );
 
     let path = log.log_path().expect("log path");
@@ -585,7 +589,7 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
             let changed = if command == "check" {
                 "PASSED"
             } else {
-                "CHANGE"
+                "CHANGED"
             };
             let compact = command == "check" && !verbose;
             let mut expected = vec![
@@ -608,7 +612,7 @@ fn completed_task_transcripts_preserve_spacing_and_warning_placement() {
                     "WARN  check permissions".into(),
                     "  link b".into(),
                     String::new(),
-                    "OK current".into(),
+                    "CURRENT current".into(),
                 ]);
             } else {
                 expected.extend(["  link b".into(), "WARN  check permissions".into()]);

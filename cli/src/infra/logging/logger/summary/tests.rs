@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::render::{RowOpts, format_task_line, task_block};
@@ -106,7 +107,7 @@ fn interrupted_partial_work_is_not_reported_as_no_changes() {
         assert_eq!(counts.actions.not_attempted, 2);
         assert_eq!(
             format_summary_lines(counts, SummaryMode::Standard, "1.0s", StyleChoice::plain(),),
-            ["1 interrupted · 1.0s"],
+            ["1 task interrupted · 1.0s"],
         );
     }
 }
@@ -122,7 +123,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "7.2s",
-            "1 failed · 1 current · 7.2s",
+            "1 task failed · 1 task current · 7.2s",
         ),
         (
             "standard_summary_groups_task_and_action_counts",
@@ -139,7 +140,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "2.0s",
-            "1 failed · 3 changed · 1 skipped · 2.0s",
+            "1 task failed · 1 task skipped · 3 tasks changed · 2.0s",
         ),
         (
             "dry_run_summary_pairs_affected_and_planned_counts",
@@ -152,7 +153,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "0.8s",
-            "1 would change · 0.8s",
+            "1 task would change · 0.8s",
         ),
         (
             "dry_run_summary_counts_unquantified_affected_tasks",
@@ -161,7 +162,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "0.8s",
-            "2 would change · 0.8s",
+            "2 tasks would change · 0.8s",
         ),
         (
             "summary_totals_account_for_every_reported_task",
@@ -176,7 +177,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "2.3s",
-            "2 changed · 15 current · 1 skipped · 2.3s",
+            "1 task skipped · 2 tasks changed · 15 tasks current · 2.3s",
         ),
         (
             "standard_summary_omits_actions_when_all_action_counts_are_zero",
@@ -185,7 +186,7 @@ fn standard_summary_totals_preserve_task_and_action_counts() {
                 ..SummaryCounts::default()
             },
             "1.0s",
-            "2 changed · 1.0s",
+            "2 tasks changed · 1.0s",
         ),
     ] {
         assert_eq!(
@@ -206,7 +207,7 @@ fn check_summary_uses_check_vocabulary_and_omits_not_run() {
     };
     assert_eq!(
         format_summary_lines(counts, SummaryMode::Check, "3.4s", StyleChoice::plain()),
-        ["1 failed · 7 passed · 2 skipped · 3.4s"],
+        ["1 task failed · 2 tasks skipped · 7 tasks passed · 3.4s"],
     );
 }
 
@@ -285,7 +286,7 @@ fn task_line_states_reason_beside_task_name() {
 
     assert_eq!(
         format_task_line(&task, plain_opts()),
-        "⊘ Dotfiles repository \u{b7} local changes present"
+        "⊘ Dotfiles repository \u{b7} skipped \u{b7} local changes present"
     );
 }
 
@@ -319,7 +320,7 @@ fn restart_notice_tasks_still_report_non_changed_outcomes() {
 
     assert_eq!(
         task_result_lines(&task, &[], plain_opts()),
-        ["⊘ Dotfiles repository \u{b7} local changes present"]
+        ["⊘ Dotfiles repository \u{b7} skipped \u{b7} local changes present"]
     );
 }
 
@@ -369,7 +370,7 @@ fn task_block_drops_lines_restating_the_row_reason() {
 
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
-        ["⊘ skip-task · dependency failed"]
+        ["⊘ skip-task · skipped · dependency failed"]
     );
 }
 
@@ -428,7 +429,7 @@ fn task_result_lines_preserve_planned_symlink_actions() {
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
         [
-            "~ Install symlinks",
+            "~ Install symlinks · planned",
             "  link ~/.bashrc \u{2192} symlinks/bashrc"
         ]
     );
@@ -449,7 +450,7 @@ fn task_result_lines_include_all_details() {
     assert_eq!(lines.len(), 12);
     assert_eq!(
         lines.first().expect("task status line should exist"),
-        "~ large-plan"
+        "~ large-plan · planned"
     );
     assert_eq!(
         lines.last().expect("last detail line should exist"),
@@ -460,14 +461,14 @@ fn task_result_lines_include_all_details() {
 #[test]
 fn task_row_golden_matrix() {
     for (status, glyph, word, color) in [
-        (TaskStatus::Changed, "✓", "CHANGE", "32"),
+        (TaskStatus::Changed, "✓", "CHANGED", "32"),
         (TaskStatus::Passed, "✓", "PASSED", "32"),
-        (TaskStatus::DryRun, "~", "DRYRUN", "35"),
+        (TaskStatus::DryRun, "~", "PLANNED", "35"),
         (TaskStatus::Skipped, "⊘", "SKIPPED", "33"),
         (TaskStatus::Failed, "✗", "FAILED", "31"),
         (TaskStatus::Blocked, "⊘", "BLOCKED", "33"),
         (TaskStatus::Interrupted, "⊘", "INTERRUPTED", "33"),
-        (TaskStatus::Ok, "○", "OK", "2"),
+        (TaskStatus::Ok, "○", "CURRENT", "2"),
         (TaskStatus::NotApplicable, "⁃", "N/A", "2"),
     ] {
         let mut task = task_entry("task", status, Some("reason"));
@@ -484,12 +485,42 @@ fn task_row_golden_matrix() {
                             word
                         };
                         let mut row = if ansi {
-                            format!(
-                                "\x1b[{color}m{label}\x1b[0m \x1b[1mtask\x1b[0m\x1b[2m · reason\x1b[0m"
-                            )
+                            format!("\x1b[{color}m{label}\x1b[0m \x1b[1mtask\x1b[0m")
                         } else {
-                            format!("{label} task · reason")
+                            format!("{label} task")
                         };
+                        let annotation = match status {
+                            TaskStatus::DryRun => Some("planned"),
+                            TaskStatus::Skipped => Some("skipped"),
+                            TaskStatus::Blocked => Some("blocked"),
+                            TaskStatus::Interrupted => Some("interrupted"),
+                            TaskStatus::Changed
+                            | TaskStatus::Ok
+                            | TaskStatus::Passed
+                            | TaskStatus::NotApplicable
+                            | TaskStatus::Failed => None,
+                        };
+                        if symbols && let Some(state) = annotation {
+                            if ansi {
+                                write!(row, "\x1b[2m · \x1b[0m\x1b[{color}m{state}\x1b[0m")
+                                    .unwrap();
+                            } else {
+                                write!(row, " · {state}").unwrap();
+                            }
+                        }
+                        row.push_str(if !ansi {
+                            " · reason"
+                        } else if matches!(
+                            status,
+                            TaskStatus::Failed
+                                | TaskStatus::Skipped
+                                | TaskStatus::Blocked
+                                | TaskStatus::Interrupted
+                        ) {
+                            "\x1b[2m · \x1b[0mreason"
+                        } else {
+                            "\x1b[2m · reason\x1b[0m"
+                        });
                         if verbose && status != TaskStatus::NotApplicable {
                             row.push_str(if ansi {
                                 "\x1b[2m · 1.5s\x1b[0m"
@@ -605,10 +636,10 @@ fn colored_summary_styles_each_outcome_group() {
 
     assert_eq!(
         lines,
-        ["\x1b[1m\x1b[31m4 failed\x1b[0m\x1b[0m \
-             \x1b[2m·\x1b[0m \x1b[32m1 changed\x1b[0m \
-             \x1b[2m·\x1b[0m \x1b[2m2 current\x1b[0m \
-             \x1b[2m·\x1b[0m \x1b[33m3 skipped\x1b[0m \
+        ["\x1b[1;31m4 tasks failed\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[1;33m3 tasks skipped\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[32m1 task changed\x1b[0m \
+             \x1b[2m·\x1b[0m \x1b[2m2 tasks current\x1b[0m \
              \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"]
     );
 }
@@ -692,6 +723,101 @@ fn blocked_and_interrupted_counts_do_not_become_skips_or_failures() {
     );
     assert_eq!(
         format_summary_lines(counts, SummaryMode::Check, "1.0s", StyleChoice::plain()),
-        ["1 blocked · 1 interrupted · 1 skipped · 1.0s"]
+        ["1 task interrupted · 1 task blocked · 1 task skipped · 1.0s"]
     );
+}
+
+#[test]
+fn incomplete_work_never_claims_no_changes() {
+    for counts in [
+        SummaryCounts {
+            skipped: 1,
+            ..SummaryCounts::default()
+        },
+        SummaryCounts {
+            blocked: 1,
+            ..SummaryCounts::default()
+        },
+        SummaryCounts {
+            interrupted: 1,
+            ..SummaryCounts::default()
+        },
+        SummaryCounts {
+            failed: 1,
+            ..SummaryCounts::default()
+        },
+    ] {
+        let lines =
+            format_summary_lines(counts, SummaryMode::Standard, "1.0s", StyleChoice::plain());
+        assert!(!lines[0].contains("No changes"), "{lines:?}");
+    }
+}
+
+#[test]
+fn all_incomplete_totals_are_bold_and_precede_successes() {
+    let lines = format_summary_lines(
+        SummaryCounts {
+            failed: 1,
+            interrupted: 2,
+            blocked: 3,
+            skipped: 4,
+            changed: 5,
+            dry_run: 6,
+            ok: 7,
+            ..SummaryCounts::default()
+        },
+        SummaryMode::Standard,
+        "1.0s",
+        StyleChoice::colored(),
+    );
+    assert_eq!(
+        lines,
+        [
+            "\x1b[1;31m1 task failed\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m2 tasks interrupted\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m3 tasks blocked\x1b[0m \x1b[2m·\x1b[0m \x1b[1;33m4 tasks skipped\x1b[0m \x1b[2m·\x1b[0m \x1b[32m5 tasks changed\x1b[0m \x1b[2m·\x1b[0m \x1b[35m6 tasks would change\x1b[0m \x1b[2m·\x1b[0m \x1b[2m7 tasks current\x1b[0m \x1b[2m·\x1b[0m \x1b[2m1.0s\x1b[0m"
+        ]
+    );
+}
+
+#[test]
+fn symbol_rows_name_states_even_without_reasons_or_with_action_details() {
+    for (status, state) in [
+        (TaskStatus::DryRun, "planned"),
+        (TaskStatus::Skipped, "skipped"),
+        (TaskStatus::Blocked, "blocked"),
+        (TaskStatus::Interrupted, "interrupted"),
+    ] {
+        let mut task = task_entry("task", status, None);
+        task.duration = Some(Duration::from_secs(1));
+        for verbose in [false, true] {
+            let block = task_block(
+                &task,
+                &[LogEntry::action(
+                    "write",
+                    "example",
+                    status == TaskStatus::DryRun,
+                    "write example",
+                )],
+                RowOpts {
+                    verbose,
+                    ..plain_opts()
+                },
+            );
+            let glyph = if status == TaskStatus::DryRun {
+                "~"
+            } else {
+                "⊘"
+            };
+            let timing = if verbose { " · 1.0s" } else { "" };
+            assert_eq!(
+                block.status.as_deref(),
+                Some(format!("{glyph} task · {state}{timing}").as_str())
+            );
+            assert_eq!(block.details.len(), 1);
+        }
+        task.message = Some(state.into());
+        assert_eq!(
+            format_task_line(&task, plain_opts()).matches(state).count(),
+            1
+        );
+    }
 }

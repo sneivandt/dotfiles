@@ -302,15 +302,42 @@ configuration order.
 | `⊘` | Skipped, blocked, or interrupted; read the accompanying reason |
 | `✗` | Failed |
 
-`--no-symbols` uses words, including distinct `SKIPPED`, `BLOCKED`, and
-`INTERRUPTED` states. Non-applicable tasks are absent from console totals.
-Internal tasks remain in logs but not normal rows or totals.
+Symbol rows explicitly name `planned`, `skipped`, `blocked`, and `interrupted`
+states. `--no-symbols` uses `CHANGED`, `PLANNED`, `CURRENT`, `PASSED`, `SKIPPED`,
+`BLOCKED`, `INTERRUPTED`, and `FAILED`; the status word is not repeated after the
+task name. Non-applicable tasks are absent from console totals. Internal tasks
+remain in logs but not normal rows or totals.
 
-Indented lines describe completed or planned actions. `--verbose` adds current
-tasks, decisions, and elapsed times. A transient `Running` line shows remaining
-visible work and active tasks. Final counts summarize outcomes, for example
-`2 changed · 14 current · 1 skipped · 2.3s`. **A zero exit status with skips is
+Task names are bold. Successful/current reasons, configuration counts and
+elapsed times are dim; failure, skipped, blocked and interrupted reasons retain
+normal contrast. Green marks applied changes or passed checks, magenta marks
+planned work, yellow marks incomplete work, and red marks failures. The startup
+header emphasizes `dry run` in magenta. Standalone `WARN` and `ERROR` labels are
+bold and colored, with their explanations in normal foreground. Plain output
+and `NO_COLOR` retain wording and spacing without ANSI styling.
+
+Indented lines use concise verb-first descriptions of completed or planned
+actions, such as `install fd` and `write zsh completions`. `--verbose` adds
+current tasks, decisions, and elapsed times; debug details are dim while actions
+and informational explanations retain normal contrast. A transient `Running`
+line shows remaining visible work and active tasks. Rows remain in completion
+order, with one blank line between mutation task blocks; ordinary one-line check
+rows stay compact.
+
+Final counts explicitly count tasks, not files, packages or action lines. They
+put incomplete work first: failed, interrupted, blocked, skipped, then changed
+or planned work, current tasks, and elapsed time. Every incomplete outcome is
+bold; the first successful outcome is bold when there is no incomplete work.
+For example: `1 task skipped · 2 tasks changed · 14 tasks current · 2.3s`.
+`No changes` is reserved for runs without failed, interrupted, blocked or skipped
+tasks, and is bold in the default foreground. **A zero exit status with skips is
 not necessarily a complete installation.**
+
+These shared presentation rules apply to `update`, `remove`, and `check`.
+Checks use `passed` totals rather than `changed`.
+The `log` viewer uses `Current` and `Planned` for the corresponding task states;
+raw records retain their original stored status names. Recovery instructions,
+including the exact `dotfiles log --id … -v` command, retain normal contrast.
 
 Failed-command summaries prefer concrete error diagnostics over update notices
 and progress text, falling back to the first nonempty output line. The retained

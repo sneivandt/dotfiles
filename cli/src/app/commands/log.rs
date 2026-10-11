@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use serde::Serialize;
 
 use crate::app::cli::{DiscoveryFormat, LogOpts};
-use crate::infra::logging::{parse_run_log_file_name, run_log_sort_stamp};
+use crate::infra::logging::{TaskStatus, parse_run_log_file_name, run_log_sort_stamp};
 
 const NO_LOG_FOUND: &str = "No dotfiles log found yet.";
 const NO_MATCHING_LOG: &str = "No retained runs match the requested filters.";
@@ -184,6 +184,21 @@ fn write_selected_contents(
     Ok(())
 }
 
+/// Human labels differ from stable enum names only for current and planned work.
+const fn human_task_status(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Ok => "Current",
+        TaskStatus::DryRun => "Planned",
+        TaskStatus::Changed => "Changed",
+        TaskStatus::Passed => "Passed",
+        TaskStatus::NotApplicable => "NotApplicable",
+        TaskStatus::Skipped => "Skipped",
+        TaskStatus::Blocked => "Blocked",
+        TaskStatus::Interrupted => "Interrupted",
+        TaskStatus::Failed => "Failed",
+    }
+}
+
 fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
     let rendered = match record {
         Record::RunStart {
@@ -227,7 +242,8 @@ fn render_record(record: Record, verbose: bool) -> Option<(String, String)> {
         } => (
             "task_result",
             format!(
-                "{name}: {status:?}{}",
+                "{name}: {}{}",
+                human_task_status(status),
                 reason.map_or_else(String::new, |reason| format!(": {reason}"))
             ),
         ),
@@ -966,7 +982,7 @@ mod tests {
                 task_id: task_id.into(),
                 selector: Some("symlinks".into()),
                 name: "Home symlinks".into(),
-                status: crate::infra::logging::TaskStatus::Changed,
+                status: TaskStatus::Changed,
                 reason: None,
                 actions: crate::infra::logging::ActionCounts::default(),
             },
@@ -983,6 +999,38 @@ mod tests {
         assert!(selected.contains("selected detail"), "{selected}");
         assert!(selected.contains("Home symlinks"), "{selected}");
         assert!(!selected.contains("other detail"), "{selected}");
+    }
+
+    #[test]
+    fn human_task_states_use_current_and_planned_without_rewriting_raw_records() {
+        for (status, label) in [
+            (TaskStatus::Ok, "Current"),
+            (TaskStatus::DryRun, "Planned"),
+            (TaskStatus::Blocked, "Blocked"),
+            (TaskStatus::Interrupted, "Interrupted"),
+        ] {
+            let contents = record(
+                "task",
+                Record::TaskResult {
+                    task_id: "task".into(),
+                    selector: None,
+                    name: "Example".into(),
+                    status,
+                    reason: Some("original reason".into()),
+                    actions: crate::infra::logging::ActionCounts::default(),
+                },
+            );
+            let mut human = Vec::new();
+            write_selected_contents(&contents, false, false, None, &mut human).unwrap();
+            assert!(
+                String::from_utf8(human)
+                    .unwrap()
+                    .contains(&format!("Example: {label}: original reason"))
+            );
+            let mut raw = Vec::new();
+            write_selected_contents(&contents, false, true, None, &mut raw).unwrap();
+            assert_eq!(String::from_utf8(raw).unwrap(), contents);
+        }
     }
 
     #[test]

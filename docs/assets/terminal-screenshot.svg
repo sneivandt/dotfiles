@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="500" viewBox="0 0 760 500" role="img" aria-labelledby="title desc">
   <title id="title">CLI self-update and one dotfiles update on an Arch Linux desktop</title>
-  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The update finishes with 3 changed and 14 current tasks in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
+  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The update finishes with 3 tasks changed and 14 tasks current in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
   <style>
     /* Alacritty colors, Source Code Pro, a 10px cell and 24px terminal rows.
        One update: self-update at 2.4s, update at 4.4s, summary at 10.5s.
@@ -93,7 +93,7 @@
     <g class="upgraded"><text x="26" y="89"><tspan font-weight="600">CLI upgraded</tspan><tspan fill="#8992b5"> · v2026.01.01-1 → v2026.01.01-2</tspan></text></g>
     <g class="startup"><text x="26" y="113"><tspan font-weight="600">Update</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
     <g class="links"><text x="26" y="161"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Home symlinks</tspan></text><text x="46" y="185">link ~/.config/git/config → symlinks/config/git/config</text><text x="46" y="209">link ~/.zshrc → symlinks/zshrc</text></g>
-    <g class="completions"><text x="26" y="257"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Shell completions</tspan></text><text x="46" y="281">zsh completions written</text></g>
+    <g class="completions"><text x="26" y="257"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Shell completions</tspan></text><text x="46" y="281">write zsh completions</text></g>
     <g class="packages"><text x="26" y="329"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">System packages</tspan></text><text x="46" y="353">install fd</text><text x="46" y="377">install ripgrep</text></g>
     <g class="live-0"><text x="26" y="161"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 16 remaining · </tspan>Home symlinks, System packages</text></g>
     <g class="live-1"><text x="26" y="257"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 12 remaining · </tspan>System packages, Shell completions</text></g>
@@ -103,7 +103,7 @@
     <g class="live-5"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 5 remaining · </tspan>AUR packages, System files</text></g>
     <g class="live-6"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 3 remaining · </tspan>Systemd units, APM packages</text></g>
     <g class="live-7"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>APM packages</text></g>
-    <g class="summary"><text x="26" y="425"><tspan fill="#9ece6a" font-weight="600">3 changed</tspan><tspan fill="#8992b5"> · 14 current · 6.1s</tspan></text></g>
+    <g class="summary"><text x="26" y="425"><tspan fill="#9ece6a" font-weight="600">3 tasks changed</tspan><tspan fill="#8992b5"> · 14 tasks current · 6.1s</tspan></text></g>
     <g class="prompt"><text x="26" y="449"><tspan fill="#e0af68">~</tspan></text><text x="26" y="473"><tspan fill="#a9b1d6">$</tspan></text><path class="blink" d="M46 457v20" stroke="#c0caf5" stroke-width="2"/></g>
   </g>
 </svg>

@@ -74,6 +74,16 @@ impl StyleChoice {
         }
     }
 
+    /// Combine emphasis and color in one escape so resets do not cancel bold.
+    #[must_use]
+    pub(in crate::infra::logging) fn paint_bold(self, style: TextStyle, text: &str) -> String {
+        if self.ansi {
+            format!("\x1b[1;{}m{text}\x1b[0m", style.ansi_code())
+        } else {
+            strip_ansi(text)
+        }
+    }
+
     /// Preserve existing ANSI only when this stream supports styling.
     #[must_use]
     pub(in crate::infra::logging) fn clean(self, text: &str) -> String {

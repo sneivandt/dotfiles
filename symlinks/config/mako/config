@@ -6,7 +6,10 @@ font=Source Code Pro 11
 # Geometry
 width=368
 height=200
-margin=44,8,8
+# The bar's exclusive zone already supplies the top offset.
+# Align with ShellPopup's frame edge: gaps_out (8) - border_size (2).
+outer-margin=0,6,0
+margin=8,0
 padding=16
 anchor=top-right
 border-size=1

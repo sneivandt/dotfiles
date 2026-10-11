@@ -506,6 +506,9 @@ placement, dismissal, scrolling, and focus; one bar popup is open at a time
 across monitors. The bar reserves space for tiled windows, sits below floating
 windows, and hides on fullscreen workspaces.
 
+Mako's margins in [`mako/config`](../symlinks/config/mako/config) align
+notifications with the tiled window frame without duplicating the bar offset.
+
 The volume menu selects the default output and permits amplification to 150%,
 marking 100%. The network menu uses NetworkManager for saved networks and
 password entry; enterprise setup stays in the connection editor. Logging out,

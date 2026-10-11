@@ -8,6 +8,8 @@ import pty
 from pathlib import Path
 import shutil
 import select
+import shlex
+import configparser
 import struct
 import subprocess
 import threading
@@ -294,7 +296,72 @@ class ShellConfigTests(unittest.TestCase):
                         str(max(0, cursor - 5) if removing else cursor + 5),
                     ])
 
+    def test_mirror_update_preserves_destination_on_failures(self):
+        destination = self.write(self.fixture / "pacman.d/mirrorlist", "original\n")
+        helper = (ROOT / "symlinks/config/zsh/functions/update-mirrors").read_text()
+        # Exercise the privileged staging script unprivileged against a fixture.
+        helper = helper.replace("/etc/pacman.d/", str(destination.parent) + "/")
+        self.write(self.fixture / "update-mirrors", helper)
+        self.env["PATH"] = str(self.fixture / "bin") + ":/usr/bin:/bin"
+        self.env["TMPDIR"] = str(self.fixture / "tmp")
+        Path(self.env["TMPDIR"]).mkdir()
+        setup = ('sudo() { "$@"; }\n'
+                 'fpath=("$PWD" $fpath)\nautoload -Uz update-mirrors\n')
+        for failure in ("generation", "empty", "invalid", "copy", "rename", "none"):
+            with self.subTest(failure=failure):
+                destination.write_text("original\n")
+                self.write(self.fixture / "bin/reflector", "#!/bin/sh\n" + {
+                    "generation": "printf 'partial\n'; exit 19\n",
+                    "empty": "printf '# no servers\n'\n",
+                    "invalid": "printf 'Server = http://insecure.example/$repo/os/$arch\n'\n",
+                }.get(failure, "printf 'Server = https://mirror.example/$repo/os/$arch\n'\n"),
+                    executable=True)
+                for command, body in (
+                    ("install", 'printf partial > "$5"; exit 23\n' if failure == "copy"
+                     else 'exec /usr/bin/install "$@"\n'),
+                    ("mv", 'exit 29\n' if failure == "rename" else 'exec /usr/bin/mv "$@"\n'),
+                ):
+                    self.write(self.fixture / "bin" / command, "#!/bin/sh\n" + body, executable=True)
+                expected = {"generation": 19, "empty": 1, "invalid": 1,
+                            "copy": 23, "rename": 29, "none": 0}[failure]
+                self.run_shell(setup + "update-mirrors\n", expected=expected)
+                self.assertEqual(destination.read_text(),
+                                 "Server = https://mirror.example/$repo/os/$arch\n"
+                                 if failure == "none" else "original\n")
+                self.assertEqual(list(destination.parent.iterdir()), [destination])
+                self.assertEqual(list(Path(self.env["TMPDIR"]).iterdir()), [])
+                if failure == "none":
+                    self.assertEqual(destination.stat().st_mode & 0o777, 0o644)
+
+    def test_xdg_directory_service_matches_config_and_preserves_content(self):
+        unit = configparser.ConfigParser(interpolation=None)
+        unit.read(ROOT / "symlinks/config/systemd/user/xdg-user-directories.service")
+        command = shlex.split(unit["Service"]["ExecStart"])
+        command = [part.replace("%h", str(self.home)) for part in command]
+        configured = (ROOT / "symlinks/config/user-dirs.dirs").read_text().splitlines()
+        directories = {Path(line.split("=", 1)[1].strip('"').replace("$HOME", str(self.home)))
+                       for line in configured} - {self.home}
+        self.assertEqual({Path(part) for part in command[3:]}, directories)
+        preserved = self.write(self.home / "media/documents/existing", "keep\n")
+        for _ in range(2):
+            subprocess.run(command, env=self.env, check=True, timeout=10)
+            self.assertTrue(all(directory.is_dir() for directory in directories))
+            self.assertEqual(preserved.read_text(), "keep\n")
+        conflict = self.home / "templates"
+        conflict.rmdir()
+        conflict.write_text("user file\n")
+        result = subprocess.run(command, env=self.env, capture_output=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(conflict.read_text(), "user file\n")
+
     def test_pacman_alias_does_not_override_host_configuration(self):
+        self.assertEqual(
+            (ROOT / "symlinks/config/pacman.conf").read_text().splitlines()[-1],
+            "Include = /etc/pacman.conf",
+        )
+        self.assertNotIn(
+            '"config/pacman.conf"', (ROOT / "conf/symlinks.toml").read_text(),
+        )
         self.write(self.home / ".config/pacman.conf", "[options]\nColor\n")
         binary = self.write(
             self.fixture / "bin/pacman", '#!/bin/sh\nprintf "%s\\n" "$@"\n',

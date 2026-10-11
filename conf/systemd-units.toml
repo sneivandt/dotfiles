@@ -21,4 +21,5 @@ units = [
   { name = "network-manager-applet.service", scope = "user", enabled = false },
   "quickshell.service",
   "volume.service",
+  "xdg-user-directories.service",
 ]

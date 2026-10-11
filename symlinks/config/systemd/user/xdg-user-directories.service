@@ -1,0 +1,11 @@
+[Unit]
+Description=Create configured XDG user directories
+Documentation=man:xdg-user-dir(1)
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/mkdir -p -- "%h/downloads" "%h/media/documents" "%h/media/music" "%h/media/pictures" "%h/media/videos" "%h/public" "%h/templates"
+
+[Install]
+WantedBy=default.target

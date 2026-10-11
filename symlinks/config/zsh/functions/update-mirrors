@@ -1,7 +1,33 @@
 #!/usr/bin/env zsh
 
-# Update mirrorlist using reflector
+# Generate and validate before touching the working mirrorlist. Only the final
+# staging and rename need privilege; staging beside the destination makes the
+# replacement atomic.
+command -v reflector >/dev/null 2>&1 || { echo "ERROR: reflector not installed" >&2; return 1; }
 
-command -v reflector >/dev/null 2>&1 || { echo "ERROR: reflector not installed" 1>&2 && return 1; }
+() {
+  local mirrorlist
+  mirrorlist=$(mktemp) || return $?
+  {
+    reflector --country US --protocol https --latest 6 --sort rate > "$mirrorlist" || return $?
+    if ! awk '
+      /^[[:space:]]*(#|$)/ { next }
+      /^Server = https:\/\/[^[:space:]]+$/ { servers++; next }
+      { invalid = 1 }
+      END { exit (invalid || !servers) }
+    ' "$mirrorlist"; then
+      echo "ERROR: reflector produced an invalid or empty mirrorlist" >&2
+      return 1
+    fi
 
-sudo reflector --country US --protocol https --latest 6 --sort rate --save /etc/pacman.d/mirrorlist
+    sudo sh -eu -c '
+      staged=$(mktemp /etc/pacman.d/.mirrorlist.XXXXXXXXXX)
+      trap '\''rm -f -- "$staged"'\'' EXIT
+      trap '\''exit 1'\'' HUP INT TERM
+      install -m 644 -- "$1" "$staged"
+      mv -fT -- "$staged" /etc/pacman.d/mirrorlist
+    ' sh "$mirrorlist"
+  } always {
+    rm -f -- "$mirrorlist"
+  }
+}

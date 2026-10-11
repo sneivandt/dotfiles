@@ -408,6 +408,18 @@ including extraction-path confinement. Missing-tool skips are not passes.
 CI runs the shell and Vim suites in their application jobs; stock-cache
 concurrency also has its own job.
 
+The shell suite also verifies mirror-update generation, validation, staging and
+rename failures against a fixture destination, without sudo or network access.
+The working mirrorlist stays intact until the validated replacement is ready.
+The XDG directory service is exercised against an isolated home, checking that
+its paths match `user-dirs.dirs`, repeated creation preserves existing content,
+and conflicting user files cause a failure without being replaced. The desktop
+profile enables and starts this service; later user-manager startups run it again.
+
+New installs no longer link `~/.config/pacman.conf`. Its tracked compatibility
+file includes `/etc/pacman.conf` so existing links and explicit `--config` callers
+continue using host policy without maintaining a second configuration.
+
 ## CI gates
 
 [`ci.yml`](../.github/workflows/ci.yml) starts for pushes/PRs to `main` and manual

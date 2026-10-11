@@ -74,12 +74,5 @@ Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.
 Remove leaves packages, services, and registry values in place.
 
-## Documentation
-
-See the [documentation index](docs/README.md) for guides by task.
-
-- [Usage](docs/USAGE.md), [profiles](docs/PROFILES.md), and [task reference](docs/TASKS.md)
-- [Configuration](docs/CONFIGURATION.md), including private overlays
-- [Architecture](docs/ARCHITECTURE.md)
-- [Development](docs/CONTRIBUTING.md) and [testing](docs/TESTING.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md) and [Windows](docs/WINDOWS.md)
+To set up a machine, follow [Getting started](docs/README.md).
+For CLI development, see [Contributing](docs/CONTRIBUTING.md).

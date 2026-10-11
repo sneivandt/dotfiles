@@ -196,6 +196,7 @@ for registry, symlink, subprocess, path and elevation coverage.
 
 Put the explanation where a reader will look for it:
 
+- First installation: [Getting started](README.md).
 - User commands and visible behavior: [Usage](USAGE.md).
 - Desired-state schema and examples: [Configuration](CONFIGURATION.md).
 - Selection/categories: [Profiles](PROFILES.md); task catalog: [Tasks](TASKS.md).
@@ -208,7 +209,6 @@ the root README a landing page. Preserve linked heading anchors, or update
 incoming links and skills when a heading must change. Run the documentation
 check even when a change only moves files or renames a task.
 
-See [documentation ownership](README.md#source-of-truth-boundaries) for the full
-guide boundaries. Documentation checks catch broken links and selector drift;
+Documentation checks catch broken links and selector drift;
 they do not verify that prose is true. Compare behavioral claims with code and
 tests before publishing them.

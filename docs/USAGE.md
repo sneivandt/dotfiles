@@ -1,65 +1,11 @@
 # Usage
 
-Use this guide to preview, apply, and inspect the repository's configuration.
-The wrappers obtain the Rust CLI; the CLI selects configuration and runs tasks.
+Use this guide for commands, options, and runtime behavior. For a first
+installation, follow [Getting started](README.md).
 For configuration syntax, see [Configuration](CONFIGURATION.md). For the work
 each task performs, see [Task reference](TASKS.md).
 
-## Bootstrap
-
-Start in the checkout you intend to keep. Installed home links point into this
-checkout, so moving or deleting it later can break applications.
-
-Before applying anything:
-
-1. Choose `base` for a shell-focused machine or `desktop` for a workstation.
-   These are roles, not safety levels; both can change system settings.
-   See [Profiles](PROFILES.md).
-2. Review the selected configuration and any private overlay.
-3. Back up existing home configuration. **Symlink installation can replace
-   existing ordinary files and empty directories without a backup.** A warning
-   is not a confirmation prompt. Nonempty directories cause a failure rather
-   than being recursively removed.
-4. Discover tasks, then preview the current checkout without synchronizing it.
-
-### Linux
-
-Run from the repository root:
-
-```bash
-# May download the CLI; task discovery itself does not apply configuration.
-./dotfiles.sh list --root . --profile base
-
-# Use the downloaded binary directly and suppress its release check.
-DOTFILES_SKIP_SELF_UPDATE=1 ./bin/dotfiles update \
-  --root . --profile base --no-repo-update --dry-run --verbose
-```
-
-After reviewing the preview and backing up affected files, this **applies** the
-current checkout:
-
-```bash
-DOTFILES_SKIP_SELF_UPDATE=1 ./bin/dotfiles update \
-  --root . --profile base --no-repo-update
-```
-
-### Windows
-
-Run from the repository root in PowerShell, normally **not** as Administrator:
-
-```powershell
-# May download the CLI.
-.\dotfiles.ps1 list --root . --profile desktop
-
-# Previews this checkout; does not apply task changes.
-.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --dry-run --verbose
-```
-
-The preview can still check for a CLI release and write its cache. See
-[Dry-run scope](#dry-run-scope) and the [Windows guide](WINDOWS.md) before
-applying changes or responding to elevation prompts.
-
-### What the wrapper does
+## Wrapper bootstrap
 
 A wrapper uses `bin/dotfiles` or `bin\dotfiles.exe`. If the usable binary is
 absent, it downloads a compatible GitHub Release asset and verifies SHA-256.
@@ -160,26 +106,17 @@ For a focused machine preview, use `--only`, an explicit `--root` and
 `--profile`, and `--no-repo-update`. Review overlay scripts before including
 them.
 
-## Install
+## Apply configuration
 
-After bootstrap, these examples assume the current directory is the intended
-checkout and `dotfiles` is on PATH:
-
-```bash
-dotfiles update --root . --profile desktop --no-repo-update --dry-run --verbose
-```
-
-Remove `--dry-run` only when ready to apply. Built-in tasks inspect current
-state and avoid unnecessary changes; this does not make first-run replacement
-of existing configuration harmless. Applications may auto-reload changed
-configuration immediately.
+Built-in tasks inspect current state and avoid unnecessary changes. Applications
+may auto-reload changed configuration immediately.
 
 Three independent sources of change matter:
 
 | Source | Default behavior | How to keep it fixed for a run |
 |---|---|---|
 | CLI binary | Release binaries running from the checkout's `bin/` check before update/remove | Set `DOTFILES_SKIP_SELF_UPDATE=1` |
-| Repository content | update synchronize the main checkout and eligible Git overlay | Pass `--no-repo-update` |
+| Repository content | Update synchronizes the main checkout and eligible Git overlay | Pass `--no-repo-update` |
 | APM pins | Update advances eligible refs | Skip APM with `--skip apm` |
 
 `--no-repo-update` alone is not network-free. Packages, APM, self-update, and

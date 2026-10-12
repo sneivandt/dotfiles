@@ -103,12 +103,25 @@ Item {
             tryCompare(copilotButton.contentItem.children[0], "status", Image.Ready);
         }
 
+        function test_spotify_custom_icon_and_activation() {
+            const spotify = item({ id: "spotify" });
+            const tray = group([spotify]);
+            const button = trayButton(tray, 0);
+            compare(button.appName, "Spotify");
+            verify(button.customIcon.endsWith("/icons/spotify.svg"));
+            tryCompare(button.contentItem.children[0], "status", Image.Ready);
+            mouseClick(button, 14, 14, Qt.LeftButton);
+            compare(spotify.activations, 1);
+        }
+
         function test_matching_data() {
             return [
                 { tag: "copilot-id", fields: { id: "github copilot" }, expected: "GitHub Copilot" },
                 { tag: "copilot-tooltip", fields: { tooltipTitle: " Copilot " }, expected: "GitHub Copilot" },
                 { tag: "chatgpt-id", fields: { id: "chatgpt-desktop" }, expected: "ChatGPT" },
                 { tag: "chatgpt-title", fields: { title: "CHATGPT" }, expected: "ChatGPT" },
+                { tag: "spotify-title", fields: { title: " Spotify " }, expected: "Spotify" },
+                { tag: "spotify-tooltip", fields: { tooltipTitle: "SPOTIFY" }, expected: "Spotify" },
                 { tag: "unrelated-browser", fields: { id: "chrome_status_icon_1", tooltipTitle: "Chromium" }, expected: "" },
                 { tag: "unrelated-substring", fields: { title: "GitHub notifications" }, expected: "" },
                 { tag: "long-title", fields: { title: "ChatGPT ".repeat(100) }, expected: "" },

@@ -63,6 +63,8 @@ BarGroup {
                 return "GitHub Copilot";
             if (normalized === "chatgpt" || normalized === "chatgpt-desktop")
                 return "ChatGPT";
+            if (normalized === "spotify")
+                return "Spotify";
         }
         return "";
     }
@@ -77,7 +79,7 @@ BarGroup {
                 anchorWindow: root.anchorWindow
                 menuController: root.menuController
                 appName: root.appName(modelData)
-                customIcon: appName ? Qt.resolvedUrl(appName === "GitHub Copilot" ? "icons/copilot.svg" : "icons/chatgpt.svg") : ""
+                customIcon: appName ? Qt.resolvedUrl(appName === "GitHub Copilot" ? "icons/copilot.svg" : appName === "Spotify" ? "icons/spotify.svg" : "icons/chatgpt.svg") : ""
                 customActivation: appName === "GitHub Copilot"
                 activationError: customActivation ? root.copilotError : ""
                 onActivationRequested: root.openCopilot()

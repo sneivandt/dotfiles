@@ -15,14 +15,30 @@ if tty -s; then
 fi
 
 # History
-[ -d "${XDG_CACHE_HOME:-$HOME/.cache}/bash" ] || mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/bash"
-export HISTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/bash/history"
+_bash_legacy_history="${XDG_CACHE_HOME:-$HOME/.cache}/bash/history"
+export HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/bash/history"
+if mkdir -p "$(dirname -- "$HISTFILE")"; then
+  # Keep the old file for shells still using it; never replace newer state.
+  if [[ ! -e $HISTFILE && -f $_bash_legacy_history ]]; then
+    if ! (umask 077; cp -n -- "$_bash_legacy_history" "$HISTFILE"); then
+      printf 'Could not migrate Bash history; keeping the previous location.\n' >&2
+      HISTFILE="$_bash_legacy_history"
+    fi
+  fi
+else
+  HISTFILE="$_bash_legacy_history"
+fi
+unset _bash_legacy_history
 export HISTSIZE=100000
 export HISTFILESIZE=100000
 export HISTCONTROL=ignoreboth
 shopt -s histappend
 shopt -s checkwinsize
 shopt -s globstar
+
+# Save each completed command without replacing history from other shells.
+__bash_history_append() { history -a; }
+PROMPT_COMMAND=("${PROMPT_COMMAND[@]}" __bash_history_append)
 
 # Path
 # shellcheck disable=SC1090

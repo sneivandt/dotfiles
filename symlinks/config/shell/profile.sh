@@ -97,6 +97,15 @@ if command -v fd >/dev/null 2>&1; then
   export FZF_DEFAULT_OPTS="--height 40% --layout=reverse --border"
   export FZF_CTRL_R_OPTS="--no-preview"
 
+  # Preview one directory level and cap the output for large directories.
+  # FZF parses the quoted preview command from this options string itself.
+  # shellcheck disable=SC2089,SC2090
+  if command -v eza >/dev/null 2>&1; then
+    export FZF_ALT_C_OPTS="--preview 'eza --all --group-directories-first --color=always -- {} | head -80'"
+  else
+    export FZF_ALT_C_OPTS="--preview 'ls -A -- {} | head -80'"
+  fi
+
   if command -v bat >/dev/null 2>&1; then
     export FZF_CTRL_T_OPTS="--preview 'bat --style=numbers --color=always --line-range :500 {}'"
   fi

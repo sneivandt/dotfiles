@@ -11,7 +11,17 @@ if (Get-Module PSReadLine)
 {
     Set-PSReadLineOption -BellStyle None
     Set-PSReadLineOption -HistorySearchCursorMovesToEnd
-    Set-PSReadLineOption -MaximumHistoryCount 10000
+    Set-PSReadLineOption -MaximumHistoryCount 100000
+    # Older bundled PSReadLine versions may not support predictions.
+    $psReadLineParameters = (Get-Command Set-PSReadLineOption).Parameters
+    if ($psReadLineParameters.ContainsKey('PredictionSource'))
+    {
+        Set-PSReadLineOption -PredictionSource History
+    }
+    if ($psReadLineParameters.ContainsKey('PredictionViewStyle'))
+    {
+        Set-PSReadLineOption -PredictionViewStyle InlineView
+    }
     Set-PSReadLineOption -Colors @{
         "Command"   = "#7aa2f7"
         "Comment"   = "#565f89"

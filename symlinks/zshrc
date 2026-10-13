@@ -31,8 +31,20 @@ setopt hist_reduce_blanks
 setopt hist_verify
 setopt sharehistory
 setopt extendedglob
-[ -d "${XDG_CACHE_HOME:-$HOME/.cache}/zsh" ] || mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/zsh"
-HISTFILE="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/history"
+_zsh_legacy_history="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/history"
+HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
+if mkdir -p "${HISTFILE:h}"; then
+  # Seed persistent state once. Keep the old file for shells still using it.
+  if [[ ! -e $HISTFILE && -f $_zsh_legacy_history ]]; then
+    if ! (umask 077; cp -n -- "$_zsh_legacy_history" "$HISTFILE"); then
+      print -u2 -- "Could not migrate Zsh history; keeping the previous location."
+      HISTFILE="$_zsh_legacy_history"
+    fi
+  fi
+else
+  HISTFILE="$_zsh_legacy_history"
+fi
+unset _zsh_legacy_history
 # Keep a duplicate-entry cushion above the saved history limit.
 HISTSIZE=120000
 SAVEHIST=100000

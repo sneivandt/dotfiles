@@ -194,8 +194,10 @@ dotfiles list --root . --profile desktop --graph update
 dotfiles list --root . --profile desktop --graph update --only symlinks --with-deps
 ```
 
-The normal list contains `SELECTOR`, `TASK`, and `COMMANDS`. It combines the
-update, remove, check, and active overlay task sets. Tasks clearly inapplicable
+The default table groups `SELECTOR` and `TASK` rows under underlined
+`UPDATE TASKS`, `REMOVE TASKS`, and `CHECK TASKS` headings. Plain and JSON output
+combine each selector's command membership in one record. Discovery includes
+the update, remove, check, and active overlay task sets. Tasks clearly inapplicable
 to the platform or with no configured work are hidden by default; `--all`
 shows the complete public catalog. Uncertain cases remain visible without
 probing tools or executing scripts. Listing a task does **not** guarantee

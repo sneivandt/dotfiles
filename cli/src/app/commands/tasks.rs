@@ -382,7 +382,9 @@ fn write_table(listings: &[TaskListing], out: &mut dyn std::io::Write) -> Result
             writeln!(out)?;
         }
         first = false;
-        writeln!(out, "{}", command.label())?;
+        let heading = format!("{} TASKS", command.label().to_ascii_uppercase());
+        writeln!(out, "{heading}")?;
+        writeln!(out, "{}", "=".repeat(heading.len()))?;
         writeln!(out, "{:<selector_width$}  TASK", "SELECTOR")?;
         for listing in rows {
             writeln!(
@@ -678,7 +680,7 @@ mod tests {
         write_listings(&listings, DiscoveryFormat::Table, &mut table).expect("table output");
         assert_eq!(
             String::from_utf8(table).unwrap(),
-            "update\nSELECTOR  TASK\nvisible   Visible task\n"
+            "UPDATE TASKS\n============\nSELECTOR  TASK\nvisible   Visible task\n"
         );
 
         let mut plain = Vec::new();
@@ -716,7 +718,9 @@ mod tests {
         ] {
             let section = sections.next().unwrap();
             let mut lines = section.lines();
-            assert_eq!(lines.next(), Some(command.label()));
+            let heading = format!("{} TASKS", command.label().to_ascii_uppercase());
+            assert_eq!(lines.next(), Some(heading.as_str()));
+            assert_eq!(lines.next(), Some("=".repeat(heading.len()).as_str()));
             assert!(lines.next().unwrap().starts_with("SELECTOR"));
             let selectors = lines
                 .map(|line| line.split_whitespace().next().unwrap())

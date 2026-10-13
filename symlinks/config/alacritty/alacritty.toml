@@ -20,7 +20,10 @@ style = { shape = "Beam", blinking = "On" }
 blink_interval = 500
 
 [selection]
-save_to_clipboard = true
+save_to_clipboard = false
+
+[scrolling]
+history = 100000
 
 [colors.primary]
 background = "#1a1b26"

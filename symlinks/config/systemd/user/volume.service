@@ -1,11 +1,9 @@
 [Unit]
-Description=Set initial volume and unmute
+Description=Mute microphone capture at session startup
 
 # Bound to the graphical session like the other desktop units: default.target
-# would also fire for SSH and other non-graphical logins, where rewriting sink
-# volumes is not wanted.
-After=graphical-session.target pulseaudio.service
-Wants=pulseaudio.service
+# would also fire for SSH and other non-graphical logins.
+After=graphical-session.target
 ConditionFileIsExecutable=%h/.config/volume/init-volume.sh
 
 [Service]

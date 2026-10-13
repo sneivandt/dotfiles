@@ -2,7 +2,8 @@
   # Guarded so a machine without delta degrades to less instead of failing
   # every paged command with "cannot run delta". Git runs pager values
   # containing shell metacharacters through sh.
-  pager = "if command -v delta >/dev/null 2>&1; then delta; else less -imRj8X; fi"
+  # Split diffs only when each column has roughly 80 characters of room.
+  pager = "if command -v delta >/dev/null 2>&1; then cols=$(tput cols 2>/dev/null || printf '%s' \"${COLUMNS:-80}\"); case $cols in ''|*[!0-9]*) cols=80 ;; esac; if [ \"$cols\" -ge 160 ]; then delta --side-by-side; else delta; fi; else less -imRj8X; fi"
 
 [interactive]
   diffFilter = "if command -v delta >/dev/null 2>&1; then delta --color-only; else cat; fi"
@@ -10,7 +11,7 @@
 [delta]
   navigate = true
   line-numbers = true
-  side-by-side = true
+  side-by-side = false
   syntax-theme = OneHalfDark
   plus-style = "syntax #012800"
   minus-style = "syntax #340001"

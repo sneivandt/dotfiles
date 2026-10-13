@@ -505,7 +505,10 @@ Coverage still has deliberate limits:
   and Neovim.
 - Linux/Windows `cargo llvm-cov` HTML reports are informational and excluded
   from `ci-success`.
-- Eight mutation-test shards cover the complete changed-code mutant set using
+- Linux mutation testing excludes the Windows-only elevation broker and exit-pause
+  wrappers. Windows CI compiles those wrappers; shared pause policy has unit tests
+  on both platforms.
+- Eight mutation-test shards cover the complete applicable changed-code mutant set using
   the `ci` profile for PRs/main pushes that change Rust source under `cli/src/`.
   They are informational and excluded from `ci-success`. Lockfile-only,
   standalone-test-only and CI-only changes do not select mutation shards.

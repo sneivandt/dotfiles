@@ -135,6 +135,18 @@ impl ConsoleState {
     fn write_raw(&mut self, error: bool, text: &str) {
         #[cfg(test)]
         self.captured.push((error, text.to_string()));
+        self.write_using(error, || {
+            if error {
+                let mut out = std::io::stderr().lock();
+                out.write_all(text.as_bytes()).and_then(|()| out.flush())
+            } else {
+                let mut out = std::io::stdout().lock();
+                out.write_all(text.as_bytes()).and_then(|()| out.flush())
+            }
+        });
+    }
+
+    fn write_using(&mut self, error: bool, write: impl FnOnce() -> std::io::Result<()>) {
         if !self.enabled
             || (if error {
                 self.stderr_closed
@@ -144,13 +156,7 @@ impl ConsoleState {
         {
             return;
         }
-        let result = if error {
-            let mut out = std::io::stderr().lock();
-            out.write_all(text.as_bytes()).and_then(|()| out.flush())
-        } else {
-            let mut out = std::io::stdout().lock();
-            out.write_all(text.as_bytes()).and_then(|()| out.flush())
-        };
+        let result = write();
         if let Err(failure) = result {
             if error {
                 self.stderr_closed = true;
@@ -293,6 +299,56 @@ fn startup_line_with_style(msg: &str, style: StyleChoice) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn disabled_or_closed_sinks_are_never_written_again() {
+        for error_stream in [false, true] {
+            let writes = std::cell::Cell::new(0_u32);
+            let mut state = super::ConsoleState::default();
+            state.write_using(error_stream, || {
+                writes.set(writes.get().saturating_add(1));
+                Ok(())
+            });
+            assert_eq!(writes.get(), 0, "disabled sink");
+            state.enabled = true;
+            state.write_using(error_stream, || {
+                writes.set(writes.get().saturating_add(1));
+                Err(std::io::ErrorKind::BrokenPipe.into())
+            });
+            state.write_using(error_stream, || {
+                writes.set(writes.get().saturating_add(1));
+                Ok(())
+            });
+            assert_eq!(writes.get(), 1, "closed sink must not retry");
+            assert!(state.output_error.is_none(), "broken pipe is benign");
+        }
+    }
+
+    #[test]
+    fn progress_redraws_replace_the_active_row_only_in_human_mode() {
+        for mode in [
+            super::super::OutputMode::Human,
+            super::super::OutputMode::Quiet,
+            super::super::OutputMode::Jsonl,
+        ] {
+            let mut state = super::ConsoleState {
+                mode,
+                ..super::ConsoleState::default()
+            };
+            state.active_status("Running old task");
+            state.replace_status("Running new task");
+            if mode == super::super::OutputMode::Human {
+                assert_eq!(
+                    state.captured.last(),
+                    Some(&(false, "\r\x1b[KRunning new task".into()))
+                );
+                assert!(state.progress_rows > 0);
+            } else {
+                assert!(state.captured.is_empty());
+                assert_eq!(state.progress_rows, 0);
+            }
+        }
+    }
+
     #[test]
     fn progress_clear_sequences_cover_each_row_once() {
         for (rows, expected) in [

@@ -148,9 +148,7 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
         log.separate_from_startup();
     }
     let exit_code = finish_engine_run(&result, token.is_cancelled(), &*log);
-    if !runtime.execution.non_interactive {
-        elevation::wait_if_elevated();
-    }
+    elevation::wait_if_elevated(runtime.execution.non_interactive);
     exit_code
 }
 
@@ -283,6 +281,16 @@ mod tests {
     }
 
     use crate::test_helpers::CapturingOutput;
+
+    #[test]
+    fn default_output_identity_uses_the_retained_log_for_child_linkage() {
+        let tmp = tempfile::tempdir().unwrap();
+        let logger = logging::Logger::new_in("update", tmp.path());
+        let id = logger.run_log().unwrap().id();
+        let log = CapturingOutput::with_logger(logger);
+        assert_eq!(log.run_id(), Some(id));
+        assert_eq!(CapturingOutput::default().run_id(), None);
+    }
 
     #[test]
     fn aggregate_task_failure_only_prints_dim_log_hint() {

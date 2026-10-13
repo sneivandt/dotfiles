@@ -229,9 +229,7 @@ fn force_quit(log: &dyn Output, non_interactive: bool) -> ! {
     log.clear_status_line();
     log.error(FORCE_QUIT_MESSAGE);
     log.startup("Run 'dotfiles log' for details.");
-    if !non_interactive {
-        elevation::wait_if_elevated();
-    }
+    elevation::wait_if_elevated(non_interactive);
     log.finish_run(FORCE_QUIT_EXIT_CODE);
     std::process::exit(FORCE_QUIT_EXIT_CODE)
 }

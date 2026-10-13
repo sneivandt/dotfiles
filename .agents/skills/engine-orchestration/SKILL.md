@@ -27,7 +27,8 @@ Resolve engine-command flags and environment/terminal decisions once through
 `Context::new_with_policy`; do not re-read CI or recompute prompt/child guards in
 profile, re-exec, or elevation callers. Use injected `RuntimePolicy::new` in
 fixtures. Preserve CI presence semantics and the distinct nonempty elevated
-marker rule. Legacy Windows exit-pause/interrupt policy remains separate.
+marker rule. Interrupt confirmation and elevated-window exit pauses must respect
+the resolved non-interactive policy; window detection remains in elevation.
 
 ## Task graph rules
 

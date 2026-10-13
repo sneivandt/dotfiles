@@ -1147,6 +1147,27 @@ mod tests {
     }
 
     #[test]
+    fn standalone_short_flags_and_scoped_help_keep_the_explicit_command() {
+        let Command::Check(check_opts) = Cli::try_parse_from(["dotfiles", "-v", "check"])
+            .expect("valid short flag before check")
+            .command
+        else {
+            panic!("expected check");
+        };
+        assert!(check_opts.execution.verbose);
+        let Command::Remove(remove_opts) = Cli::try_parse_from(["dotfiles", "-n", "remove"])
+            .expect("valid short flag before remove")
+            .command
+        else {
+            panic!("expected remove");
+        };
+        assert!(remove_opts.dry_run);
+        let help = display_output(&["dotfiles", "--dry-run", "--help"], ErrorKind::DisplayHelp);
+        assert!(help.contains("Usage: dotfiles update [OPTIONS]"), "{help}");
+        assert!(help.contains("--dry-run"), "{help}");
+    }
+
+    #[test]
     fn output_modes_validate_conflicts_and_convert_to_runtime_policy() {
         for name in ["update", "remove", "check"] {
             for (flag, value, expected) in [

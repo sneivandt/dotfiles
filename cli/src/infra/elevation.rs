@@ -244,22 +244,61 @@ pub(crate) fn run_elevated_child(
 /// not — owns the user's existing terminal and must never block on exit.
 #[cfg(windows)]
 #[allow(clippy::print_stderr, reason = "intentional user-facing output")]
-pub fn wait_if_elevated() {
+pub fn wait_if_elevated(non_interactive: bool) {
     // Never block on input where nothing can supply it: a `--elevated-child`
     // run driven by automation would otherwise stall until the command timeout.
-    if is_elevated_child()
-        && std::env::var_os("CI").is_none()
-        && std::io::IsTerminal::is_terminal(&std::io::stdin())
-    {
+    if should_pause_on_exit(
+        non_interactive,
+        is_elevated_child(),
+        std::env::var_os("CI").is_some(),
+        std::io::IsTerminal::is_terminal(&std::io::stdin()),
+    ) {
         eprintln!();
         eprint!("Press Enter to close...");
         drop(std::io::stdin().read_line(&mut String::new())); // Best-effort: ignore read errors
     }
 }
 
+/// Pause only an interactive elevated window with an available input terminal.
+#[cfg(any(windows, test))]
+#[allow(
+    clippy::fn_params_excessive_bools,
+    reason = "independent execution and terminal capabilities"
+)]
+const fn should_pause_on_exit(
+    non_interactive: bool,
+    elevated_child: bool,
+    ci: bool,
+    terminal: bool,
+) -> bool {
+    !non_interactive && elevated_child && !ci && terminal
+}
+
 /// No-op on non-Windows platforms.
 #[cfg(not(windows))]
-pub const fn wait_if_elevated() {}
+pub const fn wait_if_elevated(_non_interactive: bool) {}
+
+#[cfg(test)]
+mod exit_pause_tests {
+    use super::should_pause_on_exit;
+
+    #[test]
+    fn exit_pause_requires_an_interactive_elevated_window() {
+        for (name, non_interactive, elevated, ci, terminal, expected) in [
+            ("normal terminal", false, false, false, true, false),
+            ("interactive child", false, true, false, true, true),
+            ("non-interactive child", true, true, false, true, false),
+            ("CI child", false, true, true, true, false),
+            ("redirected input", false, true, false, false, false),
+        ] {
+            assert_eq!(
+                should_pause_on_exit(non_interactive, elevated, ci, terminal),
+                expected,
+                "{name}"
+            );
+        }
+    }
+}
 
 #[cfg(test)]
 #[cfg(not(windows))]
@@ -275,7 +314,8 @@ mod tests {
     #[test]
     fn wait_if_elevated_is_noop_on_non_windows() {
         // Should complete without blocking or panicking.
-        wait_if_elevated();
+        wait_if_elevated(false);
+        wait_if_elevated(true);
     }
 
     #[test]

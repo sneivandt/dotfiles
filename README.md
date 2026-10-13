@@ -74,8 +74,6 @@ Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.
 Remove leaves packages, services, and registry values in place.
 
-To set up a machine, follow [Getting started](docs/README.md).
-
 ## Development
 
 See [Contributing](docs/CONTRIBUTING.md) for building, testing, and changing the CLI.

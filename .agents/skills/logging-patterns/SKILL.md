@@ -73,6 +73,14 @@ description: >
   Typed cancellation is interrupted; dependency prevention is blocked.
 - Transient status lines are always cleared and never replace durable logging.
 
+- Console mode is independent of persistent logging. Quiet mode suppresses
+  routine stdout but keeps warnings and incomplete task results on stderr.
+  JSON Lines emits versioned lifecycle/task facts with run IDs, including when
+  the persistent sink is unavailable; never mix human progress into that stream.
+- A closed output pipe is benign and does not cancel convergence. Other write
+  failures affect the exit code and retained outcome. Keep restart/force-quit
+  completion on the same `Output::finish_run` path.
+
 ## Message intent
 
 | Intent | Use |

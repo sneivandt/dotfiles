@@ -38,6 +38,14 @@ pub(crate) enum RunOutcome {
 }
 
 impl RunOutcome {
+    pub(crate) const fn from_exit_code(code: i32) -> Self {
+        match code {
+            0 => Self::Succeeded,
+            130 => Self::Interrupted,
+            _ => Self::Failed,
+        }
+    }
+
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Succeeded => "succeeded",

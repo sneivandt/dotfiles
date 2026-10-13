@@ -21,6 +21,11 @@ pub(super) struct Console {
 )]
 pub(super) struct ConsoleState {
     enabled: bool,
+    pub(super) mode: super::OutputMode,
+    pub(super) run_id: Option<String>,
+    output_error: Option<std::io::Error>,
+    stdout_closed: bool,
+    stderr_closed: bool,
     pub(super) verbose: bool,
     pub(super) progress_rows: u16,
     pub(super) task_output_emitted: bool,
@@ -58,10 +63,45 @@ impl Console {
         } else {
             self.stdout_style
         };
+        if error {
+            self.record(
+                &super::log_thread_name(),
+                super::records::Record::Message {
+                    event: kind.log_event().name().into(),
+                    text: message.into(),
+                },
+            );
+        }
         let mut state = self.lock();
         if let Some(line) = ui_line_with_style(kind, message, style, state.verbose) {
             state.line(error, &line);
         }
+    }
+
+    /// Emit a versioned structured fact without human text or ANSI escapes.
+    pub(super) fn record(&self, context: &str, record: super::records::Record) {
+        let mut state = self.lock();
+        if state.mode != super::OutputMode::Jsonl {
+            return;
+        }
+        match serde_json::to_value(super::records::StoredRecord::new(context, record)) {
+            Ok(mut value) => {
+                if let Some(fields) = value.as_object_mut() {
+                    fields.insert("run_id".into(), serde_json::json!(state.run_id));
+                }
+                state.write_raw(false, &format!("{value}\n"));
+            }
+            Err(error) => state.remember_error(std::io::Error::other(error)),
+        }
+    }
+
+    /// Report a broken output sink through stderr even in structured mode.
+    pub(super) fn report_output_error(&self, message: &str) {
+        self.lock().write_raw(true, &format!("ERROR {message}\n"));
+    }
+
+    pub(super) fn output_error(&self) -> Option<String> {
+        self.lock().output_error.as_ref().map(ToString::to_string)
     }
 
     pub(super) fn task_result(&self, message: &str) {
@@ -84,16 +124,48 @@ impl ConsoleState {
         reason = "writes require exclusive console access and mutate test capture"
     )]
     fn write(&mut self, error: bool, text: &str) {
+        if self.mode == super::OutputMode::Jsonl
+            || (self.mode == super::OutputMode::Quiet && !error)
+        {
+            return;
+        }
+        self.write_raw(error, text);
+    }
+
+    fn write_raw(&mut self, error: bool, text: &str) {
         #[cfg(test)]
         self.captured.push((error, text.to_string()));
-        if self.enabled {
-            if error {
-                drop(std::io::stderr().lock().write_all(text.as_bytes()));
+        if !self.enabled
+            || (if error {
+                self.stderr_closed
             } else {
-                let mut out = std::io::stdout().lock();
-                drop(out.write_all(text.as_bytes()));
-                drop(out.flush());
+                self.stdout_closed
+            })
+        {
+            return;
+        }
+        let result = if error {
+            let mut out = std::io::stderr().lock();
+            out.write_all(text.as_bytes()).and_then(|()| out.flush())
+        } else {
+            let mut out = std::io::stdout().lock();
+            out.write_all(text.as_bytes()).and_then(|()| out.flush())
+        };
+        if let Err(failure) = result {
+            if error {
+                self.stderr_closed = true;
+            } else {
+                self.stdout_closed = true;
             }
+            self.remember_error(failure);
+        }
+    }
+
+    fn remember_error(&mut self, error: std::io::Error) {
+        // A consumer may intentionally stop reading. Keep convergence running;
+        // other write failures must affect the command's final exit status.
+        if error.kind() != std::io::ErrorKind::BrokenPipe && self.output_error.is_none() {
+            self.output_error = Some(error);
         }
     }
 
@@ -112,12 +184,18 @@ impl ConsoleState {
 
     /// Replace the status row, preserving any transient spacer above it.
     pub(super) fn replace_status(&mut self, line: &str) {
+        if self.mode != super::OutputMode::Human {
+            return;
+        }
         self.progress_rows = self.progress_rows.max(1);
         self.write(false, &format!("\r\x1b[K{line}"));
     }
 
     /// Redraw active work with exactly one separator after durable output.
     pub(super) fn active_status(&mut self, line: &str) {
+        if self.mode != super::OutputMode::Human {
+            return;
+        }
         if self.progress_rows > 0 {
             self.replace_status(line);
         } else {

@@ -65,6 +65,22 @@ impl Logger {
             return;
         };
         let block = task_block(&task, entries, self.row_opts());
+        if self.is_quiet() {
+            use crate::infra::logging::TaskStatus;
+            if let Some(row) = &block.status {
+                match task.status {
+                    TaskStatus::Failed => self.error(row),
+                    TaskStatus::Skipped | TaskStatus::Blocked | TaskStatus::Interrupted => {
+                        self.warn(row);
+                    }
+                    TaskStatus::Changed
+                    | TaskStatus::Ok
+                    | TaskStatus::Passed
+                    | TaskStatus::NotApplicable
+                    | TaskStatus::DryRun => {}
+                }
+            }
+        }
         if let Some(row) = &block.status {
             self.begin_task_block(block.expanded);
             self.task_result(row);

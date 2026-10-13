@@ -11,8 +11,7 @@ use std::process::ExitCode;
 use crate::infra::{elevation, logging};
 
 use super::{cli, commands, interrupt};
-use crate::infra::logging::records::RunOutcome;
-use crate::infra::logging::{Output as _, OutputExt as _};
+use crate::infra::logging::OutputExt as _;
 
 /// Run the dotfiles CLI and return the process exit code.
 ///
@@ -89,6 +88,20 @@ fn write_completions(
 fn standalone(result: anyhow::Result<()>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
+        Err(error)
+            if error.chain().any(|cause| {
+                cause
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|io_error| io_error.kind() == std::io::ErrorKind::BrokenPipe)
+                    || cause
+                        .downcast_ref::<serde_json::Error>()
+                        .is_some_and(|json_error| {
+                            json_error.io_error_kind() == Some(std::io::ErrorKind::BrokenPipe)
+                        })
+            }) =>
+        {
+            ExitCode::SUCCESS
+        }
         Err(error) => {
             drop(writeln!(std::io::stderr().lock(), "{error:#}"));
             ExitCode::FAILURE
@@ -103,18 +116,21 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
     if runtime.execution.elevated_child {
         elevation::mark_elevated_child();
     }
-    let mut raw_log = logging::init(runtime.verbose, !runtime.global.no_symbols, command.name());
+    let mut raw_log = logging::init(
+        runtime.verbose,
+        !runtime.global.no_symbols,
+        command.name(),
+        runtime.global.output_mode,
+    );
     raw_log.set_dry_run(runtime.execution.dry_run);
     let log = std::sync::Arc::new(raw_log);
-    if let Some(run) = log.run_log() {
-        run.start_run(command.name(), parent_run_id.map(str::to_string));
-    }
+    log.start_run(parent_run_id.map(str::to_string));
 
     // Set up cooperative cancellation so Ctrl-C lets in-flight operations
     // finish cleanly instead of terminating the process immediately, and
     // escalates to a confirmed force quit when the user asks twice.
     let token = crate::engine::CancellationToken::new();
-    interrupt::install(&token, &log);
+    interrupt::install(&token, &log, runtime.execution.non_interactive);
 
     let result = match command {
         cli::EngineCommand::Update {
@@ -132,7 +148,9 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
         log.separate_from_startup();
     }
     let exit_code = finish_engine_run(&result, token.is_cancelled(), &*log);
-    elevation::wait_if_elevated();
+    if !runtime.execution.non_interactive {
+        elevation::wait_if_elevated();
+    }
     exit_code
 }
 
@@ -141,21 +159,16 @@ fn finish_engine_run(
     cancelled: bool,
     log: &dyn logging::Output,
 ) -> ExitCode {
-    let (outcome, code) = match result {
-        Err(error) if error.is::<commands::error::CommandInterrupted>() => {
-            (RunOutcome::Interrupted, 130_u8)
-        }
-        Err(_) => (RunOutcome::Failed, 1),
-        Ok(()) if cancelled => (RunOutcome::Interrupted, 130),
-        Ok(()) => (RunOutcome::Succeeded, 0),
+    let code = match result {
+        Err(error) if error.is::<commands::error::CommandInterrupted>() => 130_u8,
+        Err(_) => 1,
+        Ok(()) if cancelled => 130,
+        Ok(()) => 0,
     };
-    if let Some(run) = log.run_log() {
-        run.finish(outcome, i32::from(code));
-    }
     if let Err(error) = result {
         report_failure(error, log);
     }
-    ExitCode::from(code)
+    ExitCode::from(u8::try_from(log.finish_run(i32::from(code))).unwrap_or(1))
 }
 
 fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
@@ -178,7 +191,8 @@ fn report_failure(error: &anyhow::Error, log: &dyn logging::Output) {
 
 #[cfg(test)]
 mod tests {
-    use crate::infra::logging::MsgKind;
+    use crate::infra::logging::records::RunOutcome;
+    use crate::infra::logging::{MsgKind, Output as _};
 
     use super::*;
 
@@ -195,33 +209,37 @@ mod tests {
     }
 
     #[test]
-    fn completion_output_failures_fail_the_command() {
+    fn completion_output_handles_broken_pipes_and_other_errors() {
         struct BrokenOutput {
             fail_write: bool,
+            kind: std::io::ErrorKind,
         }
 
         impl std::io::Write for BrokenOutput {
             fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
                 if self.fail_write {
-                    Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+                    Err(std::io::Error::from(self.kind))
                 } else {
                     Ok(buffer.len())
                 }
             }
 
             fn flush(&mut self) -> std::io::Result<()> {
-                Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+                Err(std::io::Error::from(self.kind))
             }
         }
 
-        for fail_write in [false, true] {
-            let result =
-                write_completions(clap_complete::Shell::Zsh, &mut BrokenOutput { fail_write });
-            assert_eq!(
-                standalone(result),
-                ExitCode::FAILURE,
-                "output failures must not report successful completion generation"
-            );
+        for (kind, expected) in [
+            (std::io::ErrorKind::BrokenPipe, ExitCode::SUCCESS),
+            (std::io::ErrorKind::PermissionDenied, ExitCode::FAILURE),
+        ] {
+            for fail_write in [false, true] {
+                let result = write_completions(
+                    clap_complete::Shell::Zsh,
+                    &mut BrokenOutput { fail_write, kind },
+                );
+                assert_eq!(standalone(result), expected, "{kind:?}, write={fail_write}");
+            }
         }
     }
 

@@ -6,16 +6,23 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[derive(Parser, Debug)]
 #[command(
     name = "dotfiles",
-    about = "Manage system configuration from this dotfiles repository",
+    about = "Manage dotfiles and system configuration",
     version = option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION"))),
     disable_version_flag = true,
+    propagate_version = true,
+    override_usage = "dotfiles [COMMAND] [OPTIONS]",
     after_help = "\
+Default command: update
+
 Examples:
-  dotfiles                 # defaults to update
   dotfiles update
   dotfiles update --dry-run
   dotfiles update --only symlinks
-  dotfiles check",
+  dotfiles check
+  dotfiles list
+
+Options may appear before or after a command.
+The launcher may download the CLI before help or previews.",
     help_template = "\
 {about-with-newline}
 {usage-heading} {usage}
@@ -32,7 +39,7 @@ pub struct Cli {
     pub command: Command,
 
     /// Print version
-    #[arg(long, action = clap::ArgAction::Version)]
+    #[arg(short = 'V', long, global = true, action = clap::ArgAction::Version)]
     pub version: Option<bool>,
 }
 
@@ -58,48 +65,98 @@ impl Cli {
         T: Into<std::ffi::OsString> + Clone,
     {
         let mut args: Vec<std::ffi::OsString> = args.into_iter().map(Into::into).collect();
-        // Only the first command position is inspected: option values may
-        // themselves be command names (for example --profile list).
-        let mut position = 1;
-        while let Some(arg) = args.get(position).and_then(|arg| arg.to_str()) {
-            if arg == "--parent-run-id" {
-                position = position.saturating_add(2);
-            } else if arg.starts_with("--parent-run-id=") {
-                position = position.saturating_add(1);
-            } else {
-                break;
-            }
-        }
-        let first = args.get(position).and_then(|arg| arg.to_str());
-        if first
-            .is_none_or(|arg| arg.starts_with('-') && !matches!(arg, "--help" | "-h" | "--version"))
-        {
-            args.insert(position.min(args.len()), "update".into());
-        }
+        normalize_command_position(&mut args);
         <Self as Parser>::try_parse_from(args)
+    }
+}
+
+/// Move an explicit command ahead of its options, skipping option values.
+/// Derive value-taking options from Clap so command names used as values stay values.
+pub(super) fn normalize_command_position(args: &mut Vec<std::ffi::OsString>) {
+    use clap::CommandFactory as _;
+    let command = Cli::command();
+    let options: Vec<_> = command
+        .get_arguments()
+        .chain(
+            command
+                .get_subcommands()
+                .flat_map(clap::Command::get_arguments),
+        )
+        .collect();
+    let mut position = 1;
+    while let Some(value) = args.get(position) {
+        let Some(arg) = value.to_str() else { break };
+        if arg == "--" {
+            break;
+        }
+        if !arg.starts_with('-') {
+            let explicit = args.remove(position);
+            args.insert(1, explicit);
+            return;
+        }
+        let takes_next = arg.strip_prefix("--").map_or_else(
+            || {
+                let mut shorts = arg.trim_start_matches('-').chars();
+                while let Some(short) = shorts.next() {
+                    if options.iter().any(|option| {
+                        option.get_short() == Some(short) && option.get_action().takes_values()
+                    }) {
+                        return shorts.as_str().is_empty();
+                    }
+                }
+                false
+            },
+            |long| {
+                !long.contains('=')
+                    && options.iter().any(|option| {
+                        option.get_long() == Some(long) && option.get_action().takes_values()
+                    })
+            },
+        );
+        position = position.saturating_add(if takes_next { 2 } else { 1 });
+    }
+    let top_level_display = args
+        .iter()
+        .skip(1)
+        .any(|arg| matches!(arg.to_str(), Some("--help" | "-h" | "--version" | "-V")))
+        && args.len() == 2;
+    if !top_level_display {
+        args.insert(1.min(args.len()), "update".into());
     }
 }
 
 /// Available subcommands.
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Apply configuration and advance pinned dependencies
+    /// Apply configuration and update dependencies
+    #[command(after_help = "Startup may check for CLI updates before running tasks.
+Dry runs may query tools and save logs, caches, or selections.
+Use list with an existing binary for read-only discovery.
+JSON Lines output disables prompts.")]
     Update(UpdateCommandOpts),
 
-    /// Remove managed integrations while preserving user files
+    /// Remove managed links and integrations
     #[command(after_help = "\
-Removes managed home symlinks, repository Git hooks, the installed launcher,
-and active overlay script state through each script's --remove action.
-Packages, services, registry values, and shell selection remain.")]
+Removes home links, Git hooks, the launcher, and overlay script state.
+Preserves packages, services, registry values, and shell selection.
+
+Startup may check for CLI updates before running tasks.
+Dry runs may query tools and save logs, caches, or selections.
+JSON Lines output disables prompts.")]
     Remove(RemoveCommandOpts),
 
-    /// Validate configuration and run repository checks
+    /// Validate configuration and repository files
+    #[command(
+        after_help = "Checks can write run logs and save configuration selections.
+Missing optional tools are skipped; --fail-on-skip makes them fatal.
+JSON Lines output disables prompts."
+    )]
     Check(CheckCommandOpts),
 
-    /// List available task selectors and command membership
+    /// Inspect task selectors and dependencies
     List(TasksOpts),
 
-    /// Show a retained run log
+    /// Inspect previous runs and task diagnostics
     Log(LogOpts),
 
     /// Generate shell completions for the given shell
@@ -110,7 +167,7 @@ Packages, services, registry values, and shell selection remain.")]
 /// Repository and profile options used by configuration-aware commands.
 #[derive(Args, Debug, Clone, Default)]
 pub struct RepositoryOpts {
-    /// Use a specific profile
+    /// Select a configuration profile
     #[arg(
         short,
         long,
@@ -119,13 +176,23 @@ pub struct RepositoryOpts {
     )]
     pub profile: Option<String>,
 
-    /// Use PATH as the dotfiles repository
+    /// Read configuration from this repository
     #[arg(long, value_name = "PATH")]
     pub root: Option<std::path::PathBuf>,
 
-    /// Merge configuration from an overlay repository
+    /// Merge configuration from this overlay
     #[arg(long, value_name = "PATH")]
     pub overlay: Option<std::path::PathBuf>,
+}
+
+/// Execution output protocol. JSON Lines supports streamed and restarted runs.
+#[derive(Debug, Clone, Copy, Default, ValueEnum, PartialEq, Eq)]
+pub enum ExecutionFormat {
+    /// Human-readable task output.
+    #[default]
+    Human,
+    /// Versioned run and task records, one JSON object per line.
+    Jsonl,
 }
 
 /// Options shared by commands that execute a task graph.
@@ -135,23 +202,37 @@ pub struct RepositoryOpts {
     reason = "CLI switches are independent user choices rather than state-machine states"
 )]
 pub struct ExecutionOpts {
-    /// Show additional diagnostic task output
-    #[arg(short, long)]
+    /// Show additional task diagnostics
+    #[arg(short, long, conflicts_with = "quiet")]
     pub verbose: bool,
 
-    /// Run tasks sequentially
+    /// Show only warnings and failures
+    #[arg(short = 'q', long, conflicts_with = "format")]
+    pub quiet: bool,
+
+    /// Choose human or jsonl output
+    #[arg(
+        long,
+        value_enum,
+        default_value_t,
+        hide_possible_values = true,
+        conflicts_with = "quiet"
+    )]
+    pub format: ExecutionFormat,
+
+    /// Run selected tasks sequentially
     #[arg(long = "no-parallel", action = clap::ArgAction::SetFalse)]
     pub parallel: bool,
 
-    /// Fail when applicable work is skipped
+    /// Fail if applicable tasks are skipped
     #[arg(long = "fail-on-skip")]
     pub require_complete: bool,
 
-    /// Disable prompts and fail when input is required
+    /// Disable prompts and fail if input is needed
     #[arg(long)]
     pub non_interactive: bool,
 
-    /// Use ASCII words instead of status symbols
+    /// Use text labels for task status
     #[arg(long)]
     pub no_symbols: bool,
 }
@@ -160,6 +241,8 @@ impl Default for ExecutionOpts {
     fn default() -> Self {
         Self {
             verbose: false,
+            quiet: false,
+            format: ExecutionFormat::Human,
             parallel: true,
             require_complete: false,
             non_interactive: false,
@@ -176,27 +259,27 @@ impl Default for ExecutionOpts {
 )]
 pub struct UpdateCommandOpts {
     /// Repository and profile selection.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
 
     /// Task execution policy.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Execution and output")]
     pub execution: ExecutionOpts,
 
     /// Task selection.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Task selection")]
     pub tasks: InstallOpts,
 
     /// Preview changes without applying them
-    #[arg(short = 'n', long)]
+    #[arg(short = 'n', long, help_heading = "Mutation policy")]
     pub dry_run: bool,
 
-    /// Use the current checkout without synchronizing its repository
-    #[arg(long)]
+    /// Use the current checkout without syncing
+    #[arg(long, help_heading = "Mutation policy")]
     pub no_repo_update: bool,
 
-    /// Skip self-update build provenance verification
-    #[arg(long)]
+    /// Skip CLI update provenance verification
+    #[arg(long, help_heading = "Mutation policy")]
     pub skip_attestation: bool,
 
     /// Internal marker for a child process that performs elevated tasks.
@@ -209,15 +292,15 @@ pub struct UpdateCommandOpts {
 #[command(group(clap::ArgGroup::new("CheckOpts").args(["skip", "only"]).multiple(true)))]
 pub struct CheckCommandOpts {
     /// Repository and profile selection.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
 
     /// Task execution policy.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Execution and output")]
     pub execution: ExecutionOpts,
 
     /// Check selection.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Task selection")]
     pub tasks: CheckOpts,
 }
 
@@ -226,23 +309,23 @@ pub struct CheckCommandOpts {
 #[command(group(clap::ArgGroup::new("CheckOpts").args(["skip", "only"]).multiple(true)))]
 pub struct RemoveCommandOpts {
     /// Repository and profile selection.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
 
     /// Task execution policy.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Execution and output")]
     pub execution: ExecutionOpts,
 
     /// Task selection.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Task selection")]
     pub tasks: UninstallOpts,
 
     /// Preview changes without applying them
-    #[arg(short = 'n', long)]
+    #[arg(short = 'n', long, help_heading = "Mutation policy")]
     pub dry_run: bool,
 
-    /// Skip self-update build provenance verification
-    #[arg(long)]
+    /// Skip CLI update provenance verification
+    #[arg(long, help_heading = "Mutation policy")]
     pub skip_attestation: bool,
 
     /// Internal marker for a child process that performs elevated tasks.
@@ -266,7 +349,7 @@ pub enum DiscoveryFormat {
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskGraphCommand {
-    /// Installation with pinned dependency updates.
+    /// Configuration and dependency updates.
     Update,
     /// Removal of managed integrations.
     Remove,
@@ -288,22 +371,22 @@ impl TaskGraphCommand {
 #[derive(Args, Debug, Clone)]
 pub struct TasksOpts {
     /// Repository and profile selection.
-    #[command(flatten)]
+    #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
 
-    /// Output format
+    /// Choose table, plain, or json output
     #[arg(long, value_enum, default_value_t)]
     pub format: DiscoveryFormat,
 
-    /// Include tasks clearly inapplicable to this platform or profile
+    /// Include tasks for other platforms or profiles
     #[arg(long, conflicts_with = "graph")]
     pub all: bool,
 
-    /// Show the dependency graph for one command, including internal tasks
+    /// Show dependencies for a command
     #[arg(long, value_enum, value_name = "COMMAND")]
     pub graph: Option<TaskGraphCommand>,
 
-    /// Show selection for these task selectors in the graph
+    /// Mark selected tasks in the dependency graph
     #[arg(
         long,
         value_delimiter = ',',
@@ -312,7 +395,7 @@ pub struct TasksOpts {
     )]
     pub only: Vec<String>,
 
-    /// Exclude these task selectors from the graph selection
+    /// Mark excluded tasks in the dependency graph
     #[arg(
         long,
         value_delimiter = ',',
@@ -321,7 +404,7 @@ pub struct TasksOpts {
     )]
     pub skip: Vec<String>,
 
-    /// Include predecessors of tasks selected by `--only`
+    /// Include dependencies of selected tasks
     #[arg(long, requires = "only")]
     pub with_deps: bool,
 }
@@ -351,6 +434,8 @@ pub struct GlobalOpts {
     pub non_interactive: bool,
     /// Whether status symbols are disabled.
     pub no_symbols: bool,
+    /// Console output policy.
+    pub output_mode: crate::infra::logging::OutputMode,
     /// Whether self-update attestation verification is disabled.
     pub skip_attestation: bool,
     /// Whether this process is an elevated child.
@@ -369,6 +454,13 @@ impl GlobalOpts {
             require_complete: execution.require_complete,
             non_interactive: execution.non_interactive,
             no_symbols: execution.no_symbols,
+            output_mode: if execution.quiet {
+                crate::infra::logging::OutputMode::Quiet
+            } else if execution.format == ExecutionFormat::Jsonl {
+                crate::infra::logging::OutputMode::Jsonl
+            } else {
+                crate::infra::logging::OutputMode::Human
+            },
             skip_attestation: false,
             elevated_child: false,
         }
@@ -491,7 +583,7 @@ pub struct InstallOpts {
     #[command(flatten)]
     pub filters: TaskFilters,
 
-    /// Include blocking and ordering predecessors selected by `--only`
+    /// Include dependencies of selected tasks
     #[arg(long, requires = "only")]
     pub with_deps: bool,
 }
@@ -501,7 +593,7 @@ pub struct InstallOpts {
 // Command-specific containers retain the existing argument-group identities.
 #[group(skip)]
 pub struct TaskFilters {
-    /// Skip task selectors; repeat the option or separate values with commas
+    /// Skip selected tasks (repeat or use commas)
     #[arg(
         long,
         value_delimiter = ',',
@@ -510,7 +602,7 @@ pub struct TaskFilters {
     )]
     pub skip: Vec<String>,
 
-    /// Run only task selectors; repeat the option or separate values with commas
+    /// Run selected tasks (repeat or use commas)
     #[arg(
         long,
         value_delimiter = ',',
@@ -558,11 +650,11 @@ impl LogCommand {
 /// Options for the `log` subcommand.
 #[derive(Args, Debug, Clone)]
 pub struct LogOpts {
-    /// Run to show, newest first (0 is the latest run)
+    /// Select a run by index (0 is the latest)
     #[arg(value_name = "RUN", conflicts_with = "list")]
     pub run: Option<usize>,
 
-    /// Read an exact run identifier from --list or a failure hint
+    /// Select a run by its exact identifier
     #[arg(
         long,
         value_name = "ID",
@@ -570,27 +662,27 @@ pub struct LogOpts {
     )]
     pub id: Option<String>,
 
-    /// Only show events for this task selector or exact stored identity
+    /// Filter by task selector or stored identity
     #[arg(long, value_name = "SELECTOR", conflicts_with = "list")]
     pub task: Option<String>,
 
-    /// Print original stored records, including diagnostics
+    /// Show original records and diagnostics
     #[arg(long, conflicts_with = "list")]
     pub raw: bool,
 
-    /// List retained runs instead of showing one
+    /// List previous runs and their outcomes
     #[arg(short, long)]
     pub list: bool,
 
-    /// Output format for `--list`
+    /// Choose table, plain, or json list output
     #[arg(long, value_enum, requires = "list")]
     pub format: Option<DiscoveryFormat>,
 
-    /// Only consider runs of this command
+    /// Filter runs by their command
     #[arg(short, long, value_name = "COMMAND", value_enum)]
     pub command: Option<LogCommand>,
 
-    /// Include diagnostic lines
+    /// Show additional task diagnostics
     #[arg(short, long, conflicts_with_all = ["list", "raw"])]
     pub verbose: bool,
 }
@@ -670,15 +762,18 @@ mod tests {
     }
 
     #[test]
-    fn version_is_long_only_and_verbose_remains_lowercase_v() {
+    fn version_aliases_and_verbose_remains_lowercase_v() {
         let version = display_output(&["dotfiles", "--version"], ErrorKind::DisplayVersion);
         let command = Cli::command();
         let expected = command.get_version().expect("CLI version");
         assert_eq!(version, format!("dotfiles {expected}\n"));
 
-        let error = Cli::try_parse_from(["dotfiles", "-V"])
-            .expect_err("short version option should be unavailable");
-        assert_eq!(error.kind(), ErrorKind::UnknownArgument);
+        for args in [
+            &["dotfiles", "-V"][..],
+            &["dotfiles", "update", "--version"][..],
+        ] {
+            assert!(display_output(args, ErrorKind::DisplayVersion).contains(expected));
+        }
 
         let cli = Cli::parse_from(["dotfiles", "update", "-v"]);
         let Command::Update(opts) = cli.command else {
@@ -692,11 +787,11 @@ mod tests {
         let help = display_output(&["dotfiles", "--help"], ErrorKind::DisplayHelp);
 
         for text in [
-            "update  Apply configuration and advance pinned dependencies",
-            "remove  Remove managed integrations while preserving user files",
-            "check   Validate configuration and run repository checks",
-            "list    List available task selectors and command membership",
-            "log     Show a retained run log",
+            "update  Apply configuration and update dependencies",
+            "remove  Remove managed links and integrations",
+            "check   Validate configuration and repository files",
+            "list    Inspect task selectors and dependencies",
+            "log     Inspect previous runs and task diagnostics",
             "help    Print this message or the help of the given subcommand(s)",
             "dotfiles check",
         ] {
@@ -964,65 +1059,134 @@ mod tests {
     }
 
     #[test]
-    fn execution_command_help_preserves_exact_option_text_and_order() {
-        const COMMON_OPTIONS: &str = "  -p, --profile <PROFILE>  Use a specific profile
-      --root <PATH>        Use PATH as the dotfiles repository
-      --overlay <PATH>     Merge configuration from an overlay repository
-  -v, --verbose            Show additional diagnostic task output
-      --no-parallel        Run tasks sequentially
-      --fail-on-skip       Fail when applicable work is skipped
-      --non-interactive    Disable prompts and fail when input is required
-      --no-symbols         Use ASCII words instead of status symbols
-      --skip <SELECTOR>    Skip task selectors; repeat the option or separate values with commas
-      --only <SELECTOR>    Run only task selectors; repeat the option or separate values with commas
-";
-        const INSTALL_OPTIONS: &str = "      --with-deps          Include blocking and ordering predecessors selected by `--only`
-  -n, --dry-run            Preview changes without applying them
-      --no-repo-update     Use the current checkout without synchronizing its repository
-      --skip-attestation   Skip self-update build provenance verification
-";
-        const UNINSTALL_OPTIONS: &str =
-            "  -n, --dry-run            Preview changes without applying them
-      --skip-attestation   Skip self-update build provenance verification
-";
-        for (name, about, options, after_help) in [
-            (
-                "update",
-                "Apply configuration and advance pinned dependencies",
-                INSTALL_OPTIONS,
-                "",
-            ),
-            (
-                "check",
-                "Validate configuration and run repository checks",
-                "",
-                "",
-            ),
-            (
-                "remove",
-                "Remove managed integrations while preserving user files",
-                UNINSTALL_OPTIONS,
-                "\nRemoves managed home symlinks, repository Git hooks, the installed launcher,\n\
-and active overlay script state through each script's --remove action.\n\
-Packages, services, registry values, and shell selection remain.\n",
-            ),
-        ] {
+    fn execution_help_groups_options_and_explains_side_effects() {
+        for name in ["update", "remove", "check"] {
             let help = display_output(&["dotfiles", name, "--help"], ErrorKind::DisplayHelp);
-            assert_eq!(
-                help,
-                format!(
-                    "{about}\n\nUsage: dotfiles {name} [OPTIONS]\n\nOptions:\n\
-{COMMON_OPTIONS}{options}  -h, --help               Print help\n{after_help}"
-                ),
-                "{name}"
+            let mut previous = 0;
+            for heading in ["Repository:", "Execution and output:", "Task selection:"] {
+                let position = help.find(heading).expect("help heading");
+                assert!(position > previous, "{name}: {heading}: {help}");
+                previous = position;
+            }
+            for option in [
+                "--profile",
+                "--root",
+                "--overlay",
+                "--verbose",
+                "--quiet",
+                "--format",
+                "--only",
+                "--skip",
+            ] {
+                assert!(help.contains(option), "{name}: {option}: {help}");
+            }
+            assert!(
+                help.contains("logs") && help.contains("selections"),
+                "{name}: {help}"
             );
+            if name != "check" {
+                assert!(
+                    help.contains("Startup may check for CLI updates before running tasks"),
+                    "{name}: {help}"
+                );
+                assert!(
+                    help.contains("Dry runs") || help.contains("dry runs"),
+                    "{name}: {help}"
+                );
+            }
+        }
+        let help = display_output(&["dotfiles", "--help"], ErrorKind::DisplayHelp);
+        for text in [
+            "dotfiles [COMMAND] [OPTIONS]",
+            "Default command: update",
+            "download the CLI",
+        ] {
+            assert!(help.contains(text), "{text}: {help}");
+        }
+    }
+
+    #[test]
+    fn options_before_commands_preserve_values_and_command_scope() {
+        for args in [
+            vec!["dotfiles", "--profile", "base", "list", "--format", "json"],
+            vec!["dotfiles", "--profile=base", "--format", "json", "list"],
+            vec!["dotfiles", "-pbase", "list", "--format=json"],
+        ] {
+            let Command::List(opts) = Cli::parse_from(args).command else {
+                panic!("expected list");
+            };
+            assert_eq!(opts.repository.profile.as_deref(), Some("base"));
+            assert_eq!(opts.format, DiscoveryFormat::Json);
+        }
+        for args in [
+            vec!["dotfiles", "--verbose", "check"],
+            vec!["dotfiles", "-vpbase", "check"],
+        ] {
+            let Command::Check(opts) = Cli::parse_from(args).command else {
+                panic!("expected check");
+            };
+            assert!(opts.execution.verbose);
+        }
+        for args in [
+            vec!["dotfiles", "--profile", "list"],
+            vec!["dotfiles", "--root", "check", "--profile", "log"],
+        ] {
+            assert!(matches!(Cli::parse_from(args).command, Command::Update(_)));
+        }
+        for args in [
+            vec!["dotfiles", "--profile", "base", "log"],
+            vec!["dotfiles", "--dry-run", "check"],
+            vec!["dotfiles", "--unknown", "list"],
+        ] {
+            assert_eq!(
+                Cli::try_parse_from(args).unwrap_err().kind(),
+                ErrorKind::UnknownArgument
+            );
+        }
+        assert!(Cli::try_parse_from(["dotfiles", "--", "list"]).is_err());
+    }
+
+    #[test]
+    fn output_modes_validate_conflicts_and_convert_to_runtime_policy() {
+        for name in ["update", "remove", "check"] {
+            for (flag, value, expected) in [
+                ("--quiet", None, crate::infra::logging::OutputMode::Quiet),
+                (
+                    "--format",
+                    Some("jsonl"),
+                    crate::infra::logging::OutputMode::Jsonl,
+                ),
+            ] {
+                let mut args = vec!["dotfiles", name, flag];
+                args.extend(value);
+                let global = match Cli::parse_from(args).command {
+                    Command::Update(opts) => opts.into_engine_parts().0,
+                    Command::Remove(opts) => opts.into_engine_parts().0,
+                    Command::Check(opts) => opts.into_engine_parts().0,
+                    Command::List(_) | Command::Log(_) | Command::Completions(_) => {
+                        panic!("expected engine command")
+                    }
+                };
+                assert_eq!(global.output_mode, expected);
+            }
+            for flags in [
+                vec!["--quiet", "--verbose"],
+                vec!["--quiet", "--format", "jsonl"],
+            ] {
+                let mut args = vec!["dotfiles", name];
+                args.extend(flags);
+                assert_eq!(
+                    Cli::try_parse_from(args).unwrap_err().kind(),
+                    ErrorKind::ArgumentConflict
+                );
+            }
         }
     }
 
     #[test]
     fn uninstall_help_states_what_remains() {
         let help = display_output(&["dotfiles", "remove", "--help"], ErrorKind::DisplayHelp);
-        assert!(help.contains("Packages, services, registry values"));
+        assert!(help.contains("Preserves packages, services, registry values"));
         assert!(help.contains("-n, --dry-run"));
         assert!(help.contains("--only <SELECTOR>"));
         assert!(!help.contains("--with-deps"));

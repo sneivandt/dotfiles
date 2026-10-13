@@ -59,14 +59,18 @@ other system packages as part of that transaction.
 
 ## Command options
 
-Put options **after their command**. When the command is omitted, options apply
-to `update`: `dotfiles --dry-run` is equivalent to `dotfiles update --dry-run`.
-`dotfiles --version` prints the version without loading configuration; it has
-no short alias. `dotfiles <command> --help` gives that command's full syntax.
+Shared options may appear **before or after an explicit command**. For example,
+`dotfiles --profile base list` and `dotfiles list --profile base` are equivalent.
+Each command still accepts only its own options. When the command is omitted,
+options apply to `update`: `dotfiles --dry-run` is equivalent to `dotfiles update --dry-run`.
+`dotfiles --version` or `dotfiles -V` prints the version without loading
+configuration. `dotfiles <command> --help` gives that command's full syntax.
 
 | Options | Accepted by | Meaning |
 |---|---|---|
 | `-p`, `--profile <PROFILE>`; `--root <PATH>`; `--overlay <PATH>` | update, remove, check, list | Select role, source checkout, and overlay |
+| `-q`, `--quiet` | update, remove, check | Suppress routine output; retain warnings and failures on stderr; incompatible with verbose or an explicit output format |
+| `--format <human\|jsonl>` | update, remove, check | Select human output (default) or versioned JSON Lines; JSON Lines disables prompts |
 | `-v`, `--verbose` | update, remove, check, log | Include diagnostic output; for log viewing, incompatible with `--raw` or `--list` |
 | `--no-parallel` | update, remove, check | Run work sequentially |
 | `--non-interactive` | update, remove, check | Disable normal execution prompts; fail if required selection is unavailable |
@@ -406,6 +410,43 @@ selection is rejected. Use a stable primary checkout for unattended work.
 See [Overlays](CONFIGURATION.md#overlays) for configuration semantics and
 script trust boundaries.
 
+## Execution output for scripts
+
+Use `--quiet` to omit routine headers, progress, successful task rows, and totals.
+Warnings and failed, blocked, skipped, or interrupted task rows remain on stderr.
+Quiet mode preserves run logs and the normal exit policy; it conflicts with
+`--verbose` and an explicit `--format`.
+
+Use `--format jsonl` on `update`, `remove`, or `check` for one JSON object per
+stdout line. This mode disables prompts, so select a profile explicitly or
+through the usual environment/saved selection. Human progress and summaries
+are suppressed. Parser errors and logging-degradation notices remain on stderr.
+
+```bash
+dotfiles --profile base check --only config-warnings --format jsonl
+```
+
+Every object has `schema: 1`, `run_id`, `context`, and `type`. Supported types
+are `run_start`, `run_scope`, `run_context`, `task_result`, `task_duration`,
+`message` (warnings/errors), and `run_finish`. Task results include stable
+`task_id`, public `selector`, `name`, `status`, `reason`, and action counters.
+Statuses retain the stored names, including `ok`, `dry_run`, and
+`not_applicable`. Finish records include `outcome`, `elapsed_us`, and `exit_code`.
+This is a result stream; detailed actions and subprocess diagnostics remain
+available in retained logs.
+
+A restart or elevated child creates its own run ID, linked by `parent_run_id`
+in its start record. Consumers must group records by run ID and tolerate
+additional fields and record types. There may be several run/finish pairs in
+one invocation. A force quit can leave unfinished task records; missing finish
+records indicate an unfinished process. Structured results remain available
+when persistent log creation fails.
+
+When a downstream consumer closes stdout, discovery ends quietly and engine
+commands continue convergence without further stdout writes. Closing a pipe
+does not cancel managed work. Other console write failures produce exit 1 and
+are reflected in the retained run outcome.
+
 ## Interrupting a run
 
 1. First Ctrl-C requests cancellation, stops dispatching new work, and waits
@@ -413,7 +454,8 @@ script trust boundaries.
 2. Second Ctrl-C asks `Force quit? in-flight operations will be abandoned [y/N]:`.
    Anything except `y`/`yes` keeps waiting.
 3. Confirming, or pressing Ctrl-C while the question is open, exits immediately
-   with code 130. Without terminal interaction, the second Ctrl-C force quits.
+   with code 130. In non-interactive mode (including CI and JSON Lines), or without terminal
+   interaction, the second Ctrl-C force quits.
 
 Cancellation does not roll back changes. Force quitting skips orderly child
 shutdown; external commands may remain active. Check them before retrying.

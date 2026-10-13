@@ -57,7 +57,10 @@ impl<'a> RuntimePolicy<'a> {
                 parallel: global.parallel,
                 is_ci,
                 require_complete: global.require_complete || is_ci,
-                non_interactive: global.non_interactive || is_ci || !stdin_terminal,
+                non_interactive: global.non_interactive
+                    || is_ci
+                    || !stdin_terminal
+                    || global.output_mode == crate::infra::logging::OutputMode::Jsonl,
                 stdout_terminal,
                 elevated_child: global.elevated_child
                     || env.is_set(crate::infra::elevation::ELEVATED_CHILD_VAR),
@@ -80,6 +83,14 @@ impl<'a> RuntimePolicy<'a> {
 mod tests {
     use super::*;
     use crate::infra::env::MapEnv;
+
+    #[test]
+    fn structured_output_disables_prompts_with_terminal_input() {
+        let global = super::super::tests::global(&["--format", "jsonl"]);
+        let runtime = RuntimePolicy::new(&global, false, MapEnv::new().into_handle(), true, true);
+        assert!(runtime.execution.non_interactive);
+        assert!(!runtime.execution.can_prompt_for_elevation());
+    }
 
     #[test]
     fn ci_and_terminal_policy_is_shared_with_the_context() {

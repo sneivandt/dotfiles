@@ -34,15 +34,12 @@ fn record_scope(
     with_deps: bool,
     no_repo_update: bool,
 ) {
-    use crate::infra::logging::Output as _;
-    if let Some(run) = log.run_log() {
-        run.record(crate::infra::logging::records::Record::RunScope {
-            only: filters.only.clone(),
-            skip: filters.skip.clone(),
-            with_deps,
-            no_repo_update,
-        });
-    }
+    log.record(crate::infra::logging::records::Record::RunScope {
+        only: filters.only.clone(),
+        skip: filters.skip.clone(),
+        with_deps,
+        no_repo_update,
+    });
 }
 
 #[cfg(test)]

@@ -329,6 +329,19 @@ pub trait Output: Send + Sync {
         None
     }
 
+    /// Stable identity for child linkage, including runs without a file log.
+    fn run_id(&self) -> Option<String> {
+        self.run_log().map(RunLog::id)
+    }
+
+    /// Finish this process's run, returning the final status after output errors.
+    fn finish_run(&self, code: i32) -> i32 {
+        if let Some(run) = self.run_log() {
+            run.finish(super::records::RunOutcome::from_exit_code(code), code);
+        }
+        code
+    }
+
     /// Emit a run-log event when the run log is enabled.
     ///
     /// This is a convenience wrapper around [`RunLog::emit`] that no-ops when

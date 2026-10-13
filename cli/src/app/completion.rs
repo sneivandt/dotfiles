@@ -119,7 +119,9 @@ fn completion_words(args: Vec<OsString>) -> Vec<OsString> {
 }
 
 fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
-    match words.get(1).and_then(|word| word.to_str()) {
+    let mut normalized = words.to_vec();
+    super::cli::normalize_command_position(&mut normalized);
+    match normalized.get(1).and_then(|word| word.to_str()) {
         Some("update") | None => &["update"],
         Some("remove") => &["remove"],
         Some("check") => &["check"],
@@ -170,6 +172,31 @@ fn task_candidates_from_json(json: &[u8], memberships: &[&str]) -> Vec<Completio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prefix_options_do_not_change_task_completion_membership() {
+        for (words, expected) in [
+            (
+                vec!["dotfiles", "--profile", "base", "check", "--only", ""],
+                &["check"][..],
+            ),
+            (
+                vec!["dotfiles", "--root=update", "remove", "--only", ""],
+                &["remove"][..],
+            ),
+            (
+                vec!["dotfiles", "--profile", "check", "--only", ""],
+                &["update"][..],
+            ),
+            (
+                vec!["dotfiles", "-vpbase", "check", "--only", ""],
+                &["check"][..],
+            ),
+        ] {
+            let words = words.into_iter().map(OsString::from).collect::<Vec<_>>();
+            assert_eq!(task_memberships(&words), expected);
+        }
+    }
 
     #[test]
     fn default_update_options_are_available_to_completion() {

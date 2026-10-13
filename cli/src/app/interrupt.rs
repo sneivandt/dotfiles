@@ -110,11 +110,19 @@ impl Escalation {
 ///
 /// Losing the handler is not fatal — the run simply cannot be interrupted
 /// gracefully — so a registration failure is reported as a warning.
-pub fn install<L: Output + 'static>(token: &CancellationToken, log: &Arc<L>) {
+pub fn install<L: Output + 'static>(
+    token: &CancellationToken,
+    log: &Arc<L>,
+    non_interactive: bool,
+) {
     let state = Arc::new(Escalation::default());
     let handler_token = token.clone();
     let handler_log = Arc::clone(log);
-    if ctrlc::set_handler(move || handle_interrupt(&state, &handler_token, &handler_log)).is_err() {
+    if ctrlc::set_handler(move || {
+        handle_interrupt(&state, &handler_token, &handler_log, non_interactive);
+    })
+    .is_err()
+    {
         log.warn("failed to register signal handler");
     }
 }
@@ -127,18 +135,27 @@ fn handle_interrupt<L: Output + 'static>(
     state: &Arc<Escalation>,
     token: &CancellationToken,
     log: &Arc<L>,
+    non_interactive: bool,
 ) {
     match state.advance() {
         InterruptAction::Cancel => {
             token.cancel();
             log.warn(CANCEL_MESSAGE);
         }
-        InterruptAction::Confirm if can_prompt() => spawn_confirmation(state, log),
+        InterruptAction::Confirm
+            if can_prompt(
+                non_interactive,
+                std::io::stdin().is_terminal(),
+                std::io::stderr().is_terminal(),
+            ) =>
+        {
+            spawn_confirmation(state, log);
+        }
         // Nothing can answer the question, so honour the second interrupt.
-        InterruptAction::Confirm => force_quit(&**log),
+        InterruptAction::Confirm => force_quit(&**log, non_interactive),
         InterruptAction::ForceQuit => {
             end_prompt_line();
-            force_quit(&**log);
+            force_quit(&**log, non_interactive);
         }
     }
 }
@@ -156,7 +173,7 @@ fn spawn_confirmation<L: Output + 'static>(state: &Arc<Escalation>, log: &Arc<L>
             .name("interrupt-confirm".to_owned())
             .spawn(move || {
                 if confirm_force_quit(&*log) {
-                    force_quit(&*log);
+                    force_quit(&*log, false);
                 } else {
                     state.confirmation_declined();
                     log.warn(DECLINED_MESSAGE);
@@ -166,8 +183,8 @@ fn spawn_confirmation<L: Output + 'static>(state: &Arc<Escalation>, log: &Arc<L>
 }
 
 /// Return whether a confirmation can be asked and answered.
-fn can_prompt() -> bool {
-    std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
+const fn can_prompt(non_interactive: bool, stdin_terminal: bool, stderr_terminal: bool) -> bool {
+    !non_interactive && stdin_terminal && stderr_terminal
 }
 
 /// Ask the user whether to abandon the run.
@@ -208,17 +225,30 @@ fn end_prompt_line() {
 /// Abandon the run immediately.
 ///
 /// In-flight children are not reaped, which is the cost the confirmation buys.
-fn force_quit(log: &dyn Output) -> ! {
+fn force_quit(log: &dyn Output, non_interactive: bool) -> ! {
     log.clear_status_line();
     log.error(FORCE_QUIT_MESSAGE);
     log.startup("Run 'dotfiles log' for details.");
-    elevation::wait_if_elevated();
+    if !non_interactive {
+        elevation::wait_if_elevated();
+    }
+    log.finish_run(FORCE_QUIT_EXIT_CODE);
     std::process::exit(FORCE_QUIT_EXIT_CODE)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_interactive_interrupts_never_prompt_even_with_terminals() {
+        for stdin in [false, true] {
+            for stderr in [false, true] {
+                assert!(!can_prompt(true, stdin, stderr));
+                assert_eq!(can_prompt(false, stdin, stderr), stdin && stderr);
+            }
+        }
+    }
 
     #[test]
     fn first_interrupt_requests_cancellation() {

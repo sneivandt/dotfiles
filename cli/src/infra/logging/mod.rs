@@ -38,16 +38,29 @@ pub(crate) use runlog::{parse_run_log_file_name, run_log_sort_stamp};
 pub use types::{MsgKind, TaskRecorder};
 pub(crate) use utils::{dotfiles_log_dir_readonly, format_elapsed};
 
+/// Console protocol, independent of durable run logging.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OutputMode {
+    /// Interactive or redirected human-readable output.
+    #[default]
+    Human,
+    /// Only warnings and failures, on stderr.
+    Quiet,
+    /// Versioned lifecycle and task records, one JSON object per line.
+    Jsonl,
+}
+
 /// Initialise logging for a command run.
 ///
 /// Opens the run log, installs the global tracing subscriber (console layer
 /// plus the run-log bridge), and returns the [`Logger`] that shares the same
 /// run log. Must be called once at program startup, before any logging.
 #[must_use]
-pub fn init(verbose: bool, symbols: bool, command: &str) -> Logger {
+pub fn init(verbose: bool, symbols: bool, command: &str, mode: OutputMode) -> Logger {
     let mut log = Logger::new(command);
     log.set_verbose(verbose);
     log.set_symbols(symbols);
+    log.set_output_mode(mode);
     subscriber::init_subscriber(std::sync::Arc::clone(&log.console), log.run_log_handle());
     log
 }

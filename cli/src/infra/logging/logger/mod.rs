@@ -17,8 +17,8 @@ pub(in crate::infra::logging) use progress::stdout_supports_progress;
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::time::Instant;
 
 use super::runlog::RunLog;
@@ -56,6 +56,7 @@ pub struct Logger {
     pub(super) symbols: bool,
     /// Whether the current command is previewing changes without applying them.
     pub(super) dry_run: bool,
+    finished: AtomicBool,
 }
 
 impl Logger {
@@ -106,6 +107,57 @@ impl Logger {
             start,
             symbols: true,
             dry_run: false,
+            finished: AtomicBool::new(false),
+        }
+    }
+
+    /// Configure console output without changing retained logs.
+    pub fn set_output_mode(&mut self, mode: super::OutputMode) {
+        self.console.lock().mode = mode;
+    }
+
+    pub(in crate::infra::logging) fn is_quiet(&self) -> bool {
+        self.console.lock().mode == super::OutputMode::Quiet
+    }
+
+    /// Begin a process run even when persistent logging is unavailable.
+    pub(crate) fn start_run(&self, parent_run_id: Option<String>) {
+        let run_id = self.run_log.as_ref().map_or_else(
+            || {
+                format!(
+                    "unlogged-{}-{}",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_micros()
+                )
+            },
+            |run| run.id(),
+        );
+        self.console.lock().run_id = Some(run_id.clone());
+        self.console.record(
+            &super::log_thread_name(),
+            super::records::Record::RunStart {
+                run_id,
+                command: self.command.clone(),
+                parent_run_id: parent_run_id.clone(),
+            },
+        );
+        if let Some(run) = &self.run_log {
+            run.start_run(&self.command, parent_run_id);
+        }
+    }
+
+    /// Write a fact to the independent console and persistent sinks.
+    pub(crate) fn record(&self, record: super::records::Record) {
+        self.record_in_context(&super::log_thread_name(), record);
+    }
+
+    fn record_in_context(&self, context: &str, record: super::records::Record) {
+        self.console.record(context, record.clone());
+        if let Some(run) = &self.run_log {
+            run.record_in_context(context, record);
         }
     }
 
@@ -252,33 +304,29 @@ impl Logger {
 
     /// Record a task result for the summary.
     pub fn record_task(&self, task: TaskEntry) {
-        if let Some(log) = &self.run_log {
-            log.record_in_context(
-                &task.task_id,
-                super::records::Record::TaskResult {
-                    task_id: task.task_id.clone(),
-                    selector: task.selector.clone(),
-                    name: task.name.clone(),
-                    status: task.status,
-                    reason: task.message.clone(),
-                    actions: task.actions,
-                },
-            );
-        }
+        self.record_in_context(
+            &task.task_id,
+            super::records::Record::TaskResult {
+                task_id: task.task_id.clone(),
+                selector: task.selector.clone(),
+                name: task.name.clone(),
+                status: task.status,
+                reason: task.message.clone(),
+                actions: task.actions,
+            },
+        );
         self.lock_tasks().push(task);
     }
 
     /// Attach a measured duration to the entry for a scheduler identity.
     pub fn record_task_duration(&self, task_id: &str, duration: std::time::Duration) {
-        if let Some(log) = &self.run_log {
-            log.record_in_context(
-                task_id,
-                super::records::Record::TaskDuration {
-                    task_id: task_id.into(),
-                    elapsed_us: super::records::elapsed_us(duration),
-                },
-            );
-        }
+        self.record_in_context(
+            task_id,
+            super::records::Record::TaskDuration {
+                task_id: task_id.into(),
+                elapsed_us: super::records::elapsed_us(duration),
+            },
+        );
         if let Some(task) = self
             .lock_tasks()
             .iter_mut()
@@ -363,6 +411,53 @@ impl Output for Logger {
         self.emit_console(kind, &msg);
     }
 
+    fn finish_run(&self, code: i32) -> i32 {
+        let output_error = self.console.output_error();
+        let mut final_code = output_error.as_ref().map_or(code, |error| {
+            let message = format!("writing command output: {error}");
+            if let Some(run) = &self.run_log {
+                run.emit(LogEvent::Error, &message);
+            }
+            self.console.report_output_error(&message);
+            1
+        });
+        if !self.finished.swap(true, Ordering::Relaxed) {
+            self.console.record(
+                &super::log_thread_name(),
+                super::records::Record::RunFinish {
+                    outcome: super::records::RunOutcome::from_exit_code(final_code),
+                    elapsed_us: super::records::elapsed_us(self.start.elapsed()),
+                    exit_code: final_code,
+                },
+            );
+            if let Some(error) = self.console.output_error() {
+                final_code = 1;
+                if output_error.is_none() {
+                    let message = format!("writing command output: {error}");
+                    if let Some(run) = &self.run_log {
+                        run.emit(LogEvent::Error, &message);
+                    }
+                    self.console.report_output_error(&message);
+                }
+            }
+            if let Some(run) = &self.run_log {
+                run.finish(
+                    super::records::RunOutcome::from_exit_code(final_code),
+                    final_code,
+                );
+            }
+        }
+        final_code
+    }
+
+    fn run_id(&self) -> Option<String> {
+        self.console
+            .lock()
+            .run_id
+            .clone()
+            .or_else(|| self.run_log.as_ref().map(|run| run.id()))
+    }
+
     fn run_log(&self) -> Option<&RunLog> {
         self.run_log.as_deref()
     }
@@ -399,6 +494,27 @@ mod tests {
     use crate::infra::logging::isolated_logger;
     use crate::infra::logging::types::{ActionCounts, Log, TaskVisibility};
     use std::fs;
+
+    #[test]
+    fn structured_lifecycle_has_identity_and_finishes_once_without_a_file_log() {
+        let mut log = Logger::build("update", None, Instant::now(), false);
+        log.set_output_mode(super::super::OutputMode::Jsonl);
+        log.start_run(Some("parent-fixture".into()));
+        let id = log.run_id().expect("stream identity");
+        assert_eq!(log.finish_run(130), 130);
+        assert_eq!(log.finish_run(130), 130);
+        let records: Vec<serde_json::Value> = log
+            .captured_lines()
+            .iter()
+            .map(|line| serde_json::from_str(line.trim()).expect("valid JSON record"))
+            .collect();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records.first().unwrap()["run_id"], id);
+        assert_eq!(records.first().unwrap()["parent_run_id"], "parent-fixture");
+        assert_eq!(records.last().unwrap()["run_id"], id);
+        assert_eq!(records.last().unwrap()["outcome"], "interrupted");
+        assert_eq!(records.last().unwrap()["exit_code"], 130);
+    }
 
     fn task_entry(
         name: &str,

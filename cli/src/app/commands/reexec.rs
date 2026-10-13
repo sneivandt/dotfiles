@@ -30,25 +30,15 @@ pub(crate) fn re_exec(root: &std::path::Path, log: &dyn Output) -> ! {
 
 fn reexec_args(log: &dyn Output) -> Vec<String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(run) = log.run_log() {
-        crate::infra::logging::records::child_args(&args, &run.id())
+    if let Some(id) = log.run_id() {
+        crate::infra::logging::records::child_args(&args, &id)
     } else {
         args
     }
 }
 
-fn finish_reexec(log: &dyn Output, code: i32) {
-    if let Some(run) = log.run_log() {
-        use crate::infra::logging::records::RunOutcome;
-        run.finish(
-            match code {
-                0 => RunOutcome::Succeeded,
-                130 => RunOutcome::Interrupted,
-                _ => RunOutcome::Failed,
-            },
-            code,
-        );
-    }
+fn finish_reexec(log: &dyn Output, code: i32) -> i32 {
+    log.finish_run(code)
 }
 
 fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
@@ -64,8 +54,7 @@ fn run_reexec(mut command: std::process::Command, log: &dyn Output) -> ! {
             1
         }
     };
-    finish_reexec(log, code);
-    std::process::exit(code)
+    std::process::exit(finish_reexec(log, code))
 }
 
 /// Build the replacement process while preserving the original CLI arguments.
@@ -90,8 +79,7 @@ pub(crate) fn re_exec_after_repository_update(log: &dyn Output) -> ! {
             log.error(format!(
                 "failed to determine executable for repository restart: {error}"
             ));
-            finish_reexec(log, 1);
-            std::process::exit(1);
+            std::process::exit(finish_reexec(log, 1));
         }
     };
     let command = build_reexec_command(&exe, &reexec_args(log), REPOSITORY_REEXEC_GUARD_VAR);

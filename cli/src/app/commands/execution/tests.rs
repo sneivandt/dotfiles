@@ -625,23 +625,21 @@ proptest! {
         (size, edges) in (1_usize..8).prop_flat_map(|size| {
             (
                 Just(size),
-                proptest::collection::vec(any::<bool>(), size.saturating_mul(size)),
+                proptest::collection::vec(any::<bool>(), size * size),
             )
         })
     ) {
         let trace = trace();
         let tasks = (0..size)
             .map(|row| {
-                let id = u64::try_from(row).expect("small graph index").saturating_add(1);
+                let id = u64::try_from(row).expect("small graph index") + 1;
                 let dependencies = (0..size)
                     .filter(|column| {
                         *column < row
-                            && edges[row.saturating_mul(size).saturating_add(*column)]
+                            && edges[row * size + *column]
                     })
                     .map(|column| {
-                        u64::try_from(column)
-                            .expect("small graph index")
-                            .saturating_add(1)
+                        u64::try_from(column).expect("small graph index") + 1
                     })
                     .collect::<Vec<_>>();
                 ProbeTask::new(&format!("task-{id}"), id, &trace).depends_on(&dependencies)
@@ -650,7 +648,7 @@ proptest! {
         let task_refs = as_dyn(&tasks);
 
         let mut expected_dependencies = vec![false; size];
-        expected_dependencies[size.saturating_sub(1)] = true;
+        expected_dependencies[size - 1] = true;
         loop {
             let mut changed = false;
             for row in 0..size {
@@ -659,7 +657,7 @@ proptest! {
                 }
                 for column in 0..size {
                     if column < row
-                        && edges[row.saturating_mul(size).saturating_add(column)]
+                        && edges[row * size + column]
                         && !expected_dependencies[column]
                     {
                         expected_dependencies[column] = true;
@@ -675,7 +673,7 @@ proptest! {
         let closure = dependency_closure(&task_refs, boundary)
             .expect("valid generated graph");
         for (index, expected) in expected_dependencies.iter().copied().enumerate() {
-            let id = numeric_task_id(index.saturating_add(1));
+            let id = numeric_task_id(index + 1);
             prop_assert_eq!(closure.contains(&id), expected);
         }
 
@@ -689,7 +687,7 @@ proptest! {
                 }
                 let blocked = (0..size).any(|column| {
                     column < row
-                        && edges[row.saturating_mul(size).saturating_add(column)]
+                        && edges[row * size + column]
                         && expected_blocked[column]
                 });
                 if blocked {
@@ -704,7 +702,7 @@ proptest! {
         let roots = HashMap::from([(numeric_task_id(1), "task-1")]);
         let blocked = blocked_dependents(&task_refs, &roots);
         for (index, expected) in expected_blocked.iter().copied().enumerate().skip(1) {
-            let id = numeric_task_id(index.saturating_add(1));
+            let id = numeric_task_id(index + 1);
             prop_assert_eq!(blocked.contains_key(&id), expected);
         }
     }

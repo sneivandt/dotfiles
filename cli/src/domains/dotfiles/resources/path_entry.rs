@@ -344,10 +344,6 @@ fn path_contains_entry(path: &str, dir: &str) -> bool {
 
 /// Expand `%VAR%` tokens in `value` against the current process environment.
 #[cfg(windows)]
-#[allow(
-    clippy::arithmetic_side_effects,
-    reason = "byte offsets returned by `find` on `%` (1 byte) are bounded by string length"
-)]
 fn expand_env_vars(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;

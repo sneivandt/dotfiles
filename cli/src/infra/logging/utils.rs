@@ -153,7 +153,6 @@ pub(super) fn dotfiles_log_subdir(base: &std::path::Path) -> Option<PathBuf> {
     clippy::cast_sign_loss,
     clippy::cast_possible_truncation,
     clippy::as_conversions,
-    clippy::arithmetic_side_effects,
     reason = "Hinnant civil-from-days integer algorithm; all terms bounded for valid epoch seconds"
 )]
 fn civil_from_epoch_secs(epoch_secs: u64) -> (i32, u32, u32, u32, u32, u32) {

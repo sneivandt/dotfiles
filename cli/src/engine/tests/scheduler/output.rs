@@ -271,7 +271,6 @@ fn dependency_block_reason_is_owned_by_recorded_task_result() {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].status, TaskStatus::Blocked);
         assert_eq!(records[0].message.as_deref(), Some("dependency failed"));
-        drop(records);
     }
     task.assert_ran(false);
 }

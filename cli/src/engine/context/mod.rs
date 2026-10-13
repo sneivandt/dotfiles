@@ -51,10 +51,6 @@ pub struct ContextOpts {
 
 /// Resolved execution decisions, shared unchanged by startup and task execution.
 #[derive(Debug, Clone, Copy)]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "independent runtime capabilities and execution switches"
-)]
 pub(crate) struct ExecutionPolicy {
     pub dry_run: bool,
     pub parallel: bool,

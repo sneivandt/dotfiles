@@ -12,19 +12,16 @@ pub enum Os {
 
 impl Os {
     /// Returns whether this OS is Unix-like.
-    #[must_use]
     pub const fn is_unix_like(self) -> bool {
         matches!(self, Self::Linux)
     }
 
     /// Returns whether this OS supports POSIX file permissions.
-    #[must_use]
     pub const fn supports_posix_permissions(self) -> bool {
         matches!(self, Self::Linux)
     }
 
     /// Returns whether this OS uses the Windows Registry.
-    #[must_use]
     pub const fn has_registry(self) -> bool {
         matches!(self, Self::Windows)
     }
@@ -90,55 +87,46 @@ impl Platform {
     }
 
     /// Returns whether this platform is Linux.
-    #[must_use]
     pub const fn is_linux(&self) -> bool {
         matches!(self.os, Os::Linux)
     }
 
     /// Returns whether this platform is Windows.
-    #[must_use]
     pub const fn is_windows(&self) -> bool {
         matches!(self.os, Os::Windows)
     }
 
     /// Returns whether this platform supports POSIX file permissions (chmod).
-    #[must_use]
     pub const fn supports_chmod(&self) -> bool {
         self.os.supports_posix_permissions()
     }
 
     /// Returns whether this platform supports systemd.
-    #[must_use]
     pub const fn supports_systemd(&self) -> bool {
         self.os.is_unix_like()
     }
 
     /// Returns whether this platform uses the Windows Registry.
-    #[must_use]
     pub const fn has_registry(&self) -> bool {
         self.os.has_registry()
     }
 
     /// Returns whether this platform is Arch Linux.
-    #[must_use]
     pub const fn is_arch_linux(&self) -> bool {
         self.is_arch
     }
 
     /// Returns whether this platform is Windows Subsystem for Linux.
-    #[must_use]
     pub const fn is_wsl(&self) -> bool {
         self.is_wsl
     }
 
     /// Returns whether this platform uses pacman as the primary package manager.
-    #[must_use]
     pub const fn uses_pacman(&self) -> bool {
         self.os.is_unix_like() && self.is_arch
     }
 
     /// Returns whether this platform supports AUR packages.
-    #[must_use]
     pub const fn supports_aur(&self) -> bool {
         self.is_arch
     }

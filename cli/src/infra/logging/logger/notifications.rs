@@ -138,7 +138,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_start_adds_to_active_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.notify_task_start_with_progress("my-task", false);
@@ -351,7 +350,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_done_removes_from_active_tasks() {
         let (log, _tmp, _guard) = isolated_logger();
         log.notify_task_start_with_progress("my-task", false);
@@ -415,7 +413,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
     fn notify_task_done_multiple_tasks_all_complete() {
         let (log, _tmp, _guard) = isolated_logger();
         log.notify_task_start_with_progress("task-a", true);

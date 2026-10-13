@@ -129,7 +129,6 @@ impl Operation for UpdateRepositoryOperation<'_> {
     clippy::unwrap_used,
     clippy::indexing_slicing,
     clippy::panic,
-    clippy::significant_drop_tightening,
     reason = "test code uses panicking helpers"
 )]
 mod tests;

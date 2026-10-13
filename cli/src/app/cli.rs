@@ -197,10 +197,6 @@ pub enum ExecutionFormat {
 
 /// Options shared by commands that execute a task graph.
 #[derive(Args, Debug, Clone)]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "CLI switches are independent user choices rather than state-machine states"
-)]
 pub struct ExecutionOpts {
     /// Show additional task diagnostics
     #[arg(short, long, conflicts_with = "quiet")]
@@ -253,10 +249,6 @@ impl Default for ExecutionOpts {
 
 /// Options for the `update` command.
 #[derive(Args, Debug, Clone)]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "CLI switches are independent user choices rather than state-machine states"
-)]
 pub struct UpdateCommandOpts {
     /// Repository and profile selection.
     #[command(flatten, next_help_heading = "Repository")]
@@ -411,10 +403,6 @@ pub struct TasksOpts {
 
 /// Options passed to the task engine after command-specific parsing.
 #[derive(Debug, Clone)]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "Each independent execution switch maps directly to a bool"
-)]
 pub struct GlobalOpts {
     /// Selected profile.
     pub profile: Option<String>,

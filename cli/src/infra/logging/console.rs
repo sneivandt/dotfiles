@@ -15,10 +15,6 @@ pub(super) struct Console {
 
 /// All terminal state changes and writes happen under the same lock.
 #[derive(Debug, Default)]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "verbosity, output destination, and spacing are independent console facts"
-)]
 pub(super) struct ConsoleState {
     enabled: bool,
     pub(super) mode: super::OutputMode,

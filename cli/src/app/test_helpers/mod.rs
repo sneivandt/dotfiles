@@ -107,7 +107,6 @@ pub fn stub_executor(which_result: bool) -> MockExecutor {
 /// ```
 #[derive(Debug)]
 #[must_use]
-#[allow(clippy::struct_excessive_bools, reason = "test fixture")]
 pub struct ContextBuilder {
     root: PathBuf,
     overlay: Option<PathBuf>,

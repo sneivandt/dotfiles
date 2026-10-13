@@ -1,7 +1,6 @@
 //! Task dependency graph utilities.
 #![allow(
     clippy::indexing_slicing,
-    clippy::arithmetic_side_effects,
     reason = "resolved graph indices and topological in-degrees are validated by graph construction"
 )]
 

@@ -11,10 +11,6 @@ use super::reexec::{REEXEC_GUARD_VAR, REPOSITORY_REEXEC_GUARD_VAR, SELF_UPDATE_R
 
 /// Immutable startup decisions and the environment shared with task execution.
 #[derive(Debug)]
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "independent process guards and output switches"
-)]
 pub struct RuntimePolicy<'a> {
     pub(crate) global: &'a GlobalOpts,
     pub(crate) env: Arc<dyn Env>,

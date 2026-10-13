@@ -329,7 +329,6 @@ fn buffered_log_run_log_returns_inner_run_log() {
 }
 
 #[test]
-#[allow(clippy::significant_drop_tightening, reason = "intentional lock scope")]
 fn buffered_flush_and_complete_with_remaining_task() {
     let (log, _tmp, _guard) = isolated_logger();
     let log = Arc::new(log);

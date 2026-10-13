@@ -80,9 +80,16 @@ multiple_crate_versions = "allow"
 # advice for `pub(crate) mod foo; pub fn bar` patterns. We prefer
 # `pub(crate)` everywhere internal so consumers can see the true API surface.
 redundant_pub_crate = "allow"
+# Prefer explicit annotations and overflow policy where they protect a contract,
+# rather than requiring them for every getter or provably bounded calculation.
+arithmetic_side_effects = "allow"
+must_use_candidate = "allow"
+# Lexical scopes already express lock lifetimes; independent switches need no
+# artificial state-machine representation.
+significant_drop_tightening = "allow"
+struct_excessive_bools = "allow"
 # Restriction lints (opt-in individually)
 allow_attributes_without_reason = "deny"
-arithmetic_side_effects = "deny"
 as_conversions = "deny"
 clone_on_ref_ptr = "deny"
 dbg_macro = "deny"

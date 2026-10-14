@@ -384,6 +384,10 @@ The `completions` task installs runtime registration for Zsh or PowerShell.
 The shell queries the current binary for profiles, log command values, and
 task selectors. Task completion carries forward `--root`, `--profile`, and
 `--overlay` and uses the same read-only configuration discovery as `list`.
+Format suggestions follow the command even when options precede it. Options
+with unmet requirements or conflicts are omitted; for example, select
+`log --list` before completing `--format`. Graph selectors for
+`list --graph <command>` complete tasks belonging to that command.
 The hidden `completions` command fails if writing or flushing its registration
 to stdout fails.
 

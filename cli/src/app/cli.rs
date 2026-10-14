@@ -383,7 +383,8 @@ pub struct TasksOpts {
         long,
         value_delimiter = ',',
         value_name = "SELECTOR",
-        requires = "graph"
+        requires = "graph",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
     )]
     pub only: Vec<String>,
 
@@ -392,7 +393,8 @@ pub struct TasksOpts {
         long,
         value_delimiter = ',',
         value_name = "SELECTOR",
-        requires = "graph"
+        requires = "graph",
+        add = clap_complete::ArgValueCandidates::new(crate::app::completion::task_candidates)
     )]
     pub skip: Vec<String>,
 

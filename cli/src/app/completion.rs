@@ -6,17 +6,172 @@ use std::process::Command as ProcessCommand;
 use clap_complete::CompletionCandidate;
 use serde::Deserialize;
 
-/// Completion syntax also exposes update options when its command is omitted.
-/// Parsing still uses the canonical CLI so top-level help stays compact.
+/// Completion uses the same command context as argument parsing, including
+/// options before an explicit command and the implicit update command.
 pub(super) fn command() -> clap::Command {
+    let words = completion_words(std::env::args_os().collect());
+    command_for_words(&words)
+}
+
+fn command_for_words(words: &[OsString]) -> clap::Command {
     use clap::CommandFactory as _;
-    let command = super::cli::Cli::command();
-    let options = command
-        .find_subcommand("update")
-        .into_iter()
-        .flat_map(|update| update.get_arguments().cloned())
+    let mut canonical = super::cli::Cli::command();
+    canonical.build();
+    let mut normalized = words.to_vec();
+    super::cli::normalize_command_position(&mut normalized);
+    let explicit = normalized.get(1).and_then(|word| word.to_str());
+    let Some(selected) = canonical
+        .find_subcommand(explicit.unwrap_or("update"))
+        .or_else(|| canonical.find_subcommand("update"))
+    else {
+        return canonical;
+    };
+    let present = present_arguments(selected, normalized.get(2..).unwrap_or_default());
+    let options = selected
+        .get_arguments()
+        .cloned()
+        .map(|arg| {
+            let arg = if selected.get_name() == "list"
+                && arg.get_id() == "graph"
+                && present.iter().any(|id| id == "with_deps")
+            {
+                arg.add(clap_complete::ArgValueCandidates::new(|| {
+                    vec![CompletionCandidate::new("update")]
+                }))
+            } else {
+                arg
+            };
+            let graph_expansion_unavailable = selected.get_name() == "list"
+                && arg.get_id() == "with_deps"
+                && option_value(&normalized, "--graph") != Some("update");
+            if !graph_expansion_unavailable && argument_available(selected, &present, &arg) {
+                if present.contains(arg.get_id())
+                    && !matches!(arg.get_action(), clap::ArgAction::Append)
+                {
+                    arg.hide(true)
+                } else {
+                    arg
+                }
+            } else {
+                // Hiding an option alone does not suppress its value candidates.
+                arg.hide(true)
+                    .add(clap_complete::ArgValueCandidates::new(Vec::new))
+            }
+        })
         .collect::<Vec<_>>();
-    command.args(options)
+    let context = options.iter().fold(selected.clone(), |command, arg| {
+        command.mut_arg(arg.get_id(), |_| arg.clone())
+    });
+    if normalized.len() == words.len()
+        && explicit.is_some_and(|name| canonical.find_subcommand(name).is_some())
+    {
+        return context.clone().name("dotfiles").subcommand(context);
+    }
+    // Until an explicit command is present, all traversal uses update's syntax.
+    // The completion engine otherwise treats a command name used as an option
+    // value (for example --root log) as a change of command context.
+    canonical
+        .mut_subcommands(|subcommand| {
+            let name = match subcommand.get_name() {
+                "update" => "update",
+                "remove" => "remove",
+                "check" => "check",
+                "list" => "list",
+                "log" => "log",
+                "completions" => "completions",
+                "help" => "help",
+                _ => return subcommand,
+            };
+            context
+                .clone()
+                .name(name)
+                .about(subcommand.get_about().cloned().unwrap_or_default())
+                .hide(subcommand.is_hide_set())
+        })
+        .args(options)
+}
+
+/// Collect option identities, respecting value boundaries and short clusters.
+/// Probe with valid placeholder values so incomplete input cannot mask conflicts.
+fn present_arguments(command: &clap::Command, words: &[OsString]) -> Vec<clap::Id> {
+    let mut present = Vec::new();
+    let mut words = words.iter();
+    while let Some(word) = words.next() {
+        let Some(text) = word.to_str() else { continue };
+        if text == "--" {
+            break;
+        }
+        if let Some(long) = text.strip_prefix("--") {
+            let (long, attached) = long
+                .split_once('=')
+                .map_or((long, false), |(name, _)| (name, true));
+            if let Some(arg) = command
+                .get_arguments()
+                .find(|arg| arg.get_long() == Some(long))
+            {
+                present.push(arg.get_id().clone());
+                if arg.get_action().takes_values() && !attached {
+                    let _ = words.next();
+                }
+            }
+        } else if let Some(shorts) = text.strip_prefix('-') {
+            let mut shorts = shorts.chars();
+            while let Some(short) = shorts.next() {
+                if let Some(arg) = command
+                    .get_arguments()
+                    .find(|arg| arg.get_short() == Some(short))
+                {
+                    present.push(arg.get_id().clone());
+                    if arg.get_action().takes_values() {
+                        if shorts.as_str().is_empty() {
+                            let _ = words.next();
+                        }
+                        break;
+                    }
+                }
+            }
+        } else if !text.is_empty()
+            && let Some(arg) = command.get_positionals().next()
+        {
+            present.push(arg.get_id().clone());
+        }
+    }
+    present
+}
+
+fn argument_available(
+    command: &clap::Command,
+    present: &[clap::Id],
+    candidate: &clap::Arg,
+) -> bool {
+    use clap::error::ErrorKind;
+    let mut args = vec![OsString::from(command.get_name())];
+    for arg in command
+        .get_arguments()
+        .filter(|arg| present.contains(arg.get_id()))
+        .chain((!present.contains(candidate.get_id())).then_some(candidate))
+    {
+        if let Some(long) = arg.get_long() {
+            args.push(format!("--{long}").into());
+        } else if let Some(short) = arg.get_short() {
+            args.push(format!("-{short}").into());
+        }
+        if arg.get_action().takes_values() {
+            let value = arg
+                .get_value_parser()
+                .possible_values()
+                .and_then(|mut values| values.next().map(|value| value.get_name().to_owned()))
+                .unwrap_or_else(|| "0".to_owned());
+            args.push(value.into());
+        }
+    }
+    match command.clone().try_get_matches_from(args) {
+        Ok(_) => true,
+        Err(error) => !matches!(
+            error.kind(),
+            ErrorKind::ArgumentConflict | ErrorKind::MissingRequiredArgument
+        ),
+    }
 }
 
 const COMPLETION_ENV: &str = "DOTFILES_COMPLETE";
@@ -125,9 +280,31 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
         Some("update") | None => &["update"],
         Some("remove") => &["remove"],
         Some("check") => &["check"],
+        Some("list") => match option_value(&normalized, "--graph") {
+            Some("update") => &["update"],
+            Some("remove") => &["remove"],
+            Some("check") => &["check"],
+            _ => &[],
+        },
         Some(word) if word.starts_with('-') => &["update"],
         Some(_) => &[],
     }
+}
+
+fn option_value<'a>(words: &'a [OsString], option: &str) -> Option<&'a str> {
+    let mut words = words.iter();
+    while let Some(word) = words.next() {
+        let text = word.to_str()?;
+        if text == option {
+            return words.next()?.to_str();
+        }
+        if let Some((name, value)) = text.split_once('=')
+            && name == option
+        {
+            return Some(value);
+        }
+    }
+    None
 }
 
 fn repository_args(words: &[OsString]) -> Vec<OsString> {
@@ -172,6 +349,190 @@ fn task_candidates_from_json(json: &[u8], memberships: &[&str]) -> Vec<Completio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn complete(words: &[&str], index: usize) -> Vec<String> {
+        let words = words.iter().map(OsString::from).collect::<Vec<_>>();
+        let mut command = command_for_words(&words);
+        clap_complete::engine::complete(&mut command, words, index, None)
+            .expect("complete CLI arguments")
+            .iter()
+            .filter(|candidate| !candidate.is_hide_set())
+            .map(|candidate| candidate.get_value().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn format_candidates_follow_the_command_before_and_after_options() {
+        for (command, expected) in [
+            ("update", vec!["human", "jsonl"]),
+            ("remove", vec!["human", "jsonl"]),
+            ("check", vec!["human", "jsonl"]),
+            ("list", vec!["table", "plain", "json"]),
+        ] {
+            for (words, index) in [
+                (vec!["dotfiles", command, "--format", ""], 3),
+                (vec!["dotfiles", "--format", "", command], 2),
+            ] {
+                assert_eq!(complete(&words, index), expected, "{words:?}");
+                for value in &expected {
+                    super::super::cli::Cli::try_parse_from([
+                        "dotfiles", "--format", value, command,
+                    ])
+                    .expect("every suggested format must parse");
+                }
+            }
+        }
+        assert_eq!(
+            complete(&["dotfiles", "--format", ""], 2),
+            ["human", "jsonl"]
+        );
+        assert_eq!(
+            complete(&["dotfiles", "--format=", "list"], 1),
+            ["--format=table", "--format=plain", "--format=json"]
+        );
+        assert_eq!(
+            complete(&["dotfiles", "--list", "--format", "", "log"], 3),
+            ["table", "plain", "json"]
+        );
+    }
+
+    #[test]
+    fn completion_respects_conflicts_and_required_flags() {
+        for (words, forbidden, allowed) in [
+            (
+                vec!["dotfiles", "update", "--quiet", "--"],
+                vec!["--verbose", "--format"],
+                "--dry-run",
+            ),
+            (
+                vec!["dotfiles", "log", "--list", "--"],
+                vec!["--raw", "--task", "--id", "--verbose"],
+                "--format",
+            ),
+            (vec!["dotfiles", "log", "--"], vec!["--format"], "--list"),
+            (
+                vec!["dotfiles", "list", "--"],
+                vec!["--only", "--skip", "--with-deps"],
+                "--graph",
+            ),
+            (
+                vec!["dotfiles", "list", "--graph", "check", "--"],
+                vec!["--all"],
+                "--only",
+            ),
+            (
+                vec!["dotfiles", "update", "--"],
+                vec!["--with-deps"],
+                "--only",
+            ),
+            (
+                vec![
+                    "dotfiles",
+                    "list",
+                    "--graph",
+                    "check",
+                    "--only",
+                    "shellcheck",
+                    "--",
+                ],
+                vec!["--with-deps"],
+                "--skip",
+            ),
+            (
+                vec![
+                    "dotfiles",
+                    "list",
+                    "--graph=remove",
+                    "--only",
+                    "symlinks",
+                    "--",
+                ],
+                vec!["--with-deps"],
+                "--skip",
+            ),
+            (
+                vec![
+                    "dotfiles", "list", "--graph", "update", "--only", "symlinks", "--",
+                ],
+                vec![],
+                "--with-deps",
+            ),
+            (
+                vec!["dotfiles", "update", "--only", "symlinks", "--"],
+                vec![],
+                "--with-deps",
+            ),
+        ] {
+            let candidates = complete(&words, words.len() - 1);
+            for flag in forbidden {
+                assert!(
+                    !candidates.iter().any(|candidate| candidate == flag),
+                    "{words:?}: {flag}"
+                );
+            }
+            assert!(
+                candidates.iter().any(|candidate| candidate == allowed),
+                "{words:?}: {allowed}"
+            );
+        }
+        assert_eq!(
+            complete(
+                &[
+                    "dotfiles",
+                    "list",
+                    "--only",
+                    "symlinks",
+                    "--with-deps",
+                    "--graph",
+                    ""
+                ],
+                6
+            ),
+            ["update"]
+        );
+        assert!(complete(&["dotfiles", "log", "--format", ""], 3).is_empty());
+        assert!(complete(&["dotfiles", "update", "--quiet", "--format", ""], 4).is_empty());
+    }
+
+    #[test]
+    fn command_names_used_as_values_do_not_change_completion_context() {
+        for name in ["log", "list", "check", "remove", "update"] {
+            assert_eq!(
+                complete(&["dotfiles", "--root", name, "--format", ""], 4),
+                ["human", "jsonl"],
+                "root named {name}"
+            );
+        }
+        assert_eq!(
+            complete(&["dotfiles", "--root", "log", "list", "--format", ""], 5),
+            ["table", "plain", "json"]
+        );
+        let candidates = complete(&["dotfiles", "log", "--command", "check", "--"], 4);
+        assert!(candidates.contains(&"--list".to_owned()));
+        assert!(!candidates.contains(&"--profile".to_owned()));
+    }
+
+    #[test]
+    fn graph_selector_membership_matches_the_selected_graph() {
+        for command in ["update", "remove", "check"] {
+            for graph in [vec!["--graph", command], vec![]] {
+                let mut words = vec!["dotfiles", "list"];
+                if graph.is_empty() {
+                    let attached = format!("--graph={command}");
+                    let attached_words =
+                        ["dotfiles", "list", &attached, "--only", ""].map(OsString::from);
+                    assert_eq!(task_memberships(&attached_words), [command]);
+                } else {
+                    words.extend(graph);
+                    words.extend(["--skip", ""]);
+                    assert_eq!(
+                        task_memberships(&words.iter().map(OsString::from).collect::<Vec<_>>()),
+                        [command]
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn prefix_options_do_not_change_task_completion_membership() {

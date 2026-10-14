@@ -30,11 +30,10 @@ documented in [Testing](TESTING.md#fast-local-sequence).
 
 ### Selecting the pinned toolchain
 
-The pin is honored automatically only when `cargo` and `rustc` on PATH are
-rustup proxies. Distribution-managed binaries such as Arch's `/usr/bin/cargo`
-and `/usr/bin/rustc` ignore `rust-toolchain.toml`, even from `cli/`.
-
-With rustup-managed commands, enter `cli/` and verify the selected toolchain:
+Use rustup to select the Rust version, components, and targets declared in
+[`rust-toolchain.toml`](../cli/rust-toolchain.toml). Run Rust commands from
+`cli/` so rustup discovers the project configuration and installs anything
+missing.
 
 ```bash
 cd cli
@@ -43,38 +42,14 @@ cargo --version
 rustc --version
 ```
 
-If rustup is installed but system binaries come first on PATH, put rustup's
-proxy directory first for this shell (`~/.cargo/bin` by default):
+Ensure `cargo` and `rustc` on PATH are managed by rustup. Independently installed
+Rust tools may ignore the toolchain file. Before validation, confirm the
+reported versions match the pin and configure your editor to use the same
+toolchain. Restart its Rust language server after changing toolchains.
 
-```bash
-export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
-```
-
-In PowerShell, the default proxy directory can be selected with
-`$env:PATH = "$HOME\.cargo\bin;$env:PATH"`; use `$env:CARGO_HOME` instead of
-`$HOME\.cargo` if customized. Then verify from `cli/` as above.
-
-If rustup itself is unavailable but the pinned toolchain is already installed,
-put that toolchain's `bin` directory first instead. For example, with the
-current pin on x86-64 Linux:
-
-```bash
-export PATH="$HOME/.rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin:$PATH"
-cd cli
-cargo --version
-rustc --version
-```
-
-Adjust the directory for the version in `rust-toolchain.toml`, your host target,
-and a custom `RUSTUP_HOME` if used. This selects Cargo, rustc, rustfmt and Clippy
-together for the shell, including subprocesses launched by the local check
-scripts. Changing directory or invoking only the pinned Cargo by absolute path
-does not select a matching compiler when system Rust remains on PATH.
-
-Before validation, confirm both reported versions match the pin. If the pinned
-toolchain or a required component/target is missing, provision it explicitly
-with rustup or report the affected check as unavailable. Do not fall back to a
-different host compiler and treat its results as pinned-toolchain validation.
+If the required toolchain, component, or target is unavailable, report the
+affected check as unavailable rather than treating results from another
+compiler as pinned-toolchain validation.
 
 ## Contribution workflow
 

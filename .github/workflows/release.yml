@@ -108,7 +108,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        run: rustup show
+        run: rustup toolchain install
         working-directory: cli
 
       - name: Build release binary
@@ -139,7 +139,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        run: rustup show
+        run: rustup toolchain install
         working-directory: cli
 
       - name: Build release binary

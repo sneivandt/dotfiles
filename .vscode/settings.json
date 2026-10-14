@@ -30,8 +30,10 @@
     "editor.detectIndentation": false,
     // Rust settings
     "rust-analyzer.linkedProjects": ["cli/Cargo.toml"],
-    "rust-analyzer.cargo.features": "all",
+    "rust-analyzer.cargo.features": [],
+    "rust-analyzer.check.allTargets": true,
     "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.check.extraArgs": ["--locked", "--profile", "ci", "--", "-D", "warnings"],
     "[rust]": {
         "editor.tabSize": 4,
         "editor.insertSpaces": true,

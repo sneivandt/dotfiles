@@ -242,7 +242,7 @@ function Test-UpdateArgumentForwarding {
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 
-        if ($LASTEXITCODE -eq 0 -and $plain -match 'profile\s+base') {
+        if ($LASTEXITCODE -eq 0 -and $plain -match 'base\s+profile') {
             Write-TestPass "Update arguments forwarded correctly"
             return $true
         }
@@ -272,7 +272,7 @@ function Test-AdvancedFlagForwarding {
         $text = ($output | Out-String)
         $plain = $text -replace "$([char]27)\[[0-9;]*m", ''
 
-        if ($LASTEXITCODE -eq 0 -and $plain -match 'profile\s+base') {
+        if ($LASTEXITCODE -eq 0 -and $plain -match 'base\s+profile') {
             Write-TestPass "Wrapper forwards advanced flags to the Rust CLI"
             return $true
         }

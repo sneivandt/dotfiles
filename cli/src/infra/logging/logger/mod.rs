@@ -543,7 +543,7 @@ mod tests {
         let (log, _tmp, _guard) = isolated_logger();
 
         log.startup("CLI upgraded · old → new");
-        log.startup("Install · profile desktop · Arch Linux");
+        log.startup("Install · desktop profile · Arch Linux");
 
         assert!(
             !log.console.lock().startup_separator_emitted,
@@ -554,7 +554,7 @@ mod tests {
     #[test]
     fn summary_separates_startup_context_before_totals() {
         let (log, _tmp, _guard) = isolated_logger();
-        log.startup("Install · profile desktop · Arch Linux");
+        log.startup("Install · desktop profile · Arch Linux");
 
         log.print_summary();
 

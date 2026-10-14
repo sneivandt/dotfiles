@@ -164,12 +164,12 @@ fn structured_startup_line_emphasizes_its_label_only() {
     assert_eq!(
         crate::infra::logging::console::ui_line_with_style(
             MsgKind::Startup,
-            "Install · profile desktop · Arch Linux",
+            "Install · desktop profile · Arch Linux",
             StyleChoice::auto(true, false),
             false,
         )
         .as_deref(),
-        Some("\x1b[1mInstall\x1b[0m\x1b[2m · profile desktop · Arch Linux\x1b[0m")
+        Some("\x1b[1mInstall\x1b[0m\x1b[2m · desktop profile · Arch Linux\x1b[0m")
     );
 }
 
@@ -308,8 +308,8 @@ fn another_logger_cannot_change_the_active_subscribers_verbosity() {
 fn dry_run_header_highlights_mode_and_recovery_hint_keeps_contrast() {
     for (message, colored) in [
         (
-            "Update · dry run · profile desktop · Arch Linux",
-            "\x1b[1mUpdate\x1b[0m\x1b[2m · \x1b[0m\x1b[35mdry run\x1b[0m\x1b[2m · profile desktop · Arch Linux\x1b[0m",
+            "Update · dry run · desktop profile · Arch Linux",
+            "\x1b[1mUpdate\x1b[0m\x1b[2m · \x1b[0m\x1b[35mdry run\x1b[0m\x1b[2m · desktop profile · Arch Linux\x1b[0m",
         ),
         (
             "Run 'dotfiles log --id fixture -v' for details.",

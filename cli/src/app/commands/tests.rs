@@ -132,7 +132,7 @@ mod startup_log_tests {
     fn repository_restart_does_not_repeat_startup_context() {
         let output = CapturingOutput::default();
 
-        emit_startup_context(&output, "Update · profile desktop · Arch Linux", true);
+        emit_startup_context(&output, "Update · desktop profile · Arch Linux", true);
 
         assert!(
             output.messages().is_empty(),
@@ -143,7 +143,7 @@ mod startup_log_tests {
     #[test]
     fn initial_process_emits_startup_context() {
         let output = CapturingOutput::default();
-        let context = "Update · profile desktop · Arch Linux";
+        let context = "Update · desktop profile · Arch Linux";
 
         emit_startup_context(&output, context, false);
 
@@ -180,7 +180,7 @@ mod startup_log_tests {
                 true,
                 None,
             ),
-            "Install · dry run · profile workstation · Linux"
+            "Install · dry run · workstation profile · Linux"
         );
     }
 
@@ -194,7 +194,7 @@ mod startup_log_tests {
                 false,
                 Some(Path::new("/private/overlay")),
             ),
-            "Install · profile workstation · Linux · overlay /private/overlay",
+            "Install · workstation profile · Linux · overlay /private/overlay",
             "overlay must be appended to the startup header, not emitted on its own line"
         );
     }
@@ -209,7 +209,7 @@ mod startup_log_tests {
                 true,
                 Some(Path::new("/private/overlay")),
             ),
-            "Install · dry run · profile workstation · Linux · overlay /private/overlay"
+            "Install · dry run · workstation profile · Linux · overlay /private/overlay"
         );
     }
 }

@@ -33,6 +33,8 @@ description: >
   and the first summary outcome are bold. Every incomplete summary
   outcome is bold and colored. Standalone `WARN`/`ERROR` labels combine bold
   with yellow/red; explanations use normal foreground and keep aligned columns.
+- Startup context names the selected role as `{name} profile`, for example
+  `Update · desktop profile · Arch Linux`, not `profile {name}`.
 - Action details, informational explanations, active task names, transient
   self-update work, recovery hints, and reasons for failed/skipped/blocked/
   interrupted tasks use normal contrast. Startup metadata, progress counts,

@@ -90,7 +90,7 @@ fn nested_cli_fixture_preserves_ancestor_settings_and_run_lock() {
         let child = git2::Repository::open(&root).unwrap();
         let child_settings = child.config().unwrap();
         assert!(
-            String::from_utf8_lossy(&output.stdout).contains("profile base"),
+            String::from_utf8_lossy(&output.stdout).contains("base profile"),
             "the child must use its requested profile rather than the ancestor's desktop selection"
         );
         assert_eq!(

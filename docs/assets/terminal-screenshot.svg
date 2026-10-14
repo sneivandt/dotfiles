@@ -91,7 +91,7 @@
     <g class="typing transient"><g class="caret"><path class="blink" d="M46 49v20" stroke="#c0caf5" stroke-width="2"/></g></g>
     <g class="updating transient"><text x="26" y="89" fill="#8992b5">Updating to v2026.01.01-2</text></g>
     <g class="upgraded"><text x="26" y="89"><tspan font-weight="600">CLI upgraded</tspan><tspan fill="#8992b5"> · v2026.01.01-1 → v2026.01.01-2</tspan></text></g>
-    <g class="startup"><text x="26" y="113"><tspan font-weight="600">Update</tspan><tspan fill="#8992b5"> · profile desktop · Arch Linux</tspan></text></g>
+    <g class="startup"><text x="26" y="113"><tspan font-weight="600">Update</tspan><tspan fill="#8992b5"> · desktop profile · Arch Linux</tspan></text></g>
     <g class="links"><text x="26" y="161"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Home symlinks</tspan></text><text x="46" y="185">link ~/.config/git/config → symlinks/config/git/config</text><text x="46" y="209">link ~/.zshrc → symlinks/zshrc</text></g>
     <g class="completions"><text x="26" y="257"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Shell completions</tspan></text><text x="46" y="281">write zsh completions</text></g>
     <g class="packages"><text x="26" y="329"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">System packages</tspan></text><text x="46" y="353">install fd</text><text x="46" y="377">install ripgrep</text></g>

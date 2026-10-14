@@ -675,7 +675,7 @@ fn no_op_install_summary_needs_no_totals_separator() {
 #[test]
 fn no_op_update_summary_reuses_the_startup_separator() {
     let (log, _tmp, _guard) = crate::infra::logging::isolated_logger_for("update");
-    log.startup("Update · profile desktop · Arch Linux");
+    log.startup("Update · desktop profile · Arch Linux");
     log.separate_from_startup();
 
     assert!(log.console_ends_with_blank_line());

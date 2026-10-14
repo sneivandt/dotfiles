@@ -288,7 +288,7 @@ pub(super) fn startup_context_line(
         format!(" \u{00b7} overlay {}", path.display())
     });
     format!(
-        "{command_title}{dry_run} \u{00b7} profile {profile_name} \u{00b7} {platform_label}{overlay}"
+        "{command_title}{dry_run} \u{00b7} {profile_name} profile \u{00b7} {platform_label}{overlay}"
     )
 }
 

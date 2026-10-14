@@ -62,14 +62,9 @@ fn command_for_words(words: &[OsString]) -> clap::Command {
     let context = options.iter().fold(selected.clone(), |command, arg| {
         command.mut_arg(arg.get_id(), |_| arg.clone())
     });
-    if normalized.len() == words.len()
-        && explicit.is_some_and(|name| canonical.find_subcommand(name).is_some())
-    {
-        return context.clone().name("dotfiles").subcommand(context);
-    }
-    // Until an explicit command is present, all traversal uses update's syntax.
-    // The completion engine otherwise treats a command name used as an option
-    // value (for example --root log) as a change of command context.
+    // Every traversal uses the selected command's syntax. The completion
+    // engine otherwise treats command names used as option values (for example
+    // --root log) as changes of context.
     canonical
         .mut_subcommands(|subcommand| {
             let name = match subcommand.get_name() {
@@ -396,6 +391,20 @@ mod tests {
         );
     }
 
+    fn assert_flags(words: &[&str], forbidden: &[&str], allowed: &str) {
+        let candidates = complete(words, words.len() - 1);
+        for flag in forbidden {
+            assert!(
+                !candidates.iter().any(|candidate| candidate == flag),
+                "{words:?}: {flag}"
+            );
+        }
+        assert!(
+            candidates.iter().any(|candidate| candidate == allowed),
+            "{words:?}: {allowed}"
+        );
+    }
+
     #[test]
     fn completion_respects_conflicts_and_required_flags() {
         for (words, forbidden, allowed) in [
@@ -425,6 +434,49 @@ mod tests {
                 vec!["--with-deps"],
                 "--only",
             ),
+            (
+                vec!["dotfiles", "update", "--only", "symlinks", "--"],
+                vec![],
+                "--with-deps",
+            ),
+        ] {
+            assert_flags(&words, &forbidden, allowed);
+        }
+        assert!(complete(&["dotfiles", "log", "--format", ""], 3).is_empty());
+        assert!(complete(&["dotfiles", "update", "--quiet", "--format", ""], 4).is_empty());
+    }
+
+    #[test]
+    fn completion_handles_repeated_options_short_flags_and_positionals() {
+        for (words, forbidden, allowed) in [
+            (
+                vec!["dotfiles", "log", "0", "--"],
+                vec!["--list", "--id"],
+                "--raw",
+            ),
+            (
+                vec!["dotfiles", "update", "-q", "--"],
+                vec!["--format", "--verbose", "--quiet"],
+                "--dry-run",
+            ),
+            (
+                vec!["dotfiles", "update", "--profile=base", "-q", "--"],
+                vec!["--format", "--verbose"],
+                "--dry-run",
+            ),
+            (
+                vec!["dotfiles", "update", "--profile", "base", "--"],
+                vec!["--profile"],
+                "--only",
+            ),
+        ] {
+            assert_flags(&words, &forbidden, allowed);
+        }
+    }
+
+    #[test]
+    fn graph_dependency_completion_requires_an_update_graph() {
+        for (words, forbidden, allowed) in [
             (
                 vec![
                     "dotfiles",
@@ -457,23 +509,8 @@ mod tests {
                 vec![],
                 "--with-deps",
             ),
-            (
-                vec!["dotfiles", "update", "--only", "symlinks", "--"],
-                vec![],
-                "--with-deps",
-            ),
         ] {
-            let candidates = complete(&words, words.len() - 1);
-            for flag in forbidden {
-                assert!(
-                    !candidates.iter().any(|candidate| candidate == flag),
-                    "{words:?}: {flag}"
-                );
-            }
-            assert!(
-                candidates.iter().any(|candidate| candidate == allowed),
-                "{words:?}: {allowed}"
-            );
+            assert_flags(&words, &forbidden, allowed);
         }
         assert_eq!(
             complete(
@@ -490,16 +527,73 @@ mod tests {
             ),
             ["update"]
         );
-        assert!(complete(&["dotfiles", "log", "--format", ""], 3).is_empty());
-        assert!(complete(&["dotfiles", "update", "--quiet", "--format", ""], 4).is_empty());
+        assert_eq!(
+            complete(&["dotfiles", "list", "--graph", ""], 3),
+            ["update", "remove", "check"]
+        );
+        assert_eq!(
+            complete(
+                &[
+                    "dotfiles",
+                    "list",
+                    "--graph",
+                    "update",
+                    "--only",
+                    "symlinks",
+                    "--with-deps",
+                    "--format",
+                    ""
+                ],
+                8
+            ),
+            ["table", "plain", "json"]
+        );
+        assert_eq!(
+            complete(
+                &[
+                    "dotfiles",
+                    "list",
+                    "--graph",
+                    "update",
+                    "--only",
+                    "symlinks",
+                    "--with-deps",
+                    "--profile",
+                    ""
+                ],
+                8
+            ),
+            ["base", "desktop"]
+        );
     }
 
     #[test]
     fn command_names_used_as_values_do_not_change_completion_context() {
-        for name in ["log", "list", "check", "remove", "update"] {
+        for name in [
+            "log",
+            "list",
+            "check",
+            "remove",
+            "update",
+            "completions",
+            "help",
+        ] {
             assert_eq!(
                 complete(&["dotfiles", "--root", name, "--format", ""], 4),
                 ["human", "jsonl"],
+                "root named {name}"
+            );
+            let candidates = complete(&["dotfiles", "--root", name, "--quiet", "--"], 4);
+            assert!(
+                !candidates.contains(&"--format".to_owned()),
+                "root named {name}"
+            );
+            assert!(
+                !candidates.contains(&"--quiet".to_owned()),
+                "repeated quiet, root named {name}"
+            );
+            assert!(
+                candidates.contains(&"--dry-run".to_owned()),
                 "root named {name}"
             );
         }

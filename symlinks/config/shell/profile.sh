@@ -11,9 +11,9 @@ if tty -s; then
 fi
 
 # xdg
-export XDG_CACHE_HOME="$HOME"/.cache
-export XDG_CONFIG_HOME="$HOME"/.config
-export XDG_DATA_HOME="$HOME"/.local/share
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 
 # editor
 if command -v nvim >/dev/null 2>&1; then
@@ -63,7 +63,7 @@ if [ -n "$TERM" ] && [ "$TERM" != dumb ]; then
 fi
 
 LESSHISTFILE=/dev/null
-export LESS=-imRj8X
+export LESS="${LESS--imRj8}"
 export LESSHISTFILE
 
 # mail
@@ -76,15 +76,15 @@ if command -v bat >/dev/null 2>&1; then
   export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 else
   # shellcheck disable=SC2090
-  export MANPAGER="less -imRj8X"
+  export MANPAGER="less"
 fi
 
 # readline
 export INPUTRC="$XDG_CONFIG_HOME"/readline/inputrc
 
 # terminfo
-export TERMINFO="$XDG_DATA_HOME"/terminfo
-export TERMINFO_DIRS="$XDG_DATA_HOME"/terminfo:/usr/share/terminfo
+export TERMINFO="${TERMINFO:-$XDG_DATA_HOME/terminfo}"
+export TERMINFO_DIRS="${TERMINFO_DIRS:-$XDG_DATA_HOME/terminfo:}"
 
 # wget
 export WGETRC="$XDG_CONFIG_HOME"/wgetrc

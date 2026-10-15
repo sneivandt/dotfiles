@@ -189,6 +189,74 @@ class ShellConfigTests(unittest.TestCase):
         )
         self.assertEqual(result.stdout.strip(), "100000")
 
+    def test_profile_preserves_environment_preferences_and_defaults(self):
+        variables = ("XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
+                     "TERMINFO", "TERMINFO_DIRS", "LESS")
+        supplied = [str(self.fixture / name) for name in variables[:-1]] + ["-FR"]
+        defaults = [str(self.home / suffix) for suffix in
+                    (".cache", ".config", ".local/share", ".local/share/terminfo")]
+        defaults += [str(self.home / ".local/share/terminfo") + ":", "-imRj8"]
+        for shell in ("bash", "zsh"):
+            for values in (supplied, defaults):
+                with self.subTest(shell=shell, values=values):
+                    for variable in variables:
+                        self.env.pop(variable, None)
+                    if values is supplied:
+                        self.env.update(zip(variables, supplied))
+                    result = self.run_shell(
+                        '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                        'printf "%s\\n" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" '
+                        '"$XDG_DATA_HOME" "$TERMINFO" "$TERMINFO_DIRS" "$LESS"\n',
+                        shell=shell,
+                    )
+                    self.assertEqual(result.stdout.splitlines(), values)
+            self.env["LESS"] = ""
+            self.run_shell(
+                '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                '[ "${LESS+x}" = x ] && [ -z "$LESS" ]\n', shell=shell,
+            )
+
+    def test_approximate_completion_requires_repeated_unchanged_input(self):
+        self.prepare_completion()
+        result = self.run_shell(
+            'setopt extendedglob\n'
+            'source "$ROOT/symlinks/config/zsh/completion.zsh" || exit $?\n'
+            'HISTNO=1 BUFFER="cat typo" CURSOR=8\n'
+            'for step in first repeat edit move history; do\n'
+            '  case $step in\n'
+            '    edit) BUFFER="cat other" ;;\n'
+            '    move) CURSOR=3 ;;\n'
+            '    history) HISTNO=2 ;;\n'
+            '  esac\n'
+            '  zstyle -a ":completion::complete:cat:argument-1:" completer selected || exit 1\n'
+            '  print -r -- "$step:${(j: :)selected}"\n'
+            'done\n'
+        )
+        base = "_expand _complete _ignored"
+        self.assertEqual(result.stdout.splitlines(),
+                         ["first:" + base, "repeat:" + base + " _approximate",
+                          "edit:" + base, "move:" + base, "history:" + base])
+
+    def test_git_search_and_contributors_work_with_redirected_io(self):
+        command = ["git", "-c", "init.templateDir=", "-c", "core.hooksPath=/dev/null",
+                   "-c", "include.path=" + str(ROOT / "symlinks/config/git/aliases"),
+                   "-c", "user.name=Fixture", "-c", "user.email=fixture@test.local"]
+        def git(*args):
+            return subprocess.run(command + list(args), cwd=self.fixture, env=self.env,
+                                  input="", text=True, capture_output=True, check=True).stdout
+        git("init", "-q")
+        self.write(self.fixture / "sample.txt", "Needle\n")
+        git("add", "sample.txt")
+        git("commit", "-qm", "first")
+        first = git("rev-parse", "HEAD").strip()
+        self.write(self.fixture / "sample.txt", "Needle\nsecond\n")
+        git("commit", "-qam", "second")
+        self.assertEqual(git("gr", "needle"), "sample.txt:1:Needle\n")
+        self.assertEqual(git("contributors"), git("shortlog", "-sn", "HEAD"))
+        self.assertEqual(git("contributors", first + "..HEAD"),
+                         git("shortlog", "-sn", first + "..HEAD"))
+        self.assertIn("1\tFixture", git("contributors", first + "..HEAD"))
+
     def test_process_completion_selects_only_the_current_user(self):
         self.prepare_completion()
         self.env["USER"] = "fixture user"
@@ -976,6 +1044,58 @@ class ShellConfigTests(unittest.TestCase):
             cwd=self.fixture, env=self.env, text=True, capture_output=True, check=True,
         )
         self.assertEqual(result.stdout.strip(), "code-insiders --wait")
+
+    def test_wget_preserves_url_names_and_reuses_unchanged_downloads(self):
+        requests = []
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_HEAD(self):
+                self.do_GET()
+            def do_GET(self):
+                requests.append((self.path, self.headers.get("If-Modified-Since")))
+                if self.path == "/redirect":
+                    self.send_response(302)
+                    self.send_header("Location", "/renamed")
+                elif self.headers.get("If-Modified-Since"):
+                    self.send_response(304)
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.send_header("Content-Disposition", 'attachment; filename="header.html"')
+                    self.send_header("Last-Modified", "Mon, 05 Oct 2026 00:00:00 GMT")
+                    self.send_header("Content-Length", "7")
+                self.end_headers()
+                if (self.command != "HEAD" and self.path != "/redirect"
+                        and not self.headers.get("If-Modified-Since")):
+                    self.wfile.write(b"fixture")
+            def log_message(self, *_args):
+                pass
+        server = http.server.ThreadingHTTPServer(("localhost", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self.env["WGETRC"] = str(ROOT / "symlinks/config/wgetrc")
+            url = f"http://localhost:{server.server_port}"
+            def download(path, *options):
+                subprocess.run(["wget", "-q", *options, url + path], cwd=self.fixture,
+                               env=self.env, check=True, timeout=10)
+            download("/page")
+            download("/page")
+            self.assertEqual((self.fixture / "page").read_bytes(), b"fixture")
+            self.assertTrue(any(path == "/page" and date for path, date in requests))
+            download("/redirect")
+            self.assertTrue((self.fixture / "redirect").is_file())
+            self.assertFalse((self.fixture / "renamed").exists())
+            self.assertFalse((self.fixture / "header.html").exists())
+            download("/extension", "--adjust-extension")
+            self.assertTrue((self.fixture / "extension.html").is_file())
+            download("/redirect", "--trust-server-names")
+            self.assertTrue((self.fixture / "renamed").is_file())
+            download("/header", "--content-disposition")
+            self.assertTrue((self.fixture / "header.html").is_file())
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
 
     def test_wget_does_not_append_changed_content_without_modification_date(self):
         payload = b"NEW-CONTENT-LONGER\n"

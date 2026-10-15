@@ -44,7 +44,14 @@ zstyle ':completion:*' verbose yes
 zstyle ':completion:*:*:kill:*' menu yes select
 zstyle ':completion:*:*:kill:*:processes' list-colors "=(#b) #([0-9]#)*=29=31"
 zstyle ':completion:*:*:killall:*' menu yes select
-zstyle ':completion:*::::' completer _expand _complete _ignored _approximate
+# Only try spelling corrections on a repeated completion of the same input.
+zstyle -e ':completion:*' completer '
+  reply=(_expand _complete _ignored)
+  if [[ ${_DOTFILES_COMPLETION_LAST_TRY-} == "$HISTNO:$BUFFER:$CURSOR" ]]; then
+    reply+=(_approximate)
+  fi
+  _DOTFILES_COMPLETION_LAST_TRY="$HISTNO:$BUFFER:$CURSOR"
+'
 zstyle ':completion:*:kill:*' force-list always
 zstyle ':completion:*:killall:*' force-list always
 zstyle ':completion:*:manuals' separate-sections true

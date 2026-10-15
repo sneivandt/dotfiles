@@ -201,6 +201,10 @@ These entries converge global Git settings. Shared Git configuration files and
 platform includes instead live under `symlinks/config/git/`; do not introduce
 contradictory values in the two places.
 
+`git gr` searches case-insensitively with line numbers and colors terminal
+output only. `git contributors` summarizes `HEAD` when called without arguments;
+pass a revision range such as `main..HEAD` to select different commits.
+
 ## Agent harness settings
 
 ```toml
@@ -492,6 +496,23 @@ and available APM/script analyzers. The `config_drift` Rust suite checks
 relationships among the real configuration and tracked sources. Neither a
 successful parse nor a single-platform run proves every category works.
 Use [Testing](TESTING.md#choosing-coverage) to select coverage.
+
+## Shell application configuration
+
+The shared shell profile preserves supplied `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`,
+`XDG_DATA_HOME`, `TERMINFO` and `TERMINFO_DIRS` values. Missing values use the
+home-directory defaults; the default terminal search path also retains the
+system database. Supplied `LESS` options, including an empty value, are preserved.
+The default is `-imRj8`; add `-X` to keep pager output in terminal scrollback.
+
+Zsh tries approximate completion only when Tab is repeated without changing the
+input, cursor position or history entry.
+
+Wget keeps URL filenames and uses timestamping to reuse unchanged downloads.
+Request `--adjust-extension` for web-page filename extensions,
+`--trust-server-names` for redirected filenames, or `--content-disposition` for
+filenames supplied by response headers. Extension adjustment can prevent
+timestamping from recognizing a previously downloaded URL.
 
 ## Desktop application configuration
 

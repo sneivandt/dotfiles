@@ -10,7 +10,7 @@ version: 1.0.0
 # - copilot:      ~/.copilot/mcp-config.json
 #
 # copilot-app is deployed by a dedicated `apm install -g --target copilot-app`
-# step in the APM packages task, so it is intentionally absent here.
+# step in the Agent packages task, so it is intentionally absent here.
 targets:
   - agent-skills
   - copilot

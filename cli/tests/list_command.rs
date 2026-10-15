@@ -7,6 +7,44 @@
 mod common;
 
 #[test]
+fn list_displays_agent_packages_with_the_stable_apm_selector() {
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    for selector in ["", "apm", "Agent packages"] {
+        for format in ["json", "plain", "table"] {
+            let mut command =
+                common::cli_command(repo.root_path(), home.path(), None, "list", selector);
+            if !selector.is_empty() {
+                command.args(["--graph", "update"]);
+            }
+            let output = command.args(["--format", format]).output().unwrap();
+            assert!(
+                output.status.success(),
+                "selector={selector}, format={format}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            if format == "json" {
+                let rows: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+                let row = rows.iter().find(|row| row["selector"] == "apm").unwrap();
+                assert_eq!(row["task"], "Agent packages");
+                if !selector.is_empty() {
+                    assert_eq!(row["selection"], "requested");
+                }
+            } else {
+                let stdout = String::from_utf8(output.stdout).unwrap();
+                assert!(stdout.contains("Agent packages"), "{stdout}");
+                assert!(
+                    stdout
+                        .lines()
+                        .any(|line| line.split_whitespace().next() == Some("apm")),
+                    "{stdout}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn list_hides_empty_configuration_and_all_restores_the_catalog() {
     let repo = common::IntegrationTestContext::new();
     let home = tempfile::tempdir().unwrap();

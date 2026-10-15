@@ -376,7 +376,7 @@ fn update_delegates_directly_and_reports_exact_lock_changes() {
     assert_task_changed(&result);
     assert_eq!(
         task_batch(&result).message(),
-        Some("updated 1 APM dependency")
+        Some("updated 1 agent package")
     );
     let contents = std::fs::read_to_string(log.log_path().expect("log path")).expect("read log");
     assert!(
@@ -400,7 +400,7 @@ fn update_delegates_directly_and_reports_exact_lock_changes() {
                 && subject == "example-plugin · commit 1111111 -> 2222222"
                 && message == "update example-plugin · commit 1111111 -> 2222222"
         }),
-        "APM dependency change should be emitted as task detail: {contents}"
+        "agent package change should be emitted as task detail: {contents}"
     );
 }
 

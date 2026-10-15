@@ -447,7 +447,7 @@ reload boundary and appear in [task discovery](TASKS.md).
 
 ## APM configuration
 
-APM packages use YAML fragments under `symlinks/apm/config/`, selected by
+Agent packages use YAML fragments under `symlinks/apm/config/`, selected by
 `conf/symlinks.toml`. They are distinct from harness preferences in
 `agent-settings.toml`. See [APM](APM.md) for source ownership, target selection,
 updates, and generated files.

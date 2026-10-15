@@ -221,13 +221,13 @@ mod tests {
             "VS Code extension installation should recheck launchers after package installation"
         );
         assert!(
-            find("APM packages")
+            find("Agent packages")
                 .dependencies()
                 .contains(&id::<InstallSymlinks>()),
             "APM fragments must be linked before APM convergence"
         );
         assert!(
-            find("APM packages")
+            find("Agent packages")
                 .ordering_dependencies()
                 .contains(&id::<InstallPackages>()),
             "APM should recheck its CLI after package installation without being blocked by unrelated package failures"

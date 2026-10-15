@@ -101,8 +101,8 @@
     <g class="live-3"><text x="26" y="329"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 8 remaining · </tspan>System packages</text></g>
     <g class="live-4"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 7 remaining · </tspan>Paru package manager, Default shell</text></g>
     <g class="live-5"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 5 remaining · </tspan>AUR packages, System files</text></g>
-    <g class="live-6"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 3 remaining · </tspan>Systemd units, APM packages</text></g>
-    <g class="live-7"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>APM packages</text></g>
+    <g class="live-6"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 3 remaining · </tspan>Systemd units, Agent packages</text></g>
+    <g class="live-7"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>Agent packages</text></g>
     <g class="summary"><text x="26" y="425"><tspan fill="#9ece6a" font-weight="600">3 tasks changed</tspan><tspan fill="#8992b5"> · 14 tasks current · 6.1s</tspan></text></g>
     <g class="prompt"><text x="26" y="449"><tspan fill="#e0af68">~</tspan></text><text x="26" y="473"><tspan fill="#a9b1d6">$</tspan></text><path class="blink" d="M46 457v20" stroke="#c0caf5" stroke-width="2"/></g>
   </g>

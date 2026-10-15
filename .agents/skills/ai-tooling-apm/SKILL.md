@@ -46,6 +46,8 @@ guidance; it is not a prerequisite for working in this repository.
 
 ## Engine rules
 
+The CLI labels this task **Agent packages**; its selector remains `apm`.
+
 Dotfiles owns fragment merging, generated-manifest persistence, conditional
 target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot
 fixup. Native APM owns install/update planning, local-source integrity,

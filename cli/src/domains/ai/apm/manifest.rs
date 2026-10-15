@@ -101,7 +101,7 @@ impl LockedDependency {
         if !self.repo_url.is_empty() {
             return self.repo_url.clone();
         }
-        "unnamed APM dependency".to_string()
+        "unnamed agent package".to_string()
     }
 }
 
@@ -179,7 +179,7 @@ fn join_package_path(repo_url: &str, virtual_path: &str) -> String {
         repo_url.trim_end_matches('/'),
         virtual_path.trim_start_matches('/'),
     ) {
-        ("", "") => "unnamed APM dependency".to_string(),
+        ("", "") => "unnamed agent package".to_string(),
         ("", path) | (path, "") => path.to_string(),
         (repo, path) => format!("{repo}/{path}"),
     }

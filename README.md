@@ -36,7 +36,7 @@ Desired state lives in [conf/](conf/), with app configuration under
 | Packages | pacman and paru on Arch Linux; winget on Windows |
 | Arch desktop | Hyprland, Quickshell, mako, fuzzel, and GTK settings |
 | Services | systemd user and system units |
-| AI tooling | APM packages and plugins, Copilot and Codex settings |
+| AI tooling | Agent packages and plugins, Copilot and Codex settings |
 | Windows | Current-user registry values and Developer Mode |
 
 The `base` profile covers shell tools and core configuration for servers and

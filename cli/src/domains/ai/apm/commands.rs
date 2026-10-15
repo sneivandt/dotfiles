@@ -46,7 +46,7 @@ impl ApmCommand {
     const fn error_context(self) -> &'static str {
         match self {
             Self::Install => "running apm install",
-            Self::Update => "updating APM dependencies",
+            Self::Update => "updating agent packages",
         }
     }
 }

@@ -233,7 +233,7 @@ fn blocked_dependents_cascades_to_transitive_dependents() {
     // APM declares a dependency on it in the catalog.
     let trace = trace();
     let root = ProbeTask::new("Home symlinks", 1, &trace);
-    let direct = ProbeTask::new("APM packages", 2, &trace).depends_on(&[1]);
+    let direct = ProbeTask::new("Agent packages", 2, &trace).depends_on(&[1]);
     let indirect = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
     let unrelated = ProbeTask::new("Registry settings", 4, &trace);
     let tasks: Vec<&dyn Task> = vec![&root, &direct, &indirect, &unrelated];
@@ -255,7 +255,7 @@ fn blocked_dependents_is_independent_of_slice_order() {
     // visited before the dependency that blocks it.
     let trace = trace();
     let root = ProbeTask::new("Home symlinks", 1, &trace);
-    let direct = ProbeTask::new("APM packages", 2, &trace).depends_on(&[1]);
+    let direct = ProbeTask::new("Agent packages", 2, &trace).depends_on(&[1]);
     let indirect = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
     let tasks: Vec<&dyn Task> = vec![&indirect, &direct, &root];
     let roots = HashMap::from([(numeric_task_id(1), "Home symlinks")]);
@@ -280,7 +280,7 @@ fn blocked_dependents_ignores_dependencies_absent_from_the_slice() {
 fn unavailable_elevation_prunes_roots_and_transitive_dependents() {
     let trace = trace();
     let root = ProbeTask::new("Home symlinks", 1, &trace);
-    let dependent = ProbeTask::new("APM packages", 2, &trace).depends_on(&[1]);
+    let dependent = ProbeTask::new("Agent packages", 2, &trace).depends_on(&[1]);
     let transitive = ProbeTask::new("APM updates", 3, &trace).depends_on(&[2]);
     let unrelated = ProbeTask::new("Registry settings", 4, &trace);
     let mut tasks: Vec<&dyn Task> = vec![&root, &dependent, &transitive, &unrelated];

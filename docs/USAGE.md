@@ -310,7 +310,7 @@ Keep the checkout and sources available until materialization succeeds.
 ## Check
 
 `check` validates configuration and sources and runs available ShellCheck,
-PSScriptAnalyzer, and local APM package checks. It does not install or repair
+PSScriptAnalyzer, and local agent package checks. It does not install or repair
 configuration and has no `--dry-run` option. Like other engine commands it
 writes a log, locks the repository, and resolves/persists selections.
 

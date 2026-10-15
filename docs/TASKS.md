@@ -93,7 +93,7 @@ All rows below belong to **update**. Rows marked “yes” also belong to
 | `systemd` | Systemd units | `conf/systemd-units.toml` → unit enablement/startup | — |
 | `registry` | Windows registry | `conf/registry.toml` → current-user values | — |
 | `vscode-extensions` | VS Code extensions | `conf/vscode-extensions.toml` → editor extensions | — |
-| `apm` | APM packages | Active APM fragments → generated user-scope deployment | — |
+| `apm` | Agent packages | Active APM fragments → generated user-scope deployment | — |
 | `launcher` | Dotfiles launcher | Generated shim in `~/.local/bin` | yes |
 | `path` | Shell PATH | `~/.local/bin` in the user's PATH | — |
 
@@ -325,7 +325,7 @@ Arch chroot provisioning defers installation to `dotfiles-first-login.service`
 instead of attempting Marketplace installation without a real user session.
 The first-login work is retried until the configured extensions converge.
 
-#### APM packages
+#### Agent packages
 
 Builds user-scope desired state from active repository/overlay APM fragments.
 Symlink success is blocking; regular/AUR package work is ordering-only so APM
@@ -410,7 +410,7 @@ Required main files are `agent-settings.toml`, `chmod.toml`, `git-config.toml`,
 Missing `apm`, `shellcheck`, `sh`, or `pwsh` produces a visible skip; strict policy
 (`--fail-on-skip` or CI) fails on these. If `pwsh` exists but its
 PSScriptAnalyzer module does not, the analyzer fails. Local package-shape
-checks are not complete validation of remote APM dependencies or every private
+checks are not complete validation of remote agent packages or every private
 overlay script.
 
 Use [Testing](TESTING.md#cli-validation) for canonical commands and the

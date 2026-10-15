@@ -73,7 +73,7 @@ Keep one authoritative declaration when changing an existing server.
 The merge implementation and its examples live in
 [`fragments.rs`](../cli/src/domains/ai/apm/fragments.rs).
 
-## Adding an APM package
+## Adding an agent package
 
 1. Edit the narrowest applicable source fragment. Use the native APM dependency
    syntax and a deliberate ref/pin policy rather than editing lock data.
@@ -102,9 +102,10 @@ base fragment.
 
 ## Update behavior
 
-The `apm` task runs after regular packages, AUR packages, and symlinks so its
-executable and managed sources can be available. A scoped invocation still
-needs those prerequisites already satisfied; see [task selection](TASKS.md).
+The **Agent packages** task (`apm`) runs after regular packages, AUR packages,
+and symlinks so its executable and managed sources can be available. A scoped
+invocation still needs those prerequisites already satisfied; see
+[task selection](TASKS.md).
 
 Arch installs APM through the AUR's
 [`apm-bin`](https://aur.archlinux.org/packages/apm-bin) package. This channel can

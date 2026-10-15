@@ -62,7 +62,7 @@ impl InstallApmPackages {
 
 impl Task for InstallApmPackages {
     fn meta(&self) -> TaskMeta<'_> {
-        TaskMeta::new("APM packages")
+        TaskMeta::new("Agent packages")
             .with_selector("apm")
             .with_update_only(self.mode == ApmPackageMode::UpdatePins)
     }
@@ -205,8 +205,8 @@ impl ApmInstallPlan {
             Ok(TaskStats::changed_with_message(message).finish())
         } else {
             let message = match self.mode {
-                ApmPackageMode::Install => "APM dependencies and deployments already current",
-                ApmPackageMode::UpdatePins => "APM dependencies already at latest refs",
+                ApmPackageMode::Install => "agent packages and deployments already current",
+                ApmPackageMode::UpdatePins => "agent packages already at latest refs",
             };
             ctx.log().debug(message);
             Ok(TaskResult::Ok)
@@ -215,12 +215,8 @@ impl ApmInstallPlan {
 }
 
 fn dependency_summary(verb: &str, count: usize) -> String {
-    let noun = if count == 1 {
-        "dependency"
-    } else {
-        "dependencies"
-    };
-    format!("{verb} {count} APM {noun}")
+    let noun = if count == 1 { "package" } else { "packages" };
+    format!("{verb} {count} agent {noun}")
 }
 
 /// Whether an APM task should run on this machine.

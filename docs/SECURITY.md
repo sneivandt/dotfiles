@@ -14,7 +14,7 @@ private disclosure service.
 | Configuration and profiles | Selected records, paths and the combined public/private desired state | That syntactically valid values implement your intended policy |
 | Overlay | Local repository, fragments and executable scripts | Isolation from your home, network or other accessible state |
 | Release binary | GitHub release metadata and provenance, plus the local copy after verification | That checksum/provenance proves absence of malicious or vulnerable code |
-| External tools/packages | Package providers, AUR recipes, APM packages/plugins and executables resolved on PATH | Independent review of every upstream installer or transitive dependency |
+| External tools/packages | Package providers, AUR recipes, agent packages/plugins and executables resolved on PATH | Independent review of every upstream installer or transitive dependency |
 | Elevation | The selected privileged tasks and all code they call | A sandbox around a task or protection from an already-compromised account |
 | Logs and diagnostics | Paths, command arguments and captured output before sharing | Automatic removal of every secret or private value |
 

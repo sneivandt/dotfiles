@@ -402,16 +402,16 @@ fn task_result_lines_are_flat_with_reduced_indent() {
 #[test]
 fn task_result_lines_omit_success_reason_when_actions_are_listed() {
     let task = task_entry(
-        "APM packages",
+        "Agent packages",
         TaskStatus::Changed,
-        Some("updated 2 APM dependencies"),
+        Some("updated 2 agent packages"),
     );
     let details = vec!["update cursor/plugins/pstack/skills/unslop".to_string()];
 
     assert_eq!(
         task_result_lines(&task, &details, plain_opts()),
         [
-            "✓ APM packages",
+            "✓ Agent packages",
             "  update cursor/plugins/pstack/skills/unslop"
         ]
     );

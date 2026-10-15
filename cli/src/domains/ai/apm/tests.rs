@@ -534,13 +534,17 @@ fn native_commands_classify_auth_failures_but_propagate_other_failures() {
         if auth_failure {
             assert!(task_skipped(&result.expect("auth failure should skip")).contains("GitHub"));
         } else {
-            assert!(
-                format!(
-                    "{:#}",
-                    result.expect_err("non-auth failure should propagate")
-                )
-                .contains(message)
+            let error = result.expect_err("non-auth failure should propagate");
+            assert_eq!(
+                error.to_string(),
+                if update {
+                    "updating agent packages"
+                } else {
+                    "running apm install"
+                },
+                "command failure should identify the operation"
             );
+            assert!(format!("{error:#}").contains(message));
         }
     }
 }

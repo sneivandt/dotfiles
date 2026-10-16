@@ -10,7 +10,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
     version = option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION"))),
     disable_version_flag = true,
     propagate_version = true,
-    override_usage = "dotfiles [COMMAND] [OPTIONS]",
+    override_usage = "dotfiles [OPTIONS] [COMMAND]",
     after_help = "\
 Default command: update
 
@@ -19,10 +19,7 @@ Examples:
   dotfiles update --dry-run
   dotfiles update --only symlinks
   dotfiles check
-  dotfiles list
-
-Options may appear before or after a command.
-The launcher may download the CLI before help or previews.",
+  dotfiles list",
     help_template = "\
 {about-with-newline}
 {usage-heading} {usage}
@@ -1086,11 +1083,7 @@ mod tests {
             }
         }
         let help = display_output(&["dotfiles", "--help"], ErrorKind::DisplayHelp);
-        for text in [
-            "dotfiles [COMMAND] [OPTIONS]",
-            "Default command: update",
-            "download the CLI",
-        ] {
+        for text in ["dotfiles [OPTIONS] [COMMAND]", "Default command: update"] {
             assert!(help.contains(text), "{text}: {help}");
         }
     }

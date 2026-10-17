@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use super::context::Context;
 use super::mode::ProcessOpts;
-use super::plan::{ApplyChange, ApplyOperation, RemoveChange, RemoveOperation};
+use super::plan::{ApplyOperation, RemoveOperation};
 use super::stats::{ItemOutcome, TaskStats};
 use crate::engine::{RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::logging::LogEvent;
@@ -17,23 +17,23 @@ pub(super) fn process_single<R: Resource>(
     resource_state: &ResourceState,
     opts: &ProcessOpts,
 ) -> Result<TaskStats> {
-    let plan = ApplyChange::from_state(resource.description(), resource_state, opts);
+    let description = resource.description();
+    let plan = ApplyOperation::from_state(resource_state, opts);
     ctx.log().run_event(
         LogEvent::ResourceCheck,
-        &format!("{} state={resource_state}", plan.description()),
+        &format!("{description} state={resource_state}"),
     );
     let mut delta = TaskStats::new();
-    match plan.operation() {
+    match &plan {
         ApplyOperation::Noop => {
-            ctx.debug_fmt(|| format!("ok {}", plan.description()));
+            ctx.debug_fmt(|| format!("ok {description}"));
             delta.record(ItemOutcome::AlreadyOk);
         }
         ApplyOperation::Skip { reason, kind } => {
             if kind.is_failure() {
-                ctx.log()
-                    .warn(format!("skipping {}: {reason}", plan.description()));
+                ctx.log().warn(format!("skipping {description}: {reason}"));
             } else {
-                ctx.debug_fmt(|| format!("skipping {}: {reason}", plan.description()));
+                ctx.debug_fmt(|| format!("skipping {description}: {reason}"));
             }
             delta.record(if kind.is_failure() {
                 ItemOutcome::Failed
@@ -50,9 +50,9 @@ pub(super) fn process_single<R: Resource>(
                 ctx,
                 resource,
                 ResourceMutation::apply(
-                    plan.description(),
+                    &description,
                     verb,
-                    plan.dry_run_message(),
+                    plan.dry_run_message(&description),
                     *bail_on_error,
                 ),
                 Resource::apply,
@@ -229,14 +229,19 @@ pub(super) fn remove_single<R: RemovableResource>(
         } else {
             current
         };
-    let plan = RemoveChange::from_state(resource.description(), effective_state, verb);
+    let description = resource.description();
+    let plan = RemoveOperation::from_state(effective_state, verb);
     let mut delta = TaskStats::new();
-    match plan.operation() {
+    match &plan {
         RemoveOperation::Remove { verb: remove_verb } => {
             return execute_mutation(
                 ctx,
                 resource,
-                ResourceMutation::remove(plan.description(), remove_verb, plan.dry_run_message()),
+                ResourceMutation::remove(
+                    &description,
+                    remove_verb,
+                    plan.dry_run_message(&description),
+                ),
                 RemovableResource::remove,
             );
         }
@@ -244,10 +249,8 @@ pub(super) fn remove_single<R: RemovableResource>(
             // Cannot determine if this resource is ours — skip removal rather
             // than risking removing something we did not install. Unlike a
             // known unmanaged target, this leaves removal unverified.
-            ctx.log().warn(format!(
-                "skipping removal of {}: {reason}",
-                plan.description()
-            ));
+            ctx.log()
+                .warn(format!("skipping removal of {description}: {reason}"));
             delta.record(ItemOutcome::Failed);
         }
         RemoveOperation::Noop => {

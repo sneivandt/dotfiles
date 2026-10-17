@@ -1,25 +1,15 @@
 use crate::engine::mode::ProcessOpts;
 use crate::engine::orchestrate::process_resources_with_state;
 use crate::engine::{
-    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+    Context, IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState, TaskResult,
+    process_resources, process_resources_remove,
 };
-use crate::engine::{TaskResult, process_resources, process_resources_remove};
 use std::{
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
-use super::{
-    MockResource, bail_opts, default_opts, dry_run_context, parallel_context, test_context,
-};
-
-struct PrecomputedResource {
-    resource: MockResource,
-    state: ResourceState,
-}
+use super::{MockResource, bail_opts, default_opts, test_context};
 
 struct ThreadBoundResource(std::thread::ThreadId);
 
@@ -49,691 +39,353 @@ impl IntrinsicState for ThreadBoundResource {
     }
 }
 
+/// Deliberately has no `IntrinsicState` implementation: cached processing must
+/// use the supplied discovery function, including its errors.
+struct PrecomputedResource(MockResource);
+
 impl Resource for PrecomputedResource {
     fn description(&self) -> String {
-        self.resource.description()
+        self.0.description()
     }
-
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        self.resource.apply()
+        self.0.apply()
     }
 }
 
-impl RemovableResource for PrecomputedResource {
-    fn remove(&self) -> ResourceResult<ResourceChange> {
-        self.resource.remove()
+#[derive(Clone, Copy, Debug)]
+enum Pipeline {
+    Intrinsic,
+    Precomputed,
+    Remove,
+}
+
+impl Pipeline {
+    fn run(
+        self,
+        ctx: &Context,
+        resources: Vec<MockResource>,
+        opts: &ProcessOpts,
+    ) -> anyhow::Result<TaskResult> {
+        match self {
+            Self::Intrinsic => process_resources(ctx, resources, opts),
+            Self::Precomputed => process_resources_with_state(
+                ctx,
+                resources.into_iter().map(PrecomputedResource),
+                |resource| {
+                    resource
+                        .0
+                        .state_result
+                        .clone()
+                        .map_err(|error| anyhow::anyhow!(error).into())
+                },
+                opts,
+            ),
+            Self::Remove => process_resources_remove(ctx, resources, "unlink"),
+        }
     }
 }
 
-fn assert_counts(result: &TaskResult, expected: (u32, u32, u32, u32)) {
+fn test_ctx() -> Context {
+    test_context(PathBuf::from("/tmp"), None).0
+}
+fn parallel_ctx() -> Context {
+    test_ctx().with_parallel(true)
+}
+
+#[track_caller]
+fn assert_counts(result: &TaskResult, expected: (u32, u32, u32, u32), case: &str) {
     let TaskResult::Batch(stats) = result else {
-        panic!("expected batch statistics, got {result:?}");
+        panic!("{case}: expected batch statistics, got {result:?}");
     };
     assert_eq!(
         (
             stats.changed_count(),
             stats.already_ok_count(),
             stats.skipped_count(),
-            stats.failed_count(),
+            stats.failed_count()
         ),
-        expected
+        expected,
+        "{case}"
     );
 }
 
-fn process_precomputed_states(
-    ctx: &crate::engine::Context,
-    resource_states: impl IntoIterator<Item = (MockResource, ResourceState)>,
-    opts: &ProcessOpts,
-) -> anyhow::Result<TaskResult> {
-    let resources = resource_states
-        .into_iter()
-        .map(|(resource, state)| PrecomputedResource { resource, state });
-    process_resources_with_state(ctx, resources, |resource| Ok(resource.state.clone()), opts)
-}
-
-fn test_ctx() -> crate::engine::Context {
-    test_context(PathBuf::from("/tmp"), None).0
-}
-
-fn parallel_ctx() -> crate::engine::Context {
-    parallel_context(PathBuf::from("/tmp"), None).0
-}
-
-fn dry_ctx() -> crate::engine::Context {
-    dry_run_context(PathBuf::from("/tmp"), None).0
-}
-
-// -----------------------------------------------------------------------
-// process_resources
-// -----------------------------------------------------------------------
-
 #[test]
-fn process_resources_mixed_states() {
-    let ctx = test_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Correct),
-        MockResource::new(ResourceState::Missing),
-        MockResource::new(ResourceState::Invalid {
-            reason: "bad".to_string(),
-        }),
-    ];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert_counts(&result, (1, 1, 0, 1));
-}
-
-#[test]
-fn process_resources_empty_list() {
-    let ctx = test_ctx();
-    let resources: Vec<MockResource> = vec![];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
-}
-
-// -----------------------------------------------------------------------
-// process_precomputed_states
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_applies_precomputed() {
-    let ctx = test_ctx();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-    ];
-    let opts = default_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert_counts(&result, (1, 1, 0, 0));
-}
-
-#[test]
-fn process_resources_with_state_empty_list_never_queries_state() {
-    let ctx = test_ctx();
-    let resources: Vec<PrecomputedResource> = vec![];
-    let opts = default_opts();
-    let checks = Arc::new(AtomicUsize::new(0));
-    let state = |resource: &PrecomputedResource| {
-        checks.fetch_add(1, Ordering::SeqCst);
-        Ok(resource.state.clone())
-    };
-
-    let result = process_resources_with_state(&ctx, resources, state, &opts).unwrap();
-
-    assert!(matches!(result, TaskResult::Ok));
-    assert_eq!(checks.load(Ordering::SeqCst), 0);
-}
-
-// -----------------------------------------------------------------------
-// process_resources_remove
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_removes_correct_resources() {
-    let ctx = test_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Correct),
-        MockResource::new(ResourceState::Missing),
-    ];
-
-    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert_counts(&result, (1, 1, 0, 0));
+fn pipelines_accumulate_mixed_states_in_both_execution_modes() {
+    use ResourceState::{Correct, Missing};
+    for parallel in [false, true] {
+        for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed, Pipeline::Remove] {
+            for (case, states, applied, removed) in [
+                (
+                    "mixed invalid",
+                    vec![
+                        Correct,
+                        Missing,
+                        ResourceState::Invalid {
+                            reason: "bad".into(),
+                        },
+                    ],
+                    (1, 1, 0, 1),
+                    (1, 2, 0, 0),
+                ),
+                (
+                    "cached accumulation",
+                    vec![
+                        Correct,
+                        Correct,
+                        Missing,
+                        ResourceState::Invalid {
+                            reason: "bad".into(),
+                        },
+                    ],
+                    (1, 2, 0, 1),
+                    (2, 2, 0, 0),
+                ),
+                (
+                    "missing and correct",
+                    vec![Missing, Correct],
+                    (1, 1, 0, 0),
+                    (1, 1, 0, 0),
+                ),
+                (
+                    "incorrect",
+                    vec![
+                        Missing,
+                        Correct,
+                        ResourceState::Incorrect {
+                            current: "old".into(),
+                        },
+                    ],
+                    (2, 1, 0, 0),
+                    (1, 2, 0, 0),
+                ),
+                (
+                    "unmanaged",
+                    vec![
+                        Missing,
+                        ResourceState::Incorrect {
+                            current: "other".into(),
+                        },
+                        ResourceState::Invalid {
+                            reason: "bad".into(),
+                        },
+                    ],
+                    (2, 0, 0, 1),
+                    (0, 3, 0, 0),
+                ),
+            ] {
+                let resources = states.into_iter().map(MockResource::new).collect();
+                let result = pipeline
+                    .run(
+                        &test_ctx().with_parallel(parallel),
+                        resources,
+                        &default_opts(),
+                    )
+                    .unwrap_or_else(|error| {
+                        panic!("{case}, {pipeline:?}, parallel={parallel}: {error:#}")
+                    });
+                assert_counts(
+                    &result,
+                    if matches!(pipeline, Pipeline::Remove) {
+                        removed
+                    } else {
+                        applied
+                    },
+                    &format!("{case}, {pipeline:?}, parallel={parallel}"),
+                );
+            }
+        }
+    }
 }
 
 #[test]
-fn process_resources_remove_dry_run() {
-    let ctx = dry_ctx();
-    // Remove should NOT be called in dry-run
-    let resources =
-        vec![MockResource::new(ResourceState::Correct).with_remove(Err("should not call".into()))];
-
-    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert_counts(&result, (1, 0, 0, 0));
+fn empty_pipelines_preserve_their_result_and_never_query_state() {
+    for parallel in [false, true] {
+        let ctx = test_ctx().with_parallel(parallel);
+        for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed, Pipeline::Remove] {
+            let result = pipeline.run(&ctx, vec![], &default_opts()).unwrap();
+            if matches!(pipeline, Pipeline::Remove) {
+                assert_counts(
+                    &result,
+                    (0, 0, 0, 0),
+                    &format!("empty {pipeline:?}, parallel={parallel}"),
+                );
+            } else {
+                assert!(matches!(result, TaskResult::Ok), "{pipeline:?}");
+            }
+        }
+        let checks = AtomicUsize::new(0);
+        let result = process_resources_with_state(
+            &ctx,
+            Vec::<PrecomputedResource>::new(),
+            |_| {
+                checks.fetch_add(1, Ordering::SeqCst);
+                Ok(ResourceState::Missing)
+            },
+            &default_opts(),
+        )
+        .unwrap();
+        assert!(matches!(result, TaskResult::Ok));
+        assert_eq!(checks.load(Ordering::SeqCst), 0);
+    }
 }
 
-// -----------------------------------------------------------------------
-// Parallel dispatch — process_resources
-// -----------------------------------------------------------------------
-
 #[test]
-fn process_resources_parallel_accumulates_stats() {
-    let ctx = parallel_ctx();
-    // Three resources: one already correct, one missing (will be applied), one invalid (failed).
-    let resources = vec![
-        MockResource::new(ResourceState::Correct),
-        MockResource::new(ResourceState::Missing),
-        MockResource::new(ResourceState::Invalid {
-            reason: "bad".to_string(),
-        }),
-    ];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert_counts(&result, (1, 1, 0, 1));
+fn dry_run_and_cancellation_never_mutate_any_pipeline() {
+    for parallel in [false, true] {
+        for count in [1, 2] {
+            for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed, Pipeline::Remove] {
+                for cancelled in [false, true] {
+                    let ctx = test_ctx().with_parallel(parallel).with_dry_run(!cancelled);
+                    if cancelled {
+                        ctx.cancellation_token().cancel();
+                    }
+                    let resources = (0..count)
+                        .map(|_| {
+                            MockResource::new(if matches!(pipeline, Pipeline::Remove) {
+                                ResourceState::Correct
+                            } else {
+                                ResourceState::Missing
+                            })
+                            .with_apply(Err("must not apply".into()))
+                            .with_remove(Err("must not remove".into()))
+                        })
+                        .collect();
+                    let result = pipeline.run(&ctx, resources, &default_opts());
+                    if cancelled {
+                        assert_unstarted_batch(&result.unwrap_err(), count);
+                    } else {
+                        assert_counts(
+                            &result.unwrap(),
+                            (count, 0, 0, 0),
+                            &format!("dry run {pipeline:?}, parallel={parallel}, count={count}"),
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]
-fn process_resources_parallel_single_resource_runs_sequentially() {
-    // When there is only one resource, the sequential path is taken even if parallel=true.
-    let ctx = parallel_ctx();
+fn dry_run_keeps_current_resources_current() {
+    for parallel in [false, true] {
+        for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed] {
+            let resources = vec![
+                MockResource::new(ResourceState::Missing).with_apply(Err("must not apply".into())),
+                MockResource::new(ResourceState::Correct).with_apply(Err("must not apply".into())),
+            ];
+            let result = pipeline
+                .run(
+                    &test_ctx().with_parallel(parallel).with_dry_run(true),
+                    resources,
+                    &default_opts(),
+                )
+                .unwrap();
+            assert_counts(
+                &result,
+                (1, 1, 0, 0),
+                &format!("dry run mixed {pipeline:?}, parallel={parallel}"),
+            );
+        }
+    }
+}
+
+#[test]
+fn state_and_mutation_errors_propagate_in_every_pipeline() {
+    for parallel in [false, true] {
+        for count in [1, 2] {
+            for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed, Pipeline::Remove] {
+                for state_error in [false, true] {
+                    let resources = (0..count)
+                        .map(|_| {
+                            let resource =
+                                MockResource::new(if matches!(pipeline, Pipeline::Remove) {
+                                    ResourceState::Correct
+                                } else {
+                                    ResourceState::Missing
+                                });
+                            if state_error {
+                                resource.with_state_error("state failed")
+                            } else {
+                                resource
+                                    .with_apply(Err("mutation failed".into()))
+                                    .with_remove(Err("mutation failed".into()))
+                            }
+                        })
+                        .collect();
+                    let result =
+                        pipeline.run(&test_ctx().with_parallel(parallel), resources, &bail_opts());
+                    let error = format!("{:#}", result.unwrap_err());
+                    assert!(
+                        error.contains(if state_error {
+                            "state failed"
+                        } else {
+                            "mutation failed"
+                        }),
+                        "{pipeline:?}, parallel={parallel}: {error}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn lenient_discovery_errors_still_propagate() {
+    for parallel in [false, true] {
+        for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed, Pipeline::Remove] {
+            let resources = (0..2)
+                .map(|_| MockResource::new(ResourceState::Missing).with_state_error("state failed"))
+                .collect();
+            let error = pipeline
+                .run(
+                    &test_ctx().with_parallel(parallel),
+                    resources,
+                    &default_opts(),
+                )
+                .unwrap_err();
+            assert!(
+                format!("{error:#}").contains("state failed"),
+                "{pipeline:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn lenient_apply_errors_are_counted_and_do_not_stop_other_resources() {
+    for parallel in [false, true] {
+        for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed] {
+            for failures in [1, 2] {
+                let mut resources: Vec<_> = (0..failures)
+                    .map(|index| {
+                        MockResource::new(ResourceState::Missing)
+                            .with_apply(Err(format!("error{index}")))
+                    })
+                    .collect();
+                resources.push(MockResource::new(ResourceState::Correct));
+                let result = pipeline
+                    .run(
+                        &test_ctx().with_parallel(parallel),
+                        resources,
+                        &default_opts(),
+                    )
+                    .unwrap();
+                assert_counts(
+                    &result,
+                    (0, 1, 0, failures),
+                    &format!("lenient {pipeline:?}, parallel={parallel}, failures={failures}"),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_single_resource_stays_on_the_calling_thread_in_parallel_mode() {
     let resources = vec![ThreadBoundResource(std::thread::current().id())];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert_counts(&result, (1, 0, 0, 0));
-}
-
-#[test]
-fn process_resources_parallel_bail_on_error_propagates() {
-    let ctx = parallel_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
-        MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
-    ];
-    let opts = bail_opts();
-
-    let result = process_resources(&ctx, resources, &opts);
-    assert!(result.is_err());
-}
-
-// -----------------------------------------------------------------------
-// Parallel dispatch — process_precomputed_states
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_parallel_dispatch() {
-    let ctx = parallel_ctx();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-        (
-            MockResource::new(ResourceState::Incorrect {
-                current: "old".to_string(),
-            }),
-            ResourceState::Incorrect {
-                current: "old".to_string(),
-            },
-        ),
-    ];
-    let opts = default_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert_counts(&result, (2, 1, 0, 0));
-}
-
-// -----------------------------------------------------------------------
-// Parallel dispatch — process_resources_remove
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_parallel_dispatch() {
-    let ctx = parallel_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Correct),
-        MockResource::new(ResourceState::Missing),
-    ];
-
-    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert_counts(&result, (1, 1, 0, 0));
-}
-
-// -----------------------------------------------------------------------
-// Error propagation — current_state() failures
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_current_state_error_propagates() {
-    let ctx = test_ctx();
-    let resources =
-        vec![MockResource::new(ResourceState::Missing).with_state_error("state failed")];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts);
-    assert!(result.is_err());
-    assert!(format!("{:#}", result.unwrap_err()).contains("state failed"));
-}
-
-#[test]
-fn process_resources_remove_current_state_error_propagates() {
-    let ctx = test_ctx();
-    let resources =
-        vec![MockResource::new(ResourceState::Missing).with_state_error("state failed")];
-
-    let result = process_resources_remove(&ctx, resources, "unlink");
-    assert!(result.is_err());
-    assert!(format!("{:#}", result.unwrap_err()).contains("state failed"));
-}
-
-// -----------------------------------------------------------------------
-// End-to-end bail-on-error through process_resources (sequential)
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_bail_on_apply_error_propagates() {
-    let ctx = test_ctx();
-    let resources = vec![MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into()))];
-    let opts = bail_opts();
-
-    let result = process_resources(&ctx, resources, &opts);
-    assert!(result.is_err());
-    assert!(format!("{:#}", result.unwrap_err()).contains("fatal"));
-}
-
-// -----------------------------------------------------------------------
-// Stats accumulation across multiple resources in process_precomputed_states
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_stats_accumulate_across_resources() {
-    let ctx = test_ctx();
-    // 2 correct, 1 missing (applied), 1 invalid (failed)
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-        (
-            MockResource::new(ResourceState::Missing),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Invalid {
-                reason: "bad".to_string(),
-            }),
-            ResourceState::Invalid {
-                reason: "bad".to_string(),
-            },
-        ),
-    ];
-    let opts = default_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert_counts(&result, (1, 2, 0, 1));
-}
-
-// -----------------------------------------------------------------------
-// Parallel — dry-run behaviour
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_parallel_dry_run() {
-    let ctx = parallel_ctx().with_dry_run(true);
-    // apply() would error if called — dry-run must skip it
-    let resources = vec![
-        MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
-        MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
-    ];
-    let opts = default_opts();
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert_counts(&result, (2, 0, 0, 0));
-}
-
-#[test]
-fn process_resources_remove_parallel_dry_run() {
-    let ctx = parallel_ctx().with_dry_run(true);
-    let resources = vec![
-        MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
-        MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
-    ];
-    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert_counts(&result, (2, 0, 0, 0));
-}
-
-#[test]
-fn process_precomputed_states_parallel_no_bail_reports_failure() {
-    let ctx = parallel_ctx();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-    ];
-    let opts = default_opts(); // no_bail
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert_counts(&result, (0, 1, 0, 1));
-}
-
-// -----------------------------------------------------------------------
-// process_precomputed_states — empty list
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_empty_list() {
-    let ctx = test_ctx();
-    let resource_states: Vec<(MockResource, ResourceState)> = vec![];
-    let opts = default_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert!(matches!(result, TaskResult::Ok));
-}
-
-// -----------------------------------------------------------------------
-// process_resources_remove — empty list
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_empty_list() {
-    let ctx = test_ctx();
-    let resources: Vec<MockResource> = vec![];
-
-    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert_counts(&result, (0, 0, 0, 0));
-}
-
-// -----------------------------------------------------------------------
-// process_precomputed_states — bail on error
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_bail_on_error_propagates() {
-    let ctx = test_ctx();
-    let resource_states = vec![(
-        MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
-        ResourceState::Missing,
-    )];
-    let opts = bail_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts);
-    assert!(result.is_err());
-    assert!(format!("{:#}", result.unwrap_err()).contains("fatal"));
-}
-
-// -----------------------------------------------------------------------
-// process_precomputed_states — lenient error skipping
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_lenient_reports_failure() {
-    let ctx = test_ctx();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-    ];
-    let opts = default_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert_counts(&result, (0, 1, 0, 1));
-}
-
-// -----------------------------------------------------------------------
-// process_resources — lenient error skipping at orchestration level
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_lenient_reports_apply_errors() {
-    let ctx = test_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Missing).with_apply(Err("oops".into())),
-        MockResource::new(ResourceState::Correct),
-    ];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert_counts(&result, (0, 1, 0, 1));
-}
-
-// -----------------------------------------------------------------------
-// Parallel — process_precomputed_states bail on error
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_parallel_bail_on_error_propagates() {
-    let ctx = parallel_ctx();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("fatal".into())),
-            ResourceState::Missing,
-        ),
-    ];
-    let opts = bail_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts);
-    assert!(result.is_err());
-}
-
-// -----------------------------------------------------------------------
-// Parallel — process_resources_remove with state error
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_parallel_state_error_propagates() {
-    let ctx = parallel_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
-        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
-    ];
-
-    let result = process_resources_remove(&ctx, resources, "unlink");
-    assert!(result.is_err());
-    assert!(format!("{:#}", result.unwrap_err()).contains("state failed"));
-}
-
-// -----------------------------------------------------------------------
-// Parallel — process_resources with state error
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_parallel_state_error_propagates() {
-    let ctx = parallel_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
-        MockResource::new(ResourceState::Correct).with_state_error("state failed"),
-    ];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts);
-    assert!(result.is_err());
-}
-
-// -----------------------------------------------------------------------
-// process_resources_remove — all missing (nothing to remove)
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_all_missing_skips_silently() {
-    let ctx = test_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Missing),
-        MockResource::new(ResourceState::Incorrect {
-            current: "other".to_string(),
-        }),
-        MockResource::new(ResourceState::Invalid {
-            reason: "bad".to_string(),
-        }),
-    ];
-
-    let result = process_resources_remove(&ctx, resources, "unlink").unwrap();
-    assert_counts(&result, (0, 3, 0, 0));
-}
-
-// -----------------------------------------------------------------------
-// process_resources_remove — error during remove propagates
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_error_propagates() {
-    let ctx = test_ctx();
-    let resources =
-        vec![MockResource::new(ResourceState::Correct).with_remove(Err("rm failed".into()))];
-
-    let result = process_resources_remove(&ctx, resources, "unlink");
-    assert!(result.is_err());
-    assert!(format!("{:#}", result.unwrap_err()).contains("rm failed"));
-}
-
-// -----------------------------------------------------------------------
-// process_precomputed_states — dry-run
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_dry_run() {
-    let ctx = dry_ctx();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Correct),
-            ResourceState::Correct,
-        ),
-    ];
-    let opts = default_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert_counts(&result, (1, 1, 0, 0));
-}
-
-// -----------------------------------------------------------------------
-// process_precomputed_states — parallel dry-run
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_parallel_dry_run() {
-    let ctx = parallel_ctx().with_dry_run(true);
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
-            ResourceState::Missing,
-        ),
-    ];
-    let opts = default_opts();
-
-    let result = process_precomputed_states(&ctx, resource_states, &opts).unwrap();
-    assert_counts(&result, (2, 0, 0, 0));
-}
-
-// -----------------------------------------------------------------------
-// process_resources — multiple sequential failures in lenient mode
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_lenient_reports_multiple_apply_errors() {
-    let ctx = test_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Missing).with_apply(Err("error1".into())),
-        MockResource::new(ResourceState::Missing).with_apply(Err("error2".into())),
-        MockResource::new(ResourceState::Correct),
-    ];
-    let opts = default_opts();
-
-    let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert_counts(&result, (0, 1, 0, 2));
-}
-
-// -----------------------------------------------------------------------
-// process_resources_remove — parallel remove error propagation
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_parallel_error_propagates() {
-    let ctx = parallel_ctx();
-    let resources = vec![
-        MockResource::new(ResourceState::Correct).with_remove(Err("rm error".into())),
-        MockResource::new(ResourceState::Correct).with_remove(Err("rm error".into())),
-    ];
-
-    let result = process_resources_remove(&ctx, resources, "unlink");
-    assert!(result.is_err());
-}
-
-// -----------------------------------------------------------------------
-// Cancellation — sequential process_resources
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_stops_on_cancellation() {
-    let ctx = test_ctx();
-    // Cancel before processing begins
-    ctx.cancellation_token().cancel();
-    // apply() would error if called — cancellation should prevent it
-    let resources = vec![
-        MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
-        MockResource::new(ResourceState::Missing).with_apply(Err("should not call".into())),
-    ];
-    let opts = default_opts();
-
-    let error = process_resources(&ctx, resources, &opts).unwrap_err();
-    assert_unstarted_batch(&error, 2);
-}
-
-// -----------------------------------------------------------------------
-// Cancellation — sequential process_precomputed_states
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_precomputed_states_stops_on_cancellation() {
-    let ctx = test_ctx();
-    ctx.cancellation_token().cancel();
-    let resource_states = vec![
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
-            ResourceState::Missing,
-        ),
-        (
-            MockResource::new(ResourceState::Missing).with_apply(Err("no apply".into())),
-            ResourceState::Missing,
-        ),
-    ];
-    let opts = default_opts();
-
-    let error = process_precomputed_states(&ctx, resource_states, &opts).unwrap_err();
-    assert_unstarted_batch(&error, 2);
-}
-
-// -----------------------------------------------------------------------
-// Cancellation — sequential process_resources_remove
-// -----------------------------------------------------------------------
-
-#[test]
-fn process_resources_remove_stops_on_cancellation() {
-    let ctx = test_ctx();
-    ctx.cancellation_token().cancel();
-    // remove() would error if called
-    let resources = vec![
-        MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
-        MockResource::new(ResourceState::Correct).with_remove(Err("no remove".into())),
-    ];
-
-    let error = process_resources_remove(&ctx, resources, "unlink").unwrap_err();
-    assert_unstarted_batch(&error, 2);
+    let result = process_resources(&parallel_ctx(), resources, &default_opts()).unwrap();
+    assert_counts(&result, (1, 0, 0, 0), "one resource on caller");
 }
 
 fn assert_unstarted_batch(error: &anyhow::Error, count: u32) {
@@ -748,10 +400,6 @@ fn assert_unstarted_batch(error: &anyhow::Error, count: u32) {
     assert_eq!(report.not_attempted_count(), count);
 }
 
-// -----------------------------------------------------------------------
-// ProcessOpts sequential flag — forces sequential even with parallel ctx
-// -----------------------------------------------------------------------
-
 #[test]
 fn sequential_opts_forces_sequential_processing() {
     let ctx = parallel_ctx();
@@ -760,7 +408,7 @@ fn sequential_opts_forces_sequential_processing() {
     let opts = ProcessOpts::strict("install").sequential();
 
     let result = process_resources(&ctx, resources, &opts).unwrap();
-    assert_counts(&result, (3, 0, 0, 0));
+    assert_counts(&result, (3, 0, 0, 0), "forced sequential processing");
 }
 
 #[test]
@@ -780,7 +428,7 @@ fn sequential_opts_forces_sequential_for_resource_states() {
         &opts,
     )
     .unwrap();
-    assert_counts(&result, (3, 0, 0, 0));
+    assert_counts(&result, (3, 0, 0, 0), "forced sequential processing");
 }
 
 #[test]

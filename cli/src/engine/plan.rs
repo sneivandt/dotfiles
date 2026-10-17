@@ -30,86 +30,59 @@ pub(crate) enum ApplyOperation {
     },
 }
 
-/// Side-effect-free plan for applying one resource.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ApplyChange {
-    description: String,
-    operation: ApplyOperation,
-}
-
-impl ApplyChange {
-    /// Build an apply plan from a resource description, current state, and processing options.
+impl ApplyOperation {
+    /// Choose an apply operation from current state and processing options.
     ///
     /// This is the resource lifecycle state machine: it maps every combination
     /// of [`ResourceState`] × [`ProcessMode`](super::ProcessMode) to a concrete
     /// [`ApplyOperation`].
     #[must_use]
-    pub(crate) fn from_state(
-        description: String,
-        state: &ResourceState,
-        opts: &ProcessOpts,
-    ) -> Self {
-        let apply = |current| ApplyOperation::Apply {
+    pub(crate) fn from_state(state: &ResourceState, opts: &ProcessOpts) -> Self {
+        let apply = |current| Self::Apply {
             verb: opts.verb,
             current,
             bail_on_error: opts.mode.bail_on_error(),
         };
-        let operation = match state {
-            ResourceState::Correct => ApplyOperation::Noop,
-            ResourceState::Invalid { reason } => ApplyOperation::Skip {
+        match state {
+            ResourceState::Correct => Self::Noop,
+            ResourceState::Invalid { reason } => Self::Skip {
                 reason: reason.clone(),
                 kind: SkipKind::UnmetWork,
             },
-            ResourceState::Unknown { reason } => ApplyOperation::Skip {
+            ResourceState::Unknown { reason } => Self::Skip {
                 reason: format!("state unknown: {reason}"),
                 kind: SkipKind::UnmetWork,
             },
             ResourceState::Missing if opts.mode.fix_missing() => apply(None),
-            ResourceState::Missing => ApplyOperation::Skip {
+            ResourceState::Missing => Self::Skip {
                 reason: "mode skips missing resources".into(),
                 kind: SkipKind::Benign,
             },
             ResourceState::Incorrect { current } if opts.mode.fix_incorrect() => {
                 apply(Some(current.clone()))
             }
-            ResourceState::Incorrect { .. } => ApplyOperation::Skip {
+            ResourceState::Incorrect { .. } => Self::Skip {
                 reason: "mode skips incorrect resources".into(),
                 kind: SkipKind::Benign,
             },
-        };
-        Self {
-            description,
-            operation,
         }
-    }
-
-    /// Human-readable resource description captured when the plan was built.
-    #[must_use]
-    pub(crate) fn description(&self) -> &str {
-        &self.description
-    }
-
-    /// Planned operation.
-    #[must_use]
-    pub(crate) const fn operation(&self) -> &ApplyOperation {
-        &self.operation
     }
 
     /// Dry-run message for an apply operation, if the plan would mutate state.
     #[must_use]
-    pub(crate) fn dry_run_message(&self) -> Option<String> {
-        match &self.operation {
-            ApplyOperation::Apply {
+    pub(crate) fn dry_run_message(&self, description: &str) -> Option<String> {
+        match self {
+            Self::Apply {
                 verb,
                 current: Some(current),
                 ..
-            } => Some(format!("{verb} {} (currently {current})", self.description)),
-            ApplyOperation::Apply {
+            } => Some(format!("{verb} {description} (currently {current})")),
+            Self::Apply {
                 verb,
                 current: None,
                 ..
-            } => Some(format!("{verb} {}", self.description)),
-            ApplyOperation::Noop | ApplyOperation::Skip { .. } => None,
+            } => Some(format!("{verb} {description}")),
+            Self::Noop | Self::Skip { .. } => None,
         }
     }
 }
@@ -131,54 +104,27 @@ pub(crate) enum RemoveOperation {
     },
 }
 
-/// Side-effect-free plan for removing one resource.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RemoveChange {
-    description: String,
-    operation: RemoveOperation,
-}
-
-impl RemoveChange {
-    /// Build a remove plan from a resource description and current state.
+impl RemoveOperation {
+    /// Choose a remove operation from current state.
     #[must_use]
-    pub(crate) fn from_state(
-        description: String,
-        state: &ResourceState,
-        verb: &'static str,
-    ) -> Self {
-        let operation = match state {
-            ResourceState::Correct => RemoveOperation::Remove { verb },
-            ResourceState::Unknown { reason } => RemoveOperation::Skip {
+    pub(crate) fn from_state(state: &ResourceState, verb: &'static str) -> Self {
+        match state {
+            ResourceState::Correct => Self::Remove { verb },
+            ResourceState::Unknown { reason } => Self::Skip {
                 reason: format!("state unknown ({reason})"),
             },
             ResourceState::Missing
             | ResourceState::Incorrect { .. }
-            | ResourceState::Invalid { .. } => RemoveOperation::Noop,
-        };
-        Self {
-            description,
-            operation,
+            | ResourceState::Invalid { .. } => Self::Noop,
         }
-    }
-
-    /// Human-readable resource description captured when the plan was built.
-    #[must_use]
-    pub(crate) fn description(&self) -> &str {
-        &self.description
-    }
-
-    /// Planned operation.
-    #[must_use]
-    pub(crate) const fn operation(&self) -> &RemoveOperation {
-        &self.operation
     }
 
     /// Dry-run message for a remove operation, if the plan would mutate state.
     #[must_use]
-    pub(crate) fn dry_run_message(&self) -> Option<String> {
-        match &self.operation {
-            RemoveOperation::Remove { verb } => Some(format!("{verb} {}", self.description)),
-            RemoveOperation::Noop | RemoveOperation::Skip { .. } => None,
+    pub(crate) fn dry_run_message(&self, description: &str) -> Option<String> {
+        match self {
+            Self::Remove { verb } => Some(format!("{verb} {description}")),
+            Self::Noop | Self::Skip { .. } => None,
         }
     }
 }
@@ -203,11 +149,7 @@ mod tests {
                 mode,
                 sequential: false,
             };
-            let plan_for = |state: &ResourceState| {
-                ApplyChange::from_state("thing".to_string(), state, &opts)
-                    .operation()
-                    .clone()
-            };
+            let plan_for = |state: &ResourceState| ApplyOperation::from_state(state, &opts);
 
             assert_eq!(
                 plan_for(&ResourceState::Correct),
@@ -273,39 +215,35 @@ mod tests {
 
     #[test]
     fn apply_plan_noops_for_correct_state() {
-        let plan = ApplyChange::from_state(
-            "thing".to_string(),
-            &ResourceState::Correct,
-            &ProcessOpts::strict("install"),
-        );
+        let plan =
+            ApplyOperation::from_state(&ResourceState::Correct, &ProcessOpts::strict("install"));
 
-        assert_eq!(plan.operation(), &ApplyOperation::Noop);
-        assert!(plan.dry_run_message().is_none());
+        assert_eq!(plan, ApplyOperation::Noop);
+        assert!(plan.dry_run_message("thing").is_none());
     }
 
     #[test]
     fn apply_plan_captures_missing_apply_verb_and_bail_mode() {
-        let plan = ApplyChange::from_state(
-            "thing".to_string(),
-            &ResourceState::Missing,
-            &ProcessOpts::strict("install"),
-        );
+        let plan =
+            ApplyOperation::from_state(&ResourceState::Missing, &ProcessOpts::strict("install"));
 
         assert_eq!(
-            plan.operation(),
-            &ApplyOperation::Apply {
+            plan,
+            ApplyOperation::Apply {
                 verb: "install",
                 current: None,
                 bail_on_error: true,
             }
         );
-        assert_eq!(plan.dry_run_message().unwrap(), "install thing".to_string());
+        assert_eq!(
+            plan.dry_run_message("thing").unwrap(),
+            "install thing".to_string()
+        );
     }
 
     #[test]
     fn apply_plan_captures_incorrect_current_value() {
-        let plan = ApplyChange::from_state(
-            "thing".to_string(),
+        let plan = ApplyOperation::from_state(
             &ResourceState::Incorrect {
                 current: "old".to_string(),
             },
@@ -313,41 +251,40 @@ mod tests {
         );
 
         assert_eq!(
-            plan.operation(),
-            &ApplyOperation::Apply {
+            plan,
+            ApplyOperation::Apply {
                 verb: "replace",
                 current: Some("old".to_string()),
                 bail_on_error: false,
             }
         );
         assert_eq!(
-            plan.dry_run_message().unwrap(),
+            plan.dry_run_message("thing").unwrap(),
             "replace thing (currently old)".to_string()
         );
     }
 
     #[test]
     fn remove_plan_removes_only_correct_resources() {
-        let plan = RemoveChange::from_state("thing".to_string(), &ResourceState::Correct, "unlink");
+        let plan = RemoveOperation::from_state(&ResourceState::Correct, "unlink");
 
+        assert_eq!(plan, RemoveOperation::Remove { verb: "unlink" });
         assert_eq!(
-            plan.operation(),
-            &RemoveOperation::Remove { verb: "unlink" }
+            plan.dry_run_message("thing").unwrap(),
+            "unlink thing".to_string()
         );
-        assert_eq!(plan.dry_run_message().unwrap(), "unlink thing".to_string());
     }
 
     #[test]
     fn remove_plan_noops_for_unmanaged_resources() {
-        let plan = RemoveChange::from_state("thing".to_string(), &ResourceState::Missing, "unlink");
+        let plan = RemoveOperation::from_state(&ResourceState::Missing, "unlink");
 
-        assert_eq!(plan.operation(), &RemoveOperation::Noop);
+        assert_eq!(plan, RemoveOperation::Noop);
     }
 
     #[test]
     fn remove_plan_skips_unknown_resources() {
-        let plan = RemoveChange::from_state(
-            "thing".to_string(),
+        let plan = RemoveOperation::from_state(
             &ResourceState::Unknown {
                 reason: "tool missing".to_string(),
             },
@@ -355,8 +292,8 @@ mod tests {
         );
 
         assert_eq!(
-            plan.operation(),
-            &RemoveOperation::Skip {
+            plan,
+            RemoveOperation::Skip {
                 reason: "state unknown (tool missing)".to_string()
             }
         );

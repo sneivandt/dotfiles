@@ -36,23 +36,6 @@ impl TaskExecution {
     }
 }
 
-/// Record a task that does not apply to this run.
-///
-/// `reason` is `None` when applicability was decided by the task's own
-/// `should_run` check and there is nothing more specific to say; the `N/A`
-/// status is the whole explanation in that case, so no reason is invented.
-fn record_not_applicable(ctx: &Context, task: &dyn Task, task_id: &str, reason: Option<&str>) {
-    record(
-        task,
-        task_id,
-        ctx,
-        TaskStatus::NotApplicable,
-        reason,
-        ActionCounts::default(),
-        false,
-    );
-}
-
 /// Execute a task, recording the result in the logger.
 ///
 /// Each task invocation is wrapped in a [`tracing::info_span`] so that
@@ -78,19 +61,28 @@ pub(crate) fn execute_assessed(
 ) -> TaskExecution {
     let span = tracing::info_span!("task", name = task.name());
     let _enter = span.enter();
-    let _diag_context = log_task_context(&task.log_key());
-    let task_id = task.log_key();
+    let recording = TaskRecording {
+        task,
+        ctx,
+        task_id: task.log_key(),
+    };
+    let _diag_context = log_task_context(&recording.task_id);
     if !assessment.is_applicable() {
-        record_not_applicable(ctx, task, &task_id, assessment.not_applicable_reason());
+        recording.record(
+            TaskStatus::NotApplicable,
+            assessment.not_applicable_reason(),
+            ActionCounts::default(),
+            false,
+        );
         return TaskExecution::new(TaskStatus::NotApplicable, TaskOutcome::Satisfied);
     }
 
     ctx.log()
-        .run_task_event(LogEvent::TaskStart, &task_id, task.name());
+        .run_task_event(LogEvent::TaskStart, &recording.task_id, task.name());
     let started = std::time::Instant::now();
-    let execution = record_run_outcome(task, &task_id, ctx);
+    let execution = recording.record_run_outcome();
     let elapsed = started.elapsed();
-    ctx.log().record_task_duration(&task_id, elapsed);
+    ctx.log().record_task_duration(&recording.task_id, elapsed);
     execution
 }
 
@@ -114,44 +106,154 @@ pub(crate) fn task_entry(
     .with_result_display(task.result_display())
 }
 
-/// Record a task outcome with the task's own visibility, returning the status.
-fn record(
-    task: &dyn Task,
-    task_id: &str,
-    ctx: &Context,
-    status: TaskStatus,
-    message: Option<&str>,
-    actions: ActionCounts,
-    message_is_summary: bool,
-) -> TaskStatus {
-    ctx.log().record_task(
-        task_entry(task, task_id, status, message, actions)
-            .with_summary_message(message_is_summary),
-    );
-    status
+/// Identity and output context shared by every outcome of one task invocation.
+struct TaskRecording<'a> {
+    task: &'a dyn Task,
+    task_id: String,
+    ctx: &'a Context,
 }
 
-/// Downgrade a cancellation-induced failure to [`TaskStatus::Interrupted`].
-///
-/// Ctrl-C aborts in-flight work, so the resulting errors are signal artefacts
-/// rather than real failures and must not be counted as such in the summary.
-fn record_interrupted(
-    task: &dyn Task,
-    task_id: &str,
-    ctx: &Context,
-    detail: &str,
-    actions: ActionCounts,
-) -> TaskStatus {
-    ctx.log().warn(format!("interrupted: {detail}"));
-    record(
-        task,
-        task_id,
-        ctx,
-        TaskStatus::Interrupted,
-        Some("interrupted"),
-        actions,
-        false,
-    )
+impl TaskRecording<'_> {
+    /// Record a task outcome with the task's own visibility, returning the status.
+    fn record(
+        &self,
+        status: TaskStatus,
+        message: Option<&str>,
+        actions: ActionCounts,
+        message_is_summary: bool,
+    ) -> TaskStatus {
+        self.ctx.log().record_task(
+            task_entry(self.task, &self.task_id, status, message, actions)
+                .with_summary_message(message_is_summary),
+        );
+        status
+    }
+
+    /// Downgrade a cancellation-induced failure to [`TaskStatus::Interrupted`].
+    ///
+    /// Ctrl-C aborts in-flight work, so the resulting errors are signal artefacts
+    /// rather than real failures and must not be counted as such in the summary.
+    fn record_interrupted(&self, detail: &str, actions: ActionCounts) -> TaskStatus {
+        self.ctx.log().warn(format!("interrupted: {detail}"));
+        self.record(TaskStatus::Interrupted, Some("interrupted"), actions, false)
+    }
+
+    /// Run a task and record its already-classified outcome.
+    ///
+    /// Typed executor cancellation remains interrupted; unrelated failures retain
+    /// their failure semantics even when cancellation was requested independently.
+    fn record_run_outcome(&self) -> TaskExecution {
+        match self.task.run(self.ctx) {
+            Ok(result) => {
+                let classified =
+                    classify_result(&result, self.ctx.dry_run(), self.ctx.require_complete());
+                let rec = |message: Option<&str>| {
+                    self.record(
+                        classified.execution.status,
+                        message,
+                        classified.actions,
+                        false,
+                    )
+                };
+                match &result {
+                    TaskResult::Ok | TaskResult::DryRun | TaskResult::CheckPassed => {
+                        rec(None);
+                    }
+                    TaskResult::NotApplicable(reason) => {
+                        rec(Some(reason));
+                    }
+                    TaskResult::Skipped { reason, .. } | TaskResult::Failed(reason) => {
+                        if classified.execution.status == TaskStatus::Failed {
+                            self.ctx.log().warn(format!("failed: {reason}"));
+                        }
+                        rec(Some(reason));
+                    }
+                    TaskResult::Batch(stats) => {
+                        self.record_batch_outcome(stats, classified);
+                    }
+                }
+                classified.execution
+            }
+            Err(e) => {
+                if let Some(report) = e.downcast_ref::<BatchReport>() {
+                    return self.record_stopped_batch(&e, report);
+                }
+                if is_interrupted(&e) {
+                    return TaskExecution::new(
+                        self.record_interrupted(self.task.name(), ActionCounts::default()),
+                        TaskOutcome::Cancelled,
+                    );
+                }
+                let message = format!("{e:#}");
+                self.ctx
+                    .log()
+                    .run_task_event(LogEvent::Debug, &self.task_id, &message);
+                let summary = concise_failure(&e);
+                self.ctx.log().error(&summary);
+                let status = self.record(
+                    TaskStatus::Failed,
+                    Some(&summary),
+                    ActionCounts::default(),
+                    false,
+                );
+                TaskExecution::new(status, TaskOutcome::Failed)
+            }
+        }
+    }
+
+    fn record_stopped_batch(&self, error: &anyhow::Error, report: &BatchReport) -> TaskExecution {
+        let failed = report.completion() == BatchCompletion::Failed;
+        let status = if failed {
+            TaskStatus::Failed
+        } else {
+            TaskStatus::Interrupted
+        };
+        let mut actions = batch_actions(report.stats(), self.ctx.dry_run());
+        actions.interrupted = report.interrupted_count();
+        actions.not_attempted = report.not_attempted_count();
+        let summary = report.summary(self.ctx.dry_run());
+        let message = if failed {
+            format!("{summary}; {}", concise_failure(error))
+        } else {
+            format!("interrupted: {summary}")
+        };
+        self.ctx.log().run_task_event(
+            LogEvent::Debug,
+            &self.task_id,
+            &format!("{message}\n{error:#}"),
+        );
+        self.ctx.log().warn(&message);
+        TaskExecution::new(
+            self.record(status, Some(&message), actions, false),
+            if failed {
+                TaskOutcome::Failed
+            } else {
+                TaskOutcome::Cancelled
+            },
+        )
+    }
+
+    fn record_batch_outcome(&self, stats: &TaskStats, classified: ClassifiedResult) {
+        let message = stats
+            .message()
+            .map_or_else(|| stats.summary(self.ctx.dry_run()), str::to_string);
+        let display_status = classified.execution.status;
+        if display_status == TaskStatus::Failed {
+            self.ctx.log().warn(format!("failed: {message}"));
+        } else if stats.message().is_none() {
+            self.ctx.log().summary(&message);
+        } else {
+            self.ctx.log().info(&message);
+        }
+        let recorded_message = batch_reason(stats, display_status, &message);
+        self.record(
+            display_status,
+            recorded_message.as_deref(),
+            classified.actions,
+            stats.message().is_none()
+                && matches!(display_status, TaskStatus::Changed | TaskStatus::Failed),
+        );
+    }
 }
 
 /// Presentation and dependency decisions computed before recording a result.
@@ -213,111 +315,6 @@ fn classify_result(result: &TaskResult, dry_run: bool, require_complete: bool) -
     }
 }
 
-/// Run a task and record its already-classified outcome.
-///
-/// Typed executor cancellation remains interrupted; unrelated failures retain
-/// their failure semantics even when cancellation was requested independently.
-fn record_run_outcome(task: &dyn Task, task_id: &str, ctx: &Context) -> TaskExecution {
-    match task.run(ctx) {
-        Ok(result) => {
-            let classified = classify_result(&result, ctx.dry_run(), ctx.require_complete());
-            let rec = |message: Option<&str>| {
-                record(
-                    task,
-                    task_id,
-                    ctx,
-                    classified.execution.status,
-                    message,
-                    classified.actions,
-                    false,
-                )
-            };
-            match &result {
-                TaskResult::Ok | TaskResult::DryRun | TaskResult::CheckPassed => {
-                    rec(None);
-                }
-                TaskResult::NotApplicable(reason) => {
-                    rec(Some(reason));
-                }
-                TaskResult::Skipped { reason, .. } => {
-                    if classified.execution.status == TaskStatus::Failed {
-                        record_failed_outcome(task, task_id, ctx, reason, classified);
-                    } else {
-                        rec(Some(reason));
-                    }
-                }
-                TaskResult::Failed(reason) => {
-                    record_failed_outcome(task, task_id, ctx, reason, classified);
-                }
-                TaskResult::Batch(stats) => {
-                    record_batch_outcome(task, task_id, ctx, stats, classified);
-                }
-            }
-            classified.execution
-        }
-        Err(e) => {
-            if let Some(report) = e.downcast_ref::<BatchReport>() {
-                return record_stopped_batch(task, task_id, ctx, &e, report);
-            }
-            if is_interrupted(&e) {
-                return TaskExecution::new(
-                    record_interrupted(task, task_id, ctx, task.name(), ActionCounts::default()),
-                    TaskOutcome::Cancelled,
-                );
-            }
-            let message = format!("{e:#}");
-            ctx.log().run_task_event(LogEvent::Debug, task_id, &message);
-            let summary = concise_failure(&e);
-            ctx.log().error(&summary);
-            let status = record(
-                task,
-                task_id,
-                ctx,
-                TaskStatus::Failed,
-                Some(&summary),
-                ActionCounts::default(),
-                false,
-            );
-            TaskExecution::new(status, TaskOutcome::Failed)
-        }
-    }
-}
-
-fn record_stopped_batch(
-    task: &dyn Task,
-    task_id: &str,
-    ctx: &Context,
-    error: &anyhow::Error,
-    report: &BatchReport,
-) -> TaskExecution {
-    let failed = report.completion() == BatchCompletion::Failed;
-    let status = if failed {
-        TaskStatus::Failed
-    } else {
-        TaskStatus::Interrupted
-    };
-    let mut actions = batch_actions(report.stats(), ctx.dry_run());
-    actions.interrupted = report.interrupted_count();
-    actions.not_attempted = report.not_attempted_count();
-    let summary = report.summary(ctx.dry_run());
-    let message = if failed {
-        format!("{summary}; {}", concise_failure(error))
-    } else {
-        format!("interrupted: {summary}")
-    };
-    ctx.log()
-        .run_task_event(LogEvent::Debug, task_id, &format!("{message}\n{error:#}"));
-    ctx.log().warn(&message);
-    TaskExecution::new(
-        record(task, task_id, ctx, status, Some(&message), actions, false),
-        if failed {
-            TaskOutcome::Failed
-        } else {
-            TaskOutcome::Cancelled
-        },
-    )
-}
-
 /// Keep the task context and first useful child diagnostic on the console.
 /// The full chain has already been persisted by the caller.
 fn concise_failure(error: &anyhow::Error) -> String {
@@ -340,56 +337,6 @@ fn concise_failure(error: &anyhow::Error) -> String {
         }
     }
     format!("{error:#}")
-}
-
-fn record_failed_outcome(
-    task: &dyn Task,
-    task_id: &str,
-    ctx: &Context,
-    reason: &str,
-    classified: ClassifiedResult,
-) {
-    ctx.log().warn(format!("failed: {reason}"));
-    record(
-        task,
-        task_id,
-        ctx,
-        classified.execution.status,
-        Some(reason),
-        classified.actions,
-        false,
-    );
-}
-
-fn record_batch_outcome(
-    task: &dyn Task,
-    task_id: &str,
-    ctx: &Context,
-    stats: &TaskStats,
-    classified: ClassifiedResult,
-) {
-    let message = stats
-        .message()
-        .map_or_else(|| stats.summary(ctx.dry_run()), str::to_string);
-    let display_status = classified.execution.status;
-    if display_status == TaskStatus::Failed {
-        ctx.log().warn(format!("failed: {message}"));
-    } else if stats.message().is_none() {
-        ctx.log().summary(&message);
-    } else {
-        ctx.log().info(&message);
-    }
-    let recorded_message = batch_reason(stats, display_status, &message);
-    record(
-        task,
-        task_id,
-        ctx,
-        display_status,
-        recorded_message.as_deref(),
-        classified.actions,
-        stats.message().is_none()
-            && matches!(display_status, TaskStatus::Changed | TaskStatus::Failed),
-    );
 }
 
 fn batch_actions(stats: &TaskStats, dry_run: bool) -> ActionCounts {

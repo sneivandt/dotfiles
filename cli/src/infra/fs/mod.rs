@@ -1,9 +1,7 @@
-//! File-system helpers, temporary-path guards, and injectable operations.
+//! File-system helpers and temporary-path guards.
 //!
 //! This module is the single source of truth for filesystem operations:
 //!
-//! - [`FileSystemOps`] / [`SystemFileSystemOps`] — injectable trait for
-//!   tasks that need to be unit-tested without touching the real filesystem.
 //! - [`ensure_parent_dir`] / [`copy_dir_recursive`] —
 //!   shared helper functions for resource `apply()` methods.
 //! - [`write_atomic`] / [`rename_into_place`] —
@@ -19,47 +17,6 @@ mod temp;
 pub use copy::{copy_dir_recursive, reject_destination_link};
 pub use place::{rename_into_place, write_atomic};
 pub use temp::TempGuard;
-
-/// Abstraction over filesystem queries used by tasks.
-///
-/// Implement this trait to swap in a mock during unit tests, keeping task
-/// logic independent of real I/O.  The production implementation is
-/// [`SystemFileSystemOps`].
-#[cfg_attr(test, mockall::automock)]
-pub trait FileSystemOps: Send + Sync + std::fmt::Debug {
-    /// Returns `true` if `path` exists on the filesystem.
-    fn exists(&self, path: &Path) -> bool;
-
-    /// Returns `true` if `path` is a regular file (not a directory or broken symlink).
-    fn is_file(&self, path: &Path) -> bool;
-
-    /// Returns the immediate child paths inside `path`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if `path` cannot be opened or read as a directory.
-    fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>>;
-}
-
-/// Production [`FileSystemOps`] implementation that delegates to [`std::fs`].
-#[derive(Debug, Default)]
-pub struct SystemFileSystemOps;
-
-impl FileSystemOps for SystemFileSystemOps {
-    fn exists(&self, path: &Path) -> bool {
-        path.exists()
-    }
-
-    fn is_file(&self, path: &Path) -> bool {
-        path.is_file()
-    }
-
-    fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>> {
-        std::fs::read_dir(path)?
-            .map(|e| e.map(|entry| entry.path()).map_err(Into::into))
-            .collect()
-    }
-}
 
 /// Ensure the parent directory of `path` exists, creating it (and any
 /// ancestors) if necessary.

@@ -9,10 +9,11 @@ description: >
 
 ## Installation
 
-`InstallGitHooks` discovers extensionless files under `hooks/` through injected
-`FileSystemOps` and resolves the destination through Git's common directory or
-`core.hooksPath`. A linked worktree has a `.git` file, not a hooks directory.
-Keep directory enumeration in execution; applicability uses only cheap injected existence checks.
+`InstallGitHooks` discovers extensionless files under `hooks/` and resolves the
+destination through Git's common directory or `core.hooksPath`. A linked worktree
+has a `.git` file, not a hooks directory. Test discovery with isolated temporary
+repositories. Keep directory enumeration in execution; applicability uses only
+cheap path-existence checks.
 Cross-domain dependency wiring belongs in the app catalog.
 
 ## Pre-commit contract

@@ -23,6 +23,15 @@ This builds/runs the current source without asking a bootstrap wrapper to
 download a release or reuse a different binary. Cargo/rustup may need network
 access for missing dependencies or toolchain components.
 
+For ordinary local builds, `cargo build` and `cargo test` omit debug information
+to reduce compile time and artifact size, while retaining incremental compilation,
+debug assertions, and overflow checks. Dependencies still use optimization level 1.
+Restore full debugger information for a build with
+`CARGO_PROFILE_DEV_DEBUG=2 cargo build`, or retain file/line backtraces with
+`CARGO_PROFILE_DEV_DEBUG=line-tables-only cargo build`. For tests, use
+`CARGO_PROFILE_TEST_DEBUG` instead. Changing these settings rebuilds affected
+artifacts; use consistent settings during an edit/build loop.
+
 Install optional tools only for the checks you need: ShellCheck for POSIX
 scripts, PowerShell 7 with PSScriptAnalyzer for PowerShell, and the Cargo
 audit/deny tools for dependency checks. Tool availability and skips are

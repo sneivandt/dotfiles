@@ -34,6 +34,10 @@ build artifacts and may download dependencies. The wrapper builds with the
 `CARGO_TARGET_DIR` or target-triple locations. It does not need to copy that
 artifact into `bin/`.
 
+This profile keeps optimization level 1 and omits debug information. Incremental
+compilation reuses work after source edits, at the cost of more build-cache disk
+space. The first build still compiles and optimizes the full dependency graph.
+
 After the `launcher` and `path` tasks converge, open a new shell and use
 `dotfiles`. The launcher is `~/.local/bin/dotfiles` on Linux and
 `%USERPROFILE%\.local\bin\dotfiles.cmd` on Windows; it delegates to the

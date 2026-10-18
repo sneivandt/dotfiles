@@ -142,6 +142,11 @@ invalid_html_tags = "deny"
 bare_urls = "deny"
 unescaped_backticks = "deny"
 
+[profile.dev]
+# Prefer fast local builds; opt back into debugger information with
+# CARGO_PROFILE_DEV_DEBUG=2 when needed. CI and release already omit debug info.
+debug = 0
+
 [profile.dev.package."*"]
 # Level 1 preserves fast dependencies without paying the cold-build cost of
 # fully optimizing every crate. Local clean builds were ~23% faster than level 3.
@@ -150,7 +155,8 @@ opt-level = 1
 [profile.dev-opt]
 inherits = "dev"
 opt-level = 1
-incremental = false
+# Wrappers use this profile for --build; retain codegen state between edits.
+incremental = true
 codegen-units = 256
 debug = 0
 

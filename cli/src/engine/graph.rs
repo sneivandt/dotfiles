@@ -335,57 +335,55 @@ mod tests {
     // Mock tasks — each is a distinct type so TaskId-based deps work.
     // -----------------------------------------------------------------------
 
-    macro_rules! mock_task {
-        ($name:ident, $display:expr, $deps:expr) => {
-            struct $name;
-            impl Task for $name {
-                fn meta(&self) -> TaskMeta<'_> {
-                    TaskMeta::new($display)
-                }
-                fn dependencies(&self) -> &[TaskId] {
-                    const DEPS: &[TaskId] = $deps;
-                    DEPS
-                }
-                fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-                    Ok(TaskResult::Ok)
-                }
-            }
-        };
+    crate::test_helpers::test_task! {
+        TaskA {
+            name: "a",
+        }
+        TaskB {
+            name: "b",
+        }
+        TaskC {
+            name: "c",
+        }
+        DepA {
+            name: "dep-a",
+        }
+        DepB {
+            name: "dep-b",
+            deps: [DepA],
+        }
+        DepC {
+            name: "dep-c",
+            deps: [DepB],
+        }
+        DiaA {
+            name: "dia-a",
+        }
+        DiaB {
+            name: "dia-b",
+            deps: [DiaA],
+        }
+        DiaC {
+            name: "dia-c",
+            deps: [DiaA],
+        }
+        DiaD {
+            name: "dia-d",
+            deps: [DiaB, DiaC],
+        }
+        CycA {
+            name: "cyc-a",
+            deps: [CycB],
+        }
+        CycB {
+            name: "cyc-b",
+            deps: [CycA],
+        }
+        MissingDepTask {
+            name: "missing-dep",
+            deps: [DepC],
+        }
     }
-
-    // Simple tasks for basic tests
-    mock_task!(TaskA, "a", &[]);
-    mock_task!(TaskB, "b", &[]);
-    mock_task!(TaskC, "c", &[]);
-
-    // Chain: DepA → DepB → DepC
-    mock_task!(DepA, "dep-a", &[]);
-    mock_task!(DepB, "dep-b", &[TaskId::Type(TypeId::of::<DepA>())]);
-    mock_task!(DepC, "dep-c", &[TaskId::Type(TypeId::of::<DepB>())]);
-
-    // Diamond: DiaA → DiaB + DiaC → DiaD
-    mock_task!(DiaA, "dia-a", &[]);
-    mock_task!(DiaB, "dia-b", &[TaskId::Type(TypeId::of::<DiaA>())]);
-    mock_task!(DiaC, "dia-c", &[TaskId::Type(TypeId::of::<DiaA>())]);
-    mock_task!(
-        DiaD,
-        "dia-d",
-        &[
-            TaskId::Type(TypeId::of::<DiaB>()),
-            TaskId::Type(TypeId::of::<DiaC>())
-        ]
-    );
-
-    // Cyclic: CycA → CycB → CycA
-    mock_task!(CycA, "cyc-a", &[TaskId::Type(TypeId::of::<CycB>())]);
-    mock_task!(CycB, "cyc-b", &[TaskId::Type(TypeId::of::<CycA>())]);
-
-    // Missing dep
-    mock_task!(
-        MissingDepTask,
-        "missing-dep",
-        &[TaskId::Type(TypeId::of::<DepC>())]
-    );
 
     // -----------------------------------------------------------------------
     // validate
@@ -430,7 +428,9 @@ mod tests {
         assert_eq!(validate(&tasks), Ok(()));
     }
 
-    mock_task!(DuplicateIdA, "duplicate-a", &[]);
+    crate::test_helpers::test_task! {
+        DuplicateIdA { name: "duplicate-a", }
+    }
 
     struct DuplicateIdB;
     impl Task for DuplicateIdB {

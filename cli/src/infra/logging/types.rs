@@ -388,6 +388,18 @@ pub trait Output: Send + Sync {
     fn clear_status_line(&self) {}
 }
 
+// Keep the named helpers identical in ownership and lifetime behavior.
+macro_rules! output_methods {
+    ($($(#[$doc:meta])* $method:ident => $kind:ident,)+) => {
+        $(
+            $(#[$doc])*
+            fn $method<'a>(&self, msg: impl Into<Cow<'a, str>>) {
+                self.emit(MsgKind::$kind, msg.into());
+            }
+        )+
+    };
+}
+
 /// Named convenience methods for every [`Output`].
 ///
 /// Each method accepts anything that converts into a `Cow<str>`, so both
@@ -396,54 +408,33 @@ pub trait Output: Send + Sync {
 ///
 /// Import it as `use crate::infra::logging::OutputExt as _;`.
 pub trait OutputExt: Output {
-    /// Persist aggregate counters without repeating them in console details.
-    fn summary<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Summary, msg.into());
-    }
-
-    /// Log a stage header (major section).
-    fn stage<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Stage, msg.into());
-    }
-    /// Log an informational message.
-    fn info<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Info, msg.into());
-    }
-    /// Log diagnostic item detail; visible on the console in verbose mode.
-    fn debug<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Debug, msg.into());
-    }
-    /// Log de-emphasised context; visible and dim in verbose mode.
-    fn context<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Context, msg.into());
-    }
-    /// Log an internal plumbing message; recorded in the run log only.
-    ///
-    /// Unlike [`OutputExt::debug`], this stays out of `--verbose` console
-    /// output. Use it for scheduling and batching detail.
-    fn trace<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Trace, msg.into());
-    }
-    /// Log a warning message.
-    fn warn<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Warn, msg.into());
-    }
-    /// Log an error message.
-    fn error<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Error, msg.into());
-    }
-    /// Log a dry-run action message.
-    fn dry_run<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::DryRun, msg.into());
-    }
-    /// Log a message that always appears on the console regardless of the
-    /// verbose setting.  Used for structural output (version, profile, summary).
-    fn always<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Always, msg.into());
-    }
-    /// Log de-emphasised run context. Always visible, rendered dim.
-    fn startup<'a>(&self, msg: impl Into<Cow<'a, str>>) {
-        self.emit(MsgKind::Startup, msg.into());
+    output_methods! {
+        /// Persist aggregate counters without repeating them in console details.
+        summary => Summary,
+        /// Log a stage header (major section).
+        stage => Stage,
+        /// Log an informational message.
+        info => Info,
+        /// Log diagnostic item detail; visible on the console in verbose mode.
+        debug => Debug,
+        /// Log de-emphasised context; visible and dim in verbose mode.
+        context => Context,
+        /// Log an internal plumbing message; recorded in the run log only.
+        ///
+        /// Unlike [`OutputExt::debug`], this stays out of `--verbose` console
+        /// output. Use it for scheduling and batching detail.
+        trace => Trace,
+        /// Log a warning message.
+        warn => Warn,
+        /// Log an error message.
+        error => Error,
+        /// Log a dry-run action message.
+        dry_run => DryRun,
+        /// Log a message that always appears on the console regardless of the
+        /// verbose setting.  Used for structural output (version, profile, summary).
+        always => Always,
+        /// Log de-emphasised run context. Always visible, rendered dim.
+        startup => Startup,
     }
 }
 

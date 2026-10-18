@@ -4,25 +4,20 @@ use serde::Deserialize;
 use std::path::{Component, Path, PathBuf};
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::StringOrTable;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `symlink.absolute-source`.
-const SYMLINK_ABSOLUTE_SOURCE: DiagnosticCode = DiagnosticCode::new("symlink", "absolute-source");
-/// Diagnostic code: `symlink.absolute-target`.
-const SYMLINK_ABSOLUTE_TARGET: DiagnosticCode = DiagnosticCode::new("symlink", "absolute-target");
-/// Diagnostic code: `symlink.parent-in-source`.
-const SYMLINK_PARENT_IN_SOURCE: DiagnosticCode = DiagnosticCode::new("symlink", "parent-in-source");
-/// Diagnostic code: `symlink.parent-in-target`.
-const SYMLINK_PARENT_IN_TARGET: DiagnosticCode = DiagnosticCode::new("symlink", "parent-in-target");
-/// Diagnostic code: `symlink.source-missing`.
-const SYMLINK_SOURCE_MISSING: DiagnosticCode = DiagnosticCode::new("symlink", "source-missing");
-/// Diagnostic code: `symlink.source-outside-root`.
-const SYMLINK_SOURCE_OUTSIDE_ROOT: DiagnosticCode =
-    DiagnosticCode::new("symlink", "source-outside-root");
-const SYMLINK_ROOT_SOURCE: DiagnosticCode = DiagnosticCode::new("symlink", "root-source");
-const SYMLINK_ROOT_TARGET: DiagnosticCode = DiagnosticCode::new("symlink", "root-target");
+crate::infra::config::diagnostic_codes! {
+    "symlink";
+    SYMLINK_ABSOLUTE_SOURCE => "absolute-source",
+    SYMLINK_ABSOLUTE_TARGET => "absolute-target",
+    SYMLINK_PARENT_IN_SOURCE => "parent-in-source",
+    SYMLINK_PARENT_IN_TARGET => "parent-in-target",
+    SYMLINK_SOURCE_MISSING => "source-missing",
+    SYMLINK_SOURCE_OUTSIDE_ROOT => "source-outside-root",
+    SYMLINK_ROOT_SOURCE => "root-source",
+    SYMLINK_ROOT_TARGET => "root-target",
+}
 
 mod glob_expansion;
 mod target_capture;

@@ -11,6 +11,10 @@ description: >
 ## Ownership
 
 - Startup initializes one shared `Logger`; task code uses `ctx.log()`.
+- Named `OutputExt` helpers are declared through the module-local
+  `output_methods!` in [logging types](../../../cli/src/infra/logging/types.rs).
+  Keep their docs and `MsgKind` mappings together; rendering and persistence
+  policy belong in the sinks.
 - `engine::execute()` records task results. Tasks do not call
   `record_task()` directly.
 - Records are keyed by `Task::log_key()`, never display name.

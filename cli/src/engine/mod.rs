@@ -53,7 +53,7 @@ pub use task::{
     execute,
 };
 pub(crate) use task::{
-    TaskOutcome, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
+    TaskOutcome, config_task, run_batch_resource_task, run_resource_task, task_deps, task_metadata,
 };
 
 #[cfg(test)]

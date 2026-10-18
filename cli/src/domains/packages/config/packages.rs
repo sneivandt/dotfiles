@@ -2,14 +2,14 @@
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::StringOrTable;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `package.aur-not-arch`.
-const PACKAGE_AUR_NOT_ARCH: DiagnosticCode = DiagnosticCode::new("package", "aur-not-arch");
-/// Diagnostic code: `package.empty-name`.
-const PACKAGE_EMPTY_NAME: DiagnosticCode = DiagnosticCode::new("package", "empty-name");
+crate::infra::config::diagnostic_codes! {
+    "package";
+    PACKAGE_AUR_NOT_ARCH => "aur-not-arch",
+    PACKAGE_EMPTY_NAME => "empty-name",
+}
 
 /// A package to install.
 #[derive(Debug, Clone)]

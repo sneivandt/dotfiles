@@ -20,6 +20,10 @@ description: >
 
 - Unit context/config helpers: `cli/src/app/test_helpers/`
 - Integration helpers: `cli/tests/common/mod.rs`
+- Distinct no-op task types for graph/selection tests: `test_task!` in
+  [unit helpers](../../../cli/src/app/test_helpers/mod.rs). It supports selectors,
+  visibility, blocking dependencies and ordering-only dependencies. Keep custom
+  identity, execution and synchronization fixtures handwritten.
 - Executor results: `ExecResult::success` / `ExecResult::failure`
 - Ordered command responses: `ScriptedExecutor`; its `.git()` expectations check
   exact Git arguments, cwd, and checked mode, while `.ok()` / `.err()` do not

@@ -2,17 +2,14 @@
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `agent-settings.empty-key`.
-const AGENT_SETTINGS_EMPTY_KEY: DiagnosticCode = DiagnosticCode::new("agent-settings", "empty-key");
-/// Diagnostic code: `agent-settings.key-empty-segment`.
-const AGENT_SETTINGS_KEY_EMPTY_SEGMENT: DiagnosticCode =
-    DiagnosticCode::new("agent-settings", "key-empty-segment");
-/// Diagnostic code: `agent-settings.conflicting-values`.
-const AGENT_SETTINGS_CONFLICTING_VALUES: DiagnosticCode =
-    DiagnosticCode::new("agent-settings", "conflicting-values");
+crate::infra::config::diagnostic_codes! {
+    "agent-settings";
+    AGENT_SETTINGS_EMPTY_KEY => "empty-key",
+    AGENT_SETTINGS_KEY_EMPTY_SEGMENT => "key-empty-segment",
+    AGENT_SETTINGS_CONFLICTING_VALUES => "conflicting-values",
+}
 
 /// An agent harness with a supported user settings document.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]

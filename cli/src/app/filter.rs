@@ -204,79 +204,32 @@ pub(crate) fn normalize_task_filter(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Context, TaskId, TaskMeta, TaskResult, TaskVisibility};
+    use crate::engine::TaskVisibility;
     use crate::infra::logging::MsgKind;
-    use anyhow::Result;
 
-    struct SampleTask;
-
-    impl Task for SampleTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("Home symlinks").with_selector("symlinks")
+    crate::test_helpers::test_task! {
+        SampleTask {
+            name: "Home symlinks",
+            selector: "symlinks",
         }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
+        OtherTask {
+            name: "System packages",
+            selector: "packages",
         }
-    }
-
-    struct OtherTask;
-
-    impl Task for OtherTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("System packages").with_selector("packages")
+        InternalTask {
+            name: "Reload configuration",
+            selector: "reload-configuration",
+            visibility: TaskVisibility::Internal,
         }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
+        DependentTask {
+            name: "Dependent",
+            selector: "dependent",
+            deps: [SampleTask],
         }
-    }
-
-    struct InternalTask;
-
-    impl Task for InternalTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("Reload configuration")
-                .with_selector("reload-configuration")
-                .with_visibility(TaskVisibility::Internal)
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
-        }
-    }
-
-    struct DependentTask;
-
-    impl Task for DependentTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("Dependent").with_selector("dependent")
-        }
-
-        fn dependencies(&self) -> &[TaskId] {
-            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<SampleTask>())];
-            DEPS
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
-        }
-    }
-
-    struct OrderingDependentTask;
-
-    impl Task for OrderingDependentTask {
-        fn meta(&self) -> TaskMeta<'_> {
-            TaskMeta::new("Ordering dependent").with_selector("ordering-dependent")
-        }
-
-        fn ordering_dependencies(&self) -> &[TaskId] {
-            const DEPS: &[TaskId] = &[TaskId::Type(std::any::TypeId::of::<SampleTask>())];
-            DEPS
-        }
-
-        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-            Ok(TaskResult::Ok)
+        OrderingDependentTask {
+            name: "Ordering dependent",
+            selector: "ordering-dependent",
+            ordering: [SampleTask],
         }
     }
 

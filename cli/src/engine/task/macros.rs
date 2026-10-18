@@ -1,3 +1,27 @@
+/// Declare a task that holds one immutable configuration slice.
+///
+/// Only the struct and constructor are generated; task policy and execution
+/// remain in an explicit `impl Task` beside the declaration.
+macro_rules! config_task {
+    ($(#[$attr:meta])* $vis:vis struct $name:ident($config:ty);) => {
+        $(#[$attr])*
+        #[derive(Debug)]
+        $vis struct $name {
+            config: $crate::infra::ConfigHandle<$config>,
+        }
+
+        impl $name {
+            /// Create the task with a handle to its configuration slice.
+            #[must_use]
+            pub const fn new(config: $crate::infra::ConfigHandle<$config>) -> Self {
+                Self { config }
+            }
+        }
+    };
+}
+
+pub(crate) use config_task;
+
 /// Implement [`Task::dependencies`](crate::engine::Task::dependencies) by expanding to the required
 /// `fn dependencies(&self) -> &[TaskId]` method body.
 ///

@@ -10,17 +10,18 @@ use std::path::Path;
 use serde_yaml_ng::Value as YamlValue;
 
 use super::fragments::discover_yaml_files;
+use crate::infra::config::Diagnostic;
 use crate::infra::config::validation::Validator;
-use crate::infra::config::{Diagnostic, DiagnosticCode};
 
 const SOURCE: &str = "apm/config/*.yml";
 const LOCAL_PLUGIN_PREFIX: &str = "~/.apm/plugins/";
 const LOCAL_PLUGIN_NAME_PREFIX: &str = "dot-";
 
-/// Diagnostic code: `apm.io-error`.
-const APM_IO_ERROR: DiagnosticCode = DiagnosticCode::new("apm", "io-error");
-/// Diagnostic code: `apm.plugin-dir-missing`.
-const APM_PLUGIN_DIR_MISSING: DiagnosticCode = DiagnosticCode::new("apm", "plugin-dir-missing");
+crate::infra::config::diagnostic_codes! {
+    "apm";
+    APM_IO_ERROR => "io-error",
+    APM_PLUGIN_DIR_MISSING => "plugin-dir-missing",
+}
 
 /// Validate local APM plugin references and return any diagnostics.
 #[must_use]

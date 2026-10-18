@@ -12,7 +12,6 @@ use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
     task_metadata,
 };
-use crate::infra::ConfigHandle;
 use crate::infra::exec::ExecError;
 use crate::infra::logging::OutputExt as _;
 
@@ -31,18 +30,9 @@ use planning::{
 // Tasks
 // ---------------------------------------------------------------------------
 
-/// Install system packages via pacman or winget.
-#[derive(Debug)]
-pub struct InstallPackages {
-    config: ConfigHandle<Vec<Package>>,
-}
-
-impl InstallPackages {
-    /// Create the task with a handle to the package configuration.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<Package>>) -> Self {
-        Self { config }
-    }
+crate::engine::config_task! {
+    /// Install system packages via pacman or winget.
+    pub struct InstallPackages(Vec<Package>);
 }
 
 impl Task for InstallPackages {
@@ -64,10 +54,9 @@ impl Task for InstallPackages {
     }
 }
 
-/// Install AUR packages via paru.
-#[derive(Debug)]
-pub struct InstallAurPackages {
-    config: ConfigHandle<Vec<Package>>,
+crate::engine::config_task! {
+    /// Install AUR packages via paru.
+    pub struct InstallAurPackages(Vec<Package>);
 }
 
 #[derive(Clone, Copy)]
@@ -144,14 +133,6 @@ impl PackageTaskKind {
         };
 
         process_operation(ctx, &PackageInstallOperation::new(selected, manager))
-    }
-}
-
-impl InstallAurPackages {
-    /// Create the task with a handle to the package configuration.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<Package>>) -> Self {
-        Self { config }
     }
 }
 

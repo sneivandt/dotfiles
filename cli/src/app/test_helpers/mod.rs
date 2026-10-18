@@ -25,6 +25,55 @@ pub fn numeric_task_id(key: impl ToString) -> TaskId {
     TaskId::dynamic::<NumericTestTask>(key.to_string())
 }
 
+/// Declare distinct no-op task types for graph and selection tests.
+///
+/// Keep tasks with custom execution or identity behavior handwritten.
+macro_rules! test_task {
+    ($(
+        $name:ident {
+            name: $display:expr,
+            $(selector: $selector:expr,)?
+            $(visibility: $visibility:expr,)?
+            $(deps: [$($dep:ty),* $(,)?],)?
+            $(ordering: [$($order:ty),* $(,)?],)?
+        }
+    )+) => {
+        $(
+            struct $name;
+
+            impl $crate::engine::Task for $name {
+                fn meta(&self) -> $crate::engine::TaskMeta<'_> {
+                    $crate::engine::TaskMeta::new($display)
+                        $(.with_selector($selector))?
+                        $(.with_visibility($visibility))?
+                }
+
+                $(fn dependencies(&self) -> &[$crate::engine::TaskId] {
+                    const DEPS: &[$crate::engine::TaskId] = &[
+                        $($crate::engine::TaskId::Type(::std::any::TypeId::of::<$dep>())),*
+                    ];
+                    DEPS
+                })?
+
+                $(fn ordering_dependencies(&self) -> &[$crate::engine::TaskId] {
+                    const DEPS: &[$crate::engine::TaskId] = &[
+                        $($crate::engine::TaskId::Type(::std::any::TypeId::of::<$order>())),*
+                    ];
+                    DEPS
+                })?
+
+                fn run(&self, _ctx: &$crate::engine::Context)
+                    -> ::anyhow::Result<$crate::engine::TaskResult>
+                {
+                    Ok($crate::engine::TaskResult::Ok)
+                }
+            }
+        )+
+    };
+}
+
+pub(crate) use test_task;
+
 mod failure;
 mod output;
 mod scripted;

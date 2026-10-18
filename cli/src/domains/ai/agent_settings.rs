@@ -7,28 +7,20 @@ use anyhow::Result;
 use crate::domains::ai::config::agent_settings::{AgentHarness, AgentSetting, validate_conflicts};
 use crate::domains::ai::resources::agent_settings::{AgentSettingResource, SettingsFormat};
 use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
-use crate::infra::ConfigHandle;
 
-/// Configure agent harness settings from `agent-settings.toml`.
-///
-/// Each managed key is converged inside its harness's user settings document
-/// without disturbing unmanaged keys. Processing is forced sequential because
-/// multiple resources can read and rewrite the same file. Contradictory values
-/// for the same harness/key are rejected before any document is changed.
-#[derive(Debug)]
-pub struct ConfigureAgentSettings {
-    config: ConfigHandle<Vec<AgentSetting>>,
+crate::engine::config_task! {
+    /// Configure agent harness settings from `agent-settings.toml`.
+    ///
+    /// Each managed key is converged inside its harness's user settings document
+    /// without disturbing unmanaged keys. Processing is forced sequential because
+    /// multiple resources can read and rewrite the same file. Contradictory values
+    /// for the same harness/key are rejected before any document is changed.
+    pub struct ConfigureAgentSettings(Vec<AgentSetting>);
 }
 
 const NAME: &str = "Agent settings";
 
 impl ConfigureAgentSettings {
-    /// Create the task with a handle to its configuration slice.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<AgentSetting>>) -> Self {
-        Self { config }
-    }
-
     fn resource(setting: &AgentSetting, home: &Path) -> AgentSettingResource {
         let (format, path) = target_document(setting.target, home);
         AgentSettingResource::new(

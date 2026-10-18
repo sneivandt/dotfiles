@@ -2,20 +2,16 @@
 use serde::Deserialize;
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::StringOrTable;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `systemd.empty-name`.
-const SYSTEMD_EMPTY_NAME: DiagnosticCode = DiagnosticCode::new("systemd", "empty-name");
-/// Diagnostic code: `systemd.invalid-extension`.
-const SYSTEMD_INVALID_EXTENSION: DiagnosticCode =
-    DiagnosticCode::new("systemd", "invalid-extension");
-/// Diagnostic code: `systemd.invalid-scope`.
-const SYSTEMD_INVALID_SCOPE: DiagnosticCode = DiagnosticCode::new("systemd", "invalid-scope");
-/// Diagnostic code: `systemd.platform-unsupported`.
-const SYSTEMD_PLATFORM_UNSUPPORTED: DiagnosticCode =
-    DiagnosticCode::new("systemd", "platform-unsupported");
+crate::infra::config::diagnostic_codes! {
+    "systemd";
+    SYSTEMD_EMPTY_NAME => "empty-name",
+    SYSTEMD_INVALID_EXTENSION => "invalid-extension",
+    SYSTEMD_INVALID_SCOPE => "invalid-scope",
+    SYSTEMD_PLATFORM_UNSUPPORTED => "platform-unsupported",
+}
 
 /// A systemd unit and its desired enablement state.
 #[derive(Debug, Clone)]

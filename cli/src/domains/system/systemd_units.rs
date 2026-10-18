@@ -10,22 +10,12 @@ use crate::engine::{
     Context, IntrinsicState, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
     process_resources,
 };
-use crate::infra::ConfigHandle;
 use crate::infra::exec::CommandSpec;
 use crate::infra::logging::OutputExt as _;
 
-/// Converge configured systemd unit enablement states.
-#[derive(Debug)]
-pub struct ConfigureSystemd {
-    config: ConfigHandle<Vec<SystemdUnit>>,
-}
-
-impl ConfigureSystemd {
-    /// Create the task with a handle to the systemd unit configuration.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<SystemdUnit>>) -> Self {
-        Self { config }
-    }
+crate::engine::config_task! {
+    /// Converge configured systemd unit enablement states.
+    pub struct ConfigureSystemd(Vec<SystemdUnit>);
 }
 
 impl Task for ConfigureSystemd {

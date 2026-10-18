@@ -18,31 +18,21 @@ use crate::engine::{
     process_operation,
 };
 use crate::engine::{IntrinsicState, ResourceChange, ResourceState};
-use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 
 // ---------------------------------------------------------------------------
 // Static task: report discovered scripts
 // ---------------------------------------------------------------------------
 
-/// Report overlay script definitions discovered at startup.
-///
-/// The actual execution of each script is handled by individual
-/// [`OverlayScriptTask`] instances created from the same configuration snapshot.
-#[derive(Debug)]
-pub struct ReportOverlayScriptSnapshot {
-    config: ConfigHandle<Vec<ScriptEntry>>,
+crate::engine::config_task! {
+    /// Report overlay script definitions discovered at startup.
+    ///
+    /// The actual execution of each script is handled by individual
+    /// [`OverlayScriptTask`] instances created from the same configuration snapshot.
+    pub struct ReportOverlayScriptSnapshot(Vec<ScriptEntry>);
 }
 
 const REPORT_NAME: &str = "Report overlay scripts";
-
-impl ReportOverlayScriptSnapshot {
-    /// Create the task with a handle to the overlay script configuration.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<ScriptEntry>>) -> Self {
-        Self { config }
-    }
-}
 
 impl Task for ReportOverlayScriptSnapshot {
     fn meta(&self) -> TaskMeta<'_> {

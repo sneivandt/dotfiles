@@ -5,23 +5,13 @@ use anyhow::Result;
 use crate::domains::files::config::chmod::ChmodEntry;
 use crate::domains::files::resources::chmod::ChmodResource;
 use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
-use crate::infra::ConfigHandle;
 
-/// Configure file permissions from chmod.toml.
-#[derive(Debug)]
-pub struct ApplyFilePermissions {
-    config: ConfigHandle<Vec<ChmodEntry>>,
+crate::engine::config_task! {
+    /// Configure file permissions from chmod.toml.
+    pub struct ApplyFilePermissions(Vec<ChmodEntry>);
 }
 
 const NAME: &str = "File permissions";
-
-impl ApplyFilePermissions {
-    /// Create the task with a handle to its configuration slice.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<ChmodEntry>>) -> Self {
-        Self { config }
-    }
-}
 
 impl Task for ApplyFilePermissions {
     task_metadata! {

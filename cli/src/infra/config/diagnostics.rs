@@ -3,6 +3,19 @@
 
 use std::fmt;
 
+/// Declare stable diagnostic codes belonging to one domain.
+macro_rules! diagnostic_codes {
+    ($domain:literal; $($name:ident => $rule:literal,)+) => {
+        $(
+            #[doc = concat!("Diagnostic code: `", $domain, ".", $rule, "`.")]
+            const $name: $crate::infra::config::DiagnosticCode =
+                $crate::infra::config::DiagnosticCode::new($domain, $rule);
+        )+
+    };
+}
+
+pub(crate) use diagnostic_codes;
+
 /// Severity level of a configuration diagnostic.
 ///
 /// Severity affects rendering and metadata only — both variants cause

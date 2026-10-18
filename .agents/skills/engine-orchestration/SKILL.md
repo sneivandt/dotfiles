@@ -62,6 +62,10 @@ the resolved non-interactive policy; window detection remains in elevation.
 
 ## Convergence rules
 
+- Use `config_task!` in [task macros](../../../cli/src/engine/task/macros.rs) for
+  task structs holding only one configuration slice. It generates the struct
+  and constructor; keep `impl Task` explicit. Tasks with additional fields need
+  handwritten declarations.
 - Use `process_resources*()` for item-shaped work.
 - Use `Operation` plus `process_operation()` for workflow-shaped work.
 - An operation computes one immutable plan in `current_state()` and passes that

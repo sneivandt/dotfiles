@@ -7,23 +7,13 @@ use crate::domains::system::resources::registry::{RegistryResource, batch_check_
 use crate::engine::{
     Context, ProcessOpts, Task, TaskResult, run_batch_resource_task, task_metadata,
 };
-use crate::infra::ConfigHandle;
 
-/// Apply Windows registry settings.
-#[derive(Debug)]
-pub struct ApplyRegistry {
-    config: ConfigHandle<Vec<RegistryEntry>>,
+crate::engine::config_task! {
+    /// Apply Windows registry settings.
+    pub struct ApplyRegistry(Vec<RegistryEntry>);
 }
 
 const NAME: &str = "Windows registry";
-
-impl ApplyRegistry {
-    /// Create the task with a handle to its configuration slice.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<RegistryEntry>>) -> Self {
-        Self { config }
-    }
-}
 
 impl Task for ApplyRegistry {
     task_metadata! {

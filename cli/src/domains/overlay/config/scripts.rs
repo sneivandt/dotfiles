@@ -9,16 +9,14 @@ use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `scripts.duplicate-selector`.
-const SCRIPTS_DUPLICATE_SELECTOR: DiagnosticCode =
-    DiagnosticCode::new("scripts", "duplicate-selector");
-/// Diagnostic code: `scripts.invalid-path`.
-const SCRIPTS_INVALID_PATH: DiagnosticCode = DiagnosticCode::new("scripts", "invalid-path");
-/// Diagnostic code: `scripts.empty-name`.
-const SCRIPTS_EMPTY_NAME: DiagnosticCode = DiagnosticCode::new("scripts", "empty-name");
+crate::infra::config::diagnostic_codes! {
+    "scripts";
+    SCRIPTS_DUPLICATE_SELECTOR => "duplicate-selector",
+    SCRIPTS_INVALID_PATH => "invalid-path",
+    SCRIPTS_EMPTY_NAME => "empty-name",
+}
 
 /// A custom script entry loaded from `scripts.toml`.
 #[derive(Debug, Clone, Deserialize)]

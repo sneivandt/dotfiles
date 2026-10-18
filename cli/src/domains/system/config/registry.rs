@@ -6,24 +6,17 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::toml_loader;
 use crate::infra::config::validation::Validator;
 
-/// Diagnostic code: `registry.empty-key-path`.
-const REGISTRY_EMPTY_KEY_PATH: DiagnosticCode = DiagnosticCode::new("registry", "empty-key-path");
-/// Diagnostic code: `registry.empty-value-name`.
-const REGISTRY_EMPTY_VALUE_NAME: DiagnosticCode =
-    DiagnosticCode::new("registry", "empty-value-name");
-/// Diagnostic code: `registry.platform-unsupported`.
-const REGISTRY_PLATFORM_UNSUPPORTED: DiagnosticCode =
-    DiagnosticCode::new("registry", "platform-unsupported");
-/// Diagnostic code: `registry.unsupported-hive`.
-const REGISTRY_UNSUPPORTED_HIVE: DiagnosticCode =
-    DiagnosticCode::new("registry", "unsupported-hive");
-/// Diagnostic code: `registry.conflicting-values`.
-const REGISTRY_CONFLICTING_VALUES: DiagnosticCode =
-    DiagnosticCode::new("registry", "conflicting-values");
+crate::infra::config::diagnostic_codes! {
+    "registry";
+    REGISTRY_EMPTY_KEY_PATH => "empty-key-path",
+    REGISTRY_EMPTY_VALUE_NAME => "empty-value-name",
+    REGISTRY_PLATFORM_UNSUPPORTED => "platform-unsupported",
+    REGISTRY_UNSUPPORTED_HIVE => "unsupported-hive",
+    REGISTRY_CONFLICTING_VALUES => "conflicting-values",
+}
 
 /// Declared type for a registry value.
 ///

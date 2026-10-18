@@ -1,13 +1,13 @@
 //! VS Code extension configuration loading.
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `vscode.empty-id`.
-const VSCODE_EMPTY_ID: DiagnosticCode = DiagnosticCode::new("vscode", "empty-id");
-/// Diagnostic code: `vscode.invalid-id-format`.
-const VSCODE_INVALID_ID_FORMAT: DiagnosticCode = DiagnosticCode::new("vscode", "invalid-id-format");
+crate::infra::config::diagnostic_codes! {
+    "vscode";
+    VSCODE_EMPTY_ID => "empty-id",
+    VSCODE_INVALID_ID_FORMAT => "invalid-id-format",
+}
 
 config_section! {
     field: "extensions",

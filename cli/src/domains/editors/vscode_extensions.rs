@@ -7,23 +7,13 @@ use crate::engine::{
     Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_with_cache,
     task_metadata,
 };
-use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 use anyhow::Result;
 use std::collections::HashSet;
 
-/// Install VS Code extensions.
-#[derive(Debug)]
-pub struct InstallVsCodeExtensions {
-    config: ConfigHandle<Vec<String>>,
-}
-
-impl InstallVsCodeExtensions {
-    /// Create the task with a handle to the extension configuration.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<String>>) -> Self {
-        Self { config }
-    }
+crate::engine::config_task! {
+    /// Install VS Code extensions.
+    pub struct InstallVsCodeExtensions(Vec<String>);
 }
 
 impl Task for InstallVsCodeExtensions {

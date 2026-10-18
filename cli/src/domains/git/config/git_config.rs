@@ -4,20 +4,18 @@ use serde::Deserialize;
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 #[cfg(test)]
 use crate::infra::config::category_matcher::Category;
 use crate::infra::config::toml_loader;
 use crate::infra::config::validation::Validator;
 
-/// Diagnostic code: `git.empty-key`.
-const GIT_EMPTY_KEY: DiagnosticCode = DiagnosticCode::new("git", "empty-key");
-/// Diagnostic code: `git.empty-value`.
-const GIT_EMPTY_VALUE: DiagnosticCode = DiagnosticCode::new("git", "empty-value");
-/// Diagnostic code: `git.key-missing-section`.
-const GIT_KEY_MISSING_SECTION: DiagnosticCode = DiagnosticCode::new("git", "key-missing-section");
-/// Diagnostic code: `git.conflicting-values`.
-const GIT_CONFLICTING_VALUES: DiagnosticCode = DiagnosticCode::new("git", "conflicting-values");
+crate::infra::config::diagnostic_codes! {
+    "git";
+    GIT_EMPTY_KEY => "empty-key",
+    GIT_EMPTY_VALUE => "empty-value",
+    GIT_KEY_MISSING_SECTION => "key-missing-section",
+    GIT_CONFLICTING_VALUES => "conflicting-values",
+}
 
 /// A git config key-value pair to apply globally.
 #[derive(Debug, Clone, Deserialize)]

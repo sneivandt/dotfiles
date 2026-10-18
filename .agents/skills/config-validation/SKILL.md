@@ -31,7 +31,9 @@ Their predicate is true when the input is invalid, not when it passes.
 ## Add a rule
 
 1. Add or extend the domain's `validate()` function.
-2. Define a stable `DiagnosticCode::new(domain, rule)` constant.
+2. Add the stable code to the owning module's `diagnostic_codes!` declaration
+   ([macro](../../../cli/src/infra/config/diagnostics.rs)); keep namespace and rule
+   strings explicit. An isolated code can use `DiagnosticCode::new(domain, rule)`.
 3. Use error severity for structurally unsafe or unusable values.
 4. Wire the validator into `Config::validate()`.
 5. Test valid, invalid, and boundary cases, asserting code, severity, source,

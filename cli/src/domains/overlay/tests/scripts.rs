@@ -3,6 +3,7 @@
 use super::*;
 use crate::domains::overlay::config::scripts::ScriptEntry;
 use crate::engine::{Context, Task, TaskResult, execute};
+use crate::infra::ConfigHandle;
 use crate::infra::exec::{ExecResult, MockExecutor};
 use crate::infra::logging::{BufferedLog, Log, Logger, TaskStatus};
 use crate::infra::platform::{Os, Platform};

@@ -3,20 +3,16 @@ use serde::Deserialize;
 use std::path::Path;
 
 use crate::infra::config::Diagnostic;
-use crate::infra::config::DiagnosticCode;
 use crate::infra::config::config_section;
 
-/// Diagnostic code: `chmod.invalid-mode`.
-const CHMOD_INVALID_MODE: DiagnosticCode = DiagnosticCode::new("chmod", "invalid-mode");
-/// Diagnostic code: `chmod.absolute-path`.
-const CHMOD_ABSOLUTE_PATH: DiagnosticCode = DiagnosticCode::new("chmod", "absolute-path");
-/// Diagnostic code: `chmod.parent-in-path`.
-const CHMOD_PARENT_IN_PATH: DiagnosticCode = DiagnosticCode::new("chmod", "parent-in-path");
-/// Diagnostic code: `chmod.home-root`.
-const CHMOD_HOME_ROOT: DiagnosticCode = DiagnosticCode::new("chmod", "home-root");
-/// Diagnostic code: `chmod.platform-unsupported`.
-const CHMOD_PLATFORM_UNSUPPORTED: DiagnosticCode =
-    DiagnosticCode::new("chmod", "platform-unsupported");
+crate::infra::config::diagnostic_codes! {
+    "chmod";
+    CHMOD_INVALID_MODE => "invalid-mode",
+    CHMOD_ABSOLUTE_PATH => "absolute-path",
+    CHMOD_PARENT_IN_PATH => "parent-in-path",
+    CHMOD_HOME_ROOT => "home-root",
+    CHMOD_PLATFORM_UNSUPPORTED => "platform-unsupported",
+}
 
 /// A validated octal file permission mode (e.g., `"600"`, `"0755"`).
 ///

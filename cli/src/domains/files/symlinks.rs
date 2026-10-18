@@ -9,7 +9,6 @@ use crate::engine::{
     Context, IntrinsicState as _, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
     process_resources_remove, run_resource_task, task_metadata,
 };
-use crate::infra::ConfigHandle;
 
 /// Build a single [`SymlinkResource`] from a config entry.
 fn build_resource(
@@ -46,21 +45,12 @@ pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<Symlin
         .collect()
 }
 
-/// Create symlinks from symlinks/ to $HOME.
-#[derive(Debug)]
-pub struct InstallSymlinks {
-    config: ConfigHandle<Vec<Symlink>>,
+crate::engine::config_task! {
+    /// Create symlinks from symlinks/ to $HOME.
+    pub struct InstallSymlinks(Vec<Symlink>);
 }
 
 const INSTALL_NAME: &str = "Home symlinks";
-
-impl InstallSymlinks {
-    /// Create the task with a handle to the symlink configuration.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<Symlink>>) -> Self {
-        Self { config }
-    }
-}
 
 impl Task for InstallSymlinks {
     task_metadata! {
@@ -95,18 +85,9 @@ impl Task for InstallSymlinks {
     }
 }
 
-/// Materialize installed symlinks into real files/directories.
-#[derive(Debug)]
-pub struct UninstallSymlinks {
-    config: ConfigHandle<Vec<Symlink>>,
-}
-
-impl UninstallSymlinks {
-    /// Create the task with a handle to the symlink configuration.
-    #[must_use]
-    pub const fn new(config: ConfigHandle<Vec<Symlink>>) -> Self {
-        Self { config }
-    }
+crate::engine::config_task! {
+    /// Materialize installed symlinks into real files/directories.
+    pub struct UninstallSymlinks(Vec<Symlink>);
 }
 
 impl Task for UninstallSymlinks {
@@ -168,6 +149,7 @@ mod tests {
     use super::*;
     use crate::domains::files::config::symlinks::Symlink;
     use crate::engine::{RemovableResource as _, Resource as _, ResourceChange};
+    use crate::infra::ConfigHandle;
     use crate::test_helpers::make_linux_context;
     use std::path::PathBuf;
 

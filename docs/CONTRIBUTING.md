@@ -141,6 +141,12 @@ do not add another execution layer. For a genuinely new section:
 
 ### Tasks and workflows
 
+For a task that holds only one configuration slice, use `config_task!` from
+[`engine/task/macros.rs`](../cli/src/engine/task/macros.rs) to declare its struct
+and constructor. Keep tasks with additional fields explicit. The macro does
+not implement `Task`: keep applicability, elevation and execution in the owning
+module, and use `task_metadata!` for static metadata.
+
 Define stable selector, display label, scheduler identity and visibility
 separately. Decide command membership, applicability, elevation and prerequisites
 explicitly. Register static update/remove tasks in the catalog;

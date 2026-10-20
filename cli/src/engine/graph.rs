@@ -9,10 +9,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::engine::{Task, TaskId};
 
 /// Reason a task dependency graph failed validation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GraphError {
     /// Two or more tasks share the same [`TaskId`], so dependencies cannot be
     /// resolved unambiguously.
+    #[error("duplicate task identifier {} used by '{first}' and '{second}'", .id.record_key())]
     DuplicateId {
         /// Colliding scheduler identity.
         id: TaskId,
@@ -22,28 +23,12 @@ pub enum GraphError {
         second: String,
     },
     /// The dependency graph contains at least one cycle.
+    #[error("dependency cycle: {}", .path.join(" -> "))]
     Cycle {
         /// Closed task-name path, including the first node again at the end.
         path: Vec<String>,
     },
 }
-
-impl std::fmt::Display for GraphError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DuplicateId { id, first, second } => {
-                write!(
-                    f,
-                    "duplicate task identifier {} used by '{first}' and '{second}'",
-                    id.record_key()
-                )
-            }
-            Self::Cycle { path } => write!(f, "dependency cycle: {}", path.join(" -> ")),
-        }
-    }
-}
-
-impl std::error::Error for GraphError {}
 
 /// Dependency graph resolved against one filtered task slice.
 ///

@@ -2,7 +2,7 @@
 
 use anyhow::{Result, bail};
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::app::cli::{DiscoveryFormat, ListOpts, TaskGraphCommand};
 use crate::app::config::Config;
@@ -279,9 +279,9 @@ fn collect_listings(
     store: &ConfigStore,
     overlay: Option<&std::path::Path>,
 ) -> Result<Vec<TaskListing>> {
-    let mut listings = Vec::new();
+    let mut listings = BTreeMap::new();
 
-    // Merge command membership before sorting the unique public selectors.
+    // Keying by selector merges command membership and keeps public output sorted.
     for command in [
         TaskGraphCommand::Update,
         TaskGraphCommand::Remove,
@@ -291,12 +291,11 @@ fn collect_listings(
         add_tasks(&mut listings, &tasks, command)?;
     }
 
-    listings.sort_by(|left, right| left.selector.cmp(&right.selector));
-    Ok(listings)
+    Ok(listings.into_values().collect())
 }
 
 fn add_tasks(
-    listings: &mut Vec<TaskListing>,
+    listings: &mut BTreeMap<String, TaskListing>,
     tasks: &[Box<dyn Task>],
     command: TaskGraphCommand,
 ) -> Result<()> {
@@ -304,29 +303,22 @@ fn add_tasks(
         if task.visibility() == TaskVisibility::Internal {
             continue;
         }
-        if let Some(listing) = listings
-            .iter_mut()
-            .find(|listing| listing.selector == task.selector())
-        {
-            if listing.task != task.name() {
-                bail!(
-                    "task selector '{}' is shared by '{}' and '{}'",
-                    task.selector(),
-                    listing.task,
-                    task.name()
-                );
-            }
-            listing.include(command);
-            continue;
+        let listing = listings
+            .entry(task.selector().to_string())
+            .or_insert_with(|| TaskListing {
+                selector: task.selector().to_string(),
+                task: task.name().to_string(),
+                ..TaskListing::default()
+            });
+        if listing.task != task.name() {
+            bail!(
+                "task selector '{}' is shared by '{}' and '{}'",
+                task.selector(),
+                listing.task,
+                task.name()
+            );
         }
-
-        let mut listing = TaskListing {
-            selector: task.selector().to_string(),
-            task: task.name().to_string(),
-            ..TaskListing::default()
-        };
         listing.include(command);
-        listings.push(listing);
     }
     Ok(())
 }
@@ -581,13 +573,13 @@ mod tests {
     #[test]
     fn task_membership_merges_by_selector() {
         let tasks: Vec<Box<dyn Task>> = vec![Box::new(VisibleTask)];
-        let mut listings = Vec::new();
+        let mut listings = BTreeMap::new();
         add_tasks(&mut listings, &tasks, TaskGraphCommand::Remove).expect("uninstall membership");
         add_tasks(&mut listings, &tasks, TaskGraphCommand::Update).expect("install membership");
         add_tasks(&mut listings, &tasks, TaskGraphCommand::Update).expect("repeated membership");
 
         assert_eq!(listings.len(), 1);
-        assert_eq!(command_membership(&listings[0]), "update, remove");
+        assert_eq!(command_membership(&listings["visible"]), "update, remove");
     }
 
     #[test]
@@ -663,7 +655,7 @@ mod tests {
     #[test]
     fn internal_tasks_are_hidden() {
         let tasks: Vec<Box<dyn Task>> = vec![Box::new(InternalTask)];
-        let mut listings = Vec::new();
+        let mut listings = BTreeMap::new();
         add_tasks(&mut listings, &tasks, TaskGraphCommand::Update).expect("task discovery");
         assert!(listings.is_empty());
     }
@@ -790,7 +782,7 @@ mod tests {
             }
         }
 
-        let mut listings = Vec::new();
+        let mut listings = BTreeMap::new();
         add_tasks(
             &mut listings,
             &[Box::new(VisibleTask)],
@@ -808,7 +800,7 @@ mod tests {
             "task selector 'visible' is shared by 'Visible task' and 'Different task'"
         );
         assert_eq!(listings.len(), 1);
-        assert_eq!(listings[0].commands, [TaskGraphCommand::Update]);
+        assert_eq!(listings["visible"].commands, [TaskGraphCommand::Update]);
     }
 
     #[test]

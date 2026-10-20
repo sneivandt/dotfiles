@@ -1,5 +1,5 @@
 //! [`ScriptedExecutor`]: an [`Executor`] test double that replays a fixed,
-//! ordered queue of expected `git` calls, panicking clearly on a mismatch, a
+//! ordered queue of expected commands, panicking clearly on a mismatch, a
 //! surprise call, or a leftover step. Prefer
 //! [`MockExecutor`](crate::infra::exec::MockExecutor) for open-ended behaviour.
 
@@ -11,42 +11,10 @@ use anyhow::Result;
 
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, Executor};
 
-/// Exact match criteria for one scripted step; `program` is always `"git"`.
-#[derive(Debug)]
-struct Expect {
-    args: Vec<String>,
-    cwd: PathBuf,
-    checked: bool,
-}
-
-impl Expect {
-    fn assert_matches(&self, spec: &CommandSpec) {
-        let program = spec.program().to_string_lossy().into_owned();
-        let args: Vec<String> = spec
-            .arguments()
-            .iter()
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .collect();
-        let matches = program == "git"
-            && args == self.args
-            && spec.working_dir() == Some(self.cwd.as_path())
-            && spec.is_checked() == self.checked;
-        assert!(
-            matches,
-            "ScriptedExecutor: expected `git` {:?} in {:?} (checked={}), got `{program}` {args:?} in {:?} (checked={})",
-            self.args,
-            self.cwd,
-            self.checked,
-            spec.working_dir(),
-            spec.is_checked(),
-        );
-    }
-}
-
 /// One scripted response, consumed in call order.
 #[derive(Debug)]
 struct Step {
-    expect: Option<Expect>,
+    expect: Option<CommandSpec>,
     result: std::result::Result<ExecResult, ExecError>,
 }
 
@@ -54,6 +22,7 @@ struct Step {
 #[derive(Debug, Default)]
 pub struct ScriptedExecutor {
     steps: Mutex<VecDeque<Step>>,
+    programs: Vec<String>,
 }
 
 impl ScriptedExecutor {
@@ -78,19 +47,35 @@ impl ScriptedExecutor {
     /// Queue a step requiring an exact checked `git`/`args`/`cwd` match.
     #[must_use]
     pub fn git(self, cwd: impl Into<PathBuf>, args: &[&str], stdout: impl Into<String>) -> Self {
-        self.push(
-            Some(Expect {
-                args: args.iter().map(|arg| (*arg).to_string()).collect(),
-                cwd: cwd.into(),
-                checked: true,
-            }),
+        self.command(
+            CommandSpec::new("git").args(args).current_dir(cwd),
             Ok(ExecResult::success(stdout)),
         )
     }
 
+    /// Queue a command, checking its program, arguments, cwd and checked mode.
+    #[must_use]
+    pub fn command(
+        self,
+        spec: CommandSpec,
+        result: std::result::Result<ExecResult, ExecError>,
+    ) -> Self {
+        self.push(Some(spec), result)
+    }
+
+    /// Report only these programs as available to `which`.
+    #[must_use]
+    pub fn with_programs(mut self, programs: &[&str]) -> Self {
+        self.programs = programs
+            .iter()
+            .map(|program| (*program).to_string())
+            .collect();
+        self
+    }
+
     fn push(
         mut self,
-        expect: Option<Expect>,
+        expect: Option<CommandSpec>,
         result: std::result::Result<ExecResult, ExecError>,
     ) -> Self {
         self.steps
@@ -116,14 +101,16 @@ impl Executor for ScriptedExecutor {
         });
         drop(steps);
         if let Some(expect) = &step.expect {
-            expect.assert_matches(&spec);
+            assert_eq!(spec.program(), expect.program(), "{spec:?}");
+            assert_eq!(spec.arguments(), expect.arguments(), "{spec:?}");
+            assert_eq!(spec.working_dir(), expect.working_dir(), "{spec:?}");
+            assert_eq!(spec.is_checked(), expect.is_checked(), "{spec:?}");
         }
         step.result
     }
 
-    /// Always reports "not found"; not exercised by migrated tests. Use `stub_executor` for `which`-driven tests.
-    fn which(&self, _program: &str) -> bool {
-        false
+    fn which(&self, program: &str) -> bool {
+        self.programs.iter().any(|available| available == program)
     }
 
     fn which_path(&self, program: &str) -> Result<PathBuf> {

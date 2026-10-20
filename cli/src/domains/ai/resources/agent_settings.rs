@@ -163,26 +163,6 @@ impl AgentSettingResource {
         table.insert((*last).to_string(), self.desired_value.clone());
         Ok(())
     }
-
-    fn apply_json(&self) -> Result<()> {
-        let mut document = self.read_json_document()?;
-        self.set_in_json_document(&mut document)?;
-        let mut serialized = serde_json::to_string_pretty(&document)
-            .with_context(|| format!("serializing {}", self.path.display()))?;
-        serialized.push('\n');
-        crate::infra::fs::write_with_parent(&self.path, serialized)
-    }
-
-    fn apply_toml(&self) -> Result<()> {
-        let mut document = self.read_toml_document()?;
-        self.set_in_toml_document(&mut document)?;
-        let mut serialized = toml::to_string_pretty(&document)
-            .with_context(|| format!("serializing {}", self.path.display()))?;
-        if !serialized.ends_with('\n') {
-            serialized.push('\n');
-        }
-        crate::infra::fs::write_with_parent(&self.path, serialized)
-    }
 }
 
 impl Resource for AgentSettingResource {
@@ -191,10 +171,24 @@ impl Resource for AgentSettingResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        match self.format {
-            SettingsFormat::Json => self.apply_json()?,
-            SettingsFormat::Toml => self.apply_toml()?,
+        let mut serialized = match self.format {
+            SettingsFormat::Json => {
+                let mut document = self.read_json_document()?;
+                self.set_in_json_document(&mut document)?;
+                serde_json::to_string_pretty(&document)
+                    .with_context(|| format!("serializing {}", self.path.display()))?
+            }
+            SettingsFormat::Toml => {
+                let mut document = self.read_toml_document()?;
+                self.set_in_toml_document(&mut document)?;
+                toml::to_string_pretty(&document)
+                    .with_context(|| format!("serializing {}", self.path.display()))?
+            }
+        };
+        if !serialized.ends_with('\n') {
+            serialized.push('\n');
         }
+        crate::infra::fs::write_with_parent(&self.path, serialized)?;
         Ok(ResourceChange::Applied)
     }
 }
@@ -400,10 +394,16 @@ command = "example"
 
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-        let document: Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let document: Value = serde_json::from_str(&contents).unwrap();
         assert_eq!(document["keepMe"], serde_json::json!("value"));
         assert_eq!(document["model"], serde_json::json!("claude-opus-4.8"));
+        assert_eq!(
+            contents,
+            serde_json::to_string_pretty(&document).unwrap() + "\n"
+        );
+        resource.apply().unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), contents);
     }
 
     #[test]
@@ -426,13 +426,16 @@ command = "example"
 
         assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
         assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-        let document: toml::Table =
-            toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let document: toml::Table = toml::from_str(&contents).unwrap();
         assert_eq!(document["model"].as_str(), Some("gpt-5.5"));
         assert_eq!(
             document["mcp_servers"]["example"]["command"].as_str(),
             Some("example")
         );
+        assert!(contents.ends_with('\n') && !contents.ends_with("\n\n"));
+        resource.apply().unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), contents);
     }
 
     #[test]

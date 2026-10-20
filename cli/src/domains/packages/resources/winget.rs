@@ -315,11 +315,21 @@ mod tests {
     }
 
     fn install_with_result(result: ExecResult) -> ResourceChange {
+        install_with_results([result])
+    }
+
+    fn install_with_results(results: impl IntoIterator<Item = ExecResult>) -> ResourceChange {
         let mut mock = MockExecutor::new();
-        mock.expect_execute().once().return_once(move |spec| {
-            assert_install_command(&spec, true);
-            Ok(result)
-        });
+        let mut sequence = mockall::Sequence::new();
+        for (index, result) in results.into_iter().enumerate() {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .return_once(move |spec| {
+                    assert_install_command(&spec, index == 0);
+                    Ok(result)
+                });
+        }
         WingetProvider.install("Git.Git", &mock).unwrap()
     }
 
@@ -430,33 +440,8 @@ mod tests {
 
     #[test]
     fn winget_install_failure_prefers_stdout_when_stderr_is_empty() {
-        let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .withf(|spec| {
-                spec.program() == "winget"
-                    && spec.arguments()
-                        == [
-                            "install",
-                            "--id",
-                            "Git.Git",
-                            "--exact",
-                            "--source",
-                            "winget",
-                            "--accept-source-agreements",
-                            "--accept-package-agreements",
-                            "--disable-interactivity",
-                            "--scope",
-                            "user",
-                        ]
-                    && !spec.is_checked()
-            })
-            .returning(|_| Ok(ExecResult::failure("No package found", "", Some(1))));
-
-        let change = WingetProvider.install("Git.Git", &mock).unwrap();
-
         assert_eq!(
-            change,
+            install_with_result(ExecResult::failure("No package found", "", Some(1))),
             ResourceChange::unusable("winget install failed: No package found"),
         );
     }
@@ -482,54 +467,46 @@ mod tests {
     }
 
     #[test]
-    fn winget_install_retries_without_scope_when_no_user_installer_exists() {
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .returning(|spec| {
-                assert_install_command(&spec, true);
-                Ok(ExecResult::failure(
+    fn winget_scope_retry_preserves_the_final_installer_outcome() {
+        for (result, expected) in [
+            (ExecResult::success(""), ResourceChange::Applied),
+            (
+                ExecResult::failure(
+                    "No available upgrade found. No newer package versions are available.",
+                    "",
+                    Some(-1_978_335_189),
+                ),
+                ResourceChange::AlreadyCorrect,
+            ),
+            (
+                ExecResult::failure(
                     "",
                     "no applicable installer",
                     Some(exit_code::NO_APPLICABLE_INSTALLER),
-                ))
-            });
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut sequence)
-            .returning(|spec| {
-                assert_install_command(&spec, false);
-                Ok(ExecResult::success(""))
-            });
-
-        assert_eq!(
-            WingetProvider.install("Git.Git", &mock).unwrap(),
-            ResourceChange::Applied,
-        );
+                ),
+                ResourceChange::unusable("winget install failed: \nno applicable installer"),
+            ),
+        ] {
+            assert_eq!(
+                install_with_results([
+                    ExecResult::failure(
+                        "No user-scope installer",
+                        "no applicable installer",
+                        Some(exit_code::NO_APPLICABLE_INSTALLER)
+                    ),
+                    result,
+                ]),
+                expected,
+            );
+        }
     }
 
     #[test]
     fn winget_install_skips_rather_than_fails_when_elevation_is_required() {
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
-        for (scoped, code) in [
-            (true, exit_code::NO_APPLICABLE_INSTALLER),
-            (false, exit_code::COMMAND_REQUIRES_ADMIN),
-        ] {
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .returning(move |spec| {
-                    assert_install_command(&spec, scoped);
-                    Ok(ExecResult::failure("", "", Some(code)))
-                });
-        }
-
-        let ResourceChange::Skipped { reason, kind } =
-            WingetProvider.install("Git.Git", &mock).unwrap()
-        else {
+        let ResourceChange::Skipped { reason, kind } = install_with_results([
+            ExecResult::failure("", "", Some(exit_code::NO_APPLICABLE_INSTALLER)),
+            ExecResult::failure("", "", Some(exit_code::COMMAND_REQUIRES_ADMIN)),
+        ]) else {
             panic!("expected a skip");
         };
         assert!(
@@ -559,37 +536,6 @@ mod tests {
     }
 
     #[test]
-    fn winget_already_current_after_scope_retry_is_already_correct() {
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
-        for (scoped, code, message) in [
-            (
-                true,
-                exit_code::NO_APPLICABLE_INSTALLER,
-                "No user-scope installer",
-            ),
-            (
-                false,
-                -1_978_335_189,
-                "No available upgrade found. No newer package versions are available.",
-            ),
-        ] {
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .returning(move |spec| {
-                    assert_install_command(&spec, scoped);
-                    Ok(ExecResult::failure(message, "", Some(code)))
-                });
-        }
-
-        assert_eq!(
-            WingetProvider.install("Git.Git", &mock).unwrap(),
-            ResourceChange::AlreadyCorrect,
-        );
-    }
-
-    #[test]
     fn winget_install_reboot_required_counts_as_applied() {
         assert_eq!(
             install_with_result(ExecResult::failure(
@@ -609,30 +555,6 @@ mod tests {
             Some(exit_code::INSTALL_CANCELLED_BY_USER),
         )));
         assert!(reason.contains("elevation was declined"), "{reason}");
-    }
-
-    #[test]
-    fn winget_install_does_not_retry_an_unscoped_failure() {
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
-        for scoped in [true, false] {
-            mock.expect_execute()
-                .once()
-                .in_sequence(&mut sequence)
-                .returning(move |spec| {
-                    assert_install_command(&spec, scoped);
-                    Ok(ExecResult::failure(
-                        "",
-                        "no applicable installer",
-                        Some(exit_code::NO_APPLICABLE_INSTALLER),
-                    ))
-                });
-        }
-
-        assert_eq!(
-            WingetProvider.install("Git.Git", &mock).unwrap(),
-            ResourceChange::unusable("winget install failed: \nno applicable installer"),
-        );
     }
 
     #[test]

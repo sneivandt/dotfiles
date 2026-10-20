@@ -259,9 +259,9 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
             .with_context(|| format!("checking {}", target.display()))?
     {
         let mut owned = read_owned_skills(&target)?;
-        let before = owned.clone();
+        let before = owned.len();
         owned.extend(legacy_skills);
-        if owned != before {
+        if owned.len() != before {
             // Preserve explicit native deployment ownership before APM rewrites
             // the lock. Shared .agents entries alone are not Cowork ownership.
             write_owned_skills(&target, &owned)?;
@@ -300,16 +300,9 @@ fn strip_legacy_cowork_deployments(lock: &mut Value, names: &mut BTreeSet<String
                 .get_mut(Value::String("deployed_file_hashes".to_owned()))
                 .and_then(Value::as_mapping_mut)
             {
-                let keys = hashes
-                    .keys()
-                    .filter(|key| is_cowork_uri(key))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                changed |= !keys.is_empty();
-                for key in keys {
-                    record_legacy_cowork_uri(&key, names);
-                    hashes.remove(&key);
-                }
+                let before = hashes.len();
+                hashes.retain(|key, _| !record_legacy_cowork_uri(key, names));
+                changed |= hashes.len() != before;
             }
         }
     }
@@ -817,6 +810,26 @@ mod tests {
         let mut names = BTreeSet::new();
         assert!(strip_legacy_cowork_deployments(&mut lock, &mut names));
         assert!(names.is_empty());
+    }
+
+    #[test]
+    fn legacy_hash_cleanup_preserves_other_targets_and_is_idempotent() {
+        let retained = "dependencies:\n- deployed_file_hashes:\n    \
+            .agents/skills/personal/SKILL.md: shared\n    \
+            42: [unrelated, values]\n    \
+            copilot-app-db://workflows/example: workflow\n";
+        let mut lock: Value = serde_yaml_ng::from_str(&format!(
+            "{retained}    cowork://skills/example/SKILL.md: old\n    \
+             cowork://skills/../SKILL.md: unsafe\n    \
+             cowork://other/record: legacy\n"
+        ))
+        .unwrap();
+        let mut names = BTreeSet::new();
+
+        assert!(strip_legacy_cowork_deployments(&mut lock, &mut names));
+        assert_eq!(lock, serde_yaml_ng::from_str::<Value>(retained).unwrap());
+        assert_eq!(names, BTreeSet::from(["example".to_string()]));
+        assert!(!strip_legacy_cowork_deployments(&mut lock, &mut names));
     }
 
     #[test]

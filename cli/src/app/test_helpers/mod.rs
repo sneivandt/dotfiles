@@ -82,6 +82,18 @@ pub use failure::{FailAt, FailingExecutor, FailingResource, ResourceErrorKind};
 pub use output::CapturingOutput;
 pub use scripted::ScriptedExecutor;
 
+/// Build an un-stamped symlink declaration for isolated configuration fixtures.
+pub fn symlink(
+    source: &str,
+    target: Option<&str>,
+) -> crate::domains::files::config::symlinks::Symlink {
+    crate::domains::files::config::symlinks::Symlink {
+        source: source.to_string(),
+        target: target.map(str::to_string),
+        origin: None,
+    }
+}
+
 /// Build a [`Config`] with all lists empty and `root` set to `root`.
 #[must_use]
 #[allow(

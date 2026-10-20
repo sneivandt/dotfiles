@@ -14,13 +14,15 @@ crate::infra::config::diagnostic_codes! {
 }
 
 /// A systemd unit and its desired enablement state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SystemdUnit {
     /// Unit name including extension (e.g., `"clean-home-tmp.timer"`).
     pub name: String,
     /// Systemd scope.
     pub scope: UnitScope,
     /// Whether the unit should be enabled and started.
+    #[serde(default = "default_enabled")]
     pub enabled: bool,
 }
 
@@ -50,26 +52,13 @@ impl<'de> Deserialize<'de> for UnitScope {
     }
 }
 
-/// The explicit table form of a unit entry: `{ name, scope, enabled }`.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct UnitOptions {
-    /// Unit name including extension.
-    name: String,
-    /// Systemd scope for the unit.
-    scope: UnitScope,
-    /// Desired enablement state.
-    #[serde(default = "default_enabled")]
-    enabled: bool,
-}
-
 const fn default_enabled() -> bool {
     true
 }
 
 /// A single entry in a units section, either a plain name string or a
 /// structured entry with explicit options.
-type UnitEntry = StringOrTable<UnitOptions>;
+type UnitEntry = StringOrTable<SystemdUnit>;
 
 config_section! {
     field: "units",
@@ -81,15 +70,7 @@ config_section! {
             scope: UnitScope::User,
             enabled: true,
         },
-        StringOrTable::Table(UnitOptions {
-            name,
-            scope,
-            enabled,
-        }) => SystemdUnit {
-            name,
-            scope,
-            enabled,
-        },
+        StringOrTable::Table(unit) => unit,
     },
 }
 

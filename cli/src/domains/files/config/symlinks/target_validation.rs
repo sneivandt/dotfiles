@@ -61,23 +61,16 @@ fn target_key(symlink: &Symlink) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn entry(source: &str, target: Option<&str>) -> Symlink {
-        Symlink {
-            source: source.to_string(),
-            target: target.map(str::to_string),
-            origin: None,
-        }
-    }
+    use crate::test_helpers::symlink;
 
     #[test]
     fn dot_aliases_collide_with_explicit_and_default_targets() {
         for pair in [
-            (entry("./bashrc", None), entry("other", Some(".bashrc"))),
-            (entry("bashrc", None), entry("././bashrc", None)),
+            (symlink("./bashrc", None), symlink("other", Some(".bashrc"))),
+            (symlink("bashrc", None), symlink("././bashrc", None)),
             (
-                entry("one", Some("./.config/example")),
-                entry("two", Some(".config/./example/.")),
+                symlink("one", Some("./.config/example")),
+                symlink("two", Some(".config/./example/.")),
             ),
         ] {
             let entries: [Symlink; 2] = pair.into();
@@ -94,8 +87,8 @@ mod tests {
             ".config/example/./settings",
             ".config//example/settings",
         ] {
-            let parent = entry("./config/example", None);
-            let child = entry("child", Some(child));
+            let parent = symlink("./config/example", None);
+            let child = symlink("child", Some(child));
             for entries in [[parent.clone(), child.clone()], [child, parent]] {
                 let error = validate_unique_targets(&entries).unwrap_err();
                 assert!(error.to_string().contains("overlap"), "{error}");
@@ -109,8 +102,8 @@ mod tests {
             (".CONFIG/EXAMPLE", "collision"),
             (".CONFIG/EXAMPLE/settings", "overlap"),
         ] {
-            let parent = entry("config/example", None);
-            let other = entry("other", Some(target));
+            let parent = symlink("config/example", None);
+            let other = symlink("other", Some(target));
             for entries in [[parent.clone(), other.clone()], [other, parent]] {
                 let result = validate_unique_targets(&entries);
                 if cfg!(windows) {
@@ -126,8 +119,8 @@ mod tests {
     #[test]
     fn backslash_aliases_follow_platform_semantics() {
         let entries = [
-            entry("config/example", None),
-            entry("child", Some(r".config\.\example\settings")),
+            symlink("config/example", None),
+            symlink("child", Some(r".config\.\example\settings")),
         ];
         let result = validate_unique_targets(&entries);
         if cfg!(windows) {
@@ -140,9 +133,9 @@ mod tests {
     #[test]
     fn normalized_siblings_and_similar_names_remain_distinct() {
         validate_unique_targets(&[
-            entry("one", Some(".config/./example/one")),
-            entry("two", Some("./.config/example/two")),
-            entry("three", Some(".config/./example-extra")),
+            symlink("one", Some(".config/./example/one")),
+            symlink("two", Some("./.config/example/two")),
+            symlink("three", Some(".config/./example-extra")),
         ])
         .unwrap();
     }

@@ -151,15 +151,8 @@ mod tests {
     use crate::engine::{RemovableResource as _, Resource as _, ResourceChange};
     use crate::infra::ConfigHandle;
     use crate::test_helpers::make_linux_context;
+    use crate::test_helpers::symlink;
     use std::path::PathBuf;
-
-    fn sym(source: &str, target: Option<&str>) -> Symlink {
-        Symlink {
-            source: source.to_string(),
-            target: target.map(str::to_string),
-            origin: None,
-        }
-    }
 
     fn handle(symlinks: Vec<Symlink>) -> ConfigHandle<Vec<Symlink>> {
         ConfigHandle::new(symlinks)
@@ -229,7 +222,12 @@ mod tests {
         let outside = fixture.path().join("bashrc");
         std::fs::write(&outside, "must survive").unwrap();
         let ctx = make_linux_context(root.clone(), None).with_home(home.clone());
-        let resource = build_resource(&sym("./bashrc", None), &root, &home, &ctx.executor_arc());
+        let resource = build_resource(
+            &symlink("./bashrc", None),
+            &root,
+            &home,
+            &ctx.executor_arc(),
+        );
 
         assert_eq!(resource.target, home.join(".bashrc"));
         assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
@@ -337,7 +335,7 @@ mod tests {
     #[test]
     fn uninstall_should_run_true_when_symlinks_configured() {
         let ctx = make_linux_context(PathBuf::from("/tmp"), None);
-        let task = UninstallSymlinks::new(handle(vec![sym("bashrc", None)]));
+        let task = UninstallSymlinks::new(handle(vec![symlink("bashrc", None)]));
         assert!(task.should_run(&ctx));
     }
 
@@ -359,7 +357,7 @@ mod tests {
         let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
-        let task = InstallSymlinks::new(handle(vec![sym("bashrc", None)]));
+        let task = InstallSymlinks::new(handle(vec![symlink("bashrc", None)]));
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
@@ -387,7 +385,8 @@ mod tests {
         let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
-        let task = InstallSymlinks::new(handle(vec![sym("../outside", Some("escaped-source"))]));
+        let task =
+            InstallSymlinks::new(handle(vec![symlink("../outside", Some("escaped-source"))]));
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
@@ -410,7 +409,7 @@ mod tests {
 
         let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
-        let task = InstallSymlinks::new(handle(vec![sym("escaped", None)]));
+        let task = InstallSymlinks::new(handle(vec![symlink("escaped", None)]));
 
         let result = task.run(&ctx).unwrap();
 
@@ -433,7 +432,7 @@ mod tests {
         let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
-        let task = InstallSymlinks::new(handle(vec![sym("bashrc", Some("../outside-target"))]));
+        let task = InstallSymlinks::new(handle(vec![symlink("bashrc", Some("../outside-target"))]));
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
@@ -460,7 +459,7 @@ mod tests {
         let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
-        let task = UninstallSymlinks::new(handle(vec![sym("bashrc", None)]));
+        let task = UninstallSymlinks::new(handle(vec![symlink("bashrc", None)]));
         let result = task.run(&ctx).unwrap();
         assert!(matches!(
             result,
@@ -488,7 +487,7 @@ mod tests {
         let ctx = make_linux_context(repo_dir.path().to_path_buf(), None)
             .with_home(home_dir.path().to_path_buf());
 
-        let result = UninstallSymlinks::new(handle(vec![sym("config/git/config", None)]))
+        let result = UninstallSymlinks::new(handle(vec![symlink("config/git/config", None)]))
             .run(&ctx)
             .unwrap();
 
@@ -531,8 +530,8 @@ mod tests {
             .with_parallel(true);
 
         let task = UninstallSymlinks::new(handle(vec![
-            sym("config/systemd/user/clean-home-tmp.service", None),
-            sym("config/systemd/user/clean-home-tmp.timer", None),
+            symlink("config/systemd/user/clean-home-tmp.service", None),
+            symlink("config/systemd/user/clean-home-tmp.timer", None),
         ]));
         let result = task.run(&ctx).unwrap();
         assert!(matches!(

@@ -77,6 +77,34 @@ fn expect_python3_with_present_workflows(mock: &mut MockExecutor, times: usize) 
         });
 }
 
+fn expect_workflow_script(
+    mock: &mut MockExecutor,
+    sequence: &mut mockall::Sequence,
+    home: &Path,
+    script: &str,
+    ids: &[&str],
+    stdout: &str,
+) {
+    let home = home.to_path_buf();
+    let db = home.join(".copilot").join("data.db");
+    let args: Vec<_> = ["-c", script, db.to_str().unwrap()]
+        .into_iter()
+        .chain(ids.iter().copied())
+        .map(std::ffi::OsString::from)
+        .collect();
+    let stdout = stdout.to_string();
+    mock.expect_execute()
+        .once()
+        .in_sequence(sequence)
+        .returning(move |spec| {
+            assert_eq!(spec.program(), "python3");
+            assert_eq!(spec.working_dir(), Some(home.as_path()));
+            assert!(!spec.is_checked());
+            assert_eq!(spec.arguments(), args);
+            Ok(ExecResult::success(stdout.clone()))
+        });
+}
+
 type AutopilotResultCase = (&'static str, &'static str, Option<(u64, HashSet<String>)>);
 
 #[test]
@@ -194,13 +222,23 @@ fn python_for_script_tests() -> Option<&'static str> {
     })
 }
 
-fn run_python_script(python: &str, script: &str, args: &[&str]) -> std::process::Output {
+fn run_python_script_unchecked(python: &str, script: &str, args: &[&str]) -> std::process::Output {
     std::process::Command::new(python)
         .arg("-c")
         .arg(script)
         .args(args)
         .output()
         .expect("run python script")
+}
+
+fn run_python_script(python: &str, script: &str, args: &[&str]) -> std::process::Output {
+    let output = run_python_script_unchecked(python, script, args);
+    assert!(
+        output.status.success(),
+        "Python fixture failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
 }
 
 #[test]
@@ -228,12 +266,12 @@ fn workflow_scope_probe_is_read_only_and_scoped() {
         let mut args = vec![db];
         args.extend(ids);
         let output = run_python_script(python, WORKFLOW_PRESENT_IDS_SCRIPT, &args);
-        assert!(output.status.success(), "{output:?}");
+
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
         assert_eq!(std::fs::read(&db_path).unwrap(), before);
     }
     let missing = home.join("missing.db");
-    let output = run_python_script(
+    let output = run_python_script_unchecked(
         python,
         WORKFLOW_PRESENT_IDS_SCRIPT,
         &[missing.to_str().unwrap(), "apm--fixture"],
@@ -250,7 +288,7 @@ fn workflow_autopilot_script_uses_scheduled_date_timezone() {
     let Some(python) = python_for_script_tests() else {
         return;
     };
-    let output = run_python_script(
+    run_python_script(
         python,
         r#"
 import contextlib, io, sqlite3, struct, sys
@@ -336,11 +374,6 @@ print("spring and fall schedule repairs passed")
 "#,
         &[WORKFLOW_AUTOPILOT_SCRIPT],
     );
-    assert!(
-        output.status.success(),
-        "deterministic timezone regression failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
 }
 
 #[test]
@@ -351,7 +384,7 @@ fn workflow_autopilot_script_deduplicates_managed_rows() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let db_path = dir.path().join("data.db");
     let db = db_path.to_str().expect("db path utf-8");
-    let setup = run_python_script(
+    run_python_script(
         python,
         r#"
 import sqlite3, sys
@@ -375,22 +408,13 @@ con.commit()
 "#,
         &[db],
     );
-    assert!(
-        setup.status.success(),
-        "setup failed: {}",
-        String::from_utf8_lossy(&setup.stderr)
-    );
 
     let fixup = run_python_script(
         python,
         WORKFLOW_AUTOPILOT_SCRIPT,
         &[db, "apm--_local--fixture--triage", "apm--b"],
     );
-    assert!(
-        fixup.status.success(),
-        "fixup failed: {}",
-        String::from_utf8_lossy(&fixup.stderr)
-    );
+
     assert_eq!(
         String::from_utf8(fixup.stdout)
             .expect("stdout utf-8")
@@ -408,11 +432,7 @@ for row in con.execute("SELECT id, COUNT(*), MIN(mode), MIN(enabled) FROM workfl
 "#,
         &[db],
     );
-    assert!(
-        query.status.success(),
-        "query failed: {}",
-        String::from_utf8_lossy(&query.stderr)
-    );
+
     assert_eq!(
         String::from_utf8(query.stdout)
             .expect("stdout utf-8")
@@ -432,7 +452,7 @@ fn workflow_deduplication_preserves_distinct_ids_and_cron_schedules() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let db_path = dir.path().join("data.db");
     let db = db_path.to_str().expect("db path utf-8");
-    let setup = run_python_script(
+    run_python_script(
         python,
         r#"
 import sqlite3, sys
@@ -451,11 +471,6 @@ con.commit()
 "#,
         &[db],
     );
-    assert!(
-        setup.status.success(),
-        "{}",
-        String::from_utf8_lossy(&setup.stderr)
-    );
 
     let args = [
         db,
@@ -465,12 +480,8 @@ con.commit()
         "apm--unknown--fixture--same-schedule",
     ];
     for _ in 0..2 {
-        let fixup = run_python_script(python, WORKFLOW_AUTOPILOT_SCRIPT, &args);
-        assert!(
-            fixup.status.success(),
-            "{}",
-            String::from_utf8_lossy(&fixup.stderr)
-        );
+        run_python_script(python, WORKFLOW_AUTOPILOT_SCRIPT, &args);
+
         let query = run_python_script(
             python,
             r#"
@@ -481,11 +492,7 @@ for wid, cron in con.execute("SELECT id, cron_expression FROM workflows ORDER BY
 "#,
             &[db],
         );
-        assert!(
-            query.status.success(),
-            "{}",
-            String::from_utf8_lossy(&query.stderr)
-        );
+
         assert_eq!(
             String::from_utf8_lossy(&query.stdout).replace("\r\n", "\n"),
             "apm--_local--fixture--afternoon|0 15 * * 1-5\n\
@@ -505,7 +512,7 @@ fn workflow_scripts_restore_custom_cron_schedule() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let db_path = dir.path().join("data.db");
     let db = db_path.to_str().expect("db path utf-8");
-    let setup = run_python_script(
+    run_python_script(
         python,
         r#"
 import sqlite3, sys
@@ -519,29 +526,16 @@ con.commit()
 "#,
         &[db],
     );
-    assert!(
-        setup.status.success(),
-        "setup failed: {}",
-        String::from_utf8_lossy(&setup.stderr)
-    );
 
     let before = run_python_script(python, WORKFLOW_DESIRED_IDS_SCRIPT, &[db, "apm--cron"]);
-    assert!(
-        before.status.success(),
-        "snapshot failed: {}",
-        String::from_utf8_lossy(&before.stderr)
-    );
+
     assert!(
         before.stdout.is_empty(),
         "an unarmed cron workflow must not be desired"
     );
 
     let fixup = run_python_script(python, WORKFLOW_AUTOPILOT_SCRIPT, &[db, "apm--cron"]);
-    assert!(
-        fixup.status.success(),
-        "fixup failed: {}",
-        String::from_utf8_lossy(&fixup.stderr)
-    );
+
     assert_eq!(
         String::from_utf8(fixup.stdout)
             .expect("stdout utf-8")
@@ -564,11 +558,7 @@ print(next_local.isoweekday() <= 5)
 "#,
         &[db],
     );
-    assert!(
-        query.status.success(),
-        "query failed: {}",
-        String::from_utf8_lossy(&query.stderr)
-    );
+
     assert_eq!(
         String::from_utf8_lossy(&query.stdout)
             .replace("\r\n", "\n")
@@ -577,11 +567,7 @@ print(next_local.isoweekday() <= 5)
     );
 
     let after = run_python_script(python, WORKFLOW_DESIRED_IDS_SCRIPT, &[db, "apm--cron"]);
-    assert!(
-        after.status.success(),
-        "snapshot failed: {}",
-        String::from_utf8_lossy(&after.stderr)
-    );
+
     assert_eq!(
         String::from_utf8_lossy(&after.stdout)
             .replace("\r\n", "\n")
@@ -619,7 +605,7 @@ fn write_local_cron_fixture(home: &Path, python: &str) -> PathBuf {
     std::fs::create_dir(home.join(".copilot")).unwrap();
     let db_path = home.join(".copilot").join("data.db");
     let db = db_path.to_str().unwrap();
-    let setup = run_python_script(
+    run_python_script(
         python,
         r#"
 import sqlite3, sys
@@ -633,11 +619,7 @@ con.commit()
 "#,
         &[db],
     );
-    assert!(
-        setup.status.success(),
-        "{}",
-        String::from_utf8_lossy(&setup.stderr)
-    );
+
     prompt
 }
 
@@ -667,11 +649,7 @@ assert con.execute(
 "#,
         &[db],
     );
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
@@ -812,7 +790,7 @@ fn removed_workflow_sources_are_not_read_when_no_managed_rows_remain() {
     std::fs::remove_dir_all(prompt.parent().unwrap()).unwrap();
     let db_path = home.join(".copilot").join("data.db");
     let db = db_path.to_str().unwrap();
-    let setup = run_python_script(
+    run_python_script(
         python,
         r#"
 import sqlite3, sys
@@ -822,7 +800,7 @@ con.commit()
 "#,
         &[db],
     );
-    assert!(setup.status.success(), "{setup:?}");
+
     let before = std::fs::read(&db_path).unwrap();
     let mut mock = MockExecutor::new();
     expect_python3(&mut mock, 2, true);
@@ -853,7 +831,7 @@ fn workflow_source_cron_requires_schema_support_without_mutation() {
     let Some(python) = python_for_script_tests() else {
         return;
     };
-    let output = run_python_script(
+    run_python_script(
         python,
         r#"
 import contextlib, io, json, sqlite3, sys
@@ -877,11 +855,6 @@ with (
 assert connection.execute("SELECT mode, enabled, next_run_at FROM workflows").fetchone() == ("interactive", 0, None)
 "#,
         &[WORKFLOW_AUTOPILOT_SCRIPT],
-    );
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
     );
 }
 
@@ -908,59 +881,33 @@ fn workflow_scripts_keep_python_indentation() {
 #[test]
 fn run_sets_apm_workflows_to_autopilot_after_install() {
     let dir = tempfile::tempdir().expect("create temp dir");
-    let db_path = write_autopilot_fixture(dir.path(), &["apm--a", "apm--b", "apm--c"]);
-    let db_str = db_path.to_str().expect("db path utf-8").to_string();
+    write_autopilot_fixture(dir.path(), &["apm--a", "apm--b", "apm--c"]);
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
     expect_python3_with_present_workflows(&mut mock, 2);
     // Pre-install snapshot: scoped to the lockfile ids; none are desired yet,
     // so the diff in the post-install fixup is a genuine "set 3" change.
-    let pre_home = dir.path().to_path_buf();
-    let pre_db = db_str.clone();
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert!(!spec.is_checked());
-            assert_eq!(spec.working_dir(), Some(pre_home.as_path()));
-            assert_eq!(spec.program(), "python3");
-            assert_eq!(
-                spec.arguments(),
-                [
-                    "-c",
-                    WORKFLOW_DESIRED_IDS_SCRIPT,
-                    pre_db.as_str(),
-                    "apm--a",
-                    "apm--b",
-                    "apm--c"
-                ]
-            );
-            Ok(ExecResult::success(""))
-        });
+
+    expect_workflow_script(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        WORKFLOW_DESIRED_IDS_SCRIPT,
+        &["apm--a", "apm--b", "apm--c"],
+        "",
+    );
     expect_which_apm(&mut mock, true);
     expect_apm_install(&mut mock, &mut seq, dir.path());
-    let post_home = dir.path().to_path_buf();
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert!(!spec.is_checked());
-            assert_eq!(spec.working_dir(), Some(post_home.as_path()));
-            assert_eq!(spec.program(), "python3");
-            assert_eq!(
-                spec.arguments(),
-                [
-                    "-c",
-                    WORKFLOW_AUTOPILOT_SCRIPT,
-                    db_str.as_str(),
-                    "apm--a",
-                    "apm--b",
-                    "apm--c"
-                ]
-            );
-            Ok(ExecResult::success("3 3\napm--a\napm--b\napm--c\n"))
-        });
+
+    expect_workflow_script(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        WORKFLOW_AUTOPILOT_SCRIPT,
+        &["apm--a", "apm--b", "apm--c"],
+        "3 3\napm--a\napm--b\napm--c\n",
+    );
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = install_task().run(&ctx).expect("run should not error");
@@ -985,14 +932,14 @@ fn run_restores_workflows_when_cowork_reconciliation_fails() {
         let mut seq = mockall::Sequence::new();
         expect_which_apm(&mut mock, true);
         expect_python3_with_present_workflows(&mut mock, 2);
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(|spec| {
-                assert_eq!(spec.program(), "python3");
-                assert_eq!(spec.arguments()[1], WORKFLOW_DESIRED_IDS_SCRIPT);
-                Ok(ExecResult::success("apm--a\n"))
-            });
+        expect_workflow_script(
+            &mut mock,
+            &mut seq,
+            &home,
+            WORKFLOW_DESIRED_IDS_SCRIPT,
+            &["apm--a"],
+            "apm--a\n",
+        );
         if update {
             expect_apm_update(&mut mock, &mut seq, "updated\n");
             expect_copilot_app_enable(&mut mock, &mut seq);
@@ -1001,16 +948,14 @@ fn run_restores_workflows_when_cowork_reconciliation_fails() {
             expect_apm_install(&mut mock, &mut seq, &home);
         }
         expect_cowork_enable(&mut mock, &mut seq);
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(|spec| {
-                assert_eq!(spec.program(), "python3");
-                assert!(!spec.is_checked());
-                assert_eq!(spec.arguments()[1], WORKFLOW_AUTOPILOT_SCRIPT);
-                assert_eq!(spec.arguments()[3..], ["apm--a"]);
-                Ok(ExecResult::success("1 1\napm--a\n"))
-            });
+        expect_workflow_script(
+            &mut mock,
+            &mut seq,
+            &home,
+            WORKFLOW_AUTOPILOT_SCRIPT,
+            &["apm--a"],
+            "1 1\napm--a\n",
+        );
         let ctx = make_windows_cowork_context(&home, mock);
         let task = if update {
             update_task()
@@ -1038,13 +983,14 @@ fn run_restores_workflows_without_masking_native_failure_outcomes() {
         let mut seq = mockall::Sequence::new();
         expect_which_apm(&mut mock, true);
         expect_python3_with_present_workflows(&mut mock, 2);
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(|spec| {
-                assert_eq!(spec.arguments()[1], WORKFLOW_DESIRED_IDS_SCRIPT);
-                Ok(ExecResult::success("apm--a\n"))
-            });
+        expect_workflow_script(
+            &mut mock,
+            &mut seq,
+            dir.path(),
+            WORKFLOW_DESIRED_IDS_SCRIPT,
+            &["apm--a"],
+            "apm--a\n",
+        );
         let message = if auth_failure {
             "authentication failed"
         } else {
@@ -1060,14 +1006,14 @@ fn run_restores_workflows_without_masking_native_failure_outcomes() {
                     ExecResult::failure("", message, Some(1)),
                 ))
             });
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(|spec| {
-                assert_eq!(spec.arguments()[1], WORKFLOW_AUTOPILOT_SCRIPT);
-                assert_eq!(spec.arguments()[3..], ["apm--a"]);
-                Ok(ExecResult::success("1 1\napm--a\n"))
-            });
+        expect_workflow_script(
+            &mut mock,
+            &mut seq,
+            dir.path(),
+            WORKFLOW_AUTOPILOT_SCRIPT,
+            &["apm--a"],
+            "1 1\napm--a\n",
+        );
         let ctx = make_home_context_with_executor(dir.path(), mock);
         let result = install_task().run(&ctx);
 
@@ -1169,43 +1115,30 @@ fn current_install_delegates_to_apm_and_repairs_autopilot_drift() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());
     write_workflow_lock(dir.path(), &["apm--a"]);
-    let db_path = write_copilot_app_db(dir.path());
-    let db_str = db_path.to_str().expect("db path utf-8").to_string();
+    write_copilot_app_db(dir.path());
 
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
     expect_python3_with_present_workflows(&mut mock, 2);
 
-    let drift_db = db_str.clone();
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert!(!spec.is_checked());
-            assert_eq!(
-                spec.arguments(),
-                [
-                    "-c",
-                    WORKFLOW_DESIRED_IDS_SCRIPT,
-                    drift_db.as_str(),
-                    "apm--a"
-                ]
-            );
-            Ok(ExecResult::success(""))
-        });
+    expect_workflow_script(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        WORKFLOW_DESIRED_IDS_SCRIPT,
+        &["apm--a"],
+        "",
+    );
     expect_apm_install(&mut mock, &mut seq, dir.path());
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(move |spec| {
-            assert!(!spec.is_checked());
-            assert_eq!(
-                spec.arguments(),
-                ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
-            );
-            Ok(ExecResult::success("1 1\napm--a\n"))
-        });
+    expect_workflow_script(
+        &mut mock,
+        &mut seq,
+        dir.path(),
+        WORKFLOW_AUTOPILOT_SCRIPT,
+        &["apm--a"],
+        "1 1\napm--a\n",
+    );
 
     let ctx = make_home_context_with_executor(dir.path(), mock);
     let result = install_task().run(&ctx).expect("run should not error");
@@ -1252,42 +1185,33 @@ fn update_re_arms_apm_workflows_cases() {
         // workflow so the pre-update snapshot and post-update fixup are
         // scoped to it.
         write_workflow_lock(dir.path(), &["apm--a"]);
-        let db_path = write_copilot_app_db(dir.path());
-        let db_str = db_path.to_str().expect("db path utf-8").to_string();
+        write_copilot_app_db(dir.path());
 
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
         expect_which_apm(&mut mock, true);
         expect_python3_with_present_workflows(&mut mock, 2);
-        let pre_db = db_str.clone();
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |spec| {
-                assert!(!spec.is_checked());
-                assert_eq!(spec.program(), "python3");
-                assert_eq!(
-                    spec.arguments(),
-                    ["-c", WORKFLOW_DESIRED_IDS_SCRIPT, pre_db.as_str(), "apm--a"]
-                );
-                Ok(ExecResult::success(pre_stdout))
-            });
+
+        expect_workflow_script(
+            &mut mock,
+            &mut seq,
+            dir.path(),
+            WORKFLOW_DESIRED_IDS_SCRIPT,
+            &["apm--a"],
+            pre_stdout,
+        );
         expect_apm_update(&mut mock, &mut seq, update_stdout);
         expect_copilot_app_enable(&mut mock, &mut seq);
         expect_copilot_app_workflow_install(&mut mock, &mut seq);
         // Post-update fixup restores the workflow's desired automation state.
-        mock.expect_execute()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(move |spec| {
-                assert!(!spec.is_checked());
-                assert_eq!(spec.program(), "python3");
-                assert_eq!(
-                    spec.arguments(),
-                    ["-c", WORKFLOW_AUTOPILOT_SCRIPT, db_str.as_str(), "apm--a"]
-                );
-                Ok(ExecResult::success("1 1\napm--a\n"))
-            });
+        expect_workflow_script(
+            &mut mock,
+            &mut seq,
+            dir.path(),
+            WORKFLOW_AUTOPILOT_SCRIPT,
+            &["apm--a"],
+            "1 1\napm--a\n",
+        );
 
         let ctx = make_home_context_with_executor(dir.path(), mock);
 

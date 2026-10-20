@@ -9,18 +9,26 @@ use crate::infra::ConfigHandle;
 use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor};
 use crate::infra::platform::Os;
 use crate::test_helpers::{
-    assert_task_changed, assert_task_ok, empty_config, make_platform_context_with_which,
-    task_batch, task_skipped,
+    assert_task_changed, assert_task_ok, make_platform_context_with_which, task_batch, task_skipped,
 };
 use std::path::PathBuf;
+
+fn packages(entries: &[(&str, bool)]) -> ConfigHandle<Vec<Package>> {
+    ConfigHandle::new(
+        entries
+            .iter()
+            .map(|&(name, is_aur)| Package {
+                name: name.into(),
+                is_aur,
+            })
+            .collect(),
+    )
+}
 
 #[test]
 fn aur_preview_uses_package_database_without_requiring_paru() {
     for query_fails in [false, true] {
-        let packages = ConfigHandle::new(vec![Package {
-            name: "example-aur".into(),
-            is_aur: true,
-        }]);
+        let packages = packages(&[("example-aur", true)]);
         let mut mock = MockExecutor::new();
         mock.expect_execute()
             .once()
@@ -96,22 +104,15 @@ fn package_task_applicability_follows_platform_and_package_kind() {
             [false, false, false],
         ),
     ] {
-        let mut config = empty_config(PathBuf::from("/repo"));
-        config.packages = package_kinds
+        let entries = package_kinds
             .iter()
             .map(|&is_aur| Package {
                 name: if is_aur { "paru-bin" } else { "git" }.to_string(),
                 is_aur,
             })
             .collect();
-        let packages = ConfigHandle::new(config.packages.clone());
-        let ctx = make_platform_context_with_which(
-            config.root.clone(),
-            config.overlay.clone(),
-            os,
-            arch,
-            false,
-        );
+        let packages = ConfigHandle::new(entries);
+        let ctx = make_platform_context_with_which(PathBuf::from("/repo"), None, os, arch, false);
         let actual = [
             InstallPackages::new(packages.clone()).should_run(&ctx),
             InstallAurPackages::new(packages).should_run(&ctx),
@@ -131,19 +132,8 @@ fn install_packages_run_reports_the_missing_native_manager() {
         (Os::Linux, "git", "pacman"),
         (Os::Windows, "Git.Git", "winget"),
     ] {
-        let mut config = empty_config(PathBuf::from("/repo"));
-        config.packages.push(Package {
-            name: package.to_string(),
-            is_aur: false,
-        });
-        let packages = ConfigHandle::new(config.packages.clone());
-        let ctx = make_platform_context_with_which(
-            config.root.clone(),
-            config.overlay.clone(),
-            os,
-            false,
-            false,
-        );
+        let packages = packages(&[(package, false)]);
+        let ctx = make_platform_context_with_which(PathBuf::from("/repo"), None, os, false, false);
         let result = InstallPackages::new(packages).run(&ctx).unwrap();
         let reason = task_skipped(&result);
         assert_eq!(reason, format!("{manager} not found"), "{os:?}");
@@ -322,22 +312,11 @@ fn failed_paru_clone_cleans_only_its_partial_checkout() {
 
 #[test]
 fn install_aur_packages_errors_when_paru_disappears_after_bootstrap() {
-    let mut config = empty_config(PathBuf::from("/tmp"));
-    config.packages.push(Package {
-        name: "paru-bin".to_string(),
-        is_aur: true,
-    });
-    let packages = ConfigHandle::new(config.packages.clone());
+    let packages = packages(&[("paru-bin", true)]);
     let mut mock = MockExecutor::new();
     expect_missing_paru_package(&mut mock, 1);
     expect_missing_paru_path(&mut mock, 1);
-    let ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Linux,
-        true,
-        mock,
-    );
+    let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
     let error = InstallAurPackages::new(packages).run(&ctx).unwrap_err();
     assert!(
         error.to_string().contains("became unavailable"),
@@ -821,26 +800,15 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
 
     let fixture = tempfile::tempdir_in(".").unwrap();
     let build_dir = fixture.path().join("paru-build");
-    let mut config = empty_config(fixture.path().to_path_buf());
-    config.packages.push(Package {
-        name: "apm-bin".to_string(),
-        is_aur: true,
-    });
-    let packages = ConfigHandle::new(config.packages.clone());
+    let packages = packages(&[("apm-bin", true)]);
     let mut mock = MockExecutor::new();
     expect_failed_paru_rebuild(&mut mock, &build_dir);
 
     let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
     let log = Arc::new(log);
     let log_output: Arc<dyn Log> = Arc::<crate::infra::logging::Logger>::clone(&log);
-    let ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Linux,
-        true,
-        mock,
-    )
-    .with_log(log_output);
+    let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock)
+        .with_log(log_output);
     let install_paru = FixtureParuTask {
         inner: InstallParu,
         build_dir: build_dir.clone(),
@@ -1005,19 +973,11 @@ fn is_native_git_install(spec: &CommandSpec) -> bool {
 #[test]
 fn install_packages_batch_installs_missing_packages_on_arch() {
     let root = tempfile::tempdir_in(".").unwrap();
-    let mut config = empty_config(root.path().to_path_buf());
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
-    config.packages.push(Package {
-        name: "vim".to_string(),
-        is_aur: false,
-    });
-    config.packages.push(Package {
-        name: "aur-package-must-not-be-installed".to_string(),
-        is_aur: true,
-    });
+    let packages = packages(&[
+        ("git", false),
+        ("vim", false),
+        ("aur-package-must-not-be-installed", true),
+    ]);
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
@@ -1031,14 +991,7 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
         .in_sequence(&mut seq)
         .withf(is_native_git_install)
         .returning(|_| Ok(ExecResult::success("")));
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Linux,
-        true,
-        mock,
-    );
+    let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
     assert!(
@@ -1050,11 +1003,7 @@ fn install_packages_batch_installs_missing_packages_on_arch() {
 #[test]
 fn install_packages_all_already_installed_returns_ok() {
     let root = tempfile::tempdir_in(".").unwrap();
-    let mut config = empty_config(root.path().to_path_buf());
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
+    let packages = packages(&[("git", false)]);
     // which("pacman") → true
     // run_unchecked("pacman", ["-Q"]) → git installed → no install needed
     let mut mock = MockExecutor::new();
@@ -1063,14 +1012,7 @@ fn install_packages_all_already_installed_returns_ok() {
         .once()
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("git 2.40\n")));
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Linux,
-        false,
-        mock,
-    );
+    let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, false, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     assert_task_ok(&result);
 }
@@ -1078,11 +1020,7 @@ fn install_packages_all_already_installed_returns_ok() {
 #[test]
 fn install_packages_dry_run_reports_missing_packages() {
     let root = tempfile::tempdir_in(".").unwrap();
-    let mut config = empty_config(root.path().to_path_buf());
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
+    let packages = packages(&[("git", false)]);
     // which("pacman") → true
     // run_unchecked("pacman", ["-Q"]) → nothing installed
     let mut mock = MockExecutor::new();
@@ -1091,14 +1029,7 @@ fn install_packages_dry_run_reports_missing_packages() {
         .once()
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
-    let packages = ConfigHandle::new(config.packages.clone());
-    let mut ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Linux,
-        true,
-        mock,
-    );
+    let mut ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     ctx = ctx.with_dry_run(true);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
@@ -1117,10 +1048,7 @@ fn native_inventory_failure_prevents_planning_and_installation() {
     for dry_run in [false, true] {
         let fixture = tempfile::tempdir_in(".").unwrap();
 
-        let packages = ConfigHandle::new(vec![Package {
-            name: "git".into(),
-            is_aur: false,
-        }]);
+        let packages = packages(&[("git", false)]);
         let mut mock = MockExecutor::new();
         mock.expect_which()
             .once()
@@ -1148,11 +1076,7 @@ fn native_inventory_failure_prevents_planning_and_installation() {
 #[test]
 fn install_packages_returns_failed_when_batch_install_fails() {
     let root = tempfile::tempdir_in(".").unwrap();
-    let mut config = empty_config(root.path().to_path_buf());
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
+    let packages = packages(&[("git", false)]);
     // which("pacman") → true
     // run_unchecked("pacman", ["-Q"]) → git not installed
     // run("sudo", ["pacman", ...]) → error (simulating locked db)
@@ -1179,14 +1103,7 @@ fn install_packages_returns_failed_when_batch_install_fails() {
         .in_sequence(&mut seq)
         .withf(is_native_inventory)
         .returning(|_| Ok(ExecResult::success("")));
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Linux,
-        true,
-        mock,
-    );
+    let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
     let result = InstallPackages::new(packages).run(&ctx).unwrap();
     let stats = task_batch(&result);
     assert_eq!(
@@ -1263,11 +1180,7 @@ fn partial_package_batch_preserves_changed_and_already_installed_counts() {
 #[test]
 fn install_packages_propagates_batch_cancellation() {
     let root = tempfile::tempdir_in(".").unwrap();
-    let mut config = empty_config(root.path().to_path_buf());
-    config.packages.push(Package {
-        name: "git".to_string(),
-        is_aur: false,
-    });
+    let packages = packages(&[("git", false)]);
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
@@ -1286,14 +1199,7 @@ fn install_packages_propagates_batch_cancellation() {
                 result: ExecResult::failure("", "", None),
             })
         });
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Linux,
-        true,
-        mock,
-    );
+    let ctx = make_package_context(root.path().to_path_buf(), None, Os::Linux, true, mock);
 
     let err = InstallPackages::new(packages)
         .run(&ctx)
@@ -1306,155 +1212,77 @@ fn install_packages_propagates_batch_cancellation() {
 }
 
 #[test]
-fn install_packages_winget_installs_per_package() {
-    let root = tempfile::tempdir_in(".").unwrap();
-    let mut config = empty_config(root.path().to_path_buf());
-    config.packages.push(Package {
-        name: "Git.Git".to_string(),
-        is_aur: false,
-    });
-    // which("winget") → true
-    // run_unchecked("winget", ["list", ...]) → empty package table
-    // run_unchecked("winget", ["install", ...]) → success
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    mock.expect_which().returning(|_| true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(|spec| {
-            spec.program() == "winget"
-                && spec.arguments()
-                    == [
-                        "list",
-                        "--accept-source-agreements",
-                        "--disable-interactivity",
-                    ]
-                && !spec.is_checked()
-                && spec.working_dir().is_none()
-        })
-        .returning(|_| Ok(ExecResult::success("Name  Id       Version\n")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .withf(|spec| {
-            spec.program() == "winget"
-                && spec.arguments()
-                    == [
-                        "install",
-                        "--id",
-                        "Git.Git",
-                        "--exact",
-                        "--source",
-                        "winget",
-                        "--accept-source-agreements",
-                        "--accept-package-agreements",
-                        "--disable-interactivity",
-                        "--scope",
-                        "user",
-                    ]
-                && !spec.is_checked()
-                && spec.working_dir().is_none()
-        })
-        .returning(|_| Ok(ExecResult::success("")));
-    let packages = ConfigHandle::new(config.packages.clone());
-    let ctx = make_package_context(
-        config.root.clone(),
-        config.overlay.clone(),
-        Os::Windows,
-        false,
-        mock,
-    );
-    let result = InstallPackages::new(packages).run(&ctx).unwrap();
-    let stats = task_batch(&result);
-    assert!(
-        stats.changed_count() == 1 && stats.already_ok_count() == 0 && stats.failed_count() == 0,
-        "expected changed package task result after winget per-package install, got {result:?}"
-    );
-}
-
-#[test]
-fn winget_already_current_after_discovery_is_not_an_install_failure() {
-    let packages = ConfigHandle::new(vec![Package {
-        name: "Git.Git".into(),
-        is_aur: false,
-    }]);
-    let mut mock = MockExecutor::new();
-    let mut sequence = mockall::Sequence::new();
-    mock.expect_which()
-        .once()
-        .withf(|program| program == "winget")
-        .return_const(true);
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut sequence)
-        .withf(|spec| {
-            spec.program() == "winget"
-                && spec.arguments()
-                    == [
-                        "list",
-                        "--accept-source-agreements",
-                        "--disable-interactivity",
-                    ]
-                && !spec.is_checked()
-        })
-        .returning(|_| Ok(ExecResult::success("Name  Id       Version\n")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut sequence)
-        .withf(|spec| {
-            spec.program() == "winget"
-                && spec.arguments()
-                    == [
-                        "install",
-                        "--id",
-                        "Git.Git",
-                        "--exact",
-                        "--source",
-                        "winget",
-                        "--accept-source-agreements",
-                        "--accept-package-agreements",
-                        "--disable-interactivity",
-                        "--scope",
-                        "user",
-                    ]
-                && !spec.is_checked()
-        })
-        .returning(|_| {
-            Ok(ExecResult::failure(
-                "No available upgrade found.",
-                "",
-                Some(-1_978_335_189),
-            ))
-        });
-    let ctx = make_package_context(
-        PathBuf::from("fixture-repository"),
-        None,
-        Os::Windows,
-        false,
-        mock,
-    );
-
-    let result = InstallPackages::new(packages).run(&ctx).unwrap();
-    let stats = task_batch(&result);
-
-    assert_eq!(
+fn winget_per_package_install_preserves_changed_and_already_current_counts() {
+    for (install_result, expected) in [
+        (ExecResult::success(""), (1, 0, 0)),
         (
-            stats.changed_count(),
-            stats.already_ok_count(),
-            stats.failed_count()
+            ExecResult::failure("No available upgrade found.", "", Some(-1_978_335_189)),
+            (0, 1, 0),
         ),
-        (0, 1, 0),
-    );
+    ] {
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq("winget"))
+            .return_const(true);
+        for (args, result) in [
+            (
+                &[
+                    "list",
+                    "--accept-source-agreements",
+                    "--disable-interactivity",
+                ][..],
+                ExecResult::success("Name  Id       Version\n"),
+            ),
+            (
+                &[
+                    "install",
+                    "--id",
+                    "Git.Git",
+                    "--exact",
+                    "--source",
+                    "winget",
+                    "--accept-source-agreements",
+                    "--accept-package-agreements",
+                    "--disable-interactivity",
+                    "--scope",
+                    "user",
+                ][..],
+                install_result,
+            ),
+        ] {
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .withf(move |spec| {
+                    spec.program() == "winget"
+                        && spec.arguments() == args
+                        && !spec.is_checked()
+                        && spec.working_dir().is_none()
+                })
+                .return_once(|_| Ok(result));
+        }
+        let ctx = make_package_context("fixture-repository".into(), None, Os::Windows, false, mock);
+        let result = InstallPackages::new(packages(&[("Git.Git", false)]))
+            .run(&ctx)
+            .unwrap();
+        let stats = task_batch(&result);
+        assert_eq!(
+            (
+                stats.changed_count(),
+                stats.already_ok_count(),
+                stats.failed_count()
+            ),
+            expected
+        );
+    }
 }
 
 #[test]
 fn winget_discovery_parse_failure_never_attempts_installation() {
     for dry_run in [false, true] {
-        let packages = ConfigHandle::new(vec![Package {
-            name: "Git.Git".to_string(),
-            is_aur: false,
-        }]);
+        let packages = packages(&[("Git.Git", false)]);
         let mut mock = MockExecutor::new();
         mock.expect_which()
             .once()

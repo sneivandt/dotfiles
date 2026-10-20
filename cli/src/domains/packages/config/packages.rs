@@ -12,26 +12,18 @@ crate::infra::config::diagnostic_codes! {
 }
 
 /// A package to install.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Package {
     /// Package name or identifier (e.g., "git", "Git.Git" for winget).
     pub name: String,
     /// Whether this is an AUR (Arch User Repository) package.
+    #[serde(default, rename = "aur")]
     pub is_aur: bool,
 }
 
-/// The explicit table form of a package entry: `{ name, aur }`.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PackageWithMetadata {
-    /// Package name or identifier.
-    name: String,
-    /// Whether the package comes from the AUR.
-    aur: Option<bool>,
-}
-
 /// TOML package entry - can be either a string or a table with metadata.
-type PackageEntry = StringOrTable<PackageWithMetadata>;
+type PackageEntry = StringOrTable<Package>;
 
 config_section! {
     field: "packages",
@@ -42,10 +34,7 @@ config_section! {
             name,
             is_aur: false,
         },
-        StringOrTable::Table(PackageWithMetadata { name, aur }) => Package {
-            name,
-            is_aur: aur.unwrap_or(false),
-        },
+        StringOrTable::Table(package) => package,
     },
 }
 

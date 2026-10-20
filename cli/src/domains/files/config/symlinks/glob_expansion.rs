@@ -191,6 +191,7 @@ fn path_to_config_string(path: &Path) -> String {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::test_helpers::symlink;
 
     #[test]
     fn glob_does_not_descend_through_symlinks_before_literal_segments() {
@@ -204,21 +205,13 @@ mod tests {
         }
         std::os::unix::fs::symlink(&outside, apps.join("escaped")).unwrap();
         for pattern in ["apps/*/nested/file", "apps/*/nested/*"] {
-            let entry = Symlink {
-                source: pattern.into(),
-                target: None,
-                origin: None,
-            };
+            let entry = symlink(pattern, None);
             let expanded = expand_glob_patterns(&[entry], &root).unwrap();
             assert_eq!(expanded.len(), 1, "{pattern}: {expanded:?}");
             assert_eq!(expanded[0].source, "apps/managed/nested/file");
         }
 
-        let entry = Symlink {
-            source: "apps/escaped/nested/*".into(),
-            target: None,
-            origin: None,
-        };
+        let entry = symlink("apps/escaped/nested/*", None);
         let error = expand_glob_patterns(&[entry], &root).unwrap_err();
         assert!(error.to_string().contains("matched no entries"), "{error}");
     }
@@ -231,11 +224,7 @@ mod tests {
         std::fs::create_dir_all(&apps).unwrap();
         std::fs::write(root.join("symlinks/file"), "fixture").unwrap();
         std::os::unix::fs::symlink("../file", apps.join("alias")).unwrap();
-        let entry = Symlink {
-            source: "apps/*".into(),
-            target: None,
-            origin: None,
-        };
+        let entry = symlink("apps/*", None);
 
         let expanded = expand_glob_patterns(&[entry], &root).unwrap();
         assert_eq!(expanded.len(), 1);
@@ -251,11 +240,7 @@ mod tests {
         std::fs::create_dir_all(&apps).unwrap();
         std::fs::write(apps.join(std::ffi::OsStr::from_bytes(b"\xff")), "invalid").unwrap();
         std::fs::write(apps.join("\u{fffd}"), "valid Unicode").unwrap();
-        let entry = Symlink {
-            source: "apps/*".into(),
-            target: Some(".apps/*".into()),
-            origin: None,
-        };
+        let entry = symlink("apps/*", Some(".apps/*"));
 
         let error = expand_glob_patterns(&[entry], fixture.path()).unwrap_err();
         assert!(format!("{error:#}").contains("UTF-8"), "{error:#}");

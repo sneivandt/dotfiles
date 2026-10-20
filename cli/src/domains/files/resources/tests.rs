@@ -807,31 +807,40 @@ mod symlink {
 
     #[cfg(unix)]
     #[test]
-    fn symlink_resource_correct_when_link_points_to_source() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source");
-        let target = temp_dir.path().join("target");
-        std::fs::write(&source, "test").unwrap();
-        std::os::unix::fs::symlink(&source, &target).unwrap();
-
-        let resource = SymlinkResource::new(source, target, system_executor());
-
-        let state = resource.current_state().unwrap();
-        assert_eq!(state, ResourceState::Correct);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn symlink_resource_resolves_relative_target_from_link_parent() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source");
-        let target = temp_dir.path().join("target");
-        std::fs::write(&source, "test").unwrap();
-        std::os::unix::fs::symlink("source", &target).unwrap();
-
-        let resource = SymlinkResource::new(source, target, system_executor());
-
-        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    fn symlink_resource_classifies_absolute_relative_wrong_and_dangling_targets() {
+        for (existing, absolute, correct) in [
+            ("source", true, true),
+            ("source", false, true),
+            ("other", true, false),
+            ("does_not_exist", true, false),
+        ] {
+            let fixture = tempfile::tempdir().unwrap();
+            let source = fixture.path().join("source");
+            let target = fixture.path().join("target");
+            std::fs::write(&source, "managed content").unwrap();
+            std::fs::write(fixture.path().join("other"), "other content").unwrap();
+            let existing = if absolute {
+                fixture.path().join(existing)
+            } else {
+                existing.into()
+            };
+            std::os::unix::fs::symlink(&existing, &target).unwrap();
+            assert!(target.symlink_metadata().unwrap().is_symlink());
+            if existing.ends_with("does_not_exist") {
+                assert!(!existing.exists(), "dangling-link precondition");
+            }
+            let resource = SymlinkResource::new(source, target, system_executor());
+            let state = resource.current_state().unwrap();
+            if correct {
+                assert_eq!(state, ResourceState::Correct, "{existing:?}");
+            } else {
+                assert!(
+                    matches!(state, ResourceState::Incorrect { .. }),
+                    "{existing:?}: {state:?}"
+                );
+            }
+            assert_eq!(resource.pre_apply_warning().unwrap(), None);
+        }
     }
 
     #[cfg(unix)]
@@ -849,24 +858,6 @@ mod symlink {
             resource.current_state().unwrap(),
             ResourceState::Incorrect { .. }
         ));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn symlink_resource_incorrect_when_link_points_to_wrong_source() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source");
-        let other = temp_dir.path().join("other");
-        let target = temp_dir.path().join("target");
-        std::fs::write(&source, "test").unwrap();
-        std::fs::write(&other, "other").unwrap();
-        // link target → other (not source)
-        std::os::unix::fs::symlink(&other, &target).unwrap();
-
-        let resource = SymlinkResource::new(source, target, system_executor());
-
-        let state = resource.current_state().unwrap();
-        assert!(matches!(state, ResourceState::Incorrect { .. }));
     }
 
     #[test]
@@ -908,21 +899,6 @@ mod symlink {
 
     #[cfg(unix)]
     #[test]
-    fn symlink_resource_does_not_warn_before_replacing_wrong_symlink() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source");
-        let other = temp_dir.path().join("other");
-        let target = temp_dir.path().join("target");
-        std::fs::write(&source, "managed content").unwrap();
-        std::fs::write(&other, "other content").unwrap();
-        std::os::unix::fs::symlink(&other, &target).unwrap();
-        let resource = SymlinkResource::new(source, target, system_executor());
-
-        assert_eq!(resource.pre_apply_warning().unwrap(), None);
-    }
-
-    #[cfg(unix)]
-    #[test]
     fn symlink_resource_apply_replaces_regular_file_with_symlink() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source");
@@ -942,245 +918,113 @@ mod symlink {
         assert_eq!(link_target, source);
     }
 
-    /// A dangling symlink at the target (pointing to a non-existent path) must
-    /// be reported as `Incorrect`, not `Missing`.  `Path::exists()` follows
-    /// symlinks and returns `false` for dangling ones, so we use
-    /// `symlink_metadata()` instead.
-    #[cfg(unix)]
     #[test]
-    fn symlink_resource_incorrect_when_target_is_dangling_symlink() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source");
-        let target = temp_dir.path().join("target");
-        let nowhere = temp_dir.path().join("does_not_exist");
-        std::fs::write(&source, "content").unwrap();
-        // Create a dangling symlink: target -> nowhere (nowhere doesn't exist)
-        std::os::unix::fs::symlink(&nowhere, &target).unwrap();
-        assert!(!nowhere.exists(), "precondition: nowhere must not exist");
-        assert!(
-            target.symlink_metadata().is_ok(),
-            "precondition: dangling symlink must be present"
-        );
+    fn remove_materializes_files_and_directories_even_when_links_are_gone() {
+        for directory in [false, true] {
+            for missing_link in [false, true] {
+                let fixture = tempfile::tempdir().unwrap();
+                let source = fixture.path().join("source");
+                let target = fixture.path().join("target");
+                let files = if directory {
+                    std::fs::create_dir_all(source.join("sub")).unwrap();
+                    &[("a.txt", "aaa"), ("sub/b.txt", "bbb")][..]
+                } else {
+                    &[("", "hello dotfiles")][..]
+                };
+                let content_path = |root: &Path, relative: &str| {
+                    if relative.is_empty() {
+                        root.to_path_buf()
+                    } else {
+                        root.join(relative)
+                    }
+                };
+                for &(relative, content) in files {
+                    std::fs::write(content_path(&source, relative), content).unwrap();
+                }
+                #[cfg(unix)]
+                if directory {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    for (relative, mode) in [("", 0o700), ("sub", 0o750)] {
+                        std::fs::set_permissions(
+                            source.join(relative),
+                            std::fs::Permissions::from_mode(mode),
+                        )
+                        .unwrap();
+                    }
+                }
+                let resource =
+                    SymlinkResource::new(source.clone(), target.clone(), system_executor());
+                resource.apply().unwrap();
+                assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+                if missing_link {
+                    if cfg!(windows) && directory {
+                        std::fs::remove_dir(&target).unwrap();
+                    } else {
+                        std::fs::remove_file(&target).unwrap();
+                    }
+                    assert!(target.symlink_metadata().is_err(), "target must be absent");
+                }
 
-        let resource = SymlinkResource::new(source, target, system_executor());
+                resource.remove().unwrap();
 
-        let state = resource.current_state().unwrap();
-        assert!(
-            matches!(state, ResourceState::Incorrect { .. }),
-            "dangling symlink should be Incorrect, got {state:?}"
-        );
-    }
-
-    /// After `remove()` the target must be a regular file containing the
-    /// original source content, not a symlink.
-    #[test]
-    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
-    fn remove_file_symlink_materializes_content() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source.txt");
-        let target = temp_dir.path().join("target.txt");
-        std::fs::write(&source, b"hello dotfiles").unwrap();
-
-        let resource = SymlinkResource::new(source.clone(), target.clone(), system_executor());
-        resource.apply().unwrap();
-        assert!(matches!(
-            resource.current_state().unwrap(),
-            ResourceState::Correct
-        ));
-
-        resource.remove().unwrap();
-
-        // Must be a regular file, not a symlink.
-        let meta = std::fs::symlink_metadata(&target).unwrap();
-        assert!(
-            !meta.is_symlink(),
-            "target should not be a symlink after materialize"
-        );
-        assert!(meta.is_file(), "target should be a regular file");
-        assert_eq!(std::fs::read(&target).unwrap(), b"hello dotfiles");
-    }
-
-    /// After `remove()` on a directory symlink the target must be a real
-    /// directory containing copies of all source files.
-    #[test]
-    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
-    fn remove_dir_symlink_materializes_directory() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source_dir = temp_dir.path().join("src_dir");
-        let target_dir = temp_dir.path().join("target_dir");
-        std::fs::create_dir(&source_dir).unwrap();
-        std::fs::write(source_dir.join("a.txt"), b"aaa").unwrap();
-        std::fs::create_dir(source_dir.join("sub")).unwrap();
-        std::fs::write(source_dir.join("sub").join("b.txt"), b"bbb").unwrap();
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&source_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
-            std::fs::set_permissions(
-                source_dir.join("sub"),
-                std::fs::Permissions::from_mode(0o750),
-            )
-            .unwrap();
-        }
-
-        let resource =
-            SymlinkResource::new(source_dir.clone(), target_dir.clone(), system_executor());
-        resource.apply().unwrap();
-        assert!(matches!(
-            resource.current_state().unwrap(),
-            ResourceState::Correct
-        ));
-
-        resource.remove().unwrap();
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            for (relative, mode) in [("", 0o700), ("sub", 0o750)] {
-                assert_eq!(
-                    std::fs::metadata(target_dir.join(relative))
-                        .unwrap()
-                        .permissions()
-                        .mode()
-                        & 0o777,
-                    mode,
-                    "materialization must preserve directory permissions"
+                let metadata = target.symlink_metadata().unwrap();
+                assert!(
+                    !metadata.is_symlink(),
+                    "materialization must replace the link"
                 );
+                assert_eq!(metadata.is_dir(), directory);
+                assert_eq!(metadata.is_file(), !directory);
+                for &(relative, content) in files {
+                    assert_eq!(
+                        std::fs::read_to_string(content_path(&target, relative)).unwrap(),
+                        content
+                    );
+                    assert_eq!(
+                        std::fs::read_to_string(content_path(&source, relative)).unwrap(),
+                        content
+                    );
+                }
+                #[cfg(unix)]
+                if directory {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    for (relative, mode) in [("", 0o700), ("sub", 0o750)] {
+                        assert_eq!(
+                            std::fs::metadata(target.join(relative))
+                                .unwrap()
+                                .permissions()
+                                .mode()
+                                & 0o777,
+                            mode,
+                            "materialization must preserve directory permissions"
+                        );
+                    }
+                }
             }
         }
-
-        // Must be a real directory, not a symlink.
-        let meta = std::fs::symlink_metadata(&target_dir).unwrap();
-        assert!(
-            !meta.is_symlink(),
-            "target should not be a symlink after materialize"
-        );
-        assert!(meta.is_dir(), "target should be a real directory");
-        assert_eq!(std::fs::read(target_dir.join("a.txt")).unwrap(), b"aaa");
-        assert_eq!(
-            std::fs::read(target_dir.join("sub").join("b.txt")).unwrap(),
-            b"bbb"
-        );
     }
 
-    /// `remove()` on a file symlink must succeed even when the symlink has
-    /// already been manually deleted — source content is materialized at the
-    /// target path regardless.
-    #[cfg(unix)]
     #[test]
-    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
-    fn remove_file_symlink_materializes_content_when_target_already_gone() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source.txt");
-        let target = temp_dir.path().join("target.txt");
-        std::fs::write(&source, b"hello dotfiles").unwrap();
-
-        let resource = SymlinkResource::new(source.clone(), target.clone(), system_executor());
-        resource.apply().unwrap();
-
-        // Manually remove the symlink before calling remove().
-        std::fs::remove_file(&target).unwrap();
-        assert!(
-            target.symlink_metadata().is_err(),
-            "precondition: target must be absent"
-        );
-
-        // remove() must not error and must materialize source content.
-        resource.remove().unwrap();
-
-        let meta = std::fs::symlink_metadata(&target).unwrap();
-        assert!(!meta.is_symlink(), "target should not be a symlink");
-        assert!(meta.is_file(), "target should be a regular file");
-        assert_eq!(std::fs::read(&target).unwrap(), b"hello dotfiles");
-    }
-
-    /// `remove()` on a directory symlink must succeed even when the symlink
-    /// has already been manually deleted.
-    #[cfg(unix)]
-    #[test]
-    #[allow(clippy::redundant_clone, reason = "clone keeps test intent explicit")]
-    fn remove_dir_symlink_materializes_content_when_target_already_gone() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source_dir = temp_dir.path().join("src_dir");
-        let target_dir = temp_dir.path().join("target_dir");
-        std::fs::create_dir(&source_dir).unwrap();
-        std::fs::write(source_dir.join("a.txt"), b"aaa").unwrap();
-
-        let resource =
-            SymlinkResource::new(source_dir.clone(), target_dir.clone(), system_executor());
-        resource.apply().unwrap();
-
-        // Manually remove the symlink before calling remove().
-        std::fs::remove_file(&target_dir).unwrap();
-        assert!(
-            target_dir.symlink_metadata().is_err(),
-            "precondition: target must be absent"
-        );
-
-        // remove() must not error and must materialize source content.
-        resource.remove().unwrap();
-
-        let meta = std::fs::symlink_metadata(&target_dir).unwrap();
-        assert!(!meta.is_symlink(), "target should not be a symlink");
-        assert!(meta.is_dir(), "target should be a real directory");
-        assert_eq!(std::fs::read(target_dir.join("a.txt")).unwrap(), b"aaa");
-    }
-
-    /// `remove()` must not overwrite a real file at the target path — doing so
-    /// would destroy user data.  The result must be `Skipped` and the original
-    /// file content must remain intact.
-    #[test]
-    fn remove_does_not_overwrite_real_file() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source.txt");
-        let target = temp_dir.path().join("target.txt");
-        std::fs::write(&source, b"source content").unwrap();
-        // Write a real file (not a symlink) at target, simulating a user-managed file.
-        std::fs::write(&target, b"user content").unwrap();
-
-        let resource = SymlinkResource::new(source, target.clone(), system_executor());
-        let result = resource.remove().unwrap();
-
-        assert!(
-            matches!(result, ResourceChange::Skipped { .. }),
-            "remove() must skip a non-symlink target to prevent data loss, got {result:?}"
-        );
-        // User content must be completely intact.
-        assert_eq!(
-            std::fs::read(&target).unwrap(),
-            b"user content",
-            "real file content must not be modified"
-        );
-    }
-
-    /// `remove()` must not overwrite a real directory at the target path —
-    /// doing so would destroy user data.  The result must be `Skipped` and the
-    /// directory contents must remain intact.
-    #[cfg(unix)]
-    #[test]
-    fn remove_does_not_overwrite_real_directory() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source_dir = temp_dir.path().join("src_dir");
-        let target_dir = temp_dir.path().join("target_dir");
-        std::fs::create_dir(&source_dir).unwrap();
-        std::fs::write(source_dir.join("source.txt"), b"source content").unwrap();
-        // Create a real directory (not a symlink) at target.
-        std::fs::create_dir(&target_dir).unwrap();
-        std::fs::write(target_dir.join("user.txt"), b"user content").unwrap();
-
-        let resource = SymlinkResource::new(source_dir, target_dir.clone(), system_executor());
-        let result = resource.remove().unwrap();
-
-        assert!(
-            matches!(result, ResourceChange::Skipped { .. }),
-            "remove() must skip a non-symlink target directory to prevent data loss, got {result:?}"
-        );
-        // User content must be completely intact.
-        assert_eq!(
-            std::fs::read(target_dir.join("user.txt")).unwrap(),
-            b"user content",
-            "real directory content must not be modified"
-        );
+    fn remove_does_not_overwrite_user_files_or_directories() {
+        for directory in [false, true] {
+            let fixture = tempfile::tempdir().unwrap();
+            let source = fixture.path().join("source");
+            let target = fixture.path().join("target");
+            let (source_file, user_file) = if directory {
+                std::fs::create_dir(&source).unwrap();
+                std::fs::create_dir(&target).unwrap();
+                (source.join("source.txt"), target.join("user.txt"))
+            } else {
+                (source.clone(), target.clone())
+            };
+            std::fs::write(source_file, "source content").unwrap();
+            std::fs::write(&user_file, "user content").unwrap();
+            let resource = SymlinkResource::new(source, target, system_executor());
+            let result = resource.remove().unwrap();
+            assert!(
+                matches!(result, ResourceChange::Skipped { .. }),
+                "remove must preserve non-link targets, got {result:?}"
+            );
+            assert_eq!(std::fs::read_to_string(user_file).unwrap(), "user content");
+        }
     }
 }

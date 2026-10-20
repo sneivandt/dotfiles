@@ -3,7 +3,7 @@ use crate::engine::{
     IntrinsicState, ProcessOpts, Resource, ResourceChange, ResourceResult, ResourceState, TaskStats,
 };
 use crate::infra::logging::{ActionCounts, TaskStatus};
-use crate::test_helpers::{empty_config, make_static_context, numeric_task_id};
+use crate::test_helpers::{make_static_context, numeric_task_id};
 use anyhow::Result;
 use std::any::TypeId;
 use std::path::PathBuf;
@@ -45,18 +45,6 @@ impl Task for MockTask {
     }
     fn run(&self, _ctx: &Context) -> Result<TaskResult> {
         self.result.clone().map_err(|s| anyhow::anyhow!("{s}"))
-    }
-}
-
-struct CheckPassedTask;
-
-impl Task for CheckPassedTask {
-    fn meta(&self) -> TaskMeta<'_> {
-        TaskMeta::new("check-passed")
-    }
-
-    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
-        Ok(TaskResult::CheckPassed)
     }
 }
 
@@ -205,88 +193,132 @@ fn execute_skips_non_applicable_task() {
 }
 
 #[test]
-fn execute_records_ok_task() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let task = MockTask {
-        name: "ok-task",
-        should_run: true,
-        result: Ok(TaskResult::Ok),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::Ok);
-    assert_eq!(log.failure_count(), 0);
-    let entries = log.task_entries();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].status, TaskStatus::Ok);
-    assert_eq!(entries[0].name, "ok-task");
-    assert_eq!(entries[0].message, None);
-    assert_eq!(entries[0].actions, ActionCounts::default());
+fn execute_records_status_reason_and_action_counts() {
+    for (result, dry_run, status, message, counts) in [
+        (
+            Ok(TaskResult::Ok),
+            false,
+            TaskStatus::Ok,
+            None,
+            [0, 0, 0, 0],
+        ),
+        (
+            Ok(TaskResult::CheckPassed),
+            false,
+            TaskStatus::Passed,
+            None,
+            [0, 0, 0, 0],
+        ),
+        (
+            Ok(TaskStats::changed_with_message("created config file").finish()),
+            false,
+            TaskStatus::Changed,
+            Some("created config file"),
+            [1, 0, 0, 0],
+        ),
+        (
+            Err("kaboom".to_string()),
+            false,
+            TaskStatus::Failed,
+            Some("kaboom"),
+            [0, 0, 0, 0],
+        ),
+        (
+            Ok(TaskResult::skipped("not needed")),
+            false,
+            TaskStatus::Skipped,
+            Some("not needed"),
+            [0, 0, 0, 0],
+        ),
+        (
+            Ok(TaskResult::DryRun),
+            true,
+            TaskStatus::DryRun,
+            None,
+            [0, 0, 0, 0],
+        ),
+        (
+            Ok(TaskResult::Failed("git pull failed".into())),
+            false,
+            TaskStatus::Failed,
+            Some("git pull failed"),
+            [0, 0, 0, 1],
+        ),
+    ] {
+        let (ctx, log) = make_static_context("/tmp".into(), None);
+        let task = MockTask {
+            name: "outcome",
+            should_run: true,
+            result,
+        };
+        assert_eq!(
+            execute(&task, &ctx.with_dry_run(dry_run)),
+            status,
+            "{:?}",
+            task.result
+        );
+        assert_eq!(
+            log.failure_count(),
+            usize::from(status == TaskStatus::Failed)
+        );
+        let entries = log.task_entries();
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.name, "outcome");
+        assert_eq!(entry.status, status);
+        assert_eq!(entry.message.as_deref(), message);
+        let [applied, planned, skipped, failed] = counts;
+        assert_eq!(
+            entry.actions,
+            ActionCounts {
+                applied,
+                planned,
+                skipped,
+                failed,
+                ..ActionCounts::default()
+            }
+        );
+    }
 }
 
 #[test]
-fn execute_records_check_passed_task_as_passed() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-
-    execute(&CheckPassedTask, &ctx);
-
-    let entries = log.task_entries();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].status, TaskStatus::Passed);
-    assert_eq!(entries[0].name, "check-passed");
-}
-
-#[test]
-fn execute_records_ok_task_with_message() {
-    let config = empty_config(PathBuf::from("/tmp"));
-    let (ctx, log) = make_static_context(config.root.clone(), config.overlay);
-    let task = MockTask {
-        name: "ok-task",
-        should_run: true,
-        result: Ok(TaskStats::changed_with_message("created config file").finish()),
-    };
-
-    execute(&task, &ctx);
-
-    let entries = log.task_entries();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].status, TaskStatus::Changed);
-    assert_eq!(entries[0].message.as_deref(), Some("created config file"));
-    assert_eq!(entries[0].actions.applied, 1);
-}
-
-#[test]
-fn execute_records_failed_task() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let task = MockTask {
-        name: "fail-task",
-        should_run: true,
-        result: Err("kaboom".to_string()),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
-    assert_eq!(log.failure_count(), 1);
-    let entries = log.task_entries();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].status, TaskStatus::Failed);
-    assert_eq!(entries[0].message.as_deref(), Some("kaboom"));
-}
-
-#[test]
-fn execute_records_skipped_task() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let task = MockTask {
-        name: "skip-task",
-        should_run: true,
-        result: Ok(TaskResult::skipped("not needed")),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::Skipped);
-    assert_eq!(log.failure_count(), 0);
-    let entries = log.task_entries();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].status, TaskStatus::Skipped);
-    assert_eq!(entries[0].message.as_deref(), Some("not needed"));
-    assert_eq!(entries[0].actions, ActionCounts::default());
+fn execute_records_batch_counts_in_apply_and_preview_modes() {
+    for (counts, dry_run, status, actions) in [
+        ((3, 5, 2, 0), false, TaskStatus::Changed, [3, 0, 2, 0]),
+        ((4, 1, 0, 0), true, TaskStatus::DryRun, [0, 4, 0, 0]),
+        ((1, 0, 2, 3), false, TaskStatus::Failed, [1, 0, 2, 3]),
+        ((0, 2, 3, 0), false, TaskStatus::Skipped, [0, 0, 3, 0]),
+        ((1, 0, 0, 0), true, TaskStatus::DryRun, [0, 1, 0, 0]),
+    ] {
+        let (ctx, log) = make_static_context("/tmp".into(), None);
+        let task = MockTask {
+            name: "batch-task",
+            should_run: true,
+            result: Ok(TaskStats::from_counts(counts.0, counts.1, counts.2, counts.3).finish()),
+        };
+        assert_eq!(
+            execute(&task, &ctx.with_dry_run(dry_run)),
+            status,
+            "{counts:?}, dry_run={dry_run}"
+        );
+        assert_eq!(
+            log.failure_count(),
+            usize::from(status == TaskStatus::Failed)
+        );
+        let entries = log.task_entries();
+        assert_eq!(entries.len(), 1);
+        let [applied, planned, skipped, failed] = actions;
+        assert_eq!(
+            entries[0].actions,
+            ActionCounts {
+                applied,
+                planned,
+                skipped,
+                failed,
+                ..ActionCounts::default()
+            }
+        );
+    }
 }
 
 #[test]
@@ -301,87 +333,6 @@ fn strict_completion_escalates_unmet_task_skip() {
 
     assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
     assert_eq!(log.failure_count(), 1);
-}
-
-#[test]
-fn execute_records_batch_action_counts() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let task = MockTask {
-        name: "batch-task",
-        should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats::from_counts(3, 5, 2, 0))),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::Changed);
-
-    let entry = &log.task_entries()[0];
-    assert_eq!(entry.actions.applied, 3);
-    assert_eq!(entry.actions.planned, 0);
-    assert_eq!(entry.actions.skipped, 2);
-    assert_eq!(entry.actions.failed, 0);
-}
-
-#[test]
-fn execute_records_dry_run_batch_as_planned_actions() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let ctx = ctx.with_dry_run(true);
-    let task = MockTask {
-        name: "batch-task",
-        should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats::from_counts(4, 1, 0, 0))),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::DryRun);
-
-    let entry = &log.task_entries()[0];
-    assert_eq!(entry.actions.applied, 0);
-    assert_eq!(entry.actions.planned, 4);
-}
-
-#[test]
-fn execute_records_unquantified_dry_run_without_planned_actions() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let ctx = ctx.with_dry_run(true);
-    let task = MockTask {
-        name: "dry-task",
-        should_run: true,
-        result: Ok(TaskResult::DryRun),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::DryRun);
-
-    let entry = &log.task_entries()[0];
-    assert_eq!(entry.actions, ActionCounts::default());
-}
-
-#[test]
-fn execute_records_failed_batch_and_preserves_action_counts() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let task = MockTask {
-        name: "batch-task",
-        should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats::from_counts(1, 0, 2, 3))),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::Failed);
-
-    let entry = &log.task_entries()[0];
-    assert_eq!(entry.actions.applied, 1);
-    assert_eq!(entry.actions.skipped, 2);
-    assert_eq!(entry.actions.failed, 3);
-}
-
-#[test]
-fn execute_records_skipped_only_batch_as_skipped() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let task = MockTask {
-        name: "batch-task",
-        should_run: true,
-        result: Ok(TaskResult::Batch(TaskStats::from_counts(0, 2, 3, 0))),
-    };
-
-    assert_eq!(execute(&task, &ctx), TaskStatus::Skipped);
-    assert_eq!(log.task_entries()[0].actions.skipped, 3);
 }
 
 #[test]
@@ -430,35 +381,6 @@ fn execute_detects_cancellation_through_resource_error_wrappers() {
 }
 
 #[test]
-fn execute_records_task_result_failed_as_failure() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let task = MockTask {
-        name: "failed-task",
-        should_run: true,
-        result: Ok(TaskResult::Failed("git pull failed".to_string())),
-    };
-
-    execute(&task, &ctx);
-    assert_eq!(log.failure_count(), 1);
-    assert_eq!(log.task_entries()[0].actions.failed, 1);
-}
-
-#[test]
-fn execute_records_dry_run_task() {
-    let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
-    let ctx = ctx.with_dry_run(true);
-    let task = MockTask {
-        name: "dry-task",
-        should_run: true,
-        result: Ok(TaskStats::changed().finish()),
-    };
-
-    execute(&task, &ctx);
-    assert_eq!(log.failure_count(), 0);
-    assert_eq!(log.task_entries()[0].actions.planned, 1);
-}
-
-#[test]
 fn execute_checks_applicability_before_running_task() {
     let (ctx, log) = make_static_context(PathBuf::from("/tmp"), None);
     let ran = Arc::new(AtomicBool::new(false));
@@ -475,43 +397,24 @@ fn execute_checks_applicability_before_running_task() {
 }
 
 #[test]
-fn requires_elevation_respects_prediction_and_dry_run() {
-    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
-    let ran = Arc::new(AtomicBool::new(false));
-    let task = GatedTask {
-        ran,
-        should_run: true,
-        needs_elevation: true,
-    };
-
-    assert!(requires_elevation(&task, &ctx));
-    assert!(!requires_elevation(&task, &ctx.with_dry_run(true)));
-}
-
-#[test]
-fn requires_elevation_respects_prediction() {
-    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
-    let ran = Arc::new(AtomicBool::new(false));
-    let task = GatedTask {
-        ran,
-        should_run: true,
-        needs_elevation: false,
-    };
-
-    assert!(!requires_elevation(&task, &ctx));
-}
-
-#[test]
-fn requires_elevation_respects_should_run() {
-    let (ctx, _) = make_static_context(PathBuf::from("/tmp"), None);
-    let ran = Arc::new(AtomicBool::new(false));
-    let task = GatedTask {
-        ran,
-        should_run: false,
-        needs_elevation: true,
-    };
-
-    assert!(!requires_elevation(&task, &ctx));
+fn requires_elevation_respects_applicability_prediction_and_dry_run() {
+    let (ctx, _) = make_static_context("/tmp".into(), None);
+    for should_run in [false, true] {
+        for needs_elevation in [false, true] {
+            let task = GatedTask {
+                ran: Arc::new(AtomicBool::new(false)),
+                should_run,
+                needs_elevation,
+            };
+            for dry_run in [false, true] {
+                assert_eq!(
+                    requires_elevation(&task, &ctx.with_dry_run(dry_run)),
+                    should_run && needs_elevation && !dry_run,
+                    "applicable={should_run}, elevation={needs_elevation}, dry_run={dry_run}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

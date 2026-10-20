@@ -24,6 +24,43 @@ fn expect_runtime(mock: &mut MockExecutor, unit: &str, scope: UnitScope, output:
             .returning(move |_| Ok(ExecResult::success(output.clone())));
 }
 
+#[cfg(unix)]
+fn offline_unit(home: &Path, name: &str, enabled: bool) -> SystemdUnitResource {
+    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
+        name: name.into(),
+        scope: UnitScope::User,
+        enabled,
+    };
+    SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home, false)
+}
+
+fn queried_unit(
+    name: &str,
+    scope: UnitScope,
+    enabled: bool,
+    enablement: ExecResult,
+    runtime: Option<&str>,
+) -> SystemdUnitResource {
+    let mut mock = MockExecutor::new();
+    let mut args = vec!["is-enabled".to_string(), name.to_string()];
+    if scope == UnitScope::User {
+        args.insert(0, "--user".to_string());
+    }
+    let args: Vec<_> = args.into_iter().map(std::ffi::OsString::from).collect();
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| {
+            spec.program() == "systemctl" && spec.arguments() == args && !spec.is_checked()
+        })
+        .return_once(|_| Ok(enablement));
+    if let Some(runtime) = runtime {
+        expect_runtime(&mut mock, name, scope.clone(), runtime);
+    }
+    let mut resource = SystemdUnitResource::new(name, scope, Arc::new(mock));
+    resource.enabled = enabled;
+    resource
+}
+
 #[test]
 fn runtime_state_handles_daemons_and_completed_oneshots() {
     for (label, enabled, properties, correct) in [
@@ -153,66 +190,73 @@ fn description_returns_unit_name() {
 // ------------------------------------------------------------------
 
 #[test]
-fn current_state_correct_when_systemctl_reports_enabled() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| spec.arguments().iter().any(|arg| arg == "is-enabled"))
-        .returning(|_| Ok(ExecResult::success("enabled\n")));
-    expect_runtime(
-        &mut mock,
-        "dunst.service",
-        UnitScope::User,
-        "ActiveState=active\n",
-    );
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+fn current_state_combines_enablement_and_requested_runtime() {
+    for (scope, enabled, output, runtime) in [
+        (
+            UnitScope::User,
+            true,
+            ExecResult::success("enabled\n"),
+            Some("ActiveState=active\n"),
+        ),
+        (
+            UnitScope::System,
+            false,
+            ExecResult::failure("disabled\n", "", Some(1)),
+            Some("ActiveState=inactive\n"),
+        ),
+        (
+            UnitScope::System,
+            true,
+            ExecResult::success(""),
+            Some("ActiveState=active\n"),
+        ),
+        (
+            UnitScope::System,
+            false,
+            ExecResult::failure(
+                "not-found\n",
+                "Unit dhcpcd.service could not be found.",
+                Some(4),
+            ),
+            None,
+        ),
+    ] {
+        let resource = queried_unit("dhcpcd.service", scope, enabled, output, runtime);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+    }
 }
 
 #[test]
-fn current_state_missing_when_systemctl_reports_disabled() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::failure("disabled\n", "", Some(1))));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
-}
-
-#[test]
-fn current_state_correct_when_disabled_unit_is_disabled() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| spec.arguments().iter().any(|arg| arg == "is-enabled"))
-        .returning(|_| Ok(ExecResult::failure("disabled\n", "", Some(1))));
-    expect_runtime(
-        &mut mock,
-        "dhcpcd.service",
-        UnitScope::System,
-        "ActiveState=inactive\n",
-    );
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
-    resource.enabled = false;
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+fn current_state_missing_for_disabled_or_linked_units_requested_enabled() {
+    for state in ["disabled", "linked", "linked-runtime"] {
+        let resource = queried_unit(
+            "dunst.service",
+            UnitScope::User,
+            true,
+            ExecResult::failure(format!("{state}\n"), "", Some(1)),
+            None,
+        );
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Missing,
+            "{state}"
+        );
+    }
 }
 
 #[test]
 fn current_state_incorrect_when_disabled_unit_is_enabled() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::success("enabled\n")));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
-    resource.enabled = false;
+    let resource = queried_unit(
+        "dhcpcd.service",
+        UnitScope::System,
+        false,
+        ExecResult::success("enabled\n"),
+        None,
+    );
     assert_eq!(
         resource.current_state().unwrap(),
         ResourceState::Incorrect {
-            current: "enabled".to_string()
+            current: "enabled".into()
         }
     );
 }
@@ -311,92 +355,23 @@ fn disabling_a_static_unit_converges_after_stopping_it() {
 }
 
 #[test]
-fn failed_static_probe_is_not_treated_as_disabled() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| spec.arguments() == ["is-enabled", "static.service"])
-        .returning(|_| Ok(ExecResult::failure("static\n", "probe failed", Some(1))));
-    let mut resource =
-        SystemdUnitResource::new("static.service", UnitScope::System, Arc::new(mock));
-    resource.enabled = false;
-
-    assert!(matches!(
-        resource.current_state().unwrap(),
-        ResourceState::Unknown { .. }
-    ));
-}
-
-#[test]
-fn current_state_correct_when_disabled_unit_is_not_installed() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute().once().returning(|_| {
-        Ok(ExecResult::failure(
-            "not-found\n",
-            "Unit dhcpcd.service could not be found.",
-            Some(4),
-        ))
-    });
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let mut resource = SystemdUnitResource::new("dhcpcd.service", UnitScope::System, executor);
-    resource.enabled = false;
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
-}
-
-#[test]
-fn current_state_missing_when_systemctl_reports_linked() {
-    for state in ["linked", "linked-runtime"] {
-        let state = state.to_string();
-        let output = state.clone();
-        let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(move |_| Ok(ExecResult::failure(format!("{output}\n"), "", Some(1))));
-        let executor: Arc<dyn Executor> = Arc::new(mock);
-        let resource =
-            SystemdUnitResource::new("network-manager-applet.service", UnitScope::User, executor);
-        assert_eq!(
-            resource.current_state().unwrap(),
-            ResourceState::Missing,
-            "{state} units should be enabled"
+fn current_state_unknown_for_ambiguous_or_failed_static_probes() {
+    for (scope, enabled, stdout, stderr) in [
+        (UnitScope::User, true, "", "Failed to connect to bus"),
+        (UnitScope::System, false, "static\n", "probe failed"),
+    ] {
+        let resource = queried_unit(
+            "dunst.service",
+            scope,
+            enabled,
+            ExecResult::failure(stdout, stderr, Some(1)),
+            None,
         );
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Unknown { .. }
+        ));
     }
-}
-
-#[test]
-fn current_state_unknown_when_systemctl_failure_is_ambiguous() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::failure("", "Failed to connect to bus", Some(1))));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = SystemdUnitResource::new("dunst.service", UnitScope::User, executor);
-    assert!(matches!(
-        resource.current_state().unwrap(),
-        ResourceState::Unknown { .. }
-    ));
-}
-
-#[test]
-fn current_state_uses_system_scope_without_user_flag() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "systemctl"
-                && spec.arguments() == ["is-enabled", "sshd.service"]
-                && !spec.is_checked()
-        })
-        .returning(|_| Ok(ExecResult::success("")));
-    expect_runtime(
-        &mut mock,
-        "sshd.service",
-        UnitScope::System,
-        "ActiveState=active\n",
-    );
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let resource = SystemdUnitResource::new("sshd.service", UnitScope::System, executor);
-    assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
 }
 
 #[test]
@@ -561,13 +536,7 @@ fn offline_packaged_unit_enablement_uses_user_directory() {
     let unit = "gnome-keyring-daemon.socket";
     let source = system_dir.join(unit);
     std::fs::write(&source, "[Install]\nWantedBy=sockets.target\n").unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: unit.to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let mut resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+    let mut resource = offline_unit(&home, unit, true);
     resource.system_user_unit_dirs = vec![system_dir.clone()];
     assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     assert!(!home.exists(), "discovery must not create user directories");
@@ -604,28 +573,22 @@ fn offline_lookup_preserves_override_precedence_and_masks() {
         )
         .unwrap();
     }
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "example.service".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let mut resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+    let mut resource = offline_unit(&home, "example.service", true);
     resource.system_user_unit_dirs = vec![admin_dir.clone(), package_dir.clone()];
     for expected in [&user_dir, &admin_dir, &package_dir] {
         assert_eq!(
             resource.offline_unit_path().unwrap(),
-            Some(expected.join(&entry.name))
+            Some(expected.join(&resource.name))
         );
-        std::fs::remove_file(expected.join(&entry.name)).unwrap();
+        std::fs::remove_file(expected.join(&resource.name)).unwrap();
     }
     std::fs::write(
-        package_dir.join(&entry.name),
+        package_dir.join(&resource.name),
         "[Install]\nWantedBy=default.target\n",
     )
     .unwrap();
     for target in [Path::new("/dev/null"), &fixture.path().join("missing")] {
-        let mask = user_dir.join(&entry.name);
+        let mask = user_dir.join(&resource.name);
         std::os::unix::fs::symlink(target, &mask).unwrap();
         assert_eq!(resource.offline_unit_path().unwrap(), Some(mask.clone()));
         assert!(
@@ -650,13 +613,7 @@ fn offline_enablement_repairs_checkout_links_and_accepts_relative_installed_link
     std::os::unix::fs::symlink(&source, &installed).unwrap();
     let link = unit_dir.join("default.target.wants/example.service");
     std::os::unix::fs::symlink(&source, &link).unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "example.service".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home.path(), false);
+    let resource = offline_unit(home.path(), "example.service", true);
     assert!(matches!(
         resource.current_state().unwrap(),
         ResourceState::Incorrect { .. }
@@ -680,13 +637,7 @@ fn offline_user_unit_is_enabled_without_contacting_the_bus() {
         "[Unit]\nDescription=Clean tmp\n[Install]\nWantedBy=timers.target\n",
     )
     .unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "clean-home-tmp.timer".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home.path(), false);
+    let resource = offline_unit(home.path(), "clean-home-tmp.timer", true);
 
     assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
     assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
@@ -702,13 +653,7 @@ fn offline_user_unit_is_enabled_without_contacting_the_bus() {
 #[test]
 fn offline_user_unit_missing_definition_is_plannable_for_dry_run() {
     let home = tempfile::tempdir().unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "not-linked-yet.timer".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home.path(), false);
+    let resource = offline_unit(home.path(), "not-linked-yet.timer", true);
 
     assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
 }
@@ -724,13 +669,7 @@ fn offline_user_unit_supports_required_by_targets() {
         "[Install]\nRequiredBy=graphical-session.target\n",
     )
     .unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "session.service".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home.path(), false);
+    let resource = offline_unit(home.path(), "session.service", true);
 
     assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
     assert!(
@@ -779,13 +718,7 @@ fn offline_enablement_does_not_recreate_reset_install_targets() {
          WantedBy=\nWantedBy=new.target\n",
     )
     .unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "example.service".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource =
-        || SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+    let resource = || offline_unit(&home, "example.service", true);
     let ctx = ContextBuilder::new(home.clone()).overlay(None).build();
     let preview = process_resources(
         &ctx.with_dry_run(true),
@@ -825,25 +758,10 @@ fn offline_user_unit_can_be_disabled() {
         "[Install]\nWantedBy=graphical-session.target\n",
     )
     .unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "session.service".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home.path(), false);
+    let resource = offline_unit(home.path(), "session.service", true);
     assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
 
-    let disabled_entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        enabled: false,
-        ..entry
-    };
-    let disabled = SystemdUnitResource::from_entry(
-        &disabled_entry,
-        Arc::new(MockExecutor::new()),
-        home.path(),
-        false,
-    );
+    let disabled = offline_unit(home.path(), "session.service", false);
     assert!(matches!(
         disabled.current_state().unwrap(),
         ResourceState::Incorrect { .. }
@@ -882,18 +800,8 @@ fn offline_disable_removes_stale_links_without_requiring_install_metadata() {
         std::fs::create_dir(&unrelated_dir).unwrap();
         let unrelated = unrelated_dir.join("example.service");
         std::os::unix::fs::symlink("../other.service", &unrelated).unwrap();
-        let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-            name: "example.service".to_string(),
-            scope: UnitScope::User,
-            enabled: false,
-        };
         let resource = || {
-            let mut resource = SystemdUnitResource::from_entry(
-                &entry,
-                Arc::new(MockExecutor::new()),
-                &home,
-                false,
-            );
+            let mut resource = offline_unit(&home, "example.service", false);
             resource.system_user_unit_dirs.clear();
             resource
         };
@@ -943,13 +851,7 @@ fn offline_disable_refuses_to_traverse_replaced_enablement_directories() {
     let link = external.join("example.service");
     std::os::unix::fs::symlink(unit_dir.join("example.service"), &link).unwrap();
     std::os::unix::fs::symlink(&external, unit_dir.join("old.target.wants")).unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "example.service".to_string(),
-        scope: UnitScope::User,
-        enabled: false,
-    };
-    let resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), &home, false);
+    let resource = offline_unit(&home, "example.service", false);
 
     assert!(resource.current_state().is_err());
     assert!(resource.apply().is_err());
@@ -970,13 +872,7 @@ fn offline_user_unit_rejects_install_targets_that_escape_the_user_directory() {
         "[Install]\nWantedBy=../../outside.target\n",
     )
     .unwrap();
-    let entry = crate::domains::system::config::systemd_units::SystemdUnit {
-        name: "unsafe.service".to_string(),
-        scope: UnitScope::User,
-        enabled: true,
-    };
-    let resource =
-        SystemdUnitResource::from_entry(&entry, Arc::new(MockExecutor::new()), home.path(), false);
+    let resource = offline_unit(home.path(), "unsafe.service", true);
 
     let error = resource
         .apply()

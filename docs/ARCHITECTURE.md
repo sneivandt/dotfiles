@@ -167,7 +167,7 @@ repeat repository synchronization or retry the original self-update preflight.
 Cancellation or failure prevents restart. If no content changed, remaining work
 uses the existing snapshot; if the boundary was filtered out, execution uses a
 single graph. Selection and dry-run retain their normal meaning.
-See [`install.rs`](../cli/src/app/commands/install.rs) and
+See [`update.rs`](../cli/src/app/commands/update.rs) and
 [`reexec.rs`](../cli/src/app/commands/reexec.rs).
 
 ## Task engine
@@ -201,7 +201,7 @@ threads; resource batches can independently use Rayon. `ctx.parallel()` gates
 both. Resource `.sequential()` protects shared-file or lock-bound writes within
 one task; it cannot serialize separate tasks. Those need graph edges.
 
-[`list`](../cli/src/app/commands/tasks.rs) loads a read-only configuration
+[`list`](../cli/src/app/commands/list.rs) loads a read-only configuration
 snapshot and exposes selectors and graph relationships without a run log, lock,
 or persisted selections. Its graph describes selection, not actual runtime
 applicability. Internal tasks can appear in graph diagnostics but are not public

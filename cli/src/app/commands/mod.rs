@@ -1,10 +1,10 @@
 //! Top-level command handlers and shared command orchestration.
 
 pub mod check;
-pub mod install;
+pub mod list;
 pub mod log;
-pub mod tasks;
-pub mod uninstall;
+pub mod remove;
+pub mod update;
 
 pub(crate) mod error;
 mod execution;

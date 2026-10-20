@@ -9,14 +9,14 @@
 //! by the release binary and can be dropped by the linker.
 
 pub mod cli {
-    pub use crate::app::cli::{CheckOpts, GlobalOpts, InstallOpts};
+    pub use crate::app::cli::{CheckOpts, GlobalOpts, UpdateOpts};
 }
 
 pub mod commands {
     pub use crate::app::commands::RuntimePolicy;
 
-    pub mod install {
-        pub use crate::app::commands::install::run;
+    pub mod update {
+        pub use crate::app::commands::update::run;
     }
 
     pub mod log {
@@ -27,8 +27,8 @@ pub mod commands {
         pub use crate::app::commands::check::run;
     }
 
-    pub mod uninstall {
-        pub use crate::app::commands::uninstall::run;
+    pub mod remove {
+        pub use crate::app::commands::remove::run;
     }
 }
 
@@ -90,7 +90,7 @@ pub mod logging {
 }
 
 pub mod tasks {
-    pub use crate::app::catalog::{all_install_tasks, all_uninstall_tasks};
+    pub use crate::app::catalog::{all_remove_tasks, all_update_tasks};
     pub use crate::engine::{
         Context, ContextOpts, ProcessMode, ProcessOpts, Task, TaskId, TaskMeta, TaskResult,
         TaskStats, execute,

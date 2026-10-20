@@ -7,7 +7,7 @@ pub(super) fn global(args: &[&str]) -> crate::app::cli::GlobalOpts {
             .chain(args.iter().copied()),
     );
     let crate::app::cli::Command::Update(opts) = cli.command else {
-        panic!("expected install command");
+        panic!("expected update command");
     };
     opts.into_engine_parts().0
 }

@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use super::RuntimePolicy;
-use crate::app::cli::UninstallOpts;
+use crate::app::cli::RemoveOpts;
 use crate::app::filter::apply_task_filters;
 use crate::infra::logging::Logger;
 
@@ -14,14 +14,14 @@ use crate::infra::logging::Logger;
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(
     runtime: &RuntimePolicy<'_>,
-    opts: &UninstallOpts,
+    opts: &RemoveOpts,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
     super::record_scope(log, opts, false, false);
     let run_lock = super::prepare_self_update(runtime, log)?;
     let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
-    let tasks = runner.uninstall_tasks();
+    let tasks = runner.remove_tasks();
     let overlay_tasks = runner.overlay_script_removal_tasks();
     let filtered = apply_task_filters(&tasks, &overlay_tasks, &opts.only, &opts.skip, false, log)?;
     runner.run(filtered)

@@ -136,7 +136,7 @@ the host-mutating CI integration jobs:
 |---|---|
 | `config_drift` | Real configuration/source/category invariants |
 | `domain_boundaries` | Allowed architectural dependencies and platform/environment boundaries |
-| `install_command`, `uninstall_command`, `list_command`, `test_command` | Command task sets, selection, loading and outcomes (`install_command` tests `update`, `uninstall_command` tests `remove`, `test_command` tests `check`) |
+| `update_command`, `remove_command`, `list_command`, `check_command` | Command task sets, selection, loading and outcomes |
 | `task_execution` | Filesystem-backed task/resource convergence and dry-run |
 | `task_output` | Visible statuses, reasons, logs and exit behavior |
 | `lifecycle_contracts` | Shared real-task dry-run, apply/repeat, retry and conservative-removal contracts |
@@ -147,13 +147,13 @@ Combine related targets in one invocation:
 
 ```bash
 cd cli
-cargo test --profile ci --test config_drift --test test_command
+cargo test --profile ci --test config_drift --test check_command
 cargo test --profile ci --test lifecycle_contracts
-cargo test --profile ci --test install_command -- --list
+cargo test --profile ci --test update_command -- --list
 ```
 
 To focus further, append a substring of the test name before `--`, for example
-`cargo test --profile ci --test install_command repository`. Check the reported
+`cargo test --profile ci --test update_command repository`. Check the reported
 test count: a misspelled filter can run zero tests successfully.
 
 ## Test ownership

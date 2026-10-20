@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::sync::Arc;
 
 use super::RuntimePolicy;
-use crate::app::cli::InstallOpts;
+use crate::app::cli::UpdateOpts;
 use crate::app::filter::{apply_task_filters, task_matches_filter};
 use crate::domains::ai::apm::ApmPackageMode;
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
@@ -26,7 +26,7 @@ pub(super) fn includes_task(task: &dyn Task, update_pins: bool) -> bool {
 /// Returns an error if profile resolution, configuration loading, or task execution fails.
 pub fn run(
     runtime: &RuntimePolicy<'_>,
-    opts: &InstallOpts,
+    opts: &UpdateOpts,
     update_pins: bool,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
@@ -46,7 +46,7 @@ pub fn run(
     let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
 
     let repository_update = RepositoryUpdateSignal::new();
-    let mut all_tasks = runner.install_tasks_for_run(&repository_update, apm_mode);
+    let mut all_tasks = runner.update_tasks_for_run(&repository_update, apm_mode);
 
     // Version-advancing tasks are included in every update run. Filter
     // membership before user filters so warnings reflect eligible tasks.
@@ -107,7 +107,7 @@ mod tests {
     use crate::engine::TaskMeta;
 
     #[test]
-    fn install_mode_excludes_update_only_tasks() {
+    fn update_mode_excludes_update_only_tasks() {
         #[derive(Debug)]
         struct UpdateOnly;
         impl Task for UpdateOnly {

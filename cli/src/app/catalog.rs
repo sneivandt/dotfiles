@@ -1,4 +1,4 @@
-//! Task registration: the complete set of install and uninstall tasks.
+//! Task registration: the complete set of update and remove tasks.
 //!
 //! The application layer is the only layer allowed to name tasks across
 //! domains, so all cross-domain wiring lives here: each domain task is
@@ -66,7 +66,7 @@ pub fn generate_powershell_completions() -> String {
 
 /// The complete set of tasks run by the remove command.
 #[must_use]
-pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
+pub fn all_remove_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     vec![
         Box::new(UninstallSymlinks::new(store.symlinks.clone())),
         Box::new(UninstallGitHooks::new()),
@@ -80,13 +80,13 @@ pub fn all_uninstall_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
 /// from each task's [`Task::dependencies`] declaration merged with the
 /// app-level dependency edges applied here.
 #[must_use]
-pub fn all_install_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
+pub fn all_update_tasks(store: &ConfigStore) -> Vec<Box<dyn Task>> {
     let repo_updated = RepositoryUpdateSignal::new();
-    install_tasks_for_run(store, &repo_updated, ApmPackageMode::Install)
+    update_tasks_for_run(store, &repo_updated, ApmPackageMode::Install)
 }
 
 #[must_use]
-pub(crate) fn install_tasks_for_run(
+pub(crate) fn update_tasks_for_run(
     store: &ConfigStore,
     repo_updated: &RepositoryUpdateSignal,
     apm_mode: ApmPackageMode,
@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn cross_domain_dependencies_are_applied() {
-        let tasks = all_install_tasks(&test_params());
+        let tasks = all_update_tasks(&test_params());
         let find = |name: &str| {
             tasks
                 .iter()
@@ -238,7 +238,7 @@ mod tests {
     fn update_mode_builds_one_apm_task() {
         let store = test_params();
         let repo_updated = RepositoryUpdateSignal::new();
-        let tasks = install_tasks_for_run(&store, &repo_updated, ApmPackageMode::UpdatePins);
+        let tasks = update_tasks_for_run(&store, &repo_updated, ApmPackageMode::UpdatePins);
 
         assert_eq!(
             tasks.iter().filter(|task| task.selector() == "apm").count(),

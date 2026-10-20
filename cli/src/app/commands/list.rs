@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use serde::Serialize;
 use std::collections::HashSet;
 
-use crate::app::cli::{DiscoveryFormat, TaskGraphCommand, TasksOpts};
+use crate::app::cli::{DiscoveryFormat, ListOpts, TaskGraphCommand};
 use crate::app::config::Config;
 use crate::app::config::store::ConfigStore;
 use crate::app::filter::{selected_task_ids, task_matches_filter};
@@ -57,7 +57,7 @@ impl TaskListing {
 ///
 /// Returns an error if configuration cannot be loaded, task metadata
 /// conflicts, or output cannot be written.
-pub fn run(opts: &TasksOpts) -> Result<()> {
+pub fn run(opts: &ListOpts) -> Result<()> {
     let root = super::runner::resolve_root_path(opts.repository.root.as_deref())?;
     let env = crate::infra::env::system();
     let platform = Platform::detect();
@@ -128,13 +128,13 @@ fn command_tasks(
     match command {
         TaskGraphCommand::Update => {
             let mode = ApmPackageMode::UpdatePins;
-            let mut tasks = crate::app::catalog::install_tasks_for_run(
+            let mut tasks = crate::app::catalog::update_tasks_for_run(
                 store,
                 &RepositoryUpdateSignal::new(),
                 mode,
             );
             tasks.retain(|task| {
-                super::install::includes_task(task.as_ref(), command == TaskGraphCommand::Update)
+                super::update::includes_task(task.as_ref(), command == TaskGraphCommand::Update)
             });
             if let Some(root) = overlay {
                 tasks.extend(crate::domains::overlay::scripts::overlay_script_tasks(
@@ -145,7 +145,7 @@ fn command_tasks(
             tasks
         }
         TaskGraphCommand::Remove => {
-            let mut tasks = crate::app::catalog::all_uninstall_tasks(store);
+            let mut tasks = crate::app::catalog::all_remove_tasks(store);
             if let Some(root) = overlay {
                 tasks.extend(
                     crate::domains::overlay::scripts::overlay_script_removal_tasks(

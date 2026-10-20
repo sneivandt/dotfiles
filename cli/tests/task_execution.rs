@@ -7,7 +7,7 @@
 )]
 //! Integration tests that exercise task execution against a real filesystem.
 //!
-//! Unlike the structural tests in `install_command.rs` (which verify task lists,
+//! Unlike the structural tests in `update_command.rs` (which verify task lists,
 //! names, and dependency graphs), these tests call `task.run(&ctx)` and
 //! `tasks::execute()` to validate that the full config-load → task-execution →
 //! filesystem-outcome pipeline works correctly.
@@ -225,7 +225,7 @@ fn dry_run_pipeline_produces_no_failures() {
     let original = "[core]\n\tautocrlf = true\n";
     std::fs::write(&git_config, original).unwrap();
     let mut executed = Vec::new();
-    for mut task in tasks::all_install_tasks(&ec.store) {
+    for mut task in tasks::all_update_tasks(&ec.store) {
         if FILESYSTEM_TASKS.contains(&task.selector()) {
             if task.selector() == "git" {
                 // Native libgit2 is not scoped by Context's injected HOME.

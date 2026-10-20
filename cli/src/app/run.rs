@@ -39,7 +39,7 @@ pub fn run() -> ExitCode {
             return standalone(commands::log::run(&opts, opts.verbose));
         }
         cli::Command::List(opts) => {
-            return standalone(commands::tasks::run(&opts));
+            return standalone(commands::list::run(&opts));
         }
         cli::Command::Update(opts) => update_command(opts),
         cli::Command::Remove(opts) => {
@@ -135,9 +135,9 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
     let result = match command {
         cli::EngineCommand::Update {
             opts, update_pins, ..
-        } => commands::install::run(&runtime, opts, *update_pins, &log, &token),
+        } => commands::update::run(&runtime, opts, *update_pins, &log, &token),
         cli::EngineCommand::Remove { opts, .. } => {
-            commands::uninstall::run(&runtime, opts, &log, &token)
+            commands::remove::run(&runtime, opts, &log, &token)
         }
         cli::EngineCommand::Check { opts, .. } => {
             commands::check::run(&runtime, opts, &log, &token)
@@ -260,7 +260,7 @@ mod tests {
                 | cli::Command::Check(_)
                 | cli::Command::List(_)
                 | cli::Command::Log(_)
-                | cli::Command::Completions(_) => panic!("expected install or update"),
+                | cli::Command::Completions(_) => panic!("expected update"),
             };
             assert_eq!(command.name(), "update");
             let cli::EngineCommand::Update {
@@ -270,7 +270,7 @@ mod tests {
                 ..
             } = command
             else {
-                panic!("expected shared install pipeline");
+                panic!("expected shared update pipeline");
             };
             assert_eq!(update_pins, expected_update, "{args:?}");
             assert!(global.dry_run, "{args:?}");

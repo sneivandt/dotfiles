@@ -100,20 +100,20 @@ impl CommandRunner {
         })
     }
 
-    /// Build install tasks with repository restart state.
+    /// Build update tasks with repository restart state.
     #[must_use]
-    pub(crate) fn install_tasks_for_run(
+    pub(crate) fn update_tasks_for_run(
         &self,
         repository_update: &crate::domains::repository::update::RepositoryUpdateSignal,
         apm_mode: crate::domains::ai::apm::ApmPackageMode,
     ) -> Vec<Box<dyn Task>> {
-        crate::app::catalog::install_tasks_for_run(&self.store, repository_update, apm_mode)
+        crate::app::catalog::update_tasks_for_run(&self.store, repository_update, apm_mode)
     }
 
-    /// Build the full set of uninstall tasks, wired to the shared config store.
+    /// Build the full set of remove tasks, wired to the shared config store.
     #[must_use]
-    pub fn uninstall_tasks(&self) -> Vec<Box<dyn Task>> {
-        crate::app::catalog::all_uninstall_tasks(&self.store)
+    pub fn remove_tasks(&self) -> Vec<Box<dyn Task>> {
+        crate::app::catalog::all_remove_tasks(&self.store)
     }
 
     /// A handle to the aggregate configuration for app-owned validation tasks.

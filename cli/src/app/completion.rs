@@ -734,7 +734,7 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_completes_uninstall_tasks() {
+    fn remove_completes_remove_tasks() {
         let words = ["dotfiles", "remove"]
             .into_iter()
             .map(OsString::from)

@@ -105,7 +105,7 @@ fn elevated_child_selection_does_not_expand_the_parents_dependency_closure() {
     let store = crate::app::config::store::ConfigStore::from_config(empty_config(
         std::path::PathBuf::from("fixture-root"),
     ));
-    let tasks = crate::app::catalog::all_install_tasks(&store);
+    let tasks = crate::app::catalog::all_update_tasks(&store);
     let log = Logger::new("test");
     let selected = crate::app::filter::apply_task_filters(
         &tasks,
@@ -183,7 +183,7 @@ fn unavailable_developer_mode_does_not_block_unprivileged_symlink_work() {
                 .with_log(Arc::<Logger>::clone(&log))
                 .with_non_interactive(true)
                 .with_parallel(parallel);
-            let tasks = crate::app::catalog::all_install_tasks(&ConfigStore::from_config(config));
+            let tasks = crate::app::catalog::all_update_tasks(&ConfigStore::from_config(config));
             let selected = tasks
                 .iter()
                 .filter(|task| matches!(task.selector(), "developer-mode" | "symlinks"))

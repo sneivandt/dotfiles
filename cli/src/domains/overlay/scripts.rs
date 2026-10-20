@@ -198,7 +198,7 @@ fn emit_script_lines(ctx: &Context, output: &str, dry_run: bool) {
 
 /// Create [`OverlayScriptTask`] instances for every script in the config.
 ///
-/// Called from `install.rs` during startup to create dynamic tasks alongside
+/// Called from `update.rs` during startup to create dynamic tasks alongside
 /// the static catalog.
 #[must_use]
 pub fn overlay_script_tasks(

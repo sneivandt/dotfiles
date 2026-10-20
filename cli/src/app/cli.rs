@@ -151,7 +151,7 @@ JSON Lines output disables prompts."
     Check(CheckCommandOpts),
 
     /// Inspect task selectors and dependencies
-    List(TasksOpts),
+    List(ListOpts),
 
     /// Inspect previous runs and task diagnostics
     Log(LogOpts),
@@ -257,7 +257,7 @@ pub struct UpdateCommandOpts {
 
     /// Task selection.
     #[command(flatten, next_help_heading = "Task selection")]
-    pub tasks: InstallOpts,
+    pub tasks: UpdateOpts,
 
     /// Preview changes without applying them
     #[arg(short = 'n', long, help_heading = "Mutation policy")]
@@ -307,7 +307,7 @@ pub struct RemoveCommandOpts {
 
     /// Task selection.
     #[command(flatten, next_help_heading = "Task selection")]
-    pub tasks: UninstallOpts,
+    pub tasks: RemoveOpts,
 
     /// Preview changes without applying them
     #[arg(short = 'n', long, help_heading = "Mutation policy")]
@@ -358,7 +358,7 @@ impl TaskGraphCommand {
 
 /// Options for the `list` command.
 #[derive(Args, Debug, Clone)]
-pub struct TasksOpts {
+pub struct ListOpts {
     /// Repository and profile selection.
     #[command(flatten, next_help_heading = "Repository")]
     pub repository: RepositoryOpts,
@@ -457,7 +457,7 @@ impl GlobalOpts {
 impl UpdateCommandOpts {
     /// Split parsed options into engine context, task filters, and output policy.
     #[must_use]
-    pub fn into_engine_parts(self) -> (GlobalOpts, InstallOpts, bool, bool) {
+    pub fn into_engine_parts(self) -> (GlobalOpts, UpdateOpts, bool, bool) {
         let verbose = self.execution.verbose;
         let update_pins = true;
         let global = GlobalOpts {
@@ -484,7 +484,7 @@ impl CheckCommandOpts {
 impl RemoveCommandOpts {
     /// Split parsed options into engine context and output policy.
     #[must_use]
-    pub fn into_engine_parts(self) -> (GlobalOpts, UninstallOpts, bool) {
+    pub fn into_engine_parts(self) -> (GlobalOpts, RemoveOpts, bool) {
         let verbose = self.execution.verbose;
         let global = GlobalOpts {
             dry_run: self.dry_run,
@@ -504,7 +504,7 @@ pub enum EngineCommand {
         /// Shared task-engine options.
         global: GlobalOpts,
         /// Task selectors.
-        opts: InstallOpts,
+        opts: UpdateOpts,
         /// Whether pinned dependencies should advance.
         update_pins: bool,
         /// Whether diagnostic output is enabled.
@@ -514,8 +514,8 @@ pub enum EngineCommand {
     Remove {
         /// Shared task-engine options.
         global: GlobalOpts,
-        /// Uninstall options.
-        opts: UninstallOpts,
+        /// Remove options.
+        opts: RemoveOpts,
         /// Whether diagnostic output is enabled.
         verbose: bool,
     },
@@ -565,7 +565,7 @@ impl EngineCommand {
 /// Task selection for `update`.
 #[derive(Args, Debug, Clone, Default)]
 #[group(args = ["skip", "only", "with_deps"])]
-pub struct InstallOpts {
+pub struct UpdateOpts {
     /// Shared task selectors.
     #[command(flatten)]
     pub filters: TaskFilters,
@@ -602,8 +602,8 @@ pub struct TaskFilters {
 /// Options for the `check` task set.
 pub type CheckOpts = TaskFilters;
 
-/// Options for the `uninstall` task set.
-pub type UninstallOpts = TaskFilters;
+/// Options for the `remove` task set.
+pub type RemoveOpts = TaskFilters;
 
 /// Canonical command names accepted by `log --command`.
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
@@ -764,7 +764,7 @@ mod tests {
 
         let cli = Cli::parse_from(["dotfiles", "update", "-v"]);
         let Command::Update(opts) = cli.command else {
-            panic!("expected install command");
+            panic!("expected update command");
         };
         assert!(opts.execution.verbose);
     }
@@ -811,7 +811,7 @@ mod tests {
     }
 
     #[test]
-    fn install_accepts_scoped_options_and_new_names() {
+    fn update_accepts_scoped_options_and_new_names() {
         let cli = Cli::parse_from([
             "dotfiles",
             "update",
@@ -825,7 +825,7 @@ mod tests {
             "--with-deps",
         ]);
         let Command::Update(opts) = cli.command else {
-            panic!("expected install command");
+            panic!("expected update command");
         };
         assert_eq!(opts.repository.profile.as_deref(), Some("desktop"));
         assert!(opts.dry_run);
@@ -836,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn install_rejects_removed_option_names() {
+    fn update_rejects_removed_option_names() {
         for old in [
             "-d",
             "--offline",
@@ -865,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn removed_test_command_is_rejected() {
+    fn removed_check_command_is_rejected() {
         let error =
             Cli::try_parse_from(["dotfiles", "test"]).expect_err("test command was removed");
         assert_eq!(error.kind(), ErrorKind::InvalidSubcommand);
@@ -972,7 +972,7 @@ mod tests {
     }
 
     #[test]
-    fn execution_commands_keep_dependency_expansion_scoped_to_install_and_update() {
+    fn execution_commands_keep_dependency_expansion_scoped_to_update() {
         for name in ["update", "check", "remove"] {
             for selected in [false, true] {
                 let mut args = vec!["dotfiles", name, "--with-deps"];
@@ -983,7 +983,7 @@ mod tests {
                 match (name, selected) {
                     ("update", true) => {
                         let Command::Update(opts) = result.unwrap().command else {
-                            panic!("expected install or update");
+                            panic!("expected update");
                         };
                         assert!(opts.tasks.with_deps, "{name}");
                         assert_eq!(opts.tasks.filters.only, ["symlinks"], "{name}");
@@ -1029,7 +1029,7 @@ mod tests {
                 );
             }
             let (id, expected) = if matches!(name, "update") {
-                ("InstallOpts", vec!["skip", "only", "with_deps"])
+                ("UpdateOpts", vec!["skip", "only", "with_deps"])
             } else {
                 ("CheckOpts", vec!["skip", "only"])
             };
@@ -1188,7 +1188,7 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_help_states_what_remains() {
+    fn remove_help_states_what_remains() {
         let help = display_output(&["dotfiles", "remove", "--help"], ErrorKind::DisplayHelp);
         assert!(help.contains("Preserves packages, services, registry values"));
         assert!(help.contains("-n, --dry-run"));

@@ -394,7 +394,7 @@ impl IntegrationTestContext {
     }
 }
 
-/// Run the `install` command in dry-run mode against a fresh minimal repository.
+/// Run the `update` command in dry-run mode against a fresh minimal repository.
 ///
 /// Builds an isolated Git repository so the profile and repository-scoped run
 /// state stay inside the fixture, then invokes the CLI offline with explicit
@@ -402,7 +402,7 @@ impl IntegrationTestContext {
 /// lives only for the duration of the call.
 ///
 /// Returns the command result so callers can assert success or inspect errors.
-pub(crate) fn run_install_dry_run(
+pub(crate) fn run_update_dry_run(
     skip: &[&str],
     only: &[&str],
     parallel: bool,
@@ -424,7 +424,7 @@ pub(crate) fn run_install_dry_run(
     if !skip.is_empty() {
         command.args(["--skip", &skip.join(",")]);
     }
-    let output = command.output().expect("run isolated install");
+    let output = command.output().expect("run isolated update");
     anyhow::ensure!(
         output.status.success(),
         "{}{}",

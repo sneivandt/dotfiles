@@ -5,11 +5,11 @@
     clippy::indexing_slicing,
     reason = "panicking allowed at this trust boundary"
 )]
-//! Integration tests for the `install` command.
+//! Integration tests for the `update` command.
 //!
-//! These tests exercise the full task list produced by [`all_install_tasks`],
+//! These tests exercise the full task list produced by [`all_update_tasks`],
 //! the task-selector filtering applied by the `--skip` and `--only` CLI
-//! flags, and the structural properties of the install dependency graph.
+//! flags, and the structural properties of the update dependency graph.
 
 mod common;
 
@@ -20,15 +20,15 @@ use test_api::platform::{Os, Platform};
 use test_api::tasks;
 use test_api::tasks::filter::task_matches_filter;
 
-/// Build an install task list backed by a store loaded from a minimal repo.
-fn install_tasks() -> Vec<Box<dyn tasks::Task>> {
-    install_tasks_for_platform(Platform::detect())
+/// Build an update task list backed by a store loaded from a minimal repo.
+fn update_tasks() -> Vec<Box<dyn tasks::Task>> {
+    update_tasks_for_platform(Platform::detect())
 }
 
-fn install_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
+fn update_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     let ctx = common::IntegrationTestContext::new();
     let store = ConfigStore::from_config(ctx.load_config_for_platform("base", platform));
-    tasks::all_install_tasks(&store)
+    tasks::all_update_tasks(&store)
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn nested_cli_fixture_preserves_ancestor_settings_and_run_lock() {
 
 #[cfg(unix)]
 #[test]
-fn install_console_separates_tasks_and_keeps_no_op_compact() {
+fn update_console_separates_tasks_and_keeps_no_op_compact() {
     use std::os::unix::fs::PermissionsExt as _;
 
     for verbose in [false, true] {
@@ -161,7 +161,7 @@ fn install_console_separates_tasks_and_keeps_no_op_compact() {
             // Both runs mutate only the temporary repository and home.
             // The second run exercises hidden current rows and verbose rows.
             for changed in [true, false] {
-                let output = command.output().expect("run isolated install");
+                let output = command.output().expect("run isolated update");
                 let text = String::from_utf8(output.stdout).unwrap();
                 assert!(
                     output.status.success(),
@@ -207,7 +207,7 @@ fn install_console_separates_tasks_and_keeps_no_op_compact() {
 }
 
 #[test]
-fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
+fn conflicting_desired_state_stops_update_before_selected_tasks_run() {
     let mut cases = vec![(
         "git-config.toml",
         "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n",
@@ -246,7 +246,7 @@ fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
             if dry_run {
                 command.arg("--dry-run");
             }
-            let output = command.output().expect("run isolated install");
+            let output = command.output().expect("run isolated update");
             let text = format!(
                 "{}{}",
                 String::from_utf8_lossy(&output.stdout),
@@ -283,8 +283,8 @@ fn conflicting_desired_state_stops_install_before_selected_tasks_run() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn install_task_catalog_satisfies_structural_contract() {
-    let tasks = install_tasks();
+fn update_task_catalog_satisfies_structural_contract() {
+    let tasks = update_tasks();
     common::assert_task_catalog_contract("update", &tasks);
 }
 
@@ -345,7 +345,7 @@ fn skip_filters_exclude_any_matching_selector_and_preserve_nonmatches() {
 
 #[test]
 fn only_filters_use_exact_selectors_and_union_multiple_matches() {
-    let all_tasks = install_tasks();
+    let all_tasks = update_tasks();
     let cases: &[(&str, &[&str], &[&str])] = &[
         ("single selector", &["symlinks"], &["Home symlinks"]),
         (
@@ -382,7 +382,7 @@ fn only_filters_use_exact_selectors_and_union_multiple_matches() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn minimal_install_catalog_applicability_is_platform_specific_and_scheduler_independent() {
+fn minimal_update_catalog_applicability_is_platform_specific_and_scheduler_independent() {
     let platforms = [
         Platform {
             os: Os::Linux,
@@ -409,7 +409,7 @@ fn minimal_install_catalog_applicability_is_platform_specific_and_scheduler_inde
                 },
                 std::sync::Arc::new(common::StubExecutor),
             );
-            let mut applicable: Vec<_> = tasks::all_install_tasks(&ec.store)
+            let mut applicable: Vec<_> = tasks::all_update_tasks(&ec.store)
                 .into_iter()
                 .filter(|task| task.should_run(&ec.ctx))
                 .map(|task| task.selector().to_string())
@@ -439,23 +439,23 @@ fn minimal_install_catalog_applicability_is_platform_specific_and_scheduler_inde
 // ---------------------------------------------------------------------------
 
 #[test]
-fn install_task_catalog_contains_required_tasks() {
-    let tasks = install_tasks();
+fn update_task_catalog_contains_required_tasks() {
+    let tasks = update_tasks();
     let selectors: Vec<&str> = tasks.iter().map(|task| task.selector()).collect();
     for required in ["symlinks", "git-hooks", "git", "system-files"] {
         assert!(
             selectors.contains(&required),
-            "install task catalog is missing required selector '{required}'"
+            "update task catalog is missing required selector '{required}'"
         );
     }
 }
 
 // ---------------------------------------------------------------------------
-// install::run: full dry-run pipeline
+// update::run: full dry-run pipeline
 // ---------------------------------------------------------------------------
 
 #[test]
-fn install_run_dry_run_accepts_valid_filters() {
+fn update_run_dry_run_accepts_valid_filters() {
     let cases: &[(&str, &[&str], &[&str], bool)] = &[
         ("filesystem tasks", &[], &["symlinks", "git-hooks"], false),
         ("only symlinks", &[], &["symlinks"], false),
@@ -475,21 +475,21 @@ fn install_run_dry_run_accepts_valid_filters() {
         ("parallel symlinks", &[], &["symlinks"], true),
     ];
     for (case, skip, only, parallel) in cases {
-        let result = common::run_install_dry_run(skip, only, *parallel);
+        let result = common::run_update_dry_run(skip, only, *parallel);
         assert!(result.is_ok(), "{case}: {result:?}");
     }
 }
 
-/// Calling `install::run` with `--only` matching no selector must explain how
+/// Calling `update::run` with `--only` matching no selector must explain how
 /// to discover valid selectors.
 #[test]
-fn install_run_unknown_filters_return_actionable_errors() {
+fn update_run_unknown_filters_return_actionable_errors() {
     let cases: &[(&str, &[&str], &[&str])] = &[
         ("--only", &[], &["zzznomatch"]),
         ("--skip", &["zzznomatch"], &["symlinks"]),
     ];
     for (flag, skip, only) in cases {
-        let result = common::run_install_dry_run(skip, only, false);
+        let result = common::run_update_dry_run(skip, only, false);
         let error = result.expect_err("an unknown selector should fail");
         let message = error.to_string();
         assert!(
@@ -500,11 +500,11 @@ fn install_run_unknown_filters_return_actionable_errors() {
     }
 }
 
-/// Calling `install::run` with contradictory `--skip` and `--only` selectors
+/// Calling `update::run` with contradictory `--skip` and `--only` selectors
 /// must fail instead of reporting a successful no-op.
 #[test]
-fn install_run_rejects_filters_that_select_no_tasks() {
-    let result = common::run_install_dry_run(&["symlinks"], &["symlinks"], false);
+fn update_run_rejects_filters_that_select_no_tasks() {
+    let result = common::run_update_dry_run(&["symlinks"], &["symlinks"], false);
     let error = result.expect_err("contradictory task filters should fail");
     assert!(error.to_string().contains("selected no tasks"));
 }

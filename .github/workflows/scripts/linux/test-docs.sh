@@ -129,7 +129,7 @@ docs_task_selectors()
 {
   log_stage "Checking documented task selectors"
   (cd "$DIR/cli" && cargo test --locked --quiet --profile ci --lib \
-    app::commands::tasks::tests::documented_selectors_match_catalog -- --exact)
+    app::commands::list::tests::documented_selectors_match_catalog -- --exact)
 }
 
 # Execute one or more tests when run directly: sh test-docs.sh <function_name>...

@@ -16,9 +16,9 @@
 //! the command itself.
 
 mod common;
-#[path = "test_command/loading.rs"]
+#[path = "check_command/loading.rs"]
 mod loading;
-#[path = "test_command/validation.rs"]
+#[path = "check_command/validation.rs"]
 mod validation;
 
 // ---------------------------------------------------------------------------

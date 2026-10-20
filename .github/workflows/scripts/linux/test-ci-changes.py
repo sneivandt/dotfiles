@@ -180,7 +180,7 @@ class ClassificationTests(unittest.TestCase):
                      ".cargo/config.toml", "rust-toolchain.toml"):
             with self.subTest(path=path):
                 self.assertTrue(classify([path])["run_release"])
-        for path in ("cli/tests/install_command.rs", "cli/benches/fixture.json",
+        for path in ("cli/tests/update_command.rs", "cli/benches/fixture.json",
                      "cli/deny.toml", "cli/rustfmt.toml", "cli/README.md",
                      "dotfiles.sh", "conf/symlinks.toml", "symlinks/bashrc"):
             with self.subTest(path=path):

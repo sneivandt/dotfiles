@@ -5,10 +5,10 @@
     clippy::indexing_slicing,
     reason = "panicking allowed at this trust boundary"
 )]
-//! Integration tests for the `uninstall` command.
+//! Integration tests for the `remove` command.
 //!
-//! These tests verify the structure and naming of the uninstall task list
-//! returned by [`all_uninstall_tasks`].
+//! These tests verify the structure and naming of the remove task list
+//! returned by [`all_remove_tasks`].
 
 mod common;
 
@@ -18,15 +18,15 @@ use test_api::config::ConfigStore;
 use test_api::platform::{Os, Platform};
 use test_api::tasks;
 
-/// Build an uninstall task list backed by a store loaded from a minimal repo.
-fn uninstall_tasks() -> Vec<Box<dyn tasks::Task>> {
-    uninstall_tasks_for_platform(Platform::detect())
+/// Build a remove task list backed by a store loaded from a minimal repo.
+fn remove_tasks() -> Vec<Box<dyn tasks::Task>> {
+    remove_tasks_for_platform(Platform::detect())
 }
 
-fn uninstall_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
+fn remove_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>> {
     let ctx = common::IntegrationTestContext::new();
     let store = ConfigStore::from_config(ctx.load_config_for_platform("base", platform));
-    tasks::all_uninstall_tasks(&store)
+    tasks::all_remove_tasks(&store)
 }
 
 // ---------------------------------------------------------------------------
@@ -34,8 +34,8 @@ fn uninstall_tasks_for_platform(platform: Platform) -> Vec<Box<dyn tasks::Task>>
 // ---------------------------------------------------------------------------
 
 #[test]
-fn uninstall_task_catalog_satisfies_structural_contract() {
-    let tasks = uninstall_tasks();
+fn remove_task_catalog_satisfies_structural_contract() {
+    let tasks = remove_tasks();
     common::assert_task_catalog_contract("remove", &tasks);
 }
 
@@ -44,13 +44,13 @@ fn uninstall_task_catalog_satisfies_structural_contract() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn uninstall_task_catalog_contains_required_tasks() {
-    let tasks = uninstall_tasks();
+fn remove_task_catalog_contains_required_tasks() {
+    let tasks = remove_tasks();
     let selectors: Vec<&str> = tasks.iter().map(|task| task.selector()).collect();
     for required in ["symlinks", "git-hooks"] {
         assert!(
             selectors.contains(&required),
-            "uninstall task catalog is missing required selector '{required}'"
+            "remove task catalog is missing required selector '{required}'"
         );
     }
 }
@@ -60,7 +60,7 @@ fn uninstall_task_catalog_contains_required_tasks() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn uninstall_catalog_applicability_tracks_managed_inputs_on_both_platforms() {
+fn remove_catalog_applicability_tracks_managed_inputs_on_both_platforms() {
     let platforms = [
         Platform {
             os: Os::Linux,
@@ -94,7 +94,7 @@ fn uninstall_catalog_applicability_tracks_managed_inputs_on_both_platforms() {
                 },
                 std::sync::Arc::new(common::StubExecutor),
             );
-            let mut applicable: Vec<_> = tasks::all_uninstall_tasks(&ec.store)
+            let mut applicable: Vec<_> = tasks::all_remove_tasks(&ec.store)
                 .into_iter()
                 .filter(|task| task.should_run(&ec.ctx))
                 .map(|task| task.selector().to_string())
@@ -114,7 +114,7 @@ fn uninstall_catalog_applicability_tracks_managed_inputs_on_both_platforms() {
 }
 
 #[test]
-fn invalid_uninstall_selection_fails_without_removing_managed_hooks() {
+fn invalid_remove_selection_fails_without_removing_managed_hooks() {
     for (selector, skip, diagnostic) in [
         ("unknown-task", None, "--only did not match a task selector"),
         ("git-hooks", Some("git-hooks"), "selected no tasks"),
@@ -153,7 +153,7 @@ fn invalid_uninstall_selection_fails_without_removing_managed_hooks() {
 
 #[cfg(unix)]
 #[test]
-fn uninstall_removes_active_overlay_script_state_by_default() {
+fn remove_removes_active_overlay_script_state_by_default() {
     let repo = common::IntegrationTestContext::new();
     let overlay = tempfile::tempdir().unwrap();
     let home = tempfile::tempdir().unwrap();

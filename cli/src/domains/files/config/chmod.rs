@@ -281,7 +281,7 @@ permissions = [
 permissions = [{ path = "ssh/config", mode = "600" }]
 
 [arch-desktop]
-permissions = [{ path = "config/volume/init-volume.sh", mode = "755" }]
+permissions = [{ path = "config/hypr/scripts/brightness.sh", mode = "755" }]
 "#,
         );
 
@@ -295,7 +295,7 @@ permissions = [{ path = "config/volume/init-volume.sh", mode = "755" }]
         assert_eq!(
             paths,
             vec![
-                "config/volume/init-volume.sh".to_string(),
+                "config/hypr/scripts/brightness.sh".to_string(),
                 "ssh/config".to_string(),
             ]
         );

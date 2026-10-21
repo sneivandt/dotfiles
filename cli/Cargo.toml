@@ -88,6 +88,9 @@ must_use_candidate = "allow"
 # artificial state-machine representation.
 significant_drop_tightening = "allow"
 struct_excessive_bools = "allow"
+# Empty collections are asserted through their predicate, without constructing
+# typed empty values solely for diagnostic formatting.
+assert_is_empty = "allow"
 # Restriction lints (opt-in individually)
 allow_attributes_without_reason = "deny"
 as_conversions = "deny"

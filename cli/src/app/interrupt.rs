@@ -174,10 +174,9 @@ fn spawn_confirmation<L: Output + 'static>(state: &Arc<Escalation>, log: &Arc<L>
             .spawn(move || {
                 if confirm_force_quit(&*log) {
                     force_quit(&*log, false);
-                } else {
-                    state.confirmation_declined();
-                    log.warn(DECLINED_MESSAGE);
                 }
+                state.confirmation_declined();
+                log.warn(DECLINED_MESSAGE);
             }),
     );
 }

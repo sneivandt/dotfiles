@@ -102,7 +102,7 @@ mod native {
     /// Convert a raw registry value to a string representation.
     #[allow(
         clippy::indexing_slicing,
-        reason = "each arm indexes only within a length checked above or a chunks_exact window"
+        reason = "each arm indexes only within a length checked above"
     )]
     fn raw_value_to_string(val: &winreg::RegValue) -> String {
         match val.vtype {
@@ -113,8 +113,11 @@ mod native {
             REG_SZ | REG_EXPAND_SZ => {
                 let wide: Vec<u16> = val
                     .bytes
-                    .chunks_exact(2)
-                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .copied()
+                    .map(u16::from_le_bytes)
                     .collect();
                 String::from_utf16_lossy(&wide)
                     .trim_end_matches('\0')

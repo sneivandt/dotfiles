@@ -388,12 +388,11 @@ fn normalize_path_entry(entry: &str) -> String {
 #[cfg(windows)]
 fn decode_reg_string(bytes: &[u8]) -> String {
     let wide: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| {
-            let lo = *c.first().unwrap_or(&0);
-            let hi = *c.get(1).unwrap_or(&0);
-            u16::from_le_bytes([lo, hi])
-        })
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .copied()
+        .map(u16::from_le_bytes)
         .collect();
     String::from_utf16_lossy(&wide)
         .trim_end_matches('\0')

@@ -4,6 +4,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import runpy
 import shutil
 import subprocess
@@ -249,6 +250,59 @@ class GateTests(unittest.TestCase):
                     f"- name: {step}\n        if: needs.classify-changes.outputs.run_rust_checks == 'true'",
                     build,
                 )
+
+    def test_linux_mutation_excludes_only_named_windows_code(self):
+        workflow = CONTRACT["WORKFLOW"].read_text(encoding="utf-8")
+        mutation = CONTRACT["job_blocks"](workflow)["mutation"]
+        self.assertIn("runs-on: ubuntu-latest", mutation)
+        exclusions = [
+            re.compile(pattern)
+            for pattern in re.findall(r"--exclude-re '([^']+)'", mutation)
+        ]
+        self.assertTrue(exclusions)
+
+        def excluded(path, description):
+            name = f"src/{path}.rs:390:5: {description}"
+            return any(pattern.search(name) for pattern in exclusions)
+
+        windows_only = {
+            "infra/elevation": ("run_elevated_child", "wait_if_elevated"),
+            "domains/dotfiles/resources/path_entry": ("decode_reg_string",),
+            "domains/system/resources/registry": (
+                "native::raw_value_to_string", "native::raw_value_type",
+                "native::read_value", "native::write_value", "native::parse_path",
+            ),
+        }
+        for path, functions in windows_only.items():
+            for function in functions:
+                for description in (
+                    f"replace {function} -> String with String::new()",
+                    f'replace {function} -> String with "xyzzy".into()',
+                    f"replace == with != in {function}",
+                    f"replace && with || in {function}",
+                ):
+                    with self.subTest(path=path, description=description):
+                        self.assertTrue(excluded(path, description))
+
+        portable = {
+            "infra/elevation": ("should_pause", "wait_if_elevated_policy"),
+            "domains/dotfiles/resources/path_entry": (
+                "PathSource::is_on_path", "PathEntryResource::new",
+                "decode_reg_string_shared",
+            ),
+            "domains/system/resources/registry": (
+                "parse_hkcu_subkey", "value_matches", "RegistryResource::state_from_cached",
+            ),
+            "another_module": ("decode_reg_string", "native::read_value", "wait_if_elevated"),
+        }
+        for path, functions in portable.items():
+            for function in functions:
+                for description in (
+                    f"replace {function} -> bool with true",
+                    f"replace == with != in {function}",
+                ):
+                    with self.subTest(path=path, description=description):
+                        self.assertFalse(excluded(path, description))
 
 
 class GitRangeTests(unittest.TestCase):

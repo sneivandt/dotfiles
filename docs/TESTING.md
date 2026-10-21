@@ -506,8 +506,13 @@ Coverage still has deliberate limits:
 - Linux/Windows `cargo llvm-cov` HTML reports are informational and excluded
   from `ci-success`.
 - Linux mutation testing excludes the Windows-only elevation broker and exit-pause
-  wrappers. Windows CI compiles those wrappers; shared pause policy has unit tests
-  on both platforms.
+  wrappers, the PATH registry-string decoder, and the registry resource's `native`
+  module. `cargo-mutants` does not evaluate `cfg` attributes, so mutations in code
+  absent from Linux would otherwise be reported as missed. These exclusions live
+  in the Linux job, not crate-wide configuration, and cover both function-return
+  and expression mutations. Regression checks keep nearby shared code included.
+  Windows CI compiles the native code and runs its test suite, but does not run
+  mutation testing; these exclusions do not establish Windows mutation coverage.
 - Eight mutation-test shards cover the complete applicable changed-code mutant set using
   the `ci` profile for PRs/main pushes that change Rust source under `cli/src/`.
   They are informational and excluded from `ci-success`. Lockfile-only,

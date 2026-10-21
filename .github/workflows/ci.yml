@@ -447,12 +447,15 @@ jobs:
         if: steps.diff.outputs.has_changes == 'true'
         env:
           MUTATION_SHARD: ${{ matrix.shard }}
-        # Windows-only wrappers cannot execute in the Linux mutation job.
-        # Windows CI compiles them; shared policies are unit-tested.
+        # cargo-mutants does not evaluate cfg attributes. These Windows-only
+        # functions/modules are absent on Linux, not gaps in its test coverage.
+        # Keep exclusions here (not in crate config) so Windows can test them.
         run: >-
           cargo mutants --in-place --no-shuffle --in-diff mutants.diff
           --shard "$MUTATION_SHARD/8"
-          --exclude-re '^src/infra/elevation.rs:.*replace (run_elevated_child|wait_if_elevated) '
+          --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
+          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\bdecode_reg_string\b'
+          --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
           --cargo-arg=--profile=ci --cargo-arg=--locked
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

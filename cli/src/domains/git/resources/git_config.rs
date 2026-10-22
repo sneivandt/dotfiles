@@ -75,11 +75,7 @@ impl GitConfigResource {
 
     fn values_from_config(&self, config: &git2::Config) -> Result<Vec<Option<String>>> {
         (|| -> Result<Vec<Option<String>>> {
-            let mut entries = match config.multivar(&self.key, None) {
-                Ok(entries) => entries,
-                Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(Vec::new()),
-                Err(error) => return Err(error.into()),
-            };
+            let mut entries = config.multivar(&self.key, None)?;
             let mut values = Vec::new();
             while let Some(entry) = entries.next() {
                 let entry = entry?;

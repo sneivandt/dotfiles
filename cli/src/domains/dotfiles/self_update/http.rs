@@ -404,11 +404,14 @@ mod tests {
         use std::sync::atomic::{AtomicUsize, Ordering};
         struct BrokenBody {
             remaining: usize,
+            failed: bool,
         }
         impl Read for BrokenBody {
             fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
                 assert!(buffer.len() <= 65_536, "downloads must use bounded chunks");
                 if self.remaining == 0 {
+                    assert!(!self.failed, "a terminal body error must not be read again");
+                    self.failed = true;
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::ConnectionReset,
                         "connection reset",
@@ -420,6 +423,20 @@ mod tests {
                 Ok(count)
             }
         }
+        struct InterruptedBody {
+            remaining: std::io::Cursor<&'static [u8]>,
+            interrupted: bool,
+        }
+        impl Read for InterruptedBody {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                if self.remaining.position() > 0 && !self.interrupted {
+                    self.interrupted = true;
+                    return Err(std::io::ErrorKind::Interrupted.into());
+                }
+                let count = buffer.len().min(2);
+                self.remaining.read(buffer.split_at_mut(count).0)
+            }
+        }
         #[derive(Debug)]
         struct PartialClient {
             attempts: AtomicUsize,
@@ -429,9 +446,13 @@ mod tests {
                 if self.attempts.fetch_add(1, Ordering::Relaxed) == 0 {
                     Ok(Box::new(BrokenBody {
                         remaining: 128 * 1024,
+                        failed: false,
                     }))
                 } else {
-                    Ok(Box::new(std::io::Cursor::new(b"complete")))
+                    Ok(Box::new(InterruptedBody {
+                        remaining: std::io::Cursor::new(b"complete"),
+                        interrupted: false,
+                    }))
                 }
             }
         }

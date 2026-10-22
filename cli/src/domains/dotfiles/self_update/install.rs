@@ -444,16 +444,23 @@ mod tests {
         struct FailingHttp;
         impl HttpClient for FailingHttp {
             fn get(&self, _: &str, _: &[(&str, &str)]) -> Result<Box<dyn std::io::Read>> {
-                struct BrokenBody;
+                struct BrokenBody {
+                    failed: bool,
+                }
                 impl std::io::Read for BrokenBody {
                     fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                        assert!(
+                            !self.failed,
+                            "a permanent body error must terminate the read loop"
+                        );
+                        self.failed = true;
                         Err(std::io::Error::new(
                             std::io::ErrorKind::PermissionDenied,
                             "fixture body failure",
                         ))
                     }
                 }
-                Ok(Box::new(BrokenBody))
+                Ok(Box::new(BrokenBody { failed: false }))
             }
         }
         let root = tempfile::tempdir().unwrap();

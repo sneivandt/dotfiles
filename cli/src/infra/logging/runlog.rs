@@ -221,7 +221,7 @@ impl RunLog {
     /// Like [`new`](Self::new) but with an explicit retention count, so tests
     /// can exercise pruning without writing dozens of files.
     fn new_retaining(command: &str, log_dir: &Path, start: Instant, keep: usize) -> Option<Self> {
-        let (path, mut file, lease) = create_run_log_file(command, log_dir)?;
+        let (path, mut file, lease) = create_run_log_file(command, log_dir, &format_utc_compact())?;
         let version =
             option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
         let header = format!(
@@ -389,7 +389,11 @@ fn lock_log_directory(dir: &Path) -> std::io::Result<fs::File> {
 /// name is already taken — two runs starting in the same second from the same
 /// process — the disambiguating suffix is bumped until a free name is found
 /// rather than silently reusing or destroying the existing file.
-fn create_run_log_file(command: &str, log_dir: &Path) -> Option<(PathBuf, fs::File, fs::File)> {
+fn create_run_log_file(
+    command: &str,
+    log_dir: &Path,
+    stamp: &str,
+) -> Option<(PathBuf, fs::File, fs::File)> {
     let _directory_lock = lock_log_directory(log_dir)
         .map_err(|error| {
             warn_degraded(&format!(
@@ -398,14 +402,9 @@ fn create_run_log_file(command: &str, log_dir: &Path) -> Option<(PathBuf, fs::Fi
             ));
         })
         .ok()?;
-    let stamp = format_utc_compact();
     let pid = std::process::id();
     for attempt in 0..MAX_NAME_ATTEMPTS {
-        let path = log_dir.join(run_log_file_name(
-            command,
-            &stamp,
-            pid.wrapping_add(attempt),
-        ));
+        let path = log_dir.join(run_log_file_name(command, stamp, pid.wrapping_add(attempt)));
         // Lock a sidecar, not the log: Windows byte-range locks would prevent
         // readers from viewing a live log.
         let lease = open_lock(&lease_path(&path))
@@ -535,6 +534,36 @@ fn format_log_message(message: &str) -> Option<String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn creation_skips_closed_log_collisions_without_truncating_them() {
+        let fixture = tempfile::tempdir().unwrap();
+        let stamp = "20200101T000000Z";
+        let (first_path, first_file, first_lease) =
+            create_run_log_file("check", fixture.path(), stamp).unwrap();
+        drop(first_file);
+        drop(first_lease);
+        fs::write(&first_path, "preserve original").unwrap();
+        let (second_path, _, _) = create_run_log_file("check", fixture.path(), stamp).unwrap();
+        assert_ne!(first_path, second_path);
+        assert_eq!(fs::read_to_string(first_path).unwrap(), "preserve original");
+    }
+
+    #[test]
+    fn retention_continues_after_a_log_cannot_be_removed() {
+        let fixture = tempfile::tempdir().unwrap();
+        let blocked = fixture.path().join("20200101T000000Z-update-1.log");
+        let removable = fixture.path().join("20200102T000000Z-update-2.log");
+        fs::create_dir(&blocked).unwrap();
+        fs::write(blocked.join("keep"), "foreign content").unwrap();
+        fs::write(&removable, "finished").unwrap();
+        prune_run_logs(fixture.path(), 1);
+        assert!(blocked.join("keep").exists());
+        assert!(
+            !removable.exists(),
+            "a failed deletion must not consume the pruning budget"
+        );
+    }
 
     #[test]
     fn concurrent_log_creators_preserve_live_logs_until_their_leases_end() {

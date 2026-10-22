@@ -253,6 +253,16 @@ mod tests {
             ),
             ("title", "before\x1b]0;window title\x07after", "beforeafter"),
             (
+                "backslash inside OSC",
+                "before\x1b]0;C:\\temp\x07after",
+                "beforeafter",
+            ),
+            (
+                "escape without ST inside OSC",
+                "before\x1b]0;title\x1bXsuffix\x07after",
+                "beforeafter",
+            ),
+            (
                 "mixed",
                 "\x1b[31m\x1b]8;;url\x07label\x1b]8;;\x1b\\\x1b[0m",
                 "label",

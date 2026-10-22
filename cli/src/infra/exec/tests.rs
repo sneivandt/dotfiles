@@ -513,9 +513,11 @@ fn overflowing_output_is_an_error_even_for_unchecked_commands() {
             ])
             .env("DOTFILES_EXEC_CAPTURE_STREAM", stream)
             .output_log(policy);
+        let label = spec.label();
         let error = ProcessExecutor::system()
             .execute(if checked { spec } else { spec.unchecked() })
             .unwrap_err();
+        assert_eq!(error.command(), label);
         assert!(error.concise_message().contains("capture limit"));
         assert!(error.io_error().is_none());
         let ExecError::OutputLimit {
@@ -576,6 +578,7 @@ fn completed_capture_accepts_the_exact_limit_and_rejects_one_extra_byte() {
     #[cfg(windows)]
     use std::os::windows::process::ExitStatusExt as _;
 
+    assert_eq!(MAX_CAPTURE_BYTES, 8_388_608);
     for stream in ["stdout", "stderr"] {
         for length in [MAX_CAPTURE_BYTES, MAX_CAPTURE_BYTES + 1] {
             let stdout = std::thread::spawn(move || {

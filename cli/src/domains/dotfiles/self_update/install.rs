@@ -2,14 +2,13 @@
 //! post-install smoke test and end-to-end download orchestration.
 
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context as _, Result, bail};
 
 use super::attestation::{GhCli, Policy, SystemGh, policy, verify_provenance};
 use super::cache::write_cache_best_effort;
-use super::http::{HttpClient, download_bytes, verify_checksum};
+use super::http::{HttpClient, download_to_file, verify_checksum};
 use super::paths::{asset_name, binary_path, old_binary_name, old_binary_path};
 
 fn remove_stale_backup(path: &Path) -> Result<()> {
@@ -49,32 +48,17 @@ fn install_staged_binary(path: &Path, staged: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Replace the binary at `path` with `data`, handling platform differences.
+/// Replace the binary at `path` with a verified staging file.
 ///
 /// The current binary is renamed to [`old_binary_name`] first rather than
 /// deleted, so the caller can restore it when the post-install smoke test
 /// fails.  Windows blocks *deleting* a running executable but still allows
 /// *renaming* it, which is what makes the same in-place update work there.
-pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
-    let dir = path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("binary path has no parent directory"))?;
-    fs::create_dir_all(dir).context("creating bin directory")?;
-
-    // A unique staging name keeps two concurrent updates from clobbering each
-    // other: with a fixed path, one run's `TempGuard` deletes the partially
-    // written binary the other run is about to rename into place.
-    let (mut tmp, mut file) =
-        crate::infra::fs::TempGuard::create_unique_file(dir, ".dotfiles-update", "tmp")
-            .context("creating temp file")?;
-    file.write_all(data).context("writing binary data")?;
-    file.flush().context("flushing binary data")?;
-    drop(file);
-
+pub(super) fn replace_binary(path: &Path, staged: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o755))
+        fs::set_permissions(staged, fs::Permissions::from_mode(0o755))
             .context("setting executable permission")?;
     }
 
@@ -82,9 +66,7 @@ pub(super) fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
         bail!("binary path points to a directory: {}", path.display());
     }
 
-    install_staged_binary(path, tmp.path())?;
-    tmp.persist();
-    Ok(())
+    install_staged_binary(path, staged)
 }
 
 /// Run the binary at `path` with the `--version` flag as a basic sanity check.
@@ -194,12 +176,25 @@ fn download_and_install_with_gh(
         "https://github.com/{repo}/releases/download/{tag}/{asset}",
         repo = super::REPO
     );
-    let data = download_bytes(client, &url)?;
-    verify_checksum(client, tag, asset, &data)?;
-    verify_provenance(gh, policy, asset, &data)?;
-
     let bin = binary_path(root);
-    replace_binary(&bin, &data)?;
+    let directory = bin
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("binary path has no parent directory"))?;
+    fs::create_dir_all(directory).context("creating bin directory")?;
+    let (mut staged, mut file) = crate::infra::fs::TempGuard::create_unique_file_with_mode(
+        directory,
+        ".dotfiles-update",
+        "tmp",
+        0o600,
+    )
+    .context("creating staged download")?;
+    let actual = download_to_file(client, &url, &mut file)?;
+    drop(file);
+    verify_checksum(client, tag, asset, &actual)?;
+    verify_provenance(gh, policy, asset, staged.path())?;
+
+    replace_binary(&bin, staged.path())?;
+    staged.persist();
     if let Err(smoke_err) = smoke_test_binary(&bin) {
         let old = old_binary_path(root);
         if old.exists()
@@ -221,9 +216,22 @@ fn download_and_install_with_gh(
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
+    use std::io::Write as _;
 
     use super::super::cache::cache_path;
     use super::super::http::test_support::MockHttpClient;
+
+    fn replace_binary(path: &Path, data: &[u8]) -> Result<()> {
+        let dir = path.parent().unwrap();
+        fs::create_dir_all(dir)?;
+        let (mut staged, mut file) =
+            crate::infra::fs::TempGuard::create_unique_file(dir, ".fixture", "tmp")?;
+        file.write_all(data)?;
+        drop(file);
+        super::replace_binary(path, staged.path())?;
+        staged.persist();
+        Ok(())
+    }
 
     #[derive(Debug)]
     struct StubGh {
@@ -348,6 +356,31 @@ mod tests {
 
     #[test]
     fn download_and_install_writes_verified_binary() {
+        #[derive(Debug)]
+        struct RecordingGh {
+            directory: std::path::PathBuf,
+            bytes: Vec<u8>,
+            path: std::sync::Mutex<Option<std::path::PathBuf>>,
+        }
+        impl GhCli for RecordingGh {
+            fn available(&self) -> bool {
+                true
+            }
+            fn verify(
+                &self,
+                path: &Path,
+                _: &str,
+            ) -> Result<super::super::attestation::Verification> {
+                assert_eq!(
+                    path.parent(),
+                    Some(self.directory.as_path()),
+                    "verify the installation staging file, not a second temporary copy"
+                );
+                assert_eq!(fs::read(path).unwrap(), self.bytes);
+                *self.path.lock().unwrap() = Some(path.to_path_buf());
+                Ok(super::super::attestation::Verification::Verified)
+            }
+        }
         let dir = tempfile::tempdir_in(
             std::env::current_dir().expect("failed to get current working directory"),
         )
@@ -367,18 +400,26 @@ mod tests {
         let checksums = format!("{hash}  {}\n", asset_name());
 
         let client = MockHttpClient::new(vec![Ok(binary_data.clone()), Ok(checksums.into_bytes())]);
+        let gh = RecordingGh {
+            directory: bin_dir.clone(),
+            bytes: binary_data.clone(),
+            path: std::sync::Mutex::new(None),
+        };
 
-        download_and_install_with_gh(
-            dir.path(),
-            "v1.0.0",
-            &client,
-            &StubGh { verified: true },
-            Policy::Required,
-        )
-        .unwrap();
+        download_and_install_with_gh(dir.path(), "v1.0.0", &client, &gh, Policy::Required).unwrap();
 
         let installed = fs::read(binary_path(dir.path())).unwrap();
         assert_eq!(installed, binary_data);
+        let verified_path = gh.path.into_inner().unwrap().unwrap();
+        assert!(
+            !verified_path.exists(),
+            "the verified staging file must be moved into place"
+        );
+        assert_eq!(
+            fs::read_dir(&bin_dir).unwrap().count(),
+            2,
+            "only the binary and version cache remain"
+        );
         let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
         assert!(cache.starts_with("v1.0.0\n"));
         assert_eq!(
@@ -395,6 +436,42 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn a_failed_body_read_cleans_the_stage_and_preserves_the_installed_binary() {
+        #[derive(Debug)]
+        struct FailingHttp;
+        impl HttpClient for FailingHttp {
+            fn get(&self, _: &str, _: &[(&str, &str)]) -> Result<Box<dyn std::io::Read>> {
+                struct BrokenBody;
+                impl std::io::Read for BrokenBody {
+                    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "fixture body failure",
+                        ))
+                    }
+                }
+                Ok(Box::new(BrokenBody))
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        let bin = binary_path(root.path());
+        fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        fs::write(&bin, b"original").unwrap();
+        let error = download_and_install_with_gh(
+            root.path(),
+            "v1",
+            &FailingHttp,
+            &StubGh { verified: true },
+            Policy::Required,
+        )
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("fixture body failure"));
+        assert_eq!(fs::read(&bin).unwrap(), b"original");
+        assert!(!cache_path(root.path()).exists());
+        assert_eq!(fs::read_dir(bin.parent().unwrap()).unwrap().count(), 1);
     }
 
     #[test]
@@ -469,6 +546,11 @@ mod tests {
         assert_eq!(fs::read_to_string(&cache).unwrap(), "existing cache");
         assert!(!old_binary_path(root.path()).exists());
         assert_eq!(client.request_urls().len(), 2);
+        assert_eq!(
+            fs::read_dir(bin.parent().unwrap()).unwrap().count(),
+            2,
+            "failed verification must clean the download staging file"
+        );
     }
 
     #[test]
@@ -505,6 +587,11 @@ mod tests {
         assert!(
             !cache_path(dir.path()).exists(),
             "cache should not be written after rejected provenance"
+        );
+        assert_eq!(
+            fs::read_dir(&bin_dir).unwrap().count(),
+            1,
+            "rejected downloads must not leak staging files"
         );
     }
 

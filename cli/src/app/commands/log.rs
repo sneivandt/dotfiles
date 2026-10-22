@@ -2,11 +2,11 @@
 
 use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
 use std::collections::HashSet;
-use std::io::BufRead as _;
+use std::io::{BufRead, Seek};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::app::cli::{DiscoveryFormat, LogOpts};
 use crate::infra::logging::{TaskStatus, parse_run_log_file_name, run_log_sort_stamp};
@@ -115,11 +115,19 @@ fn run_in_dir(
         );
     };
 
-    let contents = std::fs::read_to_string(&entry.path)
+    let file = std::fs::File::open(&entry.path)
         .with_context(|| format!("reading dotfiles log {}", entry.path.display()))?;
-    write_selected_contents(&contents, verbose, opts.raw, opts.task.as_deref(), out)
+    write_selected_log(
+        &mut std::io::BufReader::new(file),
+        verbose,
+        opts.raw,
+        opts.task.as_deref(),
+        out,
+    )
+    .with_context(|| format!("reading dotfiles log {}", entry.path.display()))
 }
 
+#[cfg(test)]
 fn write_selected_contents(
     contents: &str,
     verbose: bool,
@@ -127,32 +135,72 @@ fn write_selected_contents(
     task: Option<&str>,
     out: &mut dyn std::io::Write,
 ) -> Result<()> {
-    let selected_task_ids = task.map(|requested| {
-        let mut identities = HashSet::from([requested.to_string()]);
-        let normalized = crate::app::filter::normalize_task_filter(requested);
-        for line in contents.lines() {
-            let Some(stored) = StoredRecord::from_line(line) else {
-                continue;
-            };
-            if let Record::TaskResult {
-                task_id,
-                selector: Some(selector),
-                ..
-            } = stored.record
-                && crate::app::filter::normalize_task_filter(&selector) == normalized
-            {
-                identities.insert(task_id);
-            }
-        }
-        identities
-    });
+    write_selected_log(
+        &mut std::io::Cursor::new(contents.as_bytes()),
+        verbose,
+        raw,
+        task,
+        out,
+    )
+}
+
+// Unlike StoredRecord, this projection skips command/message payloads without
+// allocating their strings. It serves both selection indexing and run history.
+#[derive(Deserialize)]
+struct RecordMetadata {
+    schema: u32,
+    context: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+impl RecordMetadata {
+    fn from_line(line: &str) -> Option<Self> {
+        let (_, event) = line.split_once("] [")?;
+        let message = event.strip_prefix("record] ")?;
+        let metadata: Self = serde_json::from_str(message).ok()?;
+        (metadata.schema == 1).then_some(metadata)
+    }
+}
+
+fn write_selected_log(
+    reader: &mut (impl BufRead + Seek),
+    verbose: bool,
+    raw: bool,
+    task: Option<&str>,
+    out: &mut dyn std::io::Write,
+) -> Result<()> {
+    if raw && task.is_none() {
+        std::io::copy(reader, out).context("writing raw log output")?;
+        return Ok(());
+    }
+    let mut selected_task_ids = task.map(|requested| HashSet::from([requested.to_string()]));
+    let normalized = task.map(crate::app::filter::normalize_task_filter);
     // Older runs wrote text completion/timing events alongside structured facts.
     // Prefer the structured facts without altering raw or unknown-schema output.
     let mut results = HashSet::new();
     let mut durations = HashSet::new();
-    for stored in contents.lines().filter_map(StoredRecord::from_line) {
+    for line in reader.by_ref().lines() {
+        let line = line.context("reading log index")?;
+        let Some(metadata) = RecordMetadata::from_line(&line) else {
+            continue;
+        };
+        if !matches!(metadata.kind.as_str(), "task_result" | "task_duration") {
+            continue;
+        }
+        let Some(stored) = StoredRecord::from_line(&line) else {
+            continue;
+        };
         match stored.record {
-            Record::TaskResult { .. } => {
+            Record::TaskResult {
+                task_id, selector, ..
+            } => {
+                if let (Some(identities), Some(normalized), Some(selector)) =
+                    (&mut selected_task_ids, &normalized, selector)
+                    && crate::app::filter::normalize_task_filter(&selector) == *normalized
+                {
+                    identities.insert(task_id);
+                }
                 results.insert(stored.context);
             }
             Record::TaskDuration { .. } => {
@@ -167,24 +215,30 @@ fn write_selected_contents(
             | Record::Message { .. } => {}
         }
     }
+    reader.rewind().context("rewinding dotfiles log")?;
     let mut wrote_line = false;
-    for line in contents.lines() {
-        let record = StoredRecord::from_line(line);
-        let context = record
-            .as_ref()
-            .map(|r| r.context.as_str())
-            .or_else(|| line_context(line));
-        if selected_task_ids
-            .as_ref()
-            .is_some_and(|identities| context.is_none_or(|value| !identities.contains(value)))
-        {
-            continue;
+    for line in reader.lines() {
+        let line = line.context("reading dotfiles log")?;
+        if let Some(identities) = &selected_task_ids {
+            let metadata = RecordMetadata::from_line(&line);
+            let context = metadata
+                .as_ref()
+                .map(|record| record.context.as_str())
+                .or_else(|| line_context(&line));
+            if context.is_none_or(|value| !identities.contains(value)) {
+                continue;
+            }
         }
         if raw {
             writeln!(out, "{line}").context("writing log output")?;
             wrote_line = true;
             continue;
         }
+        let record = StoredRecord::from_line(&line);
+        let context = record
+            .as_ref()
+            .map(|r| r.context.as_str())
+            .or_else(|| line_context(&line));
         if let Some(stored) = record {
             if let Some((event, message)) = render_record(stored.record, verbose) {
                 let prefix = line
@@ -193,8 +247,8 @@ fn write_selected_contents(
                 writeln!(out, "{prefix} [{event}] {message}").context("writing log output")?;
                 wrote_line = true;
             }
-        } else if !legacy_duplicate(line, context, &results, &durations)
-            && (verbose || line_event(line).is_none_or(|event| !diagnostic_event(event)))
+        } else if !legacy_duplicate(&line, context, &results, &durations)
+            && (verbose || line_event(&line).is_none_or(|event| !diagnostic_event(event)))
         {
             // Old logs and unknown schemas remain readable rather than disappearing.
             writeln!(out, "{line}").context("writing log output")?;
@@ -601,8 +655,14 @@ fn read_run_metadata(run: &mut RunEntry) -> Result<()> {
         .with_context(|| format!("reading dotfiles log {}", run.path.display()))?;
     for line in std::io::BufReader::new(file).lines() {
         let line = line.context("reading run metadata")?;
-        if let Some(record) = StoredRecord::from_line(&line) {
-            match record.record {
+        if let Some(metadata) = RecordMetadata::from_line(&line)
+            && matches!(
+                metadata.kind.as_str(),
+                "run_start" | "run_context" | "run_finish"
+            )
+            && let Some(stored) = StoredRecord::from_line(&line)
+        {
+            match stored.record {
                 Record::RunStart { parent_run_id, .. } => {
                     run.started = true;
                     run.parent_run_id = parent_run_id;
@@ -631,6 +691,41 @@ fn read_run_metadata(run: &mut RunEntry) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unfiltered_raw_logs_are_copied_without_parsing_or_rewinding() {
+        #[derive(Debug)]
+        struct NoRewind(std::io::Cursor<Vec<u8>>);
+        impl std::io::Read for NoRewind {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                self.0.read(buffer)
+            }
+        }
+        impl BufRead for NoRewind {
+            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+                self.0.fill_buf()
+            }
+            fn consume(&mut self, amount: usize) {
+                self.0.consume(amount);
+            }
+        }
+        impl Seek for NoRewind {
+            fn seek(&mut self, _: std::io::SeekFrom) -> std::io::Result<u64> {
+                panic!("raw output must not perform an index pass")
+            }
+        }
+        let contents = b"legacy \xff bytes\r\nwithout trailing newline";
+        let mut output = Vec::new();
+        write_selected_log(
+            &mut NoRewind(std::io::Cursor::new(contents.to_vec())),
+            false,
+            true,
+            None,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output, contents);
+    }
 
     fn opts() -> LogOpts {
         LogOpts {
@@ -959,6 +1054,61 @@ mod tests {
             "000001 +          10 2026-09-07T10:00:00.000000Z [{context}] [record] {}\n",
             serde_json::to_string(&StoredRecord::new(context, record)).unwrap()
         )
+    }
+
+    #[test]
+    fn metadata_skips_payload_shapes_and_incomplete_facts_do_not_hide_legacy_lines() {
+        let command = r#"000001 +10 stamp [task-a] [record] {"schema":1,"context":"task-a","type":"command","outcome":"output_limit","stdout":{"ignored":[1,2,3]}}"#;
+        let metadata = RecordMetadata::from_line(command).unwrap();
+        assert_eq!(metadata.kind, "command");
+        assert_eq!(metadata.context, "task-a");
+        let mut raw = Vec::new();
+        write_selected_contents(command, false, true, Some("task-a"), &mut raw).unwrap();
+        assert_eq!(raw, format!("{command}\n").as_bytes());
+
+        let content = concat!(
+            "000001 +10 stamp [task-a] [task_done] retain this outcome\n",
+            "000002 +20 stamp [task-a] [record] {\"schema\":1,\"context\":\"task-a\",\"type\":\"task_result\"}\n",
+            "000003 +30 stamp [task-a] [task_timing] retain this timing\n",
+            "000004 +40 stamp [task-a] [record] {\"schema\":1,\"context\":\"task-a\",\"type\":\"task_duration\"}\n",
+        );
+        let mut output = Vec::new();
+        write_selected_contents(content, true, false, None, &mut output).unwrap();
+        assert_eq!(output, content.as_bytes());
+    }
+
+    #[test]
+    fn streamed_logs_preserve_input_and_output_errors() {
+        struct BrokenOutput;
+        impl std::io::Write for BrokenOutput {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "fixture output failure",
+                ))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        for raw in [false, true] {
+            let error =
+                write_selected_contents("legacy record\n", false, raw, None, &mut BrokenOutput)
+                    .unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                std::io::ErrorKind::PermissionDenied
+            );
+            assert!(format!("{error:#}").contains("fixture output failure"));
+        }
+        let mut invalid = std::io::Cursor::new(b"valid\n\xff\n");
+        let error =
+            write_selected_log(&mut invalid, false, false, None, &mut Vec::new()).unwrap_err();
+        assert_eq!(error.to_string(), "reading log index");
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::InvalidData
+        );
     }
 
     #[test]

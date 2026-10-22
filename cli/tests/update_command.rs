@@ -532,14 +532,11 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let parent = std::fs::read_dir(&log_dir)
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap()
-        .path();
+    let logs = common::retained_logs(&log_dir);
+    assert_eq!(logs.len(), 1);
+    let parent = logs.first().unwrap();
     let parent_id = parent.file_stem().unwrap().to_str().unwrap();
-    let parent_contents = std::fs::read_to_string(&parent).unwrap();
+    let parent_contents = std::fs::read_to_string(parent).unwrap();
     let records: Vec<serde_json::Value> = parent_contents
         .lines()
         .filter_map(|line| {
@@ -588,7 +585,7 @@ fn retained_history_selects_exact_runs_and_preserves_parent_and_actions() {
         "{task_log}"
     );
     assert_eq!(
-        std::fs::read_dir(&log_dir).unwrap().count(),
+        common::retained_logs(&log_dir).len(),
         2,
         "viewing logs must not create a run"
     );

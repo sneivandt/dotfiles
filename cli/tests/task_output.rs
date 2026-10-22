@@ -266,12 +266,9 @@ fn quiet_output_retains_failures_and_persistent_records() {
                 String::from_utf8_lossy(&output.stderr).contains("did not match a task selector")
             );
         }
-        let logs: Vec<_> = std::fs::read_dir(home.path().join("logs"))
-            .unwrap()
-            .collect();
+        let logs = common::retained_logs(&home.path().join("logs"));
         assert_eq!(logs.len(), 1);
-        let contents =
-            std::fs::read_to_string(logs.first().unwrap().as_ref().unwrap().path()).unwrap();
+        let contents = std::fs::read_to_string(logs.first().unwrap()).unwrap();
         assert!(contents.contains("run_finish"));
         if selector == "completions" {
             assert!(contents.contains("task_result"));
@@ -330,12 +327,9 @@ fn execution_output_errors_fail_the_run_and_are_recorded() {
         let output = command.stdout(full).output().unwrap();
         assert_eq!(output.status.code(), Some(1));
         assert!(String::from_utf8_lossy(&output.stderr).contains("writing command output"));
-        let entry = std::fs::read_dir(home.path().join("logs"))
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap();
-        let contents = std::fs::read_to_string(entry.path()).unwrap();
+        let logs = common::retained_logs(&home.path().join("logs"));
+        assert_eq!(logs.len(), 1);
+        let contents = std::fs::read_to_string(logs.first().unwrap()).unwrap();
         assert!(contents.contains("\"outcome\":\"failed\""), "{contents}");
         assert!(contents.contains("\"exit_code\":1"), "{contents}");
     }

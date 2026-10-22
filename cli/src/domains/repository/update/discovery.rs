@@ -12,17 +12,16 @@ use super::models::{
 };
 use crate::infra::logging::OutputExt as _;
 
-fn optional_git_output(ctx: &Context, root: &Path, args: &[&str]) -> Result<Option<String>> {
+fn optional_git_output(
+    ctx: &Context,
+    root: &Path,
+    args: &[&str],
+    absent_code: i32,
+) -> Result<Option<String>> {
     match ctx.executor().execute(git_command(ctx, root, args)) {
         Ok(result) => Ok(Some(result.stdout.trim().to_string())),
-        Err(ExecError::NonZero { .. }) => Ok(None),
-        Err(
-            error @ (ExecError::Cancelled { .. }
-            | ExecError::TimedOut { .. }
-            | ExecError::OutputLimit { .. }
-            | ExecError::Spawn { .. }
-            | ExecError::Io { .. }),
-        ) => Err(error.into()),
+        Err(ExecError::NonZero { result, .. }) if result.code == Some(absent_code) => Ok(None),
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -138,10 +137,7 @@ pub(super) fn dry_run_update_status(
     let head = ctx
         .executor()
         .execute(git_command(ctx, root, &["rev-parse", "HEAD"]))?;
-    let upstream = match upstream_remote_sha(ctx, root, head_ref)? {
-        Some(sha) => Some(sha),
-        None => optional_git_output(ctx, root, &["rev-parse", "@{u}"])?,
-    };
+    let upstream = upstream_remote_sha(ctx, root, head_ref)?;
 
     Ok(match upstream {
         Some(sha) if head.stdout.trim() == sha => DryRunUpdateStatus::AlreadyCurrent,
@@ -161,10 +157,11 @@ pub(super) fn upstream_remote_sha(
     let remote_key = format!("branch.{branch}.remote");
     let merge_key = format!("branch.{branch}.merge");
 
-    let Some(remote) = optional_git_output(ctx, root, &["config", "--get", &remote_key])? else {
+    let Some(remote) = optional_git_output(ctx, root, &["config", "--get", &remote_key], 1)? else {
         return Ok(None);
     };
-    let Some(merge_ref) = optional_git_output(ctx, root, &["config", "--get", &merge_key])? else {
+    let Some(merge_ref) = optional_git_output(ctx, root, &["config", "--get", &merge_key], 1)?
+    else {
         return Ok(None);
     };
 
@@ -176,6 +173,7 @@ pub(super) fn upstream_remote_sha(
         ctx,
         root,
         &["ls-remote", "--exit-code", &remote, &merge_ref],
+        2,
     )?
     else {
         return Ok(None);

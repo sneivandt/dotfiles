@@ -313,7 +313,13 @@ process-wide stages are separate. Unchecked command nonzero exits remain neutral
 until interpreted by the caller. Restarted/elevated processes have their own run
 IDs linked to a parent. A missing finish record means unfinished, not a proven
 crash. `dotfiles log` reads these records without creating a new run and can
-also read legacy text logs. The newest 50 process logs are retained.
+also read legacy text logs. Retention targets the newest 50 process logs, but
+never prunes a log with a live OS-locked sidecar lease, so concurrent runs can
+temporarily exceed that count. A directory lock serializes lease creation and
+removal; a crashed process releases its lease without requiring a finish record.
+The viewer streams raw output directly. Filtered/human views index lightweight
+record metadata before a second streaming display pass; history scans skip
+command-output payload deserialization.
 
 Command argument redaction and captured-output policy are independent. The
 default retains failed streams and successful stderr while summarizing

@@ -25,6 +25,15 @@ fn log_arc(log: &Arc<Logger>) -> Arc<dyn Log> {
     Arc::<Logger>::clone(log)
 }
 
+/// Enumerate retained logs, excluding lease and directory-coordination files.
+pub(crate) fn retained_logs(dir: &Path) -> Vec<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .expect("read fixture logs")
+        .map(|entry| entry.expect("read fixture log entry").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "log"))
+        .collect()
+}
+
 /// Build a CLI command with writable state confined to the fixture.
 ///
 /// Callers retain control of presentation, scheduling, and failure-policy flags.

@@ -136,12 +136,19 @@ Repository updates use fetch and fast-forward-only merge, not a reset or
 automatic conflict resolution. If content changes, a guarded child reloads
 configuration and rediscovers overlay tasks with the original arguments.
 The parent retains the run lock until it exits.
+Preview probes use the advertised remote ref rather than a cached tracking ref.
+Missing upstream configuration or an unadvertised ref leaves the update status
+unknown; authentication, transport and configuration errors fail the preview.
 
 Release checks are cached for up to one hour and, on Linux, only for the boot
 that created the cache. Source builds do not self-update from their Cargo
 output directory. A restarted child does not repeat the self-update check.
 An unwritable release-check cache produces a warning but does not invalidate a
 successful version check or prevent restarting into a verified binary update.
+Self-update streams the asset into one guarded file beside the installed binary,
+hashes it incrementally, and verifies that same file before installation.
+Partial-download retries restart both the file and hash. Release metadata is
+limited to 1 MiB and checksum text to 64 KiB; oversized responses fail explicitly.
 
 Release checks authenticate with a non-empty `GH_TOKEN`, then `GITHUB_TOKEN`,
 then the active GitHub CLI login for `github.com`. If you already use
@@ -189,6 +196,8 @@ deliberately inapplicable in CI; strict mode does not turn those into failures.
 Only one task-engine command can run per repository at a time, including
 `check` and previews. Linked worktrees share a lock in the common Git directory.
 `list` and `log` are exempt.
+Only actual lock contention is reported as another active run; filesystem or
+locking-support errors retain their underlying cause.
 Outside Git repositories, the lock uses the platform state directory or home
 fallback; blank or relative state/home paths are ignored so changing the
 working directory cannot select a different lock.
@@ -327,8 +336,9 @@ selectors. Narrowing tasks does not bypass initial configuration loading.
 
 ## Logs
 
-Each update/remove/check process has a separate run log; the newest
-50 are retained. Failed runs print an exact `dotfiles log --id ... -v` command
+Each update/remove/check process has a separate run log. Retention targets the
+newest 50 logs, but active logs are never pruned, so the count can temporarily
+exceed 50. Failed runs print an exact `dotfiles log --id ... -v` command
 when persistent logging is healthy. Prefer that ID: numeric indexes shift
 after subsequent runs.
 

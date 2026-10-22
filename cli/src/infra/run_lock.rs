@@ -1,11 +1,11 @@
 //! Cross-process serialization for repository runs.
 
-use std::fs::{File, OpenOptions};
+use std::fs::{File, OpenOptions, TryLockError};
 use std::io::{Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result};
 use base64::Engine as _;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
@@ -48,20 +48,7 @@ impl RunLock {
             .open(&path)
             .with_context(|| format!("opening run lock {}", path.display()))?;
 
-        if let Err(error) = file.try_lock() {
-            let owner = std::fs::read_to_string(&path).unwrap_or_default();
-            let owner = owner.trim();
-            if owner.is_empty() {
-                bail!(
-                    "another dotfiles run holds {}; wait for it to finish and retry ({error})",
-                    path.display()
-                );
-            }
-            bail!(
-                "another dotfiles run holds {}: {owner}; wait for it to finish and retry",
-                path.display()
-            );
-        }
+        file.try_lock().map_err(|error| lock_error(&path, error))?;
 
         let started_unix_seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -83,6 +70,28 @@ impl RunLock {
             .with_context(|| format!("syncing run lock {}", path.display()))?;
 
         Ok(Self { file })
+    }
+}
+
+fn lock_error(path: &Path, error: TryLockError) -> anyhow::Error {
+    match error {
+        TryLockError::Error(error) => {
+            anyhow::Error::new(error).context(format!("locking run lock {}", path.display()))
+        }
+        TryLockError::WouldBlock => {
+            // Owner text is advisory; Windows can deny reads of the locked file.
+            let owner = std::fs::read_to_string(path).unwrap_or_default();
+            let owner = owner.trim();
+            let detail = if owner.is_empty() {
+                String::new()
+            } else {
+                format!(": {owner}")
+            };
+            anyhow::anyhow!(
+                "another dotfiles run holds {}{detail}; wait for it to finish and retry",
+                path.display()
+            )
+        }
     }
 }
 
@@ -138,6 +147,24 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::platform::{Os, Platform};
     use std::io::Read as _;
+
+    #[test]
+    fn operational_lock_errors_are_not_reported_as_contention() {
+        let path = Path::new("fixture.lock");
+        for kind in [
+            std::io::ErrorKind::Unsupported,
+            std::io::ErrorKind::PermissionDenied,
+            std::io::ErrorKind::Other,
+        ] {
+            let error = lock_error(
+                path,
+                TryLockError::Error(std::io::Error::new(kind, "fixture failure")),
+            );
+            assert_eq!(error.to_string(), "locking run lock fixture.lock");
+            assert_eq!(error.downcast_ref::<std::io::Error>().unwrap().kind(), kind);
+            assert!(!format!("{error:#}").contains("another dotfiles run"));
+        }
+    }
 
     #[test]
     fn prevents_overlapping_runs_and_releases_on_drop() {

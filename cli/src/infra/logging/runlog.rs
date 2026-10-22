@@ -189,6 +189,7 @@ pub fn log_thread_name() -> String {
 #[derive(Debug)]
 pub struct RunLog {
     file: Mutex<fs::File>,
+    _lease: fs::File,
     path: PathBuf,
     start: Instant,
     sequence: AtomicU64,
@@ -220,7 +221,7 @@ impl RunLog {
     /// Like [`new`](Self::new) but with an explicit retention count, so tests
     /// can exercise pruning without writing dozens of files.
     fn new_retaining(command: &str, log_dir: &Path, start: Instant, keep: usize) -> Option<Self> {
-        let (path, mut file) = create_run_log_file(command, log_dir)?;
+        let (path, mut file, lease) = create_run_log_file(command, log_dir)?;
         let version =
             option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
         let header = format!(
@@ -234,6 +235,7 @@ impl RunLog {
         prune_run_logs(log_dir, keep);
         Some(Self {
             file: Mutex::new(file),
+            _lease: lease,
             path,
             start,
             sequence: AtomicU64::new(0),
@@ -358,13 +360,44 @@ impl RunLog {
 /// Attempts made to find an unused run-log file name before giving up.
 const MAX_NAME_ATTEMPTS: u32 = 64;
 
+const RETENTION_LOCK: &str = ".dotfiles-log-retention.lock";
+
+fn lease_path(path: &Path) -> PathBuf {
+    path.with_extension("log.lock")
+}
+
+fn open_lock(path: &Path) -> std::io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+}
+
+// Serialize lease creation/removal so no contender can lock an unlinked,
+// obsolete lease while a new writer holds a different file at the same path.
+fn lock_log_directory(dir: &Path) -> std::io::Result<fs::File> {
+    let file = open_lock(&dir.join(RETENTION_LOCK))?;
+    file.lock()?;
+    Ok(file)
+}
+
 /// Create a fresh run-log file, returning its path and an append handle.
 ///
 /// Always uses `create_new`, so an existing log is never truncated. When the
 /// name is already taken — two runs starting in the same second from the same
 /// process — the disambiguating suffix is bumped until a free name is found
 /// rather than silently reusing or destroying the existing file.
-fn create_run_log_file(command: &str, log_dir: &Path) -> Option<(PathBuf, fs::File)> {
+fn create_run_log_file(command: &str, log_dir: &Path) -> Option<(PathBuf, fs::File, fs::File)> {
+    let _directory_lock = lock_log_directory(log_dir)
+        .map_err(|error| {
+            warn_degraded(&format!(
+                "locking log directory {}: {error}",
+                log_dir.display()
+            ));
+        })
+        .ok()?;
     let stamp = format_utc_compact();
     let pid = std::process::id();
     for attempt in 0..MAX_NAME_ATTEMPTS {
@@ -373,14 +406,39 @@ fn create_run_log_file(command: &str, log_dir: &Path) -> Option<(PathBuf, fs::Fi
             &stamp,
             pid.wrapping_add(attempt),
         ));
+        // Lock a sidecar, not the log: Windows byte-range locks would prevent
+        // readers from viewing a live log.
+        let lease = open_lock(&lease_path(&path))
+            .map_err(|error| {
+                warn_degraded(&format!("opening log lease {}: {error}", path.display()));
+            })
+            .ok()?;
+        match lease.try_lock() {
+            Ok(()) => {}
+            Err(fs::TryLockError::WouldBlock) => continue,
+            Err(fs::TryLockError::Error(error)) => {
+                warn_degraded(&format!("locking log lease {}: {error}", path.display()));
+                return None;
+            }
+        }
         match fs::OpenOptions::new()
             .create_new(true)
             .append(true)
             .open(&path)
         {
-            Ok(file) => return Some((path, file)),
+            Ok(file) => return Some((path, file, lease)),
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => (),
-            Err(_) => return None,
+            Err(error) => {
+                warn_degraded(&format!("creating run log {}: {error}", path.display()));
+                drop(lease);
+                if let Err(cleanup_error) = fs::remove_file(lease_path(&path)) {
+                    tracing::debug!(
+                        "could not remove unused log lease {}: {cleanup_error}",
+                        path.display()
+                    );
+                }
+                return None;
+            }
         }
     }
     None
@@ -389,10 +447,17 @@ fn create_run_log_file(command: &str, log_dir: &Path) -> Option<(PathBuf, fs::Fi
 /// Delete the oldest run logs until at most `keep` remain.
 ///
 /// Only files matching the run-log naming pattern are considered, so
-/// unrelated files in the log directory are never touched. Every failure is
-/// ignored, including `NotFound` races with a concurrent run pruning the same
-/// directory: retention is housekeeping and must never fail a run.
+/// unrelated files in the log directory are never touched. Active leases are
+/// skipped even if that leaves more than `keep` logs. Cleanup failures are
+/// diagnostic-only: retention is housekeeping and must never fail a run.
 fn prune_run_logs(dir: &Path, keep: usize) {
+    let _directory_lock = match lock_log_directory(dir) {
+        Ok(lock) => lock,
+        Err(error) => {
+            tracing::debug!("could not lock log retention in {}: {error}", dir.display());
+            return;
+        }
+    };
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -404,13 +469,49 @@ fn prune_run_logs(dir: &Path, keep: usize) {
             Some((run_log_sort_stamp(&entry.path(), parsed.stamp), name))
         })
         .collect();
-    let excess = runs.len().saturating_sub(keep);
+    let mut excess = runs.len().saturating_sub(keep);
     if excess == 0 {
         return;
     }
     runs.sort_unstable();
-    for (_, name) in runs.into_iter().take(excess) {
-        drop(fs::remove_file(dir.join(name)));
+    for (_, name) in runs {
+        if excess == 0 {
+            break;
+        }
+        let path = dir.join(name);
+        let lease_path = lease_path(&path);
+        let lease = match open_lock(&lease_path) {
+            Ok(lease) => lease,
+            Err(error) => {
+                tracing::debug!("could not open log lease {}: {error}", lease_path.display());
+                continue;
+            }
+        };
+        match lease.try_lock() {
+            Ok(()) => {}
+            Err(fs::TryLockError::WouldBlock) => continue,
+            Err(fs::TryLockError::Error(error)) => {
+                tracing::debug!("could not lock log lease {}: {error}", lease_path.display());
+                continue;
+            }
+        }
+        match fs::remove_file(&path) {
+            Ok(()) => excess -= 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => excess -= 1,
+            Err(error) => {
+                tracing::debug!("could not prune run log {}: {error}", path.display());
+                continue;
+            }
+        }
+        drop(lease);
+        if let Err(error) = fs::remove_file(&lease_path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::debug!(
+                "could not remove log lease {}: {error}",
+                lease_path.display()
+            );
+        }
     }
 }
 
@@ -435,6 +536,40 @@ mod tests {
     use super::*;
     use std::fs;
 
+    #[test]
+    fn concurrent_log_creators_preserve_live_logs_until_their_leases_end() {
+        let fixture = tempfile::tempdir().unwrap();
+        let workers = 8;
+        let barrier = std::sync::Barrier::new(workers + 1);
+        std::thread::scope(|scope| {
+            for _ in 0..workers {
+                let barrier = &barrier;
+                let dir = fixture.path();
+                scope.spawn(move || {
+                    let run = RunLog::new_retaining("check", dir, Instant::now(), 1);
+                    barrier.wait();
+                    barrier.wait();
+                    let run = run.expect("concurrent log creation must succeed");
+                    run.emit(LogEvent::Info, "still writable");
+                    assert!(run.path().exists(), "retention deleted a live log");
+                });
+            }
+            barrier.wait();
+            let count = run_log_names(fixture.path()).len();
+            barrier.wait();
+            assert_eq!(
+                count, workers,
+                "active logs may temporarily exceed retention"
+            );
+        });
+        prune_run_logs(fixture.path(), 1);
+        assert_eq!(
+            run_log_names(fixture.path()).len(),
+            1,
+            "released leases must be pruneable"
+        );
+    }
+
     fn isolated_run_log() -> (RunLog, tempfile::TempDir) {
         let tmp = tempfile::tempdir().expect("tempdir");
         let run_log = RunLog::new("test", tmp.path(), Instant::now()).expect("run log");
@@ -446,6 +581,7 @@ mod tests {
             .expect("read log dir")
             .flatten()
             .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| name != RETENTION_LOCK && !name.ends_with(".log.lock"))
             .collect();
         names.sort_unstable();
         names
@@ -649,6 +785,52 @@ mod tests {
             ],
             "only the current run should survive a retention of one"
         );
+    }
+
+    #[test]
+    fn retention_preserves_live_logs_and_prunes_them_after_drop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let first = RunLog::new_retaining("first", tmp.path(), Instant::now(), 1).unwrap();
+        let first_path = first.path().to_path_buf();
+        let second = RunLog::new_retaining("second", tmp.path(), Instant::now(), 1).unwrap();
+        first.emit(LogEvent::Info, "still writing");
+        assert!(
+            fs::read_to_string(&first_path)
+                .unwrap()
+                .contains("still writing")
+        );
+        assert_eq!(
+            run_log_names(tmp.path()).len(),
+            2,
+            "live logs may exceed retention"
+        );
+
+        drop(first);
+        prune_run_logs(tmp.path(), 1);
+        assert!(!first_path.exists());
+        assert!(
+            !lease_path(&first_path).exists(),
+            "pruning also removes the released lease"
+        );
+        assert!(second.path().exists());
+        second.emit(LogEvent::Info, "survived retention");
+        assert!(
+            fs::read_to_string(second.path())
+                .unwrap()
+                .contains("survived retention")
+        );
+    }
+
+    #[test]
+    fn retention_does_not_preserve_crashed_runs_forever() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("20200101T000000Z-update-1.log");
+        fs::write(&path, "unfinished run without a finish record").unwrap();
+        drop(open_lock(&lease_path(&path)).unwrap());
+        let current = RunLog::new_retaining("update", tmp.path(), Instant::now(), 1).unwrap();
+        assert!(!path.exists(), "an unlocked lease is not live");
+        assert!(!lease_path(&path).exists());
+        assert!(current.path().exists());
     }
 
     #[test]

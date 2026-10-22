@@ -73,38 +73,87 @@ impl GitConfigResource {
         )
     }
 
+    fn values_from_config(&self, config: &git2::Config) -> Result<Vec<Option<String>>> {
+        (|| -> Result<Vec<Option<String>>> {
+            let mut entries = match config.multivar(&self.key, None) {
+                Ok(entries) => entries,
+                Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(Vec::new()),
+                Err(error) => return Err(error.into()),
+            };
+            let mut values = Vec::new();
+            while let Some(entry) = entries.next() {
+                let entry = entry?;
+                values.push(if entry.has_value() {
+                    Some(entry.value()?.to_string())
+                } else {
+                    None
+                });
+            }
+            Ok(values)
+        })()
+        .with_context(|| format!("reading git config {}", self.key))
+    }
+
     /// Check resource state against a pre-opened config snapshot.
     ///
     /// This enables unit testing without touching the real global git config.
     fn state_from_config(&self, config: &git2::Config) -> ResourceResult<ResourceState> {
-        let current = config.get_string(&self.key);
-        match (self.desired.as_deref(), current) {
-            (Some(desired), Ok(current)) if current == desired => Ok(ResourceState::Correct),
-            (_, Ok(current)) => Ok(ResourceState::Incorrect { current }),
-            (desired, Err(error)) if error.code() == git2::ErrorCode::NotFound => {
-                Ok(if desired.is_some() {
-                    ResourceState::Missing
-                } else {
-                    ResourceState::Correct
-                })
-            }
-            (_, Err(error)) => Err(anyhow::Error::from(error)
-                .context(format!("reading git config {}", self.key))
-                .into()),
+        let values = self.values_from_config(config)?;
+        if values.is_empty() {
+            return Ok(if self.desired.is_some() {
+                ResourceState::Missing
+            } else {
+                ResourceState::Correct
+            });
         }
+        Ok(
+            if self.desired.as_ref().is_some_and(|desired| {
+                values
+                    .iter()
+                    .all(|value| value.as_deref() == Some(desired.as_str()))
+            }) {
+                ResourceState::Correct
+            } else {
+                ResourceState::Incorrect {
+                    current: values
+                        .iter()
+                        .map(|value| value.as_deref().unwrap_or("<implicit true>"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                }
+            },
+        )
     }
 
     /// Apply config change to a mutable config handle.
     ///
     /// This enables unit testing without touching the real global git config.
     fn apply_to_config(&self, config: &mut git2::Config) -> Result<ResourceChange> {
+        let values = self.values_from_config(config)?;
+        // libgit2's regex mutation can dereference a null implicit value.
+        if values.len() > 1 && values.iter().any(Option::is_none) {
+            anyhow::bail!(
+                "cannot safely replace repeated implicit values for git config {}; give each entry an explicit value first",
+                self.key
+            );
+        }
         match &self.desired {
-            Some(desired) => config
-                .set_multivar(&self.key, ".*", desired)
-                .with_context(|| format!("setting {} = {desired}", self.key))?,
-            None => config
-                .remove_multivar(&self.key, ".*")
-                .with_context(|| format!("removing git config {}", self.key))?,
+            Some(desired) => {
+                if values.len() <= 1 {
+                    config.set_str(&self.key, desired)
+                } else {
+                    config.set_multivar(&self.key, ".*", desired)
+                }
+                .with_context(|| format!("setting {} = {desired}", self.key))?;
+            }
+            None => {
+                if values.len() == 1 {
+                    config.remove(&self.key)
+                } else {
+                    config.remove_multivar(&self.key, ".*")
+                }
+                .with_context(|| format!("removing git config {}", self.key))?;
+            }
         }
         Ok(ResourceChange::Applied)
     }
@@ -227,18 +276,48 @@ mod tests {
 
     #[test]
     fn repeated_git_config_values_converge_for_setting_and_removal() {
-        for desired in [Some("false"), None] {
+        for (key, section, variable, values, desired) in [
+            (
+                "core.autocrlf",
+                "core",
+                "autocrlf",
+                ["false", "true"],
+                Some("false"),
+            ),
+            (
+                "core.autocrlf",
+                "core",
+                "autocrlf",
+                ["true", "false"],
+                Some("false"),
+            ),
+            (
+                "credential.helper",
+                "credential",
+                "helper",
+                ["old-helper", "manager"],
+                Some("manager"),
+            ),
+            (
+                "credential.helper",
+                "credential",
+                "helper",
+                ["manager", "old-helper"],
+                Some("manager"),
+            ),
+            ("core.autocrlf", "core", "autocrlf", ["false", "true"], None),
+        ] {
             let dir = tempfile::tempdir_in(".").unwrap();
             let path = dir.path().join("config");
             std::fs::write(
                 &path,
-                "[core]\n\tautocrlf = false\n\tautocrlf = true\n\teditor = fixture-editor\n",
+                format!("[{section}]\n\t{variable} = {}\n\t{variable} = {}\n[core]\n\teditor = fixture-editor\n", values[0], values[1]),
             )
             .unwrap();
             let resource = desired
                 .map_or_else(
-                    || GitConfigResource::absent("core.autocrlf".into()),
-                    |value| GitConfigResource::new("core.autocrlf".into(), value.into()),
+                    || GitConfigResource::absent(key.into()),
+                    |value| GitConfigResource::new(key.into(), value.into()),
                 )
                 .using_config_path(path.clone());
 
@@ -262,20 +341,45 @@ mod tests {
                 "fixture-editor"
             );
             if let Some(value) = desired {
-                let mut entries = observed.multivar("core.autocrlf", None).unwrap();
-                let mut values = Vec::new();
+                let mut entries = observed.multivar(key, None).unwrap();
+                let mut actual_values = Vec::new();
                 while let Some(entry) = entries.next() {
-                    values.push(entry.unwrap().value().unwrap().to_string());
+                    actual_values.push(entry.unwrap().value().unwrap().to_string());
                 }
-                assert!(!values.is_empty());
-                assert!(values.iter().all(|current| current == value), "{values:?}");
+                assert!(!actual_values.is_empty());
+                assert!(
+                    actual_values.iter().all(|current| current == value),
+                    "{actual_values:?}"
+                );
             } else {
                 assert_eq!(
-                    observed.get_string("core.autocrlf").unwrap_err().code(),
+                    observed.get_string(key).unwrap_err().code(),
                     git2::ErrorCode::NotFound
                 );
             }
         }
+    }
+
+    #[test]
+    fn implicit_and_non_utf8_values_are_not_silently_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let resource = GitConfigResource::with_config_path(
+            "core.autocrlf".into(),
+            "false".into(),
+            path.clone(),
+        );
+        std::fs::write(&path, "[core]\n\tautocrlf\n").unwrap();
+        assert!(matches!(
+            resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+        resource.apply().unwrap();
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+
+        std::fs::write(&path, b"[core]\n\tautocrlf = \xff\n\tautocrlf = false\n").unwrap();
+        let error = resource.current_state().unwrap_err();
+        assert!(format!("{error:#}").contains("reading git config core.autocrlf"));
     }
 
     #[test]
@@ -297,6 +401,28 @@ mod tests {
             assert!(format!("{error:#}").contains("core.autocrlf"), "{error:#}");
         }
         assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+    }
+
+    #[test]
+    fn repeated_implicit_values_fail_safely_without_entering_native_regex_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config");
+        let content = "[core]\n\tautocrlf\n\tautocrlf = false\n";
+        std::fs::write(&path, content).unwrap();
+        for resource in [
+            GitConfigResource::new("core.autocrlf".into(), "false".into()),
+            GitConfigResource::absent("core.autocrlf".into()),
+        ] {
+            let resource = resource.using_config_path(path.clone());
+            assert!(matches!(
+                resource.current_state().unwrap(),
+                ResourceState::Incorrect { .. }
+            ));
+            assert!(
+                format!("{:#}", resource.apply().unwrap_err()).contains("repeated implicit values")
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+        }
     }
 
     #[test]

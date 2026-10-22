@@ -13,7 +13,7 @@
 
 use std::path::Path;
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Result, bail};
 
 use super::REPO;
 
@@ -148,20 +148,17 @@ const fn retry_delay(_attempt: u32) -> std::time::Duration {
     std::time::Duration::ZERO
 }
 
-/// Verify the provenance of downloaded release bytes.
-///
-/// The bytes are staged in a temporary file because `gh` verifies a file on
-/// disk.
+/// Verify the provenance of the caller-owned staged release file.
 ///
 /// # Errors
 ///
 /// Returns an error when the policy is [`Policy::Required`] and provenance
-/// cannot be verified, or when the temporary file cannot be written.
+/// cannot be verified.
 pub(super) fn verify_provenance(
     gh: &dyn GhCli,
     policy: Policy,
     asset: &str,
-    data: &[u8],
+    staged: &Path,
 ) -> Result<()> {
     if policy == Policy::Skip {
         tracing::debug!("provenance verification skipped by --skip-attestation or {SKIP_ENV}");
@@ -172,8 +169,7 @@ pub(super) fn verify_provenance(
         return unverified(asset, "gh CLI not found; cannot verify build provenance");
     }
 
-    let staged = stage_for_verification(asset, data)?;
-    let verification = match verify_with_retry(gh, staged.path(), REPO) {
+    let verification = match verify_with_retry(gh, staged, REPO) {
         Ok(verification) => verification,
         Err(error) => {
             return unverified(
@@ -208,30 +204,18 @@ fn unverified(asset: &str, reason: &str) -> Result<()> {
     bail!("build provenance verification failed for {asset}: {reason}");
 }
 
-/// Write `data` to a uniquely named temporary file for verification.
-fn stage_for_verification(asset: &str, data: &[u8]) -> Result<crate::infra::fs::TempGuard> {
-    use std::io::Write as _;
-
-    let (temp, mut file) = crate::infra::fs::TempGuard::create_unique_file(
-        &std::env::temp_dir(),
-        ".dotfiles-attest",
-        asset,
-    )
-    .with_context(|| format!("creating temporary file for {asset}"))?;
-    file.write_all(data).with_context(|| {
-        format!(
-            "writing {asset} to {} for provenance verification",
-            temp.path().display()
-        )
-    })?;
-    Ok(temp)
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+
+    fn verify_provenance(gh: &dyn GhCli, policy: Policy, asset: &str, data: &[u8]) -> Result<()> {
+        let fixture = tempfile::tempdir()?;
+        let path = fixture.path().join("download");
+        std::fs::write(&path, data)?;
+        super::verify_provenance(gh, policy, asset, &path)
+    }
 
     #[derive(Debug)]
     struct StubGh {
@@ -428,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn verification_checks_downloaded_bytes_and_cleans_its_file_on_every_outcome() {
+    fn verification_uses_the_callers_stage_without_removing_it_on_any_outcome() {
         #[derive(Debug)]
         struct RecordingGh {
             outcome: Option<Verification>,
@@ -463,17 +447,23 @@ mod tests {
                 outcome,
                 paths: std::sync::Mutex::new(Vec::new()),
             };
-            let result =
-                verify_provenance(&gh, Policy::Required, "fixture-asset", b"downloaded bytes");
+            let fixture = tempfile::tempdir().unwrap();
+            let staged = fixture.path().join("download");
+            std::fs::write(&staged, b"downloaded bytes").unwrap();
+            let result = super::verify_provenance(&gh, Policy::Required, "fixture-asset", &staged);
             assert_eq!(result.is_ok(), succeeds, "{result:?}");
             let paths = gh.paths.into_inner().unwrap();
             assert_eq!(paths.len(), expected_attempts);
             for path in &paths {
                 assert_eq!(
-                    path, &paths[0],
+                    path, &staged,
                     "retries must verify the same staged download"
                 );
-                assert!(!path.exists(), "staged file leaked: {}", path.display());
+                assert_eq!(
+                    std::fs::read(path).unwrap(),
+                    b"downloaded bytes",
+                    "the installer owns staging cleanup"
+                );
             }
         }
     }

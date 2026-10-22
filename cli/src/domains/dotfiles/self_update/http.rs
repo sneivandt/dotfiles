@@ -1,7 +1,7 @@
 //! HTTP plumbing for self-update: trait abstraction, real client, GitHub API
 //! tag lookup, and SHA-256 checksum verification.
 
-use std::io::Read;
+use std::io::{Read, Seek as _, Write as _};
 
 use anyhow::{Context as _, Result, bail};
 use sha2::{Digest, Sha256};
@@ -10,6 +10,8 @@ use super::REPO;
 
 /// Number of attempts made for a single GET before the failure is reported.
 const MAX_GET_ATTEMPTS: u32 = 3;
+const MAX_RELEASE_METADATA_BYTES: usize = 1024 * 1024;
+const MAX_CHECKSUM_BYTES: usize = 64 * 1024;
 
 /// Failure fragments that indicate a retryable network or server condition.
 ///
@@ -43,13 +45,13 @@ const TRANSIENT_HTTP_ERROR_MARKERS: &[&str] = &[
 /// Production code uses [`UreqClient`]; tests inject a mock that returns
 /// predetermined responses without touching the network.
 pub(super) trait HttpClient: std::fmt::Debug + Send + Sync {
-    /// Perform an HTTP GET request and return the response body as bytes.
+    /// Perform an HTTP GET request and return an owned response-body reader.
     ///
     /// # Errors
     ///
     /// Returns an error on network failures, non-success status codes, or
     /// response-body read errors.
-    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>>;
+    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Box<dyn Read>>;
 }
 
 /// Real HTTP client backed by [`ureq`].
@@ -76,19 +78,13 @@ impl UreqClient {
 }
 
 impl HttpClient for UreqClient {
-    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Box<dyn Read>> {
         let mut req = self.agent.get(url);
         for &(k, v) in headers {
             req = req.header(k, v);
         }
         let response = req.call().with_context(|| format!("GET {url}"))?;
-        let mut buf = Vec::new();
-        response
-            .into_body()
-            .into_reader()
-            .read_to_end(&mut buf)
-            .with_context(|| format!("reading response from {url}"))?;
-        Ok(buf)
+        Ok(Box::new(response.into_body().into_reader()))
     }
 }
 
@@ -103,10 +99,17 @@ pub(super) fn default_http_client() -> UreqClient {
 /// dropped connection should not fail the run when a retry would succeed.
 /// Permanent failures (404, checksum host misconfiguration, TLS errors) are
 /// returned on the first attempt so genuine problems stay fast and visible.
-fn get_with_retry(client: &dyn HttpClient, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+fn get_with_retry<T>(
+    client: &dyn HttpClient,
+    url: &str,
+    headers: &[(&str, &str)],
+    mut read_body: impl FnMut(&mut dyn Read) -> Result<T>,
+) -> Result<T> {
     let mut attempt = 1_u32;
     loop {
-        match client.get(url, headers) {
+        match client.get(url, headers).and_then(|mut reader| {
+            read_body(&mut *reader).with_context(|| format!("reading response from {url}"))
+        }) {
             Ok(body) => return Ok(body),
             Err(error) if attempt < MAX_GET_ATTEMPTS && is_transient_http_error(&error) => {
                 tracing::warn!(
@@ -118,6 +121,18 @@ fn get_with_retry(client: &dyn HttpClient, url: &str, headers: &[(&str, &str)]) 
             Err(error) => return Err(error),
         }
     }
+}
+
+fn read_limited(reader: &mut dyn Read, limit: usize) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader
+        .take(u64::try_from(limit)?.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    anyhow::ensure!(
+        bytes.len() <= limit,
+        "HTTP response exceeds the {limit}-byte limit"
+    );
+    Ok(bytes)
 }
 
 /// Report whether `error` describes a condition worth retrying.
@@ -159,7 +174,9 @@ pub(super) fn fetch_latest_tag(
         headers.push(("Authorization", value));
     }
 
-    let body_bytes = match get_with_retry(client, &url, &headers) {
+    let body_bytes = match get_with_retry(client, &url, &headers, |reader| {
+        read_limited(reader, MAX_RELEASE_METADATA_BYTES)
+    }) {
         Ok(body) => body,
         Err(error)
             if authorization.is_some()
@@ -175,6 +192,7 @@ pub(super) fn fetch_latest_tag(
                     ("Accept", "application/vnd.github.v3+json"),
                     ("User-Agent", "dotfiles-cli"),
                 ],
+                |reader| read_limited(reader, MAX_RELEASE_METADATA_BYTES),
             )
             .with_context(|| format!("querying latest release anonymously from {url}"))?
         }
@@ -183,9 +201,8 @@ pub(super) fn fetch_latest_tag(
         }
     };
 
-    let body = String::from_utf8_lossy(&body_bytes);
     let parsed: serde_json::Value =
-        serde_json::from_str(&body).context("parsing GitHub API JSON response")?;
+        serde_json::from_slice(&body_bytes).context("parsing GitHub API JSON response")?;
     Ok(parsed
         .get("tag_name")
         .and_then(serde_json::Value::as_str)
@@ -198,23 +215,50 @@ fn error_has_http_status(error: &anyhow::Error, status: u16) -> bool {
         .contains(&format!("http status: {status}"))
 }
 
-/// Download a URL and return the bytes.
-pub(super) fn download_bytes(client: &dyn HttpClient, url: &str) -> Result<Vec<u8>> {
-    get_with_retry(client, url, &[("User-Agent", "dotfiles-cli")])
-        .with_context(|| format!("downloading {url}"))
+/// Stream a release asset into its staging file and return its SHA-256 digest.
+///
+/// A retry restarts both the file and the hash, including after a partial body.
+pub(super) fn download_to_file(
+    client: &dyn HttpClient,
+    url: &str,
+    file: &mut std::fs::File,
+) -> Result<String> {
+    get_with_retry(client, url, &[("User-Agent", "dotfiles-cli")], |reader| {
+        file.set_len(0).context("clearing staged download")?;
+        file.rewind().context("rewinding staged download")?;
+        let mut hasher = Sha256::new();
+        let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
+        loop {
+            let count = match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => count,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error.into()),
+            };
+            let bytes = buffer.split_at(count).0;
+            file.write_all(bytes).context("writing staged download")?;
+            hasher.update(bytes);
+        }
+        file.flush().context("flushing staged download")?;
+        Ok(super::hex_encode(&hasher.finalize()))
+    })
+    .with_context(|| format!("downloading {url}"))
 }
 
-/// Verify the SHA-256 checksum of `data` against the checksums file for the
+/// Verify the streamed SHA-256 digest against the checksums file for the
 /// given release tag.
 pub(super) fn verify_checksum(
     client: &dyn HttpClient,
     tag: &str,
     asset: &str,
-    data: &[u8],
+    actual: &str,
 ) -> Result<()> {
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/checksums.sha256");
-    let checksums = download_bytes(client, &url).context("downloading checksums file")?;
-    let checksums_str = String::from_utf8_lossy(&checksums);
+    let checksums = get_with_retry(client, &url, &[("User-Agent", "dotfiles-cli")], |reader| {
+        read_limited(reader, MAX_CHECKSUM_BYTES)
+    })
+    .context("downloading checksums file")?;
+    let checksums_str = std::str::from_utf8(&checksums).context("decoding checksums file")?;
 
     let expected = checksums_str
         .lines()
@@ -230,10 +274,6 @@ pub(super) fn verify_checksum(
     if expected.len() != 64 || !expected.chars().all(|c| c.is_ascii_hexdigit()) {
         bail!("invalid checksum format for {asset}: expected 64 hex chars, got '{expected}'");
     }
-
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    let actual = super::hex_encode(&hasher.finalize());
 
     if !actual.eq_ignore_ascii_case(&expected) {
         bail!("checksum mismatch for {asset}: expected {expected}, got {actual}");
@@ -277,7 +317,7 @@ pub(super) mod test_support {
     }
 
     impl HttpClient for MockHttpClient {
-        fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Vec<u8>> {
+        fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Box<dyn Read>> {
             self.urls
                 .lock()
                 .expect("mutex poisoned")
@@ -293,6 +333,7 @@ pub(super) mod test_support {
                 .expect("mutex poisoned")
                 .pop_front()
                 .unwrap_or_else(|| bail!("no more mock responses"))
+                .map(|bytes| -> Box<dyn Read> { Box::new(std::io::Cursor::new(bytes)) })
         }
     }
 }
@@ -301,6 +342,108 @@ pub(super) mod test_support {
 mod tests {
     use super::test_support::MockHttpClient;
     use super::*;
+
+    fn download_bytes(client: &dyn HttpClient, url: &str) -> Result<Vec<u8>> {
+        let mut file = tempfile::NamedTempFile::new()?;
+        let digest = download_to_file(client, url, file.as_file_mut())?;
+        let bytes = std::fs::read(file.path())?;
+        assert_eq!(digest, super::super::hex_encode(&Sha256::digest(&bytes)));
+        Ok(bytes)
+    }
+
+    fn verify_checksum(
+        client: &dyn HttpClient,
+        tag: &str,
+        asset: &str,
+        bytes: &[u8],
+    ) -> Result<()> {
+        super::verify_checksum(
+            client,
+            tag,
+            asset,
+            &super::super::hex_encode(&Sha256::digest(bytes)),
+        )
+    }
+
+    #[test]
+    fn metadata_limits_accept_the_boundary_and_stop_at_one_extra_byte() {
+        assert_eq!(MAX_RELEASE_METADATA_BYTES, 1_048_576);
+        assert_eq!(MAX_CHECKSUM_BYTES, 65_536);
+        for limit in [MAX_RELEASE_METADATA_BYTES, MAX_CHECKSUM_BYTES] {
+            for length in [0, limit - 1, limit, limit + 1, limit * 2] {
+                let mut reader = std::io::Cursor::new(vec![b'x'; length]);
+                let result = read_limited(&mut reader, limit);
+                assert_eq!(result.is_ok(), length <= limit, "{length}, limit={limit}");
+                assert_eq!(
+                    reader.position(),
+                    u64::try_from(length.min(limit + 1)).unwrap()
+                );
+                if let Ok(bytes) = result {
+                    assert_eq!(bytes.len(), length);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn oversized_metadata_fails_without_retrying_or_parsing_a_prefix() {
+        let client = MockHttpClient::new(vec![Ok(vec![b' '; MAX_RELEASE_METADATA_BYTES + 1])]);
+        let error = fetch_latest_tag(&client, None).unwrap_err();
+        assert!(format!("{error:#}").contains("1048576-byte limit"));
+        assert_eq!(client.request_urls().len(), 1);
+
+        let checksum_client = MockHttpClient::new(vec![Ok(vec![b' '; MAX_CHECKSUM_BYTES + 1])]);
+        let checksum_error =
+            verify_checksum(&checksum_client, "v1", "asset", b"bytes").unwrap_err();
+        assert!(format!("{checksum_error:#}").contains("65536-byte limit"));
+        assert_eq!(checksum_client.request_urls().len(), 1);
+    }
+
+    #[test]
+    fn a_partial_body_retry_restarts_the_file_and_hash() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct BrokenBody {
+            remaining: usize,
+        }
+        impl Read for BrokenBody {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                assert!(buffer.len() <= 65_536, "downloads must use bounded chunks");
+                if self.remaining == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionReset,
+                        "connection reset",
+                    ));
+                }
+                let count = self.remaining.min(buffer.len());
+                buffer.split_at_mut(count).0.fill(b'x');
+                self.remaining -= count;
+                Ok(count)
+            }
+        }
+        #[derive(Debug)]
+        struct PartialClient {
+            attempts: AtomicUsize,
+        }
+        impl HttpClient for PartialClient {
+            fn get(&self, _: &str, _: &[(&str, &str)]) -> Result<Box<dyn Read>> {
+                if self.attempts.fetch_add(1, Ordering::Relaxed) == 0 {
+                    Ok(Box::new(BrokenBody {
+                        remaining: 128 * 1024,
+                    }))
+                } else {
+                    Ok(Box::new(std::io::Cursor::new(b"complete")))
+                }
+            }
+        }
+        let client = PartialClient {
+            attempts: AtomicUsize::new(0),
+        };
+        assert_eq!(
+            download_bytes(&client, "https://example.invalid/asset").unwrap(),
+            b"complete"
+        );
+        assert_eq!(client.attempts.load(Ordering::Relaxed), 2);
+    }
 
     #[test]
     fn fetch_latest_tag_parses_github_response() {

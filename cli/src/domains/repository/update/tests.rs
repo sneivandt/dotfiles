@@ -686,45 +686,65 @@ fn dry_run_queries_remote_without_fetch_merge_or_restart() {
 }
 
 #[test]
-fn dry_run_falls_back_to_cached_upstream_and_plans_unknown_state() {
-    for (cached, changed) in [
-        (Ok(ExecResult::success("abc123\n")), false),
-        (Ok(ExecResult::success("def456\n")), true),
-        (Err(git_non_zero("no tracking branch")), true),
-    ] {
-        let root = tempfile::tempdir_in(".").unwrap();
-        let mut mock = MockExecutor::new();
-        let mut sequence = mockall::Sequence::new();
-        for (args, result) in [
-            (
-                vec!["symbolic-ref", "--quiet", "HEAD"],
-                Ok(ExecResult::success("refs/heads/main")),
-            ),
-            (
-                vec!["status", "--porcelain", "--untracked-files=no"],
-                Ok(ExecResult::success("")),
-            ),
-            (vec!["rev-parse", "HEAD"], Ok(ExecResult::success("abc123"))),
-            (
-                vec!["config", "--get", "branch.main.remote"],
-                Err(git_non_zero("no remote config")),
-            ),
-            (vec!["rev-parse", "@{u}"], cached),
-        ] {
-            expect_git(&mut mock, &mut sequence, root.path(), &args, result);
+fn dry_run_only_treats_documented_probe_exits_as_absence() {
+    for (probe, absent_code) in [(0, 1), (1, 1), (2, 2)] {
+        for code in [Some(1), Some(2), Some(3), Some(128), None] {
+            let root = tempfile::tempdir_in(".").unwrap();
+            let mut mock = MockExecutor::new();
+            let mut sequence = mockall::Sequence::new();
+            for (args, stdout) in [
+                (vec!["symbolic-ref", "--quiet", "HEAD"], "refs/heads/main"),
+                (vec!["status", "--porcelain", "--untracked-files=no"], ""),
+                (vec!["rev-parse", "HEAD"], "abc123"),
+            ] {
+                expect_git(
+                    &mut mock,
+                    &mut sequence,
+                    root.path(),
+                    &args,
+                    Ok(ExecResult::success(stdout)),
+                );
+            }
+            for (index, (args, stdout)) in [
+                (vec!["config", "--get", "branch.main.remote"], "origin"),
+                (
+                    vec!["config", "--get", "branch.main.merge"],
+                    "refs/heads/main",
+                ),
+                (
+                    vec!["ls-remote", "--exit-code", "origin", "refs/heads/main"],
+                    "abc123\trefs/heads/main",
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            .take(probe + 1)
+            {
+                let result = if index == probe {
+                    Err(ExecError::non_zero(
+                        "git",
+                        ExecResult::failure("", "fixture probe failure", code),
+                    ))
+                } else {
+                    Ok(ExecResult::success(stdout))
+                };
+                expect_git(&mut mock, &mut sequence, root.path(), &args, result);
+            }
+            let ctx = make_update_context(root.path().to_path_buf(), None, mock).with_dry_run(true);
+            let signal = UpdateSignal::new();
+            let result = UpdateRepository::new(signal.clone()).run(&ctx);
+            if code == Some(absent_code) {
+                let result = result.unwrap();
+                assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+            } else {
+                let error = result.expect_err("failed probes must not fall back to cached refs");
+                assert!(
+                    matches!(error.downcast_ref::<ExecError>(), Some(ExecError::NonZero { result: output, .. }) if output.code == code),
+                    "probe={probe}, code={code:?}: {error:#}"
+                );
+            }
+            assert!(!signal.was_updated(), "preview must not trigger a restart");
         }
-        let ctx = make_update_context(root.path().to_path_buf(), None, mock).with_dry_run(true);
-        let signal = UpdateSignal::new();
-        let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
-        if changed {
-            assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
-        } else {
-            crate::test_helpers::assert_task_ok(&result);
-        }
-        assert!(
-            !signal.was_updated(),
-            "cached preview must not trigger a restart"
-        );
     }
 }
 

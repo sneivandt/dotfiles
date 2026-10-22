@@ -217,6 +217,7 @@ pub(super) fn plan_repository_update(
         Err(
             e @ (ExecError::Cancelled { .. }
             | ExecError::TimedOut { .. }
+            | ExecError::OutputLimit { .. }
             | ExecError::Spawn { .. }
             | ExecError::Io { .. }),
         ) => return Err(e.into()),

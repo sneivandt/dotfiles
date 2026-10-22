@@ -9,8 +9,8 @@ use crate::domains::packages::resources::package::{
 };
 use crate::engine::Resource as _;
 use crate::engine::{
-    Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
-    task_metadata,
+    BatchCompletion, BatchReport, Context, Operation, OperationState, Task, TaskResult, TaskStats,
+    process_operation, task_metadata,
 };
 use crate::infra::exec::ExecError;
 use crate::infra::logging::OutputExt as _;
@@ -386,11 +386,20 @@ impl Operation for PackageInstallOperation {
             &progress,
         ) {
             Ok(report) => report,
-            Err(e) => {
+            Err(mut e) => {
+                if let Some(report) = e.downcast_mut::<BatchReport>() {
+                    report.merge_stats(&plan.base_stats());
+                    return Err(e);
+                }
                 if e.downcast_ref::<ExecError>()
                     .is_some_and(ExecError::is_cancelled)
                 {
-                    return Err(e);
+                    return Err(e.context(BatchReport::new(
+                        plan.base_stats(),
+                        BatchCompletion::Interrupted,
+                        u32::try_from(plan.missing.len()).unwrap_or(u32::MAX),
+                        0,
+                    )));
                 }
                 let reason = format!("{} install failed: {e:#}", self.manager);
                 ctx.log().warn(&reason);
@@ -411,14 +420,8 @@ impl Operation for PackageInstallOperation {
             ));
         }
 
-        let stats = TaskStats::from_counts(
-            u32::try_from(report.applied_count()).unwrap_or(u32::MAX),
-            plan.base_stats()
-                .already_ok_count()
-                .saturating_add(u32::try_from(report.already_correct_count()).unwrap_or(u32::MAX)),
-            0,
-            u32::try_from(report.failures().len()).unwrap_or(u32::MAX),
-        );
+        let mut stats = plan.base_stats();
+        stats.merge(&report.stats());
 
         if report.has_failures() {
             ctx.log().warn(format!(

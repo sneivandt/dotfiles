@@ -64,11 +64,10 @@ pub fn run() -> ExitCode {
 }
 
 fn update_command(opts: cli::UpdateCommandOpts) -> cli::EngineCommand {
-    let (global, opts, update_pins, verbose) = opts.into_engine_parts();
+    let (global, opts, verbose) = opts.into_engine_parts();
     cli::EngineCommand::Update {
         global,
         opts,
-        update_pins,
         verbose,
     }
 }
@@ -133,9 +132,9 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
     interrupt::install(&token, &log, runtime.execution.non_interactive);
 
     let result = match command {
-        cli::EngineCommand::Update {
-            opts, update_pins, ..
-        } => commands::update::run(&runtime, opts, *update_pins, &log, &token),
+        cli::EngineCommand::Update { opts, .. } => {
+            commands::update::run(&runtime, opts, &log, &token)
+        }
         cli::EngineCommand::Remove { opts, .. } => {
             commands::remove::run(&runtime, opts, &log, &token)
         }
@@ -243,9 +242,7 @@ mod tests {
 
     #[test]
     fn default_and_explicit_update_select_the_same_pipeline() {
-        for (args, expected_update) in
-            [(vec!["dotfiles"], true), (vec!["dotfiles", "update"], true)]
-        {
+        for args in [vec!["dotfiles"], vec!["dotfiles", "update"]] {
             let mut invocation = args.clone();
             invocation.extend([
                 "--only",
@@ -263,16 +260,9 @@ mod tests {
                 | cli::Command::Completions(_) => panic!("expected update"),
             };
             assert_eq!(command.name(), "update");
-            let cli::EngineCommand::Update {
-                global,
-                opts,
-                update_pins,
-                ..
-            } = command
-            else {
+            let cli::EngineCommand::Update { global, opts, .. } = command else {
                 panic!("expected shared update pipeline");
             };
-            assert_eq!(update_pins, expected_update, "{args:?}");
             assert!(global.dry_run, "{args:?}");
             assert!(global.no_repo_update, "{args:?}");
             assert_eq!(opts.filters.only, ["apm"], "{args:?}");

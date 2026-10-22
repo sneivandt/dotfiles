@@ -364,6 +364,13 @@ as a byte count unless a command requests full capture; `--raw` cannot recover
 uncaptured output. Sanitize paths, private configuration, and tool output
 before sharing logs.
 
+Subprocess capture is limited to 8 MiB of source bytes per stream. Excess output
+is drained but not retained, and the saved prefix is marked as truncated. A
+completed command that exceeds this limit fails, including commands whose
+nonzero exit codes are normally interpreted by the caller; partial output is
+never treated as a complete inventory. Timeouts and cancellation keep their
+original outcome with bounded diagnostics.
+
 History orders by recorded start time and links restarted/elevated children to
 their parent IDs. `unfinished` means no finish record exists: a run may still
 be active or may have terminated abruptly. Old logs without lifecycle records

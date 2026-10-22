@@ -80,7 +80,7 @@ impl RemovableResource for HookFileResource {
 
 impl IntrinsicState for HookFileResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        if let Some(reason) = crate::infra::fs::missing_source_reason(&self.source) {
+        if let Some(reason) = crate::infra::fs::missing_source_reason(&self.source)? {
             return Ok(ResourceState::Invalid { reason });
         }
 
@@ -145,6 +145,18 @@ mod tests {
             HookFileResource::new(dir.path().join("nonexistent"), dir.path().join("target"));
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Invalid { .. }));
+    }
+
+    #[test]
+    fn current_state_preserves_source_inspection_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let resource = HookFileResource::new(
+            dir.path().join("invalid\0source"),
+            dir.path().join("target"),
+        );
+        let error = resource.current_state().unwrap_err();
+        assert!(format!("{error:#}").contains("inspect source"));
+        assert!(!resource.target.exists());
     }
 
     #[test]

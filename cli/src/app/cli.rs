@@ -457,9 +457,8 @@ impl GlobalOpts {
 impl UpdateCommandOpts {
     /// Split parsed options into engine context, task filters, and output policy.
     #[must_use]
-    pub fn into_engine_parts(self) -> (GlobalOpts, UpdateOpts, bool, bool) {
+    pub fn into_engine_parts(self) -> (GlobalOpts, UpdateOpts, bool) {
         let verbose = self.execution.verbose;
-        let update_pins = true;
         let global = GlobalOpts {
             dry_run: self.dry_run,
             no_repo_update: self.no_repo_update,
@@ -467,7 +466,7 @@ impl UpdateCommandOpts {
             elevated_child: self.elevated_child,
             ..GlobalOpts::from_execution(self.repository, &self.execution)
         };
-        (global, self.tasks, update_pins, verbose)
+        (global, self.tasks, verbose)
     }
 }
 
@@ -505,8 +504,6 @@ pub enum EngineCommand {
         global: GlobalOpts,
         /// Task selectors.
         opts: UpdateOpts,
-        /// Whether pinned dependencies should advance.
-        update_pins: bool,
         /// Whether diagnostic output is enabled.
         verbose: bool,
     },
@@ -1311,8 +1308,7 @@ mod tests {
             }
             let (global, verbose) = match Cli::parse_from(args).command {
                 Command::Update(opts) => {
-                    let (global, _, update_pins, verbose) = opts.into_engine_parts();
-                    assert_eq!(update_pins, name == "update");
+                    let (global, _, verbose) = opts.into_engine_parts();
                     assert!(global.no_repo_update);
                     (global, verbose)
                 }

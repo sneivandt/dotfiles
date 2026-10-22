@@ -30,6 +30,24 @@ pub struct BatchReport {
 }
 
 impl BatchReport {
+    pub(crate) const fn new(
+        stats: TaskStats,
+        completion: BatchCompletion,
+        interrupted: u32,
+        not_attempted: u32,
+    ) -> Self {
+        Self {
+            stats,
+            completion,
+            interrupted,
+            not_attempted,
+        }
+    }
+
+    pub(crate) const fn merge_stats(&mut self, stats: &TaskStats) {
+        self.stats.merge(stats);
+    }
+
     /// Outcomes of resources that finished, including failures.
     #[must_use]
     pub const fn stats(&self) -> &TaskStats {

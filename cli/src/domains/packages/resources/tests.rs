@@ -413,7 +413,11 @@ fn failed_native_batch_reports_packages_that_were_actually_installed() {
 
             if installed.contains("second") {
                 let error = result.expect_err("a failed post-transaction hook must stay failed");
-                assert!(error.to_string().contains("fixture transaction failure"));
+                assert!(format!("{error:#}").contains("fixture transaction failure"));
+                let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+                assert_eq!(report.completion(), crate::engine::BatchCompletion::Failed);
+                assert_eq!(report.stats().changed_count(), 2);
+                assert_eq!(report.stats().failed_count(), 0);
             } else {
                 let report = result.unwrap();
                 let expected_applied = usize::from(!installed.is_empty());
@@ -592,6 +596,77 @@ fn install_report_counts_already_correct_packages_separately_from_applied() {
     assert_eq!(report.applied_count(), 0);
     assert_eq!(report.already_correct_count(), 1);
     assert!(!report.has_failures());
+}
+
+#[test]
+fn cancellation_retains_completed_packages_and_prior_failures() {
+    #[derive(Debug)]
+    struct CancellingProvider {
+        first: ResourceChange,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl PackageProvider for CancellingProvider {
+        fn name(&self) -> &'static str {
+            "cancelling"
+        }
+
+        fn query_installed(&self, _executor: &dyn Executor) -> Result<HashSet<String>> {
+            panic!("installation must not query this fixture")
+        }
+
+        fn install(&self, _name: &str, _executor: &dyn Executor) -> Result<ResourceChange> {
+            match self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => Ok(self.first.clone()),
+                1 => Err(ExecError::Cancelled {
+                    command: "package install".into(),
+                    result: ExecResult::failure("", "", None),
+                }
+                .into()),
+                _ => panic!("cancellation must stop dispatch"),
+            }
+        }
+    }
+
+    for (first, expected) in [
+        (ResourceChange::Applied, (1, 0, 0)),
+        (ResourceChange::AlreadyCorrect, (0, 1, 0)),
+        (ResourceChange::unusable("first failed"), (0, 0, 1)),
+    ] {
+        let provider = CancellingProvider {
+            first,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let executor: Arc<dyn Executor> = Arc::new(MockExecutor::new());
+        let resources = ["first", "second", "third"].map(|name| {
+            PackageResource::new(name.into(), PackageManager::Winget, Arc::clone(&executor))
+        });
+        let error = provider
+            .install_missing(&resources.iter().collect::<Vec<_>>(), &*executor, &|_| {})
+            .unwrap_err();
+        let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+        let stats = report.stats();
+        assert_eq!(
+            (
+                stats.changed_count(),
+                stats.already_ok_count(),
+                stats.failed_count()
+            ),
+            expected
+        );
+        assert_eq!(report.interrupted_count(), 1);
+        assert_eq!(report.not_attempted_count(), 1);
+        assert_eq!(
+            report.completion(),
+            if expected.2 == 0 {
+                crate::engine::BatchCompletion::Interrupted
+            } else {
+                assert!(format!("{error:#}").contains("first failed"));
+                crate::engine::BatchCompletion::Failed
+            }
+        );
+        assert!(error.downcast_ref::<ExecError>().unwrap().is_cancelled());
+    }
 }
 
 #[test]

@@ -127,7 +127,7 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         }
 
         let mut report = PackageInstallReport::new();
-        for resource in resources {
+        for (index, resource) in resources.iter().enumerate() {
             progress(&resource.name);
             match self.install(&resource.name, executor) {
                 Ok(ResourceChange::Applied) => {
@@ -153,7 +153,11 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
                         .downcast_ref::<ExecError>()
                         .is_some_and(ExecError::is_cancelled)
                     {
-                        return Err(err);
+                        return Err(report.stopped(
+                            err,
+                            1,
+                            resources.len().saturating_sub(index.saturating_add(1)),
+                        ));
                     }
                     report.record_failure(resource.name.clone(), err.to_string());
                 }
@@ -182,7 +186,7 @@ fn reconcile_failed_batch(
     if !report.has_failures() {
         // A post-transaction hook can fail after every requested package was
         // installed. Do not turn that failed transaction into a successful task.
-        return Err(error.into());
+        return Err(report.stopped(error.into(), 0, 0));
     }
     Ok(report)
 }

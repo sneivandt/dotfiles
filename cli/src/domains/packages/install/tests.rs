@@ -1118,63 +1118,83 @@ fn install_packages_returns_failed_when_batch_install_fails() {
 
 #[test]
 fn partial_package_batch_preserves_changed_and_already_installed_counts() {
-    let packages = ConfigHandle::new(
-        ["first", "second", "existing"]
-            .into_iter()
-            .map(|name| Package {
-                name: name.into(),
-                is_aur: false,
+    for all_installed in [false, true] {
+        let packages = ConfigHandle::new(
+            ["first", "second", "existing"]
+                .into_iter()
+                .map(|name| Package {
+                    name: name.into(),
+                    is_aur: false,
+                })
+                .collect(),
+        );
+        let mut mock = MockExecutor::new();
+        mock.expect_which().return_const(true);
+        let mut sequence = mockall::Sequence::new();
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(is_native_inventory)
+            .returning(|_| Ok(ExecResult::success("existing 1.0\n")));
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(|spec| {
+                spec.is_checked()
+                    && spec.arguments().ends_with(&[
+                        std::ffi::OsString::from("first"),
+                        std::ffi::OsString::from("second"),
+                    ])
             })
-            .collect(),
-    );
-    let mut mock = MockExecutor::new();
-    mock.expect_which().return_const(true);
-    let mut sequence = mockall::Sequence::new();
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut sequence)
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("existing 1.0\n")));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut sequence)
-        .withf(|spec| {
-            spec.is_checked()
-                && spec.arguments().ends_with(&[
-                    std::ffi::OsString::from("first"),
-                    std::ffi::OsString::from("second"),
-                ])
-        })
-        .returning(|_| {
-            Err(ExecError::non_zero(
-                "pacman",
-                ExecResult::failure("", "fixture second package failed", Some(1)),
-            ))
-        });
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut sequence)
-        .withf(is_native_inventory)
-        .returning(|_| Ok(ExecResult::success("existing 1.0\nfirst 1.0\n")));
-    let ctx = make_package_context(
-        PathBuf::from("fixture-repository"),
-        None,
-        Os::Linux,
-        true,
-        mock,
-    );
+            .returning(|_| {
+                Err(ExecError::non_zero(
+                    "pacman",
+                    ExecResult::failure("", "fixture second package failed", Some(1)),
+                ))
+            });
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .withf(is_native_inventory)
+            .returning(move |_| {
+                Ok(ExecResult::success(if all_installed {
+                    "existing 1.0\nfirst 1.0\nsecond 1.0\n"
+                } else {
+                    "existing 1.0\nfirst 1.0\n"
+                }))
+            });
+        let ctx = make_package_context(
+            PathBuf::from("fixture-repository"),
+            None,
+            Os::Linux,
+            true,
+            mock,
+        );
 
-    let result = InstallPackages::new(packages).run(&ctx).unwrap();
-    let stats = task_batch(&result);
+        let result = InstallPackages::new(packages).run(&ctx);
+        let stats = if all_installed {
+            let report = result
+                .as_ref()
+                .unwrap_err()
+                .downcast_ref::<BatchReport>()
+                .unwrap();
+            assert_eq!(report.completion(), BatchCompletion::Failed);
+            assert_eq!(report.interrupted_count(), 0);
+            assert_eq!(report.not_attempted_count(), 0);
+            report.stats()
+        } else {
+            task_batch(result.as_ref().unwrap())
+        };
 
-    assert_eq!(
-        (
-            stats.changed_count(),
-            stats.already_ok_count(),
-            stats.failed_count()
-        ),
-        (1, 1, 1)
-    );
+        assert_eq!(
+            (
+                stats.changed_count(),
+                stats.already_ok_count(),
+                stats.failed_count()
+            ),
+            if all_installed { (2, 1, 0) } else { (1, 1, 1) }
+        );
+    }
 }
 
 #[test]
@@ -1209,6 +1229,70 @@ fn install_packages_propagates_batch_cancellation() {
         err.downcast_ref::<ExecError>()
             .is_some_and(ExecError::is_cancelled)
     );
+}
+
+#[test]
+fn cancelled_winget_task_preserves_completed_and_initially_current_counts() {
+    let packages = packages(&[
+        ("First.App", false),
+        ("Second.App", false),
+        ("Third.App", false),
+        ("Existing.App", false),
+    ]);
+    let mut mock = MockExecutor::new();
+    mock.expect_which().return_const(true);
+    let mut sequence = mockall::Sequence::new();
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(|spec| spec.program() == "winget" && spec.arguments().first().is_some_and(|arg| arg == "list"))
+        .returning(|_| Ok(ExecResult::success(
+            "Name       Id             Version\n---------------------------------\nExisting   Existing.App   1.0\n",
+        )));
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(|spec| {
+            spec.program() == "winget"
+                && spec
+                    .arguments()
+                    .get(2)
+                    .is_some_and(|arg| arg == "First.App")
+        })
+        .returning(|_| Ok(ExecResult::success("installed")));
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut sequence)
+        .withf(|spec| {
+            spec.program() == "winget"
+                && spec
+                    .arguments()
+                    .get(2)
+                    .is_some_and(|arg| arg == "Second.App")
+        })
+        .returning(|_| {
+            Err(ExecError::Cancelled {
+                command: "winget install".into(),
+                result: ExecResult::failure("", "", None),
+            })
+        });
+    let ctx = make_package_context(
+        PathBuf::from("fixture-repository"),
+        None,
+        Os::Windows,
+        false,
+        mock,
+    );
+
+    let error = InstallPackages::new(packages).run(&ctx).unwrap_err();
+    let report = error.downcast_ref::<BatchReport>().unwrap();
+    assert_eq!(report.completion(), BatchCompletion::Interrupted);
+    assert_eq!(report.stats().changed_count(), 1);
+    assert_eq!(report.stats().already_ok_count(), 1);
+    assert_eq!(report.stats().failed_count(), 0);
+    assert_eq!(report.interrupted_count(), 1);
+    assert_eq!(report.not_attempted_count(), 1);
+    assert!(error.downcast_ref::<ExecError>().unwrap().is_cancelled());
 }
 
 #[test]

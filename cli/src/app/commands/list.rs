@@ -133,9 +133,6 @@ fn command_tasks(
                 &RepositoryUpdateSignal::new(),
                 mode,
             );
-            tasks.retain(|task| {
-                super::update::includes_task(task.as_ref(), command == TaskGraphCommand::Update)
-            });
             if let Some(root) = overlay {
                 tasks.extend(crate::domains::overlay::scripts::overlay_script_tasks(
                     store.scripts.get(),

@@ -875,6 +875,25 @@ mod symlink {
     }
 
     #[test]
+    fn symlink_resource_preserves_source_inspection_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        std::fs::write(&target, "keep existing content").unwrap();
+        let resource = SymlinkResource::new(
+            root.path().join("invalid\0source"),
+            target.clone(),
+            system_executor(),
+        );
+        let error = resource.current_state().unwrap_err();
+        assert!(format!("{error:#}").contains("inspect source"));
+        assert!(resource.apply().is_err());
+        assert_eq!(
+            std::fs::read_to_string(target).unwrap(),
+            "keep existing content"
+        );
+    }
+
+    #[test]
     fn symlink_resource_warns_before_replacing_regular_file() {
         let temp_dir = tempfile::tempdir().unwrap();
         let source = temp_dir.path().join("source");

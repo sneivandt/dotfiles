@@ -38,6 +38,9 @@ pub(super) fn log_command_error(
         ExecError::TimedOut { result, .. } => {
             log_result(label, result, policy, elapsed, "timed_out");
         }
+        ExecError::OutputLimit { result, .. } => {
+            log_result(label, result, policy, elapsed, "output_limit");
+        }
         ExecError::NonZero { result, .. } => log_result(label, result, policy, elapsed, "failed"),
         ExecError::Spawn { .. } | ExecError::Io { .. } => {
             trace_record(Record::Command {

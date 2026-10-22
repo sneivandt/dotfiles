@@ -19,6 +19,7 @@ fn optional_git_output(ctx: &Context, root: &Path, args: &[&str]) -> Result<Opti
         Err(
             error @ (ExecError::Cancelled { .. }
             | ExecError::TimedOut { .. }
+            | ExecError::OutputLimit { .. }
             | ExecError::Spawn { .. }
             | ExecError::Io { .. }),
         ) => Err(error.into()),

@@ -412,6 +412,206 @@ fn reader_failure_returns_typed_io_error() {
 }
 
 #[test]
+fn output_reader_caps_retention_and_drains_the_entire_stream() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct CountedReader {
+        remaining: usize,
+        read: Arc<AtomicUsize>,
+    }
+
+    impl Read for CountedReader {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let count = buffer.len().min(self.remaining);
+            buffer.split_at_mut(count).0.fill(b'x');
+            self.remaining -= count;
+            self.read.fetch_add(count, Ordering::Relaxed);
+            Ok(count)
+        }
+    }
+
+    for length in [
+        0,
+        MAX_CAPTURE_BYTES - 1,
+        MAX_CAPTURE_BYTES,
+        MAX_CAPTURE_BYTES + 1,
+        MAX_CAPTURE_BYTES * 2,
+    ] {
+        let read = Arc::new(AtomicUsize::new(0));
+        let (done, closed) = channel();
+        let reader = spawn_reader(
+            CountedReader {
+                remaining: length,
+                read: Arc::clone(&read),
+            },
+            done,
+        );
+        let bytes = reader.join().unwrap().unwrap();
+        assert_eq!(bytes.len(), length.min(MAX_CAPTURE_BYTES + 1), "{length}");
+        assert_eq!(
+            read.load(Ordering::Relaxed),
+            length,
+            "must drain {length} bytes"
+        );
+        assert_eq!(
+            closed.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        );
+        let text = decode_captured_output(bytes);
+        assert_eq!(
+            text.contains("[output truncated:"),
+            length > MAX_CAPTURE_BYTES,
+            "{length}"
+        );
+    }
+}
+
+#[test]
+fn output_decoding_reuses_valid_utf8_and_replaces_invalid_bytes() {
+    let bytes = b"valid UTF-8 \xc3\xa9".to_vec();
+    let original = bytes.as_ptr();
+    let text = decode_output(bytes);
+    assert_eq!(text, "valid UTF-8 \u{e9}");
+    assert_eq!(text.as_ptr(), original, "valid buffers must not be copied");
+    assert_eq!(decode_output(vec![b'a', 0xff, b'b']), "a\u{fffd}b");
+}
+
+#[test]
+#[ignore = "subprocess fixture launched by output capture tests"]
+fn output_capture_child() {
+    use std::io::Write as _;
+    let stream = std::env::var("DOTFILES_EXEC_CAPTURE_STREAM").unwrap();
+    let bytes = vec![b'x'; MAX_CAPTURE_BYTES + 1];
+    match stream.as_str() {
+        "stdout" => io::stdout().lock().write_all(&bytes).unwrap(),
+        "stderr" => io::stderr().lock().write_all(&bytes).unwrap(),
+        "both" => {
+            io::stdout().lock().write_all(&bytes).unwrap();
+            io::stderr().lock().write_all(&bytes).unwrap();
+        }
+        _ => panic!("unknown stream fixture"),
+    }
+}
+
+#[test]
+fn overflowing_output_is_an_error_even_for_unchecked_commands() {
+    for (stream, checked, policy) in [
+        ("stdout", true, OutputLog::Diagnostics),
+        ("stderr", false, OutputLog::Full),
+        ("both", false, OutputLog::Omit),
+    ] {
+        let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
+        let spec = CommandSpec::new(std::env::current_exe().unwrap())
+            .args(&[
+                "--ignored",
+                "--exact",
+                "infra::exec::tests::output_capture_child",
+                "--nocapture",
+            ])
+            .env("DOTFILES_EXEC_CAPTURE_STREAM", stream)
+            .output_log(policy);
+        let error = ProcessExecutor::system()
+            .execute(if checked { spec } else { spec.unchecked() })
+            .unwrap_err();
+        assert!(error.concise_message().contains("capture limit"));
+        assert!(error.io_error().is_none());
+        let ExecError::OutputLimit {
+            result,
+            limit,
+            stream: exceeded,
+            ..
+        } = error
+        else {
+            panic!("overflow must produce a typed capture error")
+        };
+        assert_eq!(limit, MAX_CAPTURE_BYTES);
+        assert_eq!(exceeded, if stream == "both" { "stdout" } else { stream });
+        assert_eq!(
+            result.code,
+            Some(0),
+            "the child must drain and exit normally"
+        );
+        if policy == OutputLog::Omit {
+            assert_eq!(result.stdout, "[output omitted]");
+            assert_eq!(result.stderr, "[output omitted]");
+        } else {
+            let text = if exceeded == "stdout" {
+                &result.stdout
+            } else {
+                &result.stderr
+            };
+            assert!(text.ends_with("[output truncated: capture limit exceeded]"));
+            assert!(text.len() < MAX_CAPTURE_BYTES + 100);
+        }
+        let retained = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert!(retained.contains("\"outcome\":\"output_limit\""));
+        if policy == OutputLog::Omit {
+            assert!(!retained.contains(&"x".repeat(100)));
+        }
+    }
+}
+
+#[test]
+fn terminated_capture_keeps_bounded_diagnostics_without_reclassifying_interruption() {
+    let stdout = std::thread::spawn(|| Ok(vec![b'x'; MAX_CAPTURE_BYTES + 1]));
+    let stderr = std::thread::spawn(|| Ok(Vec::new()));
+    let result = collect_result(None, stdout, stderr, "terminated").unwrap();
+    assert!(!result.success);
+    assert_eq!(result.code, None);
+    assert!(
+        result
+            .stdout
+            .ends_with("[output truncated: capture limit exceeded]")
+    );
+    assert!(result.stdout.len() < MAX_CAPTURE_BYTES + 100);
+}
+
+#[test]
+fn completed_capture_accepts_the_exact_limit_and_rejects_one_extra_byte() {
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt as _;
+    #[cfg(windows)]
+    use std::os::windows::process::ExitStatusExt as _;
+
+    for stream in ["stdout", "stderr"] {
+        for length in [MAX_CAPTURE_BYTES, MAX_CAPTURE_BYTES + 1] {
+            let stdout = std::thread::spawn(move || {
+                Ok(if stream == "stdout" {
+                    vec![b'x'; length]
+                } else {
+                    Vec::new()
+                })
+            });
+            let stderr = std::thread::spawn(move || {
+                Ok(if stream == "stderr" {
+                    vec![b'x'; length]
+                } else {
+                    Vec::new()
+                })
+            });
+            let result = collect_result(
+                Some(std::process::ExitStatus::from_raw(0)),
+                stdout,
+                stderr,
+                "boundary",
+            );
+            if length == MAX_CAPTURE_BYTES {
+                let result = result.unwrap();
+                assert!(result.success);
+                assert_eq!(result.stdout.len() + result.stderr.len(), MAX_CAPTURE_BYTES);
+            } else {
+                assert!(
+                    matches!(result, Err(ExecError::OutputLimit { stream: exceeded, .. }) if exceeded == stream)
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn output_retention_records_streams_and_preserves_multiline_boundaries() {
     use crate::infra::logging::records::{Record, StoredRecord};
     for (policy, success, keep_stdout, keep_stderr) in [

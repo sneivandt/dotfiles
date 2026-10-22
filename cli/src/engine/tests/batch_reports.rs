@@ -270,6 +270,41 @@ fn stopped_preview_records_plans_without_applied_changes() {
 }
 
 #[test]
+fn terminal_failure_preserves_successful_items_without_inventing_failed_items() {
+    struct HookFailure;
+    impl Task for HookFailure {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("post-install hook")
+        }
+
+        fn run(&self, _ctx: &Context) -> anyhow::Result<TaskResult> {
+            Err(anyhow::Error::from(ExecError::non_zero(
+                "package install",
+                ExecResult::failure("", "post-install hook failed", Some(1)),
+            ))
+            .context(BatchReport::new(
+                crate::engine::TaskStats::from_counts(2, 1, 0, 0),
+                BatchCompletion::Failed,
+                0,
+                0,
+            )))
+        }
+    }
+
+    let (ctx, log) = test_context("/fixture".into(), None);
+    assert_eq!(
+        crate::engine::execute(&HookFailure, &ctx),
+        TaskStatus::Failed
+    );
+    let entry = log.task_entries().pop().unwrap();
+    assert_eq!(entry.actions.applied, 2);
+    assert_eq!(entry.actions.failed, 0);
+    let message = entry.message.unwrap();
+    assert!(message.contains("1 already ok"));
+    assert!(message.contains("post-install hook failed"));
+}
+
+#[test]
 fn lenient_failure_is_retained_when_later_work_is_interrupted() {
     for behavior in [Behavior::Interrupt, Behavior::CancelAfterApply] {
         let (ctx, log) = test_context("/fixture".into(), None);

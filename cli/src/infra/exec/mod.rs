@@ -33,6 +33,7 @@ const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_mins(30);
 const TOOL_TIMEOUT: Duration = Duration::from_mins(2);
 const SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+const MAX_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
 
 /// Create a new [`Command`] with platform-appropriate defaults.
 fn new_command<S: AsRef<OsStr>>(program: S) -> Command {
@@ -92,12 +93,17 @@ impl ExecResult {
 impl From<Output> for ExecResult {
     fn from(output: Output) -> Self {
         Self {
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            stdout: decode_output(output.stdout),
+            stderr: decode_output(output.stderr),
             success: output.status.success(),
             code: output.status.code(),
         }
     }
+}
+
+fn decode_output(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes)
+        .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned())
 }
 
 /// A typed request describing one child-process invocation.
@@ -371,6 +377,21 @@ pub enum ExecError {
         /// Output captured before termination.
         result: ExecResult,
     },
+    /// A captured stream exceeded the bounded output budget.
+    #[error(
+        "{command} exceeded the {limit}-byte capture limit on {stream}: {}",
+        failure_output(.result)
+    )]
+    OutputLimit {
+        /// Rendered command label.
+        command: String,
+        /// Stream whose overflow is reported.
+        stream: &'static str,
+        /// Maximum retained bytes per stream before the truncation marker.
+        limit: usize,
+        /// Bounded diagnostic output, never returned as a successful result.
+        result: ExecResult,
+    },
     /// The operating system could not spawn the command.
     #[error("failed to execute {command}: {source}")]
     Spawn {
@@ -422,6 +443,14 @@ impl ExecError {
                 result,
             } => (format!("{command} timed out after {timeout:?}"), result),
             Self::Cancelled { command, result } => (format!("{command} interrupted"), result),
+            Self::OutputLimit {
+                command,
+                stream,
+                limit,
+                ..
+            } => {
+                return format!("{command} exceeded the {limit}-byte capture limit on {stream}");
+            }
             Self::Spawn { .. } | Self::Io { .. } => return self.to_string(),
         };
         match failure_summary(result) {
@@ -434,6 +463,7 @@ impl ExecError {
         match self {
             Self::Cancelled { result, .. }
             | Self::TimedOut { result, .. }
+            | Self::OutputLimit { result, .. }
             | Self::NonZero { result, .. } => {
                 result.stdout = "[output omitted]".into();
                 result.stderr = "[output omitted]".into();
@@ -467,6 +497,7 @@ impl ExecError {
         match self {
             Self::Cancelled { command, .. }
             | Self::TimedOut { command, .. }
+            | Self::OutputLimit { command, .. }
             | Self::Spawn { command, .. }
             | Self::Io { command, .. }
             | Self::NonZero { command, .. } => command,
@@ -485,7 +516,10 @@ impl ExecError {
     pub const fn io_error(&self) -> Option<&io::Error> {
         match self {
             Self::Spawn { source, .. } | Self::Io { source, .. } => Some(source),
-            Self::Cancelled { .. } | Self::TimedOut { .. } | Self::NonZero { .. } => None,
+            Self::Cancelled { .. }
+            | Self::TimedOut { .. }
+            | Self::OutputLimit { .. }
+            | Self::NonZero { .. } => None,
         }
     }
 }
@@ -705,7 +739,16 @@ fn spawn_reader<R: Read + Send + 'static>(
     std::thread::spawn(move || {
         let _done = done;
         let mut output = Vec::new();
-        stream.read_to_end(&mut output)?;
+        stream
+            .by_ref()
+            .take(
+                u64::try_from(MAX_CAPTURE_BYTES)
+                    .unwrap_or(u64::MAX)
+                    .saturating_add(1),
+            )
+            .read_to_end(&mut output)?;
+        // Keep draining after overflow so a full pipe cannot block the child.
+        io::copy(&mut stream, &mut io::sink())?;
         Ok(output)
     })
 }
@@ -716,16 +759,46 @@ fn collect_result(
     stderr_reader: JoinHandle<io::Result<Vec<u8>>>,
     label: &str,
 ) -> std::result::Result<ExecResult, ExecError> {
-    let stdout = join_reader(stdout_reader, "reading stdout", label)?;
-    let stderr = join_reader(stderr_reader, "reading stderr", label)?;
+    let stdout = join_reader(stdout_reader, "reading stdout", label);
+    let stderr = join_reader(stderr_reader, "reading stderr", label);
+    let stdout = stdout?;
+    let stderr = stderr?;
+    let exceeded = if stdout.len() > MAX_CAPTURE_BYTES {
+        Some("stdout")
+    } else if stderr.len() > MAX_CAPTURE_BYTES {
+        Some("stderr")
+    } else {
+        None
+    };
     let success = status.is_some_and(|exit_status| exit_status.success());
     let code = status.and_then(|exit_status| exit_status.code());
-    Ok(ExecResult {
-        stdout: String::from_utf8_lossy(&stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+    let result = ExecResult {
+        stdout: decode_captured_output(stdout),
+        stderr: decode_captured_output(stderr),
         success,
         code,
-    })
+    };
+    // Termination keeps its cancellation/timeout classification, with the same
+    // bounded diagnostics. Completed commands must never expose partial data.
+    if let Some(stream) = exceeded.filter(|_| status.is_some()) {
+        return Err(ExecError::OutputLimit {
+            command: label.to_string(),
+            stream,
+            limit: MAX_CAPTURE_BYTES,
+            result,
+        });
+    }
+    Ok(result)
+}
+
+fn decode_captured_output(mut bytes: Vec<u8>) -> String {
+    let exceeded = bytes.len() > MAX_CAPTURE_BYTES;
+    bytes.truncate(MAX_CAPTURE_BYTES);
+    let mut text = decode_output(bytes);
+    if exceeded {
+        text.push_str("\n[output truncated: capture limit exceeded]");
+    }
+    text
 }
 
 fn join_reader(

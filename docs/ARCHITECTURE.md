@@ -270,8 +270,10 @@ See [Security](SECURITY.md#elevation) for prompt and privilege limitations.
 
 Use checked [`CommandSpec`](../cli/src/infra/exec/mod.rs) requests unless a
 nonzero exit has a specific domain meaning that the caller handles.
-Typed errors preserve spawn, I/O, nonzero-exit, timeout and cancellation causes
+Typed errors preserve spawn, I/O, capture-limit, nonzero-exit, timeout and cancellation causes
 through resource/task boundaries.
+Required-source inspection distinguishes absence from filesystem errors; an
+unreadable source is not reported as missing.
 
 The shared [`write_atomic`](../cli/src/infra/fs/place.rs) helper stages content
 with owner-only access on Unix. Replacing a regular file preserves its access
@@ -283,10 +285,20 @@ Unix process groups and Windows job objects allow cleanup of descendants that
 retain output pipes after the leader exits; Windows assignment occurs before
 execution. This prevents indefinite capture waits, not arbitrary-code execution.
 
+Each subprocess stream retains at most an 8 MiB source-byte prefix plus a truncation marker.
+Readers continue draining excess bytes to avoid pipe deadlocks. Exceeding the
+limit fails even an unchecked command with a typed capture-limit error, so
+callers cannot parse truncated output as a complete inventory. Timeout and
+cancellation retain their own classification and bounded diagnostics.
+
 [`TaskResult`/statistics](../cli/src/engine/stats.rs) feed structured dependency
 outcomes and logging records. The scheduler's `ExecutionSummary`, **not logger
 counters**, decides completion. Interruption exits 130; genuine failure takes
 precedence and exits 1. Neither implies rollback.
+Package operations attach partial batch reports on interruption and on failed
+post-install hooks: completed installs and already-current items remain counted,
+while interrupted and undispatched items stay distinct. An earlier package
+failure takes precedence over later cancellation.
 
 [`infra/logging/`](../cli/src/infra/logging) separates presentation from retained
 records. Normal output shows changed work and attention-worthy outcomes;

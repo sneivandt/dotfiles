@@ -52,9 +52,15 @@ pub fn symlink_metadata_optional(path: &Path, action: &str) -> Result<Option<std
 }
 
 /// Return a standard validation message when a required source path is missing.
-#[must_use]
-pub fn missing_source_reason(path: &Path) -> Option<String> {
-    (!path.exists()).then(|| format!("source does not exist: {}", path.display()))
+///
+/// # Errors
+///
+/// Returns an error when source inspection fails for a reason other than absence.
+pub fn missing_source_reason(path: &Path) -> Result<Option<String>> {
+    let exists = path
+        .try_exists()
+        .with_context(|| format!("inspect source: {}", path.display()))?;
+    Ok((!exists).then(|| format!("source does not exist: {}", path.display())))
 }
 
 /// Read a file as bytes with consistent path context.

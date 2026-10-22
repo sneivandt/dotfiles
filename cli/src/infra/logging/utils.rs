@@ -33,22 +33,31 @@ pub(super) fn duplicates_task_message(line: &str, task_message: Option<&str>) ->
 
 /// Strip ANSI escape sequences from a string.
 ///
-/// Handles SGR sequences (ending in `m`) and other CSI sequences (ending
-/// in any letter in the `@`..`~` range), so cursor movement, erase, etc.
-/// are also stripped without consuming unrelated text.
+/// Handles CSI sequences, OSC strings terminated by BEL or ST, and
+/// single-character escape sequences without consuming visible text.
 pub(super) fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            if let Some(next) = chars.next()
-                && next == '['
-            {
-                for inner in chars.by_ref() {
-                    if ('@'..='~').contains(&inner) {
-                        break;
+            match chars.next() {
+                Some('[') => {
+                    for inner in chars.by_ref() {
+                        if ('@'..='~').contains(&inner) {
+                            break;
+                        }
                     }
                 }
+                Some(']') => {
+                    let mut escaped = false;
+                    for inner in chars.by_ref() {
+                        if inner == '\x07' || (escaped && inner == '\\') {
+                            break;
+                        }
+                        escaped = inner == '\x1b';
+                    }
+                }
+                Some(_) | None => {}
             }
         } else {
             out.push(c);
@@ -227,6 +236,40 @@ mod tests {
     #[test]
     fn strip_ansi_empty_string() {
         assert_eq!(strip_ansi(""), "");
+    }
+
+    #[test]
+    fn strip_ansi_removes_osc_strings_and_preserves_visible_text() {
+        for (name, input, expected) in [
+            (
+                "BEL hyperlink",
+                "\x1b]8;;https://example.invalid\x07label\x1b]8;;\x07",
+                "label",
+            ),
+            (
+                "ST hyperlink",
+                "\x1b]8;;https://example.invalid\x1b\\label\x1b]8;;\x1b\\",
+                "label",
+            ),
+            ("title", "before\x1b]0;window title\x07after", "beforeafter"),
+            (
+                "mixed",
+                "\x1b[31m\x1b]8;;url\x07label\x1b]8;;\x1b\\\x1b[0m",
+                "label",
+            ),
+            (
+                "unicode",
+                "\x1b]8;;url\x07\u{65e5}\u{672c}\x1b]8;;\x07",
+                "\u{65e5}\u{672c}",
+            ),
+            ("incomplete escape", "label\x1b", "label"),
+            ("incomplete CSI", "label\x1b[31", "label"),
+            ("incomplete OSC", "label\x1b]8;;url", "label"),
+            ("incomplete ST", "label\x1b]8;;url\x1b", "label"),
+            ("empty OSC", "before\x1b]\x07after", "beforeafter"),
+        ] {
+            assert_eq!(strip_ansi(input), expected, "{name}");
+        }
     }
 
     #[test]

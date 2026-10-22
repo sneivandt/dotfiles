@@ -23,7 +23,7 @@ pub(super) fn current_state(resource: &SymlinkResource) -> ResourceResult<Resour
         });
     }
 
-    if let Some(reason) = crate::infra::fs::missing_source_reason(&resource.source) {
+    if let Some(reason) = crate::infra::fs::missing_source_reason(&resource.source)? {
         return Ok(ResourceState::Invalid { reason });
     }
 

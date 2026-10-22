@@ -11,15 +11,10 @@ use crate::engine::{Task, TaskId};
 use crate::infra::logging::Logger;
 use crate::infra::logging::OutputExt as _;
 
-/// The same update-only membership rule applies to execution and discovery.
-pub(super) fn includes_task(task: &dyn Task, update_pins: bool) -> bool {
-    update_pins || !task.update_only()
-}
-
 /// Run the update command.
 ///
-/// Converges the system to the declared state and optionally advances locked
-/// dependency versions when `update_pins` is set.
+/// Converges the system to the declared state and advances eligible locked
+/// dependency versions.
 ///
 /// # Errors
 ///
@@ -27,7 +22,6 @@ pub(super) fn includes_task(task: &dyn Task, update_pins: bool) -> bool {
 pub fn run(
     runtime: &RuntimePolicy<'_>,
     opts: &UpdateOpts,
-    update_pins: bool,
     log: &Arc<Logger>,
     token: &crate::engine::CancellationToken,
 ) -> Result<()> {
@@ -37,20 +31,11 @@ pub fn run(
         opts.with_deps,
         runtime.global.no_repo_update,
     );
-    let apm_mode = if update_pins {
-        ApmPackageMode::UpdatePins
-    } else {
-        ApmPackageMode::Install
-    };
     let run_lock = super::prepare_self_update(runtime, log)?;
     let runner = super::CommandRunner::new_with_lock(runtime, log, token, run_lock)?;
 
     let repository_update = RepositoryUpdateSignal::new();
-    let mut all_tasks = runner.update_tasks_for_run(&repository_update, apm_mode);
-
-    // Version-advancing tasks are included in every update run. Filter
-    // membership before user filters so warnings reflect eligible tasks.
-    all_tasks.retain(|task| includes_task(task.as_ref(), update_pins));
+    let mut all_tasks = runner.update_tasks_for_run(&repository_update, ApmPackageMode::UpdatePins);
     let repository_task = TaskId::Type(std::any::TypeId::of::<UpdateRepository>());
     let mut effective_skip = opts.filters.skip.clone();
     if runtime.global.no_repo_update {
@@ -104,26 +89,6 @@ fn reject_disabled_repository_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::TaskMeta;
-
-    #[test]
-    fn update_mode_excludes_update_only_tasks() {
-        #[derive(Debug)]
-        struct UpdateOnly;
-        impl Task for UpdateOnly {
-            fn meta(&self) -> TaskMeta<'_> {
-                TaskMeta::new("update only").with_update_only(true)
-            }
-
-            fn run(&self, _ctx: &crate::engine::Context) -> Result<crate::engine::TaskResult> {
-                Ok(crate::engine::TaskResult::Ok)
-            }
-        }
-
-        assert!(!includes_task(&UpdateOnly, false));
-        assert!(includes_task(&UpdateOnly, true));
-    }
-
     #[test]
     fn no_repository_update_rejects_selecting_the_repository_task() {
         let repository = UpdateRepository::new(RepositoryUpdateSignal::new());

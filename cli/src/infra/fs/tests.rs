@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn source_inspection_distinguishes_missing_existing_and_unreadable_paths() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    assert_eq!(
+        missing_source_reason(&source).unwrap(),
+        Some(format!("source does not exist: {}", source.display()))
+    );
+    std::fs::write(&source, "content").unwrap();
+    assert_eq!(missing_source_reason(&source).unwrap(), None);
+    assert_eq!(missing_source_reason(root.path()).unwrap(), None);
+
+    let invalid = root.path().join("invalid\0source");
+    let error = missing_source_reason(&invalid).unwrap_err();
+    assert!(error.downcast_ref::<std::io::Error>().is_some());
+    assert_eq!(
+        error.to_string(),
+        format!("inspect source: {}", invalid.display())
+    );
+}
+
+#[test]
 fn copies_files_and_subdirectories() {
     let src = tempfile::tempdir().unwrap();
     let dst = tempfile::tempdir().unwrap();

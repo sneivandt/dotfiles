@@ -189,11 +189,14 @@ _verify_attestation() {
     return 0
   fi
 
-  if gh attestation verify "$_va_binary" --repo "$REPO" >/dev/null 2>&1; then
+  # GH_PROMPT_DISABLED does not suppress the Linux keyring's GUI prompts.
+  if GH_PROMPT_DISABLED=1 DBUS_SESSION_BUS_ADDRESS=disabled: \
+    gh attestation verify "$_va_binary" --repo "$REPO" >/dev/null 2>&1; then
     return 0
   fi
 
   echo "ERROR: Build provenance verification failed for $_va_binary." >&2
+  echo "Check GitHub access and GH_TOKEN/GITHUB_TOKEN; automatic verification disables desktop keyring access to prevent hidden credential prompts." >&2
   return 1
 }
 

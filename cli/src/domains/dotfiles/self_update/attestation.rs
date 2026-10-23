@@ -16,6 +16,7 @@ use std::path::Path;
 use anyhow::{Result, bail};
 
 use super::REPO;
+use crate::infra::exec::{Executor, ProcessExecutor};
 
 /// Number of verification attempts before an unverifiable asset is rejected.
 const MAX_VERIFY_ATTEMPTS: u32 = 3;
@@ -77,13 +78,18 @@ impl GhCli for SystemGh {
     }
 
     fn verify(&self, path: &Path, repo: &str) -> Result<Verification> {
-        let path_arg = path.display().to_string();
-        let result = crate::infra::exec::run_tool_unchecked(
-            "gh",
-            &["attestation", "verify", &path_arg, "--repo", repo],
-        )?;
-        Ok(classify_result(&result))
+        verify_with_executor(&ProcessExecutor::system(), path, repo)
     }
+}
+
+fn verify_with_executor(executor: &dyn Executor, path: &Path, repo: &str) -> Result<Verification> {
+    let request = super::unattended_gh()
+        .args(&["attestation", "verify"])
+        .arg(path)
+        .args(&["--repo", repo])
+        .unchecked()
+        .timeout(std::time::Duration::from_mins(2));
+    Ok(classify_result(&executor.execute(request)?))
 }
 
 fn classify_result(result: &crate::infra::exec::ExecResult) -> Verification {
@@ -188,7 +194,8 @@ pub(super) fn verify_provenance(
         }
         Verification::AuthenticationRequired => unverified(
             asset,
-            "gh authentication required; run `gh auth login` or set GH_TOKEN/GITHUB_TOKEN and re-run",
+            "gh authentication required; set GH_TOKEN/GITHUB_TOKEN in the invoking shell and re-run; \
+             automatic updates disable desktop keyring access to prevent hidden credential prompts",
         ),
         Verification::Unverified(reason) => unverified(
             asset,
@@ -320,13 +327,42 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(
-            error.contains("run `gh auth login`"),
+            error.contains("set GH_TOKEN/GITHUB_TOKEN")
+                && error.contains("disable desktop keyring access"),
             "unexpected error: {error}"
         );
         assert_eq!(
             gh.attempts.load(Ordering::SeqCst),
             1,
             "authentication failures must not retry"
+        );
+    }
+
+    #[test]
+    fn verification_disables_prompts_and_keeps_the_repository_constraint() {
+        use crate::infra::exec::{CommandSpec, ExecResult, MockExecutor};
+
+        let path = Path::new("staged download");
+        let mut executor = MockExecutor::new();
+        executor
+            .expect_execute()
+            .withf(move |request| {
+                *request
+                    == CommandSpec::new("gh")
+                        .env("GH_PROMPT_DISABLED", "1")
+                        .env("DBUS_SESSION_BUS_ADDRESS", "disabled:")
+                        .args(&["attestation", "verify"])
+                        .arg(path)
+                        .args(&["--repo", REPO])
+                        .unchecked()
+                        .timeout(std::time::Duration::from_mins(2))
+            })
+            .once()
+            .returning(|_| Ok(ExecResult::failure("", "authentication required", Some(4))));
+
+        assert_eq!(
+            verify_with_executor(&executor, path, REPO).unwrap(),
+            Verification::AuthenticationRequired
         );
     }
 

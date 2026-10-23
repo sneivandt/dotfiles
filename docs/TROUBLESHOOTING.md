@@ -103,15 +103,36 @@ Before replacing a binary, distinguish expected behavior from a failed update:
   for API rate limits, DNS, or proxy failures.
 
 For repeated anonymous release-check rate limits, run `gh auth login --hostname
-github.com` once. The updater automatically reuses that login when neither
-`GH_TOKEN` nor `GITHUB_TOKEN` is set to a non-empty value. Explicit tokens take
-precedence; an expired or denied token can still cause an anonymous fallback.
+github.com` once. The updater reuses saved credentials that do not require
+Linux desktop-keyring access when neither `GH_TOKEN` nor `GITHUB_TOKEN` is set
+to a non-empty value. For keyring-only credentials, supply an environment token.
+Explicit tokens take precedence; an expired or denied token can still cause
+an anonymous fallback.
 
 If an old binary predates support for the current release-tag format, its
 updater may never recognize a new release. After confirming the executable path
 and saving any needed binary, move only that checkout's `bin/dotfiles` or
 `bin\dotfiles.exe` aside and invoke its wrapper to bootstrap again. Do not
 remove unrelated files or bypass verification.
+
+### Update waits with a hidden WSL popup
+
+`Updating to ...` includes `gh attestation verify`, not just the download.
+On Linux/WSL, GitHub CLI can start a GNOME Keyring dialog while retrieving
+credentials, even with terminal input disabled. A hidden dialog can make the
+update appear stuck until verification times out.
+
+Automatic release checks and provenance verification disable terminal prompts
+and Linux desktop-keyring access in their `gh` subprocesses only. Environment
+tokens and non-keyring saved credentials remain usable; normal `gh` commands
+and system keyring settings are unchanged. If verification reports missing
+authentication, provide `GH_TOKEN` or `GITHUB_TOKEN` in the invoking shell.
+Do not paste tokens into logs or disable provenance verification.
+
+For an older installed binary, `DOTFILES_SKIP_SELF_UPDATE=1` bypasses that
+binary's self-update preflight without accepting an unverified download.
+It does not disable other update work. A source build can pick up the fix
+without invoking the old updater.
 
 ## Cargo build fails
 

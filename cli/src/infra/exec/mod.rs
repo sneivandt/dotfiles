@@ -30,7 +30,6 @@ use process::child_exited_without_reaping;
 use process::{Child, terminate_child, wait_after_terminate};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_mins(30);
-const TOOL_TIMEOUT: Duration = Duration::from_mins(2);
 const SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const MAX_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
@@ -912,22 +911,6 @@ pub(crate) fn run_path_smoke_test(
     execute_spec(
         CommandSpec::new(path.as_os_str()).args(args).unchecked(),
         &CommandSettings::timeout(SMOKE_TEST_TIMEOUT),
-    )
-}
-
-/// Run an auxiliary tool with the tool timeout, allowing a non-zero exit.
-///
-/// # Errors
-///
-/// Returns a typed process error. Non-zero exit statuses are returned to the
-/// caller for interpretation.
-pub(crate) fn run_tool_unchecked(
-    program: &str,
-    args: &[&str],
-) -> std::result::Result<ExecResult, ExecError> {
-    execute_spec(
-        CommandSpec::new(program).args(args).unchecked(),
-        &CommandSettings::timeout(TOOL_TIMEOUT),
     )
 }
 

@@ -417,7 +417,8 @@ function Test-IsolatedWrapperPath {
     $originalLocation = Get-Location
     $savedEnvironment = @{}
     foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION', 'DOTFILES_REEXEC_GUARD',
-            'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM')) {
+            'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM', 'WRAPPER_TEST_GH_EXIT',
+            'GH_PROMPT_DISABLED', 'DBUS_SESSION_BUS_ADDRESS')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
     try {
@@ -451,7 +452,10 @@ function Test-IsolatedWrapperPath {
             $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_BUILD_EXIT
         }
         Set-Item Function:gh -Value {
-            $global:LASTEXITCODE = 0
+            if ($env:GH_PROMPT_DISABLED -cne '1' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'disabled:') {
+                throw 'Verification allowed terminal or desktop keyring prompts'
+            }
+            $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_GH_EXIT
         }
         Set-Item Function:Invoke-WebRequest -Value {
             param([string]$Uri, [string]$OutFile)
@@ -474,6 +478,9 @@ function Test-IsolatedWrapperPath {
         $env:DOTFILES_REEXEC_GUARD = '1'
         $env:WRAPPER_TEST_BUILD_EXIT = '0'
         $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
+        $env:WRAPPER_TEST_GH_EXIT = '0'
+        $env:GH_PROMPT_DISABLED = 'caller'
+        $env:DBUS_SESSION_BUS_ADDRESS = 'caller'
         Set-Location -LiteralPath $caller
         $arguments = @('update', '--dry-run', '--root', '.', '--overlay', '../overlay dir', '', '--BUILD', '--', 'literal value', '--build', '')
         foreach ($mode in @('cached', 'build', 'bootstrap')) {
@@ -481,6 +488,9 @@ function Test-IsolatedWrapperPath {
             if ($mode -eq 'build') { $wrapperArguments = @('--build') + $arguments }
             if ($mode -eq 'bootstrap') { Remove-Item -LiteralPath $binary }
             $output = @(& $wrapper @wrapperArguments)
+            if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
+                throw "$mode changed the caller's credential environment"
+            }
             if ($LASTEXITCODE -ne 7) { throw "$mode lost the child exit code" }
             $actual = $output[-1] | ConvertFrom-Json
             if ($actual.Cwd -ne $caller) { throw "$mode changed the child working directory" }
@@ -501,6 +511,25 @@ function Test-IsolatedWrapperPath {
             throw 'Wrapper ran the child or lost the build failure exit code'
         }
         if ((Get-Location).Path -ne $caller) { throw 'Build failure changed the caller location' }
+
+        Remove-Item -LiteralPath $binary
+        $env:WRAPPER_TEST_GH_EXIT = '4'
+        $rejected = $false
+        try {
+            & $wrapper --version | Out-Null
+        } catch {
+            if ($_ -notmatch 'Build provenance verification failed') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Wrapper accepted an unauthenticated attestation' }
+        if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
+            throw 'Failed verification changed the caller credential environment'
+        }
+        if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath "$binary.download-$PID")) {
+            throw 'Failed verification left a downloaded binary'
+        }
+        [System.IO.File]::WriteAllText($binary, 'fixture')
+        $env:WRAPPER_TEST_GH_EXIT = '0'
 
         Remove-Item -LiteralPath $binary
         $env:WRAPPER_TEST_BAD_CHECKSUM = '1'

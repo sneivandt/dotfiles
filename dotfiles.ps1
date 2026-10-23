@@ -208,13 +208,26 @@ function Test-Attestation
         return $true
     }
 
-    & gh attestation verify $Path --repo $Repo 2>&1 | Out-Null
+    $previousPromptDisabled = $env:GH_PROMPT_DISABLED
+    $previousBusAddress = $env:DBUS_SESSION_BUS_ADDRESS
+    try
+    {
+        $env:GH_PROMPT_DISABLED = '1'
+        $env:DBUS_SESSION_BUS_ADDRESS = 'disabled:'
+        & gh attestation verify $Path --repo $Repo 2>&1 | Out-Null
+    }
+    finally
+    {
+        $env:GH_PROMPT_DISABLED = $previousPromptDisabled
+        $env:DBUS_SESSION_BUS_ADDRESS = $previousBusAddress
+    }
     if ($LASTEXITCODE -eq 0)
     {
         return $true
     }
 
     Write-Warning "Build provenance verification failed for $Path."
+    Write-Warning "Check GitHub access and GH_TOKEN/GITHUB_TOKEN; automatic verification disables desktop keyring access to prevent hidden credential prompts."
     return $false
 }
 

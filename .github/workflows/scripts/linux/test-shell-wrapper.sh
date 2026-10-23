@@ -510,7 +510,10 @@ case "$url" in
   */releases/download/v9.9.9/dotfiles-linux-x86_64)
     mkdir -p "$(dirname "$out")"
     printf '%s\n' "$out" > "$DOTFILES_ROOT/download-path"
-    printf '#!/bin/sh\nexit 0\n' > "$out"
+    cat > "$out" <<'BIN'
+#!/bin/sh
+printf '%s\n' "$GH_PROMPT_DISABLED" "$DBUS_SESSION_BUS_ADDRESS" > "$DOTFILES_ROOT/child-env"
+BIN
     ;;
   *)
     echo "unexpected URL: $url" >&2
@@ -520,16 +523,19 @@ esac
 EOF
   chmod +x "$tmpdir/fake-bin/curl"
 
-  # A gh stub that never reports a verified attestation.
+  # Record the subprocess environment even when verification fails.
   cat > "$tmpdir/fake-bin/gh" <<'EOF'
 #!/bin/sh
-exit 1
+printf '%s\n' "$GH_PROMPT_DISABLED" "$DBUS_SESSION_BUS_ADDRESS" > "$DOTFILES_ROOT/gh-env"
+exit "${WRAPPER_GH_EXIT:-1}"
 EOF
   chmod +x "$tmpdir/fake-bin/gh"
 
   # Required (default): unverified provenance is fatal and removes the download.
   rm -rf "${tmpdir:?}/bin"
-  if PATH="$tmpdir/fake-bin:$PATH" "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1; then
+  if PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=0 \
+    GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \
+    "$tmpdir/dotfiles.sh" --version > "$tmpdir/stdout" 2> "$tmpdir/stderr"; then
     printf "%sERROR: Default policy accepted an unverified binary%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
@@ -537,16 +543,31 @@ EOF
     printf "%sERROR: Unverified binary was not removed by default%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
+  expected=$(printf '1\ndisabled:')
+  [ "$(cat "$tmpdir/gh-env")" = "$expected" ] ||
+    log_error "Verification did not disable terminal and desktop keyring prompts"
+  grep -q 'GH_TOKEN/GITHUB_TOKEN' "$tmpdir/stderr" ||
+    log_error "Verification failure did not explain non-interactive credentials"
   log_verbose "✓ Default policy rejects unverified downloads"
+
+  PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=0 WRAPPER_GH_EXIT=0 \
+    GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \
+    "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1
+  expected=$(printf 'caller\ncaller')
+  [ "$(cat "$tmpdir/child-env")" = "$expected" ] ||
+    log_error "Verification changed the executed binary's environment"
 
   # Skip: verification is bypassed entirely.
   rm -rf "${tmpdir:?}/bin"
+  rm -f "$tmpdir/gh-env"
   PATH="$tmpdir/fake-bin:$PATH" DOTFILES_SKIP_ATTESTATION=1 \
+    GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \
     "$tmpdir/dotfiles.sh" --version >/dev/null 2>&1
   if [ ! -x "$tmpdir/bin/dotfiles" ]; then
     printf "%sERROR: DOTFILES_SKIP_ATTESTATION=1 did not bypass verification%s\n" "${RED}" "${NC}" >&2
     return 1
   fi
+  [ ! -e "$tmpdir/gh-env" ] || log_error "Skip policy invoked gh"
   log_verbose "✓ DOTFILES_SKIP_ATTESTATION=1 bypasses provenance verification"
 
   # Missing gh: warn and continue so a fresh bootstrap can install it.
@@ -555,7 +576,8 @@ EOF
   for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname; do
     ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
   done
-  output=$(PATH="$tmpdir/fake-bin" "$tmpdir/dotfiles.sh" --version 2>&1)
+  output=$(PATH="$tmpdir/fake-bin" GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \
+    "$tmpdir/dotfiles.sh" --version 2>&1)
   if [ ! -x "$tmpdir/bin/dotfiles" ]; then
     printf "%sERROR: Missing gh prevented bootstrap%s\n" "${RED}" "${NC}" >&2
     return 1

@@ -82,6 +82,15 @@ fn self_update_skipped(env: &dyn Env) -> bool {
     env.var(SKIP_SELF_UPDATE_ENV).as_deref() == Some("1")
 }
 
+/// Keep unattended GitHub commands out of terminal and desktop prompts.
+fn unattended_gh() -> CommandSpec {
+    CommandSpec::new("gh")
+        .env("GH_PROMPT_DISABLED", "1")
+        // gh's Linux keyring backend can prompt even with stdin closed and
+        // GH_PROMPT_DISABLED set. An unsupported bus transport fails locally.
+        .env("DBUS_SESSION_BUS_ADDRESS", "disabled:")
+}
+
 /// Prefer explicit credentials, then reuse the active github.com CLI login.
 /// This optional, non-interactive probe must never retain credential output.
 fn github_token(env: &dyn Env, executor: &dyn Executor) -> Option<String> {
@@ -96,7 +105,7 @@ fn github_token(env: &dyn Env, executor: &dyn Executor) -> Option<String> {
     }
     // A non-zero exit means gh could not supply a token (for example, no
     // saved login). Anonymous release checks remain available in that case.
-    let request = CommandSpec::new("gh")
+    let request = unattended_gh()
         .args(&["auth", "token", "--hostname", "github.com"])
         .unchecked()
         .output_log(OutputLog::Omit)
@@ -379,6 +388,8 @@ mod tests {
                 .withf(|request| {
                     *request
                         == CommandSpec::new("gh")
+                            .env("GH_PROMPT_DISABLED", "1")
+                            .env("DBUS_SESSION_BUS_ADDRESS", "disabled:")
                             .args(&["auth", "token", "--hostname", "github.com"])
                             .unchecked()
                             .output_log(OutputLog::Omit)

@@ -64,6 +64,12 @@ The bootstrap exception permits first use before `gh` is installed. It is a
 weaker verification path, not successful provenance verification.
 Self-update retries transient/verification failures up to three times; an
 authentication-required result is reported immediately.
+Automatic `gh` invocations disable terminal prompts and Linux desktop-keyring
+access to avoid hidden credential dialogs, including under WSL. Supply
+`GH_TOKEN`/`GITHUB_TOKEN` when credentials are stored only in that keyring.
+This is scoped to the child process; it does not change the system keyring or
+normal interactive `gh` behavior, and missing credentials never authorize an
+unverified update.
 See [the implementation](../cli/src/domains/dotfiles/self_update/attestation.rs).
 
 To verify an existing downloaded Linux binary manually:

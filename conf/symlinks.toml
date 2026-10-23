@@ -55,6 +55,7 @@ symlinks = [
 [arch]
 symlinks = [
   "apm/config/arch.yml",
+  "config/pacman/makepkg.conf",
   "config/paru/paru.conf",
   "config/zsh/functions/update-mirrors",
 ]

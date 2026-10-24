@@ -61,8 +61,8 @@ After installation, `dotfiles` is available directly in a new shell.
 
 | Command | What it does |
 |---|---|
-| `dotfiles update` | Syncs the repository, applies configuration, and updates AI agent packages |
-| `dotfiles remove` | Cleans up some managed configuration, but does not remove everything |
+| `dotfiles update` | Syncs the repository and applies configured packages, settings, and integrations |
+| `dotfiles remove` | Performs partial cleanup of managed configuration, not a full uninstall |
 | `dotfiles list` | Lists task selectors and command dependency graphs |
 | `dotfiles check` | Checks configuration and runs available script analyzers |
 | `dotfiles log` | Shows saved run logs |

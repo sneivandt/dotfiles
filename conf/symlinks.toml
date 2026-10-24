@@ -55,6 +55,8 @@ symlinks = [
 [arch]
 symlinks = [
   "apm/config/arch.yml",
+  "config/btop/btop.conf",
+  "config/lazygit/config.yml",
   "config/pacman/makepkg.conf",
   "config/paru/paru.conf",
   "config/zsh/functions/update-mirrors",
@@ -66,6 +68,7 @@ symlinks = [
   "config/autostart/nm-applet.desktop",
   "config/chromium-flags.conf",
   "config/fuzzel/fuzzel.ini",
+  "config/fontconfig/fonts.conf",
   "config/gammastep/config.ini",
   "config/gtk-2.0/gtkrc-2.0",
   "config/gtk-3.0/settings.ini",
@@ -77,6 +80,7 @@ symlinks = [
   "config/hypr/hyprpaper.conf",
   "config/hypr/scripts",
   "config/mako/config",
+  "config/mimeapps.list",
   "config/shell/profile-arch-desktop.sh",
   "config/spotify-flags.conf",
   "config/systemd/user/clean-screenshots.service",
@@ -92,6 +96,8 @@ symlinks = [
   "config/user-dirs.conf",
   "config/user-dirs.dirs",
   "config/wallpaper",
+  "config/wireplumber/wireplumber.conf.d/10-restore-state.conf",
+  "config/xdg-desktop-portal/hyprland-portals.conf",
   "config/quickshell",
   "local/bin/code-insiders",
 ]

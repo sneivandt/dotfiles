@@ -8,7 +8,7 @@ Type=Application
 StartupNotify=false
 StartupWMClass=Code - Insiders
 Categories=TextEditor;Development;IDE;
-MimeType=application/x-code-insiders-workspace;
+MimeType=text/plain;text/markdown;application/x-code-insiders-workspace;
 Actions=new-empty-window;
 Keywords=vscode;
 

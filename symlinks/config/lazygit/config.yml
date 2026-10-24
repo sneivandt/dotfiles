@@ -1,0 +1,19 @@
+# Source Code Pro is not a Nerd Font. Use the existing terminal palette.
+gui:
+  nerdFontsVersion: ""
+  showRandomTip: false
+  theme:
+    activeBorderColor:
+      - "#7aa2f7"
+      - bold
+    inactiveBorderColor:
+      - "#565f89"
+    searchingActiveBorderColor:
+      - "#e0af68"
+      - bold
+    optionsTextColor:
+      - "#7aa2f7"
+    selectedLineBgColor:
+      - "#283457"
+    unstagedChangesColor:
+      - "#f7768e"

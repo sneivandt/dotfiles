@@ -1,0 +1,12 @@
+# Default handlers for applications installed by the Arch desktop profile.
+# Leave directory, image and other associations to their installed applications.
+[Default Applications]
+text/html=chromium.desktop;
+application/xhtml+xml=chromium.desktop;
+application/pdf=chromium.desktop;
+x-scheme-handler/http=chromium.desktop;
+x-scheme-handler/https=chromium.desktop;
+text/plain=code-insiders.desktop;
+text/markdown=code-insiders.desktop;
+application/x-code-insiders-workspace=code-insiders.desktop;
+x-scheme-handler/vscode-insiders=code-insiders-url-handler.desktop;

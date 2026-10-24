@@ -80,11 +80,12 @@ PanelWindow {
             id: mediaGroup
             readonly property real room: bar.width - workspaceGroup.width - controls.implicitWidth - clockGroup.implicitWidth - trayGroup.implicitWidth - 64
             visible: bar.player !== null && bar.player.playbackState !== MprisPlaybackState.Stopped && room >= 44
-            Layout.preferredWidth: Math.max(36, Math.min(340, room))
+            Layout.preferredWidth: Math.max(36, Math.min(mediaBlock.implicitWidth, 340, room))
             BarBlock {
+                id: mediaBlock
                 anchors.fill: parent
                 glyph: bar.player && bar.player.isPlaying ? "\uf001" : "\uf04c"
-                text: parent.width >= 140 ? bar.track : ""
+                text: mediaGroup.room >= 140 ? bar.track : ""
                 textColor: bar.player && bar.player.isPlaying ? Theme.purple : Theme.mutedStrong
                 tooltip: bar.track + "\nClick: play/pause | Middle: previous | Right: next"
                 onActivated: button => {

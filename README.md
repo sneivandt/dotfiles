@@ -10,13 +10,9 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
 </p>
 
-This repository combines my personal dotfiles with a system configuration
-manager. It manages packages, application settings, symlinks, services, and
-platform-specific configuration through a shared desired-state engine.
-
-Profiles and private overlays define what belongs on each machine. The CLI
-inspects existing state, applies changes in dependency order, and skips settings
-that already match. It supports dry-run previews and structured run logs.
+My personal configuration for Arch Linux and Windows, managed by a Rust CLI.
+The CLI checks existing state and applies the required changes. It supports
+dry-run previews and structured run logs.
 
 Desired state lives in [conf/](conf/), with app configuration under
 [symlinks/](symlinks/).
@@ -41,7 +37,8 @@ Desired state lives in [conf/](conf/), with app configuration under
 
 The `base` profile covers shell tools and core configuration for servers and
 WSL. The `desktop` profile adds GUI apps and desktop services. Both profiles
-work on Linux and Windows.
+work on Linux and Windows. An optional private overlay adds configuration from
+a separate repository.
 
 ## Usage
 
@@ -64,7 +61,7 @@ After installation, `dotfiles` is available directly in a new shell.
 
 | Command | What it does |
 |---|---|
-| `dotfiles` / `dotfiles update` | Syncs the repository, applies configuration, and updates pinned dependencies |
+| `dotfiles` / `dotfiles update` | Syncs the repository, applies configuration, and updates AI agent packages |
 | `dotfiles remove` | Replaces managed symlinks with local copies, removes managed hooks and the launcher, and runs active overlay scripts with `--remove` |
 | `dotfiles list` | Lists task selectors and command dependency graphs |
 | `dotfiles check` | Checks configuration and runs available script analyzers |

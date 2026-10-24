@@ -47,8 +47,9 @@ hl.config({
         no_donation_nag = true,
     },
 
+    -- Let legacy X11 windows follow the monitor scale as well.
     xwayland = {
-        force_zero_scaling = true,
+        force_zero_scaling = false,
     },
 })
 

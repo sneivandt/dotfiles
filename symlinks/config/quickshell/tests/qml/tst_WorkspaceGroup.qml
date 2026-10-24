@@ -142,6 +142,35 @@ Item {
             compare(group.implicitWidth, 28);
         }
 
+        function test_narrow_strip_keeps_active_workspace_and_clicks_reachable() {
+            const monitor = { id: 0 };
+            const workspaces = [];
+            for (let id = 1; id <= 9; id++)
+                workspaces.push(workspace(id, monitor, true, id === 9));
+            const group = makeGroup(workspaces, workspaces[8], null);
+            group.maximumWorkspaceWidth = 96;
+            const strip = findChild(group, "workspaceStrip");
+            tryCompare(group, "workspaceWidth", 96);
+            tryCompare(strip, "scrollPosition", 252 - strip.viewportWidth);
+            const requested = [];
+            group.workspaceRequested.connect(number => requested.push(number));
+            mouseClick(strip, strip.width - 20 - 14, 14);
+            compare(requested, [9]);
+
+            group.activeWorkspace = workspaces[0];
+            tryCompare(strip, "scrollPosition", 0);
+            mouseClick(strip, 20 + 14, 14);
+            compare(requested, [9, 1]);
+
+            // A monitor resize must reveal its active workspace again.
+            group.activeWorkspace = workspaces[8];
+            group.maximumWorkspaceWidth = 68;
+            tryCompare(strip, "scrollPosition", 252 - strip.viewportWidth);
+            group.maximumWorkspaceWidth = 400;
+            tryCompare(strip, "scrollPosition", 0);
+            compare(group.workspaceWidth, 252);
+        }
+
         function test_titles_that_fit_are_not_elided_data() {
             return [
                 {

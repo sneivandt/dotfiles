@@ -15,7 +15,9 @@ BarGroup {
     property string copilotError: ""
     property bool _copilotActive: false
 
-    implicitWidth: shownItems.length * Theme.barControlHeight
+    property real maximumWidth: naturalWidth
+    readonly property real naturalWidth: shownItems.length * Theme.barControlHeight
+    implicitWidth: trayStrip.implicitWidth
     visible: shownItems.length > 0
 
     function openCopilot() {
@@ -69,20 +71,34 @@ BarGroup {
         return "";
     }
 
-    Row {
-        objectName: "trayRow"
-        Repeater {
-            model: root.shownItems
-            TrayButton {
-                required property var modelData
-                trayItem: modelData
-                anchorWindow: root.anchorWindow
-                menuController: root.menuController
-                appName: root.appName(modelData)
-                customIcon: appName ? Qt.resolvedUrl(appName === "GitHub Copilot" ? "icons/copilot.svg" : appName === "Spotify" ? "icons/spotify.svg" : "icons/chatgpt.svg") : ""
-                customActivation: appName === "GitHub Copilot"
-                activationError: customActivation ? root.copilotError : ""
-                onActivationRequested: root.openCopilot()
+    BarStrip {
+        id: trayStrip
+        objectName: "trayStrip"
+        width: implicitWidth
+        height: parent.height
+        naturalWidth: root.naturalWidth
+        maximumWidth: root.maximumWidth
+        sectionName: "Tray"
+
+        Row {
+            objectName: "trayRow"
+            Repeater {
+                model: root.shownItems
+                TrayButton {
+                    required property var modelData
+                    onVisualFocusChanged: {
+                        if (visualFocus)
+                            trayStrip.reveal(x, width);
+                    }
+                    trayItem: modelData
+                    anchorWindow: root.anchorWindow
+                    menuController: root.menuController
+                    appName: root.appName(modelData)
+                    customIcon: appName ? Qt.resolvedUrl(appName === "GitHub Copilot" ? "icons/copilot.svg" : appName === "Spotify" ? "icons/spotify.svg" : "icons/chatgpt.svg") : ""
+                    customActivation: appName === "GitHub Copilot"
+                    activationError: customActivation ? root.copilotError : ""
+                    onActivationRequested: root.openCopilot()
+                }
             }
         }
     }

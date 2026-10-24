@@ -66,6 +66,7 @@ PanelWindow {
             workspaces: Hyprland.workspaces.values
             activeWorkspace: bar.activeWorkspace
             activeToplevel: Hyprland.activeToplevel
+            maximumWorkspaceWidth: Math.max(68, bar.width - controls.implicitWidth - clockGroup.implicitWidth - Math.min(112, trayGroup.naturalWidth) - 48)
             titleWidthBudget: Math.max(0, bar.width - controls.implicitWidth - clockGroup.implicitWidth - workspaceWidth - trayGroup.implicitWidth - 160)
             onWorkspaceRequested: number => Hyprland.dispatch("hl.dsp.focus({ workspace = " + number + " })")
         }
@@ -101,6 +102,7 @@ PanelWindow {
 
         TrayGroup {
             id: trayGroup
+            maximumWidth: Math.max(68, bar.width - controls.implicitWidth - clockGroup.implicitWidth - workspaceGroup.workspaceWidth - 48)
             items: SystemTray.items.values
             anchorWindow: bar
             menuController: bar.menuController

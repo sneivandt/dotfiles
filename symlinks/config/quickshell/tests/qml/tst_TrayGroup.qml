@@ -114,6 +114,62 @@ Item {
             compare(spotify.activations, 1);
         }
 
+        function test_overflow_arrows_reach_every_icon_and_preserve_actions() {
+            const items = [];
+            for (let index = 0; index < 12; index++)
+                items.push(item({ id: "fixture-" + index }));
+            const tray = group(items);
+            tray.maximumWidth = 96;
+            const strip = findChild(tray, "trayStrip");
+            tryCompare(tray, "width", 96);
+            const next = findChild(strip, "nextControls");
+            const previous = findChild(strip, "previousControls");
+            verify(next.visible);
+            verify(!previous.enabled);
+            for (let page = 0; page < 20 && next.enabled; page++)
+                mouseClick(next, 10, 14);
+            compare(strip.scrollPosition, 336 - strip.viewportWidth);
+            verify(previous.enabled);
+            verify(!next.enabled);
+            mouseClick(strip, strip.width - 20 - 14, 14);
+            compare(items[11].activations, 1);
+            mouseClick(strip, strip.width - 20 - 14, 14, Qt.MiddleButton);
+            compare(items[11].secondaryActivations, 1);
+            mouseClick(strip, strip.width - 20 - 14, 14, Qt.RightButton);
+            compare(items[11].menus, 1);
+            const button = trayButton(tray, 11);
+            mouseWheel(button, 14, 14, 0, 120);
+            compare(items[11].scrollDelta, 120);
+
+            // Removing icons and moving to a larger monitor reset stale offsets.
+            tray.items = items.slice(0, 1);
+            tryCompare(tray, "width", 28);
+            tryCompare(strip, "scrollPosition", 0);
+            verify(!next.visible);
+            tray.items = items;
+            tray.maximumWidth = 400;
+            tryCompare(tray, "width", 336);
+            compare(strip.scrollPosition, 0);
+            verify(!next.visible);
+        }
+
+        function test_keyboard_focus_reveals_clipped_tray_icons() {
+            const items = [];
+            for (let index = 0; index < 8; index++)
+                items.push(item({ id: "fixture-" + index }));
+            const tray = group(items);
+            tray.maximumWidth = 68;
+            const strip = findChild(tray, "trayStrip");
+            const last = trayButton(tray, 7);
+            last.forceActiveFocus(Qt.TabFocusReason);
+            tryCompare(strip, "scrollPosition", 224 - strip.viewportWidth);
+            keyClick(Qt.Key_Return);
+            compare(items[7].activations, 1);
+            const first = trayButton(tray, 0);
+            first.forceActiveFocus(Qt.TabFocusReason);
+            tryCompare(strip, "scrollPosition", 0);
+        }
+
         function test_matching_data() {
             return [
                 { tag: "copilot-id", fields: { id: "github copilot" }, expected: "GitHub Copilot" },

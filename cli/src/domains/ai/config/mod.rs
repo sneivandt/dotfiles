@@ -1,3 +1,3 @@
-//! TOML configuration models for AI tooling.
+//! TOML configuration models for agent tooling.
 
 pub mod agent_settings;

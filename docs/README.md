@@ -104,7 +104,7 @@ read the summary and accompanying reasons.
 
 After the `launcher` and `path` tasks complete, open a new shell and use
 `dotfiles` directly. Running `dotfiles` defaults to `update`, which also
-synchronizes the repository and updates eligible APM pins. See
+synchronizes the repository and updates eligible agent package refs. See
 [Apply configuration](USAGE.md#apply-configuration) for how to control those
 sources of change. [Remove](USAGE.md#remove) is limited cleanup, not rollback.
 

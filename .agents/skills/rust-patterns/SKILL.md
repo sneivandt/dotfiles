@@ -32,7 +32,7 @@ Preserve the executable rules in
 | console rows, details, progress, summaries | `logging-patterns` |
 | TOML models/loaders | `toml-configuration` |
 | semantic diagnostics or validation tasks | `config-validation` |
-| packages, symlinks, profiles, overlays, APM | the corresponding domain skill |
+| packages, symlinks, profiles, overlays, Agent tooling | the corresponding domain skill |
 | tests, fixtures, snapshots | `testing-patterns` |
 | Windows-only code or behavior | `windows-specific-patterns` |
 | local verification after Rust changes | `cross-platform-verification` |

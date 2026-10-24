@@ -1,12 +1,12 @@
 ---
-name: ai-tooling-apm
+name: agent-tooling
 description: >
   Use when editing this repo's conf/agent-settings.toml, symlinks/apm/ files,
   or cli/src/domains/ai/apm implementation. Not for general skill-writing
   advice, audience/placement decisions, or unrelated agent behavior.
 ---
 
-# AI Tooling and APM
+# Agent Tooling
 
 ## Choose the owner
 
@@ -18,11 +18,14 @@ description: >
 | stable Copilot/Codex preference | `conf/agent-settings.toml` |
 | install and pin-update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
 
-For placement and target behavior, start with [APM](../../../docs/APM.md).
-If available, the personal `apm-dotfiles` skill adds public-vs-private audience
+For placement and target behavior, start with [Agent tooling](../../../docs/AGENT-TOOLING.md).
+If available, the personal `agent-customization` skill adds public-vs-private audience
 guidance; it is not a prerequisite for working in this repository.
 
-## APM rules
+Harness settings are owned by the `agent-settings` task and do not invoke APM.
+The `apm` task owns agent package convergence and its compatibility adapters.
+
+## Agent package rules
 
 - Keep `base.yml`'s top-level `targets`; it prevents deployment to unintended
   harnesses.
@@ -44,13 +47,17 @@ guidance; it is not a prerequisite for working in this repository.
   manifests under the user's home. Local install and pin-update commands mutate
   that environment; do not run them merely to review skill content.
 
-## Engine rules
+## Deployment ownership
 
 The CLI labels this task **Agent packages**; its selector remains `apm`.
 
 Dotfiles owns fragment merging, generated-manifest persistence, conditional
 target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot
-fixup. Native APM owns install/update planning, local-source integrity,
+fixup. Run `apm update -g --yes` followed by `apm install -g`: native update
+can stop at unchanged refs without reconciling local content or deployment drift.
+The follow-up install must finish before target adapters run; preserve failure
+classification and workflow-policy restoration across both commands.
+Native APM owns install/update planning, local-source integrity,
 deployment convergence, and stale/orphan cleanup. Do not reintroduce
 fingerprints, success markers, `apm outdated` parsing, or a separate
 `apm prune`. Keep dependency-ref advancement behind
@@ -58,7 +65,7 @@ fingerprints, success markers, `apm outdated` parsing, or a separate
 
 Before deleting either compatibility adapter, verify current upstream code and
 exercise the replacement in isolated fixtures across the platform contracts in
-[Deployment targets](../../../docs/APM.md#deployment-targets). Retain the adapter
+[Deployment targets](../../../docs/AGENT-TOOLING.md#deployment-targets). Retain the adapter
 when upstream still violates a contract or native-platform evidence is missing;
 an APM version bump alone does not make it obsolete.
 

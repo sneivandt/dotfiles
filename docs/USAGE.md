@@ -47,7 +47,7 @@ repository wrapper rather than being a standalone binary.
 
 | Command | Use it to |
 |---|---|
-| `update` (default) | Sync the repository, apply selected desired state, and advance eligible APM pins |
+| `update` (default) | Sync the repository, apply selected desired state, and advance eligible agent package refs |
 | `remove` | Materialize home links and remove a limited set of integrations, **not** restore the original machine |
 | `check` | Validate configuration and run available repository analyzers |
 | `list` | Discover selectors or inspect a command's dependency graph without executing tasks |
@@ -125,10 +125,10 @@ Three independent sources of change matter:
 |---|---|---|
 | CLI binary | Release binaries running from the checkout's `bin/` check before update/remove | Set `DOTFILES_SKIP_SELF_UPDATE=1` |
 | Repository content | Update synchronizes the main checkout and eligible Git overlay | Pass `--no-repo-update` |
-| APM pins | Update advances eligible refs | Skip APM with `--skip apm` |
+| Agent package refs | Update advances eligible refs | Skip agent packages with `--skip apm` |
 
-`--no-repo-update` alone is not network-free. Packages, APM, self-update, and
-overlay scripts can still access the network. `--only` limits scheduled tasks;
+`--no-repo-update` alone is not network-free. System packages, agent packages,
+self-update, and overlay scripts can still access the network. `--only` limits scheduled tasks;
 it does not disable self-update, configuration loading, or startup bookkeeping.
 Selecting `repository` with both `--only` and `--no-repo-update` is an error.
 
@@ -233,16 +233,16 @@ overlay retains its separate confirmation requirement.
 
 ## Update
 
-To preview APM pin advancement from the current checkout:
+To preview agent package ref advancement from the current checkout:
 
 ```bash
 dotfiles update --root . --profile desktop --no-repo-update --only apm --dry-run --verbose
 ```
 
 Remove `--only apm` for the full update pipeline; use `--with-deps` if
-the selected APM task needs its prerequisites converged. Remove
+the selected agent packages task needs its prerequisites converged. Remove
 `--no-repo-update` only if you also want repository synchronization.
-See [APM](APM.md) for update eligibility and generated manifest/lock behavior.
+See [Agent tooling](AGENT-TOOLING.md) for update eligibility and generated manifest/lock behavior.
 
 ## Console output
 
@@ -317,7 +317,7 @@ preserved.
 pre-install backups; even a missing home target can be materialized. Existing
 non-link targets are preserved. It does not restore packages, Git/agent
 settings, PATH, registry, services, permissions, shell selection, WSL, editor
-extensions, or APM state. See [Remove tasks](TASKS.md#remove-tasks).
+extensions, or agent package deployments. See [Remove tasks](TASKS.md#remove-tasks).
 Keep the checkout and sources available until materialization succeeds.
 
 ## Check

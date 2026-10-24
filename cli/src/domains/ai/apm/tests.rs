@@ -57,6 +57,12 @@ fn cowork_repairs_report_changes_even_when_the_lock_is_unchanged() {
                         }
             })
             .returning(|_| Ok(ExecResult::success("")));
+        if update {
+            mock.expect_execute()
+                .times(2)
+                .withf(|spec| spec.program() == "apm" && spec.arguments() == ["install", "-g"])
+                .returning(|_| Ok(ExecResult::success("")));
+        }
         mock.expect_execute()
             .times(2)
             .withf(|spec| {
@@ -338,7 +344,7 @@ fn cowork_dry_run_preserves_legacy_lock_skills_and_ownership() {
 }
 
 #[test]
-fn update_delegates_directly_and_reports_exact_lock_changes() {
+fn update_then_install_reports_exact_lock_changes() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_current_manifest_and_lock(dir.path());
     std::fs::write(
@@ -366,6 +372,7 @@ fn update_delegates_directly_and_reports_exact_lock_changes() {
             .expect("advance lock");
             Ok(ExecResult::success("updated\n"))
         });
+    expect_primary_install(&mut mock, &mut seq, dir.path());
     let (log, _tmp, _guard) = logging::isolated_logger();
     let log = Arc::new(log);
     let log_output: Arc<dyn Log> = Arc::<Logger>::clone(&log);
@@ -405,26 +412,110 @@ fn update_delegates_directly_and_reports_exact_lock_changes() {
 }
 
 #[test]
-fn update_writes_generated_manifest_then_runs_only_update() {
+fn update_writes_generated_manifest_then_updates_and_installs() {
     let dir = tempfile::tempdir().expect("create temp dir");
     write_default_home_fragment(dir.path());
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
-    mock.expect_execute().once().returning(|spec| {
-        assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
-        let manifest = std::fs::read_to_string(
-            spec.working_dir()
-                .expect("home")
-                .join(".apm")
-                .join("apm.yml"),
-        )
-        .expect("read generated manifest before update");
-        assert!(manifest.contains("example/plugin"));
-        Ok(ExecResult::success("updated\n"))
-    });
+    let mut seq = mockall::Sequence::new();
+    mock.expect_execute()
+        .once()
+        .in_sequence(&mut seq)
+        .returning(|spec| {
+            assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
+            let manifest = std::fs::read_to_string(
+                spec.working_dir()
+                    .expect("home")
+                    .join(".apm")
+                    .join("apm.yml"),
+            )
+            .expect("read generated manifest before update");
+            assert!(manifest.contains("example/plugin"));
+            Ok(ExecResult::success("updated\n"))
+        });
+    expect_primary_install(&mut mock, &mut seq, dir.path());
     let ctx = linux_context(dir.path(), mock);
 
     assert_task_changed(&update_task().run(&ctx).expect("run update"));
+}
+
+#[test]
+fn update_reconciles_renamed_local_skills_when_remote_refs_are_current() {
+    let dir = tempfile::tempdir().unwrap();
+    write_current_manifest_and_lock(dir.path());
+    let source = dir
+        .path()
+        .join("plugin/.apm/skills/agent-customization/SKILL.md");
+    let old = dir.path().join(".agents/skills/apm-dotfiles/SKILL.md");
+    let deployed = dir
+        .path()
+        .join(".agents/skills/agent-customization/SKILL.md");
+    std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+    std::fs::write(&source, "renamed local skill").unwrap();
+    std::fs::write(&old, "old local skill").unwrap();
+    let mut mock = MockExecutor::new();
+    let mut seq = mockall::Sequence::new();
+    mock.expect_which()
+        .with(mockall::predicate::eq("apm"))
+        .times(2)
+        .return_const(true);
+    for _ in 0..2 {
+        expect_primary_update(&mut mock, &mut seq, dir.path());
+        let source = source.clone();
+        let old = old.clone();
+        let deployed = deployed.clone();
+        mock.expect_execute().once().in_sequence(&mut seq).returning(move |spec| {
+            assert_apm_command(&spec);
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            let home = spec.working_dir().unwrap();
+            assert_eq!(source.strip_prefix(home).unwrap(), Path::new("plugin/.apm/skills/agent-customization/SKILL.md"));
+            // Model native install reconciling local content and stale ownership.
+            std::fs::create_dir_all(deployed.parent().unwrap()).unwrap();
+            std::fs::copy(&source, &deployed).unwrap();
+            if old.exists() {
+                std::fs::remove_file(&old).unwrap();
+            }
+            std::fs::write(home.join(".apm/apm.lock.yaml"),
+                "dependencies:\n- name: dot-skill\n  deployed_files: [.agents/skills/agent-customization/SKILL.md]\n").unwrap();
+            Ok(ExecResult::success("installed\n"))
+        });
+    }
+    let ctx = linux_context(dir.path(), mock);
+    assert_task_changed(&update_task().run(&ctx).unwrap());
+    assert!(!old.exists());
+    assert_eq!(
+        std::fs::read(&deployed).unwrap(),
+        std::fs::read(&source).unwrap()
+    );
+    assert_task_ok(&update_task().run(&ctx).unwrap());
+}
+
+#[test]
+fn update_does_not_report_current_when_followup_install_fails() {
+    for message in ["archive extraction failed", "fatal: Authentication failed"] {
+        let dir = tempfile::tempdir().unwrap();
+        write_current_manifest_and_lock(dir.path());
+        let mut mock = MockExecutor::new();
+        let mut seq = mockall::Sequence::new();
+        expect_which_apm(&mut mock, true);
+        expect_primary_update(&mut mock, &mut seq, dir.path());
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |spec| {
+                assert_apm_command(&spec);
+                assert_eq!(spec.arguments(), ["install", "-g"]);
+                Err(command_failure(message))
+            });
+        let ctx = linux_context(dir.path(), mock);
+        let result = update_task().run(&ctx);
+        if message.contains("Authentication") {
+            assert!(task_skipped(&result.unwrap()).contains("GitHub"));
+        } else {
+            assert!(format!("{:#}", result.unwrap_err()).contains(message));
+        }
+    }
 }
 
 #[test]
@@ -435,6 +526,7 @@ fn update_reports_ok_when_lock_is_byte_identical() {
     let mut seq = mockall::Sequence::new();
     expect_which_apm(&mut mock, true);
     expect_primary_update(&mut mock, &mut seq, dir.path());
+    expect_primary_install(&mut mock, &mut seq, dir.path());
     let ctx = linux_context(dir.path(), mock);
 
     assert_task_ok(&update_task().run(&ctx).expect("run update"));

@@ -271,7 +271,7 @@ dotfiles update --root . --profile desktop --no-repo-update --only systemd --dry
 Add `--with-deps` only after reviewing how much it expands the run. It can add
 packages, AUR setup, symlinks, and permissions.
 Use `update --only apm` to scope the run when the intended work is
-advancing eligible APM refs.
+advancing eligible agent package refs.
 
 ## A symlink cannot be created on Windows
 
@@ -413,19 +413,21 @@ Windows scope/UAC/policy skips are explained in
 [Windows packages](WINDOWS.md#packages). Elevation does not fix an invalid
 package ID, broken inventory output, or a prohibited installer.
 
-## APM update does not run or fails
+## Agent package update does not run or fails
 
 ```bash
 dotfiles update --root . --profile desktop --no-repo-update --only apm --dry-run --verbose
 ```
 
 Update previews configuration convergence and pin advancement. Apply uses
-`apm update -g --yes`, without a preceding `apm install -g` pass.
+`apm update -g --yes`, followed by `apm install -g` to reconcile local content
+and deployment drift even when no refs changed.
 
 - If symlinks were filtered out, confirm the fragment inputs are present or
   preview `--with-deps` expansion.
 - If `apm` is missing, provide it deliberately. Update preview can
-  describe planned APM work without it; update preview needs the executable.
+  describe a prospective manifest write without it; native dependency planning
+  needs the executable.
 - Authentication failures can be unmet/skipped work. Check the named
   authentication requirement without publishing credentials.
 - If the generated manifest would change, preview reports the write and
@@ -434,7 +436,7 @@ Update previews configuration convergence and pin advancement. Apply uses
   `apm update -g --dry-run`.
 
 Edit source fragments, not the generated manifest or deployed plugin tree.
-Use [APM](APM.md) for target-specific support and ownership.
+Use [Agent tooling](AGENT-TOOLING.md) for target-specific support and ownership.
 
 ## Optional analyzers are not running
 
@@ -502,7 +504,7 @@ currently selected home links, removes hooks and the launcher still matching
 their managed state, and invokes active overlay removal scripts. Modified
 hooks/launchers and unrelated hook names are preserved. It leaves packages, registry,
 systemd, shell selection, system files, Git/agent settings, PATH, editor
-extensions, and APM state.
+extensions, and agent package deployments.
 
 Use the original profile and overlay so the intended resources are selected.
 Do not delete the checkout until materialization succeeds, and remember that

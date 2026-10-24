@@ -1,12 +1,12 @@
 ---
-name: apm-dotfiles
+name: agent-customization
 description: >
   Use when deciding where Stuart's reusable agent customization belongs:
   public dotfiles vs private overlay, dot-agent vs dot-skill, APM target
   compatibility, or plugin/config-fragment structure. Not for repo Rust details.
 ---
 
-# APM Dotfiles
+# Agent Customization
 
 ## Place the change
 
@@ -19,10 +19,13 @@ description: >
 | model/reasoning/UI defaults | public `conf/agent-settings.toml` |
 | skills, hooks, prompts, instructions, MCP | APM plugin or fragment |
 
+APM packages reusable content; dotfiles manages harness preferences separately.
+Repository-specific guidance stays in its repository.
+
 Prefer one narrow skill per recurring behavior. Update an existing skill instead
 of adding a near-duplicate.
 
-## Plugin rules
+## APM package rules
 
 - Use native layout: `apm.yml`, `includes: auto`, and `.apm/<primitive>/`.
 - Keep local package names short and `dot-*`.
@@ -47,7 +50,7 @@ of adding a near-duplicate.
 ## Verify
 
 Use the dotfiles checkout's `docs/TESTING.md` for scoped checks and previews,
-and its `ai-tooling-apm` skill for implementation details. Skill-text-only edits
+and its `agent-tooling` skill for implementation details. Skill-text-only edits
 need frontmatter, link, and routing review, not a live install or deployment.
 For behavior changes, prefer current-source checks with isolated homes and
 synthetic overlays; a wrapper may bootstrap or run an older installed binary.

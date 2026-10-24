@@ -1,4 +1,4 @@
-//! AI tooling domain: agent settings and Microsoft APM plugin management.
+//! Agent tooling domain: agent settings and Microsoft APM plugin management.
 
 pub mod agent_settings;
 pub mod apm;

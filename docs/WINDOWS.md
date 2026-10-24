@@ -290,4 +290,4 @@ removes hooks and the launcher still matching their managed state. Modified
 hooks/launchers and unrelated hook names are preserved. Active overlay scripts
 can also run their removal actions. This is **not** restoration of original Windows
 settings: winget packages, Developer Mode, registry values, PATH, editor
-extensions, and APM state remain. See [Remove tasks](TASKS.md#remove-tasks).
+extensions, and agent package deployments remain. See [Remove tasks](TASKS.md#remove-tasks).

@@ -21,6 +21,9 @@ pub(super) fn preview_apm_update(ctx: &Context, targets: ManagedTargets) -> Resu
                         .action(verb, &subject, true, &format!("{verb} {subject}"));
                 }
             }
+            ctx.log().dry_run(
+                "run apm install -g after the update to reconcile local packages and deployment drift",
+            );
             targets.preview(ctx, ApmCommand::Update);
             Ok(TaskResult::DryRun)
         }

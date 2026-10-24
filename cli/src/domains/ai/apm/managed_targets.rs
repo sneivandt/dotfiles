@@ -104,6 +104,19 @@ impl ManagedTargets {
             }
         };
 
+        // `apm update` can return early when remote refs are unchanged, without
+        // reconciling local packages or deployment drift. Always converge the
+        // resulting graph before copying skills or repairing managed targets.
+        if matches!(command, ApmCommand::Update) {
+            let result = run_apm_invocation(ctx, ApmCommand::Install, ApmCommand::Install.args())?;
+            if !matches!(result, ApmCommandResult::Success(_)) {
+                return Ok(ManagedCommandResult {
+                    outcome: result,
+                    changed,
+                });
+            }
+        }
+
         for target in self.active.active() {
             match target.deployment() {
                 CopilotDeployment::NativeApm { config_key, args } => {

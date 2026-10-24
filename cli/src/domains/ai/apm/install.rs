@@ -137,7 +137,7 @@ impl ApmInstallPlan {
                 "run apm install -g to converge dependencies and remove stale user-scope deployments",
             ),
             ApmPackageMode::UpdatePins => ctx.log().dry_run(
-                "run apm update -g --yes to advance matching refs and converge deployments",
+                "run apm update -g --yes, then apm install -g to advance matching refs and converge local packages and deployments",
             ),
         }
         planned = planned.saturating_add(self.targets.preview(ctx, self.mode.command()));
@@ -204,11 +204,8 @@ impl ApmInstallPlan {
             ctx.log().trace(format!("{summary}: {message}"));
             Ok(TaskStats::changed_with_message(message).finish())
         } else {
-            let message = match self.mode {
-                ApmPackageMode::Install => "agent packages and deployments already current",
-                ApmPackageMode::UpdatePins => "agent packages already at latest refs",
-            };
-            ctx.log().debug(message);
+            ctx.log()
+                .debug("agent packages and deployments already current");
             Ok(TaskResult::Ok)
         }
     }

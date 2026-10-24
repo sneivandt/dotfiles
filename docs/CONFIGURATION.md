@@ -8,7 +8,7 @@ checkout, so an edit can take effect before another `dotfiles update`.
 
 This guide describes file formats and their consequences. See
 [Usage](USAGE.md) for commands, [Profiles](PROFILES.md) for selection, and
-[APM](APM.md) for AI package manifests.
+[Agent tooling](AGENT-TOOLING.md) for agent packages and deployment integrations.
 
 ## Making a configuration change
 
@@ -161,7 +161,7 @@ symlinks = [
 
 That example requires a `symlinks/skills/` directory with at least one entry.
 For this repository's reusable agent content, prefer the existing
-[APM deployment](APM.md) rather than a second deployment path.
+[agent package deployment](AGENT-TOOLING.md) rather than a second deployment path.
 
 ## Packages
 
@@ -227,7 +227,7 @@ not replaced with an empty one.
 Conflicting values for the same harness and exact key are rejected before any
 settings document is changed, including conflicts across main and overlay.
 
-These are harness preferences, not plugin declarations. Use [APM](APM.md) for
+These are harness preferences, not plugin declarations. Use [Agent tooling](AGENT-TOOLING.md) for
 skills, instructions, hooks, and MCP configuration. Removing a setting stops
 managing it but does not delete its stored value.
 
@@ -392,7 +392,7 @@ ownership is retained, conflicts are still checked, and two declarations of
 one target do not automatically become one declaration.
 
 Keep one clear desired value per target. APM YAML fragments have their own
-[merge rules](APM.md#configuration-fragments), not TOML append semantics.
+[merge rules](AGENT-TOOLING.md#configuration-fragments), not TOML append semantics.
 
 ### Conflicting desired state
 
@@ -445,11 +445,11 @@ preview must be read-only. Avoid secrets in output: script output can appear
 in the console and run log. Active scripts are discovered at the configuration
 reload boundary and appear in [task discovery](TASKS.md).
 
-## APM configuration
+## Agent package configuration
 
 Agent packages use YAML fragments under `symlinks/apm/config/`, selected by
 `conf/symlinks.toml`. They are distinct from harness preferences in
-`agent-settings.toml`. See [APM](APM.md) for source ownership, target selection,
+`agent-settings.toml`. See [Agent tooling](AGENT-TOOLING.md) for source ownership, target selection,
 updates, and generated files.
 
 ## Removing configuration
@@ -464,7 +464,7 @@ Uninstall materializes matching managed links as local copies; it does not
 restore arbitrary pre-install state. It can also create a local copy when the
 configured target is absent; existing non-link files and directories are
 preserved. APM has separate native stale-deployment cleanup and a
-[last-fragment caveat](APM.md#removing-packages-and-targets).
+[last-fragment caveat](AGENT-TOOLING.md#removing-packages-and-targets).
 
 ## Loading and reload behavior
 

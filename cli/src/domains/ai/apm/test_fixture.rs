@@ -148,6 +148,14 @@ pub fn expect_apm_update(
             assert_eq!(spec.arguments(), ["update", "-g", "--yes"]);
             Ok(ExecResult::success(stdout))
         });
+    mock.expect_execute()
+        .once()
+        .in_sequence(seq)
+        .returning(|spec| {
+            assert_apm_command(&spec);
+            assert_eq!(spec.arguments(), ["install", "-g"]);
+            Ok(ExecResult::success("converged deployments\n"))
+        });
 }
 
 pub fn expect_copilot_app_workflow_install(mock: &mut MockExecutor, seq: &mut mockall::Sequence) {

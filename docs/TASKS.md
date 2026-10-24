@@ -333,12 +333,12 @@ availability can be rechecked after package installation.
 
 | Command mode | Native convergence |
 |---|---|
-| update | `apm update -g --yes`, without a preceding install pass |
-| Update preview with current generated manifest | `apm update -g --dry-run` |
+| update | `apm update -g --yes`, then `apm install -g` to reconcile local content and deployment drift |
+| Update preview with current generated manifest | `apm update -g --dry-run`; describes the follow-up install without executing it |
 | Update preview needing a new generated manifest | Reports manifest write and delegated update; does not plan against stale input |
 
 This task also manages target-specific integration; it is broader than copying
-skill files. See [APM](APM.md) for generated state ownership, supported targets,
+skill files. See [Agent tooling](AGENT-TOOLING.md) for generated state ownership, supported targets,
 authentication, and cleanup. Do not edit generated outputs as source.
 
 ## Dynamic overlay tasks
@@ -381,7 +381,7 @@ until removal is complete.
 
 This is not restoration from backups. Packages, services, registry, global Git
 settings, harness settings, shell selection, permissions, completions, WSL,
-editor extensions, and APM deployment are not reversed by static remove
+editor extensions, and agent package deployments are not reversed by static remove
 tasks. Nested symlinks in materialized directory trees are recreated as links,
 not flattened copies of everything they reference.
 Materialization rechecks link ownership after copying and before unlinking, so
@@ -427,7 +427,7 @@ dotfiles update --root . --profile base --no-repo-update --only symlinks --dry-r
 # Inspect every prerequisite that would be added.
 dotfiles list --root . --profile desktop --graph update --only apm --with-deps
 
-# Preview configured regular packages and APM updates, without AUR tasks.
+# Preview configured regular packages and agent package updates, without AUR tasks.
 dotfiles update --root . --profile desktop --no-repo-update --only "packages,apm" --dry-run
 ```
 

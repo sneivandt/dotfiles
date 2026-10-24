@@ -1,8 +1,16 @@
-# APM and AI tooling
+# Agent tooling
 
-[APM](https://github.com/microsoft/apm) resolves and deploys reusable agent
-content. Dotfiles selects its inputs, generates a user-scope manifest, and
-invokes APM. Harness preferences such as reasoning effort are managed separately.
+Dotfiles manages agent harness settings, reusable agent content, and deployment
+integrations. These have different owners:
+
+- The **Agent settings** task (`agent-settings`) applies declared Copilot and
+  Codex preferences independently of package deployment.
+- The **Agent packages** task (`apm`) merges package declarations and invokes
+  [APM](https://github.com/microsoft/apm) to resolve and deploy reusable content.
+- Dotfiles also owns the Copilot App workflow policy and Cowork skill-copy
+  adapters described below; those repairs are separate from native APM behavior.
+- Repository-local instructions and skills guide work on this checkout without
+  going through package deployment.
 
 Start with the ownership table before editing anything. In particular, do not
 hand-edit the generated manifest or deployed copies of a skill.
@@ -15,21 +23,27 @@ hand-edit the generated manifest or deployed copies of a skill.
 | Package dependencies, MCP declarations, or normal deployment targets | [`symlinks/apm/config/`](../symlinks/apm/config/) | Active fragments merge into `~/.apm/apm.yml`; APM resolves and deploys them |
 | Which machines receive a fragment or local plugin | [`conf/symlinks.toml`](../conf/symlinks.toml) | Profile/category selection exposes the source under `~/.apm/` |
 | Repository-owned reusable agent content | [`symlinks/apm/plugins/`](../symlinks/apm/plugins/) | Linked local plugins are consumed by APM |
+| Copilot App workflow policy or Cowork skill copying | [`cli/src/domains/ai/apm/`](../cli/src/domains/ai/apm/) | Dotfiles adapters reconcile these integrations alongside native deployment |
 | Instructions for working on this repository | [`AGENTS.md`](../AGENTS.md) and [`.agents/skills/`](../.agents/skills/) | Repository-local guidance; not the personal plugin deployment tree |
 
 `dot-agent` holds reusable agent behavior; `dot-skill` holds focused reusable
 skills. Private integrations and instructions belong in a private overlay.
 Do not duplicate APM-managed content directly into harness directories.
 
-Only declared harness keys are managed; invalid existing settings documents
+## Harness settings
+
+The `agent-settings` task reads `conf/agent-settings.toml`; it does not invoke
+APM. Only declared harness keys are managed; invalid existing settings documents
 are reported without replacing them. Removing a declaration leaves its stored
 value in place. See [agent settings](CONFIGURATION.md#agent-harness-settings)
 for the schema. Codex's user config is shared by its CLI, IDE extension, and
 desktop agent; app-only appearance and notification preferences belong to the
 app, and ChatGPT Work chats do not read local Codex settings.
 
-**Applying APM is executable configuration, not just copying text.** Packages
-can supply hooks, MCP servers, and workflows. When Copilot App is present,
+## Agent packages
+
+**Applying agent packages is executable configuration, not just copying text.**
+Packages can supply hooks, MCP servers, and workflows. When Copilot App is present,
 dotfiles also enables its own deployed workflows in autopilot mode. Review
 those sources and [target-specific behavior](#deployment-targets) before applying.
 
@@ -120,7 +134,9 @@ On an update, dotfiles:
 1. Discovers effective fragments and produces a deterministic manifest.
 2. Writes `~/.apm/apm.yml` atomically only when its contents differ. An existing
    symlink at that generated path is rejected, not followed.
-3. Runs `apm update -g --yes` without a primary `--target` override.
+3. Runs `apm update -g --yes`, then `apm install -g`, without a primary
+   `--target` override. The install pass reconciles local content and deployment
+   drift even when the update reports no changed refs.
 4. Reconciles available Copilot App and Cowork targets as described below.
 5. Compares the exact before/after `~/.apm/apm.lock.yaml` and adapter state to
    report changes.
@@ -142,7 +158,7 @@ After reviewing the plan, the applying command is:
 dotfiles update --root . --no-repo-update --only apm
 ```
 
-Update dry-run describes the manifest, native command, and target
+Update dry-run describes the manifest, native commands, and target
 work without invoking the native update or writing those artifacts. It can
 preview installation even before `apm` is present. This does not make wrapper
 bootstrap or all CLI bookkeeping read-only; see [Usage](USAGE.md).
@@ -150,8 +166,9 @@ bootstrap or all CLI bookkeeping read-only; see [Usage](USAGE.md).
 ## Pin-update behavior
 
 `dotfiles update` uses
-`apm update -g --yes`. APM advances eligible refs and converges the resulting
-dependency graph in that pass.
+`apm update -g --yes` followed by `apm install -g`. The update advances
+eligible refs; installation then reconciles the resulting dependency graph,
+including local package edits and stale deployments when no refs changed.
 
 Preview the scoped update:
 
@@ -163,7 +180,8 @@ If the generated manifest is already current, dotfiles invokes the native
 `apm update -g --dry-run` and promotes dependency changes from its plan into
 the task output. This may contact upstream services and requires APM.
 If fragments would change the manifest, it reports the prospective manifest
-write and update command instead of asking APM to plan against stale inputs.
+write and update/install commands instead of asking APM to plan against stale inputs.
+Both preview paths describe the follow-up install without executing it.
 
 Remove `--dry-run` only to apply the update. Both modes use lockfile changes,
 not installation chatter, to identify changed dependencies. Output can name
@@ -278,7 +296,7 @@ platforms.
 
 ## Removing packages and targets
 
-Remove a package from its source fragment, then run ordinary APM convergence
+Remove a package from its source fragment, then run the agent packages task
 while a fragment still exists. Native APM handles stale deployments; the Cowork
 adapter uses its ownership inventory for its narrower cleanup.
 

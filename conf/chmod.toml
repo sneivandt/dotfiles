@@ -21,5 +21,6 @@ permissions = [
   { mode = "755", path = "config/hypr/scripts/launch-github.sh" },
   { mode = "755", path = "config/hypr/scripts/lock-screen.sh" },
   { mode = "755", path = "config/hypr/scripts/screenshot.sh" },
+  { mode = "755", path = "config/hypr/scripts/stocks.py" },
   { mode = "755", path = "local/bin/code-insiders" },
 ]

@@ -279,13 +279,13 @@ lazy.setup({
           -- Navigation
           map("n", "]c", function()
             if vim.wo.diff then return "]c" end
-            vim.schedule(function() gs.next_hunk() end)
+            vim.schedule(function() gs.nav_hunk("next") end)
             return "<Ignore>"
           end, {expr = true})
 
           map("n", "[c", function()
             if vim.wo.diff then return "[c" end
-            vim.schedule(function() gs.prev_hunk() end)
+            vim.schedule(function() gs.nav_hunk("prev") end)
             return "<Ignore>"
           end, {expr = true})
 
@@ -295,14 +295,16 @@ lazy.setup({
           map("v", "<leader>hs", function() gs.stage_hunk {vim.fn.line("."), vim.fn.line("v")} end)
           map("v", "<leader>hr", function() gs.reset_hunk {vim.fn.line("."), vim.fn.line("v")} end)
           map("n", "<leader>hS", gs.stage_buffer)
-          map("n", "<leader>hu", gs.undo_stage_hunk)
+          -- stage_hunk toggles the hunk under the cursor, including staged hunks.
+          map("n", "<leader>hu", gs.stage_hunk)
           map("n", "<leader>hR", gs.reset_buffer)
           map("n", "<leader>hp", gs.preview_hunk)
           map("n", "<leader>hb", function() gs.blame_line{full=true} end)
           map("n", "<leader>tb", gs.toggle_current_line_blame)
           map("n", "<leader>hd", gs.diffthis)
           map("n", "<leader>hD", function() gs.diffthis("~") end)
-          map("n", "<leader>td", gs.toggle_deleted)
+          -- Preview only the current hunk inline; moving the cursor closes it.
+          map("n", "<leader>td", gs.preview_hunk_inline)
         end
       })
     end,

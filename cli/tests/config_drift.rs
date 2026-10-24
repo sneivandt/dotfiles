@@ -63,19 +63,6 @@ impl SymlinkEntry {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ChmodSection {
-    permissions: Vec<PermissionEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PermissionEntry {
-    mode: String,
-    path: String,
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -98,11 +85,6 @@ fn load_symlink_sections(path: &Path) -> HashMap<String, Vec<String>> {
             (k, sources)
         })
         .collect()
-}
-
-fn load_permission_sections(path: &Path) -> HashMap<String, ChmodSection> {
-    let content = std::fs::read_to_string(path).expect("read chmod.toml");
-    toml::from_str(&content).expect("parse chmod.toml")
 }
 
 #[test]
@@ -310,40 +292,58 @@ fn code_insiders_shim_normalizes_password_store_and_forwards_arguments() {
 }
 
 #[test]
-fn hypr_helper_scripts_have_executable_permissions() {
+fn managed_helper_scripts_have_git_tracked_executable_permissions() {
     let root = repo_root();
-    let scripts_dir = root.join("symlinks/config/hypr/scripts");
-
-    let configured: HashSet<String> = load_permission_sections(&root.join("conf/chmod.toml"))
-        .into_values()
-        .flat_map(|section| section.permissions)
-        .filter(|entry| entry.mode == "755")
-        .map(|entry| entry.path)
+    let directories = ["symlinks/config/hypr/scripts", "symlinks/local/bin"];
+    let output = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(["ls-files", "--stage", "-z", "--"])
+        .args(directories)
+        .output()
+        .expect("read Git-tracked helper modes");
+    assert!(
+        output.status.success(),
+        "git ls-files failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let tracked = String::from_utf8(output.stdout).expect("Git helper paths are UTF-8");
+    let executable: HashSet<&str> = tracked
+        .split('\0')
+        .filter(|entry| entry.starts_with("100755 "))
+        .map(|entry| {
+            entry
+                .split_once('\t')
+                .expect("Git index entry has a path")
+                .1
+        })
         .collect();
 
     let mut missing = Vec::new();
-    for entry in std::fs::read_dir(&scripts_dir).expect("read Hypr helper directory") {
-        let path = entry.expect("read Hypr helper entry").path();
+    let entries = directories.into_iter().flat_map(|directory| {
+        std::fs::read_dir(root.join(directory)).expect("read managed helper directory")
+    });
+    for entry in entries {
+        let path = entry.expect("read managed helper entry").path();
         if !path.is_file() {
             continue;
         }
-        let content = std::fs::read_to_string(&path).expect("read Hypr helper");
+        let content = std::fs::read_to_string(&path).expect("read managed helper");
         if !content.starts_with("#!") {
             continue;
         }
         let relative = path
-            .strip_prefix(root.join("symlinks"))
-            .expect("Hypr helper should be under symlinks")
+            .strip_prefix(&root)
+            .expect("managed helper should be under the repository")
             .to_string_lossy()
             .replace('\\', "/");
-        if !configured.contains(&relative) {
+        if !executable.contains(relative.as_str()) {
             missing.push(relative);
         }
     }
 
     assert!(
         missing.is_empty(),
-        "Hypr helper scripts missing executable chmod entries:\n  {}",
+        "Managed helper scripts missing Git-tracked executable bits:\n  {}",
         missing.join("\n  ")
     );
 }

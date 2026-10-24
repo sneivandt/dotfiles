@@ -1,4 +1,5 @@
 # File permissions to apply
+# Executable scripts use their Git-tracked executable bit instead.
 # Each section is a category conjunction
 # Format: mode and path (relative to home directory)
 #
@@ -11,16 +12,4 @@
 permissions = [
   { mode = "755", path = "config/zsh" },
   { mode = "600", path = "ssh/config" },
-]
-
-[arch-desktop]
-permissions = [
-  { mode = "755", path = "config/hypr/scripts/brightness.sh" },
-  { mode = "755", path = "config/hypr/scripts/choose-browser.sh" },
-  { mode = "755", path = "config/hypr/scripts/choose-editor.sh" },
-  { mode = "755", path = "config/hypr/scripts/launch-github.sh" },
-  { mode = "755", path = "config/hypr/scripts/lock-screen.sh" },
-  { mode = "755", path = "config/hypr/scripts/screenshot.sh" },
-  { mode = "755", path = "config/hypr/scripts/stocks.py" },
-  { mode = "755", path = "local/bin/code-insiders" },
 ]

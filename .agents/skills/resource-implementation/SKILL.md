@@ -28,8 +28,9 @@ description: >
   never turn an unknown or unsafe state into success.
 - The engine owns check/plan/dry-run/apply sequencing. Keep writes, directory
   creation, and other mutations out of constructors and state discovery.
-- Preserve `pre_apply_warning()` for destructive replacement. Removal normally
-  touches only `Correct` resources; `remove_when_missing()` is an explicit opt-in
+- Use `pre_apply_warning()` only for actionable resource warnings; symlink
+  replacement intentionally reports only the normal link action. Removal
+  normally touches only `Correct` resources; `remove_when_missing()` is an explicit opt-in
   for resources such as symlinks that materialize content during uninstall.
 - Route subprocesses through the executor and environment reads through an
   injected `ctx.env()` handle.

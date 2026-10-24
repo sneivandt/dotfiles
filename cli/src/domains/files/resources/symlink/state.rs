@@ -1,20 +1,7 @@
 use std::path::Path;
 
 use super::SymlinkResource;
-use super::platform::is_link_like;
 use crate::engine::{ResourceResult, ResourceState};
-
-pub(super) fn pre_apply_warning(target: &Path) -> ResourceResult<Option<String>> {
-    let metadata = crate::infra::fs::symlink_metadata_optional(target, "stat target")?;
-    Ok(metadata
-        .filter(|meta| !is_link_like(target, meta))
-        .map(|_| {
-            format!(
-                "replacing existing non-symlink target without backup: {}",
-                target.display()
-            )
-        }))
-}
 
 pub(super) fn current_state(resource: &SymlinkResource) -> ResourceResult<ResourceState> {
     if let Some(reason) = &resource.validation_error {

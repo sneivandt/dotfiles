@@ -123,7 +123,7 @@ separators and `.` components, and is case-insensitive on Windows.
 Targets that alias the source entry through existing directory links are
 rejected rather than replacing the source itself.
 
-**Back up existing files before applying.** Installation warns and replaces a
+**Back up existing files before applying.** Installation replaces a
 regular file or empty directory at a managed target without making a backup.
 A nonempty real directory fails rather than being recursively deleted. Read
 the [installation and remove behavior](USAGE.md) before managing an existing

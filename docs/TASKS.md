@@ -263,8 +263,8 @@ home-relative links. Source provenance is retained; overlay entries do not
 silently become main-repository paths.
 
 **Existing regular files and empty directories at managed targets can be
-replaced without backup.** The preview warns about non-link targets; apply
-does not ask for confirmation. Nonempty directories fail rather than being
+replaced without backup.** Apply reports the link action without a replacement
+warning or confirmation prompt. Nonempty directories fail rather than being
 recursively deleted. Back up or relocate unrelated targets before applying.
 
 Links keep the checkout live: applications can see tracked source edits

@@ -14,7 +14,7 @@ mod state;
 
 use materialize::copy_into_place;
 use platform::{create_symlink, is_link_like, remove_symlink};
-use state::{current_state, pre_apply_warning};
+use state::current_state;
 
 /// A symlink resource that can be checked and applied.
 #[derive(Debug, Clone)]
@@ -108,10 +108,6 @@ impl Resource for SymlinkResource {
             self.display_target(),
             self.display_source()
         )
-    }
-
-    fn pre_apply_warning(&self) -> ResourceResult<Option<String>> {
-        pre_apply_warning(&self.target)
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {

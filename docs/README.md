@@ -36,7 +36,7 @@ These are roles, not safety levels; both can change system settings. See
 
 Back up existing home configuration before applying changes.
 **Symlink installation can replace existing ordinary files and empty directories
-without a backup.** A warning is not a confirmation prompt. Nonempty directories
+without a backup or confirmation prompt.** Nonempty directories
 cause a failure rather than being recursively removed.
 
 ## 3. Discover tasks and preview changes

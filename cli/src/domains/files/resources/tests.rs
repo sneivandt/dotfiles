@@ -894,26 +894,21 @@ mod symlink {
     }
 
     #[test]
-    fn symlink_resource_warns_before_replacing_regular_file() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source");
-        let target = temp_dir.path().join("target");
-        std::fs::write(&source, "managed content").unwrap();
-        std::fs::write(&target, "user content").unwrap();
-        let resource = SymlinkResource::new(source, target.clone(), system_executor());
+    fn symlink_resource_does_not_warn_about_replacement() {
+        for directory in [false, true] {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let source = temp_dir.path().join("source");
+            let target = temp_dir.path().join("target");
+            std::fs::write(&source, "managed content").unwrap();
+            if directory {
+                std::fs::create_dir(&target).unwrap();
+            } else {
+                std::fs::write(&target, "user content").unwrap();
+            }
+            let resource = SymlinkResource::new(source, target, system_executor());
 
-        let warning = resource.pre_apply_warning().unwrap();
-
-        assert_eq!(
-            warning.as_deref(),
-            Some(
-                format!(
-                    "replacing existing non-symlink target without backup: {}",
-                    target.display()
-                )
-                .as_str()
-            )
-        );
+            assert_eq!(resource.pre_apply_warning().unwrap(), None);
+        }
     }
 
     #[cfg(unix)]

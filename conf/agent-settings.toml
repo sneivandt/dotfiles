@@ -39,7 +39,7 @@ settings = [
   # Codex agent defaults shared by the CLI, IDE extension, and desktop app
   { target = "codex", key = "approval_policy",        value = "on-request"      },
   { target = "codex", key = "approvals_reviewer",     value = "auto_review"     },
-  { target = "codex", key = "sandbox_mode",           value = "workspace-write" },
+  { target = "codex", key = "default_permissions",    value = ":workspace"      },
   { target = "codex", key = "features.memories",      value = true              },
   { target = "codex", key = "model",                  value = "gpt-6.1-sol"     },
   { target = "codex", key = "model_reasoning_effort", value = "medium"          },

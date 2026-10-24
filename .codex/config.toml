@@ -1,0 +1,18 @@
+# Repository-specific permissions. Requires a trusted project and the modern
+# permission-profile defaults; legacy sandbox_mode settings take precedence.
+# Remove legacy sandbox_mode settings from user config before using this.
+default_permissions = "dotfiles-development"
+
+[permissions.dotfiles-development]
+description = "Workspace Git writes and scoped Rustup staging/state writes."
+extends = ":workspace"
+
+[permissions.dotfiles-development.filesystem]
+"~/.rustup/tmp" = "write"
+"~/.rustup/downloads" = "write"
+"~/.local/state/dotfiles" = "write"
+
+[permissions.dotfiles-development.filesystem.":workspace_roots"]
+".git" = "write"
+".git/hooks" = "read"
+".git/config" = "read"

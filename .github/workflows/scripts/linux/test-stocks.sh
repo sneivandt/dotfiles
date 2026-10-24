@@ -3,7 +3,7 @@ set -o errexit
 set -o nounset
 
 DIR=${DIR:-$(CDPATH='' cd -- "$(dirname -- "$0")/../../../.." && pwd)}
-SCRIPT="$DIR/symlinks/config/hypr/scripts/stocks.sh"
+SCRIPT="$DIR/symlinks/config/hypr/scripts/stocks.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT HUP INT TERM
 
@@ -35,7 +35,7 @@ while [ "$i" -lt 20 ]; do
   PATH="$TEST_ROOT/bin:/usr/bin:/bin" \
     HOME="$TEST_ROOT/home" \
     XDG_CACHE_HOME="$TEST_ROOT/home/.cache" \
-    sh "$SCRIPT" >/dev/null &
+    python3 "$SCRIPT" >/dev/null &
   pids="$pids $!"
   i=$((i + 1))
 done
@@ -79,7 +79,7 @@ chmod +x "$TEST_ROOT/data-bin/curl"
 output=$(PATH="$TEST_ROOT/data-bin:/usr/bin:/bin" \
   HOME="$TEST_ROOT/home" \
   XDG_CACHE_HOME="$TEST_ROOT/home/.cache" \
-  sh "$SCRIPT")
+  python3 "$SCRIPT")
 
 printf '%s' "$output" | jq -e '
   .version == 3 and

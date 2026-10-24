@@ -365,72 +365,41 @@ removal. Nonempty directories are preserved.
 
 ## Desktop shell
 
-These checks do not require installing the managed configuration.
-
-Quickshell layout, queued-refresh, and process-lifecycle QML regressions use
-Qt 6.8 or newer Quick Test. On Arch:
+Run from the repository root. QML tests require Qt 6.8 or newer Quick Test:
 
 ```bash
-QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QML_DISABLE_DISK_CACHE=1 \
-  /usr/lib/qt6/bin/qmltestrunner \
-  -import symlinks/config/quickshell/tests/qml/mocks \
-  -input symlinks/config/quickshell/tests/qml
+sh .github/workflows/scripts/linux/check.sh qml
 ```
 
-The opt-in local `check.sh qml` stage runs the same suite through
-[`test-desktop-qml.sh`](../.github/workflows/scripts/linux/test-desktop-qml.sh).
+The runner uses inert Quickshell mocks; no installed configuration or live
+services are needed. Offscreen tests cover logic and layout, but rendering and
+focus behavior need manual verification in the desktop session.
 
-The mock import is required: it supplies inert Quickshell process and window
-types, so no installed Quickshell runtime or live services are used.
-
-Network/power and desktop-script regressions mock actions; they do not toggle
-adapters, lock the desktop, capture the screen or power off the machine:
+Run the Python helpers and stock-cache concurrency checks with isolated fixtures:
 
 ```bash
 python3 -B -m unittest discover \
   -s symlinks/config/quickshell/tests/python -p 'test_*.py'
 python3 -B -m unittest discover \
   -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
-pwsh -NoProfile -File symlinks/config/powershell/tests/Test-Prompt.ps1
+sh .github/workflows/scripts/linux/test-stocks.sh
 ```
 
-On Windows use `python -B` instead of `python3 -B`. The prompt test starts an
-isolated PowerShell host without the installed profile and covers argument
-forwarding, completion, home abbreviation, root detection and exit status.
-The native GLib case
-skips when its runtime is unavailable; mocked Python cases still run. When their
-inputs change, CI selects the affected Python/PowerShell regression steps on
-Linux and Windows. Quickshell changes also select a gating Linux QML job
-using pinned Qt 6.8.3 and the inert mocks above; it does not start a native
-desktop session.
+These checks mock desktop actions and market requests. On Windows, use
+`python -B`; Linux-only cases are skipped.
 
-Shell startup, completion, utility failure handling and download regressions
-use isolated homes, mock commands and a loopback-only HTTP server. Vim
-regressions run without plugin installation:
+## Application configuration
+
+Shell, Vim and PowerShell regressions use isolated homes and mock commands:
 
 ```bash
 python3 -B .github/workflows/scripts/linux/test-shell-config.py
 python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
-sh .github/workflows/scripts/linux/test-stocks.sh
+pwsh -NoProfile -File symlinks/config/powershell/tests/Test-Prompt.ps1
 ```
 
-These Linux checks require their native tools (including Bash, Zsh, wget,
-libarchive's `bsdtar` and Vim). The shell suite exercises synthetic RPM payloads,
-including extraction-path confinement. Missing-tool skips are not passes.
-CI runs the shell and Vim suites in their application jobs; stock-cache
-concurrency also has its own job.
-
-The shell suite also verifies mirror-update generation, validation, staging and
-rename failures against a fixture destination, without sudo or network access.
-The working mirrorlist stays intact until the validated replacement is ready.
-The XDG directory service is exercised against an isolated home, checking that
-its paths match `user-dirs.dirs`, repeated creation preserves existing content,
-and conflicting user files cause a failure without being replaced. The desktop
-profile enables and starts this service; later user-manager startups run it again.
-
-New installs no longer link `~/.config/pacman.conf`. Its tracked compatibility
-file includes `/etc/pacman.conf` so existing links and explicit `--config` callers
-continue using host policy without maintaining a second configuration.
+Install the native tools needed by each suite. Missing-tool skips do not
+provide coverage.
 
 ## CI gates
 

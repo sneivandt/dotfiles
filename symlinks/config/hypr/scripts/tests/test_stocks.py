@@ -1,139 +1,127 @@
-"""Exercise real flock contention with mocked, always-offline quote requests."""
+"""Market parsing and isolated cache lifecycle; never query the live market."""
 
+import copy
+import importlib.util
 import json
 import os
-import shutil
+import select
+from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from script_test_support import BASH, ScriptFixture
+SCRIPT = Path(__file__).resolve().parents[1] / "stocks.py"
+spec = importlib.util.spec_from_file_location("stocks", SCRIPT)
+stocks = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(stocks)
 
-if sys.platform == "linux":
-    import fcntl
-    import select
-
-
-MOCKS = r"""
-curl() {
-    printf 'request\n' >> "$HOME/requests"
-    return 22
+PAYLOAD = {
+    "chart": {"result": [{
+        "meta": {"regularMarketPrice": 110, "regularMarketChangePercent": 5.5,
+                 "shortName": "Test Instrument ", "fiftyTwoWeekLow": 70, "fiftyTwoWeekHigh": 120},
+        "timestamp": [1000, 2000, 3000, 4000],
+        "indicators": {"quote": [{"close": [80, None, 100, 110]}]},
+    }]},
 }
-"""
 
 
-@unittest.skipUnless(
-    sys.platform == "linux" and BASH and shutil.which("flock") and shutil.which("jq"),
-    "Requires Linux, Bash, flock and jq",
-)
-class StocksLockTests(ScriptFixture):
+class QuoteTests(unittest.TestCase):
+    def parse(self, payload):
+        return stocks.parse_quote(payload, "TEST", "Fallback", "$", 5000)
+
+    def test_quote_history_and_metadata(self):
+        quote = self.parse(PAYLOAD)
+        self.assertEqual(quote, {
+            "symbol": "TEST", "name": "Test Instrument", "prefix": "$",
+            "price": 110, "change": 5.5, "history": [80, 100, 110],
+            "historyStart": 1000, "yearChange": 37.5, "yearLow": 70, "yearHigh": 120,
+        })
+
+    def test_missing_history_and_metadata_fall_back(self):
+        payload = {"chart": {"result": [{"meta": {
+            "regularMarketPrice": 10, "regularMarketChangePercent": 0,
+        }}]}}
+        quote = self.parse(payload)
+        self.assertEqual(quote["name"], "Fallback")
+        self.assertEqual(quote["history"], [10])
+        self.assertEqual(quote["historyStart"], 5000)
+        self.assertEqual(quote["yearLow"], 10)
+        self.assertEqual(quote["yearHigh"], 10)
+
+    def test_invalid_price_never_reaches_ui(self):
+        for price in (None, "110", True, float("nan"), float("inf")):
+            payload = copy.deepcopy(PAYLOAD)
+            payload["chart"]["result"][0]["meta"]["regularMarketPrice"] = price
+            with self.subTest(price=price), self.assertRaises(ValueError):
+                self.parse(payload)
+
+    def test_fetch_uses_argv_and_bounded_process(self):
+        with patch.object(stocks.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(PAYLOAD))) as run:
+            quote = stocks.fetch_quote("TEST", "TEST", "Fallback", "$", 5000)
+        self.assertEqual(quote["price"], 110)
+        self.assertEqual(run.call_args.args[0][0], "curl")
+        self.assertEqual(run.call_args.kwargs["timeout"], 6)
+        self.assertTrue(run.call_args.kwargs["check"])
+
+
+@unittest.skipUnless(sys.platform == "linux", "Linux desktop cache uses flock")
+class StocksCacheTests(unittest.TestCase):
     def setUp(self):
-        super().setUp()
-        self.cache = self.work / "cache" / "quickshell-stocks"
-        self.cache.mkdir(parents=True)
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.cache = Path(temporary.name)
+        self.path = self.cache / "quotes.json"
         self.lock = self.cache / "quotes-prices.flock"
         self.cached = {"version": 3, "quotes": [{"symbol": "TEST"}], "updated": 1}
+        self.fetch = unittest.mock.Mock(side_effect=OSError("offline"))
 
     def write_cache(self, stale=True):
-        path = self.cache / "quotes.json"
-        path.write_text(json.dumps(self.cached))
+        self.path.write_text(json.dumps(self.cached))
         if stale:
-            os.utime(path, (1, 1))
-
-    def run_stocks(self):
-        result = self.run_script("stocks.sh", MOCKS)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        return json.loads(result.stdout)
+            os.utime(self.path, (1, 1))
 
     def test_busy_lock_returns_stale_cache_without_fetching(self):
         self.write_cache()
-        with self.lock.open("w") as owner:
-            fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            self.assertEqual(
-                self.run_stocks(), {"quotes": self.cached["quotes"], "updated": 1}
-            )
-        self.assertFalse((self.work / "requests").exists())
+        with self.lock.open("a") as owner:
+            stocks.fcntl.flock(owner, stocks.fcntl.LOCK_EX | stocks.fcntl.LOCK_NB)
+            result = stocks.quotes(self.cache, self.fetch)
+        self.assertEqual(result, {"quotes": self.cached["quotes"], "updated": 1})
+        self.fetch.assert_not_called()
 
     def test_busy_lock_without_cache_returns_empty(self):
-        with self.lock.open("w") as owner:
-            fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            self.assertEqual(self.run_stocks(), {"quotes": [], "updated": 0})
-        self.assertFalse((self.work / "requests").exists())
+        with self.lock.open("a") as owner:
+            stocks.fcntl.flock(owner, stocks.fcntl.LOCK_EX | stocks.fcntl.LOCK_NB)
+            self.assertEqual(stocks.quotes(self.cache, self.fetch), {"quotes": [], "updated": 0})
+        self.fetch.assert_not_called()
 
-    def test_flock_errors_are_not_treated_as_contention(self):
-        self.write_cache()
-        mocks = MOCKS + '\nflock() { return "$FLOCK_STATUS"; }\n'
-        for status in (1, 69, 71):
-            with self.subTest(status=status):
-                result = self.run_script(
-                    "stocks.sh", mocks, env={"FLOCK_STATUS": str(status)}
-                )
-                self.assertEqual(result.returncode, status)
-                self.assertIn(f"flock exited {status}", result.stderr)
-                self.assertEqual(
-                    json.loads(result.stdout),
-                    {"quotes": self.cached["quotes"], "updated": 1},
-                )
-        self.assertFalse((self.work / "requests").exists())
+    def test_lock_errors_are_not_treated_as_contention(self):
+        with patch.object(stocks.fcntl, "flock", side_effect=OSError("lock failed")):
+            with self.assertRaises(OSError):
+                stocks.quotes(self.cache, self.fetch)
+        self.fetch.assert_not_called()
 
-    def test_flock_error_without_cache_still_returns_visible_empty_data(self):
-        result = self.run_script("stocks.sh", MOCKS + "\nflock() { return 71; }\n")
-        self.assertEqual(result.returncode, 71)
-        self.assertIn("flock exited 71", result.stderr)
-        self.assertEqual(json.loads(result.stdout), {"quotes": [], "updated": 0})
-        self.assertFalse((self.work / "requests").exists())
-
-    def test_missing_flock_is_an_explicit_failure_even_with_fresh_cache(self):
-        self.write_cache(stale=False)
-        mocks = MOCKS + r"""
-command() {
-    if [ "$1" = "-v" ] && [ "$2" = "flock" ]; then
-        return 1
-    fi
-    builtin command "$@"
-}
-"""
-        result = self.run_script("stocks.sh", mocks)
-        self.assertEqual(result.returncode, 127)
-        self.assertIn("flock is required", result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout), {"quotes": self.cached["quotes"], "updated": 1}
-        )
-        self.assertFalse(self.lock.exists())
-        self.assertFalse((self.work / "requests").exists())
-
-    def test_legacy_orphan_directories_do_not_block_refresh(self):
-        for name in ("quotes-prices.lock", "quotes-prices.lock.reap"):
-            (self.cache / name).mkdir()
-        (self.cache / "quotes-prices.lock" / "pid").write_text("99999999\n")
-        self.assertEqual(self.run_stocks(), {"quotes": [], "updated": 0})
-        self.assertEqual((self.work / "requests").read_text().splitlines(), ["request"] * 5)
-        self.assertTrue(self.lock.is_file())
-        with self.lock.open() as owner:
-            fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
-
-    def test_killed_lock_owner_does_not_leave_stale_lock(self):
+    def test_killed_owner_releases_lock_without_cleanup(self):
         code = (
-            "import fcntl, sys; "
-            "f = open(sys.argv[1], 'w'); "
+            "import fcntl, sys; f = open(sys.argv[1], 'a'); "
             "fcntl.flock(f, fcntl.LOCK_EX); "
             "print('locked', flush=True); sys.stdin.read()"
         )
         owner = subprocess.Popen(
             [sys.executable, "-B", "-c", code, str(self.lock)],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         try:
-            ready, _, _ = select.select([owner.stdout], [], [], 5)
-            self.assertTrue(ready, "Lock owner did not start")
+            readable, _, _ = select.select([owner.stdout], [], [], 5)
+            self.assertTrue(readable, "Lock owner did not start")
             self.assertEqual(owner.stdout.readline(), "locked\n")
-            self.assertEqual(self.run_stocks(), {"quotes": [], "updated": 0})
-            self.assertFalse((self.work / "requests").exists())
+            stocks.quotes(self.cache, self.fetch)
+            self.fetch.assert_not_called()
             owner.kill()
             owner.communicate(timeout=5)
-            self.assertEqual(self.run_stocks(), {"quotes": [], "updated": 0})
-            self.assertTrue((self.work / "requests").exists())
+            stocks.quotes(self.cache, self.fetch)
+            self.assertEqual(self.fetch.call_count, 5)
         finally:
             if owner.poll() is None:
                 owner.kill()
@@ -141,34 +129,56 @@ command() {
 
     def test_fresh_cache_needs_no_lock_or_fetch(self):
         self.write_cache(stale=False)
-        self.assertEqual(
-            self.run_stocks(), {"quotes": self.cached["quotes"], "updated": 1}
-        )
+        self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], 1)
+        self.fetch.assert_not_called()
         self.assertFalse(self.lock.exists())
-        self.assertFalse((self.work / "requests").exists())
 
     def test_cache_refreshed_during_lock_acquisition_is_reused(self):
-        mocks = MOCKS + r"""
-flock() {
-    command flock "$@" || return
-    printf '%s' "$NEW_CACHE" > "$XDG_CACHE_HOME/quickshell-stocks/quotes.json"
-}
-"""
-        result = self.run_script(
-            "stocks.sh", mocks, env={"NEW_CACHE": json.dumps(self.cached)}
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            json.loads(result.stdout), {"quotes": self.cached["quotes"], "updated": 1}
-        )
-        self.assertFalse((self.work / "requests").exists())
+        lock = stocks.fcntl.flock
+
+        def acquire(*args):
+            lock(*args)
+            self.write_cache(stale=False)
+
+        with patch.object(stocks.fcntl, "flock", side_effect=acquire):
+            self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], 1)
+        self.fetch.assert_not_called()
 
     def test_failed_refresh_preserves_stale_cache(self):
         self.write_cache()
-        self.assertEqual(
-            self.run_stocks(), {"quotes": self.cached["quotes"], "updated": 1}
-        )
-        self.assertEqual(json.loads((self.cache / "quotes.json").read_text()), self.cached)
+        self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], 1)
+        self.assertEqual(self.fetch.call_count, 5)
+        self.assertEqual(json.loads(self.path.read_text()), self.cached)
+
+    def test_partial_failure_retains_valid_quotes_and_replaces_cache(self):
+        quote = stocks.parse_quote(PAYLOAD, "TEST", "Fallback", "$", 5000)
+        self.fetch.side_effect = [ValueError("bad data"), quote, OSError("offline"), quote, quote]
+        result = stocks.quotes(self.cache, self.fetch)
+        self.assertEqual(len(result["quotes"]), 3)
+        self.assertEqual(result, json.loads(self.path.read_text()))
+        self.assertEqual(list(self.cache.glob(".quotes-prices.*")), [])
+
+    def test_failed_atomic_replace_preserves_previous_cache_and_cleans_temp(self):
+        self.write_cache()
+        with patch.object(stocks.os, "replace", side_effect=OSError("write failed")):
+            with self.assertRaises(OSError):
+                stocks.write_cache(self.path, {"quotes": []})
+        self.assertEqual(json.loads(self.path.read_text()), self.cached)
+        self.assertEqual(list(self.cache.glob(".quotes-prices.*")), [])
+
+    def test_corrupt_or_incompatible_cache_is_ignored(self):
+        for text in ("not json", "[]", '{"version":2}', '{"version":3,"quotes":[],"updated":"bad"}'):
+            self.path.write_text(text)
+            self.assertEqual(stocks.quotes(self.cache, self.fetch), {"quotes": [], "updated": 0})
+
+    def test_main_reports_cache_failure_with_stale_payload(self):
+        self.write_cache()
+        with patch.dict(os.environ, {"XDG_CACHE_HOME": str(self.cache.parent)}), \
+             patch.object(stocks, "quotes", side_effect=OSError("lock failed")), \
+             patch.object(stocks, "read_cache", return_value=self.cached), \
+             patch("builtins.print") as output:
+            self.assertEqual(stocks.main(), 1)
+        self.assertIn("Cannot refresh market cache", output.call_args_list[0].args[0])
 
 
 if __name__ == "__main__":

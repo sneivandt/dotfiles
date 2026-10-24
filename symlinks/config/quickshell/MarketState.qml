@@ -22,11 +22,11 @@ Scope {
     Process {
         id: query
         objectName: "marketQueryProcess"
-        command: [Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.sh"]
+        command: ["python3", Quickshell.env("HOME") + "/.config/hypr/scripts/stocks.py"]
         onRunningChanged: {
             if (!running && root._queryActive) {
                 root._queryActive = false;
-                root.error = "Cannot start the market helper. Check that stocks.sh is installed and executable.";
+                root.error = "Cannot start the market helper. Check that Python and stocks.py are installed.";
             }
         }
         stdout: StdioCollector {

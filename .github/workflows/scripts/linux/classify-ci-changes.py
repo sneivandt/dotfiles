@@ -189,7 +189,10 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 enable("lock")
             if path.startswith("symlinks/config/quickshell/"):
                 enable("desktop_python", "desktop_qml")
-            if path == "symlinks/config/hypr/scripts/stocks.sh":
+            if path in {
+                "symlinks/config/hypr/scripts/stocks.py",
+                "symlinks/config/hypr/scripts/tests/test_stocks.py",
+            }:
                 enable("stocks")
         elif path.startswith(".github/workflows/") and not path.startswith(SCRIPTS):
             full = True

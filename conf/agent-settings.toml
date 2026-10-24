@@ -41,10 +41,18 @@ settings = [
   { target = "codex", key = "approvals_reviewer",     value = "auto_review"     },
   { target = "codex", key = "default_permissions",    value = ":workspace"      },
   { target = "codex", key = "features.memories",      value = true              },
+  { target = "codex", key = "memories.generate_memories", value = true          },
+  { target = "codex", key = "memories.use_memories",      value = true          },
   { target = "codex", key = "model",                  value = "gpt-6.1-sol"     },
   { target = "codex", key = "model_reasoning_effort", value = "medium"          },
-  { target = "codex", key = "web_search",             value = "cached"          },
+  { target = "codex", key = "web_search",             value = "live"            },
   { target = "codex", key = "file_opener",            value = "vscode-insiders" },
   { target = "codex", key = "tui.show_tooltips",      value = false             },
   { target = "codex", key = "shell_environment_policy.ignore_default_excludes", value = false },
+
+  # Codex desktop preferences (app-specific keys may change between releases)
+  { target = "codex", key = "desktop.notifications-sound",            value = "none"  },
+  { target = "codex", key = "desktop.followUpQueueMode",              value = "steer" },
+  { target = "codex", key = "desktop.show-context-window-usage",      value = true    },
+  { target = "codex", key = "desktop.ambient-suggestions-enabled",    value = false   },
 ]

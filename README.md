@@ -61,15 +61,14 @@ After installation, `dotfiles` is available directly in a new shell.
 
 | Command | What it does |
 |---|---|
-| `dotfiles` / `dotfiles update` | Syncs the repository, applies configuration, and updates AI agent packages |
-| `dotfiles remove` | Replaces managed symlinks with local copies, removes managed hooks and the launcher, and runs active overlay scripts with `--remove` |
+| `dotfiles update` | Syncs the repository, applies configuration, and updates AI agent packages |
+| `dotfiles remove` | Cleans up some managed configuration, but does not remove everything |
 | `dotfiles list` | Lists task selectors and command dependency graphs |
 | `dotfiles check` | Checks configuration and runs available script analyzers |
 | `dotfiles log` | Shows saved run logs |
 
 Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.
-Remove leaves packages, services, and registry values in place.
 
 ## Development
 

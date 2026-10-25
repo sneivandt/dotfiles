@@ -340,3 +340,127 @@ fn tracked_recipe_descriptors_validate_without_network_or_generated_pins() {
     }
     assert!(validated > 0, "expected at least one release descriptor");
 }
+
+#[test]
+fn invalid_descriptors_do_not_query_or_publish_snapshots() {
+    for (label, field, value) in [
+        (
+            "repository path",
+            "repository",
+            serde_json::json!("example/tool/extra"),
+        ),
+        ("empty assets", "assets", serde_json::json!({})),
+        (
+            "architecture shell syntax",
+            "assets",
+            serde_json::json!({"x86_64;echo":"tool.tar.gz"}),
+        ),
+        (
+            "empty asset name",
+            "assets",
+            serde_json::json!({"x86_64":""}),
+        ),
+    ] {
+        let dir = fixture();
+        let ctx = snapshot_context(dir.path());
+        let path = dir.path().join("packages/tool-bin/release.json");
+        let mut descriptor: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        descriptor[field] = value;
+        std::fs::write(path, descriptor.to_string()).unwrap();
+        // The executor has no process expectations: discovery must reject
+        // invalid metadata before making a network request.
+        assert!(
+            task().run(&ctx).is_err(),
+            "{label}: release discovery accepted invalid input"
+        );
+        assert!(
+            ConfigureParu.run(&ctx).is_err(),
+            "{label}: snapshot preparation accepted invalid input"
+        );
+        assert!(
+            !build_root(&ctx).unwrap().exists(),
+            "{label}: cache was mutated"
+        );
+        assert!(
+            !ctx.home().join(".config/paru/paru.conf").exists(),
+            "{label}: config was published"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+            "original pins\n",
+            "{label}: pins were changed"
+        );
+    }
+}
+
+#[test]
+fn unreadable_descriptor_is_an_error_not_an_absent_recipe() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let descriptor = dir.path().join("packages/tool-bin/release.json");
+    std::fs::remove_file(&descriptor).unwrap();
+    std::fs::create_dir(&descriptor).unwrap();
+    assert!(task().run(&ctx).is_err());
+    assert!(ConfigureParu.run(&ctx).is_err());
+    assert!(!build_root(&ctx).unwrap().exists());
+    assert!(!ctx.home().join(".config/paru/paru.conf").exists());
+}
+
+#[test]
+fn recipe_directory_query_failure_does_not_publish_empty_configuration() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = snapshot_context(dir.path());
+    std::fs::write(dir.path().join("packages"), "not a directory\n").unwrap();
+    assert!(task().run(&ctx).is_err());
+    assert!(ConfigureParu.run(&ctx).is_err());
+    assert!(!ctx.home().join(".config/paru/paru.conf").exists());
+}
+
+#[test]
+fn interrupted_snapshot_initialization_recovers_an_unborn_head() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).changed_count(),
+        2
+    );
+    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let repo = git2::Repository::open(&cache).unwrap();
+    let branch = repo.head().unwrap().name().unwrap().to_owned();
+    std::fs::remove_file(repo.path().join(branch)).unwrap();
+    assert!(repo.head().is_err());
+    let recovered = ConfigureParu.run(&ctx).unwrap();
+    assert_eq!(task_batch(&recovered).changed_count(), 1);
+    assert!(repo.head().unwrap().peel_to_commit().is_ok());
+    assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+}
+
+#[test]
+fn corrupt_snapshot_head_fails_before_preview_or_cached_input_changes() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).changed_count(),
+        2
+    );
+    let source = dir.path().join("packages/tool-bin");
+    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let original = std::fs::read_to_string(cache.join("PKGBUILD")).unwrap();
+    std::fs::write(source.join("PKGBUILD"), "new recipe inputs\n").unwrap();
+    let plan = Snapshot::plan(&build_root(&ctx).unwrap(), "tool-bin", &source, false).unwrap();
+    let repo = git2::Repository::open(&cache).unwrap();
+    let branch = repo.head().unwrap().name().unwrap().to_owned();
+    std::fs::write(repo.path().join(branch), "corrupted reference\n").unwrap();
+    assert!(repo.head().is_err());
+    assert!(ConfigureParu.run(&ctx.with_dry_run(true)).is_err());
+    assert!(plan.apply().is_err());
+    assert_eq!(
+        std::fs::read_to_string(cache.join("PKGBUILD")).unwrap(),
+        original
+    );
+    assert_eq!(
+        std::fs::read_to_string(cache.join("version.sh")).unwrap(),
+        "original pins\n"
+    );
+}

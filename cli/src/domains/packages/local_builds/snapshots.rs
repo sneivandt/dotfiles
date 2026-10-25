@@ -140,16 +140,6 @@ impl Snapshot {
             crate::infra::fs::write_atomic(&repo.path().join("dotfiles-local-build"), MARKER)?;
             repo
         };
-        for (name, content) in &self.files {
-            crate::infra::fs::write_atomic(&self.path.join(name), content)?;
-        }
-        let mut index = repo.index()?;
-        index.clear()?;
-        for (name, _) in &self.files {
-            index.add_path(Path::new(name))?;
-        }
-        index.write()?;
-        let tree = repo.find_tree(index.write_tree()?)?;
         let parent = match repo.head() {
             Ok(head) => Some(head.peel_to_commit()?),
             Err(error)
@@ -162,6 +152,16 @@ impl Snapshot {
             }
             Err(error) => return Err(error).context("reading local build snapshot parent"),
         };
+        for (name, content) in &self.files {
+            crate::infra::fs::write_atomic(&self.path.join(name), content)?;
+        }
+        let mut index = repo.index()?;
+        index.clear()?;
+        for (name, _) in &self.files {
+            index.add_path(Path::new(name))?;
+        }
+        index.write()?;
+        let tree = repo.find_tree(index.write_tree()?)?;
         if parent
             .as_ref()
             .is_none_or(|commit| commit.tree_id() != tree.id())

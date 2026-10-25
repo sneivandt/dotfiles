@@ -253,6 +253,12 @@ mod tests {
         );
         assert!(find("local-package-versions").update_only());
         assert!(
+            find("local-package-versions")
+                .ordering_dependencies()
+                .contains(&id::<InstallPackages>()),
+            "release discovery must wait for packages that supply curl"
+        );
+        assert!(
             !find("apm")
                 .dependencies()
                 .contains(&id::<UpdateLocalPackageVersions>())

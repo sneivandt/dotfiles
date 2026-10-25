@@ -132,8 +132,13 @@ snapshot preparation requires the generated pins.
 ## How Paru sees the recipes
 
 `paru-config` reads the tracked `paru.conf.base` and generates a regular
-`~/.config/paru/paru.conf`. It replaces the former config symlink atomically,
-without overwriting its tracked source.
+configuration file. Its destination follows `PARU_CONF`, then
+`$XDG_CONFIG_HOME/paru/paru.conf`, then `~/.config/paru/paru.conf`.
+Overrides must be absolute and nonempty. Generation and package readiness use
+the same destination; use the same environment when running dotfiles and Paru.
+When the XDG destination does not exist yet, dotfiles creates it so Paru uses it
+instead of falling back to a home or system configuration. The task replaces
+the former config symlink atomically, without overwriting its tracked source.
 
 For the default cache location, the generated portion is:
 
@@ -182,6 +187,16 @@ Snapshots carry an ownership marker inside their own `.git` directory. The
 task refuses existing unmanaged directories, linked worktrees, symlinked
 snapshot directories, and repositories pointing outside the snapshot. It does
 not repurpose an unrelated cached package checkout.
+
+Before publishing repository entries, apply runs `makepkg --printsrcinfo` on
+temporary copies of each recipe and its pins. Package base, package names, and
+architectures must match `release.json`. This check also runs when only the
+descriptor changed. A mismatch or makepkg failure preserves the cached inputs,
+omits that recipe from the generated configuration, and counts as a failure;
+independent recipes can still proceed. Metadata generation executes the
+PKGBUILD, so only reviewed recipes should be used. Temporary copies protect
+build inputs but do not sandbox that code. Dry runs do not execute PKGBUILDs or
+create temporary build inputs; metadata validation is deferred until apply.
 
 ## Adding a recipe
 

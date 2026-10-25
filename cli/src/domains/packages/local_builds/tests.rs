@@ -189,7 +189,8 @@ fn config_preview_apply_and_repeat() {
     let ctx = ContextBuilder::new(dir.path().join("repo with spaces"))
         .arch(true)
         .build()
-        .with_home(dir.path().join("home"));
+        .with_home(dir.path().join("home"))
+        .with_env(crate::infra::env::MapEnv::new().into_handle());
     let base = ctx.symlinks_dir().join("config/paru/paru.conf.base");
     std::fs::create_dir_all(base.parent().unwrap()).unwrap();
     std::fs::write(&base, "[options]\nDevel\n").unwrap();
@@ -222,7 +223,8 @@ fn config_migrates_old_link_without_overwriting_tracked_source() {
     let ctx = ContextBuilder::new(dir.path().into())
         .arch(true)
         .build()
-        .with_home(dir.path().join("home"));
+        .with_home(dir.path().join("home"))
+        .with_env(crate::infra::env::MapEnv::new().into_handle());
     let base = ctx.symlinks_dir().join("config/paru/paru.conf.base");
     std::fs::create_dir_all(base.parent().unwrap()).unwrap();
     std::fs::write(&base, "[options]\nDevel\n").unwrap();
@@ -237,12 +239,38 @@ fn config_migrates_old_link_without_overwriting_tracked_source() {
     assert_eq!(std::fs::read_to_string(base).unwrap(), "[options]\nDevel\n");
 }
 
+fn expect_metadata(mock: &mut MockExecutor) {
+    mock.expect_execute()
+        .withf(|spec| {
+            spec.program() == "makepkg"
+                && spec.arguments() == ["--printsrcinfo"]
+                && spec.is_checked()
+        })
+        .returning(|spec| {
+            let dir = spec.working_dir().unwrap();
+            let recipe = std::fs::read_to_string(dir.join("PKGBUILD")).unwrap();
+            assert!(dir.join("version.sh").is_file());
+            let name = recipe
+                .lines()
+                .find_map(|line| line.strip_prefix("pkgname="))
+                .unwrap_or("tool-bin");
+            Ok(ExecResult::success(format!(
+                "pkgbase = {name}\n\tarch = x86_64\npkgname = {name}\n"
+            )))
+        });
+}
+
 fn snapshot_context(root: &Path) -> Context {
-    let ctx = ContextBuilder::new(root.into())
-        .arch(true)
-        .build()
-        .with_home(root.join("home"))
-        .with_env(crate::infra::env::MapEnv::new().into_handle());
+    let mut mock = MockExecutor::new();
+    expect_metadata(&mut mock);
+    let ctx = make_context(
+        root.into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(mock),
+    )
+    .with_home(root.join("home"))
+    .with_env(crate::infra::env::MapEnv::new().into_handle());
     let base = ctx.symlinks_dir().join("config/paru/paru.conf.base");
     std::fs::create_dir_all(base.parent().unwrap()).unwrap();
     std::fs::write(base, "[options]\nCleanAfter\n").unwrap();
@@ -514,6 +542,7 @@ fn add_recipe(root: &Path, base: &str) -> PathBuf {
 fn release_failure_executor(retained: bool) -> MockExecutor {
     use crate::infra::exec::ExecError;
     let mut mock = MockExecutor::new();
+    expect_metadata(&mut mock);
     mock.expect_execute()
         .once()
         .withf(|spec| {
@@ -835,4 +864,182 @@ fn cancellation_aborts_discovery_without_publishing_pending_updates() {
         original
     );
     assert!(!other.join("version.sh").exists());
+}
+
+#[test]
+fn config_overrides_control_publication_and_readiness() {
+    for explicit in [false, true] {
+        let dir = fixture();
+        let ctx = snapshot_context(dir.path());
+        let xdg = dir.path().join("xdg config");
+        let explicit_path = dir.path().join("custom/paru.conf");
+        let mut env = crate::infra::env::MapEnv::new().with("XDG_CONFIG_HOME", &xdg);
+        let target = if explicit {
+            env = env.with("PARU_CONF", &explicit_path);
+            explicit_path
+        } else {
+            xdg.join("paru/paru.conf")
+        };
+        let ctx = ctx.with_env(env.into_handle());
+        let default = ctx.home().join(".config/paru/paru.conf");
+        std::fs::create_dir_all(default.parent().unwrap()).unwrap();
+        std::fs::write(&default, "sentinel\n").unwrap();
+        let _preview = ConfigureParu.run(&ctx.with_dry_run(true)).unwrap();
+        assert!(!target.exists());
+        assert!(!build_root(&ctx).unwrap().exists());
+        assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+        let _applied = ConfigureParu.run(&ctx).unwrap();
+        assert!(target.is_file());
+        assert!(unavailable_packages(&ctx).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(&default).unwrap(), "sentinel\n");
+        // A valid default config must not mask an invalid active override.
+        std::fs::copy(&target, &default).unwrap();
+        std::fs::write(&target, "[options]\n").unwrap();
+        assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+        let _repaired = ConfigureParu.run(&ctx).unwrap();
+        assert!(unavailable_packages(&ctx).unwrap().is_empty());
+        assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+    }
+    for key in ["PARU_CONF", "XDG_CONFIG_HOME"] {
+        for value in ["", "relative/path"] {
+            let dir = fixture();
+            let ctx = snapshot_context(dir.path()).with_env(
+                crate::infra::env::MapEnv::new()
+                    .with(key, value)
+                    .into_handle(),
+            );
+            assert!(ConfigureParu.run(&ctx).is_err(), "{key}={value:?}");
+            assert!(unavailable_packages(&ctx).is_err());
+            assert!(!build_root(&ctx).unwrap().exists());
+        }
+    }
+}
+
+#[test]
+fn srcinfo_must_match_descriptor_ownership_and_architectures() {
+    let valid = "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-bin\n";
+    source().validate_srcinfo(valid).unwrap();
+    for (label, metadata) in [
+        ("empty", String::new()),
+        (
+            "base",
+            valid.replace("pkgbase = tool-bin", "pkgbase = other"),
+        ),
+        (
+            "name",
+            valid.replace("pkgname = tool-bin", "pkgname = other"),
+        ),
+        ("architecture", valid.replace("x86_64", "aarch64")),
+        ("extra package", format!("{valid}pkgname = extra\n")),
+        ("extra architecture", format!("{valid}\tarch = aarch64\n")),
+        ("duplicate package", format!("{valid}pkgname = tool-bin\n")),
+    ] {
+        assert!(source().validate_srcinfo(&metadata).is_err(), "{label}");
+    }
+    let mut split = source();
+    split.packages = Some(vec!["tool-cli".into(), "tool-gui".into()]);
+    let metadata = "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-gui\npkgname = tool-cli\n";
+    split.validate_srcinfo(metadata).unwrap();
+    assert!(
+        split
+            .validate_srcinfo(&metadata.replace("pkgname = tool-cli\n", ""))
+            .is_err()
+    );
+}
+
+#[test]
+fn invalid_metadata_is_not_published_and_other_recipes_continue() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let _prepared = ConfigureParu.run(&ctx).unwrap();
+    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let original = std::fs::read(cache.join("PKGBUILD")).unwrap();
+    let recipe = dir.path().join("packages/tool-bin/PKGBUILD");
+    std::fs::write(&recipe, "pkgname=wrong-name\n").unwrap();
+    let other = add_recipe(dir.path(), "other-bin");
+    std::fs::write(other.join("version.sh"), "pins\n").unwrap();
+    let result = ConfigureParu.run(&ctx).unwrap();
+    assert_eq!(task_batch(&result).failed_count(), 1);
+    assert_eq!(std::fs::read(cache.join("PKGBUILD")).unwrap(), original);
+    let config = std::fs::read_to_string(paru_config_path(&ctx).unwrap()).unwrap();
+    assert!(!config.contains("[dotfiles-tool-bin]"));
+    assert!(config.contains("[dotfiles-other-bin]"));
+    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    // Descriptor-only changes must also be checked when snapshot inputs match.
+    std::fs::write(recipe, original).unwrap();
+    let path = dir.path().join("packages/tool-bin/release.json");
+    let mut descriptor: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    descriptor["packages"] = serde_json::json!(["different-name"]);
+    std::fs::write(path, descriptor.to_string()).unwrap();
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).failed_count(),
+        1
+    );
+    assert!(
+        !std::fs::read_to_string(paru_config_path(&ctx).unwrap())
+            .unwrap()
+            .contains("[dotfiles-tool-bin]")
+    );
+}
+
+#[test]
+fn metadata_execution_failure_preserves_snapshot_and_cancellation_type() {
+    for cancelled in [false, true] {
+        let dir = fixture();
+        let setup = snapshot_context(dir.path());
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "makepkg"
+                    && spec.arguments() == ["--printsrcinfo"]
+                    && spec.is_checked()
+                    && spec.working_dir().is_some()
+            })
+            .returning(move |_| {
+                Err(if cancelled {
+                    crate::infra::exec::ExecError::Cancelled {
+                        command: "makepkg".into(),
+                        result: ExecResult::failure("", "interrupted", None),
+                    }
+                } else {
+                    crate::infra::exec::ExecError::spawn(
+                        "makepkg",
+                        std::io::Error::other("fixture unavailable"),
+                    )
+                })
+            });
+        let ctx = make_context(
+            dir.path().into(),
+            None,
+            Platform::new(Os::Linux, true),
+            Arc::new(mock),
+        )
+        .with_home(setup.home().to_path_buf())
+        .with_env(crate::infra::env::MapEnv::new().into_handle());
+        let result = ConfigureParu.run(&ctx);
+        if cancelled {
+            assert!(
+                result
+                    .unwrap_err()
+                    .downcast_ref::<crate::infra::exec::ExecError>()
+                    .unwrap()
+                    .is_cancelled()
+            );
+            assert!(!paru_config_path(&ctx).unwrap().exists());
+        } else {
+            assert_eq!(task_batch(&result.unwrap()).failed_count(), 1);
+            assert!(
+                !std::fs::read_to_string(paru_config_path(&ctx).unwrap())
+                    .unwrap()
+                    .contains("[dotfiles-tool-bin]")
+            );
+        }
+        assert!(!build_root(&ctx).unwrap().exists());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+            "original pins\n"
+        );
+    }
 }

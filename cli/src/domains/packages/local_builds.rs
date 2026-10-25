@@ -49,8 +49,15 @@ struct ParuConfig;
 struct ParuPlan {
     config: String,
     previous_config: Option<String>,
-    snapshots: Vec<Snapshot>,
+    snapshots: Vec<SnapshotPlan>,
+    config_path: PathBuf,
     failures: Vec<String>,
+}
+
+struct SnapshotPlan {
+    snapshot: Snapshot,
+    source: ReleaseSource,
+    changed: bool,
 }
 
 fn build_root(ctx: &Context) -> Result<PathBuf> {
@@ -71,6 +78,22 @@ fn build_root(ctx: &Context) -> Result<PathBuf> {
         );
     ensure!(root.is_absolute(), "Paru build directory must be absolute");
     Ok(root)
+}
+
+// Use the same override precedence as Paru. Reject relative or empty overrides
+// rather than publish a config whose meaning depends on the caller's cwd.
+fn paru_config_path(ctx: &Context) -> Result<PathBuf> {
+    let path = if let Some(path) = ctx.env().var_os("PARU_CONF") {
+        PathBuf::from(path)
+    } else if let Some(path) = ctx.env().var_os("XDG_CONFIG_HOME") {
+        let path = PathBuf::from(path);
+        ensure!(path.is_absolute(), "XDG_CONFIG_HOME must be absolute");
+        path.join("paru/paru.conf")
+    } else {
+        ctx.home().join(".config/paru/paru.conf")
+    };
+    ensure!(path.is_absolute(), "Paru config path must be absolute");
+    Ok(path)
 }
 
 fn recipe_directories(ctx: &Context) -> Result<Vec<PathBuf>> {
@@ -119,16 +142,19 @@ impl Operation for ParuConfig {
             match prepared {
                 Ok((changed, snapshot)) => {
                     content.push_str(&repository_section(&source.package_base, &snapshot.path)?);
-                    if changed {
-                        snapshots.push(snapshot);
-                    }
+                    snapshots.push(SnapshotPlan {
+                        snapshot,
+                        source,
+                        changed,
+                    });
                 }
                 Err(error) => {
                     failures.push(format!("{} unavailable: {error:#}", source.package_base));
                 }
             }
         }
-        let previous_config = read_optional(&ctx.home().join(".config/paru/paru.conf"))?;
+        let config_path = paru_config_path(ctx)?;
+        let previous_config = read_optional(&config_path)?;
         if previous_config.as_deref() == Some(&content)
             && snapshots.is_empty()
             && failures.is_empty()
@@ -137,6 +163,7 @@ impl Operation for ParuConfig {
         }
         Ok(OperationState::needs_run(ParuPlan {
             config: content,
+            config_path,
             previous_config,
             snapshots,
             failures,
@@ -144,7 +171,11 @@ impl Operation for ParuConfig {
     }
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        for snapshot in &plan.snapshots {
+        for prepared in &plan.snapshots {
+            let snapshot = &prepared.snapshot;
+            if !prepared.changed {
+                continue;
+            }
             ctx.log().dry_run(format!(
                 "refresh local package snapshot {}",
                 snapshot.path.display()
@@ -152,14 +183,19 @@ impl Operation for ParuConfig {
         }
         let config_changed = plan.previous_config.as_deref() != Some(&plan.config);
         if config_changed {
-            ctx.log().dry_run(format!(
-                "write {}",
-                ctx.home().join(".config/paru/paru.conf").display()
-            ));
+            ctx.log()
+                .dry_run(format!("write {}", plan.config_path.display()));
         }
         report_failures(ctx, &plan.failures);
         Ok(TaskStats::from_counts(
-            u32::try_from(usize::from(config_changed) + plan.snapshots.len())?,
+            u32::try_from(
+                usize::from(config_changed)
+                    + plan
+                        .snapshots
+                        .iter()
+                        .filter(|prepared| prepared.changed)
+                        .count(),
+            )?,
             0,
             0,
             u32::try_from(plan.failures.len())?,
@@ -171,16 +207,34 @@ impl Operation for ParuConfig {
         let mut content = plan.config.clone();
         let mut changed = 0;
         let mut failures = plan.failures.clone();
-        for snapshot in &plan.snapshots {
-            match snapshot.apply() {
+        for prepared in &plan.snapshots {
+            let snapshot = &prepared.snapshot;
+            let result = snapshot
+                .validate_metadata(ctx, &prepared.source)
+                .and_then(|()| {
+                    if prepared.changed {
+                        snapshot.apply()
+                    } else {
+                        Ok(())
+                    }
+                });
+            match result {
                 Ok(()) => {
-                    changed += 1;
-                    ctx.log().info(format!(
-                        "refresh local package snapshot {}",
-                        snapshot.path.display()
-                    ));
+                    if prepared.changed {
+                        changed += 1;
+                        ctx.log().info(format!(
+                            "refresh local package snapshot {}",
+                            snapshot.path.display()
+                        ));
+                    }
                 }
                 Err(error) => {
+                    if error
+                        .downcast_ref::<crate::infra::exec::ExecError>()
+                        .is_some_and(crate::infra::exec::ExecError::is_cancelled)
+                    {
+                        return Err(error);
+                    }
                     let base = snapshot
                         .path
                         .file_name()
@@ -192,12 +246,15 @@ impl Operation for ParuConfig {
             }
         }
         if plan.previous_config.as_deref() != Some(&content) {
-            let path = ctx.home().join(".config/paru/paru.conf");
-            write_atomic(&path, &content)?;
+            let path = &plan.config_path;
+            write_atomic(path, &content)?;
             changed += 1;
             ctx.log().info(format!("write {}", path.display()));
         }
         report_failures(ctx, &failures);
+        if changed == 0 && failures.is_empty() {
+            return Ok(TaskResult::Ok);
+        }
         Ok(TaskStats::from_counts(changed, 0, 0, u32::try_from(failures.len())?).finish())
     }
 }
@@ -243,6 +300,37 @@ struct ReleaseSource {
 }
 
 impl ReleaseSource {
+    fn validate_srcinfo(&self, metadata: &str) -> Result<()> {
+        use std::collections::BTreeSet;
+
+        let values = |key: &str| -> Vec<&str> {
+            metadata
+                .lines()
+                .filter_map(|line| line.trim().split_once(" = "))
+                .filter_map(|(name, value)| (name == key).then_some(value))
+                .collect()
+        };
+        ensure!(
+            values("pkgbase") == [self.package_base.as_str()],
+            "PKGBUILD package base does not match release.json ({})",
+            self.package_base
+        );
+        let packages = values("pkgname");
+        let actual: BTreeSet<_> = packages.iter().copied().collect();
+        let expected: BTreeSet<_> = self.package_names().iter().map(String::as_str).collect();
+        ensure!(
+            packages.len() == actual.len() && actual == expected,
+            "PKGBUILD package names {actual:?} do not match release.json {expected:?}"
+        );
+        let actual_arches: BTreeSet<_> = values("arch").into_iter().collect();
+        let expected_arches: BTreeSet<_> = self.assets.keys().map(String::as_str).collect();
+        ensure!(
+            actual_arches == expected_arches,
+            "PKGBUILD architectures {actual_arches:?} do not match release.json {expected_arches:?}"
+        );
+        Ok(())
+    }
+
     fn package_names(&self) -> &[String] {
         self.packages
             .as_deref()
@@ -498,7 +586,7 @@ pub(super) fn unavailable_packages(ctx: &Context) -> Result<BTreeMap<String, Str
         return Ok(BTreeMap::new());
     }
     let root = build_root(ctx)?;
-    let config = read_optional(&ctx.home().join(".config/paru/paru.conf"));
+    let config = read_optional(&paru_config_path(ctx)?);
     let mut unavailable = BTreeMap::new();
     for (directory, source) in recipes {
         let readiness = (|| -> Result<()> {

@@ -1,6 +1,8 @@
 //! Disposable, committed build inputs that Paru may safely reset and clean.
 
-use super::{read_optional, safe_component};
+use super::{ReleaseSource, read_optional, safe_component};
+use crate::engine::Context;
+use crate::infra::{exec::CommandSpec, fs::TempGuard};
 use anyhow::{Context as _, Result, ensure};
 use std::path::{Path, PathBuf};
 
@@ -13,6 +15,22 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
+    // PKGBUILDs are executable code. Evaluate only during apply, from copies of
+    // the exact planned inputs, before changing the published build repository.
+    pub fn validate_metadata(&self, ctx: &Context, source: &ReleaseSource) -> Result<()> {
+        let staging =
+            TempGuard::create_unique_dir(&std::env::temp_dir(), "dotfiles-pkgbuild-", "")?;
+        for (name, content) in &self.files {
+            std::fs::write(staging.path().join(name), content)?;
+        }
+        let output = ctx.executor().execute(
+            CommandSpec::new("makepkg")
+                .args(&["--printsrcinfo"])
+                .current_dir(staging.path()),
+        )?;
+        source.validate_srcinfo(&output.stdout)
+    }
+
     pub fn plan(
         build_root: &Path,
         package_base: &str,

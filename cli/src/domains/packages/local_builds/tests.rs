@@ -111,9 +111,23 @@ fn release_update_preview_failure_apply_and_repeat() {
         .unwrap();
     assert_eq!(task_batch(&preview).changed_count(), 1);
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "original pins\n");
+    let warnings = Arc::new(crate::test_helpers::CapturingOutput::default());
+    let failure_ctx = release_context(dir.path(), true).with_log(Arc::<
+        crate::test_helpers::CapturingOutput,
+    >::clone(&warnings));
     assert_eq!(
-        task_batch(&task().run(&release_context(dir.path(), true)).unwrap()).failed_count(),
+        task_batch(&task().run(&failure_ctx).unwrap()).failed_count(),
         1
+    );
+    assert!(
+        warnings
+            .messages_of(crate::infra::logging::MsgKind::Warn)
+            .iter()
+            .any(|message| {
+                message.contains("tool-bin release refresh failed; existing pins retained")
+                    && message.contains("fixture network failure")
+            }),
+        "a failed refresh must retain its recipe and cause in diagnostics"
     );
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "original pins\n");
     let result = task().run(&release_context(dir.path(), false)).unwrap();

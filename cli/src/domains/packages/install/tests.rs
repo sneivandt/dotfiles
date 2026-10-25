@@ -1445,8 +1445,11 @@ fn package_elevation_requires_missing_packages_on_a_supported_platform() {
 }
 
 #[test]
-fn unavailable_local_package_is_never_installed_and_existing_package_is_kept() {
-    for installed in [false, true] {
+fn unavailable_local_package_preserves_failure_counts_and_diagnostics() {
+    use crate::infra::logging::MsgKind;
+    use crate::test_helpers::CapturingOutput;
+
+    for (installed, other_install_fails) in [(false, false), (true, false), (false, true)] {
         let dir = tempfile::tempdir().unwrap();
         let recipe = dir.path().join("packages/local-tool");
         std::fs::create_dir_all(&recipe).unwrap();
@@ -1458,19 +1461,43 @@ fn unavailable_local_package_is_never_installed_and_existing_package_is_kept() {
             .withf(is_native_inventory)
             .returning(move |_| {
                 Ok(ExecResult::success(if installed {
-                    "local-tool 1.0\n"
+                    "local-tool 1.0\nexisting 1.0\n"
                 } else {
-                    ""
+                    "existing 1.0\n"
                 }))
             });
+        if other_install_fails {
+            mock.expect_execute()
+                .once()
+                .withf(|spec| {
+                    spec.program() == "/usr/bin/paru"
+                        && spec.arguments() == ["-S", "--needed", "--noconfirm", "unrelated"]
+                        && spec.is_checked()
+                })
+                .returning(|_| {
+                    Err(ExecError::spawn(
+                        "paru",
+                        std::io::Error::other("fixture install failure"),
+                    ))
+                });
+        }
+        let output = Arc::new(CapturingOutput::default());
         let ctx = make_package_context(dir.path().into(), None, Os::Linux, true, mock)
             .with_home(dir.path().join("home"))
-            .with_env(crate::infra::env::MapEnv::new().into_handle());
+            .with_env(crate::infra::env::MapEnv::new().into_handle())
+            .with_log(Arc::<CapturingOutput>::clone(&output));
+        let mut names = vec!["local-tool", "existing"];
+        if other_install_fails {
+            names.push("unrelated");
+        }
         let operation = PackageInstallOperation::new(
-            vec![Package {
-                name: "local-tool".into(),
-                is_aur: true,
-            }],
+            names
+                .into_iter()
+                .map(|name| Package {
+                    name: name.into(),
+                    is_aur: true,
+                })
+                .collect(),
             PackageManager::Paru,
         );
         let result = process_operation(&ctx, &operation).unwrap();
@@ -1478,8 +1505,19 @@ fn unavailable_local_package_is_never_installed_and_existing_package_is_kept() {
             assert_task_ok(&result);
         } else {
             let stats = task_batch(&result);
-            assert_eq!(stats.failed_count(), 1);
+            assert_eq!(
+                stats.failed_count(),
+                if other_install_fails { 2 } else { 1 }
+            );
             assert_eq!(stats.changed_count(), 0);
+            assert_eq!(stats.already_ok_count(), 1);
+            assert!(
+                output.messages_of(MsgKind::Warn).iter().any(|message| {
+                    message.contains("local package local-tool unavailable; refusing AUR fallback:")
+                        && message.contains("local release pins missing")
+                }),
+                "unavailable local packages need an actionable diagnostic"
+            );
         }
         assert!(
             !ctx.home().exists(),

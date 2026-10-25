@@ -1,0 +1,28 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034
+# Maintained here; dotfiles update generates ignored version.sh release pins.
+pkgname=apm-dotfiles
+pkgrel=1
+pkgdesc='Agent Package Manager for AI coding agents'
+arch=('x86_64' 'aarch64')
+url='https://github.com/microsoft/apm'
+license=('MIT')
+depends=('glibc' 'zlib')
+optdepends=('git: Git-based agent packages' 'github-cli: GitHub authentication')
+provides=('apm' 'apm-bin')
+conflicts=('apm' 'apm-bin')
+options=('!strip')
+source ./version.sh
+source_x86_64=("apm-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/apm-linux-x86_64.tar.gz")
+source_aarch64=("apm-${pkgver}-aarch64.tar.gz::${url}/releases/download/v${pkgver}/apm-linux-arm64.tar.gz")
+
+package() {
+  local upstream_arch=x86_64
+  [[ $CARCH == aarch64 ]] && upstream_arch=arm64
+  local bundle="apm-linux-${upstream_arch}"
+  install -dm755 "${pkgdir}/opt/apm" "${pkgdir}/usr/bin"
+  cp -a --no-preserve=ownership "${srcdir}/${bundle}/." "${pkgdir}/opt/apm/"
+  ln -s /opt/apm/apm "${pkgdir}/usr/bin/apm"
+  install -Dm644 "${srcdir}/${bundle}/_internal/apm_cli-${pkgver}.dist-info/licenses/LICENSE" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

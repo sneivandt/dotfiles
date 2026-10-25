@@ -56,6 +56,9 @@ class ClassificationTests(unittest.TestCase):
             ("cli/rustfmt.toml", {"rust_fmt"}),
             ("cli/deny.toml", {"deny"}),
             ("conf/packages.toml", profiles | {"app_tests", "app_windows"}),
+            ("packages/apm/PKGBUILD", config | {"rust_checks", "lint"}),
+            ("packages/apm/release.json", config | {"rust_checks", "lint"}),
+            (".gitignore", set()),
             ("conf/agent-settings.toml", profiles),
             ("system/pam.d/login", config | {"profile_linux", "roundtrip_linux"}),
             ("symlinks/config/git/config", config | {"app_tests", "app_windows", "build_windows"}),
@@ -185,7 +188,8 @@ class ClassificationTests(unittest.TestCase):
                 self.assertTrue(classify([path])["run_release"])
         for path in ("cli/tests/update_command.rs", "cli/benches/fixture.json",
                      "cli/deny.toml", "cli/rustfmt.toml", "cli/README.md",
-                     "dotfiles.sh", "conf/symlinks.toml", "symlinks/bashrc"):
+                     "dotfiles.sh", "conf/symlinks.toml", "symlinks/bashrc",
+                     "packages/apm/PKGBUILD", "packages/apm/release.json"):
             with self.subTest(path=path):
                 self.assertFalse(classify([path])["run_release"])
 
@@ -203,7 +207,7 @@ class GateTests(unittest.TestCase):
 
     def test_intentional_skips(self):
         for paths in (["README.md"], ["dotfiles.ps1"], ["conf/packages.toml"], ["cli/src/main.rs"],
-                      ["symlinks/config/quickshell/Bar.qml"]):
+                      ["symlinks/config/quickshell/Bar.qml"], ["packages/apm/PKGBUILD"]):
             with self.subTest(paths=paths):
                 CONTRACT["check_results"](self.results(paths))
 

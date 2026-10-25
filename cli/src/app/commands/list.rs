@@ -105,6 +105,7 @@ fn potentially_applicable(selector: &str, config: &Config, platform: Platform) -
             platform.supports_aur() && config.packages.iter().any(|package| package.is_aur)
         }
         "paru" => platform.uses_pacman(),
+        "paru-config" | "local-package-versions" => platform.supports_aur(),
         "system-files" => platform.is_linux() && !config.system_files.is_empty(),
         "systemd" => platform.supports_systemd() && !config.units.is_empty(),
         "shell" => platform.is_linux(),

@@ -85,6 +85,8 @@ All rows below belong to **update**. Rows marked “yes” also belong to
 | `completions` | Shell completions | Generated Zsh/PowerShell registration | — |
 | `packages` | System packages | Non-AUR entries in `conf/packages.toml` | — |
 | `paru` | Paru package manager | Arch's `/usr/bin/paru` | — |
+| `paru-config` | Paru configuration | `paru.conf.base` plus disposable PKGBUILD snapshots | — |
+| `local-package-versions` | Local package versions | Local recipes’ stable release versions and SHA-256 pins | Update only |
 | `aur-packages` | AUR packages | Entries marked `aur = true` in `conf/packages.toml` | — |
 | `symlinks` | Home symlinks | `conf/symlinks.toml` → home links | yes |
 | `file-permissions` | File permissions | `conf/chmod.toml` → home target modes | — |
@@ -340,6 +342,16 @@ availability can be rechecked after package installation.
 This task also manages target-specific integration; it is broader than copying
 skill files. See [Agent tooling](AGENT-TOOLING.md) for generated state ownership, supported targets,
 authentication, and cleanup. Do not edit generated outputs as source.
+
+### Local PKGBUILD packages
+
+`local-package-versions` discovers stable release pins, and `paru-config`
+prepares disposable Git snapshots and configures Paru to use them. The default
+Arch package list selects `apm-dotfiles` from `packages/apm/`; the desktop
+category selects `github-copilot-app-dotfiles` from `packages/github-copilot-app/`.
+`CleanAfter` remains enabled; cleanup operates on the cache, not this checkout.
+See [Local package recipes](LOCAL-PACKAGES.md) for version discovery, snapshot
+ownership, Paru configuration, adding recipes, logs, and CI coverage.
 
 ## Dynamic overlay tasks
 

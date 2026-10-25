@@ -1,0 +1,8 @@
+{
+  "package_base": "github-copilot-app-dotfiles",
+  "repository": "github/app",
+  "assets": {
+    "aarch64": "GitHub-Copilot-linux-arm64.deb",
+    "x86_64": "GitHub-Copilot-linux-x64.deb"
+  }
+}

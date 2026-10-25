@@ -63,6 +63,12 @@ if [ "${1:-}" = --root ]; then
       collect_scripts "$path" >> "$inputs"
     fi
   done
+  # Only tracked recipe inputs belong here, not generated pins, downloads or
+  # build trees under each recipe directory.
+  for recipe in "$root"/packages/*/PKGBUILD; do
+    [ -f "$recipe" ] || continue
+    printf '%s\0' "$recipe" >> "$inputs"
+  done
 elif [ "$#" -gt 0 ]; then
   printf '%s\0' "$@" > "$inputs"
 fi

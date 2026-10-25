@@ -49,6 +49,15 @@ mod tests {
         expected
     }
 
+    #[cfg(unix)]
+    fn add_recipe_inputs(root: &Path) {
+        let recipe = root.join("packages/recipe with spaces");
+        std::fs::create_dir_all(recipe.join("src")).unwrap();
+        std::fs::write(recipe.join("PKGBUILD"), "# shellcheck shell=bash\n").unwrap();
+        std::fs::write(recipe.join("version.sh"), "generated pins").unwrap();
+        std::fs::write(recipe.join("src/ignored.sh"), "generated source").unwrap();
+    }
+
     fn recorded(log: &Path) -> Vec<String> {
         let mut names: Vec<_> = std::fs::read_to_string(log)
             .unwrap_or_default()
@@ -65,7 +74,7 @@ mod tests {
         use std::os::unix::fs::{PermissionsExt as _, symlink};
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("root o'connor [literal]");
-        let expected = inputs(
+        let mut expected = inputs(
             &root,
             &[
                 ("plain.sh", "echo hi", true),
@@ -90,6 +99,9 @@ mod tests {
                 ("not first line", "\n#!/bin/bash\n", false),
             ],
         );
+        add_recipe_inputs(&root);
+        expected.push("PKGBUILD".into());
+        expected.sort();
         let bin = dir.path().join("bin");
         std::fs::create_dir(&bin).unwrap();
         let mock = bin.join("shellcheck");
@@ -153,6 +165,7 @@ exit "$LINT_EXIT"
             "non-directory inputs must fail"
         );
         std::fs::remove_file(root.join("hooks")).unwrap();
+        std::fs::remove_dir_all(root.join("packages")).unwrap();
         assert!(
             run(&root, "1").status.success(),
             "empty discovery must not invoke the tool"

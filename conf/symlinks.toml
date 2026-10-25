@@ -58,7 +58,7 @@ symlinks = [
   "config/btop/btop.conf",
   "config/lazygit/config.yml",
   "config/pacman/makepkg.conf",
-  "config/paru/paru.conf",
+  "config/paru/paru.conf.base",
   "config/zsh/functions/update-mirrors",
 ]
 

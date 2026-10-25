@@ -112,5 +112,6 @@ sources of change. [Remove](USAGE.md#remove) is limited cleanup, not rollback.
 
 - [Usage](USAGE.md): commands, options, task selection, and logs.
 - [Configuration](CONFIGURATION.md): packages, links, settings, and private overlays.
+- [Local package recipes](LOCAL-PACKAGES.md): release discovery and Paru builds on Arch.
 - [Troubleshooting](TROUBLESHOOTING.md): failures, unexpected skips, and recovery.
 - [Contributing](CONTRIBUTING.md): CLI development, architecture, and validation.

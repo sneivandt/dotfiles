@@ -20,6 +20,7 @@ use crate::domains::git::git_config::ConfigureGit;
 use crate::domains::git::hooks::{InstallGitHooks, UninstallGitHooks};
 use crate::domains::overlay::scripts::ReportOverlayScriptSnapshot;
 use crate::domains::packages::install::{InstallAurPackages, InstallPackages, InstallParu};
+use crate::domains::packages::local_builds::{ConfigureParu, UpdateLocalPackageVersions};
 use crate::domains::repository::update::{RepositoryUpdateSignal, UpdateRepository};
 use crate::domains::shell::completions::GenerateCompletions;
 use crate::domains::shell::login_shell::ConfigureShell;
@@ -107,6 +108,8 @@ pub(crate) fn update_tasks_for_run(
         Box::new(InstallPackages::new(store.packages.clone())),
         Box::new(InstallParu),
         Box::new(InstallAurPackages::new(store.packages.clone())),
+        Box::new(ConfigureParu),
+        Box::new(UpdateLocalPackageVersions),
         with_ordering_deps(
             InstallSymlinks::new(store.symlinks.clone()),
             &[id::<EnableDeveloperMode>()],
@@ -232,6 +235,29 @@ mod tests {
                 .contains(&id::<InstallPackages>()),
             "APM should recheck its CLI after package installation without being blocked by unrelated package failures"
         );
+    }
+
+    #[test]
+    fn local_package_tasks_precede_aur_without_coupling_apm_to_installation() {
+        let tasks = all_update_tasks(&test_params());
+        let find = |selector: &str| tasks.iter().find(|t| t.selector() == selector).unwrap();
+        assert!(
+            find("aur-packages")
+                .dependencies()
+                .contains(&id::<ConfigureParu>())
+        );
+        assert!(
+            find("paru-config")
+                .dependencies()
+                .contains(&id::<UpdateLocalPackageVersions>())
+        );
+        assert!(find("local-package-versions").update_only());
+        assert!(
+            !find("apm")
+                .dependencies()
+                .contains(&id::<UpdateLocalPackageVersions>())
+        );
+        assert!(!find("apm").dependencies().contains(&id::<ConfigureParu>()));
     }
 
     #[test]

@@ -1,0 +1,27 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034
+# Maintained here; dotfiles update generates ignored version.sh release pins.
+pkgname=github-copilot-app-dotfiles
+pkgrel=1
+pkgdesc='GitHub Copilot desktop application (official binary)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/github/app'
+license=('LicenseRef-proprietary')
+depends=('webkit2gtk-4.1' 'gtk3')
+optdepends=(
+  'libayatana-appindicator: system tray icon support'
+  'git: repository operations from the app'
+)
+options=('!strip' '!debug' '!emptydirs')
+source ./version.sh
+provides=("github-copilot-app=${pkgver}" "github-copilot-app-bin=${pkgver}")
+conflicts=('github-copilot-app' 'github-copilot-app-bin')
+source_x86_64=("copilot-app-${pkgver}-x86_64.deb::${url}/releases/download/v${pkgver}/GitHub-Copilot-linux-x64.deb")
+source_aarch64=("copilot-app-${pkgver}-aarch64.deb::${url}/releases/download/v${pkgver}/GitHub-Copilot-linux-arm64.deb")
+noextract=("copilot-app-${pkgver}-${CARCH}.deb")
+
+package() (
+  set -o pipefail
+  bsdtar -xOf "${srcdir}/copilot-app-${pkgver}-${CARCH}.deb" data.tar.zst |
+    bsdtar --no-same-owner -xf - -C "${pkgdir}"
+)

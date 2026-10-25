@@ -44,6 +44,9 @@ Do not run an install, package update, elevation request or desktop restart as
 a substitute for missing tests. Do not invoke a wrapper to validate changed
 Rust: it may bootstrap a release or reuse an older binary.
 
+For local PKGBUILD recipes, see [Local package CI and validation](LOCAL-PACKAGES.md#ci-and-validation)
+for offline checks and the native Arch coverage gap.
+
 ## Fast local sequence
 
 The canonical entrypoints are

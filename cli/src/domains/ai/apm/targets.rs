@@ -185,7 +185,7 @@ pub(super) fn missing_apm_reason(ctx: &Context) -> String {
     let hint = if platform.is_windows() {
         Some("install it with `winget install Microsoft.APM`")
     } else if platform.is_arch_linux() {
-        Some("install it with `paru -S apm-bin`")
+        Some("install it with `paru -S apm-dotfiles`")
     } else {
         None
     };
@@ -297,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_apm_reason_recommends_aur_on_arch_wsl() {
+    fn missing_apm_reason_recommends_local_package_on_arch_wsl() {
         let dir = tempfile::tempdir().expect("create temp dir");
         let ctx = make_context_with_home(
             dir.path(),
@@ -311,7 +311,7 @@ mod tests {
 
         assert_eq!(
             missing_apm_reason(&ctx),
-            "apm not found in PATH; install it with `paru -S apm-bin`"
+            "apm not found in PATH; install it with `paru -S apm-dotfiles`"
         );
     }
 

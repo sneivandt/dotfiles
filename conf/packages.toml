@@ -41,7 +41,7 @@ packages = [
   "zsh-autosuggestions",
   "zsh-completions",
   "zsh-syntax-highlighting",
-  { name = "apm-bin", aur = true },
+  { name = "apm-dotfiles", aur = true },
   { name = "github-copilot-cli-bin", aur = true },
   { name = "openai-codex-bin", aur = true },
   { name = "powershell-bin", aur = true },
@@ -89,7 +89,7 @@ packages = [
   "xorg-xwayland",
   { name = "chatgpt-desktop", aur = true },
   { name = "chromium-widevine", aur = true },
-  { name = "github-copilot-app-bin", aur = true },
+  { name = "github-copilot-app-dotfiles", aur = true },
   { name = "spotify", aur = true },
   { name = "visual-studio-code-insiders-bin", aur = true },
 ]

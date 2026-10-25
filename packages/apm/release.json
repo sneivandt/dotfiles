@@ -1,0 +1,8 @@
+{
+  "package_base": "apm-dotfiles",
+  "repository": "microsoft/apm",
+  "assets": {
+    "aarch64": "apm-linux-arm64.tar.gz",
+    "x86_64": "apm-linux-x86_64.tar.gz"
+  }
+}

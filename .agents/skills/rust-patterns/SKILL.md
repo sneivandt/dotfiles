@@ -33,6 +33,7 @@ Preserve the executable rules in
 | TOML models/loaders | `toml-configuration` |
 | semantic diagnostics or validation tasks | `config-validation` |
 | packages, symlinks, profiles, overlays, Agent tooling | the corresponding domain skill |
+| local PKGBUILD releases, Paru snapshots or configuration | `local-packages` |
 | tests, fixtures, snapshots | `testing-patterns` |
 | Windows-only code or behavior | `windows-specific-patterns` |
 | local verification after Rust changes | `cross-platform-verification` |

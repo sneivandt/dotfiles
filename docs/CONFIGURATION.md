@@ -170,7 +170,7 @@ For this repository's reusable agent content, prefer the existing
 packages = [
   "git",
   "ripgrep",
-  { name = "apm-bin", aur = true },
+  { name = "powershell-bin", aur = true },
 ]
 
 [windows]
@@ -185,7 +185,8 @@ repositories and policies such as `IgnorePkg`.
 When configured packages are missing, the pacman task uses `-Syu`: an ordinary
 update can synchronize package databases and upgrade installed system packages
 as well as add missing ones. See the [task reference](TASKS.md) for provider
-prerequisites and update behavior.
+prerequisites and update behavior. For locally maintained PKGBUILDs such as
+`apm-dotfiles`, see [Local package recipes](LOCAL-PACKAGES.md).
 
 ## Git settings
 

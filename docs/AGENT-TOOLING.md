@@ -121,13 +121,17 @@ and symlinks so its executable and managed sources can be available. A scoped
 invocation still needs those prerequisites already satisfied; see
 [task selection](TASKS.md).
 
-Arch installs APM through the AUR's
-[`apm-bin`](https://aur.archlinux.org/packages/apm-bin) package. This channel can
-lag [upstream releases](https://github.com/microsoft/apm/releases): on
-2026-09-29, the AUR recipe remained at 0.26.0-1 while upstream had released
-0.32.0. The package remains selected; there is no automatic upstream-installer
-fallback. A package update only supplies the version available from AUR, and
-`apm update -g` updates agent dependencies, not the APM executable.
+On Arch, this repository maintains the `apm-dotfiles` recipe in
+[`packages/apm/`](../packages/apm/). `dotfiles update` refreshes its ignored
+version/checksum pins from upstream GitHub releases and configures Paru's local
+PKGBUILD repository using a disposable Git snapshot in Paru's build cache.
+This preserves `CleanAfter` without exposing the tracked recipe to Git cleanup.
+The default Arch package list selects `apm-dotfiles`, so
+the AUR package task installs a missing copy through that local repository
+before the agent package task runs. It supplies the `apm` executable.
+The `apm` task invokes the executable on PATH independently of its installation
+source. `apm update -g` updates agent dependencies, not the APM executable.
+See [Local package recipes](LOCAL-PACKAGES.md) for discovery and build behavior.
 
 On an update, dotfiles:
 

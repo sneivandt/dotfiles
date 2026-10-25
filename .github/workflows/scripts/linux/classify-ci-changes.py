@@ -155,6 +155,11 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
                 enable("mutation")
             if path.endswith(("Cargo.toml", "Cargo.lock")):
                 enable("audit", "deny")
+        elif path.startswith("packages/"):
+            # Recipes are runtime inputs, not binary release inputs. Linux tests
+            # validate their real descriptors; ShellCheck covers PKGBUILDs.
+            enable("rust_checks", "build_linux", "validate_config", "config_drift")
+            linters.add("shell")
         elif path.startswith("conf/"):
             profiles("linux", "windows")
             if path in {"conf/symlinks.toml", "conf/git-config.toml", "conf/packages.toml"}:

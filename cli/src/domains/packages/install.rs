@@ -140,7 +140,10 @@ impl Task for InstallAurPackages {
     task_metadata! {
         name: "AUR packages",
         selector: "aur-packages",
-        deps: [InstallParu],
+        deps: [
+            InstallParu,
+            super::local_builds::ConfigureParu,
+        ],
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

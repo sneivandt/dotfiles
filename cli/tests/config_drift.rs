@@ -276,7 +276,10 @@ fn code_insiders_shim_normalizes_password_store_and_forwards_arguments() {
     ];
 
     for (arguments, expected) in cases {
-        let status = std::process::Command::new(&test_shim)
+        // Avoid executing a freshly written script directly: parallel test
+        // processes can briefly inherit its writer and cause ETXTBSY.
+        let status = std::process::Command::new("python3")
+            .arg(&test_shim)
             .args(arguments)
             .env("CAPTURE_ARGS", &captured)
             .status()

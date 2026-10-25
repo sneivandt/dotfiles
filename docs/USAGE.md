@@ -140,7 +140,7 @@ Preview probes use the advertised remote ref rather than a cached tracking ref.
 Missing upstream configuration or an unadvertised ref leaves the update status
 unknown; authentication, transport and configuration errors fail the preview.
 
-Release checks are cached for up to one hour and, on Linux, only for the boot
+Release checks are cached for up to 10 minutes and, on Linux, only for the boot
 that created the cache. Source builds do not self-update from their Cargo
 output directory. A restarted child does not repeat the self-update check.
 An unwritable release-check cache produces a warning but does not invalidate a

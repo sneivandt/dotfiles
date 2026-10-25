@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result};
 
 /// Maximum age (in seconds) before a version check is performed again.
-pub(super) const CACHE_MAX_AGE: u64 = 3600;
+pub(super) const CACHE_MAX_AGE: u64 = 600;
 
 /// Path to the version-check cache file.
 pub(super) fn cache_path(root: &Path) -> PathBuf {

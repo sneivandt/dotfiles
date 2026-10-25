@@ -97,7 +97,7 @@ Before replacing a binary, distinguish expected behavior from a failed update:
 - Development/non-release versions do not use the date-tag update path.
   Current releases use `vYYYY.MM.DD-N`.
 - A dry run reports an available update but does not replace the binary.
-- A fresh release cache can delay another lookup by up to one hour. Linux
+- A fresh release cache can delay another lookup by up to 10 minutes. Linux
   cache entries also have to match the current boot.
 - Failed release lookup leaves the existing binary usable; inspect diagnostics
   for API rate limits, DNS, or proxy failures.

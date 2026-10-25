@@ -1,0 +1,33 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034
+# Maintained here; dotfiles update generates ignored version.sh release pins.
+pkgname=powershell-dotfiles
+pkgrel=1
+pkgdesc='Cross-platform task automation and configuration shell (official binary)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/PowerShell/PowerShell'
+license=('MIT')
+install=package.install
+depends=('glibc' 'icu' 'libgcc' 'libstdc++' 'openssl' 'zlib')
+optdepends=(
+  'krb5: Kerberos authentication'
+  'lttng-ust2.12: CoreCLR tracing'
+)
+conflicts=('powershell' 'powershell-bin')
+options=('!strip' '!debug')
+source ./version.sh
+provides=("powershell=${pkgver}" "powershell-bin=${pkgver}")
+source_x86_64=("powershell-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/powershell-${pkgver}-linux-x64.tar.gz")
+source_aarch64=("powershell-${pkgver}-aarch64.tar.gz::${url}/releases/download/v${pkgver}/powershell-${pkgver}-linux-arm64.tar.gz")
+noextract=("powershell-${pkgver}-${CARCH}.tar.gz")
+
+package() {
+  local bundle="/opt/microsoft/powershell/${pkgver%%.*}"
+  install -dm755 "${pkgdir}${bundle}" "${pkgdir}/usr/bin"
+  bsdtar --no-same-owner -xf "${srcdir}/powershell-${pkgver}-${CARCH}.tar.gz" \
+    -C "${pkgdir}${bundle}"
+  chmod 755 "${pkgdir}${bundle}/pwsh"
+  ln -s "${bundle}/pwsh" "${pkgdir}/usr/bin/pwsh"
+  install -Dm644 "${pkgdir}${bundle}/LICENSE.txt" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

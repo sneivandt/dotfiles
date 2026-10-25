@@ -2,12 +2,28 @@
 # shellcheck disable=SC2034
 # Maintained here; dotfiles update generates ignored version.sh release pins.
 pkgname=github-copilot-app-dotfiles
-pkgrel=1
+pkgrel=2
 pkgdesc='GitHub Copilot desktop application (official binary)'
 arch=('x86_64' 'aarch64')
 url='https://github.com/github/app'
 license=('LicenseRef-proprietary')
-depends=('webkit2gtk-4.1' 'gtk3')
+depends=(
+  'alsa-lib'
+  'at-spi2-core'
+  'cairo'
+  'dbus'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'harfbuzz'
+  'libgcc'
+  'libpulse'
+  'libsoup3'
+  'libstdc++'
+  'pango'
+  'webkit2gtk-4.1'
+)
 optdepends=(
   'libayatana-appindicator: system tray icon support'
   'git: repository operations from the app'

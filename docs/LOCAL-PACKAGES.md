@@ -8,6 +8,7 @@ applications from source.
 |---|---|---|
 | `apm-dotfiles` | [packages/apm/](../packages/apm/) | Microsoft APM |
 | `github-copilot-app-dotfiles` | [packages/github-copilot-app/](../packages/github-copilot-app/) | GitHub Copilot App |
+| `powershell-dotfiles` | [packages/powershell/](../packages/powershell/) | Microsoft PowerShell |
 
 Dotfiles discovers release versions and prepares build inputs. Paru downloads,
 verifies, builds, installs, and upgrades the resulting Arch packages. The agent
@@ -64,6 +65,14 @@ desktop entry, and bundled resources. It supports x86_64 and aarch64. The same
 version and snapshot tasks discover its `github/app` release assets automatically;
 no separate updater or hardcoded version is needed.
 
+The Arch category selects `powershell-dotfiles` instead of `powershell-bin`.
+It packages Microsoft's x86_64 and aarch64 archives with the bundled .NET runtime
+and installs `pwsh` under `/opt/microsoft/powershell/<major>`, linked from
+`/usr/bin/pwsh`. Its `package.install` script registers PowerShell in
+`/etc/shells` on install/upgrade and removes that entry on uninstall.
+The first installation conflicts with the existing `powershell-bin` package;
+review that replacement when Paru installs it.
+
 Paru does not query GitHub for these release versions. Running Paru without
 first running dotfiles uses the last prepared snapshot. Changes to a tracked
 recipe also reach Paru when `paru-config` refreshes its snapshot.
@@ -104,6 +113,10 @@ The generated file contains `pkgver` and architecture-specific
 `sha256sums_<architecture>` arrays. The PKGBUILD sources `./version.sh` and uses
 those values in its download URLs and makepkg checksum verification. The
 packaging revision, `pkgrel`, stays in the tracked recipe.
+
+Asset names may contain `{version}`, which is replaced with the validated
+release version without the leading `v`. The PowerShell descriptor uses this
+for archives such as `powershell-7.6.9-linux-x64.tar.gz`.
 
 Descriptors are validated before network requests or writes, including unique
 package bases and package names. Invalid ownership metadata fails the task and
@@ -177,7 +190,8 @@ before applying them. See the upstream
 reset/clean there. Building directly from this checkout both misaligns that
 path and makes Git cleanup unsuitable for the source repository.
 
-Instead, `paru-config` copies `PKGBUILD` and generated `version.sh` into a
+Instead, `paru-config` copies `PKGBUILD`, generated `version.sh`, and an optional
+`package.install` script into a
 standalone Git repository at exactly that cache path. It commits both files
 when their contents change. Paru can then reset tracked inputs to that commit
 and remove generated files while retaining the version pins needed next time.
@@ -219,9 +233,10 @@ create temporary build inputs; metadata validation is deferred until apply.
    install it explicitly through Paru after preparation.
 6. Run the checks below and verify a build on Arch before installing it.
 
-The current snapshot format copies only `PKGBUILD` and `version.sh`. Recipes
-needing patches, install scripts, or other local files require extending that
-format first. Version discovery currently supports stable GitHub releases
+The snapshot format copies `PKGBUILD`, `version.sh`, and optional `package.install`.
+Use `install=package.install` for package lifecycle hooks. Recipes needing
+patches or other local files require extending that format first.
+Version discovery currently supports stable GitHub releases
 with published asset digests, not arbitrary version commands or VCS recipes.
 
 ## Logs and troubleshooting
@@ -253,7 +268,7 @@ The offline checks cover:
 
 - Parsing the actual tracked descriptors and checking required fields,
   safe names, architecture keys, and recipe existence, without generated pins.
-- ShellCheck for `packages/*/PKGBUILD`, without traversing downloads, generated
+- ShellCheck for `packages/*/PKGBUILD` and `packages/*/*.install`, without traversing downloads, generated
   pins, or build trees.
 - Mocked release discovery, metadata failures, preview safety, and repeat runs.
 - Independent refreshes and AUR installs after an upstream failure, with and

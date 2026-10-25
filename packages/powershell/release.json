@@ -1,0 +1,8 @@
+{
+  "package_base": "powershell-dotfiles",
+  "repository": "PowerShell/PowerShell",
+  "assets": {
+    "aarch64": "powershell-{version}-linux-arm64.tar.gz",
+    "x86_64": "powershell-{version}-linux-x64.tar.gz"
+  }
+}

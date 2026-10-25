@@ -53,6 +53,32 @@ fn release_validation_rejects_incomplete_or_unsafe_metadata() {
     assert!(pins.contains(&format!("sha256sums_x86_64=('{}')", "a".repeat(64))));
 }
 
+#[test]
+fn versioned_assets_use_the_validated_release_version_and_exact_digest() {
+    let mut source = source();
+    source.assets.insert(
+        "x86_64".into(),
+        "powershell-{version}-linux-x64.tar.gz".into(),
+    );
+    for tag in ["v1.2.3", "1.2.3"] {
+        let data = serde_json::json!({
+            "tag_name": tag, "draft": false, "prerelease": false,
+            "assets": [
+                {"name": "powershell-1.2.2-linux-x64.tar.gz", "digest": format!("sha256:{}", "b".repeat(64))},
+                {"name": "powershell-1.2.3-linux-x64.tar.gz", "digest": format!("sha256:{}", "a".repeat(64))}
+            ]
+        });
+        let pins = release_pins(&source, &data.to_string()).unwrap();
+        assert!(pins.contains(&format!("sha256sums_x86_64=('{}')", "a".repeat(64))));
+
+        let mut missing = data;
+        missing["assets"].as_array_mut().unwrap().pop();
+        assert!(release_pins(&source, &missing.to_string()).is_err());
+        missing["tag_name"] = serde_json::json!("v1';touch injected;#");
+        assert!(release_pins(&source, &missing.to_string()).is_err());
+    }
+}
+
 fn fixture() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let package = dir.path().join("packages/tool-bin");
@@ -345,6 +371,39 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
     assert_eq!(task_batch(&refreshed).changed_count(), 1);
     assert_ne!(repo.head().unwrap().target().unwrap(), head.id());
     assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+}
+
+#[test]
+fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
+    let dir = fixture();
+    let source = dir.path().join("packages/tool-bin");
+    let script = source.join("package.install");
+    let build_root = dir.path().join("builds");
+    std::fs::write(&script, "post_install() { :; }\n").unwrap();
+    let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, true).unwrap();
+    assert!(snapshot.needs_write().unwrap());
+    assert!(!snapshot.path.exists(), "planning must not publish inputs");
+    snapshot.apply().unwrap();
+    assert!(!snapshot.needs_write().unwrap());
+    let repo = git2::Repository::open(&snapshot.path).unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    std::fs::write(snapshot.path.join("package.install"), "cache edit\n").unwrap();
+    repo.reset(head.as_object(), git2::ResetType::Hard, None)
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(snapshot.path.join("package.install")).unwrap(),
+        "post_install() { :; }\n"
+    );
+    std::fs::write(&script, "post_install() { echo updated; }\n").unwrap();
+    let changed = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+    assert!(changed.needs_write().unwrap());
+    changed.apply().unwrap();
+    assert!(!changed.needs_write().unwrap());
+    let tree = repo.head().unwrap().peel_to_tree().unwrap();
+    let blob = repo
+        .find_blob(tree.get_name("package.install").unwrap().id())
+        .unwrap();
+    assert_eq!(blob.content(), b"post_install() { echo updated; }\n");
 }
 
 #[test]

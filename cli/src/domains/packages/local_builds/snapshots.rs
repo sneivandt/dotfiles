@@ -51,6 +51,9 @@ impl Snapshot {
         if let Some(pins) = pins {
             files.push(("version.sh", pins));
         }
+        if let Some(script) = read_optional(&source.join("package.install"))? {
+            files.push(("package.install", script));
+        }
         let snapshot = Self {
             path,
             files,

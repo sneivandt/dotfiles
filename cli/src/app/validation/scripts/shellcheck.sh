@@ -65,7 +65,7 @@ if [ "${1:-}" = --root ]; then
   done
   # Only tracked recipe inputs belong here, not generated pins, downloads or
   # build trees under each recipe directory.
-  for recipe in "$root"/packages/*/PKGBUILD; do
+  for recipe in "$root"/packages/*/PKGBUILD "$root"/packages/*/*.install; do
     [ -f "$recipe" ] || continue
     printf '%s\0' "$recipe" >> "$inputs"
   done

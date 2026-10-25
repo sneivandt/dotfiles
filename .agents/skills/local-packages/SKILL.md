@@ -53,8 +53,11 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
   descriptor array only for split packages or differing names. Invalid or
   missing ownership descriptors fail closed. Keep agent package tasks
   independent of the APM installation method.
-- The current snapshot format copies only `PKGBUILD` and `version.sh`. Extend
-  it explicitly before introducing patches, install scripts, or extra inputs.
+- Snapshots copy `PKGBUILD`, `version.sh`, and optional `package.install`.
+  Use `install=package.install` for lifecycle hooks. Extend the format
+  explicitly before introducing patches or other extra inputs.
+- Asset names may use `{version}` for the validated release version without
+  its leading `v`; fixed asset names continue to match literally.
 
 ## Verify the changed contract
 

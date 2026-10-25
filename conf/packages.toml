@@ -44,7 +44,7 @@ packages = [
   { name = "apm-dotfiles", aur = true },
   { name = "github-copilot-cli-bin", aur = true },
   { name = "openai-codex-bin", aur = true },
-  { name = "powershell-bin", aur = true },
+  { name = "powershell-dotfiles", aur = true },
 ]
 
 [arch-desktop]

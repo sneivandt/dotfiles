@@ -100,6 +100,8 @@ test_wrapper_forwarded_args()
 
 test_wrapper_bootstrap_downloads_verified_binary_and_forwards_args()
 {(
+  DOTFILES_RELEASE_REPO=fixture/releases
+  export DOTFILES_RELEASE_REPO
   log_stage "Testing real wrapper bootstrap download, checksum, and forwarding"
 
   tmpdir="$DIR/.wrapper-bootstrap-$$"
@@ -166,7 +168,7 @@ EOF
   wrapper_path="$tmpdir/fake-bin:$PATH"
   if [ "${WRAPPER_DOWNLOADER:-curl}" = wget ]; then
     mv "$tmpdir/fake-bin/curl" "$tmpdir/fake-bin/wget"
-    for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname; do
+    for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname grep; do
       ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
     done
     wrapper_path="$tmpdir/fake-bin"
@@ -470,6 +472,8 @@ test_wrapper_chmod_after_checksum()
 
 test_wrapper_attestation_verification()
 {(
+  DOTFILES_RELEASE_REPO=fixture/releases
+  export DOTFILES_RELEASE_REPO
   log_stage "Testing build provenance verification during bootstrap download"
 
   tmpdir="$DIR/.wrapper-attestation-$$"
@@ -573,7 +577,7 @@ EOF
   # Missing gh: warn and continue so a fresh bootstrap can install it.
   rm -rf "${tmpdir:?}/bin"
   rm -f "$tmpdir/fake-bin/gh"
-  for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname; do
+  for command_name in awk cat chmod dirname mkdir mv readlink rm rmdir sha256sum uname grep; do
     ln -s "$(command -v "$command_name")" "$tmpdir/fake-bin/$command_name"
   done
   output=$(PATH="$tmpdir/fake-bin" GH_PROMPT_DISABLED=caller DBUS_SESSION_BUS_ADDRESS=caller \
@@ -592,6 +596,8 @@ EOF
 
 test_wrapper_failed_bootstrap_preserves_cached_binary()
 {(
+  DOTFILES_RELEASE_REPO=fixture/releases
+  export DOTFILES_RELEASE_REPO
   log_stage "Testing failed bootstrap leaves a concurrently installed binary intact"
   fixture="$DIR/.wrapper-staging-$$"
   mkdir "$fixture"
@@ -667,6 +673,58 @@ test_wrapper_release_pinned_urls()
   fi
 )}
 
+test_wrapper_release_repository()
+{(
+  log_stage "Testing release repository discovery and overrides without network access"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir -p "$fixture/repo space" "$fixture/fake-bin"
+  cp "$DIR/dotfiles.sh" "$fixture/repo space/dotfiles.sh"
+  git init -q "$fixture/repo space"
+  git -C "$fixture/repo space" remote add origin https://github.com/fork-owner/custom-name.git
+  cat > "$fixture/fake-bin/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$DOTFILES_ROOT/request"
+exit 22
+EOF
+  chmod +x "$fixture/fake-bin/curl"
+  PATH="$fixture/fake-bin:$PATH"
+  export PATH
+  unset DOTFILES_RELEASE_REPO
+  for remote in https://github.com/fork-owner/custom-name.git git@github.com:fork-owner/custom-name.git ssh://git@github.com/fork-owner/custom-name.git; do
+    git -C "$fixture/repo space" remote set-url origin "$remote"
+    if "$fixture/repo space/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+      log_error "Fixture unexpectedly downloaded a binary"
+    fi
+    grep -Fxq 'https://api.github.com/repos/fork-owner/custom-name/releases/latest' "$fixture/repo space/request" ||
+      log_error "Wrong repository discovered from $remote"
+  done
+  git -C "$fixture/repo space" remote set-url origin https://example.com/other/repo
+  for override in publisher/releases '' owner/repo/extra '../repo' 'owner/repo?query'; do
+    rm -f "$fixture/repo space/request"
+    if DOTFILES_RELEASE_REPO="$override" "$fixture/repo space/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+      log_error "Fixture unexpectedly succeeded"
+    fi
+    if [ "$override" = publisher/releases ]; then
+      grep -Fxq 'https://api.github.com/repos/publisher/releases/releases/latest' "$fixture/repo space/request" ||
+        log_error "Override was not used"
+    else
+      [ ! -e "$fixture/repo space/request" ] || log_error "Invalid override reached network tool"
+      grep -q DOTFILES_RELEASE_REPO "$fixture/stderr" || log_error "Missing actionable repository error"
+    fi
+  done
+  rm -f "$fixture/repo space/request"
+  if "$fixture/repo space/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Non-GitHub origin unexpectedly accepted"
+  fi
+  [ ! -e "$fixture/repo space/request" ] || log_error "Non-GitHub origin reached network tool"
+  git -C "$fixture/repo space" remote remove origin
+  if "$fixture/repo space/dotfiles.sh" --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+    log_error "Missing origin unexpectedly accepted"
+  fi
+  [ ! -e "$fixture/repo space/request" ] || log_error "Missing origin reached network tool"
+)}
+
 # Run all tests when executed directly
 case "$0" in
   *test-shell-wrapper.sh)
@@ -689,6 +747,7 @@ case "$0" in
     test_wrapper_chmod_after_checksum
     test_wrapper_attestation_verification
     test_wrapper_release_pinned_urls
+    test_wrapper_release_repository
     echo "All shell wrapper tests passed"
     ;;
 esac

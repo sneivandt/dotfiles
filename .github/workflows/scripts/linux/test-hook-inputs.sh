@@ -209,6 +209,33 @@ EOF
   sh "$DIR/hooks/check-ci-guards.sh"
 )}
 
+test_github_ssh_allowlist()
+{(
+  log_stage "Checking GitHub SSH exceptions preserve scanning of the rest of the line"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  git init -q "$fixture"
+  mkdir "$fixture/hooks"
+  cp "$DIR/hooks/check-sensitive.sh" "$DIR/hooks/sensitive-patterns.ini" \
+    "$DIR/hooks/sensitive-allowlist.ini" "$fixture/hooks/"
+  cd "$fixture"
+  for remote in git@github.com:fixture/repo.git ssh://git@github.com/fixture/repo.git; do
+    printf '%s\n' "$remote" > remote.txt
+    git add remote.txt
+    sh hooks/check-sensitive.sh > "$fixture/output" 2>&1 || log_error "Public GitHub SSH URL was rejected"
+    printf '%s token = ghp_%s\n' "$remote" 'abcdefghijklmnopqrstuvwxyzabcdefghijklmn' > remote.txt
+    git add remote.txt
+    if sh hooks/check-sensitive.sh > "$fixture/output" 2>&1; then
+      log_error "GitHub SSH exception hid a token on the same line"
+    fi
+  done
+  printf 'git@%s\n' 'github.com.example' > remote.txt
+  git add remote.txt
+  if sh hooks/check-sensitive.sh > "$fixture/output" 2>&1; then
+    log_error "GitHub SSH exception accepted a lookalike email domain"
+  fi
+)}
+
 test_build_version_ref_triggers()
 {(
   log_stage "Checking build-version inputs for attached, detached, and linked-worktree HEAD"
@@ -233,7 +260,20 @@ test_build_version_ref_triggers()
   git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null \
     commit --allow-empty -qm baseline
   main_git_dir=$(git rev-parse --absolute-git-dir)
-  unset DOTFILES_VERSION
+  unset DOTFILES_VERSION DOTFILES_RELEASE_REPO
+  "$fixture/build-script.exe" > "$fixture/no-publisher"
+  grep -Fqx 'cargo:rustc-env=DOTFILES_RELEASE_REPO=' "$fixture/no-publisher" ||
+    log_error "Source build unexpectedly selected a publisher"
+  DOTFILES_RELEASE_REPO=fork-owner/releases "$fixture/build-script.exe" > "$fixture/publisher"
+  grep -Fqx 'cargo:rustc-env=DOTFILES_RELEASE_REPO=fork-owner/releases' "$fixture/publisher" ||
+    log_error "Build script did not embed the publishing repository"
+  grep -Fqx 'cargo:rerun-if-env-changed=DOTFILES_RELEASE_REPO' "$fixture/publisher" ||
+    log_error "Publisher changes do not invalidate the build"
+  for invalid in 'owner/repo/extra' 'https://github.com/owner/repo' 'owner/repo?query' '../repo'; do
+    if DOTFILES_RELEASE_REPO="$invalid" "$fixture/build-script.exe" > "$fixture/invalid" 2>&1; then
+      log_error "Build script accepted invalid publisher: $invalid"
+    fi
+  done
   "$fixture/build-script.exe" > "$fixture/attached"
   grep -Fqx "cargo:rerun-if-changed=$main_git_dir/refs/heads/main" "$fixture/attached" ||
     log_error "Attached HEAD did not watch its branch ref"
@@ -453,3 +493,4 @@ test_staged_ci_guards
 test_ci_change_classification
 test_staged_ci_guard_deletions
 test_build_version_ref_triggers
+test_github_ssh_allowlist

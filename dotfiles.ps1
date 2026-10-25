@@ -20,7 +20,6 @@ $ErrorActionPreference = 'Stop'
 $DotfilesRoot = $PSScriptRoot -replace '^\\\\\?\\', ''
 $env:DOTFILES_ROOT = $DotfilesRoot
 $env:DOTFILES_WRAPPER = "pwsh"
-$Repo = "sneivandt/dotfiles"
 $BinDir = Join-Path $DotfilesRoot "bin"
 $TransferTimeout = 120  # seconds — total transfer timeout
 $Build = $false
@@ -231,8 +230,34 @@ function Test-Attestation
     return $false
 }
 
+function Resolve-ReleaseRepo
+{
+    $repo = $env:DOTFILES_RELEASE_REPO
+    if ($null -eq $repo)
+    {
+        $remote = $null
+        try
+        {
+            $remote = & git -C $DotfilesRoot remote get-url origin 2>$null
+            if ($LASTEXITCODE -ne 0) { $remote = $null }
+        }
+        catch { $remote = $null }
+        if ($remote -is [string] -and $remote -cmatch '^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)(.+)\z')
+        {
+            $repo = $Matches[1] -creplace '\.git$', ''
+        }
+    }
+    if ($repo -cnotmatch '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+\z' -or
+        ($repo -split '/')[-1] -in @('.', '..'))
+    {
+        throw 'Cannot resolve a GitHub release repository. Set DOTFILES_RELEASE_REPO=owner/repo or use --build.'
+    }
+    return $repo
+}
+
 function Get-Binary
 {
+    $Repo = Resolve-ReleaseRepo
     $tag = Resolve-ReleaseTag
     if (-not $tag)
     {

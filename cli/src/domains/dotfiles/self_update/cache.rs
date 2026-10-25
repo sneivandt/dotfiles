@@ -31,6 +31,9 @@ fn read_fresh_cache_at(root: &Path, now: u64, current_boot_id: Option<&str>) -> 
         return None;
     };
     let mut lines = content.lines();
+    if lines.next()? != super::REPO {
+        return None;
+    }
     let tag = lines.next().map(str::trim).filter(|tag| !tag.is_empty())?;
     let ts_str = lines.next()?;
     let Ok(ts) = ts_str.trim().parse::<u64>() else {
@@ -59,8 +62,8 @@ pub(super) fn write_cache_best_effort(root: &Path, tag: &str) {
 
 fn write_cache_at(root: &Path, tag: &str, now: u64, boot_id: Option<&str>) -> Result<()> {
     let content = boot_id.map_or_else(
-        || format!("{tag}\n{now}\n"),
-        |boot_id| format!("{tag}\n{now}\n{boot_id}\n"),
+        || format!("{}\n{tag}\n{now}\n", super::REPO),
+        |boot_id| format!("{}\n{tag}\n{now}\n{boot_id}\n", super::REPO),
     );
     fs::write(cache_path(root), content).context("writing version cache file")?;
     Ok(())
@@ -169,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_cache_is_stale_when_a_boot_id_is_available() {
+    fn legacy_cache_without_a_publisher_is_stale() {
         let dir = tempfile::tempdir().unwrap();
         let bin_dir = dir.path().join("bin");
         fs::create_dir_all(&bin_dir).unwrap();
@@ -178,9 +181,22 @@ mod tests {
         assert_eq!(read_fresh_cache_at(dir.path(), 101, Some("boot-a")), None);
         assert_eq!(
             read_fresh_cache_at(dir.path(), 101, None),
-            Some("v1.0".to_string()),
-            "platforms without a boot identifier retain the timestamp policy"
+            None,
+            "legacy caches do not identify their release repository"
         );
+    }
+
+    #[test]
+    fn cache_from_another_publisher_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        fs::write(
+            cache_path(dir.path()),
+            "another/publisher\nv2026.07.25-99\n100\nboot-a\n",
+        )
+        .unwrap();
+        assert_eq!(read_fresh_cache_at(dir.path(), 101, Some("boot-a")), None);
+        assert_eq!(read_fresh_cache_at(dir.path(), 101, None), None);
     }
 
     #[test]
@@ -191,6 +207,9 @@ mod tests {
 
         write_cache_at(dir.path(), "v2026.07.25-99", 100, Some("boot-a")).unwrap();
         let content = fs::read_to_string(bin_dir.join(".dotfiles-version-cache")).unwrap();
-        assert_eq!(content, "v2026.07.25-99\n100\nboot-a\n");
+        assert_eq!(
+            content,
+            format!("{}\nv2026.07.25-99\n100\nboot-a\n", super::super::REPO)
+        );
     }
 }

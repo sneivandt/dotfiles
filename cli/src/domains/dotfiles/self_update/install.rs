@@ -421,7 +421,7 @@ mod tests {
             "only the binary and version cache remain"
         );
         let cache = fs::read_to_string(cache_path(dir.path())).unwrap();
-        assert!(cache.starts_with("v1.0.0\n"));
+        assert!(cache.starts_with(&format!("{}\nv1.0.0\n", super::super::REPO)));
         assert_eq!(
             client.request_urls(),
             [

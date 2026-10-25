@@ -16,7 +16,6 @@ export DOTFILES_ROOT
 DOTFILES_WRAPPER="sh"
 export DOTFILES_WRAPPER
 
-REPO="sneivandt/dotfiles"
 BIN_DIR="$DOTFILES_ROOT/bin"
 BINARY="$BIN_DIR/dotfiles"
 CONNECT_TIMEOUT=10   # seconds — TCP connect timeout
@@ -106,6 +105,29 @@ fi
 # --------------------------------------------------------------------------- #
 # Production mode: ensure binary is present
 # --------------------------------------------------------------------------- #
+
+# Resolve only for bootstrap; cached binaries and --build need no remote.
+resolve_release_repo() {
+  _rr_repo=${DOTFILES_RELEASE_REPO-}
+  if [ "${DOTFILES_RELEASE_REPO+x}" != x ]; then
+    _rr_url=$(git -C "$DOTFILES_ROOT" remote get-url origin 2>/dev/null) || _rr_url=""
+    case "$_rr_url" in
+      https://github.com/*) _rr_repo=${_rr_url#https://github.com/} ;;
+      git@github.com:*) _rr_repo=${_rr_url#git@github.com:} ;;
+      ssh://git@github.com/*) _rr_repo=${_rr_url#ssh://git@github.com/} ;;
+    esac
+    _rr_repo=${_rr_repo%.git}
+  fi
+  case "$_rr_repo" in
+    *[!A-Za-z0-9_./-]*) _rr_repo="" ;;
+  esac
+  if ! printf '%s\n' "$_rr_repo" | LC_ALL=C grep -Eq '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$' ||
+    [ "${_rr_repo#*/}" = "." ] || [ "${_rr_repo#*/}" = ".." ]; then
+    echo "ERROR: Cannot resolve a GitHub release repository. Set DOTFILES_RELEASE_REPO=owner/repo or use --build." >&2
+    return 1
+  fi
+  printf '%s\n' "$_rr_repo"
+}
 
 # Download a URL to a file.
 # Usage: download_file <url> <output_file>
@@ -202,6 +224,7 @@ _verify_attestation() {
 
 # Download the bootstrap binary if needed.
 download_binary() {(
+  REPO=$(resolve_release_repo) || exit 1
   _arch="$(uname -m)"
   case "$_arch" in
     x86_64|amd64)  asset="dotfiles-linux-x86_64" ;;

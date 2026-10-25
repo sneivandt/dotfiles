@@ -13,6 +13,22 @@ Initial bootstrap verifies build provenance when `gh` is available; when it is
 absent, bootstrap warns and continues. Verification failure with `gh` present
 blocks the download. See [Build provenance verification](SECURITY.md#build-provenance-verification).
 
+The download repository is discovered from this checkout's `origin` remote.
+GitHub HTTPS, `git@github.com:owner/repo.git`, and
+`ssh://git@github.com/owner/repo.git` URLs are supported. Set
+`DOTFILES_RELEASE_REPO=owner/repo` to explicitly choose another publisher.
+An invalid override, missing origin, or unsupported remote produces an error
+before downloading; there is no fallback to the original project's releases.
+Forks without published binaries can use `--build` or explicitly select an
+existing publisher. Cached binaries and `--build` do not require discovery.
+
+Release CI embeds its publishing repository in the binary. Subsequent CLI
+self-updates use that embedded identity for downloads, checksums, and provenance,
+even if the checkout's remote changes. The wrapper override selects bootstrap
+only; it does not redirect an existing binary's self-updates. Source builds
+without `DOTFILES_RELEASE_REPO` set at build time disable self-update. A source
+build can opt in by setting that variable to a GitHub `owner/repo` when building.
+
 **Even `--help`, `list`, or `--dry-run` can trigger a wrapper download.**
 Bootstrap runs before the CLI parses those arguments. It uses the network and
 writes the binary and download files. Once bootstrapped, invoke the binary

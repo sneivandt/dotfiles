@@ -116,6 +116,7 @@ jobs:
         working-directory: cli
         env:
           DOTFILES_VERSION: ${{ needs.version.outputs.version }}
+          DOTFILES_RELEASE_REPO: ${{ github.repository }}
 
       - name: Rename binary
         run: cp cli/target/release/dotfiles "${{ matrix.artifact }}"
@@ -147,6 +148,7 @@ jobs:
         working-directory: cli
         env:
           DOTFILES_VERSION: ${{ needs.version.outputs.version }}
+          DOTFILES_RELEASE_REPO: ${{ github.repository }}
 
       - name: Rename binary
         run: Copy-Item cli\target\release\dotfiles.exe dotfiles-windows-x86_64.exe

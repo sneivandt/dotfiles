@@ -6,7 +6,29 @@
 
 use std::process::Command;
 
-fn main() {
+fn main() -> Result<(), String> {
+    // Release binaries retain their publisher even if the checkout remote changes.
+    let release_repo = std::env::var("DOTFILES_RELEASE_REPO").unwrap_or_default();
+    if !release_repo.is_empty()
+        && !release_repo.split_once('/').is_some_and(|(owner, name)| {
+            !owner.is_empty()
+                && !name.is_empty()
+                && owner.starts_with(|c: char| c.is_ascii_alphanumeric())
+                && name != "."
+                && name != ".."
+                && owner
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'-')
+                && name
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"_.-".contains(&c))
+        })
+    {
+        return Err("DOTFILES_RELEASE_REPO must be a GitHub owner/repo".to_string());
+    }
+    println!("cargo:rustc-env=DOTFILES_RELEASE_REPO={release_repo}");
+    println!("cargo:rerun-if-env-changed=DOTFILES_RELEASE_REPO");
+
     // Prefer DOTFILES_VERSION env var if set (e.g., by CI release workflow),
     // otherwise fall back to git describe for local development builds.
     if let Ok(version) = std::env::var("DOTFILES_VERSION") {
@@ -28,6 +50,7 @@ fn main() {
     // repository layouts.
     register_git_rerun_triggers();
     println!("cargo:rerun-if-env-changed=DOTFILES_VERSION");
+    Ok(())
 }
 
 /// Register `cargo:rerun-if-changed` directives for the Git HEAD and tags.

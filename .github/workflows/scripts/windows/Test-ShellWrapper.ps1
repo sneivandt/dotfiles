@@ -416,7 +416,7 @@ function Test-IsolatedWrapperPath {
     $wrapper = Join-Path $repo 'dotfiles.ps1'
     $originalLocation = Get-Location
     $savedEnvironment = @{}
-    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION', 'DOTFILES_REEXEC_GUARD',
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER', 'DOTFILES_SKIP_ATTESTATION', 'DOTFILES_REEXEC_GUARD', 'DOTFILES_RELEASE_REPO',
             'WRAPPER_TEST_BUILD_EXIT', 'WRAPPER_TEST_BAD_CHECKSUM', 'WRAPPER_TEST_GH_EXIT',
             'GH_PROMPT_DISABLED', 'DBUS_SESSION_BUS_ADDRESS')) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
@@ -476,6 +476,7 @@ function Test-IsolatedWrapperPath {
         }
         $env:DOTFILES_SKIP_ATTESTATION = '0'
         $env:DOTFILES_REEXEC_GUARD = '1'
+        $env:DOTFILES_RELEASE_REPO = 'fixture/releases'
         $env:WRAPPER_TEST_BUILD_EXIT = '0'
         $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
         $env:WRAPPER_TEST_GH_EXIT = '0'
@@ -652,6 +653,98 @@ function Test-CargoArtifactPath {
 # Run All Tests
 # ---------------------------------------------------------------------------
 
+function Test-ReleaseRepository {
+    Write-TestStage 'Testing GitHub release repository discovery and overrides'
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_RELEASE_REPO', 'DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
+    $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+    try {
+        $wrapper = Join-Path $PSScriptRoot '../../../../dotfiles.ps1'
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            $wrapper, [ref]$tokens, [ref]$errors)
+        if ($errors.Count -ne 0) { throw "Wrapper parse failed: $errors" }
+        $resolver = $ast.Find({ param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Resolve-ReleaseRepo'
+        }, $true)
+        . ([scriptblock]::Create($resolver.Extent.Text))
+        # The resolver loaded above reads this variable through dynamic scope.
+        Set-Variable -Name DotfilesRoot -Value 'fixture root with spaces'
+        $script:releaseRemote = $null
+        function git {
+            if (($args -join '|') -cne '-C|fixture root with spaces|remote|get-url|origin') {
+                throw 'Repository discovery used the wrong arguments'
+            }
+            $global:LASTEXITCODE = if ($null -eq $script:releaseRemote) { 1 } else { 0 }
+            $script:releaseRemote
+        }
+        Remove-Item Env:DOTFILES_RELEASE_REPO -ErrorAction SilentlyContinue
+        foreach ($remote in @('https://github.com/fork-owner/custom-name.git',
+                'git@github.com:fork-owner/custom-name.git',
+                'ssh://git@github.com/fork-owner/custom-name.git')) {
+            $script:releaseRemote = $remote
+            if ((Resolve-ReleaseRepo) -cne 'fork-owner/custom-name') { throw "Wrong repository: $remote" }
+        }
+        $script:releaseRemote = 'https://example.com/other/repo'
+        $env:DOTFILES_RELEASE_REPO = 'publisher/releases'
+        if ((Resolve-ReleaseRepo) -cne 'publisher/releases') { throw 'Override was ignored' }
+        foreach ($override in @('owner/repo/extra', '../repo', 'owner/repo?query')) {
+            $env:DOTFILES_RELEASE_REPO = $override
+            $rejected = $false
+            try { Resolve-ReleaseRepo | Out-Null } catch {
+                if ($_ -notmatch 'DOTFILES_RELEASE_REPO') { throw }
+                $rejected = $true
+            }
+            if (-not $rejected) { throw "Invalid override accepted: $override" }
+        }
+        Remove-Item Env:DOTFILES_RELEASE_REPO
+        foreach ($remote in @('https://example.com/other/repo', $null)) {
+            $script:releaseRemote = $remote
+            $rejected = $false
+            try { Resolve-ReleaseRepo | Out-Null } catch {
+                if ($_ -notmatch 'DOTFILES_RELEASE_REPO') { throw }
+                $rejected = $true
+            }
+            if (-not $rejected) { throw 'Unsupported or missing remote accepted' }
+        }
+        # Exercise the actual wrapper's bootstrap wiring with a network fixture.
+        [void][System.IO.Directory]::CreateDirectory($fixture)
+        $fixtureWrapper = Join-Path $fixture 'dotfiles.ps1'
+        Copy-Item -LiteralPath $wrapper -Destination $fixtureWrapper
+        Set-Item Function:Invoke-WebRequest -Value {
+            param($Uri, [switch]$UseBasicParsing, $TimeoutSec)
+            if (-not $UseBasicParsing -or $TimeoutSec -ne 120) {
+                throw 'Bootstrap changed its metadata request options'
+            }
+            $releaseCapture.Uri = $Uri
+            return @{ Content = '{}' }
+        }
+        $env:DOTFILES_RELEASE_REPO = 'publisher/releases'
+        $releaseCapture = @{ Uri = $null }
+        try { & $fixtureWrapper --version | Out-Null } catch {
+            if ($_ -notmatch 'Failed to resolve latest release tag') { throw }
+        }
+        if ($releaseCapture.Uri -cne 'https://api.github.com/repos/publisher/releases/releases/latest') {
+            throw 'Bootstrap did not pass the selected publisher to release lookup'
+        }
+        Write-TestPass 'Release repository discovery, override, and rejection cases'
+        return $true
+    } catch {
+        Write-TestFail "Release repository regression failed: $_"
+        return $false
+    } finally {
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Variable releaseRemote -Scope Script -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-TestSuite {
     $results = @()
 
@@ -669,6 +762,7 @@ function Invoke-TestSuite {
     $results += Test-ErrorHandling
     $results += Test-IsolatedWrapperPath
     $results += Test-CargoArtifactPath
+    $results += Test-ReleaseRepository
 
     $passed = ($results | Where-Object { $_ -eq $true }).Count
     $total = $results.Count

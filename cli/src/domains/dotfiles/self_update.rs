@@ -66,7 +66,7 @@ use crate::infra::exec::{CommandSpec, Executor, OutputLog, ProcessExecutor};
 use crate::infra::logging::Output;
 use crate::infra::logging::OutputExt as _;
 /// GitHub repository used for release lookups.
-pub(super) const REPO: &str = "sneivandt/dotfiles";
+pub(super) const REPO: &str = env!("DOTFILES_RELEASE_REPO");
 /// Environment variable that disables the self-update preflight.
 const SKIP_SELF_UPDATE_ENV: &str = "DOTFILES_SKIP_SELF_UPDATE";
 const GH_TOKEN_ENV: &str = "GH_TOKEN";
@@ -272,6 +272,10 @@ pub fn pre_update(
         tracing::debug!("self-update skipped by {SKIP_SELF_UPDATE_ENV}");
         return Ok(false);
     }
+    if REPO.is_empty() {
+        tracing::debug!("self-update disabled: no release repository embedded at build time");
+        return Ok(false);
+    }
     if !is_running_from_bin(root) {
         return Ok(false);
     }
@@ -450,7 +454,7 @@ mod tests {
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
         assert!(
-            cached.starts_with("v2026.07.25-1\n"),
+            cached.starts_with(&format!("{REPO}\nv2026.07.25-1\n")),
             "the cache holds the latest published tag, not the running version; got {cached:?}"
         );
     }

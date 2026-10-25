@@ -243,12 +243,12 @@ mod tests {
         let find = |selector: &str| tasks.iter().find(|t| t.selector() == selector).unwrap();
         assert!(
             find("aur-packages")
-                .dependencies()
+                .ordering_dependencies()
                 .contains(&id::<ConfigureParu>())
         );
         assert!(
             find("paru-config")
-                .dependencies()
+                .ordering_dependencies()
                 .contains(&id::<UpdateLocalPackageVersions>())
         );
         assert!(find("local-package-versions").update_only());

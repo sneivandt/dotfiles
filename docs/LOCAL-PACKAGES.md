@@ -38,12 +38,18 @@ paru -Syu
 During `dotfiles update`:
 
 1. **Local package versions** (`local-package-versions`) discovers current
-   release versions and writes changed `version.sh` files.
-2. **Paru configuration** (`paru-config`) requires that task to succeed,
-   refreshes changed build snapshots, and writes changed Paru configuration.
-3. **AUR packages** (`aur-packages`) requires a working Paru and its generated
-   configuration. It installs missing configured packages, including
-   `apm-dotfiles` from the local repository.
+   release versions independently and writes each successful recipe’s changed
+   `version.sh` file. Failed refreshes retain that recipe’s existing pins and
+   remain failures in the run summary.
+2. **Paru configuration** (`paru-config`) waits for discovery to finish,
+   refreshes usable build snapshots, and writes Paru configuration containing
+   only available recipes. Existing pins can be used after a failed refresh.
+3. **AUR packages** (`aur-packages`) requires a working Paru and waits for
+   configuration preparation. It installs missing configured packages whose
+   inputs are ready, including `apm-dotfiles` from the local repository. Missing
+   local packages without prepared inputs are counted as failures and excluded
+   from installation; unrelated AUR packages continue. Unavailable local package
+   names are never submitted as direct AUR install targets.
 4. **Agent packages** (`apm`) waits for package installation, then runs APM from
    PATH. An unrelated package failure does not prevent it using an available APM.
 
@@ -80,7 +86,8 @@ recipe also reach Paru when `paru-config` refreshes its snapshot.
 The update-only version task scans immediate directories under `packages/`, in
 sorted order, and reads each `release.json`. This discovery is independent of
 `conf/packages.toml`: a recipe can be maintained without being selected for
-automatic installation. Directories without a descriptor are skipped.
+automatic installation. Directories without a recipe or descriptor are skipped;
+a PKGBUILD without its descriptor is an error.
 
 For APM, the task runs `curl` against:
 
@@ -98,12 +105,25 @@ The generated file contains `pkgver` and architecture-specific
 those values in its download URLs and makepkg checksum verification. The
 packaging revision, `pkgrel`, stays in the tracked recipe.
 
-All discovered metadata is validated before any version file is written.
-Missing assets or digests, invalid descriptors, API rate limits, and network
-failures leave existing pins intact and fail the task. There is no stale-data
-success fallback. Each changed file is written atomically; identical files
-are left alone. This is not a transaction across multiple recipes if a later
-filesystem write fails.
+Descriptors are validated before network requests or writes, including unique
+package bases and package names. Invalid ownership metadata fails the task and
+prevents AUR installation because the installer cannot safely identify local
+packages.
+
+Release metadata is validated separately for each recipe, including every
+configured architecture. Missing assets or digests, API rate limits, and network
+failures preserve that recipe’s pins and count as failures; successful recipes
+still publish their updates. File write failures also leave other recipes free
+to proceed. Each changed file is written atomically; identical files are left
+alone. Cancellation propagates immediately.
+
+Refresh success and package readiness are separate. A failed refresh does not
+prevent preparing a snapshot from existing pins, and the refresh failure remains
+visible. Missing pins or snapshot ownership failures make only that recipe
+unavailable. The installer checks current committed snapshot inputs and the
+published repository section before requesting a missing local package. Already
+installed packages need no reinstall. Errors reading or parsing ownership
+metadata fail closed rather than treating local packages as ordinary AUR names.
 
 A dry run still queries GitHub, but writes neither pins nor snapshots. On a
 fresh checkout, snapshot preview can report work before pins exist; applying
@@ -168,7 +188,12 @@ not repurpose an unrelated cached package checkout.
 1. Create `packages/<recipe>/PKGBUILD` and `release.json`.
 2. Set `package_base` to makepkg's actual package base: the recipe's `pkgbase`,
    or `pkgname` when there is no explicit `pkgbase`. It must be unique among
-   local recipes. The directory name may differ.
+   local recipes. The directory name may differ. The owned package name defaults
+   to `package_base`, so ordinary single-package recipes need no extra field.
+   For split packages or a differing package name, add a `packages` array listing
+   every actual package name. Names must be unique across descriptors. This
+   ownership information lets the installer refuse AUR fallback without executing
+   the PKGBUILD.
 3. Declare the upstream GitHub repository and release asset name for every
    supported architecture. These names must match published release assets.
 4. Have the PKGBUILD source `./version.sh`, declare a tracked `pkgrel`, and use
@@ -216,6 +241,10 @@ The offline checks cover:
 - ShellCheck for `packages/*/PKGBUILD`, without traversing downloads, generated
   pins, or build trees.
 - Mocked release discovery, metadata failures, preview safety, and repeat runs.
+- Independent refreshes and AUR installs after an upstream failure, with and
+  without retained pins, under sequential and parallel scheduling.
+- Unavailable local package filtering, published-config readiness, and isolation
+  of snapshot ownership failures.
 - Snapshot ownership, local commits, refresh behavior, and isolation of Git
   reset from the tracked source checkout.
 

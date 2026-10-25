@@ -11,11 +11,25 @@ use crate::infra::logging::OutputExt as _;
 pub(super) struct PackageInstallPlan {
     pub(super) missing: Vec<PackageResource>,
     already_ok: usize,
+    pub(super) unavailable: Vec<(String, String)>,
 }
 
 impl PackageInstallPlan {
+    pub(super) fn report_unavailable(&self, ctx: &Context) {
+        for (name, reason) in &self.unavailable {
+            ctx.log().warn(format!(
+                "local package {name} unavailable; refusing AUR fallback: {reason}"
+            ));
+        }
+    }
+
     pub(super) fn base_stats(&self) -> TaskStats {
-        TaskStats::from_counts(0, u32::try_from(self.already_ok).unwrap_or(u32::MAX), 0, 0)
+        TaskStats::from_counts(
+            0,
+            u32::try_from(self.already_ok).unwrap_or(u32::MAX),
+            0,
+            u32::try_from(self.unavailable.len()).unwrap_or(u32::MAX),
+        )
     }
 
     pub(super) fn preview_stats(&self) -> TaskStats {
@@ -23,7 +37,7 @@ impl PackageInstallPlan {
             u32::try_from(self.missing.len()).unwrap_or(u32::MAX),
             self.base_stats().already_ok_count(),
             0,
-            0,
+            self.base_stats().failed_count(),
         )
     }
 }
@@ -92,6 +106,12 @@ pub(super) fn build_install_plan(
     });
 
     let installed = get_installed_packages(manager, ctx.executor())?;
+    let unavailable_local = if manager == PackageManager::Paru {
+        super::super::local_builds::unavailable_packages(ctx)?
+    } else {
+        std::collections::BTreeMap::new()
+    };
+    let mut unavailable = Vec::new();
     let mut missing = Vec::new();
     let mut already_ok = 0usize;
 
@@ -105,6 +125,8 @@ pub(super) fn build_install_plan(
         ) {
             ctx.debug_fmt(|| format!("ok {}", resource.description()));
             already_ok = already_ok.saturating_add(1);
+        } else if let Some(reason) = unavailable_local.get(&pkg.name) {
+            unavailable.push((pkg.name.clone(), reason.clone()));
         } else {
             missing.push(resource);
         }
@@ -113,5 +135,6 @@ pub(super) fn build_install_plan(
     Ok(PackageInstallPlan {
         missing,
         already_ok,
+        unavailable,
     })
 }

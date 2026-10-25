@@ -111,7 +111,10 @@ fn release_update_preview_failure_apply_and_repeat() {
         .unwrap();
     assert_eq!(task_batch(&preview).changed_count(), 1);
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "original pins\n");
-    assert!(task().run(&release_context(dir.path(), true)).is_err());
+    assert_eq!(
+        task_batch(&task().run(&release_context(dir.path(), true)).unwrap()).failed_count(),
+        1
+    );
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "original pins\n");
     let result = task().run(&release_context(dir.path(), false)).unwrap();
     assert_eq!(task_batch(&result).changed_count(), 1);
@@ -283,12 +286,18 @@ fn snapshot_preview_handles_missing_pins_and_refuses_unmanaged_cache() {
     let preview = ConfigureParu.run(&ctx.with_dry_run(true)).unwrap();
     assert_eq!(task_batch(&preview).changed_count(), 2);
     assert!(!build_root(&ctx).unwrap().exists());
-    assert!(ConfigureParu.run(&ctx).is_err());
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).failed_count(),
+        1
+    );
     std::fs::write(pins, "pins\n").unwrap();
     let cache = build_root(&ctx).unwrap().join("tool-bin");
     std::fs::create_dir_all(&cache).unwrap();
     std::fs::write(cache.join("sentinel"), "unmanaged\n").unwrap();
-    assert!(ConfigureParu.run(&ctx).is_err());
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).failed_count(),
+        1
+    );
     assert_eq!(
         std::fs::read_to_string(cache.join("sentinel")).unwrap(),
         "unmanaged\n"
@@ -453,7 +462,10 @@ fn corrupt_snapshot_head_fails_before_preview_or_cached_input_changes() {
     let branch = repo.head().unwrap().name().unwrap().to_owned();
     std::fs::write(repo.path().join(branch), "corrupted reference\n").unwrap();
     assert!(repo.head().is_err());
-    assert!(ConfigureParu.run(&ctx.with_dry_run(true)).is_err());
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx.with_dry_run(true)).unwrap()).failed_count(),
+        1
+    );
     assert!(plan.apply().is_err());
     assert_eq!(
         std::fs::read_to_string(cache.join("PKGBUILD")).unwrap(),
@@ -463,4 +475,350 @@ fn corrupt_snapshot_head_fails_before_preview_or_cached_input_changes() {
         std::fs::read_to_string(cache.join("version.sh")).unwrap(),
         "original pins\n"
     );
+}
+
+fn add_recipe(root: &Path, base: &str) -> PathBuf {
+    let directory = root.join("packages").join(base);
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(
+        directory.join("release.json"),
+        serde_json::json!({
+            "package_base": base,  "repository": format!("example/{base}"),
+            "assets": {"x86_64": "tool.tar.gz"}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("PKGBUILD"),
+        format!("pkgname={base}\nsource ./version.sh\n"),
+    )
+    .unwrap();
+    directory
+}
+
+fn release_failure_executor(retained: bool) -> MockExecutor {
+    use crate::infra::exec::ExecError;
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.program() == "curl"
+                && spec.arguments().last().unwrap()
+                    == "https://api.github.com/repos/example/broken-bin/releases/latest"
+        })
+        .returning(move |_| {
+            if retained {
+                let mut metadata: serde_json::Value = serde_json::from_str(&release()).unwrap();
+                metadata["assets"] = serde_json::json!([]);
+                Ok(ExecResult::success(metadata.to_string()))
+            } else {
+                Err(ExecError::spawn(
+                    "curl",
+                    std::io::Error::other("upstream unavailable"),
+                ))
+            }
+        });
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.program() == "curl"
+                && spec.arguments().last().unwrap()
+                    == "https://api.github.com/repos/example/tool/releases/latest"
+        })
+        .returning(|_| Ok(ExecResult::success(release())));
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.program() == "pacman" && spec.arguments() == ["-Q", "paru"] && !spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("paru 2.1.0")));
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.program() == "/usr/bin/paru"
+                && spec.arguments() == ["--version"]
+                && spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("paru 2.1.0")));
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("")));
+    mock.expect_execute()
+        .once()
+        .withf(move |spec| {
+            let expected = if retained {
+                vec![
+                    "-S",
+                    "--needed",
+                    "--noconfirm",
+                    "broken-bin",
+                    "tool-bin",
+                    "unrelated-aur",
+                ]
+            } else {
+                vec!["-S", "--needed", "--noconfirm", "tool-bin", "unrelated-aur"]
+            };
+            spec.program() == "/usr/bin/paru" && spec.arguments() == expected && spec.is_checked()
+        })
+        .returning(|_| Ok(ExecResult::success("installed")));
+    mock
+}
+
+#[test]
+fn failed_release_does_not_block_other_updates_or_aur_installs() {
+    use crate::domains::packages::config::packages::Package;
+    use crate::domains::packages::install::InstallAurPackages;
+    use crate::engine::TaskAssessment;
+    use crate::engine::graph::ResolvedTaskGraph;
+    use crate::infra::ConfigHandle;
+    use crate::infra::logging::TaskStatus;
+    use std::collections::HashMap;
+
+    for parallel in [false, true] {
+        for retained in [false, true] {
+            let dir = fixture();
+            let broken = add_recipe(dir.path(), "broken-bin");
+            let old_pins = release_pins(&source(), &release()).unwrap();
+            if retained {
+                std::fs::write(broken.join("version.sh"), &old_pins).unwrap();
+            }
+            let setup = snapshot_context(dir.path());
+            let mock = release_failure_executor(retained);
+            let (logger, _logs, _guard) = crate::infra::logging::isolated_logger();
+            let logger = Arc::new(logger);
+            let ctx = make_context(
+                dir.path().into(),
+                None,
+                Platform::new(Os::Linux, true),
+                Arc::new(mock),
+            )
+            .with_home(setup.home().to_path_buf())
+            .with_env(crate::infra::env::MapEnv::new().into_handle())
+            .with_log(Arc::<crate::infra::logging::Logger>::clone(&logger))
+            .with_parallel(parallel);
+            let versions = UpdateLocalPackageVersions;
+            let config = ConfigureParu;
+            let install = InstallAurPackages::new(ConfigHandle::new(
+                ["broken-bin", "tool-bin", "unrelated-aur"]
+                    .into_iter()
+                    .map(|name| Package {
+                        name: name.into(),
+                        is_aur: true,
+                    })
+                    .collect(),
+            ));
+            // Reverse the intended order to ensure dependency edges schedule it.
+            let tasks: Vec<&dyn Task> = vec![&install, &config, &versions];
+            let graph = ResolvedTaskGraph::resolve(&tasks).unwrap();
+            let assessments = tasks
+                .iter()
+                .map(|task| (task.task_id(), TaskAssessment::applicable()))
+                .collect::<HashMap<_, _>>();
+            let run = if parallel {
+                crate::engine::scheduler::run_tasks_parallel
+            } else {
+                crate::engine::scheduler::run_tasks_sequential
+            };
+            let summary = run(&tasks, &graph, &assessments, &ctx, &logger);
+            assert!(
+                summary.failure_count() > 0,
+                "refresh failure must remain a failed run"
+            );
+            let entries = logger.task_entries();
+            let version_entry = entries
+                .iter()
+                .find(|entry| entry.name == "Local package versions")
+                .unwrap();
+            assert_eq!(version_entry.status, TaskStatus::Failed);
+            assert!(
+                entries
+                    .iter()
+                    .all(|entry| entry.status != TaskStatus::Blocked)
+            );
+            let install_entry = entries
+                .iter()
+                .find(|entry| entry.name == "AUR packages")
+                .unwrap();
+            if !retained {
+                assert_eq!(install_entry.status, TaskStatus::Failed);
+            }
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+                old_pins
+            );
+            let generated =
+                std::fs::read_to_string(ctx.home().join(".config/paru/paru.conf")).unwrap();
+            assert!(generated.contains("[dotfiles-tool-bin]"));
+            assert_eq!(generated.contains("[dotfiles-broken-bin]"), retained);
+            if retained {
+                assert_eq!(
+                    std::fs::read_to_string(broken.join("version.sh")).unwrap(),
+                    old_pins
+                );
+                assert!(unavailable_packages(&ctx).unwrap().is_empty());
+            } else {
+                assert!(!broken.join("version.sh").exists());
+                assert!(
+                    unavailable_packages(&ctx)
+                        .unwrap()
+                        .contains_key("broken-bin")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn snapshot_conflict_removes_only_its_repository_and_preserves_other_recipes() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let broken = add_recipe(dir.path(), "broken-bin");
+    std::fs::write(broken.join("version.sh"), "old pins\n").unwrap();
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).failed_count(),
+        0
+    );
+    let path = build_root(&ctx).unwrap().join("broken-bin");
+    std::fs::remove_file(path.join(".git/dotfiles-local-build")).unwrap();
+    let result = ConfigureParu.run(&ctx).unwrap();
+    assert_eq!(task_batch(&result).failed_count(), 1);
+    let config = std::fs::read_to_string(ctx.home().join(".config/paru/paru.conf")).unwrap();
+    assert!(config.contains("[dotfiles-tool-bin]"));
+    assert!(!config.contains("[dotfiles-broken-bin]"));
+    assert!(
+        path.join("version.sh").exists(),
+        "conflicting snapshot must be preserved"
+    );
+    assert_eq!(
+        unavailable_packages(&ctx)
+            .unwrap()
+            .keys()
+            .collect::<Vec<_>>(),
+        [&"broken-bin".to_string()]
+    );
+}
+
+#[test]
+fn readiness_requires_published_config_and_committed_current_inputs() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let _result = ConfigureParu.run(&ctx).unwrap();
+    assert!(unavailable_packages(&ctx).unwrap().is_empty());
+    let config = ctx.home().join(".config/paru/paru.conf");
+    let original = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(&config, "[options]\n").unwrap();
+    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    std::fs::write(config, original).unwrap();
+    std::fs::write(
+        dir.path().join("packages/tool-bin/PKGBUILD"),
+        "new inputs\n",
+    )
+    .unwrap();
+    assert!(unavailable_packages(&ctx).unwrap().contains_key("tool-bin"));
+    let _refreshed = ConfigureParu.run(&ctx).unwrap();
+    assert!(unavailable_packages(&ctx).unwrap().is_empty());
+}
+
+#[test]
+fn split_package_ownership_is_explicit_and_ordinary_names_default_to_base() {
+    assert_eq!(source().package_names(), ["tool-bin"]);
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let path = dir.path().join("packages/tool-bin/release.json");
+    let mut descriptor: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    descriptor["packages"] = serde_json::json!(["tool-cli", "tool-gui"]);
+    std::fs::write(&path, descriptor.to_string()).unwrap();
+    let missing = unavailable_packages(&ctx).unwrap();
+    assert!(missing.contains_key("tool-cli"));
+    assert!(missing.contains_key("tool-gui"));
+    assert!(!missing.contains_key("tool-bin"));
+    for invalid in [
+        serde_json::json!([]),
+        serde_json::json!(["../unsafe"]),
+        serde_json::json!(["same", "same"]),
+    ] {
+        descriptor["packages"] = invalid;
+        std::fs::write(&path, descriptor.to_string()).unwrap();
+        assert!(unavailable_packages(&ctx).is_err());
+    }
+    std::fs::remove_file(path).unwrap();
+    assert!(
+        unavailable_packages(&ctx).is_err(),
+        "missing descriptor must not erase ownership and permit AUR fallback"
+    );
+}
+
+#[test]
+fn snapshot_apply_failure_does_not_publish_its_section_or_block_other_snapshots() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let broken = add_recipe(dir.path(), "broken-bin");
+    std::fs::write(broken.join("version.sh"), "old pins\n").unwrap();
+    let OperationState::NeedsRun { plan } = ParuConfig.current_state(&ctx).unwrap() else {
+        panic!("expected preparation plan")
+    };
+    let conflict = build_root(&ctx).unwrap().join("broken-bin");
+    std::fs::create_dir_all(&conflict).unwrap();
+    std::fs::write(conflict.join("sentinel"), "preserve").unwrap();
+    let result = ParuConfig.apply(&ctx, &plan).unwrap();
+    assert_eq!(task_batch(&result).failed_count(), 1);
+    assert_eq!(task_batch(&result).changed_count(), 2);
+    assert_eq!(
+        std::fs::read_to_string(conflict.join("sentinel")).unwrap(),
+        "preserve"
+    );
+    let config = std::fs::read_to_string(ctx.home().join(".config/paru/paru.conf")).unwrap();
+    assert!(!config.contains("[dotfiles-broken-bin]"));
+    assert!(config.contains("[dotfiles-tool-bin]"));
+}
+
+#[test]
+fn cancellation_aborts_discovery_without_publishing_pending_updates() {
+    let dir = fixture();
+    let other = add_recipe(dir.path(), "z-bin");
+    let original =
+        std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap();
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.arguments().last().unwrap()
+                == "https://api.github.com/repos/example/tool/releases/latest"
+        })
+        .returning(|_| Ok(ExecResult::success(release())));
+    mock.expect_execute()
+        .once()
+        .withf(|spec| {
+            spec.arguments().last().unwrap()
+                == "https://api.github.com/repos/example/z-bin/releases/latest"
+        })
+        .returning(|_| {
+            Err(crate::infra::exec::ExecError::Cancelled {
+                command: "curl".into(),
+                result: ExecResult::failure("", "interrupted", None),
+            })
+        });
+    let ctx = make_context(
+        dir.path().into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(mock),
+    );
+    let error = UpdateLocalPackageVersions.run(&ctx).unwrap_err();
+    assert!(
+        error
+            .downcast_ref::<crate::infra::exec::ExecError>()
+            .unwrap()
+            .is_cancelled()
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+        original
+    );
+    assert!(!other.join("version.sh").exists());
 }

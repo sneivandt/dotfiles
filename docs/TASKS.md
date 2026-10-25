@@ -346,7 +346,12 @@ authentication, and cleanup. Do not edit generated outputs as source.
 ### Local PKGBUILD packages
 
 `local-package-versions` discovers stable release pins, and `paru-config`
-prepares disposable Git snapshots and configures Paru to use them. The default
+prepares disposable Git snapshots and configures Paru to use them. These tasks
+are ordered without propagating recipe failures to unrelated AUR installs.
+Refresh failures remain failed work; existing pins can still prepare a usable
+snapshot. Unavailable local packages are excluded from direct install targets
+and counted as failures when missing, while other packages continue. Descriptor
+package names establish local ownership and prevent AUR fallback. The default
 Arch package list selects `apm-dotfiles` from `packages/apm/`; the desktop
 category selects `github-copilot-app-dotfiles` from `packages/github-copilot-app/`.
 `CleanAfter` remains enabled; cleanup operates on the cache, not this checkout.

@@ -1443,3 +1443,47 @@ fn package_elevation_requires_missing_packages_on_a_supported_platform() {
         }
     }
 }
+
+#[test]
+fn unavailable_local_package_is_never_installed_and_existing_package_is_kept() {
+    for installed in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let recipe = dir.path().join("packages/local-tool");
+        std::fs::create_dir_all(&recipe).unwrap();
+        std::fs::write(recipe.join("release.json"), r#"{"package_base":"local-tool","repository":"example/tool","assets":{"x86_64":"tool.tar.gz"}}"#).unwrap();
+        std::fs::write(recipe.join("PKGBUILD"), "pkgname=local-tool\n").unwrap();
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(is_native_inventory)
+            .returning(move |_| {
+                Ok(ExecResult::success(if installed {
+                    "local-tool 1.0\n"
+                } else {
+                    ""
+                }))
+            });
+        let ctx = make_package_context(dir.path().into(), None, Os::Linux, true, mock)
+            .with_home(dir.path().join("home"))
+            .with_env(crate::infra::env::MapEnv::new().into_handle());
+        let operation = PackageInstallOperation::new(
+            vec![Package {
+                name: "local-tool".into(),
+                is_aur: true,
+            }],
+            PackageManager::Paru,
+        );
+        let result = process_operation(&ctx, &operation).unwrap();
+        if installed {
+            assert_task_ok(&result);
+        } else {
+            let stats = task_batch(&result);
+            assert_eq!(stats.failed_count(), 1);
+            assert_eq!(stats.changed_count(), 0);
+        }
+        assert!(
+            !ctx.home().exists(),
+            "availability checking must not prepare snapshots or config"
+        );
+    }
+}

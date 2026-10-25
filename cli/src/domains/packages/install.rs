@@ -142,8 +142,15 @@ impl Task for InstallAurPackages {
         selector: "aur-packages",
         deps: [
             InstallParu,
-            super::local_builds::ConfigureParu,
         ],
+    }
+
+    fn ordering_dependencies(&self) -> &[crate::engine::TaskId] {
+        const DEPS: &[crate::engine::TaskId] =
+            &[crate::engine::TaskId::Type(std::any::TypeId::of::<
+                super::local_builds::ConfigureParu,
+            >())];
+        DEPS
     }
 
     fn should_run(&self, ctx: &Context) -> bool {
@@ -350,7 +357,7 @@ impl Operation for PackageInstallOperation {
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let plan = self.plan(ctx)?;
-        if plan.missing.is_empty() {
+        if plan.missing.is_empty() && plan.unavailable.is_empty() {
             Ok(OperationState::Complete)
         } else {
             Ok(OperationState::needs_run(plan))
@@ -358,6 +365,7 @@ impl Operation for PackageInstallOperation {
     }
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        plan.report_unavailable(ctx);
         for resource in &plan.missing {
             let description = resource.description();
             ctx.log().action(
@@ -371,6 +379,10 @@ impl Operation for PackageInstallOperation {
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        plan.report_unavailable(ctx);
+        if plan.missing.is_empty() {
+            return Ok(plan.base_stats().finish());
+        }
         ctx.log().debug(format!(
             "installing {} missing packages",
             plan.missing.len()
@@ -410,7 +422,7 @@ impl Operation for PackageInstallOperation {
                     0,
                     plan.base_stats().already_ok_count(),
                     0,
-                    u32::try_from(plan.missing.len()).unwrap_or(u32::MAX),
+                    u32::try_from(plan.missing.len() + plan.unavailable.len()).unwrap_or(u32::MAX),
                 );
                 return Ok(stats.finish());
             }

@@ -22,7 +22,15 @@ use crate::infra::logging::OutputExt as _;
 pub struct ConfigureParu;
 
 impl Task for ConfigureParu {
-    task_metadata! { name: "Paru configuration", selector: "paru-config", deps: [UpdateLocalPackageVersions], }
+    task_metadata! { name: "Paru configuration", selector: "paru-config", }
+
+    fn ordering_dependencies(&self) -> &[crate::engine::TaskId] {
+        const DEPS: &[crate::engine::TaskId] =
+            &[crate::engine::TaskId::Type(std::any::TypeId::of::<
+                UpdateLocalPackageVersions,
+            >())];
+        DEPS
+    }
 
     fn should_run(&self, ctx: &Context) -> bool {
         ctx.platform().supports_aur()
@@ -39,8 +47,10 @@ use snapshots::Snapshot;
 struct ParuConfig;
 
 struct ParuPlan {
-    config: Vec<(PathBuf, String)>,
+    config: String,
+    previous_config: Option<String>,
     snapshots: Vec<Snapshot>,
+    failures: Vec<String>,
 }
 
 fn build_root(ctx: &Context) -> Result<PathBuf> {
@@ -101,41 +111,36 @@ impl Operation for ParuConfig {
             config_path(&build_root)?
         );
         let mut snapshots = Vec::new();
-        let mut package_bases = std::collections::HashSet::new();
-        for directory in recipe_directories(ctx)? {
-            let Some(raw) = read_optional(&directory.join("release.json"))? else {
-                continue;
-            };
-            let source: ReleaseSource =
-                serde_json::from_str(&raw).context("parsing local release descriptor")?;
-            source.validate()?;
-            ensure!(
-                package_bases.insert(source.package_base.clone()),
-                "duplicate local package base"
-            );
-            let snapshot =
-                Snapshot::plan(&build_root, &source.package_base, &directory, ctx.dry_run())?;
-            writeln!(
-                content,
-                "\n[dotfiles-{}]\nPath = {}\nGenerateSrcinfo",
-                source.package_base,
-                config_path(&snapshot.path)?
-            )?;
-            if snapshot.needs_write()? {
-                snapshots.push(snapshot);
+        let mut failures = Vec::new();
+        for (directory, source) in recipes(ctx)? {
+            let prepared =
+                Snapshot::plan(&build_root, &source.package_base, &directory, ctx.dry_run())
+                    .and_then(|snapshot| Ok((snapshot.needs_write()?, snapshot)));
+            match prepared {
+                Ok((changed, snapshot)) => {
+                    content.push_str(&repository_section(&source.package_base, &snapshot.path)?);
+                    if changed {
+                        snapshots.push(snapshot);
+                    }
+                }
+                Err(error) => {
+                    failures.push(format!("{} unavailable: {error:#}", source.package_base));
+                }
             }
         }
-        let config = if let OperationState::NeedsRun { plan } =
-            file_plan(vec![(ctx.home().join(".config/paru/paru.conf"), content)])?
+        let previous_config = read_optional(&ctx.home().join(".config/paru/paru.conf"))?;
+        if previous_config.as_deref() == Some(&content)
+            && snapshots.is_empty()
+            && failures.is_empty()
         {
-            plan
-        } else {
-            Vec::new()
-        };
-        if config.is_empty() && snapshots.is_empty() {
             return Ok(OperationState::Complete);
         }
-        Ok(OperationState::needs_run(ParuPlan { config, snapshots }))
+        Ok(OperationState::needs_run(ParuPlan {
+            config: content,
+            previous_config,
+            snapshots,
+            failures,
+        }))
     }
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
@@ -145,37 +150,55 @@ impl Operation for ParuConfig {
                 snapshot.path.display()
             ));
         }
-        for (path, _) in &plan.config {
-            ctx.log().dry_run(format!("write {}", path.display()));
+        let config_changed = plan.previous_config.as_deref() != Some(&plan.config);
+        if config_changed {
+            ctx.log().dry_run(format!(
+                "write {}",
+                ctx.home().join(".config/paru/paru.conf").display()
+            ));
         }
+        report_failures(ctx, &plan.failures);
         Ok(TaskStats::from_counts(
-            u32::try_from(plan.config.len() + plan.snapshots.len())?,
+            u32::try_from(usize::from(config_changed) + plan.snapshots.len())?,
             0,
             0,
-            0,
+            u32::try_from(plan.failures.len())?,
         )
         .finish())
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        let mut content = plan.config.clone();
+        let mut changed = 0;
+        let mut failures = plan.failures.clone();
         for snapshot in &plan.snapshots {
-            snapshot.apply()?;
-            ctx.log().info(format!(
-                "refresh local package snapshot {}",
-                snapshot.path.display()
-            ));
+            match snapshot.apply() {
+                Ok(()) => {
+                    changed += 1;
+                    ctx.log().info(format!(
+                        "refresh local package snapshot {}",
+                        snapshot.path.display()
+                    ));
+                }
+                Err(error) => {
+                    let base = snapshot
+                        .path
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .context("invalid snapshot base")?;
+                    content = content.replace(&repository_section(base, &snapshot.path)?, "");
+                    failures.push(format!("{base} unavailable: {error:#}"));
+                }
+            }
         }
-        for (path, content) in &plan.config {
-            write_atomic(path, content)?;
+        if plan.previous_config.as_deref() != Some(&content) {
+            let path = ctx.home().join(".config/paru/paru.conf");
+            write_atomic(&path, &content)?;
+            changed += 1;
             ctx.log().info(format!("write {}", path.display()));
         }
-        Ok(TaskStats::from_counts(
-            u32::try_from(plan.config.len() + plan.snapshots.len())?,
-            0,
-            0,
-            0,
-        )
-        .finish())
+        report_failures(ctx, &failures);
+        Ok(TaskStats::from_counts(changed, 0, 0, u32::try_from(failures.len())?).finish())
     }
 }
 
@@ -213,16 +236,31 @@ struct ReleaseUpdates;
 #[serde(deny_unknown_fields)]
 struct ReleaseSource {
     package_base: String,
+    #[serde(default)]
+    packages: Option<Vec<String>>,
     repository: String,
     assets: BTreeMap<String, String>,
 }
 
 impl ReleaseSource {
+    fn package_names(&self) -> &[String] {
+        self.packages
+            .as_deref()
+            .unwrap_or_else(|| std::slice::from_ref(&self.package_base))
+    }
+
     fn validate(&self) -> Result<()> {
         ensure!(
             safe_component(&self.package_base),
             "invalid local package base"
         );
+        ensure!(
+            !self.package_names().is_empty(),
+            "local recipe has no package names"
+        );
+        for name in self.package_names() {
+            ensure!(safe_component(name), "invalid local package name");
+        }
         let components: Vec<_> = self.repository.split('/').collect();
         ensure!(
             components.len() == 2 && components.iter().all(|part| safe_component(part)),
@@ -254,25 +292,24 @@ struct Asset {
     digest: Option<String>,
 }
 
+struct ReleasePlan {
+    files: Vec<(PathBuf, String)>,
+    failures: Vec<String>,
+}
+
 impl Operation for ReleaseUpdates {
-    type Plan = Vec<(PathBuf, String)>;
+    type Plan = ReleasePlan;
 
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let mut files = Vec::new();
-        for directory in recipe_directories(ctx)? {
-            let Some(raw) = read_optional(&directory.join("release.json"))? else {
-                continue;
-            };
-            let source: ReleaseSource =
-                serde_json::from_str(&raw).context("parsing local release descriptor")?;
-            source.validate()?;
-            let url = format!(
-                "https://api.github.com/repos/{}/releases/latest",
-                source.repository
-            );
-            let response = ctx
-                .executor()
-                .execute(
+        let mut failures = Vec::new();
+        for (directory, source) in recipes(ctx)? {
+            let discovered = (|| -> Result<String> {
+                let url = format!(
+                    "https://api.github.com/repos/{}/releases/latest",
+                    source.repository
+                );
+                let response = ctx.executor().execute(
                     CommandSpec::new("curl")
                         .args(&[
                             "--fail",
@@ -286,22 +323,67 @@ impl Operation for ReleaseUpdates {
                             &url,
                         ])
                         .timeout(Duration::from_secs(70)),
-                )
-                .with_context(|| format!("querying release for {}", directory.display()))?;
-            files.push((
-                directory.join("version.sh"),
-                release_pins(&source, &response.stdout)?,
-            ));
+                )?;
+                release_pins(&source, &response.stdout)
+            })();
+            match discovered {
+                Ok(pins) => {
+                    let path = directory.join("version.sh");
+                    match read_optional(&path) {
+                        Ok(existing) if existing.as_deref() == Some(&pins) => {}
+                        Ok(_) => files.push((path, pins)),
+                        Err(error) => failures.push(format!("{}: {error:#}", source.package_base)),
+                    }
+                }
+                Err(error) => {
+                    if error
+                        .downcast_ref::<crate::infra::exec::ExecError>()
+                        .is_some_and(crate::infra::exec::ExecError::is_cancelled)
+                    {
+                        return Err(error);
+                    }
+                    failures.push(format!(
+                        "{} release refresh failed; existing pins retained: {error:#}",
+                        source.package_base
+                    ));
+                }
+            }
         }
-        file_plan(files)
+        if files.is_empty() && failures.is_empty() {
+            Ok(OperationState::Complete)
+        } else {
+            Ok(OperationState::needs_run(ReleasePlan { files, failures }))
+        }
     }
 
     fn preview(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        preview_files(ctx, plan)
+        for (path, _) in &plan.files {
+            ctx.log().dry_run(format!("write {}", path.display()));
+        }
+        report_failures(ctx, &plan.failures);
+        Ok(TaskStats::from_counts(
+            u32::try_from(plan.files.len())?,
+            0,
+            0,
+            u32::try_from(plan.failures.len())?,
+        )
+        .finish())
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
-        write_files(ctx, plan)
+        let mut failures = plan.failures.clone();
+        let mut changed = 0;
+        for (path, content) in &plan.files {
+            match write_atomic(path, content) {
+                Ok(()) => {
+                    changed += 1;
+                    ctx.log().info(format!("write {}", path.display()));
+                }
+                Err(error) => failures.push(format!("writing {}: {error:#}", path.display())),
+            }
+        }
+        report_failures(ctx, &failures);
+        Ok(TaskStats::from_counts(changed, 0, 0, u32::try_from(failures.len())?).finish())
     }
 }
 
@@ -362,33 +444,89 @@ fn read_optional(path: &Path) -> Result<Option<String>> {
     }
 }
 
-fn file_plan(files: Vec<(PathBuf, String)>) -> Result<OperationState<Vec<(PathBuf, String)>>> {
-    let mut changes = Vec::new();
-    for (path, content) in files {
-        if read_optional(&path)?.as_deref() != Some(&content) {
-            changes.push((path, content));
+fn report_failures(ctx: &Context, failures: &[String]) {
+    for failure in failures {
+        ctx.log().warn(failure);
+    }
+}
+
+fn repository_section(base: &str, path: &Path) -> Result<String> {
+    Ok(format!(
+        "\n[dotfiles-{base}]\nPath = {}\nGenerateSrcinfo\n",
+        config_path(path)?
+    ))
+}
+
+// Validate ownership before any network requests or writes. If ownership cannot
+// be established, callers must fail closed rather than fall back to the AUR.
+fn recipes(ctx: &Context) -> Result<Vec<(PathBuf, ReleaseSource)>> {
+    let mut recipes = Vec::new();
+    let mut bases = std::collections::HashSet::new();
+    let mut names = std::collections::HashSet::new();
+    for directory in recipe_directories(ctx)? {
+        let Some(raw) = read_optional(&directory.join("release.json"))? else {
+            ensure!(
+                !directory.join("PKGBUILD").try_exists()?,
+                "local recipe is missing release.json: {}",
+                directory.display()
+            );
+            continue;
+        };
+        let source: ReleaseSource = serde_json::from_str(&raw)
+            .with_context(|| format!("parsing {}", directory.join("release.json").display()))?;
+        source.validate()?;
+        ensure!(
+            bases.insert(source.package_base.clone()),
+            "duplicate local package base"
+        );
+        for name in source.package_names() {
+            ensure!(
+                names.insert(name.clone()),
+                "duplicate local package name: {name}"
+            );
+        }
+        recipes.push((directory, source));
+    }
+    Ok(recipes)
+}
+
+/// Unavailable locally owned package names; never send these to an AUR lookup.
+/// Preview accepts inputs that prerequisite tasks would prepare without writing.
+pub(super) fn unavailable_packages(ctx: &Context) -> Result<BTreeMap<String, String>> {
+    let recipes = recipes(ctx)?;
+    if recipes.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let root = build_root(ctx)?;
+    let config = read_optional(&ctx.home().join(".config/paru/paru.conf"));
+    let mut unavailable = BTreeMap::new();
+    for (directory, source) in recipes {
+        let readiness = (|| -> Result<()> {
+            let snapshot = Snapshot::plan(&root, &source.package_base, &directory, ctx.dry_run())?;
+            let needs_write = snapshot.needs_write()?;
+            if !ctx.dry_run() {
+                ensure!(
+                    !needs_write,
+                    "snapshot is not prepared for the current inputs"
+                );
+                let section = repository_section(&source.package_base, &snapshot.path)?;
+                let config = config
+                    .as_ref()
+                    .map_err(|error| anyhow::anyhow!("reading Paru config: {error:#}"))?;
+                ensure!(
+                    config.as_ref().is_some_and(|text| text.contains(&section)),
+                    "local repository is absent from Paru configuration"
+                );
+            }
+            Ok(())
+        })();
+        if let Err(error) = readiness {
+            for name in source.package_names() {
+                unavailable.insert(name.clone(), format!("{error:#}"));
+            }
         }
     }
-    if changes.is_empty() {
-        Ok(OperationState::Complete)
-    } else {
-        Ok(OperationState::needs_run(changes))
-    }
-}
-
-fn preview_files(ctx: &Context, files: &[(PathBuf, String)]) -> Result<TaskResult> {
-    for (path, _) in files {
-        ctx.log().dry_run(format!("write {}", path.display()));
-    }
-    Ok(TaskStats::from_counts(u32::try_from(files.len())?, 0, 0, 0).finish())
-}
-
-fn write_files(ctx: &Context, files: &[(PathBuf, String)]) -> Result<TaskResult> {
-    for (path, content) in files {
-        write_atomic(path, content)?;
-        ctx.log().info(format!("write {}", path.display()));
-    }
-    Ok(TaskStats::from_counts(u32::try_from(files.len())?, 0, 0, 0).finish())
+    Ok(unavailable)
 }
 
 #[cfg(test)]

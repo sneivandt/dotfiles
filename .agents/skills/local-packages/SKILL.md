@@ -32,9 +32,10 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
   name need not match it. Use a distinct local package name where appropriate
   so an AUR recipe does not replace the maintained recipe.
 - The version task queries stable GitHub release metadata and validates every
-  configured asset digest before writing pins. It does not install software.
-  Preserve errors and existing pins on discovery failure; preview may query
-  the API but must not write pins, snapshots, or configuration.
+  configured asset digest for a recipe before writing its pins. It does not
+  install software. Preserve failed recipes' pins and failed-item accounting
+  while allowing independent recipes to refresh; propagate cancellation.
+  Preview may query the API but must not write pins, snapshots, or configuration.
 - Paru builds from standalone, dotfiles-owned Git snapshots in its build cache,
   never from the source checkout. Snapshot HEAD must contain both recipe and
   pins so Git reset/clean preserves usable inputs. Do not bypass ownership,
@@ -42,8 +43,16 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
 - Keep `CleanAfter` working. Align each snapshot with
   `<CloneDir>/<package_base>` and the generated repository `Path`; changing only
   the CLI invocation does not fix a user's standalone `paru -Syu`.
-- Snapshot preparation requires successful pin discovery before AUR installs.
-  Keep agent package tasks independent of the APM installation method.
+- Refresh, snapshot preparation, and AUR installation use ordering edges;
+  Paru health remains a blocking prerequisite. Existing pins can prepare a
+  snapshot after refresh failure. Omit unavailable recipes from generated
+  repositories, and exclude their missing package names from direct installs
+  while counting failures. Never fall back to the AUR for an unavailable local
+  target. Verify committed inputs and the published repository section first.
+- Package ownership defaults to `package_base`; use the optional `packages`
+  descriptor array only for split packages or differing names. Invalid or
+  missing ownership descriptors fail closed. Keep agent package tasks
+  independent of the APM installation method.
 - The current snapshot format copies only `PKGBUILD` and `version.sh`. Extend
   it explicitly before introducing patches, install scripts, or extra inputs.
 

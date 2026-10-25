@@ -161,6 +161,9 @@ impl Snapshot {
             crate::infra::fs::write_atomic(&repo.path().join("dotfiles-local-build"), MARKER)?;
             repo
         };
+        // Keep package inputs byte-for-byte stable through Git reset/clean,
+        // regardless of the host's global Windows line-ending preferences.
+        repo.config()?.set_bool("core.autocrlf", false)?;
         let parent = match repo.head() {
             Ok(head) => Some(head.peel_to_commit()?),
             Err(error)

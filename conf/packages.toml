@@ -42,8 +42,8 @@ packages = [
   "zsh-completions",
   "zsh-syntax-highlighting",
   { name = "apm-dotfiles", aur = true },
-  { name = "github-copilot-cli-bin", aur = true },
-  { name = "openai-codex-bin", aur = true },
+  { name = "github-copilot-cli-dotfiles", aur = true },
+  { name = "openai-codex-dotfiles", aur = true },
   { name = "powershell-dotfiles", aur = true },
 ]
 

@@ -236,6 +236,30 @@ test_github_ssh_allowlist()
   fi
 )}
 
+test_pkgbuild_checksum_allowlist()
+{(
+  log_stage "Checking PKGBUILD checksum exceptions preserve scanning of appended secrets"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  git init -q "$fixture"
+  mkdir "$fixture/hooks"
+  cp "$DIR/hooks/check-sensitive.sh" "$DIR/hooks/sensitive-patterns.ini" \
+    "$DIR/hooks/sensitive-allowlist.ini" "$fixture/hooks/"
+  cd "$fixture"
+  checksum=$(printf '%064d' 0)
+  for variable in sha256sums sha256sums_x86_64; do
+    printf "%s=('%s' '%s')\n" "$variable" "$checksum" "$checksum" > PKGBUILD
+    git add PKGBUILD
+    sh hooks/check-sensitive.sh > "$fixture/output" 2>&1 || log_error "PKGBUILD checksum was rejected"
+    printf "%s=('%s'); token = ghp_%s\n" "$variable" "$checksum" \
+      'abcdefghijklmnopqrstuvwxyzabcdefghijklmn' > PKGBUILD
+    git add PKGBUILD
+    if sh hooks/check-sensitive.sh > "$fixture/output" 2>&1; then
+      log_error "PKGBUILD checksum exception hid a token on the same line"
+    fi
+  done
+)}
+
 test_build_version_ref_triggers()
 {(
   log_stage "Checking build-version inputs for attached, detached, and linked-worktree HEAD"
@@ -494,3 +518,4 @@ test_ci_change_classification
 test_staged_ci_guard_deletions
 test_build_version_ref_triggers
 test_github_ssh_allowlist
+test_pkgbuild_checksum_allowlist

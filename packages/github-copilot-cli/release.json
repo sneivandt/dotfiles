@@ -1,0 +1,8 @@
+{
+  "package_base": "github-copilot-cli-dotfiles",
+  "repository": "github/copilot-cli",
+  "assets": {
+    "aarch64": "copilot-linux-arm64.tar.gz",
+    "x86_64": "copilot-linux-x64.tar.gz"
+  }
+}

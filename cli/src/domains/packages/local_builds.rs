@@ -296,6 +296,8 @@ struct ReleaseSource {
     #[serde(default)]
     packages: Option<Vec<String>>,
     repository: String,
+    #[serde(default)]
+    tag_prefix: Option<String>,
     assets: BTreeMap<String, String>,
 }
 
@@ -354,6 +356,9 @@ impl ReleaseSource {
             components.len() == 2 && components.iter().all(|part| safe_component(part)),
             "invalid GitHub repository"
         );
+        if let Some(prefix) = &self.tag_prefix {
+            ensure!(safe_component(prefix), "invalid release tag prefix");
+        }
         ensure!(!self.assets.is_empty(), "release descriptor has no assets");
         for (arch, asset) in &self.assets {
             ensure!(
@@ -491,10 +496,17 @@ fn release_pins(source: &ReleaseSource, raw: &str) -> Result<String> {
         !release.draft && !release.prerelease,
         "expected a stable published release"
     );
-    let version = release
-        .tag_name
-        .strip_prefix('v')
-        .unwrap_or(&release.tag_name);
+    let version = if let Some(prefix) = &source.tag_prefix {
+        release
+            .tag_name
+            .strip_prefix(prefix)
+            .context("release tag does not match configured prefix")?
+    } else {
+        release
+            .tag_name
+            .strip_prefix('v')
+            .unwrap_or(&release.tag_name)
+    };
     ensure!(
         safe_component(version)
             && version.bytes().next().is_some_and(|b| b.is_ascii_digit())

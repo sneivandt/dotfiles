@@ -9,6 +9,8 @@ applications from source.
 | `apm-dotfiles` | [packages/apm/](../packages/apm/) | Microsoft APM |
 | `github-copilot-app-dotfiles` | [packages/github-copilot-app/](../packages/github-copilot-app/) | GitHub Copilot App |
 | `powershell-dotfiles` | [packages/powershell/](../packages/powershell/) | Microsoft PowerShell |
+| `github-copilot-cli-dotfiles` | [packages/github-copilot-cli/](../packages/github-copilot-cli/) | GitHub Copilot CLI |
+| `openai-codex-dotfiles` | [packages/openai-codex/](../packages/openai-codex/) | OpenAI Codex CLI |
 
 Dotfiles discovers release versions and prepares build inputs. Paru downloads,
 verifies, builds, installs, and upgrades the resulting Arch packages. The agent
@@ -73,6 +75,14 @@ and installs `pwsh` under `/opt/microsoft/powershell/<major>`, linked from
 The first installation conflicts with the existing `powershell-bin` package;
 review that replacement when Paru installs it.
 
+The Arch category also selects `github-copilot-cli-dotfiles` and
+`openai-codex-dotfiles` instead of their AUR binary packages. Both use official
+GitHub release archives, install shell completions and upstream licenses, and
+declare conflicts with their previous packages. Codex preserves the complete
+upstream bundle, including its code-mode helper and voice runtime. The Copilot
+recipe installs Bash, Zsh, and Fish completions; Codex also installs Elvish and
+PowerShell completions. Optional features retain their declared dependencies.
+
 Paru does not query GitHub for these release versions. Running Paru without
 first running dotfiles uses the last prepared snapshot. Changes to a tracked
 recipe also reach Paru when `paru-config` refreshes its snapshot.
@@ -117,6 +127,12 @@ packaging revision, `pkgrel`, stays in the tracked recipe.
 Asset names may contain `{version}`, which is replaced with the validated
 release version without the leading `v`. The PowerShell descriptor uses this
 for archives such as `powershell-7.6.9-linux-x64.tar.gz`.
+
+For other tag conventions, an optional `tag_prefix` declares the exact prefix
+to strip before version validation. Codex uses `"tag_prefix": "rust-v"`.
+A configured prefix must match; omitting it retains optional leading-`v`
+handling. Tracked `LICENSE` and `NOTICE` files are packaging inputs, not
+automatically refreshed release metadata; review them when upstream terms change.
 
 Descriptors are validated before network requests or writes, including unique
 package bases and package names. Invalid ownership metadata fails the task and
@@ -191,7 +207,7 @@ reset/clean there. Building directly from this checkout both misaligns that
 path and makes Git cleanup unsuitable for the source repository.
 
 Instead, `paru-config` copies `PKGBUILD`, generated `version.sh`, and an optional
-`package.install` script into a
+`package.install` script and `LICENSE`/`NOTICE` files into a
 standalone Git repository at exactly that cache path. It commits both files
 when their contents change. Paru can then reset tracked inputs to that commit
 and remove generated files while retaining the version pins needed next time.
@@ -233,7 +249,8 @@ create temporary build inputs; metadata validation is deferred until apply.
    install it explicitly through Paru after preparation.
 6. Run the checks below and verify a build on Arch before installing it.
 
-The snapshot format copies `PKGBUILD`, `version.sh`, and optional `package.install`.
+The snapshot format copies `PKGBUILD`, `version.sh`, and optional
+`package.install`, `LICENSE`, and `NOTICE` files.
 Use `install=package.install` for package lifecycle hooks. Recipes needing
 patches or other local files require extending that format first.
 Version discovery currently supports stable GitHub releases

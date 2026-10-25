@@ -1,0 +1,31 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034
+# Maintained here; dotfiles update generates ignored version.sh release pins.
+pkgname=github-copilot-cli-dotfiles
+pkgrel=1
+pkgdesc='GitHub Copilot coding agent for the terminal (official binary)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/github/copilot-cli'
+license=('LicenseRef-GitHub-Copilot')
+depends=('glibc' 'libgcc' 'libstdc++' 'nodejs' 'glib2' 'libsecret')
+optdepends=('git: repository operations')
+conflicts=('copilot' 'github-copilot-cli' 'github-copilot-cli-bin')
+options=('!strip' '!debug')
+source=('LICENSE')
+sha256sums=('b9680937e10425bf19862908856c16ed274e6b81a1368bd62be7a757eab21628')
+source ./version.sh
+provides=("copilot=${pkgver}" "github-copilot-cli=${pkgver}" "github-copilot-cli-bin=${pkgver}")
+source_x86_64=("copilot-cli-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/copilot-linux-x64.tar.gz")
+source_aarch64=("copilot-cli-${pkgver}-aarch64.tar.gz::${url}/releases/download/v${pkgver}/copilot-linux-arm64.tar.gz")
+
+package() {
+  install -Dm755 "${srcdir}/copilot" "${pkgdir}/usr/bin/copilot"
+  local shell
+  for shell in bash zsh fish; do
+    "${srcdir}/copilot" completion "$shell" > "${srcdir}/copilot.${shell}"
+  done
+  install -Dm644 "${srcdir}/copilot.bash" "${pkgdir}/usr/share/bash-completion/completions/copilot"
+  install -Dm644 "${srcdir}/copilot.zsh" "${pkgdir}/usr/share/zsh/site-functions/_copilot"
+  install -Dm644 "${srcdir}/copilot.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/copilot.fish"
+  install -Dm644 "${startdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

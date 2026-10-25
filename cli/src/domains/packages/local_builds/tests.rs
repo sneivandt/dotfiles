@@ -54,6 +54,32 @@ fn release_validation_rejects_incomplete_or_unsafe_metadata() {
 }
 
 #[test]
+fn configured_tag_prefix_is_required_and_does_not_bypass_version_validation() {
+    let mut source = source();
+    source.tag_prefix = Some("rust-v".into());
+    let mut data: serde_json::Value = serde_json::from_str(&release()).unwrap();
+    for tag in [
+        "rust-v1.2.3",
+        "v1.2.3",
+        "1.2.3",
+        "rust-v1.2.3-alpha.1",
+        "rust-v1';echo injected;#",
+    ] {
+        data["tag_name"] = serde_json::json!(tag);
+        let result = release_pins(&source, &data.to_string());
+        if tag == "rust-v1.2.3" {
+            assert!(result.unwrap().contains("pkgver='1.2.3'\n"));
+        } else {
+            assert!(result.is_err(), "unexpected accepted tag: {tag}");
+        }
+    }
+    source.tag_prefix = Some("../".into());
+    assert!(source.validate().is_err());
+    source.tag_prefix = Some(String::new());
+    assert!(source.validate().is_err());
+}
+
+#[test]
 fn versioned_assets_use_the_validated_release_version_and_exact_digest() {
     let mut source = source();
     source.assets.insert(
@@ -380,6 +406,9 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
     let script = source.join("package.install");
     let build_root = dir.path().join("builds");
     std::fs::write(&script, "post_install() { :; }\n").unwrap();
+    for name in ["LICENSE", "NOTICE"] {
+        std::fs::write(source.join(name), format!("upstream {name}\n")).unwrap();
+    }
     let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, true).unwrap();
     assert!(snapshot.needs_write().unwrap());
     assert!(!snapshot.path.exists(), "planning must not publish inputs");
@@ -400,6 +429,10 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
     changed.apply().unwrap();
     assert!(!changed.needs_write().unwrap());
     let tree = repo.head().unwrap().peel_to_tree().unwrap();
+    for name in ["LICENSE", "NOTICE"] {
+        let blob = repo.find_blob(tree.get_name(name).unwrap().id()).unwrap();
+        assert_eq!(blob.content(), format!("upstream {name}\n").as_bytes());
+    }
     let blob = repo
         .find_blob(tree.get_name("package.install").unwrap().id())
         .unwrap();

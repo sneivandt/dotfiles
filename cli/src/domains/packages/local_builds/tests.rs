@@ -282,8 +282,21 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
     let dir = fixture();
     let ctx = snapshot_context(dir.path());
     let cache = build_root(&ctx).unwrap().join("tool-bin");
-    let preview = ConfigureParu.run(&ctx.with_dry_run(true)).unwrap();
+    let preview_log = Arc::new(crate::test_helpers::CapturingOutput::default());
+    let preview_ctx =
+        ctx.with_dry_run(true)
+            .with_log(Arc::<crate::test_helpers::CapturingOutput>::clone(
+                &preview_log,
+            ));
+    let preview = ConfigureParu.run(&preview_ctx).unwrap();
     assert_eq!(task_batch(&preview).changed_count(), 2);
+    assert!(
+        preview_log
+            .messages_of(crate::infra::logging::MsgKind::DryRun)
+            .iter()
+            .any(|message| message.contains("refresh local package snapshot")),
+        "preview must describe a snapshot that needs preparation"
+    );
     assert!(!cache.exists());
     let applied = ConfigureParu.run(&ctx).unwrap();
     assert_eq!(task_batch(&applied).changed_count(), 2);
@@ -301,6 +314,21 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
         cache.display()
     )));
     assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+
+    let unchanged_log = Arc::new(crate::test_helpers::CapturingOutput::default());
+    let unchanged_ctx =
+        ctx.with_dry_run(true)
+            .with_log(Arc::<crate::test_helpers::CapturingOutput>::clone(
+                &unchanged_log,
+            ));
+    let unchanged = ConfigureParu.run(&unchanged_ctx).unwrap();
+    assert_eq!(task_batch(&unchanged).changed_count(), 0);
+    assert!(
+        unchanged_log
+            .messages_of(crate::infra::logging::MsgKind::DryRun)
+            .is_empty(),
+        "preview must not announce work for a prepared snapshot"
+    );
 
     let source = dir.path().join("packages/tool-bin/PKGBUILD");
     std::fs::write(&source, "modified tracked source\n").unwrap();

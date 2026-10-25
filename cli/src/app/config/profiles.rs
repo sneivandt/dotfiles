@@ -21,11 +21,11 @@ fn selected_profile_name(
     cli_profile: Option<&str>,
     root: &Path,
     env: &dyn crate::infra::env::Env,
-) -> Option<String> {
-    cli_profile
+) -> Result<Option<String>> {
+    let explicit = cli_profile
         .map(str::to_owned)
-        .or_else(|| read_from_env(env))
-        .or_else(|| read_persisted(root))
+        .or_else(|| read_from_env(env));
+    explicit.map_or_else(|| read_persisted(root), |name| Ok(Some(name)))
 }
 
 /// One built-in role profile used by selection prompts and completions.
@@ -72,7 +72,8 @@ pub(super) const KNOWN_CATEGORIES: &[Category] = &[
 ///
 /// # Errors
 ///
-/// Returns an error if the profile name is invalid or interactive prompting fails.
+/// Returns an error if saved configuration cannot be read, the profile name is
+/// invalid, or interactive prompting fails.
 pub fn resolve_from_args(
     cli_profile: Option<&str>,
     root: &Path,
@@ -80,7 +81,7 @@ pub fn resolve_from_args(
     env: &dyn crate::infra::env::Env,
     non_interactive: bool,
 ) -> Result<Profile> {
-    let name = if let Some(name) = selected_profile_name(cli_profile, root, env) {
+    let name = if let Some(name) = selected_profile_name(cli_profile, root, env)? {
         name
     } else {
         if non_interactive {
@@ -106,15 +107,15 @@ pub fn resolve_from_args(
 ///
 /// # Errors
 ///
-/// Returns an error if no profile has already been selected or the selected
-/// profile is invalid.
+/// Returns an error if saved configuration cannot be read, no profile has already
+/// been selected, or the selected profile is invalid.
 pub fn resolve_read_only(
     cli_profile: Option<&str>,
     root: &Path,
     platform: Platform,
     env: &dyn crate::infra::env::Env,
 ) -> Result<Profile> {
-    let name = selected_profile_name(cli_profile, root, env).ok_or_else(|| {
+    let name = selected_profile_name(cli_profile, root, env)?.ok_or_else(|| {
         anyhow::anyhow!("profile selection is required; pass --profile <base|desktop>")
     })?;
     resolve(&name, platform).map_err(Into::into)
@@ -249,7 +250,7 @@ mod tests {
     #[test]
     fn read_persisted_returns_none_when_unset() {
         let (dir, root) = init_test_repo();
-        let name = read_persisted(&root);
+        let name = read_persisted(&root).unwrap();
         assert_eq!(name, None);
         drop(dir);
     }
@@ -258,19 +259,52 @@ mod tests {
     fn persist_overwrites_previous_value() {
         let (dir, root) = init_test_repo();
         persist(&root, "base").expect("first persist");
-        assert_eq!(read_persisted(&root).as_deref(), Some("base"));
+        assert_eq!(read_persisted(&root).unwrap().as_deref(), Some("base"));
         persist(&root, "desktop").expect("second persist");
-        let name = read_persisted(&root);
+        let name = read_persisted(&root).unwrap();
         assert_eq!(name, Some("desktop".to_string()));
         drop(dir);
     }
 
     #[test]
-    fn read_persisted_returns_none_when_repository_is_invalid() {
+    fn read_persisted_reports_invalid_repository() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join(".git"), "not a git directory").unwrap();
-        let name = read_persisted(dir.path());
-        assert_eq!(name, None);
+        assert!(read_persisted(dir.path()).is_err());
+    }
+
+    #[test]
+    fn malformed_saved_profile_is_reported_unless_explicitly_overridden() {
+        use crate::infra::env::MapEnv;
+
+        let (_dir, root) = init_test_repo();
+        let config = root.join(".git/config");
+        let malformed = "[dotfiles\nprofile = desktop\n";
+        std::fs::write(&config, malformed).unwrap();
+        for read_only in [false, true] {
+            for (cli, environment, expected) in [
+                (None, None, None),
+                (Some("desktop"), None, Some("desktop")),
+                (None, Some("base"), Some("base")),
+                (Some("desktop"), Some("base"), Some("desktop")),
+            ] {
+                let env = environment.map_or_else(MapEnv::new, |value| {
+                    MapEnv::new().with("DOTFILES_PROFILE", value)
+                });
+                let result = if read_only {
+                    resolve_read_only(cli, &root, linux_platform(), &env)
+                } else {
+                    resolve_from_args(cli, &root, linux_platform(), &env, true)
+                };
+                if let Some(name) = expected {
+                    assert_eq!(result.unwrap().name, name);
+                } else {
+                    let error = result.unwrap_err();
+                    assert!(error.downcast_ref::<git2::Error>().is_some(), "{error:#}");
+                }
+                assert_eq!(std::fs::read_to_string(&config).unwrap(), malformed);
+            }
+        }
     }
 
     #[test]

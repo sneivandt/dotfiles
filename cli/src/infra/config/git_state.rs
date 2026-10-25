@@ -10,14 +10,31 @@ use std::path::Path;
 
 /// Read a non-empty string value from the repository's local git config.
 ///
-/// Returns `None` if the repository cannot be discovered, the local config
-/// cannot be opened, the key is unset, or the stored value is empty.
-#[must_use]
-pub fn read_local(root: &Path, key: &str) -> Option<String> {
-    let repo = git2::Repository::discover(root).ok()?;
-    let config = repo.config().ok()?;
-    let local = config.open_level(git2::ConfigLevel::Local).ok()?;
-    local.get_string(key).ok().filter(|value| !value.is_empty())
+/// Returns `None` when no repository or key exists, or the stored value is empty.
+///
+/// # Errors
+///
+/// Returns an error when repository discovery or configuration reading fails.
+pub fn read_local(root: &Path, key: &str) -> Result<Option<String>> {
+    let repo = match git2::Repository::discover(root) {
+        Ok(repo) => repo,
+        Err(error)
+            if error.code() == git2::ErrorCode::NotFound
+                && error.class() == git2::ErrorClass::Repository =>
+        {
+            return Ok(None);
+        }
+        Err(error) => return Err(error).context("finding git repository"),
+    };
+    let config = repo.config().context("opening git config")?;
+    let local = config
+        .open_level(git2::ConfigLevel::Local)
+        .context("opening local git config")?;
+    match local.get_string(key) {
+        Ok(value) => Ok((!value.is_empty()).then_some(value)),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("reading {key} from git config")),
+    }
 }
 
 /// Persist a string value to the repository's local git config.
@@ -54,7 +71,7 @@ mod tests {
         let (dir, root) = init_test_repo();
         persist_local(&root, "dotfiles.example", "value").expect("persist");
         assert_eq!(
-            read_local(&root, "dotfiles.example"),
+            read_local(&root, "dotfiles.example").unwrap(),
             Some("value".to_string())
         );
         drop(dir);
@@ -63,18 +80,33 @@ mod tests {
     #[test]
     fn read_returns_none_when_unset() {
         let (dir, root) = init_test_repo();
-        assert_eq!(read_local(&root, "dotfiles.missing"), None);
+        assert_eq!(read_local(&root, "dotfiles.missing").unwrap(), None);
         drop(dir);
     }
 
     #[test]
-    fn read_returns_none_outside_git_repo() {
+    fn read_reports_invalid_repository() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join(".git"), "not a git directory").unwrap();
-        assert_eq!(read_local(dir.path(), "dotfiles.example"), None);
+        assert!(read_local(dir.path(), "dotfiles.example").is_err());
         let error = persist_local(dir.path(), "dotfiles.example", "value").unwrap_err();
         assert_eq!(error.to_string(), "finding git repository");
         assert!(error.downcast_ref::<git2::Error>().is_some());
+    }
+
+    #[test]
+    fn read_distinguishes_missing_repository_from_malformed_config() {
+        let absent = tempfile::tempdir().unwrap();
+        assert_eq!(read_local(absent.path(), "dotfiles.example").unwrap(), None);
+        assert!(read_local(&absent.path().join("missing"), "dotfiles.example").is_err());
+
+        let (_dir, root) = init_test_repo();
+        let config = root.join(".git/config");
+        let malformed = "[dotfiles\nexample = saved\n";
+        std::fs::write(&config, malformed).unwrap();
+        let error = read_local(&root, "dotfiles.example").unwrap_err();
+        assert!(error.downcast_ref::<git2::Error>().is_some(), "{error:#}");
+        assert_eq!(std::fs::read_to_string(config).unwrap(), malformed);
     }
 
     #[test]
@@ -83,7 +115,7 @@ mod tests {
         persist_local(&root, "dotfiles.example", "first").expect("first");
         persist_local(&root, "dotfiles.example", "second").expect("second");
         assert_eq!(
-            read_local(&root, "dotfiles.example"),
+            read_local(&root, "dotfiles.example").unwrap(),
             Some("second".to_string())
         );
         drop(dir);
@@ -97,7 +129,7 @@ mod tests {
         for value in ["", " ", "日本語 path with spaces"] {
             persist_local(&nested, "dotfiles.example", value).unwrap();
             assert_eq!(
-                read_local(&root, "dotfiles.example"),
+                read_local(&root, "dotfiles.example").unwrap(),
                 (!value.is_empty()).then(|| value.to_string()),
                 "{value:?}"
             );
@@ -124,7 +156,7 @@ mod tests {
         assert_eq!(std::fs::read(config).unwrap(), before);
         assert_eq!(std::fs::read_to_string(lock).unwrap(), "other writer");
         assert_eq!(
-            read_local(&root, "dotfiles.example").as_deref(),
+            read_local(&root, "dotfiles.example").unwrap().as_deref(),
             Some("original")
         );
     }

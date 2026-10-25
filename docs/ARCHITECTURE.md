@@ -196,6 +196,10 @@ Check for a tool or file produced by a prerequisite inside `run()`, after that
 prerequisite finishes. Empty configuration should return `NotApplicable`, not
 claim that work was applied.
 
+A private prepared phase owns the remaining tasks, their indexed graph and
+cached assessments after elevation preparation; schedulers consume these
+matching inputs together.
+
 [`scheduler.rs`](../cli/src/engine/scheduler.rs) runs ready tasks in scoped
 threads; resource batches can independently use Rayon. `ctx.parallel()` gates
 both. Resource `.sequential()` protects shared-file or lock-bound writes within

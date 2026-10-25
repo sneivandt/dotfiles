@@ -39,15 +39,60 @@ pub(super) fn describe_lock_changes(
 
     let keys: BTreeSet<&String> = before.keys().chain(after.keys()).collect();
     keys.into_iter()
-        .filter_map(|key| match (before.get(key), after.get(key)) {
-            (None, Some(dependency)) => Some(("install", dependency.display_name())),
-            (Some(dependency), None) => Some(("remove", dependency.display_name())),
-            (Some(before), Some(after)) if before != after => {
-                Some(("update", describe_dependency_update(before, after)))
-            }
-            (Some(_), Some(_)) | (None, None) => None,
+        .flat_map(|key| {
+            describe_dependency_group(
+                before.get(key).map_or(&[], Vec::as_slice),
+                after.get(key).map_or(&[], Vec::as_slice),
+            )
         })
         .collect()
+}
+
+/// Match sources within each display-name group without discarding collisions.
+fn describe_dependency_group(
+    before: &[LockedDependency],
+    after: &[LockedDependency],
+) -> Vec<(&'static str, String)> {
+    let mut remaining: Vec<_> = after.iter().collect();
+    let mut removed = Vec::new();
+    let mut changes = Vec::new();
+    for previous in before {
+        let matched = remaining
+            .iter()
+            .position(|next| *next == previous)
+            .or_else(|| {
+                remaining
+                    .iter()
+                    .position(|next| next.source_identity() == previous.source_identity())
+            });
+        if let Some(index) = matched {
+            let next = remaining.remove(index);
+            if previous != next {
+                changes.push(("update", describe_dependency_update(previous, next)));
+            }
+        } else {
+            removed.push(previous);
+        }
+    }
+
+    // Older locks can encode a virtual package's full path in `name`.
+    // Preserve that representation-only update when the display name is unique.
+    if let ([before], [after]) = (before, after)
+        && removed.len() == 1
+    {
+        return vec![("update", describe_dependency_update(before, after))];
+    }
+    changes.extend(
+        removed
+            .into_iter()
+            .map(|dependency| ("remove", dependency.display_name())),
+    );
+    changes.extend(
+        remaining
+            .into_iter()
+            .map(|dependency| ("install", dependency.display_name())),
+    );
+    changes
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,19 +150,23 @@ impl LockedDependency {
     }
 }
 
-fn parse_locked_dependencies(bytes: Option<&[u8]>) -> Option<BTreeMap<String, LockedDependency>> {
+fn parse_locked_dependencies(
+    bytes: Option<&[u8]>,
+) -> Option<BTreeMap<String, Vec<LockedDependency>>> {
     let lock = match bytes {
         Some(bytes) => serde_yaml_ng::from_slice::<ApmLock>(bytes).ok()?,
         None => ApmLock {
             dependencies: Vec::new(),
         },
     };
-    Some(
-        lock.dependencies
-            .into_iter()
-            .map(|dependency| (dependency.display_name(), dependency))
-            .collect(),
-    )
+    let mut grouped = BTreeMap::<String, Vec<LockedDependency>>::new();
+    for dependency in lock.dependencies {
+        grouped
+            .entry(dependency.display_name())
+            .or_default()
+            .push(dependency);
+    }
+    Some(grouped)
 }
 
 fn describe_dependency_update(before: &LockedDependency, after: &LockedDependency) -> String {
@@ -321,6 +370,46 @@ dependencies:
         assert_eq!(
             describe_lock_changes(Some(before), Some(after)),
             [("update", "cursor/plugins/pstack/skills/unslop".to_string())]
+        );
+    }
+
+    #[test]
+    fn lock_changes_preserve_colliding_names_and_ignore_order() {
+        let before = b"dependencies:
+  - { repo_url: first/plugin, name: shared, resolved_commit: old }
+  - { repo_url: second/plugin, name: shared, resolved_commit: stable }
+";
+        let reordered = b"dependencies:
+  - { repo_url: second/plugin, name: shared, resolved_commit: stable }
+  - { repo_url: first/plugin, name: shared, resolved_commit: old }
+";
+        assert!(describe_lock_changes(Some(before), Some(reordered)).is_empty());
+        let after = b"dependencies:
+  - { repo_url: second/plugin, name: shared, resolved_commit: stable }
+  - { repo_url: first/plugin, name: shared, resolved_commit: new }
+";
+        assert_eq!(
+            describe_lock_changes(Some(before), Some(after)),
+            [("update", "shared · commit old -> new".to_string()),]
+        );
+    }
+
+    #[test]
+    fn lock_changes_report_removal_and_installation_with_colliding_names() {
+        let both = b"dependencies:
+  - { repo_url: first/plugin, name: shared }
+  - { repo_url: second/plugin, name: shared }
+";
+        let one = b"dependencies:
+  - { repo_url: second/plugin, name: shared }
+";
+        assert_eq!(
+            describe_lock_changes(Some(both), Some(one)),
+            [("remove", "shared".to_string()),]
+        );
+        assert_eq!(
+            describe_lock_changes(Some(one), Some(both)),
+            [("install", "shared".to_string()),]
         );
     }
 

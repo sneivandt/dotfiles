@@ -7,8 +7,11 @@ use anyhow::Result;
 const PROFILE_KEY: &str = "dotfiles.profile";
 
 /// Try to read the profile from the repository's local Git config.
-#[must_use]
-pub fn read_persisted(root: &Path) -> Option<String> {
+///
+/// # Errors
+///
+/// Returns an error if the repository or its local configuration cannot be read.
+pub fn read_persisted(root: &Path) -> Result<Option<String>> {
     crate::infra::config::git_state::read_local(root, PROFILE_KEY)
 }
 

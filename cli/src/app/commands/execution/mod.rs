@@ -1,6 +1,6 @@
 //! Application task execution policy.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
@@ -10,10 +10,11 @@ use crate::infra::logging::{Logger, OutputExt as _};
 
 use super::error::{CommandInterrupted, TaskFailures};
 mod elevation;
+mod phase;
 
-use elevation::ElevationBroker;
 #[cfg(test)]
 use elevation::build_elevated_child_args;
+use phase::PreparedPhase;
 
 type RestartCondition<'a> = Box<dyn FnOnce() -> bool + 'a>;
 type RestartAction<'a> = Box<dyn FnOnce() + 'a>;
@@ -90,7 +91,7 @@ impl<'a> RunCoordinator<'a> {
         let summary = if let Some(restart) = plan.restart.take() {
             self.execute_with_restart(plan.tasks, restart)?
         } else {
-            Some(run_task_graph(&mut plan.tasks, self.ctx, self.log, None)?)
+            Some(run_task_graph(plan.tasks, self.ctx, self.log, None)?)
         };
 
         summary.map_or(Ok(()), |summary| finish_run(self.ctx, self.log, &summary))
@@ -98,18 +99,18 @@ impl<'a> RunCoordinator<'a> {
 
     fn execute_with_restart(
         &self,
-        mut tasks: Vec<&dyn Task>,
+        tasks: Vec<&dyn Task>,
         restart: RestartPlan<'_>,
     ) -> Result<Option<crate::engine::scheduler::ExecutionSummary>> {
         let boundary_closure = dependency_closure(&tasks, restart.boundary.clone())?;
         if boundary_closure.is_empty() {
-            return run_task_graph(&mut tasks, self.ctx, self.log, None).map(Some);
+            return run_task_graph(tasks, self.ctx, self.log, None).map(Some);
         }
 
-        let (mut prefix, mut remaining): (Vec<_>, Vec<_>) = tasks
+        let (prefix, remaining): (Vec<_>, Vec<_>) = tasks
             .into_iter()
             .partition(|task| boundary_closure.contains(&task.task_id()));
-        let mut summary = run_task_graph(&mut prefix, self.ctx, self.log, None)?;
+        let mut summary = run_task_graph(prefix, self.ctx, self.log, None)?;
 
         if self.ctx.is_cancelled() || summary.was_interrupted() {
             return Ok(Some(summary));
@@ -126,7 +127,7 @@ impl<'a> RunCoordinator<'a> {
             return Ok(Some(summary));
         }
 
-        let next = run_task_graph(&mut remaining, self.ctx, self.log, Some(&summary))?;
+        let next = run_task_graph(remaining, self.ctx, self.log, Some(&summary))?;
         summary.merge(next);
         Ok(Some(summary))
     }
@@ -190,7 +191,7 @@ fn dependency_closure(tasks: &[&dyn Task], boundary: TaskId) -> Result<HashSet<T
 }
 
 fn run_task_graph(
-    tasks: &mut Vec<&dyn Task>,
+    tasks: Vec<&dyn Task>,
     ctx: &Context,
     log: &Arc<Logger>,
     prior: Option<&crate::engine::scheduler::ExecutionSummary>,
@@ -199,52 +200,10 @@ fn run_task_graph(
         return Ok(crate::engine::scheduler::ExecutionSummary::default());
     }
 
-    let task_count = tasks.len();
-    let mut graph = resolve_task_graph(tasks, log)?;
-
-    let assessments = if ctx.is_cancelled() {
-        HashMap::new()
-    } else {
-        tasks
-            .iter()
-            .map(|task| (task.task_id(), task.assess(ctx)))
-            .collect::<HashMap<_, _>>()
-    };
-    let mut summary = if ctx.is_cancelled() {
-        crate::engine::scheduler::ExecutionSummary::default()
-    } else {
-        ElevationBroker::new(ctx, log).prepare(tasks, &assessments, &graph)
-    };
-
-    if tasks.is_empty() {
-        return Ok(summary);
-    }
-
-    if tasks.len() != task_count {
-        graph = resolve_task_graph(tasks, log)?;
-    }
+    let (phase, mut summary) = PreparedPhase::prepare(tasks, ctx, log)?;
     let mut combined_prior = prior.cloned().unwrap_or_default();
     combined_prior.merge(summary.clone());
-    let scheduled = if ctx.parallel() {
-        crate::engine::scheduler::run_tasks_parallel_with_prior(
-            tasks,
-            &graph,
-            &assessments,
-            ctx,
-            log,
-            Some(&combined_prior),
-        )
-    } else {
-        crate::engine::scheduler::run_tasks_sequential_with_prior(
-            tasks,
-            &graph,
-            &assessments,
-            ctx,
-            log,
-            Some(&combined_prior),
-        )
-    };
-    summary.merge(scheduled);
+    summary.merge(phase.run(ctx, log, &combined_prior));
     Ok(summary)
 }
 

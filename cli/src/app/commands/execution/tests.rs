@@ -1,4 +1,8 @@
+use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use super::elevation::ElevationBroker;
 
 use proptest::prelude::*;
 
@@ -457,6 +461,8 @@ struct ProbeTask {
     failure: Option<ProbeFailure>,
     cancels: bool,
     interrupts: bool,
+    assessments: AtomicUsize,
+    requires_elevation: bool,
 }
 
 impl ProbeTask {
@@ -469,6 +475,8 @@ impl ProbeTask {
             failure: None,
             cancels: false,
             interrupts: false,
+            assessments: AtomicUsize::new(0),
+            requires_elevation: false,
         }
     }
 
@@ -510,6 +518,11 @@ impl Task for ProbeTask {
         true
     }
 
+    fn assess(&self, _ctx: &Context) -> TaskAssessment {
+        self.assessments.fetch_add(1, Ordering::SeqCst);
+        TaskAssessment::applicable().with_elevation(self.requires_elevation)
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         self.trace
             .lock()
@@ -549,6 +562,35 @@ fn sequential_context() -> (Context, Arc<Logger>) {
 
 fn as_dyn(tasks: &[ProbeTask]) -> Vec<&dyn Task> {
     tasks.iter().map(|task| -> &dyn Task { task }).collect()
+}
+
+#[test]
+fn prepared_phase_rebuilds_after_elevation_without_reassessing() {
+    for parallel in [false, true] {
+        let trace = trace();
+        let mut elevated = ProbeTask::new("elevated", 1, &trace);
+        elevated.requires_elevation = true;
+        let tasks = [
+            elevated,
+            ProbeTask::new("blocked", 2, &trace).depends_on(&[1]),
+            ProbeTask::new("independent", 3, &trace),
+            ProbeTask::new("dependent", 4, &trace).depends_on(&[3]),
+        ];
+        let (ctx, log) = sequential_context();
+        let ctx = ctx.with_parallel(parallel).with_non_interactive(true);
+        let summary = run_task_graph(as_dyn(&tasks), &ctx, &log, None).unwrap();
+
+        assert_eq!(entries(&trace), ["independent", "dependent"]);
+        for (task, expected) in tasks.iter().zip([
+            TaskOutcome::Unmet,
+            TaskOutcome::Blocked,
+            TaskOutcome::Satisfied,
+            TaskOutcome::Satisfied,
+        ]) {
+            assert_eq!(summary.outcome(&task.task_id()), Some(expected));
+            assert_eq!(task.assessments.load(Ordering::SeqCst), 1, "{}", task.name);
+        }
+    }
 }
 
 // ── dependency_closure ────────────────────────────────
@@ -1026,9 +1068,9 @@ fn completed_task_stays_satisfied_but_cancelled_command_does_not_succeed() {
     let trace = trace();
     let task = ProbeTask::new("completed", 1, &trace).cancelling();
     let (ctx, log) = sequential_context();
-    let mut tasks: Vec<&dyn Task> = vec![&task];
+    let tasks: Vec<&dyn Task> = vec![&task];
 
-    let summary = run_task_graph(&mut tasks, &ctx, &log, None).unwrap();
+    let summary = run_task_graph(tasks, &ctx, &log, None).unwrap();
 
     assert_eq!(
         summary.outcome(&task.task_id()),
@@ -1091,11 +1133,11 @@ fn restart_runs_after_the_boundary_closure_and_stops_the_parent() {
         &log,
         numeric_task_id(2),
         || true,
-        move || action_flag.store(true, std::sync::atomic::Ordering::SeqCst),
+        move || action_flag.store(true, Ordering::SeqCst),
     )
     .expect("restart handoff should succeed");
 
-    assert!(restarted.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(restarted.load(Ordering::SeqCst));
     assert_eq!(
         entries(&trace),
         vec!["before-boundary".to_string(), "boundary".to_string()],

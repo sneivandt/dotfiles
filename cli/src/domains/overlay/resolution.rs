@@ -23,9 +23,13 @@ const OVERLAY_KEY: &str = "dotfiles.overlay";
 
 /// Try to read the persisted overlay path from the repository's local git
 /// config (`dotfiles.overlay`).
-#[must_use]
-pub fn read_persisted(root: &Path) -> Option<PathBuf> {
-    crate::infra::config::git_state::read_local(root, OVERLAY_KEY).map(PathBuf::from)
+///
+/// # Errors
+///
+/// Returns an error if the repository or its local configuration cannot be read.
+pub fn read_persisted(root: &Path) -> Result<Option<PathBuf>> {
+    crate::infra::config::git_state::read_local(root, OVERLAY_KEY)
+        .map(|value| value.map(PathBuf::from))
 }
 
 /// Persist the overlay path to the repository's local git config so future
@@ -56,9 +60,9 @@ pub fn persist(root: &Path, overlay_path: &Path) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns an error if a linked Git worktree is declined as the overlay or its
-/// confirmation prompt cannot be read, or the selected path cannot be made
-/// absolute.
+/// Returns an error if saved configuration cannot be read, a linked Git worktree
+/// is declined, its confirmation prompt fails, or the selected path cannot be
+/// made absolute.
 pub fn resolve_from_args(
     cli_overlay: Option<&Path>,
     root: &Path,
@@ -81,8 +85,9 @@ pub fn resolve_from_args(
 ///
 /// # Errors
 ///
-/// Returns an error if a linked worktree is declined or its confirmation
-/// prompt cannot be read, or the selected path cannot be made absolute.
+/// Returns an error if saved configuration cannot be read, a linked worktree is
+/// declined, its confirmation prompt fails, or the selected path cannot be made
+/// absolute.
 pub fn resolve_read_only(
     cli_overlay: Option<&Path>,
     root: &Path,
@@ -107,11 +112,11 @@ fn resolve_with_confirmation(
         }
         return Ok(Some(path));
     }
-    read_from_env(env)
-        .or_else(|| read_persisted(root))
-        .as_deref()
-        .map(absolute_overlay_path)
-        .transpose()
+    let selected = match read_from_env(env) {
+        Some(path) => Some(path),
+        None => read_persisted(root)?,
+    };
+    selected.as_deref().map(absolute_overlay_path).transpose()
 }
 
 #[allow(
@@ -212,7 +217,7 @@ mod tests {
         let (dir, root) = init_test_repo();
         let overlay = PathBuf::from("/home/user/dotfiles-overlay");
         persist(&root, &overlay).expect("persist should succeed");
-        let result = read_persisted(&root);
+        let result = read_persisted(&root).unwrap();
         assert_eq!(result, Some(overlay));
         drop(dir);
     }
@@ -220,7 +225,7 @@ mod tests {
     #[test]
     fn read_persisted_returns_none_when_unset() {
         let (dir, root) = init_test_repo();
-        let result = read_persisted(&root);
+        let result = read_persisted(&root).unwrap();
         assert_eq!(result, None);
         drop(dir);
     }
@@ -232,20 +237,52 @@ mod tests {
         let second = PathBuf::from("/second/path");
         persist(&root, &first).expect("first persist");
         persist(&root, &second).expect("second persist");
-        let result = read_persisted(&root);
+        let result = read_persisted(&root).unwrap();
         assert_eq!(result, Some(second));
         drop(dir);
     }
 
     #[test]
-    fn read_persisted_returns_none_when_git_repository_cannot_be_opened() {
+    fn read_persisted_reports_invalid_repository() {
         let dir = tempfile::tempdir().expect("tempdir");
         // Prevent discovery of the enclosing checkout when fixtures live under it.
         std::fs::write(dir.path().join(".git"), "gitdir: missing-repository\n")
             .expect("write discovery boundary");
         assert!(git2::Repository::discover(dir.path()).is_err());
-        let result = read_persisted(dir.path());
-        assert_eq!(result, None);
+        assert!(read_persisted(dir.path()).is_err());
+    }
+
+    #[test]
+    fn malformed_saved_overlay_is_reported_unless_explicitly_overridden() {
+        use crate::infra::env::MapEnv;
+
+        let (_dir, root) = init_test_repo();
+        let config = root.join(".git/config");
+        let malformed = "[dotfiles\noverlay = saved\n";
+        std::fs::write(&config, malformed).unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        for read_only in [false, true] {
+            for (cli, environment) in [(false, false), (true, false), (false, true), (true, true)] {
+                let env = if environment {
+                    MapEnv::new().with("DOTFILES_OVERLAY", overlay.path().to_str().unwrap())
+                } else {
+                    MapEnv::new()
+                };
+                let selected = cli.then_some(overlay.path());
+                let result = if read_only {
+                    resolve_read_only(selected, &root, &env)
+                } else {
+                    resolve_from_args(selected, &root, &env, true)
+                };
+                if cli || environment {
+                    assert_eq!(result.unwrap().as_deref(), Some(overlay.path()));
+                } else {
+                    let error = result.unwrap_err();
+                    assert!(error.downcast_ref::<git2::Error>().is_some(), "{error:#}");
+                }
+                assert_eq!(std::fs::read_to_string(&config).unwrap(), malformed);
+            }
+        }
     }
 
     #[test]
@@ -261,7 +298,7 @@ mod tests {
         .expect("ordinary overlay should resolve");
         assert_eq!(result, Some(cli_path.clone()));
         // Also persisted
-        assert_eq!(read_persisted(&root), Some(cli_path));
+        assert_eq!(read_persisted(&root).unwrap(), Some(cli_path));
         drop(dir);
     }
 
@@ -283,7 +320,7 @@ mod tests {
             .expect("read-only overlay resolution");
 
         assert_eq!(result, Some(overlay));
-        assert_eq!(read_persisted(&root), None);
+        assert_eq!(read_persisted(&root).unwrap(), None);
         drop(dir);
     }
 
@@ -314,7 +351,7 @@ mod tests {
         .expect("resolve relative overlay");
 
         assert_eq!(selected, Some(expected.clone()));
-        assert_eq!(read_persisted(repo.path()), Some(expected));
+        assert_eq!(read_persisted(repo.path()).unwrap(), Some(expected));
     }
 
     #[test]
@@ -406,7 +443,7 @@ mod tests {
             "explicit selection must override the environment"
         );
         assert_eq!(
-            read_persisted(repo.path()),
+            read_persisted(repo.path()).unwrap(),
             Some(PathBuf::from("persisted-overlay")),
             "read-only discovery must not rewrite persisted state"
         );
@@ -436,7 +473,7 @@ mod tests {
             "declined selection should explain why it stopped: {error}"
         );
         assert_eq!(
-            read_persisted(&root),
+            read_persisted(&root).unwrap(),
             None,
             "declined linked worktree must not be persisted"
         );
@@ -463,7 +500,10 @@ mod tests {
         .expect("confirmed linked worktree should resolve");
 
         assert_eq!(result.as_deref(), Some(overlay.path()));
-        assert_eq!(read_persisted(&root).as_deref(), Some(overlay.path()));
+        assert_eq!(
+            read_persisted(&root).unwrap().as_deref(),
+            Some(overlay.path())
+        );
         drop(dir);
     }
 
@@ -489,7 +529,7 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("selection cancelled"));
-        assert_eq!(read_persisted(&root), Some(saved));
+        assert_eq!(read_persisted(&root).unwrap(), Some(saved));
     }
 
     #[test]
@@ -507,7 +547,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(selected.as_deref(), Some(overlay.path()));
-        assert_eq!(read_persisted(&root), selected);
+        assert_eq!(read_persisted(&root).unwrap(), selected);
     }
 
     #[test]

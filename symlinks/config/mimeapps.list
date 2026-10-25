@@ -10,3 +10,4 @@ text/plain=code-insiders.desktop;
 text/markdown=code-insiders.desktop;
 application/x-code-insiders-workspace=code-insiders.desktop;
 x-scheme-handler/vscode-insiders=code-insiders-url-handler.desktop;
+x-scheme-handler/codex=chatgpt.desktop;

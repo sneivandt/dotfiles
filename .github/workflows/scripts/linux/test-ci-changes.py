@@ -15,6 +15,7 @@ import unittest
 SCRIPTS = Path(__file__).resolve().parent
 POLICY = runpy.run_path(str(SCRIPTS / "classify-ci-changes.py"))
 CONTRACT = runpy.run_path(str(SCRIPTS / "check-ci-contract.py"))
+PRE_PUSH = runpy.run_path(str(SCRIPTS / "pre-push.py"))
 classify = POLICY["classify"]
 LINUX = POLICY["LINUX"]
 WINDOWS = POLICY["WINDOWS"]
@@ -192,6 +193,53 @@ class ClassificationTests(unittest.TestCase):
                      "packages/apm/PKGBUILD", "packages/apm/release.json"):
             with self.subTest(path=path):
                 self.assertFalse(classify([path])["run_release"])
+
+
+class PrePushPlanTests(unittest.TestCase):
+    def test_docs_stay_focused_and_rust_adds_platform_checks(self):
+        commands, deferred = PRE_PUSH["plan"](classify(["README.md"]), "1.91")
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0][2][-3:], ["--strict", "docs", "ci"])
+        self.assertEqual(deferred, [])
+        commands, deferred = PRE_PUSH["plan"](classify(["cli/src/main.rs"]), "1.91")
+        flattened = [argument for _, _, command in commands for argument in command]
+        for argument in ("test", "rustdoc", "x86_64-pc-windows-gnu", "1.91"):
+            self.assertIn(argument, flattened)
+        self.assertIn("mutation", deferred)
+        self.assertIn("roundtrip_windows", deferred)
+        self.assertFalse(any("update" in command or "remove" in command for _, _, command in commands))
+
+    def test_config_and_desktop_select_their_regressions(self):
+        commands, _ = PRE_PUSH["plan"](classify(["symlinks/config/quickshell/Bar.qml"]), "1.91")
+        flattened = [argument for _, _, command in commands for argument in command]
+        for argument in ("config_drift", "qml", "symlinks/config/quickshell/tests/python"):
+            self.assertIn(argument, flattened)
+        self.assertNotIn("clippy", flattened)
+
+    def test_checker_changes_request_full_ci_without_binary_release(self):
+        selected = classify([LINUX + "pre-push.py"])
+        self.assertTrue(selected["run_rust_checks"])
+        self.assertTrue(selected["run_hook_inputs"])
+        self.assertTrue(selected["run_desktop_qml"])
+        self.assertFalse(selected["run_release"])
+        self.assertFalse(selected["run_mutation"])
+
+    def test_missing_tools_fail_strict_checker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = root / ".github/workflows/scripts/linux/check.sh"
+            script.parent.mkdir(parents=True)
+            (root / "cli").mkdir()
+            shutil.copyfile(SCRIPTS / "check.sh", script)
+            (root / "dirname").symlink_to(shutil.which("dirname"))
+            for strict, expected in ((False, 0), (True, 1)):
+                result = subprocess.run(
+                    ["/bin/sh", str(script), *(["--strict"] if strict else []), "shell"],
+                    env={"PATH": str(root)}, text=True, capture_output=True,
+                )
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                self.assertIn("SKIP", result.stdout)
+                self.assertNotIn("All requested checks passed", result.stdout)
 
 
 class GateTests(unittest.TestCase):
@@ -391,6 +439,40 @@ class GitRangeTests(unittest.TestCase):
         self.git("rm", "cli/src/space and\nnewline.rs")
         self.env["HEAD_SHA"] = self.commit()
         self.assertTrue(self.script()["run_release"])
+
+    def test_pre_push_snapshot_excludes_local_fixes_and_preserves_modes(self):
+        self.write("script.sh", "#!/bin/sh\nexit 1\n")
+        (self.repo / "script.sh").chmod(0o755)
+        head = self.commit()
+        self.write("script.sh", "#!/bin/sh\nexit 0\n")
+        self.write("untracked.txt", "not committed\n")
+        destination = self.root / "snapshot"
+        PRE_PUSH["snapshot"](self.repo, head, destination)
+        self.assertEqual((destination / "script.sh").read_text(), "#!/bin/sh\nexit 1\n")
+        self.assertFalse((destination / "untracked.txt").exists())
+        if os.name != "nt":
+            self.assertTrue(os.access(destination / "script.sh", os.X_OK))
+        self.assertEqual(self.git("rev-parse", "HEAD"), head)
+        self.assertEqual((self.repo / "script.sh").read_text(), "#!/bin/sh\nexit 0\n")
+
+    def test_pre_push_uses_committed_failure_and_rejects_invalid_range(self):
+        shutil.copyfile(SCRIPTS / "pre-push.py", self.repo / LINUX / "pre-push.py")
+        self.write("cli/Cargo.toml", '[package]\nrust-version = "1.91"\n')
+        self.write(LINUX + "check.sh", "#!/bin/sh\nexit 17\n")
+        base = self.commit()
+        self.write("README.md", "changed\n")
+        head = self.commit()
+        # The index is empty and the working-tree fix must not hide failure.
+        self.write(LINUX + "check.sh", "#!/bin/sh\nexit 0\n")
+        command = ["python3", "-B", str(self.repo / LINUX / "pre-push.py")]
+        for arguments, expected, message in (
+            (["--base", base, "--head", head], 1, "exit status 17"),
+            (["--base", head, "--head", head], 0, "no checks run"),
+            (["--base", "invalid-ref"], 1, "Pre-push validation failed"),
+        ):
+            result = subprocess.run(command + arguments, env=self.env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+            self.assertIn(message, result.stdout + result.stderr)
 
     def test_empty_manual_missing_and_invalid_ranges(self):
         self.assertFalse(self.script()["run_build_linux"])

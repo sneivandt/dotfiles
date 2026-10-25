@@ -87,7 +87,8 @@ With no stage names, each script runs its default stages:
 | `deny` | `cargo deny check all` | Requires cargo-deny |
 
 Missing top-level tools generally produce `SKIP` without failing the script.
-Read the summary: **“All checks passed” can include skipped stages.** Installed
+Read the summary: skipped stages mean incomplete coverage. Use `--strict` before
+stage arguments to fail on any skipped stage (Linux). Installed
 Cargo with a missing/broken subcommand can still fail rather than skip.
 On Linux, absent `pwsh` skips `powershell`, but present `pwsh` without
 PSScriptAnalyzer fails. The Windows entrypoint explicitly skips a missing
@@ -129,6 +130,87 @@ python3 -B .github/workflows/scripts/linux/test-ci-changes.py \
 Omit the class names to include rename/deletion, unusual-path, invalid-range and
 published-release-baseline fixtures. Those fixtures need Git and `sh`, use a
 mock GitHub CLI, and make no release API calls.
+
+## Before pushing
+
+Commit the intended changes, then run this Linux checker from the repository
+root (Python 3.11 or newer):
+
+```bash
+python3 -B .github/workflows/scripts/linux/pre-push.py --plan
+python3 -B .github/workflows/scripts/linux/pre-push.py
+```
+
+The default range is `origin/main..HEAD`. Ensure the remote-tracking ref is
+current; for another destination or several commits, pass `--base <remote-sha>`
+and optionally `--head <commit>`. Deleted inputs and both sides of renames count.
+An invalid range fails; an empty range explicitly reports that no checks ran.
+This is a manual command, not an installed Git hook. It does not push or install
+hooks. A future push hook must derive its range from Git's push input, not the
+staged index.
+
+The checker reuses CI's path classifier, exports the selected commit to a fresh
+temporary Git checkout, and runs selected local checks with strict skip handling.
+Unstaged fixes and untracked files cannot satisfy committed inputs. It checks
+documentation and workflow contracts, relevant linters/configuration/Rust tests,
+Windows-target Clippy and MSRV for Rust checks, and applicable isolated hook,
+wrapper, desktop-script and stock fixtures. It reuses the checkout's Cargo
+target cache and redirects CLI state/logs to temporary directories. Select the
+pinned compiler on PATH first. Required tools, MSRV and Windows target must
+already be installed; it does not install them. Cargo and dependency audits may
+need network/cache access.
+
+The printed `REMAINING CI` list identifies selected native Windows builds/tests,
+profile/round-trip and application integration, full hook/wrapper integration,
+mutation testing and publishing. Those run in CI/disposable environments.
+Local success does not prove them, nor does it prove live desktop rendering.
+Fix local failures before pushing; report missing tools/coverage explicitly.
+After pushing, inspect the exact SHA's aggregate gate and informational jobs.
+
+## Focused mutation testing
+
+Passing tests can miss a wrong branch, lost diagnostic, or incorrect preview.
+For Rust behavior changes, especially error handling, scheduling and partial
+failures, use `cargo-mutants` against the same committed range. It deliberately
+alters source, so run it in a disposable checkout. Install the tool separately
+and select the pinned Rust toolchain first.
+
+From the repository root, replace the base ref with the destination's previous
+commit when needed:
+
+```bash
+(
+  source_root="$PWD"
+  mutation_base=$(git rev-parse --verify 'origin/main^{commit}') || exit 1
+  mutation_head=$(git rev-parse --verify 'HEAD^{commit}') || exit 1
+  mutation_root=$(mktemp -d) || exit 1
+  git clone --quiet --template= --shared --no-checkout "$source_root" "$mutation_root/source" || exit 1
+  git -C "$mutation_root/source" -c core.hooksPath=/dev/null checkout --quiet --detach "$mutation_head" || exit 1
+  cd "$mutation_root/source/cli" || exit 1
+  git diff --relative=cli --unified=0 "$mutation_base" "$mutation_head" -- src > mutants.diff || exit 1
+  if [ ! -s mutants.diff ]; then
+    echo "No changed Rust source; mutation testing did not run."
+    exit 0
+  fi
+  export XDG_STATE_HOME="$mutation_root/state" DOTFILES_LOG_DIR="$mutation_root/logs"
+  cargo mutants --in-place --no-shuffle --in-diff mutants.diff \
+    --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b' \
+    --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\bdecode_reg_string\b' \
+    --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::' \
+    --cargo-arg=--profile=ci --cargo-arg=--locked
+  mutation_status=$?
+  echo "Results retained in $mutation_root/source/cli/mutants.out; remove the temporary checkout after review."
+  exit "$mutation_status"
+)
+```
+
+These exclusions match Linux CI's Windows-only exclusions. To narrow an expensive
+run further, add `--file src/path/to/module.rs` or `--re 'function_name'`; report
+that narrower scope. CI shards the changed-code set across eight jobs; omit
+`--shard` locally to cover the whole selected set. Inspect each `MISSED` result:
+add an assertion for observable behavior, or explain an equivalent mutation.
+A survivor is evidence to investigate, not automatic proof of a production bug.
+Ordinary tests, full local checks and `--all` do not run mutation testing.
 
 ## Integration test suites
 

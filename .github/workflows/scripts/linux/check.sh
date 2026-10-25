@@ -51,6 +51,8 @@ fi
 # Accumulated "<stage> <status>" lines, printed as a summary at the end.
 RESULTS=''
 FAILED=0
+SKIPPED=0
+STRICT=${DOTFILES_CHECK_STRICT:-0}
 
 have()
 {
@@ -86,6 +88,10 @@ run_stage()
       ;;
     2)
       record "$1" skip
+      SKIPPED=1
+      if [ "$STRICT" = 1 ]; then
+        FAILED=1
+      fi
       ;;
     *)
       record "$1" FAIL
@@ -218,17 +224,23 @@ stage_msrv()
 usage()
 {
   cat <<EOF
-Usage: sh .github/workflows/scripts/linux/check.sh [--all | --list | STAGE...]
+Usage: sh .github/workflows/scripts/linux/check.sh [--strict] [--all | --list | STAGE...]
 
 Stages (default): $DEFAULT_STAGES
 Stages (opt-in):  $OPTIONAL_STAGES
 
 Options:
+  --strict  Fail if any requested stage is skipped.
   --all     Run every stage, including opt-in stages.
   --list    List available stages and exit.
   -h        Show this help and exit.
 EOF
 }
+
+if [ "${1:-}" = --strict ]; then
+  STRICT=1
+  shift
+fi
 
 case "${1:-}" in
   -h | --help)
@@ -286,5 +298,9 @@ if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
 
-printf '\n%sAll checks passed.%s\n' "$C_GREEN" "$C_OFF"
+if [ "$SKIPPED" -ne 0 ]; then
+  printf '\n%sChecks completed with skips; coverage is incomplete.%s\n' "$C_YELLOW" "$C_OFF"
+else
+  printf '\n%sAll requested checks passed.%s\n' "$C_GREEN" "$C_OFF"
+fi
 exit 0

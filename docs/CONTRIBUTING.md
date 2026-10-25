@@ -125,6 +125,14 @@ or hunks, then inspect `git diff --cached`: the [hooks](HOOKS.md) test the index
 which may differ from a partially staged working tree. Do not bypass a failing
 hook in place of diagnosing it.
 
+### 5. Validate the committed push range
+
+Before pushing, run the [pre-push checker](TESTING.md#before-pushing) against
+the remote's previous commit and the commit you will push. It checks committed
+inputs in a temporary checkout and reports coverage left to CI. Fix selected
+local failures and explicitly report unavailable checks. After pushing, monitor
+the exact commit's aggregate CI and inspect informational failures separately.
+
 ## Change checklists
 
 ### Config-backed state

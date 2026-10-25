@@ -2,8 +2,9 @@
 name: toml-configuration
 description: >
   Use when editing conf/*.toml data, typed models, loaders, category sections,
-  or overlay merging. Prefer the owning domain skill for data-only changes
-  when one exists. Not for validator implementation alone.
+  or public/overlay section merging. Prefer the owning domain skill for
+  data-only changes when one exists. Not for overlay path selection, script
+  execution, or validator implementation alone.
 ---
 
 # TOML Configuration
@@ -61,7 +62,8 @@ Cover unknown fields, malformed types, optional overlay absence, required main
 absence, category inclusion/exclusion, and merged data. Use the TOML checks in
 [Testing](../../../docs/TESTING.md#choosing-coverage).
 
-Use `config-validation` for diagnostic and drift-test details. Profile and
-overlay semantics belong to their respective skills; the complete contributor
-checklist lives in
+Use `config-validation` for diagnostic and drift-test details, `profile-system`
+for profile resolution, and `overlay-scripts` for overlay path selection and
+script execution. Section loading and merge mechanics belong here. The complete
+contributor checklist lives in
 [Contributing](../../../docs/CONTRIBUTING.md#change-checklists).

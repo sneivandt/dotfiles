@@ -1,9 +1,9 @@
 ---
 name: overlay-scripts
 description: >
-  Use for private overlay path resolution, SectionLoader overlay merging,
-  overlay script resources, or dynamic OverlayScriptTask discovery. Not for
-  ordinary repository scripts or public config alone.
+  Use for private overlay path resolution, overlay script resources, or dynamic
+  OverlayScriptTask discovery. Not for generic TOML section loading/merging,
+  ordinary repository scripts, or public config alone.
 ---
 
 # Overlay Scripts
@@ -30,6 +30,8 @@ test selection. Use temporary repositories and synthetic overlay fixtures.
 
 - `SectionLoader` appends optional overlay sections to public desired state
   under the same category rules; overlays extend rather than replace.
+  Use `toml-configuration` for generic section loading and merge mechanics;
+  add this skill when overlay selection or script execution also changes.
 - Script paths are overlay-relative. Reject absolute paths and `..`, and preserve
   canonical containment checks for symlink escapes.
 - Scripts implement apply, `--check`, `--dryrun`, and `--remove`.

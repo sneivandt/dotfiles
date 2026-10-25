@@ -53,7 +53,8 @@ The CLI labels this task **Agent packages**; its selector remains `apm`.
 
 Dotfiles owns fragment merging, generated-manifest persistence, conditional
 target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot
-fixup. Run `apm update -g --yes` followed by `apm install -g`: native update
+fixup. In the update pipeline, the CLI must invoke `apm update -g --yes`
+followed by `apm install -g`: native update
 can stop at unchanged refs without reconciling local content or deployment drift.
 The follow-up install must finish before target adapters run; preserve failure
 classification and workflow-policy restoration across both commands.

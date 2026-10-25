@@ -47,14 +47,5 @@ id_ed25519.pub
 # Generated shell completions (produced by the "Generate shell completions" install task)
 symlinks/config/zsh/completions/_dotfiles
 
-# Local package recipe outputs
-# Paru/makepkg output; recipes and release descriptors stay tracked.
-/packages/*/.SRCINFO
-/packages/*/src/
-/packages/*/pkg/
-/packages/*/*.tar.*
-/packages/*/*.deb
-/packages/*/*.pkg.*
-
 # Release versions and checksums are generated locally by dotfiles update.
 /packages/*/version.sh

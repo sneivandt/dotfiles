@@ -11,6 +11,19 @@ use crate::domains::system::config::system_files::{MergeStrategy, SystemFile};
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 use crate::infra::exec::{CommandSpec, Executor, OutputLog};
 
+// The privileged copy must finish on the destination filesystem before rename
+// publishes it. A private directory prevents another user from replacing the
+// staged file; the exit trap also removes a partial copy on command failure.
+const ATOMIC_INSTALL: &str = r#"set -eu
+parent=$(dirname -- "$2")
+mkdir -p -- "$parent"
+stage_dir=$(mktemp -d -- "$parent/.dotfiles-system-file.XXXXXXXXXX")
+trap 'rm -rf -- "$stage_dir"' EXIT
+trap 'exit 1' HUP INT TERM
+install -D --owner=root --group=root --mode=0644 -- "$1" "$stage_dir/replacement"
+mv -fT -- "$stage_dir/replacement" "$2"
+"#;
+
 /// Converges one root-owned file from a tracked source fragment.
 pub struct SystemFileResource {
     entry: SystemFile,
@@ -155,12 +168,7 @@ impl Resource for SystemFileResource {
         self.executor
             .execute(
                 CommandSpec::new("sudo")
-                    .arg("install")
-                    .arg("-D")
-                    .arg("--owner=root")
-                    .arg("--group=root")
-                    .arg("--mode=0644")
-                    .arg("--")
+                    .args(&["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"])
                     .arg(temporary.path())
                     .arg(&self.entry.target),
             )
@@ -822,6 +830,113 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
+    fn atomic_install_preserves_destination_on_partial_copy_or_rename_failure() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        for existing in [false, true] {
+            for failure in ["copy", "rename", "none"] {
+                let root = tempfile::tempdir().unwrap();
+                let tools = root.path().join("tools");
+                fs::create_dir(&tools).unwrap();
+                // Quotes and shell syntax must be passed as data, even through sudo sh.
+                let parent = root.path().join("parent ' $(false)");
+                let target = parent.join("target ' $(false).toml");
+                let source = root.path().join("source ' $(false).toml");
+                fs::write(&source, "replacement content\n").unwrap();
+                if existing {
+                    fs::create_dir(&parent).unwrap();
+                    fs::write(&target, "original content\n").unwrap();
+                    fs::set_permissions(&target, fs::Permissions::from_mode(0o640)).unwrap();
+                }
+                let original = fs::metadata(&target).ok();
+                let install = tools.join("install");
+                fs::write(
+                    &install,
+                    r#"#!/bin/sh
+set -eu
+test "$1" = -D && test "$2" = --owner=root
+test "$3" = --group=root && test "$4" = --mode=0644
+test "$5" = --
+shift 5
+test "$(stat -c %a -- "$(dirname -- "$2")")" = 700
+if [ "$FAILURE" = copy ]; then
+    printf 'partial' > "$2"
+    exit 1
+fi
+# Exercise the real copy without requiring root in the fixture.
+exec "$REAL_INSTALL" --mode=0644 -- "$1" "$2"
+"#,
+                )
+                .unwrap();
+                let rename = tools.join("mv");
+                fs::write(
+                    &rename,
+                    r#"#!/bin/sh
+set -eu
+if [ "$FAILURE" = rename ]; then
+    exit 1
+fi
+exec "$REAL_MV" "$@"
+"#,
+                )
+                .unwrap();
+                for tool in [&install, &rename] {
+                    fs::set_permissions(tool, fs::Permissions::from_mode(0o755)).unwrap();
+                }
+                let path = std::env::join_paths(
+                    std::iter::once(tools)
+                        .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+                )
+                .unwrap();
+                let result = std::process::Command::new("sh")
+                    .args(["-c", ATOMIC_INSTALL, "dotfiles-system-file"])
+                    .arg(&source)
+                    .arg(&target)
+                    .env("PATH", path)
+                    .env("FAILURE", failure)
+                    .env("REAL_INSTALL", which::which("install").unwrap())
+                    .env("REAL_MV", which::which("mv").unwrap())
+                    .output()
+                    .unwrap();
+
+                assert_eq!(
+                    result.status.success(),
+                    failure == "none",
+                    "existing={existing}, failure={failure}: {result:?}"
+                );
+                if failure == "none" {
+                    assert_eq!(fs::read(&target).unwrap(), b"replacement content\n");
+                    assert_eq!(
+                        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+                        0o644
+                    );
+                } else if let Some(original) = original {
+                    assert_eq!(fs::read(&target).unwrap(), b"original content\n");
+                    let after = fs::metadata(&target).unwrap();
+                    assert_eq!(after.permissions().mode(), original.permissions().mode());
+                    assert_eq!(after.modified().unwrap(), original.modified().unwrap());
+                } else {
+                    assert!(
+                        !target.exists(),
+                        "failed creation must leave the target absent"
+                    );
+                }
+                assert!(
+                    fs::read_dir(&parent).unwrap().all(|entry| {
+                        !entry
+                            .unwrap()
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with(".dotfiles-system-file.")
+                    }),
+                    "replacement staging must be cleaned after {failure}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn failed_install_cleans_staging_preserves_target_and_can_be_retried() {
         #[cfg(unix)]
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
@@ -852,22 +967,15 @@ mod tests {
                 .in_sequence(&mut sequence)
                 .returning(move |spec| {
                     assert_eq!(spec.program(), "sudo");
-                    assert_eq!(spec.arguments().len(), 8);
+                    assert_eq!(spec.arguments().len(), 6);
                     assert_eq!(
-                        &spec.arguments()[..6],
-                        [
-                            "install",
-                            "-D",
-                            "--owner=root",
-                            "--group=root",
-                            "--mode=0644",
-                            "--",
-                        ]
+                        &spec.arguments()[..4],
+                        ["sh", "-c", ATOMIC_INSTALL, "dotfiles-system-file"]
                     );
-                    assert_eq!(spec.arguments()[7], expected_target.as_os_str());
+                    assert_eq!(spec.arguments()[5], expected_target.as_os_str());
                     assert_eq!(spec.working_dir(), None);
                     assert!(spec.is_checked());
-                    let staged = Path::new(&spec.arguments()[6]);
+                    let staged = Path::new(&spec.arguments()[4]);
                     assert_eq!(staged.parent(), Some(expected_staging.as_path()));
                     let content = fs::read_to_string(staged).unwrap();
                     let table: toml::Table = toml::from_str(&content).unwrap();
@@ -880,7 +988,7 @@ mod tests {
                     );
                     if fail {
                         Err(ExecError::non_zero(
-                            "sudo install",
+                            "sudo sh",
                             ExecResult::failure("", "fixture install denied", Some(1)),
                         ))
                     } else {

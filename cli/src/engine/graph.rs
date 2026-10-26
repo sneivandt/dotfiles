@@ -154,31 +154,28 @@ impl ResolvedTaskGraph {
         roots: &HashMap<TaskId, &'task str>,
     ) -> HashMap<TaskId, &'task str> {
         let mut blocked = HashMap::new();
-        loop {
-            let mut discovered = false;
-            for (task_idx, task_id) in self.ids.iter().enumerate() {
-                if roots.contains_key(task_id) || blocked.contains_key(task_id) {
-                    continue;
-                }
-                let cause = self
-                    .blocking_dependencies(task_idx)
-                    .iter()
-                    .map(|dependency_idx| &self.ids[*dependency_idx])
-                    .find_map(|dependency_id| {
-                        roots
-                            .get(dependency_id)
-                            .or_else(|| blocked.get(dependency_id))
-                            .copied()
-                    });
-                if let Some(cause) = cause {
-                    blocked.insert(task_id.clone(), cause);
-                    discovered = true;
-                }
+        for task_idx in self.execution_order() {
+            let task_id = &self.ids[task_idx];
+            if roots.contains_key(task_id) {
+                continue;
             }
-            if !discovered {
-                return blocked;
+            // Every prerequisite has been visited. Prefer the first declared
+            // blocking dependency with a cause, independent of catalog order.
+            let cause = self
+                .blocking_dependencies(task_idx)
+                .iter()
+                .map(|dependency_idx| &self.ids[*dependency_idx])
+                .find_map(|dependency_id| {
+                    roots
+                        .get(dependency_id)
+                        .or_else(|| blocked.get(dependency_id))
+                        .copied()
+                });
+            if let Some(cause) = cause {
+                blocked.insert(task_id.clone(), cause);
             }
         }
+        blocked
     }
 
     /// Task indices this task depends on.

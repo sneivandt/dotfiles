@@ -110,36 +110,29 @@ fn wildcard_count(pattern: &str) -> usize {
         .count()
 }
 
-/// Reports whether `path` is a real directory, without following symlinks.
-///
-/// Glob expansion recurses into directories via [`std::fs::read_dir`]. Using
-/// [`Path::is_dir`] would follow a symlink-to-directory and recurse outside the
-/// managed `symlinks/` tree. `symlink_metadata` inspects the entry itself, so a
-/// symlink is never treated as a directory to descend into.
-fn is_real_dir(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
-}
-
 fn expand_segments(
     base: &Path,
     remaining: &[String],
     relative: &Path,
     captures: &[String],
 ) -> Result<Vec<GlobMatch>> {
+    let current = base.join(relative);
+    let Some(metadata) =
+        crate::infra::fs::symlink_metadata_optional(&current, "inspect glob source")?
+    else {
+        return Ok(Vec::new());
+    };
     let Some((segment, tail)) = remaining.split_first() else {
-        return Ok(base
-            .join(relative)
-            .exists()
-            .then(|| GlobMatch {
-                relative_source: relative.to_path_buf(),
-                captures: captures.to_vec(),
-            })
-            .into_iter()
-            .collect());
+        // Include terminal symlinks even when dangling: source validation must
+        // report them rather than silently dropping a configured entry.
+        return Ok(vec![GlobMatch {
+            relative_source: relative.to_path_buf(),
+            captures: captures.to_vec(),
+        }]);
     };
 
-    let current = base.join(relative);
-    if !is_real_dir(&current) {
+    // Inspect the entry itself; never descend through directory symlinks.
+    if !metadata.file_type().is_dir() {
         return Ok(Vec::new());
     }
 
@@ -175,9 +168,6 @@ fn expand_segments(
     }
 
     let next_relative = relative.join(segment);
-    if !base.join(&next_relative).exists() {
-        return Ok(Vec::new());
-    }
     expand_segments(base, tail, &next_relative, captures)
 }
 
@@ -229,6 +219,65 @@ mod tests {
         let expanded = expand_glob_patterns(&[entry], &root).unwrap();
         assert_eq!(expanded.len(), 1);
         assert_eq!(expanded[0].source, "apps/alias");
+    }
+
+    #[test]
+    fn glob_retains_dangling_terminal_symlinks_alongside_valid_matches() {
+        let fixture = tempfile::tempdir().unwrap();
+        let apps = fixture.path().join("symlinks/apps");
+        std::fs::create_dir_all(&apps).unwrap();
+        std::fs::write(apps.join("valid"), "fixture").unwrap();
+        std::os::unix::fs::symlink("missing", apps.join("dangling")).unwrap();
+        for (source, expected) in [
+            ("apps/*", vec!["apps/dangling", "apps/valid"]),
+            ("*/dangling", vec!["apps/dangling"]),
+        ] {
+            let entries = expand_glob_patterns(&[symlink(source, None)], fixture.path()).unwrap();
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|entry| entry.source.as_str())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            let diagnostics = super::super::validate(&entries, fixture.path());
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains("dangling"))
+            );
+        }
+    }
+
+    #[test]
+    fn glob_reports_metadata_errors_even_when_another_branch_matches() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let apps = fixture.path().join("symlinks/apps");
+        let denied = apps.join("denied");
+        for directory in [&denied, &apps.join("valid")] {
+            std::fs::create_dir_all(directory.join("nested")).unwrap();
+            std::fs::write(directory.join("nested/file"), "fixture").unwrap();
+        }
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let probe = std::fs::symlink_metadata(denied.join("nested"));
+        let result = expand_glob_patterns(&[symlink("apps/*/nested/*", None)], fixture.path());
+        std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // Root can bypass permission bits; the permission-error case requires
+        // an unprivileged runner (as used by normal local and CI tests).
+        if probe.is_ok() {
+            return;
+        }
+        assert_eq!(
+            probe.unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        let error = format!("{:#}", result.unwrap_err());
+        assert!(
+            error.contains("inspect glob source") && error.contains("denied/nested"),
+            "{error}"
+        );
     }
 
     #[test]

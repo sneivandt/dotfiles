@@ -16,6 +16,7 @@ fn build_resource(
     repo_root: &Path,
     home: &Path,
     executor: &Arc<dyn crate::infra::exec::Executor>,
+    placeholders: &mut GitSymlinkPlaceholders,
 ) -> SymlinkResource {
     let symlinks_dir = crate::domains::files::config::symlinks::resolve_symlinks_dir(s, repo_root);
     let source = symlinks_dir.join(&s.source);
@@ -30,7 +31,7 @@ fn build_resource(
         })
         .err()
         .map(|e| e.to_string())
-        .or_else(|| git_symlink_placeholder_reason(&source, source_root));
+        .or_else(|| placeholders.reason(&source, source_root));
     SymlinkResource::new(source, target, Arc::clone(executor))
         .with_display_roots(home, source_root)
         .with_validation_error(validation_error)
@@ -39,9 +40,10 @@ fn build_resource(
 /// Build [`SymlinkResource`] instances from a symlink configuration slice.
 pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<SymlinkResource> {
     let executor = ctx.executor_arc();
+    let mut placeholders = GitSymlinkPlaceholders::default();
     symlinks
         .iter()
-        .map(|s| build_resource(s, ctx.root(), ctx.home(), &executor))
+        .map(|s| build_resource(s, ctx.root(), ctx.home(), &executor, &mut placeholders))
         .collect()
 }
 
@@ -117,31 +119,54 @@ fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
     home.join(default_target(source))
 }
 
-#[cfg(windows)]
-fn git_symlink_placeholder_reason(source: &Path, repo_root: &Path) -> Option<String> {
-    let metadata = std::fs::symlink_metadata(source).ok()?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return None;
-    }
-
-    let relative_source = source.strip_prefix(repo_root).ok()?;
-    let repository = git2::Repository::open(repo_root).ok()?;
-    let index = repository.index().ok()?;
-    let entry = index.get_path(relative_source, 0)?;
-    let link_mode = u32::try_from(i32::from(git2::FileMode::Link)).ok()?;
-
-    (entry.mode == link_mode).then(|| {
-        format!(
-            "source is checked out as a plain file but Git records it as a symlink: {} \
-             (enable symlink support and restore the checkout)",
-            source.display()
-        )
-    })
+/// One index snapshot per owning repository and resource-building pass.
+/// Failed opens are cached too, preserving the best-effort placeholder check.
+#[derive(Default)]
+struct GitSymlinkPlaceholders {
+    #[cfg(any(windows, test))]
+    indexes: std::collections::HashMap<std::path::PathBuf, Option<git2::Index>>,
 }
 
-#[cfg(not(windows))]
-const fn git_symlink_placeholder_reason(_source: &Path, _repo_root: &Path) -> Option<String> {
-    None
+impl GitSymlinkPlaceholders {
+    #[cfg(windows)]
+    fn reason(&mut self, source: &Path, repo_root: &Path) -> Option<String> {
+        self.inspect(source, repo_root)
+    }
+
+    #[cfg(not(windows))]
+    #[allow(
+        clippy::unused_self,
+        clippy::needless_pass_by_ref_mut,
+        reason = "no-op preserves the Windows pass-local cache API"
+    )]
+    const fn reason(&mut self, _source: &Path, _repo_root: &Path) -> Option<String> {
+        None
+    }
+
+    #[cfg(any(windows, test))]
+    fn inspect(&mut self, source: &Path, repo_root: &Path) -> Option<String> {
+        let metadata = std::fs::symlink_metadata(source).ok()?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return None;
+        }
+
+        let relative_source = source.strip_prefix(repo_root).ok()?;
+        let index = self
+            .indexes
+            .entry(repo_root.to_path_buf())
+            .or_insert_with(|| git2::Repository::open(repo_root).ok()?.index().ok())
+            .as_ref()?;
+        let entry = index.get_path(relative_source, 0)?;
+        let link_mode = u32::try_from(i32::from(git2::FileMode::Link)).ok()?;
+
+        (entry.mode == link_mode).then(|| {
+            format!(
+                "source is checked out as a plain file but Git records it as a symlink: {} \
+                 (enable symlink support and restore the checkout)",
+                source.display()
+            )
+        })
+    }
 }
 
 #[cfg(test)]
@@ -227,6 +252,7 @@ mod tests {
             &root,
             &home,
             &ctx.executor_arc(),
+            &mut GitSymlinkPlaceholders::default(),
         );
 
         assert_eq!(resource.target, home.join(".bashrc"));
@@ -250,7 +276,13 @@ mod tests {
             origin: Some(overlay),
         };
         let ctx = make_linux_context(root.clone(), None).with_home(home);
-        let resource = build_resource(&symlink, &root, ctx.home(), &ctx.executor_arc());
+        let resource = build_resource(
+            &symlink,
+            &root,
+            ctx.home(),
+            &ctx.executor_arc(),
+            &mut GitSymlinkPlaceholders::default(),
+        );
 
         assert_eq!(
             resource.description(),
@@ -287,7 +319,13 @@ mod tests {
                 target: Some(".configuration".into()),
                 origin,
             };
-            let resource = build_resource(&symlink, &root, &home, &ctx.executor_arc());
+            let resource = build_resource(
+                &symlink,
+                &root,
+                &home,
+                &ctx.executor_arc(),
+                &mut GitSymlinkPlaceholders::default(),
+            );
             assert!(
                 matches!(
                     resource.current_state().unwrap(),
@@ -302,13 +340,89 @@ mod tests {
                 ..symlink
             };
             assert_eq!(
-                build_resource(&ordinary, &root, &home, &ctx.executor_arc())
-                    .current_state()
-                    .unwrap(),
+                build_resource(
+                    &ordinary,
+                    &root,
+                    &home,
+                    &ctx.executor_arc(),
+                    &mut GitSymlinkPlaceholders::default()
+                )
+                .current_state()
+                .unwrap(),
                 ResourceState::Missing,
                 "ordinary source files must remain installable"
             );
         }
+    }
+
+    #[test]
+    fn placeholder_indexes_are_scoped_to_each_repository_and_build_pass() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("repo");
+        let overlay = fixture.path().join("overlay");
+        let initialize = |path: &Path, mode| {
+            let repo = git2::Repository::init(path).unwrap();
+            std::fs::create_dir(path.join("symlinks")).unwrap();
+            std::fs::write(path.join("symlinks/source"), "target").unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("symlinks/source")).unwrap();
+            let mut entry = index.get_path(Path::new("symlinks/source"), 0).unwrap();
+            entry.mode = mode;
+            index.add(&entry).unwrap();
+            index.write().unwrap();
+        };
+        initialize(&root, 0o120_000);
+        initialize(&overlay, 0o100_644);
+        let source = root.join("symlinks/source");
+        let mut cache = GitSymlinkPlaceholders::default();
+        assert!(
+            cache
+                .inspect(&source, &root)
+                .unwrap()
+                .contains("Git records it as a symlink")
+        );
+        assert!(
+            cache
+                .inspect(&overlay.join("symlinks/source"), &overlay)
+                .is_none()
+        );
+
+        // A pass uses its original index, but a new pass must see index changes.
+        let repo = git2::Repository::open(&root).unwrap();
+        let mut index = repo.index().unwrap();
+        let mut entry = index.get_path(Path::new("symlinks/source"), 0).unwrap();
+        entry.mode = 0o100_644;
+        index.add(&entry).unwrap();
+        index.write().unwrap();
+        assert!(cache.inspect(&source, &root).is_some());
+        assert!(
+            GitSymlinkPlaceholders::default()
+                .inspect(&source, &root)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn unavailable_placeholder_index_is_best_effort_and_cached_for_the_pass() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        let source = root.join("source");
+        std::fs::write(&source, "target").unwrap();
+        let mut cache = GitSymlinkPlaceholders::default();
+        assert!(cache.inspect(&source, root).is_none());
+        let repo = git2::Repository::init(root).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("source")).unwrap();
+        let mut entry = index.get_path(Path::new("source"), 0).unwrap();
+        entry.mode = 0o120_000;
+        index.add(&entry).unwrap();
+        index.write().unwrap();
+        assert!(cache.inspect(&source, root).is_none());
+        assert!(
+            GitSymlinkPlaceholders::default()
+                .inspect(&source, root)
+                .is_some()
+        );
     }
 
     #[test]

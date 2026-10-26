@@ -187,8 +187,10 @@ it is not synonymous with a resource.
 Dependencies are the only ordering mechanism; catalog position is irrelevant.
 [`graph.rs`](../cli/src/engine/graph.rs) rejects duplicate identities and cycles.
 Blocking prerequisites propagate unmet work/failure; ordering-only predecessors
-delay a task without making their failure its failure. Same-domain edges belong
-in the task; cross-domain edges belong in the application catalog.
+delay a task without making their failure its failure. When several unavailable
+roots block a task, its first declared blocking dependency carrying a cause
+determines the reported root, independently of catalog order. Same-domain edges
+belong in the task; cross-domain edges belong in the application catalog.
 
 Applicability and elevation are assessed once per execution phase and reused
 for dispatch. These probes must be read-only and depend on phase-stable state.

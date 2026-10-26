@@ -346,3 +346,64 @@ fn closures_and_blocking_preserve_edge_kinds_after_deduplication() {
         "only blocking descendants inherit the original cause, not roots or ordering-only peers"
     );
 }
+
+#[test]
+fn blocking_cause_prefers_declared_dependency_order_across_catalog_orders() {
+    // The first declared dependency reaches a root through a longer chain.
+    // Catalog order must not let the shorter path steal the diagnostic cause.
+    let mut tasks = [
+        (0, vec![]),
+        (1, vec![0]),
+        (2, vec![1]),
+        (3, vec![]),
+        (4, vec![2, 3]),
+        (5, vec![4]),
+        (6, vec![]),
+    ]
+    .into_iter()
+    .map(|(index, dependencies)| GeneratedTask {
+        name: format!("task-{index}"),
+        id: numeric_task_id(index),
+        dependencies: dependencies.into_iter().map(numeric_task_id).collect(),
+        ordering: if index == 6 {
+            vec![numeric_task_id(5)]
+        } else {
+            Vec::new()
+        },
+    })
+    .collect::<Vec<_>>();
+    let roots = HashMap::from([
+        (numeric_task_id(0), "first root"),
+        (numeric_task_id(3), "second root"),
+    ]);
+    for _ in 0..tasks.len() {
+        for reverse in [false, true] {
+            if reverse {
+                tasks.reverse();
+            }
+            let graph = ResolvedTaskGraph::resolve(&as_dyn(&tasks)).unwrap();
+            let blocked = graph.blocked_dependents(&roots);
+            assert_eq!(
+                blocked,
+                [1, 2, 4, 5]
+                    .into_iter()
+                    .map(|id| (numeric_task_id(id), "first root"))
+                    .collect()
+            );
+            if reverse {
+                tasks.reverse();
+            }
+        }
+        tasks.rotate_left(1);
+    }
+    // A root remains authoritative even when it has blocked prerequisites.
+    let explicit_roots = HashMap::from([
+        (numeric_task_id(0), "first root"),
+        (numeric_task_id(4), "explicit root"),
+    ]);
+    let blocked = ResolvedTaskGraph::resolve(&as_dyn(&tasks))
+        .unwrap()
+        .blocked_dependents(&explicit_roots);
+    assert_eq!(blocked.get(&numeric_task_id(5)), Some(&"explicit root"));
+    assert!(!blocked.contains_key(&numeric_task_id(4)));
+}

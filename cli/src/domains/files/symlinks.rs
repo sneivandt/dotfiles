@@ -16,7 +16,7 @@ fn build_resource(
     repo_root: &Path,
     home: &Path,
     executor: &Arc<dyn crate::infra::exec::Executor>,
-    placeholders: &mut GitSymlinkPlaceholders,
+    placeholders: Option<&mut GitSymlinkPlaceholders>,
 ) -> SymlinkResource {
     let symlinks_dir = crate::domains::files::config::symlinks::resolve_symlinks_dir(s, repo_root);
     let source = symlinks_dir.join(&s.source);
@@ -31,7 +31,7 @@ fn build_resource(
         })
         .err()
         .map(|e| e.to_string())
-        .or_else(|| placeholders.reason(&source, source_root));
+        .or_else(|| placeholders.and_then(|cache| cache.reason(&source, source_root)));
     SymlinkResource::new(source, target, Arc::clone(executor))
         .with_display_roots(home, source_root)
         .with_validation_error(validation_error)
@@ -40,10 +40,13 @@ fn build_resource(
 /// Build [`SymlinkResource`] instances from a symlink configuration slice.
 pub(crate) fn build_resources(ctx: &Context, symlinks: &[Symlink]) -> Vec<SymlinkResource> {
     let executor = ctx.executor_arc();
-    let mut placeholders = GitSymlinkPlaceholders::default();
+    let mut placeholders = ctx
+        .platform()
+        .is_windows()
+        .then(GitSymlinkPlaceholders::default);
     symlinks
         .iter()
-        .map(|s| build_resource(s, ctx.root(), ctx.home(), &executor, &mut placeholders))
+        .map(|s| build_resource(s, ctx.root(), ctx.home(), &executor, placeholders.as_mut()))
         .collect()
 }
 
@@ -123,28 +126,11 @@ fn compute_target(home: &Path, source: &str) -> std::path::PathBuf {
 /// Failed opens are cached too, preserving the best-effort placeholder check.
 #[derive(Default)]
 struct GitSymlinkPlaceholders {
-    #[cfg(any(windows, test))]
     indexes: std::collections::HashMap<std::path::PathBuf, Option<git2::Index>>,
 }
 
 impl GitSymlinkPlaceholders {
-    #[cfg(windows)]
     fn reason(&mut self, source: &Path, repo_root: &Path) -> Option<String> {
-        self.inspect(source, repo_root)
-    }
-
-    #[cfg(not(windows))]
-    #[allow(
-        clippy::unused_self,
-        clippy::needless_pass_by_ref_mut,
-        reason = "no-op preserves the Windows pass-local cache API"
-    )]
-    const fn reason(&mut self, _source: &Path, _repo_root: &Path) -> Option<String> {
-        None
-    }
-
-    #[cfg(any(windows, test))]
-    fn inspect(&mut self, source: &Path, repo_root: &Path) -> Option<String> {
         let metadata = std::fs::symlink_metadata(source).ok()?;
         if metadata.file_type().is_symlink() || !metadata.is_file() {
             return None;
@@ -252,7 +238,7 @@ mod tests {
             &root,
             &home,
             &ctx.executor_arc(),
-            &mut GitSymlinkPlaceholders::default(),
+            Some(&mut GitSymlinkPlaceholders::default()),
         );
 
         assert_eq!(resource.target, home.join(".bashrc"));
@@ -281,7 +267,7 @@ mod tests {
             &root,
             ctx.home(),
             &ctx.executor_arc(),
-            &mut GitSymlinkPlaceholders::default(),
+            Some(&mut GitSymlinkPlaceholders::default()),
         );
 
         assert_eq!(
@@ -290,7 +276,6 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
     #[test]
     fn git_symlink_placeholders_are_rejected_in_main_and_overlay() {
         let fixture = tempfile::tempdir_in(".").unwrap();
@@ -324,7 +309,7 @@ mod tests {
                 &root,
                 &home,
                 &ctx.executor_arc(),
-                &mut GitSymlinkPlaceholders::default(),
+                Some(&mut GitSymlinkPlaceholders::default()),
             );
             assert!(
                 matches!(
@@ -345,7 +330,7 @@ mod tests {
                     &root,
                     &home,
                     &ctx.executor_arc(),
-                    &mut GitSymlinkPlaceholders::default()
+                    Some(&mut GitSymlinkPlaceholders::default())
                 )
                 .current_state()
                 .unwrap(),
@@ -374,16 +359,31 @@ mod tests {
         initialize(&root, 0o120_000);
         initialize(&overlay, 0o100_644);
         let source = root.join("symlinks/source");
+        let ctx = make_linux_context(root.clone(), None).with_home(fixture.path().join("home"));
+        let entries = [symlink("source", None)];
+        assert_eq!(
+            build_resources(&ctx, &entries)
+                .pop()
+                .unwrap()
+                .current_state()
+                .unwrap(),
+            ResourceState::Missing
+        );
+        let windows_ctx = crate::test_helpers::make_windows_context(root.clone(), None)
+            .with_home(ctx.home().to_path_buf());
+        assert!(
+            matches!(build_resources(&windows_ctx, &entries).pop().unwrap().current_state().unwrap(), ResourceState::Invalid { reason } if reason.contains("Git records it as a symlink"))
+        );
         let mut cache = GitSymlinkPlaceholders::default();
         assert!(
             cache
-                .inspect(&source, &root)
+                .reason(&source, &root)
                 .unwrap()
                 .contains("Git records it as a symlink")
         );
         assert!(
             cache
-                .inspect(&overlay.join("symlinks/source"), &overlay)
+                .reason(&overlay.join("symlinks/source"), &overlay)
                 .is_none()
         );
 
@@ -394,12 +394,32 @@ mod tests {
         entry.mode = 0o100_644;
         index.add(&entry).unwrap();
         index.write().unwrap();
-        assert!(cache.inspect(&source, &root).is_some());
+        assert!(cache.reason(&source, &root).is_some());
         assert!(
             GitSymlinkPlaceholders::default()
-                .inspect(&source, &root)
+                .reason(&source, &root)
                 .is_none()
         );
+
+        std::fs::remove_file(&source).unwrap();
+        std::fs::create_dir(&source).unwrap();
+        assert!(
+            cache.reason(&source, &root).is_none(),
+            "a directory is not a placeholder file"
+        );
+        std::fs::remove_dir(&source).unwrap();
+        assert!(
+            cache.reason(&source, &root).is_none(),
+            "an absent source is not a placeholder file"
+        );
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("missing", &source).unwrap();
+            assert!(
+                cache.reason(&source, &root).is_none(),
+                "a real symlink is not a placeholder file"
+            );
+        }
     }
 
     #[test]
@@ -409,7 +429,7 @@ mod tests {
         let source = root.join("source");
         std::fs::write(&source, "target").unwrap();
         let mut cache = GitSymlinkPlaceholders::default();
-        assert!(cache.inspect(&source, root).is_none());
+        assert!(cache.reason(&source, root).is_none());
         let repo = git2::Repository::init(root).unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(Path::new("source")).unwrap();
@@ -417,10 +437,10 @@ mod tests {
         entry.mode = 0o120_000;
         index.add(&entry).unwrap();
         index.write().unwrap();
-        assert!(cache.inspect(&source, root).is_none());
+        assert!(cache.reason(&source, root).is_none());
         assert!(
             GitSymlinkPlaceholders::default()
-                .inspect(&source, root)
+                .reason(&source, root)
                 .is_some()
         );
     }

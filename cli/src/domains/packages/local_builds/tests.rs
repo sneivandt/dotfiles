@@ -1231,30 +1231,63 @@ fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
 #[test]
 fn recipe_workers_are_bounded_ordered_and_respect_sequential_mode() {
     use std::sync::{
-        Barrier,
+        Condvar, Mutex,
         atomic::{AtomicUsize, Ordering},
     };
     for parallel in [false, true] {
-        let dir = fixture();
-        let ctx = snapshot_context(dir.path()).with_parallel(parallel);
-        let barrier = Barrier::new(4);
-        let active = AtomicUsize::new(0);
-        let peak = AtomicUsize::new(0);
-        let results = map_recipes(&ctx, &(0..8).collect::<Vec<_>>(), |item| {
-            let now = active.fetch_add(1, Ordering::SeqCst) + 1;
-            peak.fetch_max(now, Ordering::SeqCst);
-            if parallel {
-                barrier.wait();
-            }
-            active.fetch_sub(1, Ordering::SeqCst);
-            Ok(item * 2)
-        })
-        .unwrap();
-        assert_eq!(
-            results.into_iter().collect::<Result<Vec<_>>>().unwrap(),
-            (0..8).map(|n| n * 2).collect::<Vec<_>>()
-        );
-        assert_eq!(peak.load(Ordering::SeqCst), if parallel { 4 } else { 1 });
+        for length in [0_usize, 1, 2, 8] {
+            let dir = fixture();
+            let ctx = snapshot_context(dir.path()).with_parallel(parallel);
+            let caller = std::thread::current().id();
+            let gate = (Mutex::new((0_usize, 0_usize)), Condvar::new());
+            let active = AtomicUsize::new(0);
+            let peak = AtomicUsize::new(0);
+            let results = map_recipes(&ctx, &(0..length).collect::<Vec<_>>(), |item| {
+                let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(now, Ordering::SeqCst);
+                if parallel && length >= 2 {
+                    // A bounded cyclic gate proves overlap, but a broken
+                    // dispatch policy fails instead of hanging the test suite.
+                    let mut state = gate.0.lock().unwrap();
+                    let generation = state.1;
+                    state.0 += 1;
+                    if state.0 == length.min(4) {
+                        state.0 = 0;
+                        state.1 += 1;
+                        gate.1.notify_all();
+                    } else {
+                        let (_state, timeout) = gate
+                            .1
+                            .wait_timeout_while(state, Duration::from_secs(10), |state| {
+                                state.1 == generation
+                            })
+                            .unwrap();
+                        assert!(!timeout.timed_out(), "parallel recipes must overlap");
+                    }
+                } else {
+                    assert_eq!(
+                        std::thread::current().id(),
+                        caller,
+                        "sequential and singleton work must stay on the calling thread"
+                    );
+                }
+                active.fetch_sub(1, Ordering::SeqCst);
+                Ok(item * 2)
+            })
+            .unwrap();
+            assert_eq!(
+                results.into_iter().collect::<Result<Vec<_>>>().unwrap(),
+                (0..length).map(|n| n * 2).collect::<Vec<_>>()
+            );
+            let expected_peak = if length == 0 {
+                0
+            } else if parallel {
+                length.min(4)
+            } else {
+                1
+            };
+            assert_eq!(peak.load(Ordering::SeqCst), expected_peak);
+        }
     }
 }
 

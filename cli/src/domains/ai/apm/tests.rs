@@ -692,3 +692,26 @@ fn auth_failure_detection_cases() {
         assert_eq!(looks_like_auth_failure(message), expected, "{message}");
     }
 }
+
+#[test]
+fn early_apm_readiness_retains_waits_without_apm_or_with_uncertain_targets() {
+    for case in ["missing-apm", "ready"]
+        .into_iter()
+        .chain(cfg!(unix).then_some("unreadable-target"))
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let mut mock = MockExecutor::new();
+        expect_which_apm(&mut mock, case != "missing-apm");
+        if case == "unreadable-target" {
+            // A file where the target's parent directory should be forces a
+            // deterministic lookup error without relying on user permissions.
+            std::fs::write(dir.path().join(".copilot"), "not a directory").unwrap();
+        }
+        let ctx = linux_context(dir.path(), mock);
+        assert_eq!(
+            install_task().prerequisites_available(&ctx),
+            case == "ready",
+            "{case}"
+        );
+    }
+}

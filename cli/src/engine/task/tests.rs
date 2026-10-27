@@ -140,6 +140,10 @@ fn task_with_extra_deps_forwards_task_contract_and_deduplicates_dependencies() {
     assert_eq!(task.visibility(), TaskVisibility::Internal);
     assert!(task.update_only());
     assert_eq!(task.task_id(), numeric_task_id(17));
+    let diagnostic = format!("{task:?}");
+    assert!(diagnostic.contains("delegated-task"));
+    assert!(diagnostic.contains("ordering_deps"));
+    assert!(diagnostic.contains("conditional_ordering"));
     assert_eq!(task.dependencies(), &[existing, additional]);
     assert!(task.should_run(&ctx));
     assert!(task.needs_elevation(&ctx));
@@ -756,7 +760,11 @@ fn conditional_ordering_is_assessed_once_without_changing_static_edges() {
             let count = Arc::clone(&probes);
             let id = TaskId::Type(TypeId::of::<DummyResource>());
             let task = TaskWithExtraDeps::new(
-                Box::new(ReadyTask(consumer_ready)),
+                Box::new(TaskWithExtraDeps::new(
+                    Box::new(ReadyTask(consumer_ready)),
+                    &[],
+                    &[],
+                )),
                 &[],
                 std::slice::from_ref(&id),
             )
@@ -773,4 +781,21 @@ fn conditional_ordering_is_assessed_once_without_changing_static_edges() {
             assert_eq!(task.ordering_dependencies(), &[id]);
         }
     }
+}
+
+#[test]
+fn default_readiness_keeps_conditional_dependencies() {
+    let (ctx, _log) = make_static_context(PathBuf::from("/tmp"), None);
+    let dependency = TaskId::Type(TypeId::of::<DummyResource>());
+    let task = TaskWithExtraDeps::new(
+        Box::new(MockTask {
+            name: "no readiness declaration",
+            should_run: true,
+            result: Ok(TaskResult::Ok),
+        }),
+        &[],
+        std::slice::from_ref(&dependency),
+    )
+    .with_conditional_ordering(std::slice::from_ref(&dependency), |_| true);
+    assert!(!task.assess(&ctx).ordering_satisfied(&dependency));
 }

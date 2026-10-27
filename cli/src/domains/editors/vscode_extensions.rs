@@ -301,4 +301,47 @@ mod tests {
             "preview must not create marker parents"
         );
     }
+    #[test]
+    fn early_extension_readiness_requires_a_launcher_and_real_session() {
+        for (chroot, available) in [(false, false), (false, true), (true, true)] {
+            let root = tempfile::tempdir().unwrap();
+            let mut mock = MockExecutor::new();
+            mock.expect_which_path()
+                .times(if chroot {
+                    0
+                } else if available {
+                    1
+                } else {
+                    2
+                })
+                .returning(move |program| {
+                    if available {
+                        Ok(PathBuf::from(program))
+                    } else {
+                        anyhow::bail!("fixture launcher unavailable")
+                    }
+                });
+            let env = MapEnv::new().with(
+                crate::infra::provisioning::ENV_VAR,
+                if chroot {
+                    crate::infra::provisioning::ARCH_CHROOT
+                } else {
+                    ""
+                },
+            );
+            let ctx = make_context(
+                root.path().into(),
+                None,
+                Platform::new(Os::Linux, false),
+                Arc::new(mock),
+            )
+            .with_env(env.into_handle());
+            let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
+            assert_eq!(
+                task.prerequisites_available(&ctx),
+                !chroot && available,
+                "chroot={chroot}, available={available}"
+            );
+        }
+    }
 }

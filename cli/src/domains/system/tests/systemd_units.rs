@@ -571,3 +571,31 @@ fn early_systemd_readiness_requires_converged_unit_state() {
         );
     }
 }
+
+#[test]
+fn early_systemd_readiness_requires_the_command_and_a_usable_manager() {
+    for wsl in [false, true] {
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "systemctl")
+            .return_const(wsl);
+        if wsl {
+            mock.expect_execute()
+                .once()
+                .withf(|spec| {
+                    spec.program() == "systemctl" && spec.arguments() == ["is-system-running"]
+                })
+                .returning(|_| Ok(ExecResult::failure("offline", "", Some(1))));
+        }
+        let platform = if wsl {
+            Platform::new_wsl()
+        } else {
+            Platform::new(Os::Linux, true)
+        };
+        let ctx = make_context("/tmp".into(), None, platform, Arc::new(mock));
+        assert!(
+            !systemd_task("example.service", UnitScope::System, true).prerequisites_available(&ctx)
+        );
+    }
+}

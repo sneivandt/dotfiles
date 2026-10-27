@@ -572,9 +572,9 @@ fn prepared_phase_rebuilds_after_elevation_without_reassessing() {
         elevated.requires_elevation = true;
         let tasks = [
             elevated,
-            ProbeTask::new("blocked", 2, &trace).depends_on(&[1]),
-            ProbeTask::new("independent", 3, &trace),
             ProbeTask::new("dependent", 4, &trace).depends_on(&[3]),
+            ProbeTask::new("independent", 3, &trace),
+            ProbeTask::new("blocked", 2, &trace).depends_on(&[1]),
         ];
         let (ctx, log) = sequential_context();
         let ctx = ctx.with_parallel(parallel).with_non_interactive(true);
@@ -583,9 +583,9 @@ fn prepared_phase_rebuilds_after_elevation_without_reassessing() {
         assert_eq!(entries(&trace), ["independent", "dependent"]);
         for (task, expected) in tasks.iter().zip([
             TaskOutcome::Unmet,
+            TaskOutcome::Satisfied,
+            TaskOutcome::Satisfied,
             TaskOutcome::Blocked,
-            TaskOutcome::Satisfied,
-            TaskOutcome::Satisfied,
         ]) {
             assert_eq!(summary.outcome(&task.task_id()), Some(expected));
             assert_eq!(task.assessments.load(Ordering::SeqCst), 1, "{}", task.name);

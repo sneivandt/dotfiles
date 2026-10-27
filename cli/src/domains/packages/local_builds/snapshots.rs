@@ -12,14 +12,15 @@ pub(super) struct Snapshot {
     pub path: PathBuf,
     files: Vec<(&'static str, String)>,
     pending_pins: bool,
+    srcinfo: Option<String>,
 }
 
 impl Snapshot {
-    fn validation_key(&self, source: &ReleaseSource) -> Result<String> {
+    fn validation_key(&self, source: &ReleaseSource, srcinfo: &str) -> Result<String> {
         use base64::Engine as _;
         use sha2::{Digest as _, Sha256};
         // Include the validation protocol and descriptor, not just PKGBUILD bytes.
-        let inputs = serde_json::to_vec(&(1_u32, &self.files, source))?;
+        let inputs = serde_json::to_vec(&(2_u32, &self.files, source, srcinfo))?;
         Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(inputs)))
     }
 
@@ -27,8 +28,8 @@ impl Snapshot {
         self.path.join(".git/dotfiles-validated-metadata")
     }
 
-    pub fn record_validation(&self, source: &ReleaseSource) -> Result<()> {
-        let key = self.validation_key(source)?;
+    pub fn record_validation(&self, source: &ReleaseSource, srcinfo: &str) -> Result<()> {
+        let key = self.validation_key(source, srcinfo)?;
         let path = self.validation_path();
         if read_optional(&path)?.as_deref() != Some(&key) {
             crate::infra::fs::write_atomic(&path, &key)?;
@@ -38,12 +39,13 @@ impl Snapshot {
 
     // PKGBUILDs are executable code. Evaluate only during apply, from copies of
     // the exact planned inputs, before changing the published build repository.
-    pub fn validate_metadata(&self, ctx: &Context, source: &ReleaseSource) -> Result<()> {
-        if !self.needs_write()?
+    pub fn validate_metadata(&self, ctx: &Context, source: &ReleaseSource) -> Result<String> {
+        if let Some(srcinfo) = &self.srcinfo
+            && !self.needs_write()?
             && read_optional(&self.validation_path())?.as_deref()
-                == Some(self.validation_key(source)?.as_str())
+                == Some(self.validation_key(source, srcinfo)?.as_str())
         {
-            return Ok(());
+            return Ok(srcinfo.clone());
         }
         let staging =
             TempGuard::create_unique_dir(&std::env::temp_dir(), "dotfiles-pkgbuild-", "")?;
@@ -55,7 +57,8 @@ impl Snapshot {
                 .args(&["--printsrcinfo"])
                 .current_dir(staging.path()),
         )?;
-        source.validate_srcinfo(&output.stdout)
+        source.validate_srcinfo(&output.stdout)?;
+        Ok(output.stdout)
     }
 
     pub fn plan(
@@ -83,12 +86,29 @@ impl Snapshot {
                 files.push((name, content));
             }
         }
-        let snapshot = Self {
+        let mut snapshot = Self {
             path,
             files,
             pending_pins,
+            srcinfo: None,
         };
-        snapshot.open_owned()?;
+        if let Some(repo) = snapshot.open_owned()? {
+            match repo.head() {
+                Ok(head) => {
+                    let tree = head.peel_to_tree()?;
+                    if let Some(entry) = tree.get_name(".SRCINFO") {
+                        let blob = repo.find_blob(entry.id())?;
+                        snapshot.srcinfo = Some(std::str::from_utf8(blob.content())?.to_owned());
+                    }
+                }
+                Err(error)
+                    if matches!(
+                        error.code(),
+                        git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
+                    ) => {}
+                Err(error) => return Err(error).context("reading local build snapshot HEAD"),
+            }
+        }
         Ok(snapshot)
     }
 
@@ -141,6 +161,9 @@ impl Snapshot {
         if self.pending_pins {
             return Ok(true);
         }
+        let Some(srcinfo) = self.srcinfo.as_deref() else {
+            return Ok(true);
+        };
         let Some(repo) = self.open_owned()? else {
             return Ok(true);
         };
@@ -158,11 +181,11 @@ impl Snapshot {
         };
         if tree
             .as_ref()
-            .is_some_and(|tree| tree.len() != self.files.len())
+            .is_some_and(|tree| tree.len() != self.files.len() + 1)
         {
             return Ok(true);
         }
-        for (name, content) in &self.files {
+        for (name, content) in self.inputs(srcinfo) {
             if read_optional(&self.path.join(name))?.as_deref() != Some(content) {
                 return Ok(true);
             }
@@ -177,7 +200,18 @@ impl Snapshot {
         Ok(false)
     }
 
-    pub fn apply(&self) -> Result<()> {
+    pub fn metadata_changed(&self, srcinfo: &str) -> bool {
+        self.srcinfo.as_deref() != Some(srcinfo)
+    }
+
+    fn inputs<'a>(&'a self, srcinfo: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
+        self.files
+            .iter()
+            .map(|(name, content)| (*name, content.as_str()))
+            .chain(std::iter::once((".SRCINFO", srcinfo)))
+    }
+
+    pub fn apply(&self, srcinfo: &str) -> Result<()> {
         ensure!(
             !self.pending_pins,
             "cannot publish snapshot without release pins"
@@ -205,12 +239,12 @@ impl Snapshot {
             }
             Err(error) => return Err(error).context("reading local build snapshot parent"),
         };
-        for (name, content) in &self.files {
+        for (name, content) in self.inputs(srcinfo) {
             crate::infra::fs::write_atomic(&self.path.join(name), content)?;
         }
         let mut index = repo.index()?;
         index.clear()?;
-        for (name, _) in &self.files {
+        for (name, _) in self.inputs(srcinfo) {
             index.add_path(Path::new(name))?;
         }
         index.write()?;

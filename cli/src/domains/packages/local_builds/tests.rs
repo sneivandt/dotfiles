@@ -400,6 +400,130 @@ fn snapshot_is_disposable_and_commits_inputs_for_git_cleanup() {
 }
 
 #[test]
+fn snapshot_publishes_current_metadata_and_repairs_legacy_or_damaged_srcinfo() {
+    let dir = fixture();
+    let setup = snapshot_context(dir.path());
+    let pins = dir.path().join("packages/tool-bin/version.sh");
+    std::fs::write(&pins, "pkgver=1.0.103\n").unwrap();
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .withf(|spec| spec.program() == "makepkg" && spec.arguments() == ["--printsrcinfo"] && spec.is_checked())
+        .returning(|spec| {
+            let pin_contents = std::fs::read_to_string(spec.working_dir().unwrap().join("version.sh")).unwrap();
+            let version = pin_contents.trim().strip_prefix("pkgver=").unwrap();
+            Ok(ExecResult::success(format!(
+                "pkgbase = tool-bin\n\tpkgver = {version}\n\tpkgrel = 1\n\tarch = x86_64\npkgname = tool-bin\n"
+            )))
+        });
+    let ctx = make_context(
+        dir.path().into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(mock),
+    )
+    .with_home(setup.home().to_path_buf())
+    .with_env(crate::infra::env::MapEnv::new().into_handle());
+    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let _first = ConfigureParu.run(&ctx).unwrap();
+    let metadata = cache.join(".SRCINFO");
+    let old_metadata = std::fs::read_to_string(&metadata).unwrap();
+    assert!(old_metadata.contains("pkgver = 1.0.103\n"));
+
+    // Reproduce the pre-fix snapshot: metadata exists but is not committed,
+    // and a successful validation stamp exists for the recipe inputs.
+    let repo = git2::Repository::open(&cache).unwrap();
+    {
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        let mut index = repo.index().unwrap();
+        index.remove_path(Path::new(".SRCINFO")).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let signature = git2::Signature::now("fixture", "ci@test.local").unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "legacy snapshot",
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).changed_count(),
+        1
+    );
+    assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+
+    std::fs::write(&pins, "pkgver=1.0.104\n").unwrap();
+    let previous_head = repo.head().unwrap().target();
+    let preview = ConfigureParu.run(&ctx.with_dry_run(true)).unwrap();
+    assert_eq!(task_batch(&preview).changed_count(), 1);
+    assert_eq!(std::fs::read_to_string(&metadata).unwrap(), old_metadata);
+    assert_eq!(repo.head().unwrap().target(), previous_head);
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).changed_count(),
+        1
+    );
+    let current = std::fs::read_to_string(&metadata).unwrap();
+    assert!(current.contains("pkgver = 1.0.104\n"));
+
+    for damaged in [Some(old_metadata.as_str()), None] {
+        if let Some(contents) = damaged {
+            std::fs::write(&metadata, contents).unwrap();
+        } else {
+            std::fs::remove_file(&metadata).unwrap();
+        }
+        assert_eq!(
+            task_batch(&ConfigureParu.run(&ctx).unwrap()).changed_count(),
+            1
+        );
+        assert_eq!(std::fs::read_to_string(&metadata).unwrap(), current);
+        assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+    }
+    // Paru's reset/clean must preserve the current package metadata too.
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    std::fs::write(&metadata, old_metadata).unwrap();
+    repo.reset(head.as_object(), git2::ResetType::Hard, None)
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(metadata).unwrap(), current);
+    assert!(unavailable_packages(&ctx).unwrap().is_empty());
+}
+
+#[test]
+fn changed_committed_metadata_invalidates_validation_cache() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let _prepared = ConfigureParu.run(&ctx).unwrap();
+    let cache = build_root(&ctx).unwrap().join("tool-bin");
+    let metadata = cache.join(".SRCINFO");
+    let current = std::fs::read_to_string(&metadata).unwrap();
+    std::fs::write(&metadata, "stale committed metadata\n").unwrap();
+    let repo = git2::Repository::open(&cache).unwrap();
+    let parent = repo.head().unwrap().peel_to_commit().unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new(".SRCINFO")).unwrap();
+    index.write().unwrap();
+    let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+    let signature = git2::Signature::now("fixture", "ci@test.local").unwrap();
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        "stale committed metadata",
+        &tree,
+        &[&parent],
+    )
+    .unwrap();
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).changed_count(),
+        1
+    );
+    assert_eq!(std::fs::read_to_string(&metadata).unwrap(), current);
+    assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+}
+
+#[test]
 fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
     let dir = fixture();
     let source = dir.path().join("packages/tool-bin");
@@ -412,8 +536,13 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
     let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, true).unwrap();
     assert!(snapshot.needs_write().unwrap());
     assert!(!snapshot.path.exists(), "planning must not publish inputs");
-    snapshot.apply().unwrap();
-    assert!(!snapshot.needs_write().unwrap());
+    snapshot.apply("fixture metadata\n").unwrap();
+    assert!(
+        !Snapshot::plan(&build_root, "tool-bin", &source, false)
+            .unwrap()
+            .needs_write()
+            .unwrap()
+    );
     let repo = git2::Repository::open(&snapshot.path).unwrap();
     let head = repo.head().unwrap().peel_to_commit().unwrap();
     std::fs::write(snapshot.path.join("package.install"), "cache edit\n").unwrap();
@@ -426,8 +555,13 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
     std::fs::write(&script, "post_install() { echo updated; }\n").unwrap();
     let changed = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
     assert!(changed.needs_write().unwrap());
-    changed.apply().unwrap();
-    assert!(!changed.needs_write().unwrap());
+    changed.apply("fixture metadata\n").unwrap();
+    assert!(
+        !Snapshot::plan(&build_root, "tool-bin", &source, false)
+            .unwrap()
+            .needs_write()
+            .unwrap()
+    );
     let tree = repo.head().unwrap().peel_to_tree().unwrap();
     for name in ["LICENSE", "NOTICE"] {
         let blob = repo.find_blob(tree.get_name(name).unwrap().id()).unwrap();
@@ -628,7 +762,7 @@ fn corrupt_snapshot_head_fails_before_preview_or_cached_input_changes() {
         task_batch(&ConfigureParu.run(&ctx.with_dry_run(true)).unwrap()).failed_count(),
         1
     );
-    assert!(plan.apply().is_err());
+    assert!(plan.apply("fixture metadata\n").is_err());
     assert_eq!(
         std::fs::read_to_string(cache.join("PKGBUILD")).unwrap(),
         original
@@ -1074,6 +1208,7 @@ fn invalid_metadata_is_not_published_and_other_recipes_continue() {
     let _prepared = ConfigureParu.run(&ctx).unwrap();
     let cache = build_root(&ctx).unwrap().join("tool-bin");
     let original = std::fs::read(cache.join("PKGBUILD")).unwrap();
+    let original_metadata = std::fs::read(cache.join(".SRCINFO")).unwrap();
     let recipe = dir.path().join("packages/tool-bin/PKGBUILD");
     std::fs::write(&recipe, "pkgname=wrong-name\n").unwrap();
     let other = add_recipe(dir.path(), "other-bin");
@@ -1081,6 +1216,10 @@ fn invalid_metadata_is_not_published_and_other_recipes_continue() {
     let result = ConfigureParu.run(&ctx).unwrap();
     assert_eq!(task_batch(&result).failed_count(), 1);
     assert_eq!(std::fs::read(cache.join("PKGBUILD")).unwrap(), original);
+    assert_eq!(
+        std::fs::read(cache.join(".SRCINFO")).unwrap(),
+        original_metadata
+    );
     let config = std::fs::read_to_string(paru_config_path(&ctx).unwrap()).unwrap();
     assert!(!config.contains("[dotfiles-tool-bin]"));
     assert!(config.contains("[dotfiles-other-bin]"));

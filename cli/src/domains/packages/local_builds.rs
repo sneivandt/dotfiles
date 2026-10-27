@@ -261,18 +261,17 @@ impl Operation for ParuConfig {
         })?;
         for (prepared, validation) in plan.snapshots.iter().zip(validations) {
             let snapshot = &prepared.snapshot;
-            let result = validation
-                .and_then(|()| {
-                    if prepared.changed {
-                        snapshot.apply()
-                    } else {
-                        Ok(())
-                    }
-                })
-                .and_then(|()| snapshot.record_validation(&prepared.source));
+            let result = validation.and_then(|srcinfo| {
+                let snapshot_changed = prepared.changed || snapshot.metadata_changed(&srcinfo);
+                if snapshot_changed {
+                    snapshot.apply(&srcinfo)?;
+                }
+                snapshot.record_validation(&prepared.source, &srcinfo)?;
+                Ok(snapshot_changed)
+            });
             match result {
-                Ok(()) => {
-                    if prepared.changed {
+                Ok(snapshot_changed) => {
+                    if snapshot_changed {
                         changed += 1;
                         ctx.log().info(format!(
                             "refresh local package snapshot {}",

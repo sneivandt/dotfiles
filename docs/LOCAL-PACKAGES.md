@@ -47,7 +47,8 @@ During `dotfiles update`:
    four workers when parallel execution is enabled; results are processed in
    recipe order. Sequential execution makes one request at a time.
 2. **Paru configuration** (`paru-config`) waits for discovery to finish,
-   refreshes usable build snapshots, and writes Paru configuration containing
+   refreshes usable build snapshots (including current `.SRCINFO` metadata),
+   and writes Paru configuration containing
    only available recipes. Existing pins can be used after a failed refresh.
    Successful `makepkg --printsrcinfo` validation is cached under each snapshot's
    `.git/` directory against the exact copied inputs, release descriptor, and
@@ -197,9 +198,13 @@ when set, otherwise `$XDG_CACHE_HOME/paru/clone`, falling back to
 dotfiles and running Paru. A later `--clonedir` override can break that alignment.
 
 The task creates one local repository section per package base. `Path` points
-to its prepared snapshot, and `GenerateSrcinfo` makes Paru regenerate package
-metadata from its PKGBUILD. The package name comes from the recipe, not its
-source directory name. Check discovery without upgrading anything with:
+to its prepared snapshot, and dotfiles publishes the validated `.SRCINFO`
+alongside its PKGBUILD and pins.
+`GenerateSrcinfo` remains enabled, but Paru 2.1.0 skips its repository refresh
+when all repositories use local `Path` entries, so it cannot be relied on to
+refresh existing metadata. Dotfiles repairs missing or modified metadata and
+migrates older snapshots that did not commit `.SRCINFO`. The package name comes
+from the recipe, not its source directory name. Check discovery without upgrading anything with:
 
 ```bash
 paru -Sl --pkgbuilds
@@ -219,8 +224,8 @@ path and makes Git cleanup unsuitable for the source repository.
 
 Instead, `paru-config` copies `PKGBUILD`, generated `version.sh`, and an optional
 `package.install` script and `LICENSE`/`NOTICE` files into a
-standalone Git repository at exactly that cache path. It commits both files
-when their contents change. Paru can then reset tracked inputs to that commit
+standalone Git repository at exactly that cache path. It also publishes the
+validated `.SRCINFO` and commits all snapshot files when their contents change. Paru can then reset tracked inputs to that commit
 and remove generated files while retaining the version pins needed next time.
 It cannot reset the separate dotfiles checkout.
 
@@ -277,6 +282,9 @@ with published asset digests, not arbitrary version commands or VCS recipes.
 | AUR package installation or Paru's upgrade output | A package was actually installed or upgraded |
 
 A snapshot refresh alone does not upgrade the installed executable.
+If Paru reports no upgrades after version pins change, compare the snapshot's
+`version.sh` and `.SRCINFO`. Running `paru-config` with the fixed CLI repairs
+stale metadata; `paru -Sl --pkgbuilds` should then show the prepared version.
 
 If pins are missing, run the version task before applying `paru-config`.
 If a cache directory is reported as unmanaged, inspect and preserve it before

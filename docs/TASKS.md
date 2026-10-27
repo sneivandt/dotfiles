@@ -36,6 +36,18 @@ For example, AUR installation requires a healthy Paru bootstrap. Systemd waits
 for package, AUR, symlink, and permission work, but unrelated failures there do
 not stop it inspecting each unit.
 
+VS Code extensions, Agent packages, and systemd have conditional package waits.
+The declared graph remains intact for listing and `--with-deps`; execution
+resolves satisfied ordering edges once per phase before elevation and dispatch.
+On pacman platforms, consumers may run early only when their own prerequisites
+are ready, every configured package is installed, and Paru is healthy. Missing
+packages, failed/unknown probes, or other package managers retain the waits.
+This avoids running consumers concurrently with a package transaction or Paru
+rebuild. Runtime availability checks still run, and blocking dependencies are
+never waived. Systemd currently takes this path only for already-converged
+units, retaining symlink and permission waits; Agent packages retains its
+blocking symlink prerequisite.
+
 `--only` selects exact normalized selectors or full labels; it does not
 automatically select prerequisites. Filtering out a blocking prerequisite
 warns and assumes it is satisfied. On update, `--with-deps` recursively
@@ -301,6 +313,8 @@ Converges enablement and runtime state: enabled entries are enabled/started,
 and `enabled = false` entries are disabled/stopped. Bare names default to
 enabled user units. System-scope units can require sudo. It waits for package, AUR, symlink, and
 permission tasks via ordering-only edges, then inspects actual unit state.
+Its package waits can be waived for already-converged units under the readiness
+rules above; it never installs packages itself.
 
 The task requires systemctl and is excluded in CI. Inside WSL, systemd must
 already be running or degraded; editing `wsl.conf` does not start it in the
@@ -319,7 +333,8 @@ Remove does not restore their former values.
 
 #### VS Code extensions
 
-After regular/AUR packages, finds an available VS Code CLI, queries installed
+After regular/AUR packages, or earlier when the readiness rules above allow,
+finds an available VS Code CLI, queries installed
 extensions, and installs missing entries. A missing editor CLI is unmet work,
 not success.
 
@@ -331,7 +346,8 @@ The first-login work is retried until the configured extensions converge.
 
 Builds user-scope desired state from active repository/overlay APM fragments.
 Symlink success is blocking; regular/AUR package work is ordering-only so APM
-availability can be rechecked after package installation.
+availability can be rechecked after package installation. The readiness rules
+above waive only the regular/AUR package waits on an already-provisioned host.
 
 | Command mode | Native convergence |
 |---|---|

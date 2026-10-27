@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context as _, Result, ensure};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
@@ -39,6 +39,55 @@ impl Task for ConfigureParu {
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         process_operation(ctx, &ParuConfig)
     }
+}
+
+/// Evaluate independent recipes in bounded workers; publication stays ordered.
+fn map_recipes<T: Sync, R: Send>(
+    ctx: &Context,
+    items: &[T],
+    work: impl Fn(&T) -> Result<R> + Sync + Send,
+) -> Result<Vec<Result<R>>> {
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let cancelled = AtomicBool::new(false);
+    let evaluate = |item: &T| {
+        if ctx.is_cancelled() || cancelled.load(Ordering::Acquire) {
+            return Err(crate::infra::exec::ExecError::Cancelled {
+                command: "local package preparation".into(),
+                result: crate::infra::exec::ExecResult {
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    success: false,
+                    code: None,
+                },
+            }
+            .into());
+        }
+        let result = work(item);
+        if result
+            .as_ref()
+            .err()
+            .and_then(|error| error.downcast_ref::<crate::infra::exec::ExecError>())
+            .is_some_and(crate::infra::exec::ExecError::is_cancelled)
+        {
+            cancelled.store(true, Ordering::Release);
+        }
+        result
+    };
+    if !ctx.parallel() || items.len() < 2 {
+        return Ok(items.iter().map(evaluate).collect());
+    }
+    let task_name = crate::infra::logging::log_thread_name();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build()?;
+    Ok(pool.install(|| {
+        items
+            .par_iter()
+            .map(|item| {
+                crate::infra::logging::set_log_thread_name(&task_name);
+                evaluate(item)
+            })
+            .collect()
+    }))
 }
 
 mod snapshots;
@@ -207,17 +256,20 @@ impl Operation for ParuConfig {
         let mut content = plan.config.clone();
         let mut changed = 0;
         let mut failures = plan.failures.clone();
-        for prepared in &plan.snapshots {
+        let validations = map_recipes(ctx, &plan.snapshots, |prepared| {
+            prepared.snapshot.validate_metadata(ctx, &prepared.source)
+        })?;
+        for (prepared, validation) in plan.snapshots.iter().zip(validations) {
             let snapshot = &prepared.snapshot;
-            let result = snapshot
-                .validate_metadata(ctx, &prepared.source)
+            let result = validation
                 .and_then(|()| {
                     if prepared.changed {
                         snapshot.apply()
                     } else {
                         Ok(())
                     }
-                });
+                })
+                .and_then(|()| snapshot.record_validation(&prepared.source));
             match result {
                 Ok(()) => {
                     if prepared.changed {
@@ -289,7 +341,7 @@ impl Task for UpdateLocalPackageVersions {
 
 struct ReleaseUpdates;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ReleaseSource {
     package_base: String,
@@ -396,29 +448,30 @@ impl Operation for ReleaseUpdates {
     fn current_state(&self, ctx: &Context) -> Result<OperationState<Self::Plan>> {
         let mut files = Vec::new();
         let mut failures = Vec::new();
-        for (directory, source) in recipes(ctx)? {
-            let discovered = (|| -> Result<String> {
-                let url = format!(
-                    "https://api.github.com/repos/{}/releases/latest",
-                    source.repository
-                );
-                let response = ctx.executor().execute(
-                    CommandSpec::new("curl")
-                        .args(&[
-                            "--fail",
-                            "--silent",
-                            "--show-error",
-                            "--location",
-                            "--max-time",
-                            "60",
-                            "--header",
-                            "Accept: application/vnd.github+json",
-                            &url,
-                        ])
-                        .timeout(Duration::from_secs(70)),
-                )?;
-                release_pins(&source, &response.stdout)
-            })();
+        let recipes = recipes(ctx)?;
+        let discoveries = map_recipes(ctx, &recipes, |(_, source)| {
+            let url = format!(
+                "https://api.github.com/repos/{}/releases/latest",
+                source.repository
+            );
+            let response = ctx.executor().execute(
+                CommandSpec::new("curl")
+                    .args(&[
+                        "--fail",
+                        "--silent",
+                        "--show-error",
+                        "--location",
+                        "--max-time",
+                        "60",
+                        "--header",
+                        "Accept: application/vnd.github+json",
+                        &url,
+                    ])
+                    .timeout(Duration::from_secs(70)),
+            )?;
+            release_pins(source, &response.stdout)
+        })?;
+        for ((directory, source), discovered) in recipes.into_iter().zip(discoveries) {
             match discovered {
                 Ok(pins) => {
                     let path = directory.join("version.sh");

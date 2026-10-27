@@ -84,6 +84,7 @@ pub struct TaskAssessment {
     applicability: Applicability,
     /// Predicted privilege requirement.
     requires_elevation: bool,
+    satisfied_ordering: Vec<TaskId>,
 }
 
 impl TaskAssessment {
@@ -93,6 +94,7 @@ impl TaskAssessment {
         Self {
             applicability: Applicability::Applicable,
             requires_elevation: false,
+            satisfied_ordering: Vec::new(),
         }
     }
 
@@ -104,6 +106,7 @@ impl TaskAssessment {
                 reason: reason.map(Into::into),
             },
             requires_elevation: false,
+            satisfied_ordering: Vec::new(),
         }
     }
 
@@ -112,6 +115,18 @@ impl TaskAssessment {
     pub const fn with_elevation(mut self, required: bool) -> Self {
         self.requires_elevation = required;
         self
+    }
+
+    /// Record ordering-only edges whose prerequisites are already satisfied.
+    /// Blocking edges can never be waived by readiness.
+    #[must_use]
+    pub fn with_satisfied_ordering(mut self, ids: &[TaskId]) -> Self {
+        self.satisfied_ordering.extend_from_slice(ids);
+        self
+    }
+
+    pub(crate) fn ordering_satisfied(&self, id: &TaskId) -> bool {
+        self.satisfied_ordering.contains(id)
     }
 
     /// Whether this task applies to the current run.

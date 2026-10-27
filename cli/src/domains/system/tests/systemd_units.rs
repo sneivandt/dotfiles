@@ -519,3 +519,55 @@ fn runtime_drift_plans_elevation_respects_dry_run_and_converges() {
         );
     }
 }
+
+#[test]
+fn early_systemd_readiness_requires_converged_unit_state() {
+    for (case, expected) in [
+        ("active", true),
+        ("inactive", false),
+        ("missing", false),
+        ("probe-error", false),
+    ] {
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .withf(|program| program == "systemctl")
+            .return_const(true);
+        mock.expect_execute()
+            .once()
+            .withf(|spec| spec.arguments() == ["is-enabled", "example.service"])
+            .returning(move |_| {
+                if case == "probe-error" {
+                    return Err(ExecError::spawn(
+                        "systemctl",
+                        std::io::Error::other("fixture failure"),
+                    ));
+                }
+                Ok(if case == "missing" {
+                    ExecResult::failure("not-found\n", "", Some(4))
+                } else {
+                    ExecResult::success("enabled\n")
+                })
+            });
+        if matches!(case, "active" | "inactive") {
+            mock.expect_execute()
+                .once()
+                .withf(|spec| spec.arguments().first().is_some_and(|arg| arg == "show"))
+                .returning(move |_| {
+                    Ok(ExecResult::success(format!(
+                        "ActiveState={case}\nType=simple\n"
+                    )))
+                });
+        }
+        let ctx = make_context(
+            "/tmp".into(),
+            None,
+            Platform::new(Os::Linux, true),
+            Arc::new(mock),
+        );
+        assert_eq!(
+            systemd_task("example.service", UnitScope::System, true).prerequisites_available(&ctx),
+            expected,
+            "{case}"
+        );
+    }
+}

@@ -15,9 +15,36 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
+    fn validation_key(&self, source: &ReleaseSource) -> Result<String> {
+        use base64::Engine as _;
+        use sha2::{Digest as _, Sha256};
+        // Include the validation protocol and descriptor, not just PKGBUILD bytes.
+        let inputs = serde_json::to_vec(&(1_u32, &self.files, source))?;
+        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(inputs)))
+    }
+
+    fn validation_path(&self) -> PathBuf {
+        self.path.join(".git/dotfiles-validated-metadata")
+    }
+
+    pub fn record_validation(&self, source: &ReleaseSource) -> Result<()> {
+        let key = self.validation_key(source)?;
+        let path = self.validation_path();
+        if read_optional(&path)?.as_deref() != Some(&key) {
+            crate::infra::fs::write_atomic(&path, &key)?;
+        }
+        Ok(())
+    }
+
     // PKGBUILDs are executable code. Evaluate only during apply, from copies of
     // the exact planned inputs, before changing the published build repository.
     pub fn validate_metadata(&self, ctx: &Context, source: &ReleaseSource) -> Result<()> {
+        if !self.needs_write()?
+            && read_optional(&self.validation_path())?.as_deref()
+                == Some(self.validation_key(source)?.as_str())
+        {
+            return Ok(());
+        }
         let staging =
             TempGuard::create_unique_dir(&std::env::temp_dir(), "dotfiles-pkgbuild-", "")?;
         for (name, content) in &self.files {

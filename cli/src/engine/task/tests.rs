@@ -734,3 +734,43 @@ fn structured_outcomes_replace_duplicate_events_and_preserve_warnings() {
         assert_eq!(warned, warns);
     }
 }
+
+#[test]
+fn conditional_ordering_is_assessed_once_without_changing_static_edges() {
+    struct ReadyTask(bool);
+    impl Task for ReadyTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("ready consumer")
+        }
+        fn prerequisites_available(&self, _ctx: &Context) -> bool {
+            self.0
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            Ok(TaskResult::Ok)
+        }
+    }
+    let (ctx, _log) = make_static_context(PathBuf::from("/tmp"), None);
+    for consumer_ready in [false, true] {
+        for provider_ready in [false, true] {
+            let probes = Arc::new(AtomicUsize::new(0));
+            let count = Arc::clone(&probes);
+            let id = TaskId::Type(TypeId::of::<DummyResource>());
+            let task = TaskWithExtraDeps::new(
+                Box::new(ReadyTask(consumer_ready)),
+                &[],
+                std::slice::from_ref(&id),
+            )
+            .with_conditional_ordering(std::slice::from_ref(&id), move |_| {
+                count.fetch_add(1, Ordering::SeqCst);
+                provider_ready
+            });
+            let assessment = task.assess(&ctx);
+            assert_eq!(
+                assessment.ordering_satisfied(&id),
+                consumer_ready && provider_ready
+            );
+            assert_eq!(probes.load(Ordering::SeqCst), usize::from(consumer_ready));
+            assert_eq!(task.ordering_dependencies(), &[id]);
+        }
+    }
+}

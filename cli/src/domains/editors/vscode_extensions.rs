@@ -26,6 +26,11 @@ impl Task for InstallVsCodeExtensions {
         !self.config.get().is_empty()
     }
 
+    fn prerequisites_available(&self, ctx: &Context) -> bool {
+        !crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref())
+            && find_code_command(ctx.executor()).is_some()
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()) {
             ctx.log().warn(

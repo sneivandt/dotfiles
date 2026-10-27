@@ -31,6 +31,27 @@ impl Task for ConfigureSystemd {
         system_unit_needs_change(ctx, self.config.get())
     }
 
+    fn prerequisites_available(&self, ctx: &Context) -> bool {
+        if !ctx.which("systemctl") || !systemd_available(ctx) {
+            return false;
+        }
+        let user_manager = user_manager_available(ctx, self.config.get());
+        // Only waive package waits for units already fully converged. Missing,
+        // inactive or uncertain units may still need package-provided inputs.
+        self.config.get().iter().all(|entry| {
+            matches!(
+                SystemdUnitResource::from_entry(
+                    entry,
+                    ctx.executor_arc(),
+                    ctx.home(),
+                    user_manager,
+                )
+                .current_state(),
+                Ok(ResourceState::Correct)
+            )
+        })
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let units = self.config.get();
         if units.is_empty() {

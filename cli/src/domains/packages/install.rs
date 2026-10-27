@@ -26,6 +26,38 @@ use planning::{
     PackageInstallPlan, build_install_plan, predict_sudo, resolve_native_manager, select_packages,
 };
 
+/// Prove this phase cannot install or rebuild packages before releasing consumers.
+/// Unknown inventories and unsupported managers retain the normal ordering.
+pub(crate) fn package_work_is_current(ctx: &Context, packages: &[Package]) -> bool {
+    if !ctx.platform().uses_pacman() || !ctx.which("pacman") {
+        return false;
+    }
+    let installed = match super::resources::package::get_installed_packages(
+        PackageManager::Pacman,
+        ctx.executor(),
+    ) {
+        Ok(installed) => installed,
+        Err(error) => {
+            ctx.debug_fmt(|| format!("retaining package waits: {error:#}"));
+            return false;
+        }
+    };
+    if packages
+        .iter()
+        .any(|package| !installed.contains(&package.name))
+    {
+        return false;
+    }
+    match check_paru_health(ctx.executor()) {
+        Ok(ParuHealth::Healthy { .. }) => true,
+        Ok(_) => false,
+        Err(error) => {
+            ctx.debug_fmt(|| format!("retaining Paru wait: {error:#}"));
+            false
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------

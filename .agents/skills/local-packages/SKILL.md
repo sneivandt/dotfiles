@@ -36,6 +36,13 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
   install software. Preserve failed recipes' pins and failed-item accounting
   while allowing independent recipes to refresh; propagate cancellation.
   Preview may query the API but must not write pins, snapshots, or configuration.
+  Release discovery and metadata validation use bounded workers only when
+  `ctx.parallel()` is enabled; preserve ordered publication and task log context.
+- Cache only successful metadata validation, keyed by copied inputs, the release
+  descriptor, and a versioned validation protocol. Recheck snapshot ownership,
+  working files and committed inputs before reuse. Input damage, descriptor
+  changes, or missing records require validation again; preview never writes
+  validation records or evaluates PKGBUILDs.
 - Paru builds from standalone, dotfiles-owned Git snapshots in its build cache,
   never from the source checkout. Snapshot HEAD must contain both recipe and
   pins so Git reset/clean preserves usable inputs. Do not bypass ownership,

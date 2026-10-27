@@ -409,7 +409,8 @@ pub(crate) fn run_tasks_parallel_with_prior(
                 .collect();
             let dep_count = dep_names.len();
             let summary = &summary;
-            let prior_signal = prior_dependency_signal(task, prior);
+            let prior_signal =
+                prior_dependency_signal(task, assessments.get(&task.task_id()), prior);
 
             s.spawn(move || {
                 logging::set_log_thread_name(&task.log_key());
@@ -478,7 +479,7 @@ pub(crate) fn run_tasks_sequential_with_prior(
             continue;
         };
         let dependency_signal = graph.dependencies(idx).iter().fold(
-            prior_dependency_signal(*task, prior),
+            prior_dependency_signal(*task, assessments.get(&task.task_id()), prior),
             |outcome, &dep_idx| {
                 outcome.combine(
                     signals
@@ -506,7 +507,11 @@ pub(crate) fn run_tasks_sequential_with_prior(
     summary
 }
 
-fn prior_dependency_signal(task: &dyn Task, prior: Option<&ExecutionSummary>) -> DependencySignal {
+fn prior_dependency_signal(
+    task: &dyn Task,
+    assessment: Option<&TaskAssessment>,
+    prior: Option<&ExecutionSummary>,
+) -> DependencySignal {
     let Some(prior) = prior else {
         return DependencySignal::Satisfied;
     };
@@ -516,6 +521,7 @@ fn prior_dependency_signal(task: &dyn Task, prior: Option<&ExecutionSummary>) ->
         .chain(
             task.ordering_dependencies()
                 .iter()
+                .filter(|id| !assessment.is_some_and(|state| state.ordering_satisfied(id)))
                 .map(|dependency| (dependency, false)),
         )
         .filter_map(|(dependency, blocks_on_failure)| {

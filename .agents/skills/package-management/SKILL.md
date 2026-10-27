@@ -46,6 +46,10 @@ reinstallation of everything.
   preserve the blocking AUR-to-Paru prerequisite edge. Paru waits for native
   packages without inheriting unrelated package failures. AUR dry-run queries
   pacman's database without requiring a helper that bootstrap only previewed.
+- Consumer tasks can waive application-selected package ordering edges only
+  after readiness and read-only inventory prove no package install or Paru
+  rebuild is needed. Failed inventory is uncertainty, not proof of no work.
+  Preserve ordinary waits on unsupported managers and fresh provisioning.
 - Winget uses exact IDs, prefers user scope, and retries unscoped only when no
   user-scope installer exists. Privilege and policy refusals return
   `ResourceChange::unusable`: they count as failed items, not benign skips.

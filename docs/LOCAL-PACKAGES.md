@@ -43,18 +43,29 @@ During `dotfiles update`:
 1. **Local package versions** (`local-package-versions`) discovers current
    release versions independently and writes each successful recipe’s changed
    `version.sh` file. Failed refreshes retain that recipe’s existing pins and
-   remain failures in the run summary.
+   remain failures in the run summary. Independent release requests use up to
+   four workers when parallel execution is enabled; results are processed in
+   recipe order. Sequential execution makes one request at a time.
 2. **Paru configuration** (`paru-config`) waits for discovery to finish,
    refreshes usable build snapshots, and writes Paru configuration containing
    only available recipes. Existing pins can be used after a failed refresh.
+   Successful `makepkg --printsrcinfo` validation is cached under each snapshot's
+   `.git/` directory against the exact copied inputs, release descriptor, and
+   validation format version. Unchanged working files and committed inputs are
+   still checked every run. Changed or damaged inputs and missing validation
+   records require validation again; failures are never cached. Independent
+   validation uses up to four workers, followed by ordered snapshot publication.
+   Preview does not execute recipes or write validation records.
 3. **AUR packages** (`aur-packages`) requires a working Paru and waits for
    configuration preparation. It installs missing configured packages whose
    inputs are ready, including `apm-dotfiles` from the local repository. Missing
    local packages without prepared inputs are counted as failures and excluded
    from installation; unrelated AUR packages continue. Unavailable local package
    names are never submitted as direct AUR install targets.
-4. **Agent packages** (`apm`) waits for package installation, then runs APM from
-   PATH. An unrelated package failure does not prevent it using an available APM.
+4. **Agent packages** (`apm`) runs APM from PATH. Its package waits can be
+   waived when APM and target detection are ready and read-only package checks
+   prove every configured package is installed and Paru is healthy. Otherwise
+   it waits for package installation. An unrelated package failure does not prevent it using an available APM.
 
 The default package task installs missing packages. Once `apm-dotfiles` is
 installed, use `paru -Syu` to upgrade it after refreshing its available version.

@@ -28,7 +28,7 @@ impl<'a> PreparedPhase<'a> {
         log: &Arc<Logger>,
     ) -> Result<(Self, ExecutionSummary)> {
         let task_count = tasks.len();
-        let mut graph = resolve_task_graph(&tasks, log)?;
+        resolve_task_graph(&tasks, log)?;
         let mut assessments = if ctx.is_cancelled() {
             HashMap::new()
         } else {
@@ -37,13 +37,14 @@ impl<'a> PreparedPhase<'a> {
                 .map(|task| (task.task_id(), task.assess(ctx)))
                 .collect()
         };
+        let mut graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments)?;
         let summary = if ctx.is_cancelled() {
             ExecutionSummary::default()
         } else {
             ElevationBroker::new(ctx, log).prepare(&mut tasks, &assessments, &graph)
         };
         if tasks.len() != task_count {
-            graph = resolve_task_graph(&tasks, log)?;
+            graph = ResolvedTaskGraph::resolve_assessed(&tasks, &assessments)?;
             assessments.retain(|id, _| graph.contains(id));
         }
         Ok((

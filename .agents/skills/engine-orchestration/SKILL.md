@@ -42,6 +42,11 @@ the resolved non-interactive policy; window detection remains in elevation.
   domain imports.
 - `dependencies()` block on predecessor failure.
   `ordering_dependencies()` wait without propagating failure.
+- Conditional ordering belongs in `TaskWithExtraDeps`: consumer readiness and
+  application-owned provider probes populate `TaskAssessment` once per phase.
+  Execution uses `ResolvedTaskGraph::resolve_assessed`; static discovery and
+  selection retain all declared edges. Never waive blocking edges or perform
+  mutations in readiness probes. Unknown state retains the wait.
 - `Task::log_key()` owns persistent identity; it uses the implementation type
   name and any dynamic instance key. Decorators forward it. Keep `TaskId` for
   dependency edges and use `log_key()` consistently for logger lookups.

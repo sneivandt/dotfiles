@@ -133,6 +133,13 @@ pub trait Task: Send + Sync + 'static {
         false
     }
 
+    /// Read-only readiness for application-selected conditional ordering edges.
+    /// False or uncertain readiness retains the declared waits. Runtime checks
+    /// remain authoritative after provider tasks have finished.
+    fn prerequisites_available(&self, _ctx: &Context) -> bool {
+        false
+    }
+
     /// Assess this task once for the current execution phase.
     ///
     /// The default preserves the existing task hooks while ensuring their
@@ -182,6 +189,14 @@ pub struct TaskWithExtraDeps {
     inner: Box<dyn Task>,
     deps: Vec<TaskId>,
     ordering_deps: Vec<TaskId>,
+    conditional_ordering: Option<ConditionalOrdering>,
+}
+
+type ReadinessProbe = dyn Fn(&Context) -> bool + Send + Sync;
+
+struct ConditionalOrdering {
+    ids: Vec<TaskId>,
+    providers_ready: Box<ReadinessProbe>,
 }
 
 impl TaskWithExtraDeps {
@@ -201,7 +216,22 @@ impl TaskWithExtraDeps {
             deps: merge(inner.dependencies(), extra),
             ordering_deps: merge(inner.ordering_dependencies(), extra_ordering),
             inner,
+            conditional_ordering: None,
         }
+    }
+
+    /// Waive selected ordering edges only when providers and consumer are ready.
+    #[must_use]
+    pub fn with_conditional_ordering(
+        mut self,
+        ids: &[TaskId],
+        providers_ready: impl Fn(&Context) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.conditional_ordering = Some(ConditionalOrdering {
+            ids: ids.to_vec(),
+            providers_ready: Box::new(providers_ready),
+        });
+        self
     }
 
     /// Wrap `inner` and box the decorator as a `dyn Task`.
@@ -221,6 +251,13 @@ impl std::fmt::Debug for TaskWithExtraDeps {
             .field("name", &self.inner.name())
             .field("deps", &self.deps)
             .field("ordering_deps", &self.ordering_deps)
+            .field(
+                "conditional_ordering",
+                &self
+                    .conditional_ordering
+                    .as_ref()
+                    .map(|condition| &condition.ids),
+            )
             .finish()
     }
 }
@@ -254,8 +291,20 @@ impl Task for TaskWithExtraDeps {
         self.inner.needs_elevation(ctx)
     }
 
+    fn prerequisites_available(&self, ctx: &Context) -> bool {
+        self.inner.prerequisites_available(ctx)
+    }
+
     fn assess(&self, ctx: &Context) -> TaskAssessment {
-        self.inner.assess(ctx)
+        let assessment = self.inner.assess(ctx);
+        if assessment.is_applicable()
+            && let Some(conditional) = &self.conditional_ordering
+            && self.inner.prerequisites_available(ctx)
+            && (conditional.providers_ready)(ctx)
+        {
+            return assessment.with_satisfied_ordering(&conditional.ids);
+        }
+        assessment
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

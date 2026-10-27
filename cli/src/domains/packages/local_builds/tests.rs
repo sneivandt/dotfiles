@@ -1163,3 +1163,168 @@ fn metadata_execution_failure_preserves_snapshot_and_cancellation_type() {
         );
     }
 }
+
+#[test]
+fn successful_metadata_validation_is_reused_only_for_identical_intact_inputs() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let dir = fixture();
+    let setup = snapshot_context(dir.path());
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&calls);
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .withf(|spec| spec.program() == "makepkg")
+        .returning(move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+            Ok(ExecResult::success(
+                "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-bin\n",
+            ))
+        });
+    let ctx = make_context(
+        dir.path().into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(mock),
+    )
+    .with_home(setup.home().to_path_buf())
+    .with_env(crate::infra::env::MapEnv::new().into_handle());
+    let _first = ConfigureParu.run(&ctx).unwrap();
+    let snapshot = build_root(&ctx).unwrap().join("tool-bin");
+    let stamp = snapshot.join(".git/dotfiles-validated-metadata");
+    let modified = std::fs::metadata(&stamp).unwrap().modified().unwrap();
+    let _repeat = ConfigureParu.run(&ctx).unwrap();
+    let _preview = ConfigureParu.run(&ctx.with_dry_run(true)).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        std::fs::metadata(&stamp).unwrap().modified().unwrap(),
+        modified
+    );
+
+    for (path, content) in [
+        (
+            dir.path().join("packages/tool-bin/PKGBUILD"),
+            "pkgname=tool-bin\n# changed\n",
+        ),
+        (
+            dir.path().join("packages/tool-bin/version.sh"),
+            "changed pins\n",
+        ),
+        (snapshot.join("PKGBUILD"), "damaged cache\n"),
+    ] {
+        let before = calls.load(Ordering::SeqCst);
+        std::fs::write(path, content).unwrap();
+        let _changed = ConfigureParu.run(&ctx).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), before + 1);
+    }
+    let descriptor = dir.path().join("packages/tool-bin/release.json");
+    let content = std::fs::read_to_string(&descriptor)
+        .unwrap()
+        .replace("example/tool", "example/other");
+    std::fs::write(descriptor, content).unwrap();
+    let _descriptor = ConfigureParu.run(&ctx).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 5);
+    std::fs::remove_file(stamp).unwrap();
+    let _missing_stamp = ConfigureParu.run(&ctx).unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 6);
+}
+
+#[test]
+fn recipe_workers_are_bounded_ordered_and_respect_sequential_mode() {
+    use std::sync::{
+        Barrier,
+        atomic::{AtomicUsize, Ordering},
+    };
+    for parallel in [false, true] {
+        let dir = fixture();
+        let ctx = snapshot_context(dir.path()).with_parallel(parallel);
+        let barrier = Barrier::new(4);
+        let active = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let results = map_recipes(&ctx, &(0..8).collect::<Vec<_>>(), |item| {
+            let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(now, Ordering::SeqCst);
+            if parallel {
+                barrier.wait();
+            }
+            active.fetch_sub(1, Ordering::SeqCst);
+            Ok(item * 2)
+        })
+        .unwrap();
+        assert_eq!(
+            results.into_iter().collect::<Result<Vec<_>>>().unwrap(),
+            (0..8).map(|n| n * 2).collect::<Vec<_>>()
+        );
+        assert_eq!(peak.load(Ordering::SeqCst), if parallel { 4 } else { 1 });
+    }
+}
+
+#[test]
+fn failed_metadata_validation_is_retried_without_a_success_stamp() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let dir = fixture();
+    let setup = snapshot_context(dir.path());
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&attempts);
+    let mut mock = MockExecutor::new();
+    mock.expect_execute()
+        .withf(|spec| spec.program() == "makepkg")
+        .times(2)
+        .returning(move |_| {
+            if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                return Err(crate::infra::exec::ExecError::spawn(
+                    "makepkg",
+                    std::io::Error::other("try again"),
+                ));
+            }
+            Ok(ExecResult::success(
+                "pkgbase = tool-bin\n\tarch = x86_64\npkgname = tool-bin\n",
+            ))
+        });
+    let ctx = make_context(
+        dir.path().into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(mock),
+    )
+    .with_home(setup.home().to_path_buf())
+    .with_env(crate::infra::env::MapEnv::new().into_handle());
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).failed_count(),
+        1
+    );
+    let stamp = build_root(&ctx)
+        .unwrap()
+        .join("tool-bin/.git/dotfiles-validated-metadata");
+    assert!(!stamp.exists());
+    assert_eq!(
+        task_batch(&ConfigureParu.run(&ctx).unwrap()).failed_count(),
+        0
+    );
+    assert!(stamp.exists());
+    assert!(matches!(ConfigureParu.run(&ctx).unwrap(), TaskResult::Ok));
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn cancelled_recipe_stops_later_sequential_dispatch_without_caching_failure() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path()).with_parallel(false);
+    let results = map_recipes(&ctx, &[0, 1, 2], |item| -> Result<()> {
+        assert_eq!(*item, 0, "no recipe may start after cancellation");
+        Err(crate::infra::exec::ExecError::Cancelled {
+            command: "fixture metadata".into(),
+            result: ExecResult::failure("", "", None),
+        }
+        .into())
+    })
+    .unwrap();
+    for result in results {
+        assert!(
+            result
+                .unwrap_err()
+                .downcast_ref::<crate::infra::exec::ExecError>()
+                .unwrap()
+                .is_cancelled()
+        );
+    }
+}

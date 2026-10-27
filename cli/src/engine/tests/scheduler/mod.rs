@@ -28,11 +28,11 @@ impl Mode {
         log: &Arc<Logger>,
         prior: Option<&ExecutionSummary>,
     ) -> ExecutionSummary {
-        let graph = ResolvedTaskGraph::resolve(tasks).unwrap();
         let assessments = tasks
             .iter()
             .map(|task| (task.task_id(), task.assess(ctx)))
             .collect();
+        let graph = ResolvedTaskGraph::resolve_assessed(tasks, &assessments).unwrap();
         let summary = match (self, prior) {
             (Self::Sequential, None) => run_tasks_sequential(tasks, &graph, &assessments, ctx, log),
             (Self::Parallel, None) => run_tasks_parallel(tasks, &graph, &assessments, ctx, log),
@@ -155,6 +155,7 @@ struct TestTask {
     behavior: Behavior,
     metadata: Option<TaskMeta<'static>>,
     applicable: bool,
+    satisfied_ordering: Vec<TaskId>,
     runs: AtomicUsize,
 }
 
@@ -168,6 +169,7 @@ impl TestTask {
             behavior: Behavior::Return(TaskResult::Ok),
             metadata: None,
             applicable: true,
+            satisfied_ordering: Vec::new(),
             runs: AtomicUsize::new(0),
         }
     }
@@ -239,6 +241,13 @@ impl Task for TestTask {
 
     fn should_run(&self, _ctx: &Context) -> bool {
         self.applicable
+    }
+
+    fn assess(&self, _ctx: &Context) -> TaskAssessment {
+        if !self.applicable {
+            return TaskAssessment::not_applicable(None::<String>);
+        }
+        TaskAssessment::applicable().with_satisfied_ordering(&self.satisfied_ordering)
     }
 
     #[allow(clippy::panic, reason = "exercise scheduler panic payload handling")]

@@ -40,11 +40,6 @@ fn with_ordering_deps(inner: impl Task, extra: &[TaskId]) -> Box<dyn Task> {
     TaskWithExtraDeps::boxed(Box::new(inner), &[], extra)
 }
 
-/// Wrap a task with both kinds of cross-domain dependency edge.
-fn with_dependencies(inner: impl Task, blocking: &[TaskId], ordering: &[TaskId]) -> Box<dyn Task> {
-    TaskWithExtraDeps::boxed(Box::new(inner), blocking, ordering)
-}
-
 /// Generate the zsh completion script for the CLI.
 ///
 /// Owned by the app because it depends on the CLI argument definition; the
@@ -92,6 +87,20 @@ pub(crate) fn update_tasks_for_run(
     repo_updated: &RepositoryUpdateSignal,
     apm_mode: ApmPackageMode,
 ) -> Vec<Box<dyn Task>> {
+    let conditional_packages = |inner: Box<dyn Task>,
+                                blocking: &[TaskId],
+                                ordering: &[TaskId]|
+     -> Box<dyn Task> {
+        let packages = store.packages.clone();
+        Box::new(
+            TaskWithExtraDeps::new(inner, blocking, ordering).with_conditional_ordering(
+                &[id::<InstallPackages>(), id::<InstallAurPackages>()],
+                move |ctx| {
+                    crate::domains::packages::install::package_work_is_current(ctx, packages.get())
+                },
+            ),
+        )
+    };
     let zsh_completions = generate_zsh_completions();
     let powershell_completions = generate_powershell_completions();
 
@@ -120,8 +129,9 @@ pub(crate) fn update_tasks_for_run(
             ConfigureSystemFiles::new(store.system_files.clone()),
             &[id::<InstallPackages>()],
         ),
-        with_ordering_deps(
-            ConfigureSystemd::new(store.units.clone()),
+        conditional_packages(
+            Box::new(ConfigureSystemd::new(store.units.clone())),
+            &[],
             &[
                 id::<InstallPackages>(),
                 id::<InstallAurPackages>(),
@@ -130,12 +140,18 @@ pub(crate) fn update_tasks_for_run(
             ],
         ),
         Box::new(ApplyRegistry::new(store.registry.clone())),
-        with_ordering_deps(
-            InstallVsCodeExtensions::new(store.vscode_extensions.clone()),
+        conditional_packages(
+            Box::new(InstallVsCodeExtensions::new(
+                store.vscode_extensions.clone(),
+            )),
+            &[],
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),
-        with_dependencies(
-            InstallApmPackages::new(store.apm_fragments.clone(), apm_mode),
+        conditional_packages(
+            Box::new(InstallApmPackages::new(
+                store.apm_fragments.clone(),
+                apm_mode,
+            )),
             &[id::<InstallSymlinks>()],
             &[id::<InstallPackages>(), id::<InstallAurPackages>()],
         ),

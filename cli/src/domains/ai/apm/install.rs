@@ -71,6 +71,10 @@ impl Task for InstallApmPackages {
         apm_task_should_run(ctx, self.fragments.get())
     }
 
+    fn prerequisites_available(&self, ctx: &Context) -> bool {
+        ctx.which("apm") && ManagedTargets::detect(ctx).is_ok()
+    }
+
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         if (!ctx.dry_run() || self.mode == ApmPackageMode::UpdatePins) && !ctx.which("apm") {
             return Ok(skip(missing_apm_reason(ctx)));

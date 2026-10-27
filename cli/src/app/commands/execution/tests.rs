@@ -1350,3 +1350,57 @@ fn cancellation_during_restart_check_suppresses_the_action() {
     assert!(error.is::<CommandInterrupted>(), "{error:#}");
     assert_eq!(entries(&trace), ["boundary"]);
 }
+
+#[test]
+fn prepared_phase_resolves_conditional_waits_again_for_each_run() {
+    struct Consumer {
+        trace: Trace,
+        ready: bool,
+    }
+    struct Provider(Trace);
+    impl Task for Provider {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("provider")
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.0.lock().unwrap().push("provider".into());
+            Ok(TaskResult::Ok)
+        }
+    }
+    impl Task for Consumer {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("consumer")
+        }
+        fn prerequisites_available(&self, _ctx: &Context) -> bool {
+            self.ready
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            self.trace.lock().unwrap().push("consumer".into());
+            Ok(TaskResult::Ok)
+        }
+    }
+    let root = tempfile::tempdir().unwrap();
+    let (ctx, log) = make_static_context(root.path().to_path_buf(), None);
+    let ctx = ctx.with_parallel(false);
+    for ready in [true, false] {
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let provider = Provider(Arc::clone(&trace));
+        let consumer = crate::engine::TaskWithExtraDeps::new(
+            Box::new(Consumer {
+                trace: Arc::clone(&trace),
+                ready,
+            }),
+            &[],
+            &[provider.task_id()],
+        )
+        .with_conditional_ordering(&[provider.task_id()], |_| true);
+        let tasks: [&dyn Task; 2] = [&consumer, &provider];
+        run_tasks_to_completion(tasks, &ctx, &log).unwrap();
+        let expected = if ready {
+            vec!["consumer", "provider"]
+        } else {
+            vec!["provider", "consumer"]
+        };
+        assert_eq!(*trace.lock().unwrap(), expected);
+    }
+}

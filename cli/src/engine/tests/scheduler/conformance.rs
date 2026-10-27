@@ -506,3 +506,42 @@ fn completed_phase_results_are_used_by_later_dispatch() {
         first
     });
 }
+
+#[test]
+fn satisfied_ordering_never_waives_blocking_dependencies() {
+    conformance(
+        "readiness does not waive failure blocking",
+        |mode, ctx, log| {
+            let provider = TestTask::new("provider").returning(Behavior::Error);
+            let mut ordered = TestTask::new("ordered").ordered_after(&[&provider]);
+            ordered.satisfied_ordering = vec![provider.task_id()];
+            let mut blocking = TestTask::new("blocking").after(&[&provider]);
+            blocking.satisfied_ordering = vec![provider.task_id()];
+            let summary = mode.run(&[&ordered, &blocking, &provider], ctx, log, None);
+            ordered.assert_ran(true);
+            blocking.assert_ran(false);
+            assert_eq!(summary.failure_count(), 1);
+            summary
+        },
+    );
+}
+
+#[test]
+fn conditional_ordering_applies_to_prior_phase_outcomes() {
+    conformance("prior phase readiness", |mode, ctx, log| {
+        let provider = TestTask::new("earlier-provider");
+        let mut ready = TestTask::new("ready").ordered_after(&[&provider]);
+        ready.satisfied_ordering = vec![provider.task_id()];
+        let waiting = TestTask::new("waiting").ordered_after(&[&provider]);
+        let mut prior = ExecutionSummary::default();
+        prior.record(provider.task_id(), provider.name(), TaskOutcome::Cancelled);
+        let summary = mode.run(&[&ready, &waiting], ctx, log, Some(&prior));
+        ready.assert_ran(true);
+        waiting.assert_ran(false);
+        assert_eq!(
+            summary.outcome(&waiting.task_id()),
+            Some(TaskOutcome::Cancelled)
+        );
+        summary
+    });
+}

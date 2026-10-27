@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::engine::{Task, TaskId};
+use crate::engine::{Task, TaskAssessment, TaskId};
 
 /// Reason a task dependency graph failed validation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -62,6 +62,15 @@ impl ResolvedTaskGraph {
     /// Returns [`GraphError::DuplicateId`] if two tasks share a [`TaskId`], or
     /// [`GraphError::Cycle`] if the graph contains at least one dependency cycle.
     pub(crate) fn resolve(tasks: &[&dyn Task]) -> Result<Self, GraphError> {
+        Self::resolve_assessed(tasks, &HashMap::new())
+    }
+
+    /// Resolve execution edges from immutable phase assessments. Static graph
+    /// discovery and selection continue to include every declared dependency.
+    pub(crate) fn resolve_assessed(
+        tasks: &[&dyn Task],
+        assessments: &HashMap<TaskId, TaskAssessment>,
+    ) -> Result<Self, GraphError> {
         let mut id_to_idx: HashMap<TaskId, usize> = HashMap::new();
         let mut ids = Vec::with_capacity(tasks.len());
         for (idx, task) in tasks.iter().enumerate() {
@@ -88,7 +97,16 @@ impl ResolvedTaskGraph {
                 let mut resolved = blocking.clone();
                 extend_resolved_dependencies(
                     &mut resolved,
-                    task.ordering_dependencies(),
+                    &task
+                        .ordering_dependencies()
+                        .iter()
+                        .filter(|id| {
+                            !assessments
+                                .get(&task.task_id())
+                                .is_some_and(|assessment| assessment.ordering_satisfied(id))
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>(),
                     &id_to_idx,
                 );
                 resolved
@@ -443,5 +461,28 @@ mod tests {
                 ..
             }) if first == "duplicate-a" && second == "duplicate-b"
         ));
+    }
+    #[test]
+    fn assessed_graph_waives_only_selected_ordering_edges() {
+        let task = crate::engine::TaskWithExtraDeps::new(
+            Box::new(TaskC),
+            &[TaskA.task_id()],
+            &[TaskA.task_id(), TaskB.task_id()],
+        );
+        let tasks: &[&dyn Task] = &[&TaskA, &TaskB, &task];
+        let static_graph = ResolvedTaskGraph::resolve(tasks).unwrap();
+        assert_eq!(static_graph.dependencies(2), &[0, 1]);
+        let assessments = HashMap::from([(
+            task.task_id(),
+            TaskAssessment::applicable()
+                .with_satisfied_ordering(&[TaskA.task_id(), TaskB.task_id()]),
+        )]);
+        let graph = ResolvedTaskGraph::resolve_assessed(tasks, &assessments).unwrap();
+        assert_eq!(graph.dependencies(2), &[0]);
+        assert!(graph.blocks_on_failure(2, 0));
+        // Selection still follows the full static graph.
+        let mut selected = HashSet::from([task.task_id()]);
+        static_graph.extend_dependency_closure(&mut selected, DependencyEdges::All);
+        assert!(selected.contains(&TaskB.task_id()));
     }
 }

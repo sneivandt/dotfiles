@@ -1525,3 +1525,72 @@ fn unavailable_local_package_preserves_failure_counts_and_diagnostics() {
         );
     }
 }
+
+#[test]
+fn consumers_are_released_only_when_inventory_and_paru_prove_no_package_work() {
+    for case in [
+        "current",
+        "missing-native",
+        "missing-aur",
+        "database-error",
+        "broken-paru",
+    ] {
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .withf(|program| program == "pacman")
+            .return_const(true);
+        mock.expect_execute()
+            .once()
+            .withf(|spec| spec.program() == "pacman" && spec.arguments() == ["-Q"])
+            .returning(move |_| {
+                Ok(match case {
+                    "database-error" => ExecResult::failure("", "database failure", Some(1)),
+                    "missing-native" => ExecResult::success("aur-tool 1\n"),
+                    "missing-aur" => ExecResult::success("native-tool 1\n"),
+                    _ => ExecResult::success("native-tool 1\naur-tool 1\n"),
+                })
+            });
+        if matches!(case, "current" | "broken-paru") {
+            expect_installed_paru_package(&mut mock, 1);
+            if case == "current" {
+                expect_healthy_paru(&mut mock, 1);
+            } else {
+                mock.expect_execute()
+                    .once()
+                    .withf(|spec| spec.program() == "/usr/bin/paru")
+                    .returning(|_| {
+                        Err(ExecError::spawn(
+                            "paru",
+                            std::io::Error::from(std::io::ErrorKind::NotFound),
+                        ))
+                    });
+            }
+        }
+        let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
+        assert_eq!(
+            package_work_is_current(
+                &ctx,
+                packages(&[("native-tool", false), ("aur-tool", true)]).get()
+            ),
+            case == "current",
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn consumer_package_readiness_retains_waits_without_a_supported_manager() {
+    for arch in [false, true] {
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .times(usize::from(arch))
+            .withf(|program| program == "pacman")
+            .return_const(false);
+        // No inventory or health command may run without a supported manager.
+        let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, arch, mock);
+        assert!(!package_work_is_current(
+            &ctx,
+            packages(&[("tool", false)]).get()
+        ));
+    }
+}

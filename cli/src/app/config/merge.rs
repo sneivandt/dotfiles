@@ -1,6 +1,6 @@
 //! Resource-aware main/overlay precedence without changing within-source semantics.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::infra::platform::{Os, Platform};
 use anyhow::{Context as _, Result};
@@ -54,15 +54,8 @@ impl OverlayEntry for systemd_units::SystemdUnit {
 
 impl OverlayEntry for chmod::ChmodEntry {
     fn same_target(&self, other: &Self, _platform: Platform) -> bool {
-        normalized_path(&self.path) == normalized_path(&other.path)
+        chmod::target_path(&self.path) == chmod::target_path(&other.path)
     }
-}
-
-fn normalized_path(path: &str) -> PathBuf {
-    Path::new(path)
-        .components()
-        .filter(|component| *component != std::path::Component::CurDir)
-        .collect()
 }
 
 impl OverlayEntry for git_config::GitSetting {

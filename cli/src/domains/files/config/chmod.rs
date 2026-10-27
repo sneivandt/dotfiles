@@ -1,6 +1,6 @@
 //! Chmod entry configuration loading.
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::infra::config::Diagnostic;
 use crate::infra::config::config_section;
@@ -140,6 +140,17 @@ impl ChmodEntry {
 }
 
 config_section!(field: "permissions", ty: ChmodEntry);
+
+/// Resolve the dot-prefixed home-relative target used for identity and apply.
+pub(crate) fn target_path(path: &str) -> PathBuf {
+    let normalized = Path::new(path)
+        .components()
+        .filter(|component| !matches!(component, std::path::Component::CurDir))
+        .collect::<PathBuf>();
+    let normalized = normalized.to_string_lossy();
+    let relative_path = normalized.strip_prefix('.').unwrap_or(&normalized);
+    PathBuf::from(format!(".{relative_path}"))
+}
 
 fn is_home_root_path(path: &str) -> bool {
     path.trim().is_empty()

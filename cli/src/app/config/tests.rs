@@ -384,6 +384,29 @@ fn load_package_identity_respects_the_selected_platform() {
     }
 }
 
+#[test]
+fn load_permission_overrides_match_dot_prefixed_and_plain_paths() {
+    for (main_path, overlay_path) in [
+        ("ssh/config", ".ssh/config"),
+        (".ssh/config", "./ssh/config"),
+        ("./.ssh/config", "ssh/./config"),
+    ] {
+        let main_content =
+            format!("[base]\npermissions = [{{ path = '{main_path}', mode = '600' }}]\n");
+        let (main, profile, platform) = setup_load(linux(), &[("chmod.toml", &main_content)]);
+        let overlay = tempfile::tempdir().unwrap();
+        write_overlay_config(
+            &overlay,
+            "chmod.toml",
+            &format!("[base]\npermissions = [{{ path = '{overlay_path}', mode = '640' }}]\n"),
+        );
+        let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+        assert_eq!(config.chmod.len(), 1, "{main_path} -> {overlay_path}");
+        assert_eq!(config.chmod[0].path, overlay_path);
+        assert_eq!(config.chmod[0].mode, "640");
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn load_system_file_override_replaces_fragment_and_strategy_from_overlay() {

@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::domains::files::config::chmod::{OctalMode, validate_path};
+use crate::domains::files::config::chmod::{OctalMode, target_path, validate_path};
 use crate::engine::resource::ResourceError;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
@@ -43,13 +43,7 @@ impl ChmodResource {
         entry: &crate::domains::files::config::chmod::ChmodEntry,
         home: &std::path::Path,
     ) -> Self {
-        let normalized = std::path::Path::new(&entry.path)
-            .components()
-            .filter(|component| !matches!(component, std::path::Component::CurDir))
-            .collect::<PathBuf>();
-        let normalized = normalized.to_string_lossy();
-        let relative_path = normalized.strip_prefix('.').unwrap_or(&normalized);
-        let target = home.join(format!(".{relative_path}"));
+        let target = home.join(target_path(&entry.path));
         Self {
             target,
             mode: entry.parsed_mode().clone(),

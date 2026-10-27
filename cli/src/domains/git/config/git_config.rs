@@ -70,7 +70,7 @@ pub(crate) fn decode(
         .collect())
 }
 
-fn target_key(key: &str) -> String {
+pub(crate) fn target_key(key: &str) -> String {
     let Some((section, rest)) = key.split_once('.') else {
         return key.to_ascii_lowercase();
     };
@@ -84,7 +84,7 @@ fn target_key(key: &str) -> String {
     )
 }
 
-/// Find contradictory declarations among the active main and overlay settings.
+/// Find contradictory declarations among active settings in one source.
 pub(crate) fn validate_conflicts(settings: &[GitSetting]) -> Vec<Diagnostic> {
     Validator::new(GIT_CONFIG_TOML)
         .check_conflicts(

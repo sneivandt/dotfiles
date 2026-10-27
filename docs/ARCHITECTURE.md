@@ -43,7 +43,7 @@ infra:                    filesystem / executor / platform adapters
    startup policy. [`CommandRunner`](../cli/src/app/commands/runner.rs) resolves
    root, overlay and profile, loads configuration, and builds the context.
 2. [`Config::load`](../cli/src/app/config/mod.rs) decodes
-   [`conf/symlinks.toml`](../conf/symlinks.toml), appends the overlay's entries,
+   [`conf/symlinks.toml`](../conf/symlinks.toml), merges the overlay's entries,
    selects active categories, expands source globs and rejects target conflicts.
 3. The [`catalog`](../cli/src/app/catalog.rs) gives `InstallSymlinks` a typed
    configuration handle and adds its cross-domain dependency. The
@@ -136,13 +136,15 @@ root + overlay + resolved profile
 
 The [aggregate loader](../cli/src/app/config/mod.rs) owns merge order.
 `ConfigDocument` lets category checks and typed decoding share a parsed tree and
-source spans. `SectionLoader` appends main then overlay records, retaining the
-origin needed to resolve paths. Overlay script definitions are deliberately
+source spans. `SectionLoader` validates each source's active records, then gives
+overlay entries precedence by resource identity, retaining the origin needed
+to resolve paths. Overlay script definitions are deliberately
 loaded **only** from the overlay. Some sections also retain unfiltered records
 for validation, so inactive sources can still be checked.
 
-Structural errors, conflicting symlink targets and contradictory active
-Git/registry declarations fail loading. Other semantic diagnostics are returned
+Structural errors, within-source target conflicts, merged symlink overlaps, and
+contradictory active Git/registry/agent settings within a source fail loading.
+Other semantic diagnostics are returned
 by `Config::validate`: startup displays them; the `config-warnings` check task
 fails if any remain. Do not silently turn diagnostics into defaults or make
 every warning a load-time error.

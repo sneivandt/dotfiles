@@ -227,8 +227,9 @@ Check the following in order:
 2. CLI `--overlay` overrides nonempty `DOTFILES_OVERLAY`, which overrides the
    saved local Git value.
 3. Its sections match the active categories.
-4. Lists append main then overlay contributions; an overlay is not a generic
-   “last value wins” replacement layer. Conflicting entries need correction.
+4. Active overlay entries replace main entries by resource identity, not section
+   name or array position. Conflicts within either source still need correction;
+   inactive overlay entries do not override active main entries.
 5. `scripts.toml` exists in the overlay only, and script paths are relative to
    that overlay root.
 

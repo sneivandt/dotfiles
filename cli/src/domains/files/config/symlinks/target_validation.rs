@@ -6,21 +6,7 @@ pub(super) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
     let mut targets: Vec<(String, Vec<String>, String)> = Vec::new();
     for symlink in symlinks {
         let target = target_key(symlink);
-        let segments = Path::new(&target)
-            .components()
-            .filter(|component| !matches!(component, Component::CurDir))
-            .map(|component| {
-                let segment = component.as_os_str().to_string_lossy();
-                #[cfg(windows)]
-                {
-                    segment.to_lowercase()
-                }
-                #[cfg(not(windows))]
-                {
-                    segment.into_owned()
-                }
-            })
-            .collect::<Vec<_>>();
+        let segments = target_identity(symlink);
         for (existing_target, existing_segments, existing_source) in &targets {
             if existing_segments == &segments {
                 bail!(
@@ -45,6 +31,24 @@ pub(super) fn validate_unique_targets(symlinks: &[Symlink]) -> Result<()> {
         targets.push((target, segments, symlink.source.clone()));
     }
     Ok(())
+}
+
+pub(crate) fn target_identity(symlink: &Symlink) -> Vec<String> {
+    Path::new(&target_key(symlink))
+        .components()
+        .filter(|component| !matches!(component, Component::CurDir))
+        .map(|component| {
+            let segment = component.as_os_str().to_string_lossy();
+            #[cfg(windows)]
+            {
+                segment.to_lowercase()
+            }
+            #[cfg(not(windows))]
+            {
+                segment.into_owned()
+            }
+        })
+        .collect()
 }
 
 fn is_ancestor(parent: &[String], child: &[String]) -> bool {

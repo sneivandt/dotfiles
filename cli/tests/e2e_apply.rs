@@ -12,6 +12,70 @@
 
 mod common;
 
+#[test]
+fn agent_settings_overlay_preview_and_repeat_preserve_unmanaged_values() {
+    for with_overlay in [false, true] {
+        let test = common::TestContextBuilder::new()
+            .with_config_file(
+                "agent-settings.toml",
+                "[base]\nsettings = [\
+                 { target = 'copilot', key = 'model', value = 'baseline' },\
+                 { target = 'copilot', key = 'beep', value = false }]\n",
+            )
+            .build();
+        let home = tempfile::tempdir().unwrap();
+        let overlay = tempfile::tempdir().unwrap();
+        std::fs::create_dir(overlay.path().join("conf")).unwrap();
+        std::fs::write(
+            overlay.path().join("conf/agent-settings.toml"),
+            "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'work-model' }]\n",
+        )
+        .unwrap();
+        let settings_path = home.path().join(".copilot/settings.json");
+        std::fs::create_dir(settings_path.parent().unwrap()).unwrap();
+        let original = "{\"model\":\"original\",\"unmanaged\":true}\n";
+        std::fs::write(&settings_path, original).unwrap();
+        let overlay_path = with_overlay.then_some(overlay.path());
+        for dry_run in [true, false, false] {
+            let mut command = common::cli_command(
+                test.root_path(),
+                home.path(),
+                overlay_path,
+                "update",
+                "agent-settings",
+            );
+            if dry_run {
+                command.arg("--dry-run");
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "overlay={with_overlay}, dry_run={dry_run}:\n{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let actual = std::fs::read_to_string(&settings_path).unwrap();
+            if dry_run {
+                assert_eq!(actual, original, "preview must not change settings");
+            } else {
+                let expected_model = if with_overlay {
+                    "work-model"
+                } else {
+                    "baseline"
+                };
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&actual).unwrap(),
+                    serde_json::json!({
+                        "model": expected_model,
+                        "beep": false,
+                        "unmanaged": true,
+                    })
+                );
+            }
+        }
+    }
+}
+
 #[cfg(unix)]
 mod unix_e2e {
     use super::common;

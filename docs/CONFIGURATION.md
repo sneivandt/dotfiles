@@ -117,8 +117,9 @@ forwarding file or repository symlink is unnecessary.
 
 Sources must remain within their owning `symlinks/` tree. Targets must name a
 descendant of home, not home itself. Current-directory components are normalized:
-`./bashrc` still targets `~/.bashrc`, while `.` is invalid. Duplicate targets and
-parent/child target overlaps are rejected. Comparison ignores redundant
+`./bashrc` still targets `~/.bashrc`, while `.` is invalid. Duplicate targets
+within a repository and parent/child target overlaps are rejected. An active
+overlay entry replaces the main entry for the same target. Comparison ignores redundant
 separators and `.` components, and is case-insensitive on Windows.
 Targets that alias the source entry through existing directory links are
 rejected rather than replacing the source itself.
@@ -225,8 +226,12 @@ Keys are dot-separated paths; values use TOML types. Manage the narrowest key
 needed so unrelated user and harness-owned settings remain untouched. Existing
 documents must be JSON objects or TOML tables; malformed documents are reported,
 not replaced with an empty one.
-Conflicting values for the same harness and exact key are rejected before any
-settings document is changed, including conflicts across main and overlay.
+An overlay's active entries replace main entries for the same harness and exact,
+case-sensitive key. Other keys and harnesses retain their main values. Each
+source is checked before merging: conflicting values within either the main
+repository or overlay (including across active categories) are rejected before
+any settings document is changed. Inactive overlay entries do not override
+active main entries.
 
 These are harness preferences, not plugin declarations. Use [Agent tooling](AGENT-TOOLING.md) for
 skills, instructions, hooks, and MCP configuration. Removing a setting stops
@@ -334,7 +339,8 @@ files = [{ source = "wsl.conf", merge = "ini" }]
 Omitting `target` selects `/etc/<source>`. Set it explicitly only when the
 destination differs. Sources belong under the declaring repository's `system/`;
 targets must be absolute paths strictly below `/etc`. Neither may contain `..`.
-Duplicate active targets are errors, including across main and overlay.
+Duplicate active targets within a repository are errors. An overlay entry for
+the same target replaces the main entry, including its source and merge strategy.
 
 | `merge` | Managed part of the destination |
 |---|---|
@@ -387,18 +393,39 @@ that confirmation.
 
 ### Merge rules
 
-Ordinary TOML entries are appended main-first, overlay-second. Missing overlay
-files contribute nothing. This is **not a general override mechanism**: source
-ownership is retained, conflicts are still checked, and two declarations of
-one target do not automatically become one declaration.
+Active overlay entries take precedence over main entries for the same resource.
+Unmatched main entries remain, followed by the overlay entries. Missing or empty
+overlay files contribute nothing; inactive categories cannot override active
+main entries. Replacement uses the resource's identity, not a TOML section name
+or array position:
 
-Keep one clear desired value per target. APM YAML fragments have their own
-[merge rules](AGENT-TOOLING.md#configuration-fragments), not TOML append semantics.
+| Configuration | Replacement identity |
+|---|---|
+| Packages | Package name; case-insensitive on Windows |
+| Symlinks | Normalized home-relative target, after glob expansion |
+| Git settings | Git key; section and variable are case-insensitive, subsection is not |
+| Agent settings | Harness plus exact, case-sensitive key |
+| Registry | Case-insensitive registry path plus value name |
+| Permissions | Normalized home-relative path |
+| Systemd units | Scope plus exact unit name |
+| System files | Normalized destination path |
+| VS Code extensions | Case-insensitive extension identifier |
+
+Replacement selects the entire overlay entry, preserving its source repository;
+it does not merge a main source file's contents into the overlay source file.
+Unrelated registry values and settings remain managed. Symlink parent/child
+overlaps remain errors: they are different targets, not replacement declarations.
+Unfiltered validation views still retain both repositories' declared sources.
+
+Existing within-source conflict checks run before replacement, so an overlay
+cannot hide contradictory main declarations. Scripts are overlay-only, and APM
+YAML fragments have their own [merge rules](AGENT-TOOLING.md#configuration-fragments).
 
 ### Conflicting desired state
 
-Active Git settings and Windows registry entries cannot declare different
-values for the same target. Loading fails before tasks run, even with `--only`
+Within either repository, active Git settings and Windows registry entries
+cannot declare different values for the same target. Loading fails before tasks
+run, even with `--only`
 or `--dry-run`. Diagnostics identify both declarations using
 `git.conflicting-values` or `registry.conflicting-values`.
 

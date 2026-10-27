@@ -75,7 +75,7 @@ fn active_and_validation_views_share_one_decode_per_source() {
     let (main, profile, _) = setup_load(linux(), &[("symlinks.toml", content)]);
     let overlay = tempfile::tempdir().unwrap();
     write_overlay_config(&overlay, "symlinks.toml", content);
-    let sections = SectionLoader::new(main.path(), Some(overlay.path()), &profile);
+    let sections = SectionLoader::new(main.path(), Some(overlay.path()), &profile, linux());
     let (active, all) = sections
         .collect_views(
             symlinks::SYMLINKS_TOML,
@@ -83,14 +83,14 @@ fn active_and_validation_views_share_one_decode_per_source() {
             symlinks::set_origin,
         )
         .expect("both views must use the decoded snapshot, not reopen either file");
-    assert_eq!(active.len(), 2);
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].source, "active");
+    assert_eq!(active[0].origin.as_deref(), Some(overlay.path()));
     assert_eq!(all.len(), 4);
-    for (root, active_index, all_index) in [(main.path(), 0, 0), (overlay.path(), 1, 2)] {
+    for (root, all_index) in [(main.path(), 0), (overlay.path(), 2)] {
         assert!(!root.join("conf").join("symlinks.toml").exists());
-        assert_eq!(active[active_index].source, "active");
         assert_eq!(all[all_index].source, "active");
         assert_eq!(all[all_index + 1].source, "inactive");
-        assert_eq!(active[active_index].origin.as_deref(), Some(root));
         assert_eq!(all[all_index + 1].origin.as_deref(), Some(root));
     }
 }
@@ -127,29 +127,33 @@ fn category_errors_retain_main_and_overlay_provenance() {
 }
 
 #[test]
-fn load_appends_equivalent_values_and_rejects_all_conflicts_before_publication() {
+fn load_overlay_replaces_matching_git_and_registry_values_and_preserves_origins() {
     let (dir, profile, platform) = setup_load(
         windows(),
         &[
             (
                 "git-config.toml",
-                "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n",
+                "[base]\nsettings = [\
+                 { key = 'core.editor', value = 'vim' },\
+                 { key = 'core.autocrlf', value = 'false' },\
+                 { key = 'remote.Work.url', value = 'keep-case-sensitive' }]\n",
             ),
             (
                 "registry.toml",
-                "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
+                "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\nFontFamily = 54\n",
             ),
         ],
     );
-    for (name, editor, font_size, conflict) in [
-        ("equivalent values", "vim", "'0x0E'", false),
-        ("contradictory values", "nano", "15", true),
-    ] {
+    for (editor, font_size, expected_font) in [("vim", "'0x0E'", "0x0E"), ("nano", "15", "15")] {
         let overlay = tempfile::tempdir().unwrap();
         let git_path = write_overlay_config(
             &overlay,
             "git-config.toml",
-            &format!("[base]\nsettings = [{{ key = \"CORE.EDITOR\", value = \"{editor}\" }}]\n"),
+            &format!(
+                "[base]\nsettings = [\
+                 {{ key = 'CORE.EDITOR', value = '{editor}' }},\
+                 {{ key = 'remote.work.url', value = 'different-subsection' }}]\n"
+            ),
         );
         let registry_path = write_overlay_config(
             &overlay,
@@ -158,45 +162,34 @@ fn load_appends_equivalent_values_and_rejects_all_conflicts_before_publication()
                 "[display]\npath = 'hkcu:\\console'\n[display.values]\nfontsize = {font_size}\n"
             ),
         );
-        let result = Config::load(dir.path(), &profile, platform, Some(overlay.path()));
-        if !conflict {
-            let config = result.expect(name);
-            assert_eq!(config.git_settings.len(), 2, "preserve append semantics");
-            assert_eq!(config.registry.len(), 2, "preserve append semantics");
-            assert!(git_config::validate_conflicts(&config.git_settings).is_empty());
-            assert!(registry::validate_conflicts(&config.registry).is_empty());
-            continue;
-        }
-        let error = result.expect_err(name);
-        let message = format!("{error:#}");
-        assert!(message.starts_with("contradictory desired state:\n  git-config.toml "));
+        let config = Config::load(dir.path(), &profile, platform, Some(overlay.path())).unwrap();
+        assert_eq!(config.git_settings.len(), 4);
+        assert_eq!(config.git_settings[0].key, "core.autocrlf");
+        assert_eq!(config.git_settings[1].value, "keep-case-sensitive");
+        assert_eq!(config.git_settings[2].key, "CORE.EDITOR");
+        assert_eq!(config.git_settings[2].value, editor);
+        assert_eq!(config.git_settings[3].value, "different-subsection");
         assert!(
-            message.find("git.conflicting-values").unwrap()
-                < message.find("registry.conflicting-values").unwrap(),
-            "Git diagnostics must precede registry diagnostics: {message}"
+            config.git_settings[2]
+                .origin
+                .as_ref()
+                .unwrap()
+                .contains(&git_path.display().to_string())
         );
-        for expected in [
-            "[base] settings entry 1",
-            "[console.values] \"FontSize\"",
-            "[display.values] \"fontsize\"",
-        ] {
-            assert!(
-                message.contains(expected),
-                "missing {expected:?}: {message}"
-            );
-        }
-        for path in [
-            dir.path().join("conf").join("git-config.toml"),
-            dir.path().join("conf").join("registry.toml"),
-            git_path,
-            registry_path,
-        ] {
-            assert!(
-                message.contains(&path.display().to_string()),
-                "missing {}: {message}",
-                path.display()
-            );
-        }
+        assert_eq!(config.registry.len(), 2);
+        assert_eq!(config.registry[0].value_name, "FontFamily");
+        assert_eq!(config.registry[0].value_data, "54");
+        assert_eq!(config.registry[1].value_name, "fontsize");
+        assert_eq!(config.registry[1].value_data, expected_font);
+        assert!(
+            config.registry[1]
+                .origin
+                .as_ref()
+                .unwrap()
+                .contains(&registry_path.display().to_string())
+        );
+        assert!(git_config::validate_conflicts(&config.git_settings).is_empty());
+        assert!(registry::validate_conflicts(&config.registry).is_empty());
     }
 }
 
@@ -228,15 +221,313 @@ fn load_checks_only_active_desired_state_for_conflicts() {
         (&profile, windows(), "registry.conflicting-values"),
     ] {
         let error = Config::load(dir.path(), active_profile, active_platform, None).unwrap_err();
+        let message = format!("{error:#}");
         assert!(
-            error
-                .to_string()
-                .starts_with("contradictory desired state:\n")
+            message.contains("contradictory desired state:\n"),
+            "{message}"
         );
-        assert!(
-            error.to_string().contains(code),
-            "{active_platform:?}: {error:#}"
-        );
+        assert!(message.contains(code), "{active_platform:?}: {error:#}");
+    }
+}
+
+#[test]
+fn load_agent_settings_overlay_overrides_only_exact_active_harness_keys() {
+    let (main, profile, platform) = setup_load(
+        linux(),
+        &[(
+            "agent-settings.toml",
+            r#"[base]
+settings = [
+  { target = "copilot", key = "model", value = "baseline" },
+  { target = "copilot", key = "Model", value = "case-sensitive" },
+  { target = "codex", key = "model", value = "other-harness" },
+  { target = "copilot", key = "beep", value = false },
+]
+"#,
+        )],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    write_overlay_config(
+        &overlay,
+        "agent-settings.toml",
+        r#"[base]
+settings = [
+  { target = "copilot", key = "model", value = "work-model" },
+  { target = "copilot", key = "memory", value = true },
+]
+[desktop]
+settings = [{ target = "copilot", key = "model", value = "inactive" }]
+"#,
+    );
+    let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+    let actual: Vec<_> = config
+        .agent_settings
+        .iter()
+        .map(|setting| {
+            (
+                setting.target.name(),
+                setting.key.as_str(),
+                setting.value.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        actual,
+        vec![
+            (
+                "copilot",
+                "Model",
+                toml::Value::String("case-sensitive".into())
+            ),
+            (
+                "codex",
+                "model",
+                toml::Value::String("other-harness".into())
+            ),
+            ("copilot", "beep", toml::Value::Boolean(false)),
+            ("copilot", "model", toml::Value::String("work-model".into())),
+            ("copilot", "memory", toml::Value::Boolean(true)),
+        ]
+    );
+    assert!(agent_settings::validate(&config.agent_settings).is_empty());
+}
+
+#[test]
+fn load_overlay_overrides_packages_units_permissions_and_extensions_by_target() {
+    let (main, profile, platform) = setup_load(
+        linux(),
+        &[
+            ("packages.toml", "[base]\npackages = ['keep', 'tool']\n"),
+            (
+                "systemd-units.toml",
+                "[base]\nunits = ['example.service', \
+                 { name = 'example.service', scope = 'system', enabled = true }]\n",
+            ),
+            (
+                "chmod.toml",
+                "[base]\npermissions = [\
+                 { path = 'ssh', mode = '700' },\
+                 { path = 'ssh/config', mode = '600' }]\n",
+            ),
+            (
+                "vscode-extensions.toml",
+                "[base]\nextensions = ['keep.extension', 'Publisher.Extension']\n",
+            ),
+        ],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    for (file, content) in [
+        (
+            "packages.toml",
+            "[base]\npackages = [{ name = 'tool', aur = true }, 'new']\n",
+        ),
+        (
+            "systemd-units.toml",
+            "[base]\nunits = [{ name = 'example.service', scope = 'user', enabled = false }]\n",
+        ),
+        (
+            "chmod.toml",
+            "[base]\npermissions = [{ path = './ssh/config', mode = '640' }]\n",
+        ),
+        (
+            "vscode-extensions.toml",
+            "[base]\nextensions = ['publisher.extension', 'new.extension']\n",
+        ),
+    ] {
+        write_overlay_config(&overlay, file, content);
+    }
+    let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+    assert_eq!(
+        config
+            .packages
+            .iter()
+            .map(|p| (p.name.as_str(), p.is_aur))
+            .collect::<Vec<_>>(),
+        [("keep", false), ("tool", true), ("new", false)]
+    );
+    assert_eq!(config.units.len(), 2);
+    assert_eq!(config.units[0].scope, systemd_units::UnitScope::System);
+    assert!(config.units[0].enabled);
+    assert_eq!(config.units[1].scope, systemd_units::UnitScope::User);
+    assert!(!config.units[1].enabled);
+    assert_eq!(
+        config
+            .chmod
+            .iter()
+            .map(|p| (p.path.as_str(), p.mode.as_str()))
+            .collect::<Vec<_>>(),
+        [("ssh", "700"), ("./ssh/config", "640")]
+    );
+    assert_eq!(
+        config.vscode_extensions,
+        ["keep.extension", "publisher.extension", "new.extension"]
+    );
+    assert_eq!(config.validation_chmod.len(), 3);
+}
+
+#[test]
+fn load_package_identity_respects_the_selected_platform() {
+    let (main, profile, _) = setup_load(
+        linux(),
+        &[("packages.toml", "[base]\npackages = ['Vendor.Tool']\n")],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    write_overlay_config(
+        &overlay,
+        "packages.toml",
+        "[base]\npackages = ['vendor.tool']\n",
+    );
+    for (platform, expected) in [(windows(), 1), (linux(), 2)] {
+        let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+        assert_eq!(config.packages.len(), expected, "{platform:?}");
+        assert_eq!(config.packages.last().unwrap().name, "vendor.tool");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn load_system_file_override_replaces_fragment_and_strategy_from_overlay() {
+    let (main, profile, platform) = setup_load(
+        linux(),
+        &[(
+            "system-files.toml",
+            "[base]\nfiles = [\
+             { source = 'keep.conf', merge = 'ini' },\
+             { target = '/etc/example.conf', source = 'main.conf', merge = 'toml' }]\n",
+        )],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    write_overlay_config(
+        &overlay,
+        "system-files.toml",
+        "[base]\nfiles = [{ target = '/etc/./example.conf', source = 'work.conf', merge = 'ini' }]\n",
+    );
+    let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+    assert_eq!(config.system_files.len(), 2);
+    assert_eq!(config.system_files[0].origin.as_deref(), Some(main.path()));
+    assert_eq!(
+        config.system_files[1].merge,
+        system_files::MergeStrategy::Ini
+    );
+    assert_eq!(
+        config.system_files[1].source_path(),
+        overlay.path().join("system/work.conf")
+    );
+    assert_eq!(config.validation_system_files.len(), 3);
+}
+
+#[test]
+fn load_overrides_expanded_symlinks_but_keeps_nonmatching_glob_entries() {
+    let (main, profile, platform) = setup_load(
+        linux(),
+        &[("symlinks.toml", "[base]\nsymlinks = ['skills/*']\n")],
+    );
+    for name in ["keep", "replace"] {
+        std::fs::create_dir_all(main.path().join("symlinks/skills").join(name)).unwrap();
+    }
+    let overlay = tempfile::tempdir().unwrap();
+    write_overlay_config(
+        &overlay,
+        "symlinks.toml",
+        "[base]\nsymlinks = [{ source = 'work', target = '.skills/./replace' }]\n",
+    );
+    let config = Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap();
+    assert_eq!(config.symlinks.len(), 2);
+    assert_eq!(config.symlinks[0].source, "skills/keep");
+    assert_eq!(config.symlinks[0].origin.as_deref(), Some(main.path()));
+    assert_eq!(config.symlinks[1].source, "work");
+    assert_eq!(config.symlinks[1].origin.as_deref(), Some(overlay.path()));
+}
+
+#[test]
+fn load_still_rejects_symlink_ambiguity_within_a_source_and_cross_source_overlaps() {
+    for (main_content, overlay_content) in [
+        (
+            "[base]\nsymlinks = ['bashrc', { source = 'other', target = '.bashrc' }]\n",
+            "[base]\nsymlinks = ['bashrc']\n",
+        ),
+        (
+            "[base]\nsymlinks = ['bashrc']\n",
+            "[base]\nsymlinks = ['bashrc', { source = 'other', target = '.bashrc' }]\n",
+        ),
+        (
+            "[base]\nsymlinks = ['config/example']\n",
+            "[base]\nsymlinks = ['config/example/child']\n",
+        ),
+    ] {
+        let (main, profile, platform) = setup_load(linux(), &[("symlinks.toml", main_content)]);
+        let overlay = tempfile::tempdir().unwrap();
+        write_overlay_config(&overlay, "symlinks.toml", overlay_content);
+        let error =
+            Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap_err();
+        assert!(format!("{error:#}").contains("symlink target"), "{error:#}");
+    }
+}
+
+#[test]
+fn load_agent_settings_keeps_main_defaults_without_active_overrides() {
+    let (main, profile, platform) = setup_load(
+        linux(),
+        &[(
+            "agent-settings.toml",
+            "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'baseline' }]\n",
+        )],
+    );
+    let overlay = tempfile::tempdir().unwrap();
+    for (use_overlay, content) in [
+        (false, None),
+        (true, None),
+        (true, Some("")),
+        (
+            true,
+            Some(
+                "[desktop]\nsettings = [{ target = 'copilot', key = 'model', value = 'inactive' }]\n",
+            ),
+        ),
+    ] {
+        if let Some(content) = content {
+            write_overlay_config(&overlay, "agent-settings.toml", content);
+        }
+        let config = Config::load(
+            main.path(),
+            &profile,
+            platform,
+            use_overlay.then_some(overlay.path()),
+        )
+        .unwrap();
+        assert_eq!(config.agent_settings.len(), 1);
+        assert_eq!(config.agent_settings[0].value.as_str(), Some("baseline"));
+    }
+}
+
+#[test]
+fn load_agent_settings_rejects_conflicts_within_either_source_before_overriding() {
+    let valid = "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'baseline' }]\n";
+    for is_overlay in [false, true] {
+        for conflict in [
+            "[base]\nsettings = [\
+             { target = 'copilot', key = 'model', value = 'first' },\
+             { target = 'copilot', key = 'model', value = 'second' }]\n",
+            "[base]\nsettings = [{ target = 'copilot', key = 'model', value = 'first' }]\n\
+             [desktop]\nsettings = [{ target = 'copilot', key = 'model', value = 'second' }]\n",
+        ] {
+            let (main, mut profile, platform) =
+                setup_load(linux(), &[("agent-settings.toml", valid)]);
+            profile.active_categories.push(Category::Desktop);
+            let overlay = tempfile::tempdir().unwrap();
+            write_overlay_config(&overlay, "agent-settings.toml", valid);
+            let source = if is_overlay { &overlay } else { &main };
+            let path = write_overlay_config(source, "agent-settings.toml", conflict);
+            let error =
+                Config::load(main.path(), &profile, platform, Some(overlay.path())).unwrap_err();
+            let message = format!("{error:#}");
+            assert!(
+                message.contains("agent-settings.conflicting-values"),
+                "{message}"
+            );
+            assert!(message.contains("copilot:model"), "{message}");
+            assert!(message.contains(&path.display().to_string()), "{message}");
+        }
     }
 }
 
@@ -487,7 +778,7 @@ fn load_still_parses_inactive_platform_and_profile_config_strictly() {
 }
 
 #[test]
-fn load_rejects_overlay_target_replacement_instead_of_overwriting() {
+fn load_overlay_replaces_a_normalized_symlink_target_and_preserves_origin() {
     let (dir, profile, platform) = setup_load(
         linux(),
         &[("symlinks.toml", "[base]\nsymlinks = [\"bashrc\"]\n")],
@@ -496,14 +787,13 @@ fn load_rejects_overlay_target_replacement_instead_of_overwriting() {
     write_overlay_config(
         &overlay,
         "symlinks.toml",
-        "[base]\nsymlinks = [{ source = \"overlay-bashrc\", target = \".bashrc\" }]\n",
+        "[base]\nsymlinks = [{ source = \"overlay-bashrc\", target = \"./.bashrc\" }]\n",
     );
-    let error = Config::load(dir.path(), &profile, platform, Some(overlay.path())).unwrap_err();
-    assert_eq!(error.to_string(), "validating symlink targets");
-    assert_eq!(
-        error.root_cause().to_string(),
-        "symlink target collision for '.bashrc': 'bashrc' and 'overlay-bashrc' both map to the same target"
-    );
+    let config = Config::load(dir.path(), &profile, platform, Some(overlay.path())).unwrap();
+    assert_eq!(config.symlinks.len(), 1);
+    assert_eq!(config.symlinks[0].source, "overlay-bashrc");
+    assert_eq!(config.symlinks[0].origin.as_deref(), Some(overlay.path()));
+    assert_eq!(config.validation_symlinks.len(), 2);
 }
 
 #[test]

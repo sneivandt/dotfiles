@@ -193,27 +193,30 @@ pub(crate) fn parse_dword(value: &str) -> Result<u32> {
     anyhow::bail!("invalid decimal DWORD: {value}")
 }
 
+/// Normalize a registry path/value pair using registry identity semantics.
+pub(crate) fn target_key(entry: &RegistryEntry) -> String {
+    let path = entry
+        .key_path
+        .split('\\')
+        .filter(|component| !component.is_empty())
+        .collect::<Vec<_>>()
+        .join("\\");
+    format!(
+        "{:?}",
+        (
+            uppercase_registry_name(&path),
+            uppercase_registry_name(&entry.value_name)
+        )
+    )
+}
+
 /// Find contradictory values for case-insensitive registry target identities.
 pub(crate) fn validate_conflicts(entries: &[RegistryEntry]) -> Vec<Diagnostic> {
     Validator::new(REGISTRY_TOML)
         .check_conflicts(
             entries,
             REGISTRY_CONFLICTING_VALUES,
-            |entry| {
-                let path = entry
-                    .key_path
-                    .split('\\')
-                    .filter(|component| !component.is_empty())
-                    .collect::<Vec<_>>()
-                    .join("\\");
-                format!(
-                    "{:?}",
-                    (
-                        uppercase_registry_name(&path),
-                        uppercase_registry_name(&entry.value_name)
-                    )
-                )
-            },
+            target_key,
             |entry| {
                 let data = match entry.value_type {
                     RegistryValueType::Dword => parse_dword(&entry.value_data)

@@ -207,18 +207,21 @@ fn update_console_separates_tasks_and_keeps_no_op_compact() {
 }
 
 #[test]
-fn conflicting_desired_state_stops_update_before_selected_tasks_run() {
+fn conflicting_overlay_desired_state_stops_update_before_selected_tasks_run() {
     let mut cases = vec![(
         "git-config.toml",
         "[base]\nsettings = [{ key = \"core.editor\", value = \"vim\" }]\n",
-        "[base]\nsettings = [{ key = \"CORE.EDITOR\", value = \"nano\" }]\n",
+        "[base]\nsettings = [\
+         { key = \"core.editor\", value = \"vim\" },\
+         { key = \"CORE.EDITOR\", value = \"nano\" }]\n",
         "git.conflicting-values",
     )];
     if cfg!(windows) {
         cases.push((
             "registry.toml",
             "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n",
-            "[console]\npath = 'hkcu:\\console'\n[console.values]\nfontsize = 15\n",
+            "[console]\npath = 'HKCU:\\Console'\n[console.values]\nFontSize = 14\n\
+             [other]\npath = 'hkcu:\\console'\n[other.values]\nfontsize = 15\n",
             "registry.conflicting-values",
         ));
     }
@@ -257,12 +260,6 @@ fn conflicting_desired_state_stops_update_before_selected_tasks_run() {
                 "{file}, dry_run={dry_run}: {text}"
             );
             assert!(text.contains(code), "{file}, dry_run={dry_run}: {text}");
-            // The CLI canonicalizes --root, expanding Windows short path names.
-            let root = dunce::canonicalize(repo.root_path()).expect("canonicalize repository root");
-            assert!(
-                text.contains(&root.join("conf").join(file).display().to_string()),
-                "{text}"
-            );
             assert!(
                 text.contains(&overlay.path().join("conf").join(file).display().to_string()),
                 "{text}"

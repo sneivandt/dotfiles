@@ -1,5 +1,6 @@
 //! Configuration loading and validation for all TOML config files.
 mod error;
+mod merge;
 mod preflight;
 pub mod profiles;
 
@@ -128,16 +129,22 @@ impl ConfigLoader<'_> {
 /// Loads config sections from the main `conf/` directory and, when present,
 /// merges matching sections from an overlay repository.
 ///
-/// Filtered and unfiltered sections share one append/provenance path.
+/// Sections share one resource-aware precedence/provenance path.
 /// Overlay-only scripts deliberately bypass the main repository.
 struct SectionLoader<'a> {
     main: ConfigLoader<'a>,
     overlay: Option<ConfigLoader<'a>>,
     active: &'a [category_matcher::Category],
+    platform: Platform,
 }
 
 impl<'a> SectionLoader<'a> {
-    fn new(root: &'a Path, overlay_root: Option<&'a Path>, profile: &'a profiles::Profile) -> Self {
+    fn new(
+        root: &'a Path,
+        overlay_root: Option<&'a Path>,
+        profile: &'a profiles::Profile,
+        platform: Platform,
+    ) -> Self {
         Self {
             main: ConfigLoader {
                 root,
@@ -148,55 +155,86 @@ impl<'a> SectionLoader<'a> {
                 source: ConfigSource::Overlay,
             }),
             active: &profile.active_categories,
+            platform,
         }
     }
 
-    /// Load a category-filtered section from main config and append the
-    /// overlay's matching section.
-    fn collect_filtered<T>(
+    /// Load active declarations with overlay precedence for matching targets.
+    fn collect_filtered<T: merge::OverlayEntry>(
         &self,
         file: &str,
         decode: impl Fn(&ConfigDocument<'_>) -> Result<Vec<(String, Vec<T>)>>,
     ) -> Result<Vec<T>> {
-        self.collect(
+        let (main, overlay) = self.collect(
             file,
             |document| Ok(filter_by_categories(decode(document)?, self.active)),
             |_, _| {},
-        )
+        )?;
+        self.merge(file, main, overlay)
+    }
+
+    fn merge<T: merge::OverlayEntry>(
+        &self,
+        file: &str,
+        main: Vec<T>,
+        overlay: Vec<T>,
+    ) -> Result<Vec<T>> {
+        let prepare = |items, source: &ConfigLoader<'_>| {
+            T::prepare(items, source.root).with_context(|| {
+                format!(
+                    "Invalid configuration in {}",
+                    source.root.join("conf").join(file).display()
+                )
+            })
+        };
+        let main = prepare(main, &self.main)?;
+        let overlay = prepare(overlay, self.overlay.as_ref().unwrap_or(&self.main))?;
+        Ok(merge::overlay(main, overlay, self.platform))
     }
 
     /// Decode once and derive active and validation views with identical origins.
-    fn collect_views<T: Clone>(
+    fn collect_views<T: Clone + merge::OverlayEntry>(
         &self,
         file: &str,
         decode: impl Fn(&ConfigDocument<'_>) -> Result<Vec<(String, Vec<T>)>>,
         post: impl Fn(&mut [T], &Path),
     ) -> Result<(Vec<T>, Vec<T>)> {
-        let sections = self.collect(file, decode, |sections, root| {
+        let (main, overlay) = self.collect(file, decode, |sections, root| {
             for (_, items) in sections {
                 post(items, root);
             }
         })?;
-        let active = filter_by_categories(sections.clone(), self.active);
-        let all = sections.into_iter().flat_map(|(_, items)| items).collect();
+        let active = self.merge(
+            file,
+            filter_by_categories(main.clone(), self.active),
+            filter_by_categories(overlay.clone(), self.active),
+        )?;
+        let all = main
+            .into_iter()
+            .chain(overlay)
+            .flat_map(|(_, items)| items)
+            .collect();
         Ok((active, all))
     }
 
-    /// Append main then overlay items, post-processing each batch with its
-    /// originating root before merging. Filtering is owned by `load`.
+    /// Preserve source boundaries until active entries are validated and merged.
     fn collect<T>(
         &self,
         file: &str,
         load: impl Fn(&ConfigDocument<'_>) -> Result<Vec<T>>,
         post: impl Fn(&mut [T], &Path),
-    ) -> Result<Vec<T>> {
-        let mut items = Vec::new();
-        for source in std::iter::once(&self.main).chain(self.overlay.iter()) {
+    ) -> Result<(Vec<T>, Vec<T>)> {
+        let collect = |source: &ConfigLoader<'_>| -> Result<Vec<T>> {
             let mut batch = source.load(file, &load)?;
             post(&mut batch, source.root);
-            items.extend(batch);
-        }
-        Ok(items)
+            Ok(batch)
+        };
+        let main = collect(&self.main)?;
+        let overlay = self
+            .overlay
+            .as_ref()
+            .map_or_else(|| Ok(Vec::new()), collect)?;
+        Ok((main, overlay))
     }
 
     /// Collect a category-filtered section from the overlay only; the main
@@ -295,14 +333,15 @@ impl Config {
     /// # Errors
     ///
     /// Returns an error if a configuration file cannot be parsed, symlink targets
-    /// conflict, or active Git/registry declarations specify contradictory values.
+    /// conflict within a source or overlap after merging, or active settings
+    /// specify contradictory values within the same source.
     pub fn load(
         root: &Path,
         profile: &profiles::Profile,
         platform: Platform,
         overlay: Option<&Path>,
     ) -> Result<Self> {
-        let sections = SectionLoader::new(root, overlay, profile);
+        let sections = SectionLoader::new(root, overlay, profile, platform);
 
         // Collect each section with its overlay in one call; validation lists
         // retain inactive categories and their source roots.
@@ -313,7 +352,8 @@ impl Config {
         )?;
         let (chmod, validation_chmod) =
             sections.collect_views(chmod::CHMOD_TOML, chmod::decode, |_, _| {})?;
-        let registry = sections.collect(registry::REGISTRY_TOML, registry::decode, |_, _| {})?;
+        let (main_registry, overlay_registry) =
+            sections.collect(registry::REGISTRY_TOML, registry::decode, |_, _| {})?;
         let units =
             sections.collect_filtered(systemd_units::SYSTEMD_UNITS_TOML, systemd_units::decode)?;
         let (system_files, validation_system_files) = sections.collect_views(
@@ -336,7 +376,7 @@ impl Config {
             };
             (registry, [$file:path], []) => {
                 if platform.has_registry() {
-                    registry
+                    sections.merge(registry::REGISTRY_TOML, main_registry, overlay_registry)?
                 } else {
                     Vec::new()
                 }
@@ -366,10 +406,8 @@ impl Config {
                 }
             };
         }
-        let mut config = config_section_inventory!(load_config);
+        let config = config_section_inventory!(load_config);
 
-        config.symlinks = symlinks::expand_glob_patterns(&config.symlinks, root)
-            .context("expanding symlink glob patterns")?;
         symlinks::validate_unique_targets(&config.symlinks)
             .context("validating symlink targets")?;
         system_files::validate_entries(&config.system_files)

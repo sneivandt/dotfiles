@@ -206,6 +206,32 @@ fn fresh_checkout_generates_pins_only_when_applied() {
 }
 
 #[test]
+fn unchanged_pins_still_persist_fetched_metadata_without_reporting_changes() {
+    let dir = fixture();
+    let target = dir.path().join("packages/tool-bin/version.sh");
+    let pins = release_pins(&source(), &release()).unwrap();
+    std::fs::write(&target, &pins).unwrap();
+    let http = Arc::new(MockHttpClient::new(vec![Ok(release().into_bytes())]));
+    let ctx = release_context(dir.path(), false).with_http(Arc::<MockHttpClient>::clone(&http));
+    let cache = dir.path().join("bin/.github-releases-v1");
+    assert!(!cache.exists());
+    let result = task().run(&ctx).unwrap();
+    assert_eq!(task_batch(&result).changed_count(), 0);
+    assert_eq!(task_batch(&result).failed_count(), 0);
+    assert!(
+        cache.exists(),
+        "unchanged pins must not discard pending metadata"
+    );
+    assert!(matches!(task().run(&ctx).unwrap(), TaskResult::Ok));
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), pins);
+    assert_eq!(
+        http.request_urls().len(),
+        1,
+        "the second invocation uses the cache"
+    );
+}
+
+#[test]
 fn package_discovery_authenticates_deduplicates_and_preserves_preview_cache() {
     let dir = fixture();
     let other = add_recipe(dir.path(), "other-bin");

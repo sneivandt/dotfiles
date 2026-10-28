@@ -27,6 +27,26 @@ fn derived_paths_use_the_configured_root() {
 }
 
 #[test]
+fn debug_keeps_context_diagnostics_without_rendering_http_or_environment_contents() {
+    let http = crate::infra::github::tests::MockHttpClient::new(vec![Ok(
+        b"private-response-sentinel".to_vec(),
+    )]);
+    let ctx = make_linux_context(PathBuf::from("/dotfiles"), None)
+        .with_http(Arc::new(http))
+        .with_env(
+            crate::infra::env::MapEnv::new()
+                .with("GH_TOKEN", "credential-sentinel")
+                .into_handle(),
+        );
+    let debug = format!("{ctx:?}");
+    assert!(debug.starts_with("Context {"), "{debug}");
+    assert!(debug.contains("execution_policy:"), "{debug}");
+    assert!(debug.contains("http: \"<dyn HttpClient>\""), "{debug}");
+    assert!(!debug.contains("private-response-sentinel"), "{debug}");
+    assert!(!debug.contains("credential-sentinel"), "{debug}");
+}
+
+#[test]
 fn task_log_context_shares_paths_environment_and_cancellation() {
     let ctx = make_linux_context(PathBuf::from("/dotfiles"), None);
     let new_log: Arc<dyn Log> = Arc::new(SilentLog);
@@ -35,6 +55,7 @@ fn task_log_context_shares_paths_environment_and_cancellation() {
     assert!(Arc::ptr_eq(&ctx.home, &ctx2.home));
     assert!(Arc::ptr_eq(&ctx.env, &ctx2.env));
     assert!(Arc::ptr_eq(&ctx.executor, &ctx2.executor));
+    assert!(Arc::ptr_eq(&ctx.http, &ctx2.http));
     assert!(Arc::ptr_eq(&ctx2.log, &new_log));
     assert!(!Arc::ptr_eq(&ctx.log, &new_log));
     assert_eq!(ctx2.dry_run(), ctx.dry_run());

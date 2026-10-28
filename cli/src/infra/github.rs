@@ -537,20 +537,18 @@ fn unix_timestamp() -> Result<u64> {
         .as_secs())
 }
 
-#[cfg(target_os = "linux")]
 fn boot_id() -> Option<String> {
-    match std::fs::read_to_string("/proc/sys/kernel/random/boot_id") {
-        Ok(value) => Some(value.trim().to_owned()),
-        Err(error) => {
-            tracing::debug!("boot identity unavailable for GitHub cache: {error}");
-            None
+    if cfg!(target_os = "linux") {
+        match std::fs::read_to_string("/proc/sys/kernel/random/boot_id") {
+            Ok(value) => Some(value.trim().to_owned()),
+            Err(error) => {
+                tracing::debug!("boot identity unavailable for GitHub cache: {error}");
+                None
+            }
         }
+    } else {
+        None
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-const fn boot_id() -> Option<String> {
-    None
 }
 
 #[cfg(test)]

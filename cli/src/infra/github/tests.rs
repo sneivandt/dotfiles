@@ -92,6 +92,107 @@ fn tag(body: &str) -> Result<String> {
 const BODY: &str = r#"{"tag_name":"v1"}"#;
 
 #[test]
+fn debug_identifies_release_lookup_without_exposing_credentials_or_responses() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = MockHttpClient::new(vec![Ok(b"private-response-sentinel".to_vec())]);
+    for token in [None, Some("credential-sentinel".to_owned())] {
+        let authenticated = token.is_some();
+        let releases = Releases::new(dir.path(), &http, token);
+        let debug = format!("{releases:?}");
+        assert!(debug.starts_with("Releases {"), "{debug}");
+        assert!(
+            debug.contains(&format!("root: {:?}", releases.root)),
+            "{debug}"
+        );
+        assert!(
+            debug.contains(&format!("authenticated: {authenticated}")),
+            "{debug}"
+        );
+        assert!(!debug.contains("credential-sentinel"), "{debug}");
+        assert!(!debug.contains("private-response-sentinel"), "{debug}");
+    }
+}
+
+#[test]
+fn default_cache_clock_and_boot_identity_match_native_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = MockHttpClient::new(vec![]);
+    let releases = Releases::new(dir.path(), &http, None);
+    let before = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let timestamp = (releases.clock)().unwrap();
+    let after = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    assert!((before..=after).contains(&timestamp), "{timestamp}");
+    let expected_boot = if cfg!(target_os = "linux") {
+        std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+            .ok()
+            .map(|value| value.trim().to_owned())
+    } else {
+        None
+    };
+    assert_eq!(releases.boot, expected_boot);
+    assert_eq!(releases.stamp(timestamp).boot, expected_boot);
+}
+
+#[test]
+fn missing_cache_is_quiet_but_unreadable_cache_is_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    let http = MockHttpClient::new(vec![]);
+    let releases = Releases::new(dir.path(), &http, None);
+    let (log, _logs, _guard) = crate::infra::logging::isolated_logger();
+    let log_path = log.log_path().unwrap();
+    assert!(
+        releases
+            .read::<Entry>(&releases.path("example/tool"))
+            .is_none()
+    );
+    let missing_log = std::fs::read_to_string(log_path).unwrap();
+    assert!(!missing_log.contains("[warn]"), "{missing_log}");
+
+    let invalid_path = dir.path().join("invalid-cache\0.json");
+    assert!(releases.read::<Entry>(&invalid_path).is_none());
+    let error_log = std::fs::read_to_string(log_path).unwrap();
+    assert!(
+        error_log.contains("could not read GitHub cache"),
+        "{error_log}"
+    );
+    assert!(error_log.contains("invalid-cache"), "{error_log}");
+}
+
+#[test]
+fn large_valid_metadata_survives_cache_serialization_overhead() {
+    let dir = tempfile::tempdir().unwrap();
+    let body = serde_json::json!({
+        "tag_name": "v1",
+        "padding": "x".repeat(MAX_METADATA_BYTES - 100),
+    })
+    .to_string();
+    assert!(body.len() <= MAX_METADATA_BYTES);
+    let http = MockHttpClient::new(vec![Ok(body.into_bytes())]);
+    let mut releases = Releases::new(dir.path(), &http, None);
+    releases.clock = &|| Ok(100);
+    assert!(releases.pending.is_empty());
+    assert_eq!(releases.latest("example/tool", tag).unwrap(), "v1");
+    assert!(!releases.pending.is_empty());
+    let path = releases.path("example/tool");
+    releases.into_cache_writes().persist();
+    assert!(
+        std::fs::metadata(path).unwrap().len() > u64::try_from(MAX_METADATA_BYTES + 2).unwrap()
+    );
+
+    let mut cached = Releases::new(dir.path(), &http, None);
+    cached.clock = &|| Ok(101);
+    assert_eq!(cached.latest("example/tool", tag).unwrap(), "v1");
+    assert!(cached.into_cache_writes().is_empty());
+    assert_eq!(http.request_urls().len(), 1);
+}
+
+#[test]
 fn metadata_is_authenticated_cached_and_conditionally_revalidated() {
     let dir = tempfile::tempdir().unwrap();
     let http = MockHttpClient::responses(vec![
@@ -204,6 +305,12 @@ fn cooldown_headers_and_non_rate_limit_denials_are_distinguished() {
         (
             403,
             vec![("x-ratelimit-remaining", "0"), ("x-ratelimit-reset", "90")],
+            "",
+            Some(160),
+        ),
+        (
+            403,
+            vec![("x-ratelimit-remaining", "0"), ("x-ratelimit-reset", "100")],
             "",
             Some(160),
         ),

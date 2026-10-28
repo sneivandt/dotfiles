@@ -537,8 +537,16 @@ fn unix_timestamp() -> Result<u64> {
         .as_secs())
 }
 
+#[cfg_attr(
+    not(target_os = "linux"),
+    allow(
+        clippy::missing_const_for_fn,
+        reason = "Linux implementation performs filesystem I/O"
+    )
+)]
 fn boot_id() -> Option<String> {
-    if cfg!(target_os = "linux") {
+    #[cfg(target_os = "linux")]
+    {
         match std::fs::read_to_string("/proc/sys/kernel/random/boot_id") {
             Ok(value) => Some(value.trim().to_owned()),
             Err(error) => {
@@ -546,7 +554,9 @@ fn boot_id() -> Option<String> {
                 None
             }
         }
-    } else {
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
         None
     }
 }

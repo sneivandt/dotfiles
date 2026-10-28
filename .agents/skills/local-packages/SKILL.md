@@ -35,9 +35,13 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
   configured asset digest for a recipe before writing its pins. It does not
   install software. Preserve failed recipes' pins and failed-item accounting
   while allowing independent recipes to refresh; propagate cancellation.
-  Preview may query the API but must not write pins, snapshots, or configuration.
-  Release discovery and metadata validation use bounded workers only when
-  `ctx.parallel()` is enabled; preserve ordered publication and task log context.
+  Preview may query the API but must not write release caches, pins, snapshots,
+  or configuration. Release discovery uses the shared authenticated GitHub
+  client in `infra/github.rs`, serializing requests and honoring cached metadata
+  and quota cooldowns. Revalidate cached releases against current descriptors;
+  stale metadata must not turn a failed refresh into success. PKGBUILD metadata
+  validation uses bounded workers only when `ctx.parallel()` is enabled;
+  preserve ordered publication and task log context.
 - Cache only successful metadata validation, keyed by copied inputs, the release
   descriptor, and a versioned validation protocol. Recheck snapshot ownership,
   working files and committed inputs before reuse. Input damage, descriptor

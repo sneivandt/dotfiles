@@ -117,7 +117,7 @@ sandbox, an offline mode, or a promise of zero filesystem writes.
 | Activity | During a dry run |
 |---|---|
 | Wrapper bootstrap or `--build` | Still downloads/builds before the CLI starts |
-| CLI self-update | Can query releases and write `bin/.dotfiles-version-cache`; does not replace the binary |
+| CLI self-update | Can read cached releases or query GitHub; does not write release caches or replace the binary |
 | Repository task | Can query remote refs; does not fetch or merge. Omit it with `--no-repo-update` |
 | Run bookkeeping | Writes logs and acquires the repository lock |
 | Selection | Interactive profile selection and explicit `--overlay` can persist local Git configuration |
@@ -159,6 +159,15 @@ unknown; authentication, transport and configuration errors fail the preview.
 Release checks are cached for up to 10 minutes and, on Linux, only for the boot
 that created the cache. Source builds do not self-update from their Cargo
 output directory. A restarted child does not repeat the self-update check.
+Self-update and local package discovery share authenticated release fetching,
+ETag revalidation, and credential-scoped rate-limit cooldowns under
+`bin/.github-releases-v1/`. They prefer `GH_TOKEN`, then `GITHUB_TOKEN`, then an
+unattended saved `gh` login. Denied credentials are not silently retried
+anonymously. Fresh metadata remains usable during a cooldown; stale metadata
+does not turn a failed lookup into success. Preview reads but never writes these
+caches. The existing `bin/.dotfiles-version-cache` still records completed
+self-update checks/installations; cached release availability does not imply
+that a binary has been installed.
 An unwritable release-check cache produces a warning but does not invalidate a
 successful version check or prevent restarting into a verified binary update.
 Self-update streams the asset into one guarded file beside the installed binary,

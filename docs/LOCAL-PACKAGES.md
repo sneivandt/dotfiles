@@ -43,9 +43,9 @@ During `dotfiles update`:
 1. **Local package versions** (`local-package-versions`) discovers current
    release versions independently and writes each successful recipe’s changed
    `version.sh` file. Failed refreshes retain that recipe’s existing pins and
-   remain failures in the run summary. Independent release requests use up to
-   four workers when parallel execution is enabled; results are processed in
-   recipe order. Sequential execution makes one request at a time.
+   remain failures in the run summary. Release requests are serialized in
+   recipe order, including in parallel mode, so a rate-limit response can stop
+   subsequent requests. Fresh cached metadata avoids network requests.
 2. **Paru configuration** (`paru-config`) waits for discovery to finish,
    refreshes usable build snapshots (including current `.SRCINFO` metadata),
    and writes Paru configuration containing
@@ -120,11 +120,34 @@ sorted order, and reads each `release.json`. This discovery is independent of
 automatic installation. Directories without a recipe or descriptor are skipped;
 a PKGBUILD without its descriptor is an error.
 
-For APM, the task runs `curl` against:
+For APM, the shared native GitHub client queries:
 
 ```text
 https://api.github.com/repos/microsoft/apm/releases/latest
 ```
+
+Both package discovery and CLI self-update prefer `GH_TOKEN`, then
+`GITHUB_TOKEN`, then the active non-interactive `gh` login for github.com.
+Without credentials they can still query public releases anonymously.
+Tokens are not passed as subprocess arguments, logged, or stored in caches.
+Denied credentials are reported rather than silently retried anonymously.
+
+Validated release responses are cached for ten minutes under
+`bin/.github-releases-v1/`, scoped by repository and credentials. Linux entries
+must also match the current boot; future timestamps are rejected. Expired
+entries use ETags for conditional requests, and every cache reuse validates
+the current recipe descriptor and asset digests. Authenticated `304` responses
+do not consume GitHub's primary quota; anonymous requests do not receive that
+exemption. Invalid metadata is not cached.
+
+Rate-limit responses record a credential-scoped cooldown using `Retry-After`
+and `X-RateLimit-Reset`, shared across repositories and invocations. When no
+usable deadline is available, a confirmed rate limit waits at least one minute.
+Fresh cache entries remain usable during cooldown, but stale metadata is not
+reported as a successful refresh. Transport/server failures have bounded
+retries; ordinary permission denials are not treated as rate limits.
+Cache writes occur only during apply and are advisory: failures produce
+warnings without invalidating successfully discovered pins.
 
 It reads `tag_name`, rejects drafts and prereleases, strips a leading `v`, and
 validates the version before using it as shell data. It finds each named asset
@@ -166,8 +189,9 @@ published repository section before requesting a missing local package. Already
 installed packages need no reinstall. Errors reading or parsing ownership
 metadata fail closed rather than treating local packages as ordinary AUR names.
 
-A dry run still queries GitHub, but writes neither pins nor snapshots. On a
-fresh checkout, snapshot preview can report work before pins exist; applying
+A dry run can read fresh caches or query GitHub, but writes neither release
+caches, cooldowns, pins, nor snapshots. On a fresh checkout, snapshot preview
+can report work before pins exist; applying
 snapshot preparation requires the generated pins.
 
 ## How Paru sees the recipes

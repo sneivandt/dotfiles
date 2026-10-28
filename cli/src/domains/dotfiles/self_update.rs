@@ -4,7 +4,7 @@
 //! - [`attestation`] — GitHub build provenance verification of downloads.
 //! - [`paths`]   — binary and cache path helpers.
 //! - [`cache`]   — version-check cache I/O.
-//! - [`http`]    — HTTP client trait, GitHub API, checksum verification.
+//! - [`http`]    — streaming downloads and checksum verification.
 //! - [`version`] — date-based release-tag parsing and ordering.
 //! - [`install`] — binary replacement, smoke testing, and download.
 
@@ -62,75 +62,23 @@ fn nibble_to_upper(n: u8) -> char {
 use anyhow::Result;
 
 use crate::infra::env::{Env, SystemEnv};
-use crate::infra::exec::{CommandSpec, Executor, OutputLog, ProcessExecutor};
+use crate::infra::exec::ProcessExecutor;
+use crate::infra::github::{self, Releases, github_token, unattended_gh};
 use crate::infra::logging::Output;
 use crate::infra::logging::OutputExt as _;
 /// GitHub repository used for release lookups.
 pub(super) const REPO: &str = env!("DOTFILES_RELEASE_REPO");
 /// Environment variable that disables the self-update preflight.
 const SKIP_SELF_UPDATE_ENV: &str = "DOTFILES_SKIP_SELF_UPDATE";
-const GH_TOKEN_ENV: &str = "GH_TOKEN";
-const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 
 use cache::{read_fresh_cache, write_cache_best_effort};
-use http::{HttpClient, default_http_client, fetch_latest_tag};
+use http::default_http_client;
 use install::download_and_install;
 use paths::is_running_from_bin;
 use version::{is_newer, is_release_version};
 
 fn self_update_skipped(env: &dyn Env) -> bool {
     env.var(SKIP_SELF_UPDATE_ENV).as_deref() == Some("1")
-}
-
-/// Keep unattended GitHub commands out of terminal and desktop prompts.
-fn unattended_gh() -> CommandSpec {
-    CommandSpec::new("gh")
-        .env("GH_PROMPT_DISABLED", "1")
-        // gh's Linux keyring backend can prompt even with stdin closed and
-        // GH_PROMPT_DISABLED set. An unsupported bus transport fails locally.
-        .env("DBUS_SESSION_BUS_ADDRESS", "disabled:")
-}
-
-/// Prefer explicit credentials, then reuse the active github.com CLI login.
-/// This optional, non-interactive probe must never retain credential output.
-fn github_token(env: &dyn Env, executor: &dyn Executor) -> Option<String> {
-    if let Some(token) = [GH_TOKEN_ENV, GITHUB_TOKEN_ENV]
-        .into_iter()
-        .find_map(|key| env.var(key).filter(|value| !value.is_empty()))
-    {
-        return Some(token);
-    }
-    if !executor.which("gh") {
-        return None;
-    }
-    // A non-zero exit means gh could not supply a token (for example, no
-    // saved login). Anonymous release checks remain available in that case.
-    let request = unattended_gh()
-        .args(&["auth", "token", "--hostname", "github.com"])
-        .unchecked()
-        .output_log(OutputLog::Omit)
-        .timeout(std::time::Duration::from_secs(10));
-    match executor.execute(request) {
-        Ok(result) if result.success => {
-            let token = result.stdout.trim();
-            if token.is_empty() {
-                tracing::debug!("GitHub CLI returned no token; checking releases anonymously");
-                None
-            } else {
-                Some(token.to_string())
-            }
-        }
-        Ok(_) => {
-            tracing::debug!("GitHub CLI has no usable token; checking releases anonymously");
-            None
-        }
-        Err(_) => {
-            // Do not render errors from a credential command: captured output
-            // can contain secrets even when execution fails or times out.
-            tracing::debug!("GitHub CLI token lookup could not run; checking releases anonymously");
-            None
-        }
-    }
 }
 
 /// Result of checking for an available update.
@@ -165,12 +113,7 @@ fn classify_update(current: &str, latest: String) -> UpdateCheck {
 }
 
 fn update_check_failure_message(error: &anyhow::Error) -> String {
-    let detail = format!("{error:#}");
-    if detail.to_ascii_lowercase().contains("http status: 403") {
-        return "GitHub denied the anonymous release check (HTTP 403), likely due to API rate limiting; try again later"
-            .to_string();
-    }
-    format!("could not reach GitHub: {detail}")
+    format!("could not check GitHub releases: {error:#}")
 }
 
 /// Check whether an update is available by comparing the local cache and
@@ -180,19 +123,22 @@ fn update_check_failure_message(error: &anyhow::Error) -> String {
 /// running version (date-based tag comparison), preventing silent downgrades.
 fn check_for_update(
     root: &std::path::Path,
-    client: &dyn HttpClient,
+    client: &dyn github::HttpClient,
     github_token: Option<&str>,
+    dry_run: bool,
 ) -> UpdateCheck {
     let raw_version =
         option_env!("DOTFILES_VERSION").unwrap_or(concat!("dev-", env!("CARGO_PKG_VERSION")));
-    check_for_update_with_current(root, client, raw_version, github_token)
+    check_for_update_with_current(root, client, raw_version, github_token, dry_run, REPO)
 }
 
 fn check_for_update_with_current(
     root: &std::path::Path,
-    client: &dyn HttpClient,
+    client: &dyn github::HttpClient,
     raw_version: &str,
     github_token: Option<&str>,
+    dry_run: bool,
+    repository: &str,
 ) -> UpdateCheck {
     let current = format!("v{}", raw_version.strip_prefix('v').unwrap_or(raw_version));
     if !is_release_version(&current) {
@@ -204,12 +150,21 @@ fn check_for_update_with_current(
     {
         return classify_update(&current, latest);
     }
-    let latest = match fetch_latest_tag(client, github_token) {
-        Ok(Some(latest)) => latest,
-        Ok(None) => {
-            tracing::debug!("latest release carried no tag_name, treating as offline");
-            return UpdateCheck::Offline;
-        }
+    let mut releases = Releases::new(root, client, github_token.map(str::to_owned));
+    let fetched = releases.latest(repository, |body| {
+        let parsed: serde_json::Value = serde_json::from_str(body)?;
+        let tag = parsed
+            .get("tag_name")
+            .and_then(serde_json::Value::as_str)
+            .filter(|tag| is_release_version(tag))
+            .ok_or_else(|| anyhow::anyhow!("GitHub returned no valid release tag"))?;
+        Ok(tag.to_owned())
+    });
+    if !dry_run {
+        releases.into_cache_writes().persist();
+    }
+    let latest = match fetched {
+        Ok(latest) => latest,
         // Self-update runs unattended before mutating commands, so a
         // failed lookup must not fail the run. It must not vanish silently
         // either: without the cause, a persistently broken update (expired
@@ -223,7 +178,7 @@ fn check_for_update_with_current(
         }
     };
     let check = classify_update(&current, latest.clone());
-    if !matches!(check, UpdateCheck::UpdateAvailable { .. }) {
+    if !dry_run && !matches!(check, UpdateCheck::UpdateAvailable { .. }) {
         write_cache_best_effort(root, &latest);
     }
     check
@@ -282,7 +237,7 @@ pub fn pre_update(
     let client = default_http_client();
     let check = with_status(log, "Checking for updates", || {
         let token = github_token(&SystemEnv, &ProcessExecutor::system());
-        check_for_update(root, &client, token.as_deref())
+        check_for_update(root, &client, token.as_deref(), dry_run)
     });
     match check {
         UpdateCheck::Offline | UpdateCheck::DevBuild | UpdateCheck::AlreadyCurrent => Ok(false),
@@ -317,10 +272,13 @@ mod tests {
     use std::fs;
 
     use super::cache::{cache_path, write_cache};
-    use super::http::test_support::MockHttpClient;
     use super::*;
     use crate::infra::env::MapEnv;
-    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
+    use crate::infra::exec::{CommandSpec, ExecError, ExecResult, MockExecutor, OutputLog};
+    use crate::infra::github::tests::MockHttpClient;
+
+    const GH_TOKEN_ENV: &str = "GH_TOKEN";
+    const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 
     #[test]
     fn self_update_skip_requires_explicit_one() {
@@ -415,7 +373,14 @@ mod tests {
         write_cache(dir.path(), "v9999.12.31-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            None,
+            false,
+            "example/dotfiles",
+        );
 
         match result {
             UpdateCheck::UpdateAvailable { latest, .. } => {
@@ -433,7 +398,14 @@ mod tests {
         fs::create_dir_all(dir.path().join("bin")).unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            None,
+            false,
+            "example/dotfiles",
+        );
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
         assert!(
@@ -449,7 +421,14 @@ mod tests {
         // GitHub reports an older release than the running binary.
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-9", None);
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-9",
+            None,
+            false,
+            "example/dotfiles",
+        );
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         let cached = fs::read_to_string(cache_path(dir.path())).unwrap();
@@ -465,7 +444,14 @@ mod tests {
         fs::create_dir_all(cache_path(dir.path())).unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v2026.07.25-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            None,
+            false,
+            "example/dotfiles",
+        );
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         assert!(
@@ -491,7 +477,14 @@ mod tests {
         .unwrap();
         let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v9999.12.31-1"}"#.to_vec())]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            None,
+            false,
+            "example/dotfiles",
+        );
 
         assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
     }
@@ -503,7 +496,14 @@ mod tests {
         write_cache(dir.path(), "v2026.07.25-1").unwrap();
         let client = MockHttpClient::new(vec![]);
 
-        let result = check_for_update_with_current(dir.path(), &client, "v2026.07.25-1", None);
+        let result = check_for_update_with_current(
+            dir.path(),
+            &client,
+            "v2026.07.25-1",
+            None,
+            false,
+            "example/dotfiles",
+        );
 
         assert!(matches!(result, UpdateCheck::AlreadyCurrent));
         assert!(
@@ -513,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn http_403_failure_explains_anonymous_rate_limiting() {
+    fn http_403_failure_preserves_cause_without_assuming_anonymous_rate_limiting() {
         let error = anyhow::anyhow!(
             "querying latest release: GET https://api.github.com/repos/example/releases/latest: http status: 403"
         );
@@ -522,7 +522,40 @@ mod tests {
 
         assert_eq!(
             message,
-            "GitHub denied the anonymous release check (HTTP 403), likely due to API rate limiting; try again later"
+            "could not check GitHub releases: querying latest release: GET https://api.github.com/repos/example/releases/latest: http status: 403"
+        );
+    }
+
+    #[test]
+    fn preview_writes_no_caches_and_available_metadata_survives_an_install_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let http = MockHttpClient::new(vec![
+            Ok(br#"{"tag_name":"v9999.12.31-1"}"#.to_vec()),
+            Ok(br#"{"tag_name":"v9999.12.31-1"}"#.to_vec()),
+        ]);
+        for dry_run in [true, false, false] {
+            let result = check_for_update_with_current(
+                dir.path(),
+                &http,
+                "v2026.07.25-1",
+                None,
+                dry_run,
+                "example/dotfiles",
+            );
+            assert!(matches!(result, UpdateCheck::UpdateAvailable { .. }));
+            assert!(
+                !cache_path(dir.path()).exists(),
+                "availability is not a successful installation"
+            );
+            assert_eq!(
+                dir.path().join("bin/.github-releases-v1").exists(),
+                !dry_run
+            );
+        }
+        assert_eq!(
+            http.request_urls().len(),
+            2,
+            "an install retry must reuse fresh release metadata"
         );
     }
 
@@ -532,6 +565,9 @@ mod tests {
 
         let message = update_check_failure_message(&error);
 
-        assert_eq!(message, "could not reach GitHub: DNS lookup failed");
+        assert_eq!(
+            message,
+            "could not check GitHub releases: DNS lookup failed"
+        );
     }
 }

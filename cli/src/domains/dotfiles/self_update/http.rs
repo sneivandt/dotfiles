@@ -1,5 +1,4 @@
-//! HTTP plumbing for self-update: trait abstraction, real client, GitHub API
-//! tag lookup, and SHA-256 checksum verification.
+//! HTTP plumbing for self-update downloads and SHA-256 checksum verification.
 
 use std::io::{Read, Seek as _, Write as _};
 
@@ -10,7 +9,6 @@ use super::REPO;
 
 /// Number of attempts made for a single GET before the failure is reported.
 const MAX_GET_ATTEMPTS: u32 = 3;
-const MAX_RELEASE_METADATA_BYTES: usize = 1024 * 1024;
 const MAX_CHECKSUM_BYTES: usize = 64 * 1024;
 
 /// Failure fragments that indicate a retryable network or server condition.
@@ -28,7 +26,6 @@ const TRANSIENT_HTTP_ERROR_MARKERS: &[&str] = &[
     "failed to lookup address",
     "http status: 408",
     "http status: 425",
-    "http status: 429",
     "http status: 500",
     "http status: 502",
     "http status: 503",
@@ -54,43 +51,17 @@ pub(super) trait HttpClient: std::fmt::Debug + Send + Sync {
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Box<dyn Read>>;
 }
 
-/// Real HTTP client backed by [`ureq`].
-///
-/// The agent is built once and reused for every request so that the three or
-/// more GETs a single update performs (release tag, checksums file, asset)
-/// share one connection pool instead of renegotiating TLS each time.
-#[derive(Debug)]
-pub(super) struct UreqClient {
-    agent: ureq::Agent,
-}
-
-impl UreqClient {
-    /// Create a new client whose requests share one agent and time out after
-    /// `timeout_secs`.
-    fn new(timeout_secs: u64) -> Self {
-        let config = ureq::config::Config::builder()
-            .timeout_global(Some(std::time::Duration::from_secs(timeout_secs)))
-            .build();
-        Self {
-            agent: config.new_agent(),
-        }
-    }
-}
+use crate::infra::github::UreqClient;
 
 impl HttpClient for UreqClient {
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Box<dyn Read>> {
-        let mut req = self.agent.get(url);
-        for &(k, v) in headers {
-            req = req.header(k, v);
-        }
-        let response = req.call().with_context(|| format!("GET {url}"))?;
-        Ok(Box::new(response.into_body().into_reader()))
+        self.reader(url, headers)
     }
 }
 
 /// Build the default HTTP client used by the self-update subsystem.
 pub(super) fn default_http_client() -> UreqClient {
-    UreqClient::new(120)
+    UreqClient::new(std::time::Duration::from_secs(120))
 }
 
 /// Perform a GET, retrying transient network and server failures.
@@ -151,68 +122,6 @@ fn retry_delay(attempt: u32) -> std::time::Duration {
 #[cfg(test)]
 const fn retry_delay(_attempt: u32) -> std::time::Duration {
     std::time::Duration::ZERO
-}
-
-/// Query the GitHub API for the latest release tag.
-///
-/// # Errors
-///
-/// Returns an error if the request fails after retries, or if the response is
-/// not valid JSON. A successful response that carries no `tag_name` yields
-/// `Ok(None)`.
-pub(super) fn fetch_latest_tag(
-    client: &dyn HttpClient,
-    github_token: Option<&str>,
-) -> Result<Option<String>> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let authorization = github_token.map(|token| format!("Bearer {token}"));
-    let mut headers = vec![
-        ("Accept", "application/vnd.github.v3+json"),
-        ("User-Agent", "dotfiles-cli"),
-    ];
-    if let Some(value) = authorization.as_deref() {
-        headers.push(("Authorization", value));
-    }
-
-    let body_bytes = match get_with_retry(client, &url, &headers, |reader| {
-        read_limited(reader, MAX_RELEASE_METADATA_BYTES)
-    }) {
-        Ok(body) => body,
-        Err(error)
-            if authorization.is_some()
-                && (error_has_http_status(&error, 401) || error_has_http_status(&error, 403)) =>
-        {
-            tracing::debug!(
-                "authenticated GitHub release check was denied, retrying anonymously: {error:#}"
-            );
-            get_with_retry(
-                client,
-                &url,
-                &[
-                    ("Accept", "application/vnd.github.v3+json"),
-                    ("User-Agent", "dotfiles-cli"),
-                ],
-                |reader| read_limited(reader, MAX_RELEASE_METADATA_BYTES),
-            )
-            .with_context(|| format!("querying latest release anonymously from {url}"))?
-        }
-        Err(error) => {
-            return Err(error).with_context(|| format!("querying latest release from {url}"));
-        }
-    };
-
-    let parsed: serde_json::Value =
-        serde_json::from_slice(&body_bytes).context("parsing GitHub API JSON response")?;
-    Ok(parsed
-        .get("tag_name")
-        .and_then(serde_json::Value::as_str)
-        .map(String::from))
-}
-
-fn error_has_http_status(error: &anyhow::Error, status: u16) -> bool {
-    format!("{error:#}")
-        .to_ascii_lowercase()
-        .contains(&format!("http status: {status}"))
 }
 
 /// Stream a release asset into its staging file and return its SHA-256 digest.
@@ -367,9 +276,8 @@ mod tests {
 
     #[test]
     fn metadata_limits_accept_the_boundary_and_stop_at_one_extra_byte() {
-        assert_eq!(MAX_RELEASE_METADATA_BYTES, 1_048_576);
         assert_eq!(MAX_CHECKSUM_BYTES, 65_536);
-        for limit in [MAX_RELEASE_METADATA_BYTES, MAX_CHECKSUM_BYTES] {
+        for limit in [MAX_CHECKSUM_BYTES] {
             for length in [0, limit - 1, limit, limit + 1, limit * 2] {
                 let mut reader = std::io::Cursor::new(vec![b'x'; length]);
                 let result = read_limited(&mut reader, limit);
@@ -387,11 +295,6 @@ mod tests {
 
     #[test]
     fn oversized_metadata_fails_without_retrying_or_parsing_a_prefix() {
-        let client = MockHttpClient::new(vec![Ok(vec![b' '; MAX_RELEASE_METADATA_BYTES + 1])]);
-        let error = fetch_latest_tag(&client, None).unwrap_err();
-        assert!(format!("{error:#}").contains("1048576-byte limit"));
-        assert_eq!(client.request_urls().len(), 1);
-
         let checksum_client = MockHttpClient::new(vec![Ok(vec![b' '; MAX_CHECKSUM_BYTES + 1])]);
         let checksum_error =
             verify_checksum(&checksum_client, "v1", "asset", b"bytes").unwrap_err();
@@ -467,79 +370,19 @@ mod tests {
     }
 
     #[test]
-    fn fetch_latest_tag_parses_github_response() {
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec())]);
-        let result = fetch_latest_tag(&client, None).unwrap();
-        assert_eq!(result, Some("v1.2.3".to_string()));
-        assert_eq!(
-            client.request_urls(),
-            [format!(
-                "https://api.github.com/repos/{REPO}/releases/latest"
-            )]
-        );
-    }
-
-    #[test]
-    fn fetch_latest_tag_uses_github_token_when_available() {
-        let client = MockHttpClient::new(vec![Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec())]);
-
-        fetch_latest_tag(&client, Some("secret-token")).unwrap();
-
-        let requests = client.request_headers();
-        assert_eq!(requests.len(), 1);
-        assert!(
-            requests[0]
-                .iter()
-                .any(|(name, value)| name == "Authorization" && value == "Bearer secret-token"),
-            "the release request should use the available GitHub token"
-        );
-    }
-
-    #[test]
-    fn fetch_latest_tag_falls_back_to_anonymous_when_token_is_rejected() {
-        let client = MockHttpClient::new(vec![
-            Err(anyhow::anyhow!("http status: 401")),
-            Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec()),
-        ]);
-
-        let result = fetch_latest_tag(&client, Some("expired-token")).unwrap();
-
-        assert_eq!(result, Some("v1.2.3".to_string()));
-        let requests = client.request_headers();
-        assert_eq!(requests.len(), 2);
-        assert!(
-            requests[0].iter().any(|(name, _)| name == "Authorization"),
-            "the first request should be authenticated"
-        );
-        assert!(
-            requests[1].iter().all(|(name, _)| name != "Authorization"),
-            "the retry should be anonymous"
-        );
-    }
-
-    #[test]
-    fn fetch_latest_tag_reports_network_error() {
-        let client = MockHttpClient::new(vec![Err(anyhow::anyhow!("network error"))]);
-        let error = fetch_latest_tag(&client, None).unwrap_err();
-        assert!(
-            format!("{error:#}").contains("network error"),
-            "the underlying cause must survive so a broken update is diagnosable, got: {error:#}"
-        );
-    }
-
-    #[test]
-    fn fetch_latest_tag_returns_none_when_tag_name_missing() {
-        let client = MockHttpClient::new(vec![Ok(br#"{"name": "Release v1.0"}"#.to_vec())]);
-        let result = fetch_latest_tag(&client, None).unwrap();
-        assert_eq!(result, None);
-    }
-
-    #[test]
     fn download_bytes_returns_response_body() {
         let client = MockHttpClient::new(vec![Ok(b"binary data".to_vec())]);
         let result = download_bytes(&client, "https://example.com/file").unwrap();
         assert_eq!(result, b"binary data");
         assert_eq!(client.request_urls(), ["https://example.com/file"]);
+        assert!(
+            client
+                .request_headers()
+                .iter()
+                .flatten()
+                .all(|(name, _)| name != "Authorization"),
+            "release asset downloads must not receive API credentials"
+        );
     }
 
     #[test]
@@ -594,20 +437,6 @@ mod tests {
             "a permanent failure should surface immediately, got: {msg}"
         );
         assert_eq!(client.request_urls(), ["https://example.com/file"]);
-    }
-
-    #[test]
-    fn fetch_latest_tag_retries_transient_failure() {
-        let client = MockHttpClient::new(vec![
-            Err(anyhow::anyhow!("temporary failure in name resolution")),
-            Ok(br#"{"tag_name": "v1.2.3"}"#.to_vec()),
-        ]);
-        let result = fetch_latest_tag(&client, None).unwrap();
-        assert_eq!(
-            result,
-            Some("v1.2.3".to_string()),
-            "a transient DNS failure should not be treated as offline"
-        );
     }
 
     #[test]

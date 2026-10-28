@@ -2,8 +2,10 @@ use super::*;
 use std::sync::Arc;
 
 use crate::infra::exec::{ExecResult, MockExecutor};
+use crate::infra::github::tests::MockHttpClient;
 use crate::infra::platform::{Os, Platform};
 use crate::test_helpers::{ContextBuilder, make_context, task_batch};
+use std::time::Duration;
 
 fn source() -> ReleaseSource {
     serde_json::from_str(r#"{"package_base":"tool-bin","repository":"example/tool","assets":{"x86_64":"tool.tar.gz"}}"#)
@@ -129,29 +131,22 @@ fn task() -> UpdateLocalPackageVersions {
 
 fn release_context(root: &Path, fail: bool) -> Context {
     let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "curl"
-                && spec.is_checked()
-                && spec.arguments().last().unwrap()
-                    == "https://api.github.com/repos/example/tool/releases/latest"
-        })
-        .returning(move |_| {
-            if fail {
-                return Err(crate::infra::exec::ExecError::spawn(
-                    "curl",
-                    std::io::Error::other("fixture network failure"),
-                ));
-            }
-            Ok(ExecResult::success(release()))
-        });
+    mock.expect_which()
+        .withf(|program| program == "gh")
+        .return_const(false);
+    let response = if fail {
+        Err(anyhow::anyhow!("fixture network failure"))
+    } else {
+        Ok(release().into_bytes())
+    };
     make_context(
         root.into(),
         None,
         Platform::new(Os::Linux, true),
         Arc::new(mock),
     )
+    .with_env(crate::infra::env::MapEnv::new().into_handle())
+    .with_http(Arc::new(MockHttpClient::new(vec![response])))
 }
 
 #[test]
@@ -207,6 +202,91 @@ fn fresh_checkout_generates_pins_only_when_applied() {
     assert_eq!(
         std::fs::read_to_string(target).unwrap(),
         release_pins(&source(), &release()).unwrap()
+    );
+}
+
+#[test]
+fn package_discovery_authenticates_deduplicates_and_preserves_preview_cache() {
+    let dir = fixture();
+    let other = add_recipe(dir.path(), "other-bin");
+    let mut descriptor: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(other.join("release.json")).unwrap())
+            .unwrap();
+    descriptor["repository"] = serde_json::json!("example/tool");
+    std::fs::write(other.join("release.json"), descriptor.to_string()).unwrap();
+    let http = Arc::new(MockHttpClient::new(vec![
+        Ok(release().into_bytes()),
+        Ok(release().into_bytes()),
+    ]));
+    let ctx = make_context(
+        dir.path().into(),
+        None,
+        Platform::new(Os::Linux, true),
+        Arc::new(MockExecutor::new()),
+    )
+    .with_http(Arc::<MockHttpClient>::clone(&http))
+    .with_env(
+        crate::infra::env::MapEnv::new()
+            .with("GH_TOKEN", "fixture-token")
+            .into_handle(),
+    );
+    let cache = dir.path().join("bin/.github-releases-v1");
+    let preview = task().run(&ctx.with_dry_run(true)).unwrap();
+    assert_eq!(task_batch(&preview).changed_count(), 2);
+    assert!(!cache.exists());
+    assert!(!other.join("version.sh").exists());
+    assert_eq!(task_batch(&task().run(&ctx).unwrap()).changed_count(), 2);
+    assert!(cache.exists());
+    assert!(matches!(task().run(&ctx).unwrap(), TaskResult::Ok));
+    assert_eq!(
+        http.request_urls().len(),
+        2,
+        "one request per invocation, none on warm repeat"
+    );
+    assert!(
+        http.request_headers()
+            .iter()
+            .all(|headers| headers
+                .contains(&("Authorization".into(), "Bearer fixture-token".into())))
+    );
+}
+
+#[test]
+fn package_rate_limit_stops_following_requests_and_retains_all_pins() {
+    let dir = fixture();
+    let other = add_recipe(dir.path(), "z-bin");
+    std::fs::write(other.join("version.sh"), "older pins\n").unwrap();
+    let http = Arc::new(MockHttpClient::responses(
+        (0..2)
+            .map(|_| {
+                Ok(crate::infra::github::tests::response(
+                    429,
+                    &[("retry-after", "120")],
+                    "",
+                ))
+            })
+            .collect(),
+    ));
+    let ctx = release_context(dir.path(), false).with_http(Arc::<MockHttpClient>::clone(&http));
+    assert_eq!(
+        task_batch(&task().run(&ctx.with_dry_run(true)).unwrap()).failed_count(),
+        2
+    );
+    assert!(
+        !dir.path().join("bin/.github-releases-v1").exists(),
+        "preview must not persist cooldowns"
+    );
+    for _ in 0..2 {
+        assert_eq!(task_batch(&task().run(&ctx).unwrap()).failed_count(), 2);
+    }
+    assert_eq!(http.request_urls().len(), 2);
+    assert_eq!(
+        std::fs::read_to_string(other.join("version.sh")).unwrap(),
+        "older pins\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap(),
+        "original pins\n"
     );
 }
 
@@ -794,36 +874,11 @@ fn add_recipe(root: &Path, base: &str) -> PathBuf {
 }
 
 fn release_failure_executor(retained: bool) -> MockExecutor {
-    use crate::infra::exec::ExecError;
     let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .withf(|program| program == "gh")
+        .return_const(false);
     expect_metadata(&mut mock);
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "curl"
-                && spec.arguments().last().unwrap()
-                    == "https://api.github.com/repos/example/broken-bin/releases/latest"
-        })
-        .returning(move |_| {
-            if retained {
-                let mut metadata: serde_json::Value = serde_json::from_str(&release()).unwrap();
-                metadata["assets"] = serde_json::json!([]);
-                Ok(ExecResult::success(metadata.to_string()))
-            } else {
-                Err(ExecError::spawn(
-                    "curl",
-                    std::io::Error::other("upstream unavailable"),
-                ))
-            }
-        });
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.program() == "curl"
-                && spec.arguments().last().unwrap()
-                    == "https://api.github.com/repos/example/tool/releases/latest"
-        })
-        .returning(|_| Ok(ExecResult::success(release())));
     mock.expect_execute()
         .once()
         .withf(|spec| {
@@ -895,6 +950,7 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
             )
             .with_home(setup.home().to_path_buf())
             .with_env(crate::infra::env::MapEnv::new().into_handle())
+            .with_http(Arc::new(release_failure_http(retained)))
             .with_log(Arc::<crate::infra::logging::Logger>::clone(&logger))
             .with_parallel(parallel);
             let versions = UpdateLocalPackageVersions;
@@ -967,6 +1023,17 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
             }
         }
     }
+}
+
+fn release_failure_http(retained: bool) -> MockHttpClient {
+    let broken = if retained {
+        let mut metadata: serde_json::Value = serde_json::from_str(&release()).unwrap();
+        metadata["assets"] = serde_json::json!([]);
+        Ok(metadata.to_string().into_bytes())
+    } else {
+        Err(anyhow::anyhow!("upstream unavailable"))
+    };
+    MockHttpClient::new(vec![broken, Ok(release().into_bytes())])
 }
 
 #[test]
@@ -1081,31 +1148,25 @@ fn cancellation_aborts_discovery_without_publishing_pending_updates() {
     let original =
         std::fs::read_to_string(dir.path().join("packages/tool-bin/version.sh")).unwrap();
     let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.arguments().last().unwrap()
-                == "https://api.github.com/repos/example/tool/releases/latest"
-        })
-        .returning(|_| Ok(ExecResult::success(release())));
-    mock.expect_execute()
-        .once()
-        .withf(|spec| {
-            spec.arguments().last().unwrap()
-                == "https://api.github.com/repos/example/z-bin/releases/latest"
-        })
-        .returning(|_| {
-            Err(crate::infra::exec::ExecError::Cancelled {
-                command: "curl".into(),
-                result: ExecResult::failure("", "interrupted", None),
-            })
-        });
+    mock.expect_which()
+        .withf(|program| program == "gh")
+        .return_const(false);
+    let http = MockHttpClient::new(vec![
+        Ok(release().into_bytes()),
+        Err(crate::infra::exec::ExecError::Cancelled {
+            command: "release discovery".into(),
+            result: ExecResult::failure("", "interrupted", None),
+        }
+        .into()),
+    ]);
     let ctx = make_context(
         dir.path().into(),
         None,
         Platform::new(Os::Linux, true),
         Arc::new(mock),
-    );
+    )
+    .with_env(crate::infra::env::MapEnv::new().into_handle())
+    .with_http(Arc::new(http));
     let error = UpdateLocalPackageVersions.run(&ctx).unwrap_err();
     assert!(
         error
@@ -1118,6 +1179,7 @@ fn cancellation_aborts_discovery_without_publishing_pending_updates() {
         original
     );
     assert!(!other.join("version.sh").exists());
+    assert!(!dir.path().join("bin/.github-releases-v1").exists());
 }
 
 #[test]

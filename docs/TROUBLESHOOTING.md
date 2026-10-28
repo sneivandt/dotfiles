@@ -103,11 +103,21 @@ Before replacing a binary, distinguish expected behavior from a failed update:
   for API rate limits, DNS, or proxy failures.
 
 For repeated anonymous release-check rate limits, run `gh auth login --hostname
-github.com` once. The updater reuses saved credentials that do not require
-Linux desktop-keyring access when neither `GH_TOKEN` nor `GITHUB_TOKEN` is set
+github.com` once. Both self-update and local package discovery reuse saved
+credentials that do not require Linux desktop-keyring access when neither
+`GH_TOKEN` nor `GITHUB_TOKEN` is set
 to a non-empty value. For keyring-only credentials, supply an environment token.
-Explicit tokens take precedence; an expired or denied token can still cause
-an anonymous fallback.
+Explicit tokens take precedence; an expired or denied token is reported rather
+than silently falling back to anonymous requests. Correct or unset a stale
+environment token if it overrides a working saved login.
+
+Anonymous API requests share a 60-request hourly quota with everything using
+the same public IP, including other VPN/NAT users. Release discovery caches
+validated metadata for ten minutes and uses conditional requests after expiry.
+Rate-limit diagnostics report a retry delay/deadline; subsequent invocations
+honor that cooldown instead of repeatedly hitting GitHub. A `403` without
+rate-limit evidence remains a permission failure, not an assumed quota failure.
+Failed package refreshes retain existing pins but remain failures in the summary.
 
 If an old binary predates support for the current release-tag format, its
 updater may never recognize a new release. After confirming the executable path

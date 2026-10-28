@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use anyhow::{Context as _, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -13,8 +12,8 @@ use crate::engine::{
     Context, Operation, OperationState, Task, TaskResult, TaskStats, process_operation,
     task_metadata,
 };
-use crate::infra::exec::CommandSpec;
 use crate::infra::fs::write_atomic;
+use crate::infra::github::{CacheWrites, Releases, github_token};
 use crate::infra::logging::OutputExt as _;
 
 /// Generate the machine-specific path to the checkout's PKGBUILD repository.
@@ -439,6 +438,7 @@ struct Asset {
 struct ReleasePlan {
     files: Vec<(PathBuf, String)>,
     failures: Vec<String>,
+    cache: CacheWrites,
 }
 
 impl Operation for ReleaseUpdates {
@@ -448,29 +448,15 @@ impl Operation for ReleaseUpdates {
         let mut files = Vec::new();
         let mut failures = Vec::new();
         let recipes = recipes(ctx)?;
-        let discoveries = map_recipes(ctx, &recipes, |(_, source)| {
-            let url = format!(
-                "https://api.github.com/repos/{}/releases/latest",
-                source.repository
-            );
-            let response = ctx.executor().execute(
-                CommandSpec::new("curl")
-                    .args(&[
-                        "--fail",
-                        "--silent",
-                        "--show-error",
-                        "--location",
-                        "--max-time",
-                        "60",
-                        "--header",
-                        "Accept: application/vnd.github+json",
-                        &url,
-                    ])
-                    .timeout(Duration::from_secs(70)),
-            )?;
-            release_pins(source, &response.stdout)
-        })?;
-        for ((directory, source), discovered) in recipes.into_iter().zip(discoveries) {
+        if recipes.is_empty() {
+            return Ok(OperationState::Complete);
+        }
+        let token = github_token(&**ctx.env(), ctx.executor());
+        let mut releases = Releases::new(ctx.root(), ctx.http(), token)
+            .with_cancellation(ctx.cancellation_token());
+        for (directory, source) in recipes {
+            let discovered =
+                releases.latest(&source.repository, |body| release_pins(&source, body));
             match discovered {
                 Ok(pins) => {
                     let path = directory.join("version.sh");
@@ -494,10 +480,15 @@ impl Operation for ReleaseUpdates {
                 }
             }
         }
-        if files.is_empty() && failures.is_empty() {
+        let cache = releases.into_cache_writes();
+        if files.is_empty() && failures.is_empty() && cache.is_empty() {
             Ok(OperationState::Complete)
         } else {
-            Ok(OperationState::needs_run(ReleasePlan { files, failures }))
+            Ok(OperationState::needs_run(ReleasePlan {
+                files,
+                failures,
+                cache,
+            }))
         }
     }
 
@@ -516,6 +507,7 @@ impl Operation for ReleaseUpdates {
     }
 
     fn apply(&self, ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+        plan.cache.persist();
         let mut failures = plan.failures.clone();
         let mut changed = 0;
         for (path, content) in &plan.files {

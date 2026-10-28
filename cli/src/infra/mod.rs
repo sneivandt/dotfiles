@@ -10,6 +10,7 @@ pub mod elevation;
 pub mod env;
 pub mod exec;
 pub mod fs;
+pub(crate) mod github;
 pub mod logging;
 pub mod platform;
 pub mod provisioning;

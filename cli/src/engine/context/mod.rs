@@ -94,6 +94,7 @@ pub struct Context {
     log: Arc<dyn Log>,
     home: Arc<std::path::PathBuf>,
     executor: Arc<dyn Executor>,
+    http: Arc<dyn crate::infra::github::HttpClient>,
     execution_policy: ExecutionPolicy,
     /// Read-only access to the process environment.
     ///
@@ -117,6 +118,7 @@ impl std::fmt::Debug for Context {
             .field("log", &"<dyn Log>")
             .field("home", &self.home)
             .field("executor", &"<dyn Executor>")
+            .field("http", &"<dyn HttpClient>")
             .field("execution_policy", &self.execution_policy)
             .field("env", &"<dyn Env>")
             .field("cancelled", &self.cancelled)
@@ -188,6 +190,9 @@ impl Context {
             log,
             home: Arc::new(std::path::PathBuf::from(home)),
             executor,
+            http: Arc::new(crate::infra::github::UreqClient::new(
+                std::time::Duration::from_secs(60),
+            )),
             execution_policy,
             env,
             cancelled: CancellationToken::new(),
@@ -218,6 +223,9 @@ impl Context {
             log,
             home: Arc::new(home),
             executor,
+            http: Arc::new(crate::infra::github::UreqClient::new(
+                std::time::Duration::from_secs(60),
+            )),
             execution_policy: ExecutionPolicy::from_options(opts, opts.is_ci.unwrap_or(false)),
             env: crate::infra::env::system(),
             cancelled: CancellationToken::new(),
@@ -238,6 +246,15 @@ impl Context {
     #[must_use]
     pub fn env(&self) -> &Arc<dyn Env> {
         &self.env
+    }
+
+    pub(crate) fn http(&self) -> &dyn crate::infra::github::HttpClient {
+        &*self.http
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_http(&self, http: Arc<dyn crate::infra::github::HttpClient>) -> Self {
+        self.clone_with(|ctx| ctx.http = http)
     }
 
     /// Path to the optional overlay repository, if one is configured.

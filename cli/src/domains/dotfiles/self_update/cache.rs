@@ -65,7 +65,8 @@ fn write_cache_at(root: &Path, tag: &str, now: u64, boot_id: Option<&str>) -> Re
         || format!("{}\n{tag}\n{now}\n", super::REPO),
         |boot_id| format!("{}\n{tag}\n{now}\n{boot_id}\n", super::REPO),
     );
-    fs::write(cache_path(root), content).context("writing version cache file")?;
+    crate::infra::fs::write_atomic(&cache_path(root), content)
+        .context("writing version cache file")?;
     Ok(())
 }
 
@@ -211,5 +212,29 @@ mod tests {
             content,
             format!("{}\nv2026.07.25-99\n100\nboot-a\n", super::super::REPO)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_cache_replaces_a_symlink_without_modifying_its_target() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        let target = dir.path().join("unrelated");
+        fs::write(&target, "preserve this file").unwrap();
+        std::os::unix::fs::symlink(&target, cache_path(dir.path())).unwrap();
+
+        write_cache_at(dir.path(), "v1.0", 100, Some("boot-a")).unwrap();
+
+        assert_eq!(fs::read_to_string(target).unwrap(), "preserve this file");
+        assert!(
+            !fs::symlink_metadata(cache_path(dir.path()))
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(
+            read_fresh_cache_at(dir.path(), 101, Some("boot-a")),
+            Some("v1.0".into())
+        );
+        assert_eq!(fs::read_dir(dir.path().join("bin")).unwrap().count(), 1);
     }
 }

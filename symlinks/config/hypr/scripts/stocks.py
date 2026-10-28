@@ -105,12 +105,16 @@ def valid_quote(quote):
             and all(number(value) for value in quote["history"]))
 
 
+def fresh_quote(quote, now):
+    return 0 <= now - quote["updated"] < CACHE_TTL
+
+
 def fresh_cache(path, now):
     cached = read_cache(path)
     try:
         if (len(cached["quotes"]) == len(QUOTES)
                 and {quote["symbol"] for quote in cached["quotes"]} == {item[1] for item in QUOTES}
-                and all(0 <= now - quote["updated"] < CACHE_TTL for quote in cached["quotes"])
+                and all(fresh_quote(quote, now) for quote in cached["quotes"])
                 and 0 <= now - path.stat().st_mtime < CACHE_TTL):
             return cached
     except OSError:
@@ -152,13 +156,16 @@ def quotes(cache_dir, fetch=fetch_quote):
 
         def refresh(item):
             query, symbol, name, prefix = item
+            cached_quote = previous.get(symbol)
+            if cached_quote is not None and fresh_quote(cached_quote, now):
+                return cached_quote, False
             try:
                 quote = {**fetch(query, symbol, name, prefix, now), "updated": now}
                 if valid_quote(quote):
                     return quote, True
             except (OSError, subprocess.SubprocessError, ValueError, KeyError, IndexError, TypeError, AttributeError):
                 pass
-            return previous.get(symbol), False
+            return cached_quote, False
 
         # map preserves configured display order even when requests finish out of order.
         with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
@@ -168,12 +175,16 @@ def quotes(cache_dir, fetch=fetch_quote):
         results = [quote for quote, _ in refreshed if quote is not None]
         payload = {"version": CACHE_VERSION, "quotes": results,
                    "updated": min(quote["updated"] for quote in results)}
-        write_cache(path, payload)
+        try:
+            write_cache(path, payload)
+        except OSError as error:
+            print(f"Cannot save market cache: {error.strerror or error}", file=sys.stderr)
         return payload
 
 
 def main():
-    cache_dir = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "quickshell-stocks"
+    base = os.environ.get("XDG_CACHE_HOME")
+    cache_dir = (Path(base) if base and Path(base).is_absolute() else Path.home() / ".cache") / "quickshell-stocks"
     try:
         payload = quotes(cache_dir)
         code = 0

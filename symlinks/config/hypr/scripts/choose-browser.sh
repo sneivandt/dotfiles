@@ -31,6 +31,9 @@ do
     fi
 
     target=$1
+    if [ -e "$target" ]; then
+      exec "$browser" "$target"
+    fi
     case "$target" in
       http://*|https://*)
         exec "$browser" --app="$target"

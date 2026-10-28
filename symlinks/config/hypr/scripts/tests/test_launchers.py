@@ -4,6 +4,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 import unittest
 
@@ -226,7 +227,7 @@ class GitHubDesktopEntryTests(ScriptFixture):
 
 @unittest.skipUnless(BASH, "Requires Bash (Git Bash on Windows)")
 class LauncherTests(unittest.TestCase):
-    def launch(self, name, args, available):
+    def launch(self, name, args, available, cwd=None):
         # Python's Windows argv quoting does not protect literal newlines from
         # Git Bash. Set the fixture arguments inside Bash instead.
         script = MOCKS + "set -- " + shlex.join(args) + "\n"
@@ -237,6 +238,7 @@ class LauncherTests(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=10,
+            cwd=cwd,
             env={
                 **os.environ,
                 "BASH_ENV": "",
@@ -303,6 +305,16 @@ class LauncherTests(unittest.TestCase):
                 self.assert_launch(
                     "choose-browser.sh", [target], "chromium", ["chromium", f"--app={url}"]
                 )
+
+    def test_browser_existing_relative_files_are_not_hostnames(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for target in ("report.html", "file with spaces.html", "example.invalid"):
+                with self.subTest(target=target):
+                    with open(os.path.join(directory, target), "w", encoding="utf-8") as output:
+                        output.write("fixture")
+                    result = self.launch("choose-browser.sh", [target], "chromium", cwd=directory)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.split("\0")[:-1], ["chromium", target])
 
     def test_missing_app_is_reported(self):
         for name in ("choose-editor.sh", "choose-browser.sh"):

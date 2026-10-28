@@ -193,6 +193,54 @@ class StocksCacheTests(unittest.TestCase):
         self.assertEqual(peak, stocks.FETCH_WORKERS)
         self.assertEqual([q["symbol"] for q in result["quotes"]], [q[1] for q in stocks.QUOTES])
 
+    def test_partial_cache_retries_only_stale_or_missing_quotes(self):
+        self.write_cache(stale=False)
+        fresh = copy.deepcopy(self.cached["quotes"][1:])
+        self.cached["quotes"][0]["updated"] = 1
+        self.cached["updated"] = 1
+        self.path.write_text(json.dumps(self.cached))
+        for missing in (False, True):
+            with self.subTest(missing=missing):
+                if missing:
+                    self.path.write_text(json.dumps({**self.cached, "quotes": fresh}))
+                self.fetch.reset_mock()
+                result = stocks.quotes(self.cache, self.fetch)
+                self.assertEqual(self.fetch.call_count, 1)
+                self.assertEqual(self.fetch.call_args.args[1], stocks.QUOTES[0][1])
+                self.assertEqual(result["quotes"][-len(fresh):], fresh)
+
+    def test_partial_cache_repair_preserves_fresh_quotes_and_becomes_fresh(self):
+        self.write_cache(stale=False)
+        fresh = copy.deepcopy(self.cached["quotes"][1:])
+        self.cached["quotes"][0]["updated"] = 1
+        self.path.write_text(json.dumps(self.cached))
+        fetch = unittest.mock.Mock(side_effect=lambda query, symbol, name, prefix, now:
+                                   stocks.parse_quote(PAYLOAD, symbol, name, prefix, now))
+        result = stocks.quotes(self.cache, fetch)
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(result["quotes"][1:], fresh)
+        self.assertIsNotNone(stocks.fresh_cache(self.path, time.time()))
+        self.assertEqual(stocks.quotes(self.cache, fetch)["quotes"], result["quotes"])
+        self.assertEqual(fetch.call_count, 1)
+
+    def test_cache_write_failure_returns_fetched_quotes_and_reports_storage_error(self):
+        for previous in (False, True):
+            with self.subTest(previous=previous):
+                if previous:
+                    self.write_cache()
+                fetch = lambda query, symbol, name, prefix, now: stocks.parse_quote(PAYLOAD, symbol, name, prefix, now)
+                with patch.object(stocks.os, "replace", side_effect=OSError("storage unavailable")), \
+                     patch("sys.stderr") as errors:
+                    result = stocks.quotes(self.cache, fetch)
+                self.assertEqual(len(result["quotes"]), len(stocks.QUOTES))
+                self.assertTrue(all(q["updated"] > 1 for q in result["quotes"]))
+                self.assertIn("Cannot save market cache", "".join(c.args[0] for c in errors.write.call_args_list))
+                if previous:
+                    self.assertEqual(json.loads(self.path.read_text()), self.cached)
+                else:
+                    self.assertFalse(self.path.exists())
+                self.assertEqual(list(self.cache.glob(".quotes-prices.*")), [])
+
     def test_invalid_cached_quotes_are_filtered_and_trigger_refresh(self):
         self.write_cache(stale=False)
         good = self.cached["quotes"][0]
@@ -226,6 +274,17 @@ class StocksCacheTests(unittest.TestCase):
              patch("builtins.print") as output:
             self.assertEqual(stocks.main(), 1)
         self.assertIn("Cannot refresh market cache", output.call_args_list[0].args[0])
+
+    def test_main_uses_only_absolute_xdg_cache_directories(self):
+        for base in ("", "relative/cache", str(self.cache / "absolute")):
+            with self.subTest(base=base), \
+                 patch.dict(os.environ, {"XDG_CACHE_HOME": base}), \
+                 patch.object(stocks.Path, "home", return_value=self.cache / "home"), \
+                 patch.object(stocks, "quotes", return_value={"quotes": [], "updated": 0}) as fetch, \
+                 patch("builtins.print"):
+                self.assertEqual(stocks.main(), 0)
+                expected = Path(base) if base and Path(base).is_absolute() else self.cache / "home" / ".cache"
+                fetch.assert_called_once_with(expected / "quickshell-stocks")
 
 
 if __name__ == "__main__":

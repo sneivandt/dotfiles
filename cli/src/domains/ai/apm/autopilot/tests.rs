@@ -57,7 +57,7 @@ fn expect_python3(mock: &mut MockExecutor, times: usize, found: bool) {
         .returning(move |_| found);
 }
 
-fn expect_python3_with_present_workflows(mock: &mut MockExecutor, times: usize) {
+fn expect_python3_without_scope_probe(mock: &mut MockExecutor, times: usize) {
     expect_python3(mock, times, true);
     mock.expect_execute()
         .withf(|spec| {
@@ -65,16 +65,7 @@ fn expect_python3_with_present_workflows(mock: &mut MockExecutor, times: usize) 
                 .get(1)
                 .is_some_and(|script| script == WORKFLOW_PRESENT_IDS_SCRIPT)
         })
-        .times(times)
-        .returning(|spec| {
-            assert_eq!(spec.program(), "python3");
-            assert!(!spec.is_checked());
-            let ids = spec.arguments()[3..]
-                .iter()
-                .map(|id| id.to_str().expect("workflow id is UTF-8"))
-                .collect::<Vec<_>>();
-            Ok(ExecResult::success(ids.join("\n")))
-        });
+        .never();
 }
 
 fn expect_workflow_script(
@@ -271,16 +262,22 @@ fn workflow_scope_probe_is_read_only_and_scoped() {
         assert_eq!(std::fs::read(&db_path).unwrap(), before);
     }
     let missing = home.join("missing.db");
-    let output = run_python_script_unchecked(
-        python,
+    for script in [
         WORKFLOW_PRESENT_IDS_SCRIPT,
-        &[missing.to_str().unwrap(), "apm--fixture"],
-    );
-    assert!(!output.status.success());
-    assert!(
-        !missing.exists(),
-        "a read-only probe must not create a database"
-    );
+        WORKFLOW_DESIRED_IDS_SCRIPT,
+        WORKFLOW_AUTOPILOT_SCRIPT,
+    ] {
+        let output = run_python_script_unchecked(
+            python,
+            script,
+            &[missing.to_str().unwrap(), "apm--fixture"],
+        );
+        assert!(!output.status.success());
+        assert!(
+            !missing.exists(),
+            "workflow helpers must not recreate a removed database"
+        );
+    }
 }
 
 #[test]
@@ -654,6 +651,71 @@ assert con.execute(
 }
 
 #[test]
+fn readable_workflow_sources_use_one_process_per_snapshot_or_fixup() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let prompt = write_local_cron_fixture(home, python);
+    write_local_cron_prompt(
+        &prompt.with_file_name("removed.prompt.md"),
+        Some("0 9 * * *"),
+    );
+    let db_path = home.join(".copilot").join("data.db");
+    let db = db_path.to_str().unwrap();
+    let mut mock = MockExecutor::new();
+    expect_python3_without_scope_probe(&mut mock, 4);
+    let script_home = home.to_path_buf();
+    mock.expect_execute()
+        .withf(|spec| {
+            spec.arguments().get(1).is_some_and(|script| {
+                script == WORKFLOW_DESIRED_IDS_SCRIPT || script == WORKFLOW_AUTOPILOT_SCRIPT
+            })
+        })
+        .times(4)
+        .returning(move |spec| {
+            assert_eq!(spec.program(), "python3");
+            assert!(!spec.is_checked());
+            assert_eq!(spec.working_dir(), Some(script_home.as_path()));
+            let output = std::process::Command::new(python)
+                .args(spec.arguments())
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            Ok(ExecResult::success(
+                String::from_utf8(output.stdout).unwrap(),
+            ))
+        });
+    let ctx = make_context_with_home(
+        home,
+        crate::infra::platform::Platform::new(crate::infra::platform::Os::Windows, false),
+        mock,
+    );
+    let initial_db = std::fs::read(&db_path).unwrap();
+    let before = super::snapshot_desired_apm_workflow_ids(&ctx);
+    assert_eq!(before, DesiredApmWorkflows::Known(id_set(&[])));
+    assert_eq!(
+        std::fs::read(&db_path).unwrap(),
+        initial_db,
+        "snapshot must remain read-only without the separate scope probe"
+    );
+    assert!(super::apply_workflow_autopilot_fixup(&ctx, &before));
+    let desired = super::snapshot_desired_apm_workflow_ids(&ctx);
+    assert_eq!(
+        desired,
+        DesiredApmWorkflows::Known(id_set(&["apm--_local--fixture--review"]))
+    );
+    let repaired = query_local_cron_fixture(python, db);
+    assert!(!super::apply_workflow_autopilot_fixup(&ctx, &desired));
+    assert_eq!(
+        query_local_cron_fixture(python, db),
+        repaired,
+        "repeat fixup must preserve schedules and leave foreign workflows unchanged"
+    );
+}
+
+#[test]
 fn local_source_cron_schedules_converge_with_stale_lock_entries() {
     let Some(python) = python_for_script_tests() else {
         return;
@@ -827,6 +889,34 @@ con.commit()
 }
 
 #[test]
+fn stale_workflow_cron_metadata_does_not_require_new_database_schema() {
+    let Some(python) = python_for_script_tests() else {
+        return;
+    };
+    run_python_script(
+        python,
+        r#"
+import contextlib, io, json, sqlite3, sys
+from unittest.mock import patch
+source = sys.argv[1]
+connection = sqlite3.connect(":memory:")
+connection.execute("CREATE TABLE workflows (id TEXT, name TEXT, prompt TEXT, mode TEXT, enabled INTEGER, interval TEXT, schedule_hour INTEGER, schedule_minute INTEGER, schedule_day INTEGER, next_run_at TEXT)")
+connection.execute("INSERT INTO workflows VALUES ('apm--fixture', 'Review', 'prompt', 'interactive', 0, 'manual', 9, 0, 1, NULL)")
+connection.commit()
+with (
+    patch("sqlite3.connect", return_value=connection),
+    patch.object(sys, "argv", ["fixup", ":memory:", "--cron-schedules", json.dumps({"apm--removed": "0 9 * * *"}), "apm--fixture", "apm--removed"]),
+    contextlib.redirect_stdout(io.StringIO()) as output,
+):
+    exec(compile(source, "workflow_autopilot.py", "exec"), {})
+assert output.getvalue() == "1 1\napm--fixture\n", output.getvalue()
+assert connection.execute("SELECT id, mode, enabled, next_run_at FROM workflows").fetchall() == [("apm--fixture", "autopilot", 1, None)]
+"#,
+        &[WORKFLOW_AUTOPILOT_SCRIPT],
+    );
+}
+
+#[test]
 fn workflow_source_cron_requires_schema_support_without_mutation() {
     let Some(python) = python_for_script_tests() else {
         return;
@@ -885,7 +975,7 @@ fn run_sets_apm_workflows_to_autopilot_after_install() {
 
     let mut mock = MockExecutor::new();
     let mut seq = mockall::Sequence::new();
-    expect_python3_with_present_workflows(&mut mock, 2);
+    expect_python3_without_scope_probe(&mut mock, 2);
     // Pre-install snapshot: scoped to the lockfile ids; none are desired yet,
     // so the diff in the post-install fixup is a genuine "set 3" change.
 
@@ -931,7 +1021,7 @@ fn run_restores_workflows_when_cowork_reconciliation_fails() {
         let mut mock = MockExecutor::new();
         let mut seq = mockall::Sequence::new();
         expect_which_apm(&mut mock, true);
-        expect_python3_with_present_workflows(&mut mock, 2);
+        expect_python3_without_scope_probe(&mut mock, 2);
         expect_workflow_script(
             &mut mock,
             &mut seq,
@@ -982,7 +1072,7 @@ fn run_restores_workflows_without_masking_native_failure_outcomes() {
         let mut mock = MockExecutor::new();
         let mut seq = mockall::Sequence::new();
         expect_which_apm(&mut mock, true);
-        expect_python3_with_present_workflows(&mut mock, 2);
+        expect_python3_without_scope_probe(&mut mock, 2);
         expect_workflow_script(
             &mut mock,
             &mut seq,
@@ -1059,7 +1149,7 @@ fn run_warns_on_degraded_workflow_db_cases() {
 
         let mut mock = MockExecutor::new();
         let mut seq = mockall::Sequence::new();
-        expect_python3_with_present_workflows(&mut mock, 2);
+        expect_python3_without_scope_probe(&mut mock, 2);
         mock.expect_execute()
             .once()
             .in_sequence(&mut seq)
@@ -1120,7 +1210,7 @@ fn current_install_delegates_to_apm_and_repairs_autopilot_drift() {
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
     expect_which_apm(&mut mock, true);
-    expect_python3_with_present_workflows(&mut mock, 2);
+    expect_python3_without_scope_probe(&mut mock, 2);
 
     expect_workflow_script(
         &mut mock,
@@ -1190,7 +1280,7 @@ fn update_re_arms_apm_workflows_cases() {
         let mut seq = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
         expect_which_apm(&mut mock, true);
-        expect_python3_with_present_workflows(&mut mock, 2);
+        expect_python3_without_scope_probe(&mut mock, 2);
 
         expect_workflow_script(
             &mut mock,

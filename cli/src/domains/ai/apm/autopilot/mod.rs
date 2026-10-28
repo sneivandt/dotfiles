@@ -60,31 +60,47 @@ fn run_workflow_script(
     script: &str,
     ids: &[String],
 ) -> Result<ExecResult> {
-    // APM can retain deleted prompts in its lockfile after removing their rows.
-    // Only surviving workflows need source metadata for schedule restoration.
-    let scope_args = build_workflow_script_args(WORKFLOW_PRESENT_IDS_SCRIPT, db_str, ids, None);
-    let scope = ctx.executor().execute(
-        CommandSpec::new(python)
-            .args(&scope_args)
-            .current_dir(ctx.home())
-            .unchecked(),
-    )?;
-    if !scope.success {
-        return Ok(scope);
-    }
-    let present = parse_desired_ids(&scope.stdout);
-    let existing: Vec<String> = ids
-        .iter()
-        .filter(|id| present.contains(*id))
-        .cloned()
-        .collect();
-    let schedules = read_source_cron_schedules(ctx.home(), &existing)?;
+    let existing;
+    let mut ids = ids;
+    let schedules = match read_source_cron_schedules(ctx.home(), ids) {
+        Ok(schedules) => schedules,
+        Err(error) => {
+            // Stale lock entries can outlive deleted prompts and workflow rows.
+            // Probe only on source failure, avoiding an extra Python startup
+            // for each snapshot/fixup when the sources are readable.
+            ctx.debug_fmt(|| {
+                format!("apm workflow sources: {error:#}; checking surviving workflow rows")
+            });
+            let scope_args =
+                build_workflow_script_args(WORKFLOW_PRESENT_IDS_SCRIPT, db_str, ids, None);
+            let scope = ctx.executor().execute(
+                CommandSpec::new(python)
+                    .args(&scope_args)
+                    .current_dir(ctx.home())
+                    .unchecked(),
+            )?;
+            if !scope.success {
+                return Ok(scope);
+            }
+            let present = parse_desired_ids(&scope.stdout);
+            existing = ids
+                .iter()
+                .filter(|id| present.contains(*id))
+                .cloned()
+                .collect::<Vec<_>>();
+            if existing.len() == ids.len() {
+                return Err(error);
+            }
+            ids = &existing;
+            read_source_cron_schedules(ctx.home(), ids)?
+        }
+    };
     let schedules_json = if schedules.is_empty() {
         None
     } else {
         Some(serde_json::to_string(&schedules)?)
     };
-    let args = build_workflow_script_args(script, db_str, &existing, schedules_json.as_deref());
+    let args = build_workflow_script_args(script, db_str, ids, schedules_json.as_deref());
     Ok(ctx.executor().execute(
         CommandSpec::new(python)
             .args(&args)

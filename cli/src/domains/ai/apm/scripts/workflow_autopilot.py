@@ -27,6 +27,7 @@
 # contract changes, bump this version and update the Rust callers in autopilot.rs.
 import json, sqlite3, sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 
 def parse_cron_field(field, minimum, maximum, *, sunday_alias=False):
@@ -188,13 +189,21 @@ def dedupe_managed_workflows(connection, workflow_ids, placeholders):
                 (legacy_id, *definition),
             )
 
-con = sqlite3.connect(sys.argv[1], timeout=5)
+con = sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + "?mode=rw", uri=True, timeout=5)
 con.execute("PRAGMA busy_timeout=5000")
 ids = sys.argv[2:]
 source_crons = {}
 if ids and ids[0] == "--cron-schedules":
     source_crons = json.loads(ids[1])
     ids = ids[2:]
+ph = ",".join("?" for _ in ids)
+# Source metadata can include stale lock entries; only live rows need repair.
+ids = [
+    row[0]
+    for row in con.execute(
+        "SELECT DISTINCT id FROM workflows WHERE id IN (" + ph + ") ORDER BY id", ids
+    )
+]
 ph = ",".join("?" for _ in ids)
 columns = {row[1] for row in con.execute("PRAGMA table_info(workflows)")}
 if "cron_expression" not in columns and any(source_crons.get(wid) for wid in ids):

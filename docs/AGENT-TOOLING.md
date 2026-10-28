@@ -150,6 +150,12 @@ deployment cleanup. Update advances eligible dependency refs.
 It still invokes APM when the manifest is unchanged, so deployment drift can be
 repaired.
 
+For Copilot App workflow policy, readable source metadata lets the snapshot and
+repair each use one Python process. An extra read-only database probe is needed
+only when source lookup fails, to distinguish stale lock entries from missing
+sources for live workflows. This reduces repeated startup overhead without
+caching deployment state or skipping native APM convergence.
+
 Run from the repository root with an already available CLI:
 
 ```bash

@@ -16,8 +16,9 @@
 # retain interval-only state checks. If the required contract changes, bump this
 # version and update the Rust callers in autopilot.rs.
 import json, sqlite3, sys
+from pathlib import Path
 
-con = sqlite3.connect(sys.argv[1], timeout=5)
+con = sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
 con.execute("PRAGMA busy_timeout=5000")
 ids = sys.argv[2:]
 source_crons = {}

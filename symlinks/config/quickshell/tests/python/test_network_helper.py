@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -61,12 +62,64 @@ def decode_password_file(payload):
 
 
 class NetworkTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.cache_path = Path(directory.name) / "profiles.json"
+        cache = patch.object(network, "profile_cache_path", return_value=self.cache_path)
+        cache.start()
+        self.addCleanup(cache.stop)
+
     def run_main(self, text, command="action"):
         output, errors = io.StringIO(), io.StringIO()
         with patch("sys.argv", ["network_helper.py", command]), patch("sys.stdin", io.StringIO(text)), patch("sys.stdout", output), patch("sys.stderr", errors):
             network.main()
         self.assertEqual(errors.getvalue(), "")
         return json.loads(output.getvalue())
+
+    def test_profile_cache_avoids_repeated_detail_queries_and_expires(self):
+        inventory = [["Fixture", "uuid", "802-11-wireless"]]
+        details = [["802-11-wireless.ssid", "Fixture"]]
+        with patch.object(network, "query", side_effect=[inventory, details, inventory, inventory, details]) as query, \
+             patch.object(network.time, "time", side_effect=[100, 110, 160]):
+            first = network.wifi_profiles()
+            self.assertEqual(network.wifi_profiles(), first)
+            self.assertEqual(query.call_count, 3)
+            self.assertEqual(network.wifi_profiles(), first)
+            self.assertEqual(query.call_count, 5)
+
+    def test_profile_inventory_changes_and_actions_invalidate_cache(self):
+        inventory = [["Fixture", "uuid", "802-11-wireless"]]
+        details = [["802-11-wireless.ssid", "Fixture"]]
+        with patch.object(network, "query", side_effect=[inventory, details, [], inventory, details]):
+            network.wifi_profiles()
+            self.assertEqual(network.wifi_profiles(), [])
+            network.wifi_profiles()
+        with patch.object(network, "nmcli", return_value=subprocess.CompletedProcess([], 0, "", "")):
+            network.action({"operation": "wifi", "enabled": True})
+        self.assertFalse(self.cache_path.exists())
+
+    def test_disappearing_profile_does_not_fail_status_or_cache_incomplete_inventory(self):
+        with patch.object(network, "query", side_effect=[[["Fixture", "uuid", "802-11-wireless"]], []]):
+            self.assertEqual(network.wifi_profiles(), [])
+        self.assertFalse(self.cache_path.exists())
+        with patch.object(network, "nmcli", return_value=subprocess.CompletedProcess([], 10, "", "")):
+            self.assertEqual(network.query(["fixture"], missing_ok=True), [])
+            with self.assertRaises(network.NetworkError):
+                network.query(["fixture"])
+        with patch.object(network, "nmcli", return_value=subprocess.CompletedProcess([], 8, "", "")):
+            with self.assertRaises(network.NetworkError):
+                network.query(["fixture"], missing_ok=True)
+
+    def test_bad_profile_cache_is_ignored_and_cache_write_errors_are_optional(self):
+        inventory = [["Fixture", "uuid", "802-11-wireless"]]
+        for text in ("not json", "[]", '{"version":1}',
+                     json.dumps({"version":1, "inventory":inventory, "updated":100, "profiles":[None]})):
+            self.cache_path.write_text(text)
+            self.assertIsNone(network.read_profile_cache(self.cache_path, inventory, 100))
+        with patch.object(network.os, "replace", side_effect=OSError("fixture failure")):
+            network.write_profile_cache(self.cache_path, inventory, [], 100)
+        self.assertEqual(list(self.cache_path.parent.glob(".profiles-*")), [])
 
     def test_escaped_unicode_records(self):
         self.assertEqual(

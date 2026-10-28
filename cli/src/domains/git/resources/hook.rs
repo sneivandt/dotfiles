@@ -86,7 +86,7 @@ impl IntrinsicState for HookFileResource {
 
         // Detect broken symlinks at the target location
         match crate::infra::fs::symlink_metadata_optional(&self.target, "stat target")? {
-            Some(_) if !self.target.exists() => {
+            Some(_) if !self.target.try_exists()? => {
                 return Ok(ResourceState::Incorrect {
                     current: "broken symlink".to_string(),
                 });
@@ -157,6 +157,23 @@ mod tests {
         let error = resource.current_state().unwrap_err();
         assert!(format!("{error:#}").contains("inspect source"));
         assert!(!resource.target.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn target_symlink_loop_is_an_inspection_error_not_repairable_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        let target = dir.path().join("target");
+        std::fs::write(&source, "#!/bin/sh\n").unwrap();
+        std::os::unix::fs::symlink("target", &target).unwrap();
+        let resource = HookFileResource::new(source, target.clone());
+        let error = resource.current_state().unwrap_err();
+        assert!(
+            matches!(error, crate::engine::resource::ResourceError::Io { .. }),
+            "{error:#}"
+        );
+        assert_eq!(std::fs::read_link(target).unwrap(), PathBuf::from("target"));
     }
 
     #[test]

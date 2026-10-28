@@ -577,7 +577,12 @@ The volume menu selects the default output and permits amplification to 150%,
 marking 100%. The network menu uses NetworkManager for saved networks and
 password entry; enterprise setup stays in the connection editor. Logging out,
 restarting, and shutting down require confirmation; locking is immediate.
-Failed market refreshes retain previous quotes and show stale/error status.
+Saved Wi-Fi profile details are cached for up to sixty seconds; live adapter,
+connection and signal state is still queried on every poll. Profile inventory
+changes and connection actions invalidate the cached details.
+Market requests run with at most three concurrent fetches. Failed requests
+retain that symbol's previous quote and timestamp, mark stale prices, and keep
+cached data visible alongside refresh errors. Invalid cached quotes are ignored.
 
 Quickshell watches linked sources and keeps the last valid shell on reload
 failure. Editing this checkout can therefore reload the live UI. For deliberate

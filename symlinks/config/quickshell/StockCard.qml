@@ -78,7 +78,7 @@ FocusScope {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.quote.name
+                    text: root.quote.name + (Date.now() / 1000 - Number(root.quote.updated || 0) >= 300 ? " · stale" : "")
                     color: Theme.mutedStrong
                     font.family: Theme.font
                     font.pixelSize: Theme.textSmall

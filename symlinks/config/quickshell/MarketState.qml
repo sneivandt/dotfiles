@@ -39,30 +39,28 @@ Scope {
             if (!root._queryActive)
                 return;
             root._queryActive = false;
-            if (code !== 0) {
-                root.error = errors.text.trim() || "Could not refresh market data.";
-                return;
-            }
+            const refreshError = code !== 0 ? (errors.text.trim() || "Could not refresh market data.") : "";
             let payload;
             try {
                 payload = JSON.parse(output.text);
             } catch (error) {
-                root.error = "The market service returned invalid data.";
+                root.error = refreshError || "The market service returned invalid data.";
                 console.warn(root.error, error.message);
                 return;
             }
             if (!payload || !Array.isArray(payload.quotes) || !Number.isFinite(payload.updated)) {
-                root.error = "The market service returned an unexpected response.";
+                root.error = refreshError || "The market service returned an unexpected response.";
                 console.warn(root.error);
                 return;
             }
             if (payload.quotes.length === 0) {
-                root.error = "No quotes available. The market service may be offline.";
+                root.error = refreshError || "No quotes available. The market service may be offline.";
                 return;
             }
             root.quotes = payload.quotes;
             root.updated = payload.updated;
-            root.error = "";
+            root.error = refreshError || (payload.quotes.some(quote => !Number.isFinite(quote.updated) || Date.now() / 1000 - quote.updated >= 300)
+                ? "Some market quotes are stale. Showing the last available prices." : "");
         }
     }
     Timer {

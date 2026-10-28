@@ -18,8 +18,19 @@ printf '%s\n' 99999999 > \
 cat > "$TEST_ROOT/bin/curl" <<EOF
 #!/bin/sh
 printf x >> "$TEST_ROOT/curl-calls"
-sleep 0.1
-exit 1
+# Hold the owner until every contender has observed the busy lock and exited.
+# This avoids relying on process startup timing as fetch concurrency changes.
+attempt=0
+while [ "\$attempt" -lt 100 ]; do
+  completed=0
+  for result in "$TEST_ROOT"/result-*; do
+    if [ -s "\$result" ]; then completed=\$((completed + 1)); fi
+  done
+  if [ "\$completed" -ge 19 ]; then exit 1; fi
+  attempt=\$((attempt + 1))
+  sleep 0.05
+done
+exit 2
 EOF
 
 cat > "$TEST_ROOT/bin/jq" <<'EOF'
@@ -35,7 +46,7 @@ while [ "$i" -lt 20 ]; do
   PATH="$TEST_ROOT/bin:/usr/bin:/bin" \
     HOME="$TEST_ROOT/home" \
     XDG_CACHE_HOME="$TEST_ROOT/home/.cache" \
-    python3 "$SCRIPT" >/dev/null &
+    python3 "$SCRIPT" >"$TEST_ROOT/result-$i" &
   pids="$pids $!"
   i=$((i + 1))
 done
@@ -82,10 +93,11 @@ output=$(PATH="$TEST_ROOT/data-bin:/usr/bin:/bin" \
   python3 "$SCRIPT")
 
 printf '%s' "$output" | jq -e '
-  .version == 3 and
+  .version == 4 and
   .updated > 0 and
   (.quotes | length == 5) and
   (.quotes[] |
+    .updated > 0 and
     .price == 110 and
     .name == "Test Instrument" and
     .change == 5.5 and

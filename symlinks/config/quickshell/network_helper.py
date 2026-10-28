@@ -3,6 +3,9 @@
 
 import json
 import os
+from pathlib import Path
+import tempfile
+import time
 import subprocess
 import sys
 
@@ -60,35 +63,100 @@ def nmcli(args, timeout=15, stdin=None):
         raise NetworkError("NetworkManager did not respond in time. Try again.") from None
 
 
-def query(args, columns=None):
+def query(args, columns=None, missing_ok=False):
     result = nmcli(args)
+    if missing_ok and result.returncode == 10:
+        return []
     if result.returncode:
         raise NetworkError("Could not read NetworkManager state. Check that the service is running.")
     return records(result.stdout, columns)
 
 
+PROFILE_CACHE_TTL = 60
+
+
+def profile_cache_path():
+    base = os.environ.get("XDG_CACHE_HOME")
+    directory = Path(base) if base and Path(base).is_absolute() else Path.home() / ".cache"
+    return directory / "quickshell-network" / "profiles.json"
+
+
+def invalidate_profiles():
+    try:
+        profile_cache_path().unlink(missing_ok=True)
+    except OSError:
+        # This advisory cache always expires, even if invalidation is unavailable.
+        pass
+
+
+def read_profile_cache(path, inventory, now):
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        profiles = cached["profiles"]
+        if (cached["version"] != 1 or cached["inventory"] != inventory
+                or type(cached["updated"]) not in (int, float)
+                or not 0 <= now - cached["updated"] < PROFILE_CACHE_TTL
+                or not isinstance(profiles, list)):
+            return None
+        for profile in profiles:
+            if (not isinstance(profile, dict)
+                    or not all(isinstance(profile.get(key), str)
+                               for key in ("name", "uuid", "ssid", "device", "bssid", "key"))
+                    or not isinstance(profile.get("hidden"), bool)):
+                return None
+        if sorted((p["name"], p["uuid"]) for p in profiles) != sorted((name, uuid) for name, uuid, _ in inventory):
+            return None
+        return profiles
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def write_profile_cache(path, inventory, profiles, now):
+    temporary = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".profiles-", delete=False) as output:
+            temporary = Path(output.name)
+            json.dump({"version": 1, "inventory": inventory, "profiles": profiles, "updated": now}, output)
+        os.replace(temporary, path)
+    except OSError:
+        pass  # Caching must not make an otherwise successful status query fail.
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def wifi_profiles():
+    inventory = sorted(row for row in query(["-f", "NAME,UUID,TYPE", "connection", "show"], 3)
+                       if row[2] == "802-11-wireless")
+    path, now = profile_cache_path(), time.time()
+    cached = read_profile_cache(path, inventory, now)
+    if cached is not None:
+        return cached
     profiles = []
-    for name, uuid, kind in query(["-f", "NAME,UUID,TYPE", "connection", "show"], 3):
-        if kind != "802-11-wireless":
+    complete = True
+    fields = [
+        "connection.interface-name", "802-11-wireless.ssid", "802-11-wireless.hidden",
+        "802-11-wireless.bssid", "802-11-wireless-security.key-mgmt",
+    ]
+    for name, uuid, _ in inventory:
+        rows = query(["-f", ",".join(fields), "connection", "show", "uuid", uuid], 2, missing_ok=True)
+        if not rows:
+            complete = False  # A removed profile is harmless; retry inventory next poll.
             continue
-        fields = [
-            "connection.interface-name",
-            "802-11-wireless.ssid",
-            "802-11-wireless.hidden",
-            "802-11-wireless.bssid",
-            "802-11-wireless-security.key-mgmt",
-        ]
-        settings = dict(query(["-f", ",".join(fields), "connection", "show", "uuid", uuid], 2))
+        settings = dict(rows)
         profiles.append({
-            "name": name,
-            "uuid": uuid,
-            "ssid": settings.get(fields[1], ""),
-            "device": settings.get(fields[0], ""),
+            "name": name, "uuid": uuid,
+            "ssid": settings.get(fields[1], ""), "device": settings.get(fields[0], ""),
             "hidden": settings.get(fields[2]) == "yes",
-            "bssid": settings.get(fields[3], "").upper(),
-            "key": settings.get(fields[4], ""),
+            "bssid": settings.get(fields[3], "").upper(), "key": settings.get(fields[4], ""),
         })
+    if complete:
+        write_profile_cache(path, inventory, profiles, now)
     return profiles
 
 
@@ -264,6 +332,7 @@ def action(request):
     if operation == "wifi":
         if not isinstance(request.get("enabled"), bool):
             raise NetworkError("The Wi-Fi enabled value must be true or false.")
+        invalidate_profiles()
         result = nmcli(["--wait", "10", "radio", "wifi", "on" if request["enabled"] else "off"])
     elif operation == "scan":
         devices = query(["-f", "DEVICE,TYPE,STATE", "device", "status"], 3)
@@ -324,7 +393,9 @@ def action(request):
                 args.extend(["hidden", "yes"])
         # Secrets only cross anonymous stdin pipes. Never emit nmcli's interactive
         # output or diagnostics: some failure paths may contain user input.
+        invalidate_profiles()
         result = nmcli(args, timeout=55, stdin=stdin)
+        invalidate_profiles()
         password = stdin = ""
         return {
             "ok": result.returncode == 0,

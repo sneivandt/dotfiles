@@ -1,5 +1,5 @@
 //! Task: generate and install shell completions for the dotfiles CLI.
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use crate::engine::{
     Context, Operation, OperationState, Task, TaskMeta, TaskResult, TaskStats, process_operation,
@@ -25,11 +25,26 @@ impl Operation for CompletionOperation<'_> {
     type Plan = ();
 
     fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
-        if self.destination.exists()
-            && let Ok(existing) = std::fs::read_to_string(&self.destination)
-            && existing == self.content
+        // Generated destinations are owned files. Refuse symlinks instead of
+        // writing through them or silently replacing a user's redirection.
+        if let Some(metadata) = crate::infra::fs::symlink_metadata_optional(
+            &self.destination,
+            "inspect completion destination",
+        )? && metadata.file_type().is_symlink()
         {
-            return Ok(OperationState::Complete);
+            anyhow::bail!(
+                "completion destination is a symlink: {}",
+                self.destination.display()
+            );
+        }
+        match std::fs::read_to_string(&self.destination) {
+            Ok(existing) if existing == self.content => return Ok(OperationState::Complete),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("read completions: {}", self.destination.display()));
+            }
         }
 
         Ok(OperationState::needs_run(()))
@@ -42,7 +57,7 @@ impl Operation for CompletionOperation<'_> {
     }
 
     fn apply(&self, ctx: &Context, _plan: &Self::Plan) -> Result<TaskResult> {
-        crate::infra::fs::write_with_parent(&self.destination, self.content)?;
+        crate::infra::fs::write_atomic(&self.destination, self.content)?;
         ctx.log()
             .info(format!("write {} completions", self.shell_name));
         Ok(TaskStats::changed().finish())
@@ -238,6 +253,43 @@ mod tests {
                 "stale completions",
                 "{os:?}"
             );
+        }
+    }
+
+    #[test]
+    fn completion_read_errors_preserve_existing_bytes_even_in_preview() {
+        for os in [Os::Linux, Os::Windows] {
+            let (_dir, ctx, destination, _) = completion_fixture(os);
+            std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            std::fs::write(&destination, [0xff, 0xfe]).unwrap();
+            for dry_run in [true, false] {
+                let error = task().run(&ctx.with_dry_run(dry_run)).unwrap_err();
+                assert!(error.to_string().contains("read completions"), "{error:#}");
+                assert_eq!(std::fs::read(&destination).unwrap(), [0xff, 0xfe]);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn completion_symlinks_are_rejected_without_changing_the_referent() {
+        let (_dir, ctx, destination, expected) = completion_fixture(Os::Linux);
+        std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+        let referent = std::path::absolute(destination.with_extension("original")).unwrap();
+        for content in [None, Some("preserve"), Some(expected)] {
+            if let Some(content) = content {
+                std::fs::write(&referent, content).unwrap();
+            }
+            std::os::unix::fs::symlink(&referent, &destination).unwrap();
+            let error = task().run(&ctx).unwrap_err();
+            assert!(error.to_string().contains("is a symlink"), "{error:#}");
+            assert_eq!(std::fs::read_link(&destination).unwrap(), referent);
+            if let Some(content) = content {
+                assert_eq!(std::fs::read_to_string(&referent).unwrap(), content);
+            } else {
+                assert!(!referent.exists());
+            }
+            std::fs::remove_file(&destination).unwrap();
         }
     }
 

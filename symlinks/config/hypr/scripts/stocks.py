@@ -2,6 +2,7 @@
 """Fetch desktop market quotes with a shared, atomically replaced JSON cache."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import math
 import os
 from pathlib import Path
@@ -22,12 +23,16 @@ QUOTES = (
     ("SPCX", "SPCX", "SpaceX", "$"),
     ("BTC-USD", "BTC", "Bitcoin", "$"),
 )
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 CACHE_TTL = 300
+FETCH_WORKERS = 3
 
 
 def number(value):
-    return type(value) in (int, float) and math.isfinite(value)
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def parse_quote(payload, symbol, fallback_name, prefix, now):
@@ -82,15 +87,31 @@ def read_cache(path):
                 or not isinstance(payload.get("quotes"), list)
                 or not number(payload.get("updated"))):
             return empty
-        return {"quotes": payload["quotes"], "updated": payload["updated"]}
+        valid = [quote for quote in payload["quotes"] if valid_quote(quote)]
+        return {"quotes": valid, "updated": payload["updated"]}
     except (OSError, ValueError, AttributeError):
         return empty
+
+
+def valid_quote(quote):
+    """Cached data crosses the same trust boundary as an upstream response."""
+    return (isinstance(quote, dict)
+            and all(isinstance(quote.get(key), str) and quote[key].strip()
+                    for key in ("symbol", "name", "prefix"))
+            and all(number(quote.get(key)) for key in
+                    ("price", "change", "historyStart", "yearChange", "yearLow", "yearHigh", "updated"))
+            and quote["updated"] > 0
+            and isinstance(quote.get("history"), list) and bool(quote["history"])
+            and all(number(value) for value in quote["history"]))
 
 
 def fresh_cache(path, now):
     cached = read_cache(path)
     try:
-        if cached["quotes"] and 0 <= now - path.stat().st_mtime < CACHE_TTL:
+        if (len(cached["quotes"]) == len(QUOTES)
+                and {quote["symbol"] for quote in cached["quotes"]} == {item[1] for item in QUOTES}
+                and all(0 <= now - quote["updated"] < CACHE_TTL for quote in cached["quotes"])
+                and 0 <= now - path.stat().st_mtime < CACHE_TTL):
             return cached
     except OSError:
         pass
@@ -127,15 +148,26 @@ def quotes(cache_dir, fetch=fetch_quote):
         if cached is not None:
             return cached
         now = int(time.time())
-        results = []
-        for query, symbol, name, prefix in QUOTES:
+        previous = {quote["symbol"]: quote for quote in read_cache(path)["quotes"]}
+
+        def refresh(item):
+            query, symbol, name, prefix = item
             try:
-                results.append(fetch(query, symbol, name, prefix, now))
+                quote = {**fetch(query, symbol, name, prefix, now), "updated": now}
+                if valid_quote(quote):
+                    return quote, True
             except (OSError, subprocess.SubprocessError, ValueError, KeyError, IndexError, TypeError, AttributeError):
-                continue
-        if not results:
+                pass
+            return previous.get(symbol), False
+
+        # map preserves configured display order even when requests finish out of order.
+        with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+            refreshed = list(pool.map(refresh, QUOTES))
+        if not any(success for _, success in refreshed):
             return read_cache(path)
-        payload = {"version": CACHE_VERSION, "quotes": results, "updated": now}
+        results = [quote for quote, _ in refreshed if quote is not None]
+        payload = {"version": CACHE_VERSION, "quotes": results,
+                   "updated": min(quote["updated"] for quote in results)}
         write_cache(path, payload)
         return payload
 

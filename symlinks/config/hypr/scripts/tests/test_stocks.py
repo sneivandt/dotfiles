@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -74,10 +76,16 @@ class StocksCacheTests(unittest.TestCase):
         self.cache = Path(temporary.name)
         self.path = self.cache / "quotes.json"
         self.lock = self.cache / "quotes-prices.flock"
-        self.cached = {"version": 3, "quotes": [{"symbol": "TEST"}], "updated": 1}
+        self.cached = {"version": stocks.CACHE_VERSION, "quotes": [
+            {**stocks.parse_quote(PAYLOAD, symbol, name, prefix, 5000), "updated": 1}
+            for _, symbol, name, prefix in stocks.QUOTES], "updated": 1}
         self.fetch = unittest.mock.Mock(side_effect=OSError("offline"))
 
     def write_cache(self, stale=True):
+        if not stale:
+            self.cached["updated"] = int(time.time())
+            for quote in self.cached["quotes"]:
+                quote["updated"] = self.cached["updated"]
         self.path.write_text(json.dumps(self.cached))
         if stale:
             os.utime(self.path, (1, 1))
@@ -129,7 +137,7 @@ class StocksCacheTests(unittest.TestCase):
 
     def test_fresh_cache_needs_no_lock_or_fetch(self):
         self.write_cache(stale=False)
-        self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], 1)
+        self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], self.cached["updated"])
         self.fetch.assert_not_called()
         self.assertFalse(self.lock.exists())
 
@@ -141,22 +149,61 @@ class StocksCacheTests(unittest.TestCase):
             self.write_cache(stale=False)
 
         with patch.object(stocks.fcntl, "flock", side_effect=acquire):
-            self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], 1)
+            self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], self.cached["updated"])
         self.fetch.assert_not_called()
 
     def test_failed_refresh_preserves_stale_cache(self):
         self.write_cache()
-        self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], 1)
+        self.assertEqual(stocks.quotes(self.cache, self.fetch)["updated"], self.cached["updated"])
         self.assertEqual(self.fetch.call_count, 5)
         self.assertEqual(json.loads(self.path.read_text()), self.cached)
 
-    def test_partial_failure_retains_valid_quotes_and_replaces_cache(self):
-        quote = stocks.parse_quote(PAYLOAD, "TEST", "Fallback", "$", 5000)
-        self.fetch.side_effect = [ValueError("bad data"), quote, OSError("offline"), quote, quote]
-        result = stocks.quotes(self.cache, self.fetch)
-        self.assertEqual(len(result["quotes"]), 3)
+    def test_partial_failure_retains_previous_quotes_and_their_timestamps(self):
+        self.write_cache()
+        def fetch(query, symbol, name, prefix, now):
+            if symbol == "MSFT":
+                raise OSError("offline")
+            return stocks.parse_quote(PAYLOAD, symbol, name, prefix, now)
+        result = stocks.quotes(self.cache, fetch)
+        self.assertEqual([q["symbol"] for q in result["quotes"]], [q[1] for q in stocks.QUOTES])
+        self.assertEqual(result["quotes"][0], self.cached["quotes"][0])
+        self.assertTrue(all(q["updated"] > 1 for q in result["quotes"][1:]))
+        self.assertEqual(result["updated"], 1)
+        self.assertIsNone(stocks.fresh_cache(self.path, time.time()))
         self.assertEqual(result, json.loads(self.path.read_text()))
         self.assertEqual(list(self.cache.glob(".quotes-prices.*")), [])
+
+    def test_parallel_fetches_are_bounded_and_preserve_order(self):
+        barrier = threading.Barrier(stocks.FETCH_WORKERS)
+        lock = threading.Lock()
+        active = peak = 0
+        def fetch(query, symbol, name, prefix, now):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            try:
+                if symbol in [q[1] for q in stocks.QUOTES[:stocks.FETCH_WORKERS]]:
+                    barrier.wait(timeout=5)
+                return stocks.parse_quote(PAYLOAD, symbol, name, prefix, now)
+            finally:
+                with lock:
+                    active -= 1
+        result = stocks.quotes(self.cache, fetch)
+        self.assertEqual(peak, stocks.FETCH_WORKERS)
+        self.assertEqual([q["symbol"] for q in result["quotes"]], [q[1] for q in stocks.QUOTES])
+
+    def test_invalid_cached_quotes_are_filtered_and_trigger_refresh(self):
+        self.write_cache(stale=False)
+        good = self.cached["quotes"][0]
+        for bad in (None, {}, {**good, "price": float("nan")},
+                    {**good, "history": [float("inf")]}, {**good, "updated": True},
+                    {**good, "name": 42}):
+            with self.subTest(bad=bad):
+                self.path.write_text(json.dumps({**self.cached, "quotes": [good, bad]}))
+                self.assertEqual(stocks.read_cache(self.path)["quotes"], [good])
+                self.assertIsNone(stocks.fresh_cache(self.path, time.time()))
+                json.dumps(stocks.read_cache(self.path), allow_nan=False)
 
     def test_failed_atomic_replace_preserves_previous_cache_and_cleans_temp(self):
         self.write_cache()

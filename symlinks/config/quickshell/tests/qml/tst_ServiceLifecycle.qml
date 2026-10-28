@@ -174,7 +174,7 @@ Item {
         function test_market_start_failure_preserves_previous_quotes_and_recovers() {
             const market = make(marketComponent);
             const query = process(market, "marketQueryProcess");
-            const result = JSON.stringify({ quotes: [{ symbol: "TEST", price: 10 }], updated: 123 });
+            const result = JSON.stringify({ quotes: [{ symbol: "TEST", price: 10, updated: Math.floor(Date.now() / 1000) }], updated: 123 });
             query.finish(0, result);
             compare(market.error, "");
             compare(market.loading, false);
@@ -190,6 +190,27 @@ Item {
             query.finish(0, result);
             compare(market.error, "");
             compare(market.loading, false);
+        }
+
+        function test_market_failure_uses_cached_payload_and_preserves_error() {
+            const market = make(marketComponent);
+            const query = process(market, "marketQueryProcess");
+            query.finish(1, JSON.stringify({ quotes: [{ symbol: "CACHED", updated: 1 }], updated: 1 }), "Cache unavailable");
+            compare(market.quotes[0].symbol, "CACHED");
+            compare(market.updated, 1);
+            compare(market.error, "Cache unavailable");
+            market.refresh();
+            query.finish(1, "invalid", "Still unavailable");
+            compare(market.quotes[0].symbol, "CACHED");
+            compare(market.error, "Still unavailable");
+        }
+
+        function test_market_partial_refresh_reports_stale_quotes() {
+            const market = make(marketComponent);
+            process(market, "marketQueryProcess").finish(0,
+                JSON.stringify({ quotes: [{ symbol: "OLD", updated: 1 }], updated: 1 }));
+            verify(market.error.includes("stale"));
+            compare(market.quotes[0].symbol, "OLD");
         }
 
         function test_market_exit_failure_is_not_replaced_by_start_error() {

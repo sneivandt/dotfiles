@@ -124,6 +124,41 @@ class ShellConfigTests(unittest.TestCase):
         )
         self.assertIn(str(self.home / ".local/bin"), result.stdout.strip().split(":"))
 
+    def test_path_finds_cargo_commands_in_custom_cargo_home(self):
+        cargo_home = self.fixture / "custom cargo home"
+        self.write(cargo_home / "bin/cargo-fixture", '#!/bin/sh\nprintf custom-cargo', executable=True)
+        self.env["CARGO_HOME"] = str(cargo_home)
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/path.sh"\n'
+                    'cargo-fixture\n', shell=shell,
+                )
+                self.assertEqual(result.stdout, "custom-cargo")
+
+    def test_manpager_falls_back_when_col_is_unavailable(self):
+        for shell in ("bash", "zsh"):
+            for col_available in (True, False):
+                with self.subTest(shell=shell, col_available=col_available):
+                    self.env["COL_AVAILABLE"] = "0" if col_available else "1"
+                    result = self.run_shell(
+                        'command() {\n'
+                        '  if [ "$1" = -v ]; then\n'
+                        '    case "$2" in\n'
+                        '      bat) return 0;;\n'
+                        '      col) return "$COL_AVAILABLE";;\n'
+                        '    esac\n'
+                        '  fi\n'
+                        '  builtin command "$@"\n'
+                        '}\n'
+                        '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                        'printf "%s\\n" "$MANPAGER"\n', shell=shell,
+                    )
+                    if col_available:
+                        self.assertIn("col -bx | bat", result.stdout)
+                    else:
+                        self.assertEqual(result.stdout, "less\n")
+
     def test_path_moves_existing_user_directories_ahead_of_system_commands(self):
         user_paths = [str(self.home / suffix) for suffix in
                       (".local/bin", ".bin", "src/go/bin", ".cargo/bin")]
@@ -141,6 +176,84 @@ class ShellConfigTests(unittest.TestCase):
                 )
                 self.assertEqual(result.stdout.rstrip("\n").split(":"),
                                  user_paths + [part for part in inherited if part not in user_paths])
+
+    def test_profile_preserves_explicit_editor_and_visual_choices(self):
+        for shell in ("bash", "zsh"):
+            for editor, visual in (("nano", "code --wait"), ("nano", None)):
+                with self.subTest(shell=shell, editor=editor, visual=visual):
+                    self.env["EDITOR"] = editor
+                    self.env.pop("VISUAL", None)
+                    if visual is not None:
+                        self.env["VISUAL"] = visual
+                    result = self.run_shell(
+                        '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                        'printf "%s\\n" "$EDITOR" "$VISUAL"\n', shell=shell,
+                    )
+                    self.assertEqual(result.stdout.splitlines(), [editor, visual or editor])
+
+    def test_profile_uses_custom_go_workspace_and_install_directory(self):
+        self.install_profile()
+        workspace = self.fixture / "go workspace"
+        custom_bin = self.fixture / "go binaries"
+        self.env["GOPATH"] = str(workspace) + ":" + str(self.fixture / "second workspace")
+        for shell in ("bash", "zsh"):
+            for gobin in (None, str(custom_bin)):
+                with self.subTest(shell=shell, gobin=gobin):
+                    self.env.pop("GOBIN", None)
+                    if gobin is not None:
+                        self.env["GOBIN"] = gobin
+                    directory = Path(gobin) if gobin else workspace / "bin"
+                    self.write(directory / "go-fixture", '#!/bin/sh\nprintf custom-go', executable=True)
+                    result = self.run_shell(
+                        '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                        'printf "%s\\n" "$GOPATH"\n'
+                        'go-fixture\n', shell=shell,
+                    )
+                    self.assertEqual(result.stdout, self.env["GOPATH"] + "\ncustom-go")
+
+    def test_profile_preserves_explicit_manpager(self):
+        self.env["MANPAGER"] = "fixture-pager --raw"
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                result = self.run_shell(
+                    '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                    'printf "%s\\n" "$MANPAGER"\n', shell=shell,
+                )
+                self.assertEqual(result.stdout, "fixture-pager --raw\n")
+
+    def test_profile_preserves_fzf_search_commands_and_widget_options(self):
+        preferences = {
+            "FZF_DEFAULT_COMMAND": "find . -type f",
+            "FZF_CTRL_T_COMMAND": "find . -name '*.txt'",
+            "FZF_ALT_C_COMMAND": "find . -type d",
+            "FZF_DEFAULT_OPTS": "--layout=default",
+            "FZF_CTRL_T_OPTS": "--preview 'head -40 -- {}'",
+            "FZF_ALT_C_OPTS": "",  # An explicitly disabled preview stays disabled.
+            "FZF_CTRL_R_OPTS": "--exact",
+        }
+        self.env.update(preferences)
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                result = self.run_shell(
+                    'fd() { :; }\n'
+                    '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                    'python3 -c \'import json, os; print(json.dumps({key: value for key, value in os.environ.items() if key.startswith("FZF_")}))\'\n',
+                    shell=shell,
+                )
+                self.assertEqual(json.loads(result.stdout), preferences)
+
+    def test_history_search_defaults_do_not_require_fd(self):
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                result = self.run_shell(
+                    'command() {\n'
+                    '  [ "$1" != -v ] || [ "$2" != fd ] || return 1\n'
+                    '  builtin command "$@"\n'
+                    '}\n'
+                    '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                    'printf "%s\\n" "${FZF_CTRL_R_OPTS-unset}"\n', shell=shell,
+                )
+                self.assertEqual(result.stdout, "--no-preview\n")
 
     def test_qt_backend_respects_overrides_and_session(self):
         for shell in ("bash", "zsh"):
@@ -748,6 +861,61 @@ class ShellConfigTests(unittest.TestCase):
         )
         self.assertEqual(result.stdout.strip(), "edited: " + str(file))
 
+    def test_ff_supports_editor_arguments_without_evaluating_shell_code(self):
+        selected = self.write(self.fixture / "selected file", "fixture\n")
+        output = self.fixture / "editor-arguments"
+        editor = self.write(
+            self.fixture / "bin with spaces/editor",
+            '#!/usr/bin/python3\nimport json, os, sys\n'
+            'with open(os.environ["EDITED_ARGS"], "w") as stream:\n'
+            '    json.dump(sys.argv[1:], stream)\n', executable=True,
+        )
+        self.env.update(
+            SELECTED=str(selected), EDITED_ARGS=str(output),
+            EDITOR=shlex.quote(str(editor)) + ' --wait "two words" \'$(touch injected)\'',
+        )
+        self.run_shell(
+            'fd() { printf "%s\\0" "$SELECTED"; }\n'
+            'fzf() { cat; }\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ff\nff -e selected\n'
+        )
+        self.assertEqual(json.loads(output.read_text()),
+                         ["--wait", "two words", "$(touch injected)", str(selected)])
+        self.assertFalse((self.fixture / "injected").exists())
+
+    def test_ff_prefixes_option_like_filenames_before_editing(self):
+        self.write(self.fixture / "-selected", "fixture\n")
+        self.env.update(SELECTED="-selected", EDITOR="fixture-editor")
+        helpers = (
+            'fd() { printf "%s\\0" "$SELECTED"; }\n'
+            'fzf() { cat; }\n'
+            'fixture-editor() { print -r -- "$1"; }\n'
+            'fpath=("$ROOT/symlinks/config/zsh/functions" $fpath)\n'
+            'autoload -Uz ff\n'
+        )
+        result = self.run_shell(helpers + 'ff -e selected\n')
+        self.assertEqual(result.stdout, "./-selected\n")
+        result = self.run_shell(helpers + 'ff selected\n')
+        self.assertEqual(result.stdout, "-selected\n")
+
+    def test_fzf_file_preview_delimits_option_like_filenames(self):
+        self.assertIsNotNone(shutil.which("bat"), "bat is required for preview coverage")
+        self.write(self.fixture / "-preview", "preview fixture content\n")
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                result = self.run_shell(
+                    'fd() { :; }\n'
+                    '. "$ROOT/symlinks/config/shell/profile.sh"\n'
+                    "python3 - <<'PY'\n"
+                    'import os, shlex, subprocess\n'
+                    'preview = shlex.split(os.environ["FZF_CTRL_T_OPTS"])[1]\n'
+                    'subprocess.run(preview.replace("{}", shlex.quote("-preview")),\n'
+                    '               shell=True, check=True)\n'
+                    'PY\n', shell=shell,
+                )
+                self.assertIn("preview fixture content", result.stdout)
+
     def test_clipboard_aliases_choose_available_session_backend(self):
         binary_dir = self.fixture / "bin"
         clipboard = self.fixture / "clipboard"
@@ -999,6 +1167,17 @@ class ShellConfigTests(unittest.TestCase):
         archive.write_bytes(gzip.compress(b"fixture\n"))
         self.run_extract(archive.name)
         self.assertEqual((self.home / "-sample with spaces").read_bytes(), b"fixture\n")
+
+    def test_extract_standalone_zstandard_archive(self):
+        self.assertIsNotNone(shutil.which("zstd"), "zstd is required for extraction coverage")
+        archive = self.home / "-sample with spaces.zst"
+        compressed = subprocess.run(
+            ["zstd", "-q", "-c"], input=b"fixture\n", capture_output=True, check=True,
+        ).stdout
+        archive.write_bytes(compressed)
+        self.run_extract(archive.name)
+        self.assertEqual((self.home / "-sample with spaces").read_bytes(), b"fixture\n")
+        self.assertFalse(archive.exists())
 
     def test_extract_rejects_multiple_archives_before_changing_any_files(self):
         archives = [self.home / name for name in ("first.gz", "second.gz")]

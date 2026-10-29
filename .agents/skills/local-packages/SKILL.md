@@ -26,8 +26,9 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
 ## Preserve the boundaries
 
 - Track recipes and release-source descriptors. Keep discovered versions and
-  checksums out of the dotfiles Git history; generated `version.sh` and build
-  output belong in the root `.gitignore`.
+  checksums out of the dotfiles Git history; generated `version.sh` is ignored.
+  Builds run in disposable Paru snapshots, so do not add source-checkout ignore
+  rules for `.SRCINFO`, `src/`, `pkg/`, archives, or package outputs.
 - `package_base` must match makepkg's actual package base; the source directory
   name need not match it. Use a distinct local package name where appropriate
   so an AUR recipe does not replace the maintained recipe.
@@ -49,7 +50,9 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
   validation records or evaluates PKGBUILDs.
 - Paru builds from standalone, dotfiles-owned Git snapshots in its build cache,
   never from the source checkout. Snapshot HEAD must contain both recipe and
-  pins so Git reset/clean preserves usable inputs. Do not bypass ownership,
+  pins plus validated `.SRCINFO` so Git reset/clean preserves usable inputs and
+  Paru can discover upgrades. Repair missing, stale, or legacy snapshot metadata
+  even when recipe inputs and pins are unchanged. Do not bypass ownership,
   symlink, worktree, or external-directory checks to reuse a conflicting cache.
 - Keep `CleanAfter` working. Align each snapshot with
   `<CloneDir>/<package_base>` and the generated repository `Path`; changing only
@@ -65,7 +68,8 @@ file ownership, descriptor example, adding recipes, logs, and CI limits.
   missing ownership descriptors fail closed. Keep agent package tasks
   independent of the APM installation method.
 - Snapshots copy `PKGBUILD`, `version.sh`, and optional `package.install`,
-  `LICENSE`, and `NOTICE`. Tracked license/notice files need review when
+  `LICENSE`, and `NOTICE`, then publish validated `.SRCINFO` alongside those
+  inputs. Tracked license/notice files need review when
   upstream terms change; version discovery does not refresh them.
   Use `install=package.install` for lifecycle hooks. Extend the format
   explicitly before introducing patches or other extra inputs.

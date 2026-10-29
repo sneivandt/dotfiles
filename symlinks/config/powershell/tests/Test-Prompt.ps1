@@ -10,7 +10,7 @@ if ($parseErrors.Count -gt 0)
     throw "Profile parse errors: $parseErrors"
 }
 $definitions = @{}
-foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot'))
+foreach ($name in @('Prompt', 'Format-PromptPath', 'Test-PromptRoot', 'dot', 'Add-PathEntry'))
 {
     $definition = $ast.Find({
             param($node)
@@ -159,6 +159,50 @@ foreach ($case in $cases)
         $env:USERNAME = $originalUsername
     }
     Write-Output 'PASS: Unix root and Windows non-root identity cases'
+
+    & {
+        Set-Variable -Name GitExists -Value $true -Scope Global
+        Set-Variable -Name IsNestedPwsh -Value $false -Scope Global
+        $Global:LASTEXITCODE = 42
+        function git { $global:LASTEXITCODE = 128; 'HEAD' }
+        $text = Prompt
+        if ($text.Contains('HEAD') -or $Global:LASTEXITCODE -ne 42)
+        {
+            throw 'A failed Git query must not display its stdout as a branch or change LASTEXITCODE.'
+        }
+        Write-Output 'PASS: failed Git stdout is excluded from the prompt'
+    }
+
+    $pathFixture = Join-Path ([IO.Path]::GetTempPath()) ('dotfiles-path-' + [Guid]::NewGuid())
+    $originalPath = $env:Path
+    try
+    {
+        $directory = Join-Path $pathFixture '[literal] bin'
+        [IO.Directory]::CreateDirectory($directory) | Out-Null
+        $file = Join-Path $pathFixture 'ordinary-file'
+        [IO.File]::WriteAllText($file, 'fixture')
+        $env:Path = ''
+        Add-PathEntry -Directory $file
+        if (-not [string]::IsNullOrEmpty($env:Path))
+        {
+            throw 'Ordinary files must not be added to PATH.'
+        }
+        Add-PathEntry -Directory $directory
+        Add-PathEntry -Directory $directory
+        if ($env:Path -cne $directory)
+        {
+            throw 'Literal directory names containing brackets must be added exactly once.'
+        }
+        Write-Output 'PASS: literal PATH directories, file rejection and idempotency'
+    }
+    finally
+    {
+        $env:Path = $originalPath
+        if ([IO.Directory]::Exists($pathFixture))
+        {
+            Remove-Item -LiteralPath $pathFixture -Recurse -Force
+        }
+    }
 
     Set-Item Function:dotfiles -Value { , $args }
     $actual = dot update -v

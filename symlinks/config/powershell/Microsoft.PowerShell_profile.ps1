@@ -136,6 +136,10 @@ function Prompt
         try
         {
             $branchName = git rev-parse --abbrev-ref HEAD 2> $null
+            if ($LASTEXITCODE -ne 0)
+            {
+                $branchName = $null
+            }
         }
         finally
         {
@@ -176,7 +180,7 @@ function Add-PathEntry
         [string]$Directory
     )
 
-    if (-not (Test-Path $Directory))
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container))
     {
         return
     }

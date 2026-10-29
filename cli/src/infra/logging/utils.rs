@@ -34,7 +34,8 @@ pub(super) fn duplicates_task_message(line: &str, task_message: Option<&str>) ->
 /// Strip ANSI escape sequences from a string.
 ///
 /// Handles CSI sequences, OSC strings terminated by BEL or ST, and
-/// single-character escape sequences without consuming visible text.
+/// character-set designations and single-character escape sequences without
+/// consuming visible text.
 pub(super) fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
@@ -55,6 +56,15 @@ pub(super) fn strip_ansi(s: &str) -> String {
                             break;
                         }
                         escaped = inner == '\x1b';
+                    }
+                }
+                Some(' '..='/') => {
+                    // Escape sequences may contain intermediate bytes before
+                    // their final byte, e.g. ESC ( B emitted by `tput sgr0`.
+                    for inner in chars.by_ref() {
+                        if !(' '..='/').contains(&inner) {
+                            break;
+                        }
                     }
                 }
                 Some(_) | None => {}
@@ -236,6 +246,19 @@ mod tests {
     #[test]
     fn strip_ansi_empty_string() {
         assert_eq!(strip_ansi(""), "");
+    }
+
+    #[test]
+    fn strip_ansi_removes_character_set_designations_without_losing_text() {
+        for (input, expected) in [
+            ("\x1b(B\x1b[mplain", "plain"),
+            ("before\x1b(0line art\x1b(Bafter", "beforeline artafter"),
+            ("\x1b%G日本語", "日本語"),
+            ("before\x1b(BB after", "beforeB after"),
+            ("incomplete\x1b(", "incomplete"),
+        ] {
+            assert_eq!(strip_ansi(input), expected, "{input:?}");
+        }
     }
 
     #[test]

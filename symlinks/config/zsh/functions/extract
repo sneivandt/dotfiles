@@ -26,6 +26,7 @@ case "$archive" in
   *.7z)             7z x    "$archive" ;;
   *.Z)              uncompress "$archive" ;;
   *.xz)             unxz    "$archive" ;;
+  *.zst)            unzstd --rm "$archive" ;;
   *.deb)            ar x    "$archive" ;;
   *.rpm)            bsdtar -xf "$archive" ;;
   *)                echo "'$1' cannot be extracted via extract()" 1>&2; return 1 ;;

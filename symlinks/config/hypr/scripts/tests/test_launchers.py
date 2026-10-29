@@ -39,7 +39,7 @@ command() {
     fi
     builtin command "$@"
 }
-logger() { printf 'LOGGER %s\n' "$*" >&2; }
+logger() { printf 'LOGGER %s\n' "$*" >&2; return "${LOGGER_STATUS:-0}"; }
 exec() { printf '%s\0' "$@"; exit 0; }
 hyprctl() {
     printf 'Unexpected compositor action\n' >&2
@@ -130,6 +130,14 @@ class GitHubLauncherTests(ScriptFixture):
         result = self.launch(FAIL_STAGE="registry")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Could not query tray items", result.stderr)
+        self.assertEqual(
+            result.stdout.split("\0")[:-1], ["/usr/bin/github", "ghapp://mywork"]
+        )
+
+    def test_logging_failure_does_not_prevent_cold_start(self):
+        result = self.launch(MISSING_TOOL="jq", LOGGER_STATUS="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("jq is unavailable", result.stderr)
         self.assertEqual(
             result.stdout.split("\0")[:-1], ["/usr/bin/github", "ghapp://mywork"]
         )
@@ -308,7 +316,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_browser_existing_relative_files_are_not_hostnames(self):
         with tempfile.TemporaryDirectory() as directory:
-            for target in ("report.html", "file with spaces.html", "example.invalid"):
+            for target in ("report.html", "file with spaces.html", "example.invalid", "youtube", "PRIME VIDEO"):
                 with self.subTest(target=target):
                     with open(os.path.join(directory, target), "w", encoding="utf-8") as output:
                         output.write("fixture")

@@ -6,6 +6,10 @@ for browser in chromium-dev chromium
 do
   if command -v "$browser" >/dev/null 2>&1
   then
+    # An explicit local file takes precedence over a named website shortcut.
+    if [ "$#" -eq 1 ] && [ -e "$1" ]; then
+      exec "$browser" "$1"
+    fi
     normalized=$(printf '%s' "$*" | tr '[:upper:]' '[:lower:]')
 
     case "$normalized" in
@@ -31,9 +35,6 @@ do
     fi
 
     target=$1
-    if [ -e "$target" ]; then
-      exec "$browser" "$target"
-    fi
     case "$target" in
       http://*|https://*)
         exec "$browser" --app="$target"

@@ -60,10 +60,15 @@ then
   print -r -- "$file"
 elif [ -f "$file" ]
 then
+  # Keep filenames from being interpreted as editor or sudo options.
+  [[ "$file" == -* ]] && file="./$file"
   if [ -w "$file" ]
   then
-    command -v "${EDITOR:-vim}" >/dev/null 2>&1 || { echo "ERROR: ${EDITOR:-vim} not installed" 1>&2 && return 1; }
-    ${EDITOR:-vim} "$file"
+    # Split command arguments and remove quoting without evaluating shell code.
+    local -a editor_command
+    editor_command=("${(@Q)${(z)${EDITOR:-vim}}}")
+    command -v "$editor_command[1]" >/dev/null 2>&1 || { echo "ERROR: $editor_command[1] not installed" 1>&2 && return 1; }
+    "${editor_command[@]}" "$file"
   elif command -v sudo >/dev/null 2>&1
   then
     sudo -e "$file"

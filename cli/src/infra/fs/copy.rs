@@ -3,8 +3,8 @@ use std::path::Path;
 
 /// Recursively copy a directory tree, preserving Unix directory permissions.
 ///
-/// When `skip_git` is `true`, `.git` directories are skipped — useful when
-/// copying from a cloned repository where Git metadata is unwanted.
+/// When `skip_git` is `true`, `.git` entries are skipped, including worktree
+/// and submodule gitfiles — useful when Git metadata is unwanted.
 ///
 /// Symlinks and Windows junctions within the source tree are **not followed**:
 /// each link is recreated as a symlink in `dst` pointing to the same target.
@@ -20,13 +20,18 @@ use std::path::Path;
 /// entry cannot be read, a file cannot be copied, a symlink cannot be recreated,
 /// or (on Unix) directory permissions cannot be preserved.
 pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> {
+    let source_metadata = std::fs::metadata(src)
+        .with_context(|| format!("reading directory metadata for {}", src.display()))?;
+    anyhow::ensure!(
+        source_metadata.is_dir(),
+        "copy source is not a directory: {}",
+        src.display()
+    );
     reject_destination_link(dst)?;
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
     #[cfg(unix)]
-    let permissions = std::fs::metadata(src)
-        .with_context(|| format!("reading directory metadata for {}", src.display()))?
-        .permissions();
+    let permissions = source_metadata.permissions();
     // Keep staged contents private while copying, and defer the source mode
     // until children are populated so read-only directories can be copied.
     #[cfg(unix)]
@@ -39,6 +44,9 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
         std::fs::read_dir(src).with_context(|| format!("reading directory {}", src.display()))?
     {
         let entry = entry.with_context(|| format!("reading entry in {}", src.display()))?;
+        if skip_git && entry.file_name() == ".git" {
+            continue;
+        }
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
@@ -61,9 +69,6 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
                     )
                 })?;
         } else if meta.is_dir() {
-            if skip_git && entry.file_name() == ".git" {
-                continue;
-            }
             copy_dir_recursive(&src_path, &dst_path, skip_git)?;
         } else {
             reject_destination_link(&dst_path)?;

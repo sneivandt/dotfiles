@@ -290,7 +290,9 @@ create temporary build inputs; metadata validation is deferred until apply.
 6. Run the checks below and verify a build on Arch before installing it.
 
 The snapshot format copies `PKGBUILD`, `version.sh`, and optional
-`package.install`, `LICENSE`, and `NOTICE` files.
+`package.install`, `LICENSE`, and `NOTICE` files, and publishes validated
+`.SRCINFO` alongside them. `.SRCINFO` is generated from the prepared recipe
+inputs rather than copied from the source checkout.
 Use `install=package.install` for package lifecycle hooks. Recipes needing
 patches or other local files require extending that format first.
 Version discovery currently supports stable GitHub releases

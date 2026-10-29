@@ -7,7 +7,7 @@ app=/usr/bin/github
 report()
 {
   printf '%s\n' "$*" >&2
-  logger -t launch-github "$*"
+  logger -t launch-github "$*" || true
 }
 
 if [ ! -x "$app" ]; then

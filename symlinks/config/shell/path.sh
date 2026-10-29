@@ -15,11 +15,12 @@ _path_prepend() {
   PATH="$1$_path_retained"
 }
 
-_path_prepend "$HOME/.cargo/bin"
-_path_prepend "$HOME/src/go/bin"
+_path_prepend "${CARGO_HOME:-$HOME/.cargo}/bin"
+_path_go_workspace=${GOPATH:-$HOME/src/go}
+_path_prepend "${GOBIN:-${_path_go_workspace%%:*}/bin}"
 _path_prepend "$HOME/.bin"
 _path_prepend "$HOME/.local/bin"
 export PATH
 
 unset -f _path_prepend
-unset _path_remaining _path_retained _path_entry
+unset _path_remaining _path_retained _path_entry _path_go_workspace

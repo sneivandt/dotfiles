@@ -57,6 +57,46 @@ fn skips_git_directory_when_flag_set() {
 }
 
 #[test]
+fn recursive_copy_rejects_invalid_sources_before_creating_a_destination() {
+    let root = tempfile::tempdir().unwrap();
+    let source_file = root.path().join("file");
+    std::fs::write(&source_file, "not a directory").unwrap();
+    for source in [root.path().join("missing"), source_file] {
+        let destination = root.path().join("new-parent/destination");
+        assert!(copy_dir_recursive(&source, &destination, false).is_err());
+        assert!(!root.path().join("new-parent").exists());
+    }
+}
+
+#[test]
+fn recursive_copy_skips_worktree_git_files_only_when_requested() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("submodule")).unwrap();
+    for directory in [&source, &source.join("submodule")] {
+        std::fs::write(
+            directory.join(".git"),
+            "gitdir: /fixture/git/worktrees/source\n",
+        )
+        .unwrap();
+        std::fs::write(directory.join("file"), "content").unwrap();
+    }
+    for skip_git in [false, true] {
+        let destination = root
+            .path()
+            .join(if skip_git { "without-git" } else { "with-git" });
+        copy_dir_recursive(&source, &destination, skip_git).unwrap();
+        for directory in [&destination, &destination.join("submodule")] {
+            assert_eq!(directory.join(".git").exists(), !skip_git);
+            assert_eq!(
+                std::fs::read_to_string(directory.join("file")).unwrap(),
+                "content"
+            );
+        }
+    }
+}
+
+#[test]
 fn copies_git_directory_when_flag_not_set() {
     let src = tempfile::tempdir().unwrap();
     let dst = tempfile::tempdir().unwrap();

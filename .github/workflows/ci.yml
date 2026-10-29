@@ -450,12 +450,16 @@ jobs:
         # cargo-mutants does not evaluate cfg attributes. These Windows-only
         # functions/modules are absent on Linux, not gaps in its test coverage.
         # Keep exclusions here (not in crate config) so Windows can test them.
+        # PATH backend names also cover their tested unsupported-host stubs.
+        # Canonicalizing an existing regular settings file is equivalent to
+        # writing its original path; retain every other settings mutation.
         run: >-
           cargo mutants --in-place --no-shuffle --in-diff mutants.diff
           --shard "$MUTATION_SHARD/8"
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
-          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\bdecode_reg_string\b'
+          --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
           --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
+          --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$'
           --cargo-arg=--profile=ci --cargo-arg=--locked
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

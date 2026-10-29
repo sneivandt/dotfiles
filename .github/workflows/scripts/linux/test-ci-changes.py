@@ -324,7 +324,7 @@ class GateTests(unittest.TestCase):
                     build,
                 )
 
-    def test_linux_mutation_excludes_only_named_windows_code(self):
+    def test_linux_mutation_excludes_only_native_backends_and_equivalent_guard(self):
         workflow = CONTRACT["WORKFLOW"].read_text(encoding="utf-8")
         mutation = CONTRACT["job_blocks"](workflow)["mutation"]
         self.assertIn("runs-on: ubuntu-latest", mutation)
@@ -340,7 +340,9 @@ class GateTests(unittest.TestCase):
 
         windows_only = {
             "infra/elevation": ("run_elevated_child", "wait_if_elevated"),
-            "domains/dotfiles/resources/path_entry": ("decode_reg_string",),
+            "domains/dotfiles/resources/path_entry": (
+                "decode_reg_string", "append_user_path", "user_path_contains",
+            ),
             "domains/system/resources/registry": (
                 "native::raw_value_to_string", "native::raw_value_type",
                 "native::read_value", "native::write_value", "native::parse_path",
@@ -361,8 +363,10 @@ class GateTests(unittest.TestCase):
             "infra/elevation": ("should_pause", "wait_if_elevated_policy"),
             "domains/dotfiles/resources/path_entry": (
                 "PathSource::is_on_path", "PathEntryResource::new",
-                "decode_reg_string_shared",
+                "decode_reg_string_shared", "path_contains_entry", "expand_env_vars",
+                "normalize_path_entry", "append_user_path_shared", "user_path_contains_shared",
             ),
+            "domains/ai/resources/agent_settings": ("AgentSettingResource::apply",),
             "domains/system/resources/registry": (
                 "parse_hkcu_subkey", "value_matches", "RegistryResource::state_from_cached",
             ),
@@ -376,6 +380,21 @@ class GateTests(unittest.TestCase):
                 ):
                     with self.subTest(path=path, description=description):
                         self.assertFalse(excluded(path, description))
+
+        settings = "domains/ai/resources/agent_settings"
+        equivalent = (
+            "replace match guard metadata.is_symlink() with true "
+            "in <impl Resource for AgentSettingResource>::apply"
+        )
+        self.assertTrue(excluded(settings, equivalent))
+        for path, description in (
+            (settings, equivalent.replace("with true", "with false")),
+            (settings, equivalent.replace("metadata.is_symlink()", "value_is_finite()")),
+            (settings, equivalent.replace("::apply", "::current_state")),
+            ("another_module", equivalent),
+        ):
+            with self.subTest(path=path, description=description):
+                self.assertFalse(excluded(path, description))
 
 
 class GitRangeTests(unittest.TestCase):

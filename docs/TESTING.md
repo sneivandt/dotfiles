@@ -195,8 +195,9 @@ commit when needed:
   export XDG_STATE_HOME="$mutation_root/state" DOTFILES_LOG_DIR="$mutation_root/logs"
   cargo mutants --in-place --no-shuffle --in-diff mutants.diff \
     --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b' \
-    --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\bdecode_reg_string\b' \
+    --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b' \
     --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::' \
+    --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$' \
     --cargo-arg=--profile=ci --cargo-arg=--locked
   mutation_status=$?
   echo "Results retained in $mutation_root/source/cli/mutants.out; remove the temporary checkout after review."
@@ -204,8 +205,17 @@ commit when needed:
 )
 ```
 
-These exclusions match Linux CI's Windows-only exclusions. To narrow an expensive
-run further, add `--file src/path/to/module.rs` or `--re 'function_name'`; report
+These exclusions match Linux CI's native-code and equivalent-mutation exclusions.
+The PATH registry implementations are Windows-only;
+Linux tests cover the unsupported-host stubs and injected persistence contract,
+not native registry behavior. CI also excludes the single equivalent mutation
+that canonicalizes existing regular agent settings files as well as symlinks.
+The opposite guard mutation remains covered by symlink-preservation tests.
+The file-size-limited settings writer disables child profile output so its
+resource limit cannot corrupt the enclosing coverage run.
+
+To narrow an expensive run further, add `--file src/path/to/module.rs` or
+`--re 'function_name'`; report
 that narrower scope. CI shards the changed-code set across eight jobs; omit
 `--shard` locally to cover the whole selected set. Inspect each `MISSED` result:
 add an assertion for observable behavior, or explain an equivalent mutation.

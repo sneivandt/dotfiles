@@ -591,6 +591,8 @@ command = "example"
             child.args(["-c", "trap '' XFSZ; ulimit -f 1; exec \"$@\"", "limited-settings-write"])
                 .arg(std::env::current_exe().unwrap())
                 .args(["--exact", "domains::ai::resources::agent_settings::tests::failed_staged_write_preserves_existing_document"])
+                // The file-size limit would truncate the instrumented child's profile.
+                .env("LLVM_PROFILE_FILE", "/dev/null")
                 .env(CHILD_PATH, &path);
             if format == SettingsFormat::Toml {
                 child.env("DOTFILES_TEST_SETTINGS_TOML", "1");

@@ -388,6 +388,20 @@ mod tests {
     use crate::infra::exec::MockExecutor;
     use crate::infra::platform::{Os, Platform};
 
+    #[cfg(not(windows))]
+    #[test]
+    fn native_registry_backend_rejects_non_windows_access() {
+        let store = RegistryPath {
+            env: MapEnv::new().into_handle(),
+        };
+        for result in [store.contains("fixture"), store.append("fixture")] {
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "user PATH registry access is only supported on Windows"
+            );
+        }
+    }
+
     fn windows_resource(home: &Path, store: MockUserPath) -> PathEntryResource {
         let executor = MockExecutor::new();
         #[cfg(windows)]

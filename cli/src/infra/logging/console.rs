@@ -24,6 +24,8 @@ pub(super) struct ConsoleState {
     stderr_closed: bool,
     pub(super) verbose: bool,
     pub(super) progress_rows: u16,
+    /// Only task footers animate; cleared rows and custom status messages stay untouched.
+    pub(super) active_progress: bool,
     pub(super) task_output_emitted: bool,
     pub(super) last_task_block_had_details: bool,
     pub(super) ends_with_blank_line: bool,
@@ -172,12 +174,14 @@ impl ConsoleState {
     }
 
     fn line(&mut self, error: bool, line: &str) {
+        self.active_progress = false;
         let clear = progress_clear_sequence(std::mem::take(&mut self.progress_rows));
         self.ends_with_blank_line = strip_ansi(line).trim().is_empty();
         self.write(error, &format!("{clear}{line}\n"));
     }
 
     pub(super) fn clear_progress(&mut self) {
+        self.active_progress = false;
         let rows = std::mem::take(&mut self.progress_rows);
         if rows > 0 {
             self.write(false, &progress_clear_sequence(rows));
@@ -186,6 +190,7 @@ impl ConsoleState {
 
     /// Replace the status row, preserving any transient spacer above it.
     pub(super) fn replace_status(&mut self, line: &str) {
+        self.active_progress = false;
         if self.mode != super::OutputMode::Human {
             return;
         }
@@ -206,6 +211,7 @@ impl ConsoleState {
             self.progress_rows = if prefix.is_empty() { 1 } else { 2 };
             self.write(false, &format!("{prefix}{line}"));
         }
+        self.active_progress = true;
     }
 
     pub(super) fn separate_from_startup(&mut self) {

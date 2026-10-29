@@ -300,8 +300,13 @@ and `NO_COLOR` retain wording and spacing without ANSI styling.
 Indented lines use concise verb-first descriptions of completed or planned
 actions, such as `install fd` and `write zsh completions`. `--verbose` adds
 current tasks, decisions, and elapsed times; debug details are dim while actions
-and informational explanations retain normal contrast. A transient `Running`
-line shows remaining visible work and active tasks. Rows remain in completion
+and informational explanations retain normal contrast. A transient animated
+spinner shows remaining visible tasks and active task names, for example
+`⠋ 12 tasks left · Packages, Symlinks, Fonts +2`. The spinner is muted cyan;
+counts and overflow are dim, while task names retain normal contrast. Narrow
+terminals shorten names while reserving room for the overflow count.
+`--no-symbols` uses an ASCII spinner. Quiet, JSON Lines and redirected output
+omit the footer; `NO_COLOR` disables its styling. Rows remain in completion
 order, with one blank line between mutation task blocks; ordinary one-line check
 rows stay compact.
 

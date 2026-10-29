@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="500" viewBox="0 0 760 500" role="img" aria-labelledby="title desc">
   <title id="title">CLI self-update and one dotfiles update on an Arch Linux desktop</title>
-  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The update finishes with 3 tasks changed and 14 tasks current in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
+  <desc id="desc">Illustrative incremental update on an existing Arch desktop with its profile already selected, repository current, and package-manager authorization cached. The user types dotfiles update. The CLI first updates from example version v2026.01.01-1 to v2026.01.01-2, then continues the update. Home symlinks restores Git and Zsh configuration, Shell completions writes updated zsh completions, and System packages installs fd and ripgrep. A muted cyan spinner animates beside the remaining task count and active task names. The live status is replaced in place as tasks complete; already-current tasks stay quiet. The update finishes with 3 tasks changed and 14 tasks current in 6.1 seconds, followed immediately by the two-line shell prompt. A 20-second loop includes typing, self-update, and a reading pause. Reduced motion shows the completed transcript.</desc>
   <style>
     /* Alacritty colors, Source Code Pro, a 10px cell and 24px terminal rows.
        One update: self-update at 2.4s, update at 4.4s, summary at 10.5s.
@@ -75,6 +75,27 @@
     .prompt { animation: prompt 20s step-end infinite; }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
     .blink { animation: blink 1s step-end infinite; }
+    /* Ten spinner frames, matching the CLI’s 100ms animation interval. */
+    @keyframes spin-0 { 0% { opacity: 1; } 10%, 100% { opacity: 0; } }
+    .spin-0 { animation: spin-0 1s step-end infinite; }
+    @keyframes spin-1 { 0% { opacity: 0; } 10% { opacity: 1; } 20%, 100% { opacity: 0; } }
+    .spin-1 { animation: spin-1 1s step-end infinite; }
+    @keyframes spin-2 { 0% { opacity: 0; } 20% { opacity: 1; } 30%, 100% { opacity: 0; } }
+    .spin-2 { animation: spin-2 1s step-end infinite; }
+    @keyframes spin-3 { 0% { opacity: 0; } 30% { opacity: 1; } 40%, 100% { opacity: 0; } }
+    .spin-3 { animation: spin-3 1s step-end infinite; }
+    @keyframes spin-4 { 0% { opacity: 0; } 40% { opacity: 1; } 50%, 100% { opacity: 0; } }
+    .spin-4 { animation: spin-4 1s step-end infinite; }
+    @keyframes spin-5 { 0% { opacity: 0; } 50% { opacity: 1; } 60%, 100% { opacity: 0; } }
+    .spin-5 { animation: spin-5 1s step-end infinite; }
+    @keyframes spin-6 { 0% { opacity: 0; } 60% { opacity: 1; } 70%, 100% { opacity: 0; } }
+    .spin-6 { animation: spin-6 1s step-end infinite; }
+    @keyframes spin-7 { 0% { opacity: 0; } 70% { opacity: 1; } 80%, 100% { opacity: 0; } }
+    .spin-7 { animation: spin-7 1s step-end infinite; }
+    @keyframes spin-8 { 0% { opacity: 0; } 80% { opacity: 1; } 90%, 100% { opacity: 0; } }
+    .spin-8 { animation: spin-8 1s step-end infinite; }
+    @keyframes spin-9 { 0% { opacity: 0; } 90% { opacity: 1; } 100% { opacity: 0; } }
+    .spin-9 { animation: spin-9 1s step-end infinite; }
     /* Separate text elements avoid tspan opacity leaking across the text run. */
     [class^="char-"], .transient, [class^="live-"] { opacity: 0; }
     @media (prefers-reduced-motion: reduce) {
@@ -95,14 +116,14 @@
     <g class="links"><text x="26" y="161"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Home symlinks</tspan></text><text x="46" y="185">link ~/.config/git/config → symlinks/config/git/config</text><text x="46" y="209">link ~/.zshrc → symlinks/zshrc</text></g>
     <g class="completions"><text x="26" y="257"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">Shell completions</tspan></text><text x="46" y="281">write zsh completions</text></g>
     <g class="packages"><text x="26" y="329"><tspan fill="#9ece6a">✓</tspan> <tspan font-weight="600">System packages</tspan></text><text x="46" y="353">install fd</text><text x="46" y="377">install ripgrep</text></g>
-    <g class="live-0"><text x="26" y="161"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 16 remaining · </tspan>Home symlinks, System packages</text></g>
-    <g class="live-1"><text x="26" y="257"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 12 remaining · </tspan>System packages, Shell completions</text></g>
-    <g class="live-2"><text x="26" y="329"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 10 remaining · </tspan>System packages, File permissions</text></g>
-    <g class="live-3"><text x="26" y="329"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 8 remaining · </tspan>System packages</text></g>
-    <g class="live-4"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 7 remaining · </tspan>Paru package manager, Default shell</text></g>
-    <g class="live-5"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 5 remaining · </tspan>AUR packages, System files</text></g>
-    <g class="live-6"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 3 remaining · </tspan>Systemd units, Agent packages</text></g>
-    <g class="live-7"><text x="26" y="425"><tspan font-weight="600">Running</tspan><tspan fill="#8992b5"> · 1 remaining · </tspan>Agent packages</text></g>
+    <g class="live-0"><text x="26" y="161" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="161"><tspan fill="#8992b5">16 tasks left · </tspan>Home symlinks, System packages</text></g>
+    <g class="live-1"><text x="26" y="257" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="257"><tspan fill="#8992b5">12 tasks left · </tspan>System packages, Shell completions</text></g>
+    <g class="live-2"><text x="26" y="329" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="329"><tspan fill="#8992b5">10 tasks left · </tspan>System packages, File permissions</text></g>
+    <g class="live-3"><text x="26" y="329" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="329"><tspan fill="#8992b5">8 tasks left · </tspan>System packages</text></g>
+    <g class="live-4"><text x="26" y="425" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="425"><tspan fill="#8992b5">7 tasks left · </tspan>Paru package manager, Default shell</text></g>
+    <g class="live-5"><text x="26" y="425" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="425"><tspan fill="#8992b5">5 tasks left · </tspan>AUR packages, System files</text></g>
+    <g class="live-6"><text x="26" y="425" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="425"><tspan fill="#8992b5">3 tasks left · </tspan>Systemd units, Agent packages</text></g>
+    <g class="live-7"><text x="26" y="425" fill="#7aa6b0"><tspan class="spin-0" x="26">⠋</tspan><tspan class="spin-1" x="26">⠙</tspan><tspan class="spin-2" x="26">⠹</tspan><tspan class="spin-3" x="26">⠸</tspan><tspan class="spin-4" x="26">⠼</tspan><tspan class="spin-5" x="26">⠴</tspan><tspan class="spin-6" x="26">⠦</tspan><tspan class="spin-7" x="26">⠧</tspan><tspan class="spin-8" x="26">⠇</tspan><tspan class="spin-9" x="26">⠏</tspan></text><text x="46" y="425"><tspan fill="#8992b5">1 task left · </tspan>Agent packages</text></g>
     <g class="summary"><text x="26" y="425"><tspan fill="#9ece6a" font-weight="600">3 tasks changed</tspan><tspan fill="#8992b5"> · 14 tasks current · 6.1s</tspan></text></g>
     <g class="prompt"><text x="26" y="449"><tspan fill="#e0af68">~</tspan></text><text x="26" y="473"><tspan fill="#a9b1d6">$</tspan></text><path class="blink" d="M46 457v20" stroke="#c0caf5" stroke-width="2"/></g>
   </g>

@@ -22,6 +22,9 @@ fn transient_display_line_with_style(line: &str, cols: usize, style: StyleChoice
     let display = if plain.width() <= cols {
         plain
     } else {
+        if cols == 0 {
+            return String::new();
+        }
         let ellipsis = if cols >= PROGRESS_ELLIPSIS.width() {
             PROGRESS_ELLIPSIS
         } else {
@@ -38,32 +41,106 @@ fn transient_display_line_with_style(line: &str, cols: usize, style: StyleChoice
         format!("{truncated}{ellipsis}")
     };
 
-    style_transient_line(&display, style)
+    style.clean(&display)
 }
 
-/// Emphasize the live state without muting the work the user is waiting on.
-/// The remaining count is supporting context; active task names retain the
-/// terminal's normal foreground contrast.
-fn style_transient_line(line: &str, style: StyleChoice) -> String {
-    let Some(rest) = line.strip_prefix("Running") else {
-        return style.clean(line);
-    };
-    let running = style.paint(TextStyle::Bold, "Running");
-    let Some(details) = rest.strip_prefix(" · ") else {
-        return format!("{running}{}", style.clean(rest));
-    };
-    let Some((remaining, active)) = details.split_once(" · ") else {
-        return format!("{running}{}", style.clean(rest));
-    };
-    if !remaining.ends_with(" remaining") {
-        return format!("{running}{}", style.clean(rest));
+/// Fit active names while reserving room for the overflow count.
+fn active_names(active: &[String], limit: usize, cols: usize) -> (String, usize) {
+    let shown = active.len().min(limit);
+    for count in (1..=shown).rev() {
+        let hidden = active.len() - count;
+        let suffix = if hidden > 0 {
+            format!(" +{hidden}")
+        } else {
+            String::new()
+        };
+        let names = active
+            .iter()
+            .take(count)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        if names.width() + suffix.width() <= cols {
+            return (names, hidden);
+        }
     }
+    let hidden = active.len().saturating_sub(1);
+    let suffix_width = if hidden > 0 {
+        format!(" +{hidden}").width()
+    } else {
+        0
+    };
+    let names = transient_display_line_with_style(
+        active.first().map_or("", String::as_str),
+        cols.saturating_sub(suffix_width),
+        StyleChoice::auto(false, true),
+    );
+    (names, hidden)
+}
 
+fn active_display_line(
+    active: &[String],
+    remaining: Option<usize>,
+    frame: usize,
+    symbols: bool,
+    verbose: bool,
+    cols: usize,
+    style: StyleChoice,
+) -> String {
+    let active: Vec<String> = active.iter().map(|name| strip_ansi(name)).collect();
+    let spinner = if symbols {
+        ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            .get(frame % 10)
+            .copied()
+            .unwrap_or("⠋")
+    } else {
+        ["|", "/", "-", "\\"].get(frame % 4).copied().unwrap_or("|")
+    };
+    let count = remaining.map_or_else(String::new, |count| {
+        let unit = if count == 1 { "task" } else { "tasks" };
+        format!("{count} {unit} left · ")
+    });
+    let prefix = format!("{spinner} {count}");
+    // Very narrow terminals still get a bounded line, even without room for names.
+    if prefix.width() >= cols || active.is_empty() {
+        return transient_display_line_with_style(&prefix, cols, style);
+    }
+    let (names, hidden) = active_names(
+        &active,
+        if verbose { active.len() } else { 3 },
+        cols - prefix.width(),
+    );
+    let suffix = if hidden > 0 {
+        format!(" +{hidden}")
+    } else {
+        String::new()
+    };
+    let line = format!("{prefix}{names}{suffix}");
+    if line.width() > cols {
+        return transient_display_line_with_style(&line, cols, style);
+    }
     format!(
-        "{running}{}{}",
-        style.paint(TextStyle::Dim, &format!(" · {remaining} · ")),
-        style.clean(active)
+        "{} {}{}{}",
+        style.paint(TextStyle::MutedCyan, spinner),
+        style.paint(TextStyle::Dim, &count),
+        names,
+        style.paint(TextStyle::Dim, &suffix)
     )
+}
+
+/// Keeps animation scoped to the command and wakes immediately on shutdown.
+struct ProgressTicker {
+    stop: std::sync::mpsc::Sender<()>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for ProgressTicker {
+    fn drop(&mut self) {
+        let _stop_sent = self.stop.send(());
+        if let Some(thread) = self.thread.take() {
+            drop(thread.join());
+        }
+    }
 }
 
 impl Logger {
@@ -77,10 +154,58 @@ impl Logger {
         self.console.lock().replace_status(&line);
     }
 
-    pub(in crate::infra::logging) fn draw_active_status(&self, line: &str) {
-        let line =
-            transient_display_line_with_style(line, terminal_columns(), self.console.stdout_style);
+    pub(in crate::infra::logging) fn draw_active_status(&self, active: &[String]) {
+        let remaining = self
+            .task_progress()
+            .map(|(done, total)| total.saturating_sub(done));
+        let line = active_display_line(
+            active,
+            remaining,
+            self.progress_frame
+                .load(std::sync::atomic::Ordering::Relaxed),
+            self.symbols,
+            self.is_verbose(),
+            terminal_columns(),
+            self.console.stdout_style,
+        );
         self.console.lock().active_status(&line);
+    }
+
+    /// Animate only the existing task footer; never revive cleared or custom status lines.
+    fn tick_progress(&self) {
+        let _guard = self.lock_flush();
+        if !self.console.lock().active_progress {
+            return;
+        }
+        self.progress_frame
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.redraw_active_status_locked(true);
+    }
+
+    pub(crate) fn start_progress(self: &std::sync::Arc<Self>) -> impl Drop {
+        let (stop, receiver) = std::sync::mpsc::channel();
+        let weak = std::sync::Arc::downgrade(self);
+        let thread = if stdout_supports_progress()
+            && self.console.lock().mode == crate::infra::logging::OutputMode::Human
+        {
+            std::thread::Builder::new()
+                .name("cli-progress".into())
+                .spawn(move || {
+                    while matches!(
+                        receiver.recv_timeout(std::time::Duration::from_millis(100)),
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                    ) {
+                        let Some(log) = weak.upgrade() else {
+                            break;
+                        };
+                        log.tick_progress();
+                    }
+                })
+                .ok()
+        } else {
+            None
+        };
+        ProgressTicker { stop, thread }
     }
 
     pub(in crate::infra::logging) fn has_task_console_output(&self) -> bool {
@@ -126,28 +251,192 @@ mod tests {
         );
     }
 
+    fn render(names: &[&str], remaining: Option<usize>, cols: usize, verbose: bool) -> String {
+        let active = names
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect::<Vec<_>>();
+        super::active_display_line(
+            &active,
+            remaining,
+            0,
+            true,
+            verbose,
+            cols,
+            StyleChoice::plain(),
+        )
+    }
+
     #[test]
-    fn running_line_emphasizes_state_and_keeps_active_tasks_at_normal_contrast() {
+    fn footer_counts_tasks_and_limits_names_without_limiting_verbose_output() {
+        let names = ["Packages", "Symlinks", "Fonts", "Git", "Shell"];
         assert_eq!(
-            super::transient_display_line_with_style(
-                "Running · 4 remaining · Home symlinks, System packages",
-                80,
-                StyleChoice::colored(),
-            ),
-            "\x1b[1mRunning\x1b[0m\x1b[2m · 4 remaining · \x1b[0mHome symlinks, System packages"
+            render(&names, Some(12), 80, false),
+            "⠋ 12 tasks left · Packages, Symlinks, Fonts +2"
+        );
+        assert_eq!(
+            render(&names, Some(12), 80, true),
+            "⠋ 12 tasks left · Packages, Symlinks, Fonts, Git, Shell"
+        );
+        assert_eq!(
+            render(&["Packages"], Some(1), 80, false),
+            "⠋ 1 task left · Packages"
+        );
+        assert_eq!(render(&["Packages"], None, 80, false), "⠋ Packages");
+        assert_eq!(
+            render(&["Packages"], Some(0), 80, false),
+            "⠋ 0 tasks left · Packages"
         );
     }
 
     #[test]
-    fn running_line_without_a_scheduled_count_keeps_task_name_at_normal_contrast() {
+    fn footer_styles_only_spinner_count_and_overflow() {
+        let active = ["Packages", "Symlinks", "Fonts", "Git"].map(String::from);
         assert_eq!(
-            super::transient_display_line_with_style(
-                "Running · task-a",
+            super::active_display_line(
+                &active,
+                Some(4),
+                0,
+                true,
+                false,
                 80,
-                StyleChoice::colored(),
+                StyleChoice::colored()
             ),
-            "\x1b[1mRunning\x1b[0m · task-a"
+            "\x1b[2;36m⠋\x1b[0m \x1b[2m4 tasks left · \x1b[0mPackages, Symlinks, Fonts\x1b[2m +1\x1b[0m"
         );
+    }
+
+    #[test]
+    fn narrow_footer_preserves_overflow_and_respects_unicode_cell_width() {
+        assert_eq!(
+            render(&["Long package task", "Fonts", "Git"], None, 14, false),
+            "⠋ Long pa … +2"
+        );
+        assert_eq!(
+            render(&["界界界界", "Fonts"], None, 11, false),
+            "⠋ 界界 … +1"
+        );
+        for cols in 0..60 {
+            for verbose in [false, true] {
+                let line = render(
+                    &["界界界界", "Fonts", "Git", "Shell"],
+                    Some(12),
+                    cols,
+                    verbose,
+                );
+                assert!(
+                    unicode_width::UnicodeWidthStr::width(line.as_str()) <= cols,
+                    "width {cols}: {line}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn spinner_frames_advance_with_an_ascii_fallback() {
+        let names = ["Packages".to_string()];
+        for (symbols, frames) in [
+            (true, vec!["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+            (false, vec!["|", "/", "-", "\\"]),
+        ] {
+            for frame in 0..frames.len() * 2 {
+                assert_eq!(
+                    super::active_display_line(
+                        &names,
+                        None,
+                        frame,
+                        symbols,
+                        false,
+                        80,
+                        StyleChoice::plain()
+                    ),
+                    format!("{} Packages", frames[frame % frames.len()])
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn footer_reads_remaining_count_from_task_accounting() {
+        use crate::infra::logging::{
+            TaskEntry, TaskStatus,
+            types::{ActionCounts, TaskVisibility},
+        };
+        let (log, _tmp, _guard) = isolated_logger();
+        log.add_task_total(2);
+        log.notify_task_start_with_progress("Packages", true);
+        assert!(
+            log.console
+                .lock()
+                .captured
+                .last()
+                .unwrap()
+                .1
+                .contains("2 tasks left")
+        );
+        log.record_task(TaskEntry::new(
+            "done",
+            "Done",
+            TaskStatus::Ok,
+            None,
+            ActionCounts::default(),
+            TaskVisibility::Visible,
+        ));
+        log.mark_task_completed("done");
+        log.tick_progress();
+        assert!(
+            log.console
+                .lock()
+                .captured
+                .last()
+                .unwrap()
+                .1
+                .contains("1 task left")
+        );
+    }
+
+    #[test]
+    fn animation_does_not_revive_cleared_or_custom_status_or_enter_logs() {
+        let (log, _tmp, _guard) = isolated_logger();
+        log.notify_task_start_with_progress("Packages", true);
+        log.tick_progress();
+        assert!(
+            log.console
+                .lock()
+                .captured
+                .last()
+                .unwrap()
+                .1
+                .contains("⠙ Packages")
+        );
+        log.clear_status();
+        let writes = log.console.lock().captured.len();
+        log.tick_progress();
+        assert_eq!(log.console.lock().captured.len(), writes);
+        log.replace_status_line("Downloading release");
+        let custom_writes = log.console.lock().captured.len();
+        log.tick_progress();
+        assert_eq!(log.console.lock().captured.len(), custom_writes);
+        log.notify_task_done_with_progress("Packages", true);
+        let completed_writes = log.console.lock().captured.len();
+        log.tick_progress();
+        assert_eq!(log.console.lock().captured.len(), completed_writes);
+        let stored = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+        assert!(!stored.contains("⠋") && !stored.contains("⠙"));
+    }
+
+    #[test]
+    fn non_human_modes_never_animate() {
+        for mode in [
+            crate::infra::logging::OutputMode::Quiet,
+            crate::infra::logging::OutputMode::Jsonl,
+        ] {
+            let (mut log, _tmp, _guard) = isolated_logger();
+            log.set_output_mode(mode);
+            log.notify_task_start_with_progress("Packages", true);
+            log.tick_progress();
+            assert!(log.console.lock().captured.is_empty());
+        }
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub(in crate::infra::logging) enum TextStyle {
     Yellow,
     Green,
     Magenta,
+    MutedCyan,
 }
 
 impl TextStyle {
@@ -30,6 +31,7 @@ impl TextStyle {
             Self::Yellow => "33",
             Self::Green => "32",
             Self::Magenta => "35",
+            Self::MutedCyan => "2;36",
         }
     }
 }

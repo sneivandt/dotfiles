@@ -3,8 +3,6 @@
 //! These methods coordinate the in-progress status line as parallel tasks start
 //! and complete, ensuring active-task updates never overlap other console output.
 
-use std::fmt::Write as _;
-
 use super::{Logger, progress::stdout_supports_progress};
 
 impl Logger {
@@ -36,12 +34,12 @@ impl Logger {
             return;
         }
 
-        let Some(names) = self.active_task_summary() else {
+        let active = self.lock_active_tasks();
+        if active.is_empty() {
             self.clear_progress();
-            return;
-        };
-        let line = self.format_status_line(&names);
-        self.draw_active_status(&line);
+        } else {
+            self.draw_active_status(&active);
+        }
     }
 
     /// Emit a completed task result selected by scheduler identity.
@@ -63,28 +61,6 @@ impl Logger {
         }
     }
 
-    /// Build the status-line text for the currently active tasks.
-    ///
-    /// Renders as `Running · {remaining} remaining · {active tasks}`.
-    fn format_status_line(&self, names: &str) -> String {
-        let progress = self
-            .task_progress()
-            .map_or_else(String::new, |(done, total)| {
-                let remaining = total.saturating_sub(done);
-                format!(" \u{00b7} {remaining} remaining")
-            });
-        format!("Running{progress} \u{00b7} {names}")
-    }
-
-    fn active_task_summary(&self) -> Option<String> {
-        let active = self.lock_active_tasks();
-        if active.is_empty() {
-            None
-        } else {
-            Some(self.format_active(&active))
-        }
-    }
-
     /// Record a task completion, optionally redrawing the interactive progress line.
     #[cfg(test)]
     pub(in crate::infra::logging) fn notify_task_done_with_progress(
@@ -96,27 +72,6 @@ impl Logger {
         self.remove_active_task_locked(name);
         self.clear_progress();
         self.redraw_active_status_locked(show_progress);
-    }
-
-    /// Build the progress-line text describing the currently active tasks.
-    ///
-    /// In verbose mode every task name is listed. Otherwise the first three
-    /// active task names are shown, followed by a count of any remaining tasks.
-    fn format_active(&self, active: &[String]) -> String {
-        if self.is_verbose() {
-            return active.join(", ");
-        }
-        let (shown, hidden) = active.split_at(active.len().min(3));
-        let mut names = shown.join(", ");
-        let remaining = hidden.len();
-        if remaining > 0 {
-            #[allow(
-                clippy::let_underscore_must_use,
-                reason = "writing to a String is infallible"
-            )]
-            let _ = write!(names, ", +{remaining} more");
-        }
-        names
     }
 }
 
@@ -228,79 +183,6 @@ mod tests {
     }
 
     #[test]
-    fn status_line_reports_remaining_tasks() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.add_task_total(16);
-        log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
-        for _ in 0..12 {
-            log.mark_task_completed("task");
-        }
-
-        assert_eq!(
-            log.format_status_line("Home symlinks, System packages"),
-            "Running · 4 remaining · Home symlinks, System packages",
-            "the counter should directly report how many scheduled tasks remain"
-        );
-    }
-
-    #[test]
-    fn status_line_reports_one_remaining() {
-        let (log, _tmp, _guard) = isolated_logger();
-        log.add_task_total(2);
-        log.record_task(task_entry("task", TaskStatus::Ok, TaskVisibility::Visible));
-        log.mark_task_completed("task");
-
-        assert_eq!(
-            log.format_status_line("System packages"),
-            "Running · 1 remaining · System packages"
-        );
-    }
-
-    #[test]
-    fn status_line_omits_the_counter_when_no_tasks_were_scheduled() {
-        let (log, _tmp, _guard) = isolated_logger();
-
-        assert_eq!(
-            log.format_status_line("task-a"),
-            "Running · task-a",
-            "an empty denominator suppresses the counter entirely"
-        );
-    }
-
-    #[test]
-    fn format_active_names_preserves_order_and_limits_only_non_verbose_output() {
-        let (mut log, _tmp, _guard) = isolated_logger();
-        let names = ["task-a", "task-b", "task-c", "task-d", "task-e"];
-        for (count, expected) in [
-            (0, ""),
-            (1, "task-a"),
-            (2, "task-a, task-b"),
-            (3, "task-a, task-b, task-c"),
-            (4, "task-a, task-b, task-c, +1 more"),
-            (5, "task-a, task-b, task-c, +2 more"),
-        ] {
-            let active: Vec<String> = names
-                .iter()
-                .take(count)
-                .map(|name| (*name).into())
-                .collect();
-            for verbose in [false, true] {
-                log.set_verbose(verbose);
-                let expected = if verbose {
-                    active.join(", ")
-                } else {
-                    expected.to_string()
-                };
-                assert_eq!(
-                    log.format_active(&active),
-                    expected,
-                    "active count: {count}, verbose: {verbose}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn notify_task_start_separates_the_first_progress_row_from_startup() {
         let (log, _tmp, _guard) = isolated_logger();
         assert_eq!(log.progress_rows_count(), 0, "progress_rows starts at 0");
@@ -399,7 +281,7 @@ mod tests {
 
         log.notify_task_done_with_progress("shared name", true);
 
-        assert_eq!(log.active_task_summary().as_deref(), Some("shared name"));
+        assert_eq!(&*log.lock_active_tasks(), &["shared name"]);
         assert_eq!(
             log.progress_rows_count(),
             1,
@@ -408,7 +290,7 @@ mod tests {
 
         log.notify_task_done_with_progress("shared name", true);
 
-        assert!(log.active_task_summary().is_none());
+        assert!(log.lock_active_tasks().is_empty());
         assert_eq!(log.progress_rows_count(), 0);
     }
 

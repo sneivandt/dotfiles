@@ -43,6 +43,8 @@ pub struct Logger {
     pub(super) active_tasks: Mutex<Vec<String>>,
     /// Number of tasks scheduled for this run, used as the progress denominator.
     pub(super) task_total: AtomicUsize,
+    /// Animation frame, independent of task completion counts.
+    pub(super) progress_frame: AtomicUsize,
     /// Number of tasks that have finished, used as the progress numerator.
     pub(super) tasks_completed: AtomicUsize,
     /// The run log; `None` when the log directory is unavailable.
@@ -102,6 +104,7 @@ impl Logger {
             flush_lock: Mutex::new(()),
             active_tasks: Mutex::new(Vec::new()),
             task_total: AtomicUsize::new(0),
+            progress_frame: AtomicUsize::new(0),
             tasks_completed: AtomicUsize::new(0),
             run_log,
             start,

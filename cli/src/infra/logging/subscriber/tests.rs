@@ -268,11 +268,11 @@ fn raw_diagnostics_and_task_progress_share_one_console_state() {
     let expected = [
         (false, "Install · fixture\n"),
         (false, "\n"),
-        (false, "Running · first"),
+        (false, "⠋ first"),
         (true, "\r\x1b[KWARN  raw warning\n"),
-        (false, "\nRunning · first, second"),
+        (false, "\n⠋ first, second"),
         (false, "\r\x1b[K\x1b[1A\r\x1b[Kdurable message\n"),
-        (false, "\nRunning · first, second, third"),
+        (false, "\n⠋ first, second, third"),
         (false, "\r\x1b[K\x1b[1A\r\x1b[K"),
     ];
     assert_eq!(
@@ -282,7 +282,7 @@ fn raw_diagnostics_and_task_progress_share_one_console_state() {
     let stored = fs::read_to_string(log.log_path().unwrap()).unwrap();
     assert_eq!(stored.matches("[debug] stored only").count(), 1);
     assert_eq!(stored.matches("[warn] raw warning").count(), 1);
-    assert!(!stored.contains("Running"));
+    assert!(!stored.contains("⠋"));
 }
 
 #[test]

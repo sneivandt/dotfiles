@@ -131,6 +131,7 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
     let token = crate::engine::CancellationToken::new();
     interrupt::install(&token, &log, runtime.execution.non_interactive);
 
+    let progress = log.start_progress();
     let result = match command {
         cli::EngineCommand::Update { opts, .. } => {
             commands::update::run(&runtime, opts, &log, &token)
@@ -143,6 +144,7 @@ fn run_engine(command: &cli::EngineCommand, parent_run_id: Option<&str>) -> Exit
         }
     };
 
+    drop(progress);
     if result.is_err() {
         log.separate_from_startup();
     }

@@ -4,7 +4,6 @@
 import argparse
 import os
 from pathlib import Path
-import runpy
 import shlex
 import shutil
 import subprocess
@@ -14,7 +13,6 @@ import tomllib
 
 
 SCRIPTS = Path(__file__).resolve().parent
-POLICY = runpy.run_path(str(SCRIPTS / "classify-ci-changes.py"))
 
 
 def plan(selection, msrv):
@@ -68,6 +66,14 @@ def git(root, *args):
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
 
+def committed_policy(root, head):
+    """Load selection rules from the commit being validated, never local edits."""
+    path = ".github/workflows/scripts/linux/classify-ci-changes.py"
+    namespace = {"__name__": "committed_ci_policy"}
+    exec(compile(git(root, "show", head + ":" + path), path, "exec"), namespace)
+    return namespace
+
+
 def snapshot(root, head, destination):
     # A clone preserves executable bits, excludes untracked/unstaged inputs,
     # and supplies real Git metadata needed by configuration/build fixtures.
@@ -86,13 +92,14 @@ def main():
     root = Path(git(SCRIPTS, "rev-parse", "--show-toplevel"))
     base = git(root, "rev-parse", "--verify", args.base + "^{commit}")
     head = git(root, "rev-parse", "--verify", args.head + "^{commit}")
-    paths = POLICY["changed_paths"](str(root), base, head)
+    policy = committed_policy(root, head)
+    paths = policy["changed_paths"](str(root), base, head)
     subprocess.run(["git", "-C", str(root), "diff", "--check", base, head, "--"], check=True)
     if not paths:
         print("No changed inputs in the committed range; no checks run.")
         return
     manifest = tomllib.loads(git(root, "show", head + ":cli/Cargo.toml"))
-    selection = POLICY["classify"](paths)
+    selection = policy["classify"](paths)
     commands, deferred = plan(selection, manifest["package"]["rust-version"])
     print(f"Committed range: {base}..{head} ({len(paths)} changed paths)", flush=True)
     for label, directory, command in commands:

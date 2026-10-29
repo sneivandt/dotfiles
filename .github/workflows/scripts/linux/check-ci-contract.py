@@ -165,6 +165,12 @@ def check_release(workflow: str) -> None:
     for name in ("build-linux", "build-windows", "release"):
         if "version" not in job_needs(jobs[name]):
             raise ValueError(f"release {name} must depend on the selected version")
+    for name, command in {
+        "version": 'release-tag.sh next "$date_part"',
+        "release": 'release-tag.sh check "$VERSION"',
+    }.items():
+        if command not in jobs[name]:
+            raise ValueError(f"release {name} must use the checked remote tag helper")
 
 
 def check_results(needs: dict) -> None:

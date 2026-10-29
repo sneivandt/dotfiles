@@ -77,11 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           date_part="$(date -u +%Y.%m.%d)"
-          n=1
-          while git ls-remote --exit-code --tags origin "refs/tags/v${date_part}-${n}" >/dev/null 2>&1; do
-            n=$((n + 1))
-          done
-          version="v${date_part}-${n}"
+          version=$(sh .github/workflows/scripts/linux/release-tag.sh next "$date_part")
           echo "Resolved release version: $version (commit $HEAD_SHA)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
@@ -179,10 +175,7 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
-            echo "Release tag $VERSION already exists." >&2
-            exit 1
-          fi
+          sh .github/workflows/scripts/linux/release-tag.sh check "$VERSION"
 
       - name: Download Linux artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

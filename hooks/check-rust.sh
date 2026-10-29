@@ -46,9 +46,9 @@ else
   against=$(git hash-object -t tree /dev/null)
 fi
 
-# Renames are included (lowercase 'd' excludes only deletions) so that a file
-# renamed with edits still gets formatted, linted, and tested.
-STAGED=$(git diff --cached --name-only --diff-filter=d "$against")
+# Filter in Git so quoted display filenames never affect extension detection.
+POWERSHELL_CHANGED=$(git diff --cached --name-only --diff-filter=d "$against" -- \
+  '*.ps1' '*.psm1' '*.psd1')
 # Deletions and renames away from .rs can also break the crate.
 RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- \
   '*.rs' cli/Cargo.toml cli/Cargo.lock \
@@ -56,7 +56,7 @@ RUST_CHANGED=$(git diff --cached --name-only --no-renames "$against" -- \
   cli/.cargo/config.toml cli/.cargo/config .cargo/config.toml .cargo/config)
 
 # Check an exported index rather than temporarily replacing the working tree.
-if [ -z "$RUST_CHANGED" ] && ! printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1|psd1)$'; then
+if [ -z "$RUST_CHANGED" ] && [ -z "$POWERSHELL_CHANGED" ]; then
   exit 0
 fi
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -129,16 +129,23 @@ if [ -n "$RUST_CHANGED" ]; then
 fi
 
 # ── PowerShell checks ─────────────────────────────────
-if printf '%s\n' "$STAGED" | grep -qE '\.(ps1|psm1|psd1)$'; then
+if [ -n "$POWERSHELL_CHANGED" ]; then
   if command -v pwsh >/dev/null 2>&1; then
     printf "Running PSScriptAnalyzer...\n"
-    set --
-    while IFS= read -r file; do
-      case "$file" in *.ps1|*.psm1|*.psd1) set -- "$@" "$CHECK_ROOT/$file" ;; esac
-    done <<EOF
-$STAGED
-EOF
-    if ! pwsh -NoProfile -File "$(dirname -- "$0")/../cli/src/app/validation/scripts/psscriptanalyzer.ps1" "$@" 2>&1; then
+    analyzer="$(CDPATH='' cd -- "$(dirname -- "$0")/../cli/src/app/validation/scripts" && pwd)/psscriptanalyzer.ps1"
+    # Keep NUL delimiters through argv construction, including tabs/newlines.
+    # Prefix with ./ so a tracked filename cannot become an analyzer option.
+    git diff --cached --name-only --diff-filter=d -z "$against" -- \
+      '*.ps1' '*.psm1' '*.psd1' > "$CHECK_ROOT/.powershell-inputs"
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      analyzer=$1
+      shift
+      for file do
+        set -- "$@" "./$file"
+        shift
+      done
+      exec pwsh -NoProfile -File "$analyzer" "$@"
+    ' sh "$analyzer" < .powershell-inputs) 2>&1; then
       printf '\n%s======================================================%s\n' "$RED" "$NC"
       printf '%sCommit aborted: PSScriptAnalyzer reported issues.%s\n' "$RED" "$NC"
       printf '%sFix the issues above or use:%s\n' "$YELLOW" "$NC"

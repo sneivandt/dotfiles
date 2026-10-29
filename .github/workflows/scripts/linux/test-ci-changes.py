@@ -96,6 +96,7 @@ class ClassificationTests(unittest.TestCase):
             ("hooks/sensitive-patterns.ini", {"git_hooks", "hook_inputs"}),
             (LINUX + "test-stocks.sh", {"stocks", "lint"}),
             (LINUX + "test-docs.sh", {"lint"}),
+            (LINUX + "check-doc-links.py", set()),
             (LINUX + "test-workflows.sh", {"lint"}),
             (LINUX + "test-desktop-qml.sh", {"lint", "desktop_qml"}),
             ("symlinks/config/quickshell/Bar.qml",
@@ -121,6 +122,7 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "test-ci-changes.py", set()),
             (".github/workflows/release.yml", {"release"}),
             (LINUX + "classify-release.sh", {"release", "lint"}),
+            (LINUX + "release-tag.sh", {"release", "lint"}),
         ]
         for path, expected in cases:
             with self.subTest(path=path):
@@ -476,6 +478,58 @@ class GitRangeTests(unittest.TestCase):
             self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
             self.assertIn(message, result.stdout + result.stderr)
 
+    def test_pre_push_selection_ignores_dirty_or_missing_local_policy(self):
+        shutil.copyfile(SCRIPTS / "pre-push.py", self.repo / LINUX / "pre-push.py")
+        self.write("cli/Cargo.toml", '[package]\nrust-version = "1.91"\n')
+        base = self.commit()
+        self.write("cli/src/main.rs", "invalid rust\n")
+        head = self.commit()
+        policy = self.repo / LINUX / "classify-ci-changes.py"
+        for content in ("raise RuntimeError('dirty policy executed')\n", None):
+            with self.subTest(content=content):
+                if content is None:
+                    policy.unlink()
+                else:
+                    policy.write_text(content, encoding="utf-8")
+                result = subprocess.run(
+                    ["python3", "-B", str(self.repo / LINUX / "pre-push.py"),
+                     "--plan", "--base", base, "--head", head],
+                    env=self.env, capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("clippy", result.stdout)
+                self.assertIn("x86_64-pc-windows-gnu", result.stdout)
+
+    def test_doc_links_preserve_paths_and_validate_angle_destinations(self):
+        helper = runpy.run_path(str(SCRIPTS / "check-doc-links.py"))
+        target = "docs/target with spaces.md"
+        self.write(target, "# Heading\n# Heading\n```\n# Hidden\n```\n")
+        self.write("docs/source with spaces.md", "\n".join((
+            "[angle](<target with spaces.md#heading>)",
+            "[encoded](target%20with%20spaces.md#heading-1)",
+            "[external](<https://example.invalid/a b>)",
+            "[mail](mailto:fixture%40example.invalid)",
+        )))
+        # A quoted Git display pathname must also be preserved on POSIX.
+        if os.name != "nt":
+            self.write("docs/tab\tand\nnewline.md", "[valid](<target with spaces.md>)\n")
+        self.git("add", ".")
+        self.assertEqual(helper["check"](self.repo), [])
+        self.write("docs/source with spaces.md", "\n".join((
+            "[missing](<missing with spaces.md>)",
+            "[anchor](<target with spaces.md#absent>)",
+            "[fence](<target with spaces.md#hidden>)",
+        )))
+        failures = helper["check"](self.repo)
+        self.assertEqual(len(failures), 3, failures)
+        self.assertIn("broken link", failures[0])
+        self.assertIn("broken anchor", failures[1])
+        # Archive/source snapshots without Git metadata use the same checks.
+        archive = self.root / "archive"
+        archive.mkdir()
+        (archive / "source with spaces.md").write_text("[missing](<missing.md>)\n")
+        self.assertEqual(len(helper["check"](archive)), 1)
+
     def test_empty_manual_missing_and_invalid_ranges(self):
         self.assertFalse(self.script()["run_build_linux"])
         self.env["GITHUB_EVENT_NAME"] = "workflow_dispatch"
@@ -538,6 +592,44 @@ class GitRangeTests(unittest.TestCase):
         self.env["HEAD_SHA"] = self.git("rev-parse", "HEAD")
         self.env["FIXTURE_RELEASE_TAG"] = "v2026.01.01-1"
         self.script("classify-release.sh", success=False)
+
+
+class ReleaseTagTests(unittest.TestCase):
+    def test_remote_presence_absence_and_errors(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mock = root / "git"
+            mock.write_text(
+                '#!/bin/sh\n'
+                'printf "%s\\n" "$5" >> "$TAG_LOG"\n'
+                '[ "$TAG_STATUS" != sequence ] || {\n'
+                '  [ "$5" = refs/tags/v2026.01.01-1 ] && exit 0\n'
+                '  exit 2\n'
+                '}\n'
+                'exit "$TAG_STATUS"\n', encoding="utf-8",
+            )
+            mock.chmod(0o755)
+            env = os.environ | {"PATH": str(root) + os.pathsep + os.environ["PATH"],
+                                "TAG_LOG": str(root / "calls")}
+            for status, mode, expected in (
+                ("0", "check", 1), ("2", "check", 0),
+                ("128", "check", 128), ("1", "check", 1),
+                ("2", "next", 0), ("sequence", "next", 0),
+                ("128", "next", 128), ("1", "next", 1),
+            ):
+                with self.subTest(status=status, mode=mode):
+                    (root / "calls").write_text("")
+                    result = subprocess.run(
+                        ["sh", str(SCRIPTS / "release-tag.sh"), mode,
+                         "2026.01.01" if mode == "next" else "v2026.01.01-1"],
+                        env=env | {"TAG_STATUS": status}, capture_output=True, text=True,
+                    )
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                    if mode == "next" and expected == 0:
+                        self.assertEqual(result.stdout.strip(), "v2026.01.01-" + ("2" if status == "sequence" else "1"))
+                    if status in {"128", "1"}:
+                        self.assertIn("Cannot query release tag", result.stderr)
+                        self.assertEqual(len((root / "calls").read_text().splitlines()), 1)
 
 
 if __name__ == "__main__":

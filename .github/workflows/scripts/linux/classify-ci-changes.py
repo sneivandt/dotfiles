@@ -57,6 +57,7 @@ def binary_input(path: str) -> bool:
         "Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain", "rust-toolchain.toml",
         ".github/workflows/release.yml", LINUX + "classify-ci-changes.py",
         LINUX + "classify-ci-changes.sh", LINUX + "classify-release.sh",
+        LINUX + "release-tag.sh",
     }
 
 
@@ -106,13 +107,13 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             full = True
         elif path in {LINUX + "check-ci-contract.py", LINUX + "test-ci-changes.py"}:
             pass  # Always executed by classify-changes.
-        elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh"}:
+        elif path in {".github/workflows/release.yml", LINUX + "classify-release.sh", LINUX + "release-tag.sh"}:
             pass  # Publishing builds are selected independently of CI builds.
         elif path == LINUX + "test-desktop-qml.sh":
             enable("desktop_qml")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
-        elif path == LINUX + "test-docs.sh":
+        elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py"}:
             pass
         elif path == LINUX + "test-static-analysis.sh":
             linters.update(LINTERS)

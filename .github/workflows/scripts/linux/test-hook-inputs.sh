@@ -135,6 +135,85 @@ EOF
   grep -q 'wildcard dependency' "$fixture/output" || log_error "Unexpected staged manifest failure"
 )}
 
+test_staged_quoted_powershell()
+{(
+  log_stage "Checking PowerShell hook arguments with quoted Git filenames"
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir "$fixture/repo" "$fixture/mock-bin"
+  cat > "$fixture/mock-bin/pwsh" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$1" = -NoProfile ] && [ "$2" = -File ]
+shift 3
+[ "$#" -eq 1 ]
+[ "$1" = "./$HOOK_EXPECTED_FILE" ]
+printf 'powershell\n' >> "$HOOK_INPUT_LOG"
+[ "$(cat "$1")" = valid-staged ]
+EOF
+  chmod +x "$fixture/mock-bin/pwsh"
+  PATH="$fixture/mock-bin:$PATH"
+  HOOK_INPUT_LOG="$fixture/checks.log"
+  export PATH HOOK_INPUT_LOG HOOK_EXPECTED_FILE
+  cd "$fixture/repo"
+  init_fixture_repository
+  for file in 'script with spaces.ps1' "$(printf 'tab\tname.psm1')" \
+    "$(printf 'line\nbreak.psd1')" 'quote"name.ps1' '-option.ps1' 'glob[name].ps1'; do
+    # Windows prohibits control characters and double quotes in filenames.
+    if command -v cygpath >/dev/null 2>&1; then
+      case "$file" in *'"'*|*"$(printf '\t')"*|*'
+'*) continue ;; esac
+    fi
+    HOOK_EXPECTED_FILE=$file
+    printf 'valid-staged\n' > "$file"
+    git add -- "$file"
+    printf 'invalid-unstaged\n' > "$file"
+    : > "$HOOK_INPUT_LOG"
+    sh "$DIR/hooks/check-rust.sh"
+    [ "$(cat "$HOOK_INPUT_LOG")" = powershell ] || log_error "PowerShell input was skipped"
+    printf 'invalid-staged\n' > "$file"
+    git add -- "$file"
+    printf 'valid-staged\n' > "$file"
+    if sh "$DIR/hooks/check-rust.sh" > "$fixture/output" 2>&1; then
+      log_error "Quoted PowerShell filename hid invalid staged content"
+    fi
+    grep -q 'PSScriptAnalyzer reported issues' "$fixture/output" || log_error "Unexpected PowerShell failure"
+    git add -- "$file"
+    git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm fixture
+    renamed="renamed $file"
+    git mv -- "$file" "$renamed"
+    HOOK_EXPECTED_FILE=$renamed
+    sh "$DIR/hooks/check-rust.sh"
+    git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm rename
+    git rm -q -- "$renamed"
+    : > "$HOOK_INPUT_LOG"
+    sh "$DIR/hooks/check-rust.sh"
+    [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Deleted PowerShell input was analyzed"
+    git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm deletion
+  done
+  # Ensure argv construction also preserves multiple staged inputs in one batch.
+  cat > "$fixture/mock-bin/pwsh" <<'EOF'
+#!/bin/sh
+set -eu
+shift 3
+[ "$#" -eq 2 ]
+[ "$1" = ./first.ps1 ] && [ "$2" = './second file.psd1' ]
+for file do
+  [ "$(cat "$file")" = valid-staged ]
+done
+EOF
+  printf 'valid-staged\n' > first.ps1
+  printf 'valid-staged\n' > 'second file.psd1'
+  git add -- first.ps1 'second file.psd1'
+  sh "$DIR/hooks/check-rust.sh"
+  printf 'invalid-staged\n' > 'second file.psd1'
+  git add -- 'second file.psd1'
+  if sh "$DIR/hooks/check-rust.sh" > "$fixture/output" 2>&1; then
+    log_error "Failure in the second PowerShell input was ignored"
+  fi
+
+)}
+
 test_ci_change_classification()
 {
   python3 -B "$SCRIPT_DIR/test-ci-changes.py"
@@ -519,3 +598,4 @@ test_staged_ci_guard_deletions
 test_build_version_ref_triggers
 test_github_ssh_allowlist
 test_pkgbuild_checksum_allowlist
+test_staged_quoted_powershell

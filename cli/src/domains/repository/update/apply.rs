@@ -264,7 +264,6 @@ pub(super) fn plan_repository_update(
         let reason = repository
             .target
             .reason("local branch diverged from upstream");
-        ctx.log().info(format!("{reason}, skipping pull"));
         return Ok(RepositoryPlanReadiness::Skipped(reason));
     }
 

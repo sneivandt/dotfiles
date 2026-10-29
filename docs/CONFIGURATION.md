@@ -225,7 +225,11 @@ settings = [
 Keys are dot-separated paths; values use TOML types. Manage the narrowest key
 needed so unrelated user and harness-owned settings remain untouched. Existing
 documents must be JSON objects or TOML tables; malformed documents are reported,
-not replaced with an empty one.
+not replaced with an empty one. Replacements are staged and published atomically;
+existing symlink redirections are retained. Numeric values must be finite,
+including numbers nested in arrays or tables. NaN and infinity are rejected.
+Parent and child keys must agree: `footer = { showBranch = true }` conflicts
+with `footer.showBranch = false`, but agrees with `footer.showBranch = true`.
 An overlay's active entries replace main entries for the same harness and exact,
 case-sensitive key. Other keys and harnesses retain their main values. Each
 source is checked before merging: conflicting values within either the main
@@ -300,7 +304,8 @@ Supported unit suffixes are `.service`, `.timer`, `.socket`, `.target`, `.path`,
 User unit files are usually provided by symlinks before this task runs.
 System-scope changes use `sudo`.
 
-With a live manager, enabled units are enabled and started; disabled units are
+With a live manager, enabled units are persistently enabled and started;
+`enabled-runtime` does not establish persistent enablement. Disabled units are
 disabled and stopped. A static unit may have no enablement links, but
 `enabled = false` still requires it to be stopped. This does not mask the unit
 or stop another unit from starting it later.

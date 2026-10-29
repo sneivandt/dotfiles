@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result};
 use serde_json::{Map, Value};
 
+use crate::domains::ai::config::agent_settings::value_is_finite;
 use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
 
 /// Serialization format of an agent settings document.
@@ -171,6 +172,9 @@ impl Resource for AgentSettingResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
+        if !value_is_finite(&self.desired_value) {
+            return Err(anyhow::anyhow!("settings value contains NaN or infinity").into());
+        }
         let mut serialized = match self.format {
             SettingsFormat::Json => {
                 let mut document = self.read_json_document()?;
@@ -188,13 +192,27 @@ impl Resource for AgentSettingResource {
         if !serialized.ends_with('\n') {
             serialized.push('\n');
         }
-        crate::infra::fs::write_with_parent(&self.path, serialized)?;
+        // Preserve an existing redirection while publishing a complete document
+        // at its referent. Broken links fail rather than being replaced silently.
+        let path = match crate::infra::fs::symlink_metadata_optional(
+            &self.path,
+            "inspect settings destination",
+        )? {
+            Some(metadata) if metadata.is_symlink() => crate::infra::fs::canonicalize(&self.path)?,
+            _ => self.path.clone(),
+        };
+        crate::infra::fs::write_atomic(&path, serialized)?;
         Ok(ResourceChange::Applied)
     }
 }
 
 impl IntrinsicState for AgentSettingResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
+        if !value_is_finite(&self.desired_value) {
+            return Ok(ResourceState::Invalid {
+                reason: "settings value contains NaN or infinity".into(),
+            });
+        }
         match self.format {
             SettingsFormat::Json => {
                 let document = self.read_json_document()?;
@@ -466,5 +484,125 @@ command = "example"
         assert!(toml.current_state().is_err());
         assert!(toml.apply().is_err());
         assert_eq!(std::fs::read_to_string(toml_path).unwrap(), "[not valid");
+    }
+
+    #[test]
+    fn invalid_numeric_values_cannot_overwrite_documents_in_either_format() {
+        for format in [SettingsFormat::Json, SettingsFormat::Toml] {
+            for value in [
+                toml::Value::Float(f64::NAN),
+                toml::Value::Array(vec![toml::Value::Float(f64::INFINITY)]),
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("settings");
+                let before = match format {
+                    SettingsFormat::Json => "{\"unmanaged\":true}",
+                    SettingsFormat::Toml => "unmanaged = true\n",
+                };
+                std::fs::write(&path, before).unwrap();
+                let resource = AgentSettingResource::new(
+                    "fixture".into(),
+                    "managed".into(),
+                    value,
+                    format,
+                    path.clone(),
+                );
+                assert!(matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { .. }
+                ));
+                assert!(resource.apply().is_err());
+                assert_eq!(std::fs::read_to_string(path).unwrap(), before);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_settings_updates_preserve_symlink_redirections_and_access_modes() {
+        use std::os::unix::fs::PermissionsExt as _;
+        for format in [SettingsFormat::Json, SettingsFormat::Toml] {
+            let dir = tempfile::tempdir().unwrap();
+            let target = dir.path().join("actual-settings");
+            let path = dir.path().join("settings");
+            let before = match format {
+                SettingsFormat::Json => "{\"unmanaged\":true}",
+                SettingsFormat::Toml => "unmanaged = true\n",
+            };
+            std::fs::write(&target, before).unwrap();
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+            std::os::unix::fs::symlink("actual-settings", &path).unwrap();
+            let resource = AgentSettingResource::new(
+                "fixture".into(),
+                "managed".into(),
+                true.into(),
+                format,
+                path.clone(),
+            );
+            resource.apply().unwrap();
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            assert_eq!(
+                std::fs::read_link(path).unwrap(),
+                PathBuf::from("actual-settings")
+            );
+            assert_eq!(
+                target.metadata().unwrap().permissions().mode() & 0o777,
+                0o640
+            );
+            let contents = std::fs::read_to_string(&target).unwrap();
+            assert!(contents.contains("unmanaged"));
+            assert!(contents.contains("managed"));
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn failed_staged_write_preserves_existing_document() {
+        const CHILD_PATH: &str = "DOTFILES_TEST_LIMITED_SETTINGS_PATH";
+        if let Some(path) = std::env::var_os(CHILD_PATH) {
+            let format = if std::env::var_os("DOTFILES_TEST_SETTINGS_TOML").is_some() {
+                SettingsFormat::Toml
+            } else {
+                SettingsFormat::Json
+            };
+            let resource = AgentSettingResource::new(
+                "fixture".into(),
+                "managed".into(),
+                toml::Value::String("x".repeat(65536)),
+                format,
+                path.into(),
+            );
+            assert!(
+                resource.apply().is_err(),
+                "file size limit must reject the replacement"
+            );
+            return;
+        }
+        for format in [SettingsFormat::Json, SettingsFormat::Toml] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("settings");
+            let before = match format {
+                SettingsFormat::Json => "{\"unmanaged\":true}",
+                SettingsFormat::Toml => "unmanaged = true\n",
+            };
+            std::fs::write(&path, before).unwrap();
+            let mut child = std::process::Command::new("sh");
+            child.args(["-c", "trap '' XFSZ; ulimit -f 1; exec \"$@\"", "limited-settings-write"])
+                .arg(std::env::current_exe().unwrap())
+                .args(["--exact", "domains::ai::resources::agent_settings::tests::failed_staged_write_preserves_existing_document"])
+                .env(CHILD_PATH, &path);
+            if format == SettingsFormat::Toml {
+                child.env("DOTFILES_TEST_SETTINGS_TOML", "1");
+            }
+            let output = child.output().unwrap();
+            assert!(output.status.success(), "limited writer failed: {output:?}");
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+            assert_eq!(
+                std::fs::read_dir(dir.path()).unwrap().count(),
+                1,
+                "failed replacement must clean staging files"
+            );
+        }
     }
 }

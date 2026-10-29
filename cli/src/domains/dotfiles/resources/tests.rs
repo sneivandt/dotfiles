@@ -18,9 +18,17 @@ fn make_path_entry(home: &Path, on_path: bool) -> PathEntryResource {
         home,
         platform,
         executor,
-        crate::infra::env::MapEnv::new().into_handle(),
+        crate::infra::env::MapEnv::new()
+            .with(
+                "PATH",
+                if on_path {
+                    home.join(".local/bin").into_os_string()
+                } else {
+                    "".into()
+                },
+            )
+            .into_handle(),
     )
-    .with_path_source(on_path)
 }
 
 #[test]

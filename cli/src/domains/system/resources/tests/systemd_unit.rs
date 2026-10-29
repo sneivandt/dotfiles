@@ -880,3 +880,46 @@ fn offline_user_unit_rejects_install_targets_that_escape_the_user_directory() {
     assert!(error.to_string().contains("invalid [Install] target"));
     assert!(!home.path().join("outside.target.wants").exists());
 }
+
+#[test]
+fn runtime_enablement_does_not_satisfy_persistent_enablement() {
+    for scope in [UnitScope::User, UnitScope::System] {
+        let resource = queried_unit(
+            "fixture.service",
+            scope.clone(),
+            true,
+            ExecResult::success("enabled-runtime\n"),
+            None,
+        );
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+        let disabled_resource = queried_unit(
+            "fixture.service",
+            scope,
+            false,
+            ExecResult::success("enabled-runtime\n"),
+            None,
+        );
+        assert!(matches!(
+            disabled_resource.current_state().unwrap(),
+            ResourceState::Incorrect { .. }
+        ));
+    }
+}
+
+#[test]
+fn indirect_units_retain_runtime_checks_without_requiring_direct_install_links() {
+    for (active, correct) in [("active", true), ("inactive", false)] {
+        let resource = queried_unit(
+            "fixture.service",
+            UnitScope::User,
+            true,
+            ExecResult::success("indirect\n"),
+            Some(&format!("ActiveState={active}\n")),
+        );
+        // A normal enable can legitimately leave these units indirect.
+        assert_eq!(
+            resource.current_state().unwrap() == ResourceState::Correct,
+            correct
+        );
+    }
+}

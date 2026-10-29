@@ -81,26 +81,6 @@ pub fn read_string(path: &Path) -> Result<String> {
     std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
 }
 
-/// Write file content with consistent path context.
-///
-/// # Errors
-///
-/// Returns an error if the file cannot be written.
-pub fn write(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
-    std::fs::write(path, content).with_context(|| format!("write {}", path.display()))
-}
-
-/// Write file content after ensuring the parent directory exists.
-///
-/// # Errors
-///
-/// Returns an error if the parent directory cannot be created or the file
-/// cannot be written.
-pub fn write_with_parent(path: &Path, content: impl AsRef<[u8]>) -> Result<()> {
-    ensure_parent_dir(path)?;
-    write(path, content)
-}
-
 /// Copy a file with consistent path context.
 ///
 /// # Errors

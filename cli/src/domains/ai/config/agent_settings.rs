@@ -9,6 +9,7 @@ crate::infra::config::diagnostic_codes! {
     AGENT_SETTINGS_EMPTY_KEY => "empty-key",
     AGENT_SETTINGS_KEY_EMPTY_SEGMENT => "key-empty-segment",
     AGENT_SETTINGS_CONFLICTING_VALUES => "conflicting-values",
+    AGENT_SETTINGS_NONFINITE_VALUE => "nonfinite-value",
 }
 
 /// An agent harness with a supported user settings document.
@@ -53,7 +54,7 @@ config_section!(field: "settings", ty: AgentSetting);
 
 /// Find settings that cannot converge to a single value in their target document.
 pub(crate) fn validate_conflicts(settings: &[AgentSetting]) -> Vec<Diagnostic> {
-    crate::infra::config::validation::Validator::new(AGENT_SETTINGS_TOML)
+    let mut diagnostics = crate::infra::config::validation::Validator::new(AGENT_SETTINGS_TOML)
         .check_conflicts(
             settings,
             AGENT_SETTINGS_CONFLICTING_VALUES,
@@ -61,13 +62,60 @@ pub(crate) fn validate_conflicts(settings: &[AgentSetting]) -> Vec<Diagnostic> {
             |setting| setting.value.clone(),
             |_| None,
         )
-        .finish()
+        .finish();
+    for (index, setting) in settings.iter().enumerate() {
+        for (previous_index, previous) in settings.iter().take(index).enumerate() {
+            if setting.target == previous.target
+                && (conflicting_descendant(previous, setting)
+                    || conflicting_descendant(setting, previous))
+            {
+                diagnostics.push(Diagnostic::error(
+                    AGENT_SETTINGS_TOML,
+                    format!("{}:{}", setting.target.name(), setting.key),
+                    AGENT_SETTINGS_CONFLICTING_VALUES,
+                    format!(
+                        "conflicting parent/child settings at entry {} ({}) and entry {} ({}); keep compatible desired values",
+                        previous_index.saturating_add(1), previous.key,
+                        index.saturating_add(1), setting.key,
+                    ),
+                ));
+            }
+        }
+    }
+    diagnostics
+}
+
+fn conflicting_descendant(parent: &AgentSetting, child: &AgentSetting) -> bool {
+    let Some(suffix) = child
+        .key
+        .strip_prefix(&parent.key)
+        .and_then(|key| key.strip_prefix('.'))
+    else {
+        return false;
+    };
+    suffix.split('.').try_fold(&parent.value, |value, segment| {
+        value.as_table()?.get(segment)
+    }) != Some(&child.value)
+}
+
+/// JSON cannot represent nonfinite numbers, and TOML NaN cannot compare equal
+/// to itself during convergence. Check nested values before any document writes.
+pub(crate) fn value_is_finite(value: &toml::Value) -> bool {
+    match value {
+        toml::Value::Float(value) => value.is_finite(),
+        toml::Value::Array(values) => values.iter().all(value_is_finite),
+        toml::Value::Table(values) => values.values().all(value_is_finite),
+        toml::Value::String(_)
+        | toml::Value::Integer(_)
+        | toml::Value::Boolean(_)
+        | toml::Value::Datetime(_) => true,
+    }
 }
 
 /// Validate agent settings entries and return semantic diagnostics.
 #[must_use]
 pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
-    use crate::infra::config::validation::{Validator, check};
+    use crate::infra::config::validation::{Validator, check, check_error};
 
     let mut diagnostics = Validator::new(AGENT_SETTINGS_TOML)
         .check_each(
@@ -75,6 +123,11 @@ pub fn validate(settings: &[AgentSetting]) -> Vec<Diagnostic> {
             |setting| &setting.key,
             |setting| {
                 [
+                    check_error(
+                        !value_is_finite(&setting.value),
+                        AGENT_SETTINGS_NONFINITE_VALUE,
+                        "settings value contains NaN or infinity; use finite numbers",
+                    ),
                     check(
                         setting.key.trim().is_empty(),
                         AGENT_SETTINGS_EMPTY_KEY,
@@ -258,5 +311,130 @@ settings = [{ target = "codex", key = "model", value = "x" }]
         let (_dir, path) = write_temp_toml("[base\nsettings = [");
         let result = load(&path, &[Category::Base]);
         assert!(result.is_err(), "malformed TOML should return error");
+    }
+
+    #[test]
+    fn parent_child_conflicts_are_checked_in_both_orders_without_exposing_values() {
+        let footer_value: toml::Value = toml::from_str::<toml::Table>("showBranch = true\n")
+            .unwrap()
+            .into();
+        for (parent_key, parent_value, child_key, child_value, conflict) in [
+            (
+                "footer",
+                footer_value.clone(),
+                "footer.showBranch",
+                toml::Value::Boolean(false),
+                true,
+            ),
+            (
+                "footer",
+                footer_value.clone(),
+                "footer.showBranch",
+                toml::Value::Boolean(true),
+                false,
+            ),
+            (
+                "footer",
+                footer_value.clone(),
+                "footer.showQuota",
+                toml::Value::Boolean(true),
+                true,
+            ),
+            (
+                "footer",
+                toml::Value::String("private-fixture".into()),
+                "footer.showBranch",
+                toml::Value::Boolean(true),
+                true,
+            ),
+            (
+                "footer",
+                toml::from_str::<toml::Table>("[nested]\nshowBranch = true")
+                    .unwrap()
+                    .into(),
+                "footer.nested.showBranch",
+                toml::Value::Boolean(false),
+                true,
+            ),
+            (
+                "footer",
+                footer_value,
+                "footerOther.showBranch",
+                toml::Value::Boolean(false),
+                false,
+            ),
+        ] {
+            for reverse in [false, true] {
+                let mut entries = vec![
+                    AgentSetting {
+                        target: AgentHarness::Copilot,
+                        key: parent_key.into(),
+                        value: parent_value.clone(),
+                    },
+                    AgentSetting {
+                        target: AgentHarness::Copilot,
+                        key: child_key.into(),
+                        value: child_value.clone(),
+                    },
+                ];
+                if reverse {
+                    entries.reverse();
+                }
+                let diagnostics = validate_conflicts(&entries);
+                assert_eq!(
+                    diagnostics.len(),
+                    usize::from(conflict),
+                    "{parent_key}/{child_key}, reverse={reverse}"
+                );
+                if conflict {
+                    let diagnostic = &diagnostics[0];
+                    assert_eq!(diagnostic.code, AGENT_SETTINGS_CONFLICTING_VALUES);
+                    assert_eq!(diagnostic.source, AGENT_SETTINGS_TOML);
+                    assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
+                    assert!(diagnostic.message.contains("entry 1"));
+                    assert!(diagnostic.message.contains("entry 2"));
+                    assert!(!diagnostic.message.contains("private-fixture"));
+                }
+                entries[0].target = AgentHarness::Codex;
+                assert!(validate_conflicts(&entries).is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn nonfinite_numbers_are_rejected_recursively_for_both_harnesses() {
+        for target in [AgentHarness::Copilot, AgentHarness::Codex] {
+            for raw in [
+                "nan",
+                "inf",
+                "-inf",
+                "[1, nan]",
+                "{ nested = [0, { value = inf }] }",
+            ] {
+                let value = toml::from_str::<toml::Table>(&format!("value = {raw}\n"))
+                    .unwrap()
+                    .remove("value")
+                    .unwrap();
+                let entries = [AgentSetting {
+                    target,
+                    key: "fixture".into(),
+                    value,
+                }];
+                let diagnostics = validate(&entries);
+                assert_eq!(diagnostics.len(), 1, "{target:?}: {raw}");
+                let diagnostic = &diagnostics[0];
+                assert_eq!(diagnostic.code, AGENT_SETTINGS_NONFINITE_VALUE);
+                assert_eq!(diagnostic.severity, crate::infra::config::Severity::Error);
+                assert_eq!(diagnostic.source, AGENT_SETTINGS_TOML);
+                assert_eq!(diagnostic.item, "fixture");
+            }
+        }
+        for raw in ["1.25", "[1, -2.5]", "{ nested = [true, 0.0] }"] {
+            let value = toml::from_str::<toml::Table>(&format!("value = {raw}\n"))
+                .unwrap()
+                .remove("value")
+                .unwrap();
+            assert!(value_is_finite(&value));
+        }
     }
 }

@@ -88,6 +88,15 @@ impl SystemdUnitResource {
 
     fn state_from_is_enabled(&self, result: &crate::infra::exec::ExecResult) -> ResourceState {
         let output = command_output(result);
+        if result.success && result.stdout.trim() == "enabled-runtime" {
+            // Runtime enablement disappears at reboot; enable without --runtime
+            // to establish the persistent links required by desired state.
+            return if self.enabled {
+                ResourceState::Missing
+            } else {
+                ResourceState::Incorrect { current: output }
+            };
+        }
         if result.success {
             // Static units have no enablement links to disable. Their runtime
             // state still needs checking, even though is-enabled exits zero.

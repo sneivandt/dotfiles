@@ -14,18 +14,30 @@ use crate::engine::{
 use crate::infra::exec::CommandSpec;
 use crate::infra::exec::Executor;
 
-/// Source for checking whether a directory is already on `PATH`.
-///
-/// Reads the `PATH` variable through the injected environment handle so tests
-/// can supply a deterministic value instead of depending on the host.
-#[derive(Debug, Clone)]
-struct PathSource(Arc<dyn crate::infra::env::Env>);
+/// Persisted user PATH access; independent of the invoking shell's PATH.
+#[cfg_attr(test, mockall::automock)]
+trait UserPath: std::fmt::Debug + Send + Sync {
+    fn contains(&self, dir: &str) -> Result<bool>;
+    /// Return whether a new entry was persisted.
+    fn append(&self, dir: &str) -> Result<bool>;
+}
 
-impl PathSource {
-    fn is_on_path(&self, dir: &Path) -> bool {
-        self.0
-            .var_os("PATH")
-            .is_some_and(|p| std::env::split_paths(&p).any(|entry| entry == dir))
+#[derive(Debug)]
+struct RegistryPath {
+    #[cfg_attr(
+        not(windows),
+        allow(dead_code, reason = "registry backend is Windows-only")
+    )]
+    env: Arc<dyn crate::infra::env::Env>,
+}
+
+impl UserPath for RegistryPath {
+    fn contains(&self, dir: &str) -> Result<bool> {
+        user_path_contains(dir, &*self.env)
+    }
+
+    fn append(&self, dir: &str) -> Result<bool> {
+        append_user_path(dir, &*self.env)
     }
 }
 
@@ -50,6 +62,7 @@ enum PathStrategy {
     WindowsRegistry {
         /// Directory string to add to `PATH`.
         dir: String,
+        store: Arc<dyn UserPath>,
         /// Executor for broadcasting the environment change to other
         /// processes after the registry write.
         #[cfg_attr(not(windows), allow(dead_code, reason = "used conditionally via cfg"))]
@@ -64,8 +77,6 @@ pub struct PathEntryResource {
     dir: PathBuf,
     /// How to persist the `PATH` change.
     strategy: PathStrategy,
-    /// Source for the runtime `PATH` check.
-    path_source: PathSource,
 }
 
 impl PathEntryResource {
@@ -85,6 +96,7 @@ impl PathEntryResource {
         let strategy = if platform.is_windows() {
             PathStrategy::WindowsRegistry {
                 dir: dir.to_string_lossy().into_owned(),
+                store: Arc::new(RegistryPath { env }),
                 executor,
             }
         } else {
@@ -94,29 +106,7 @@ impl PathEntryResource {
             }
         };
 
-        Self {
-            dir,
-            strategy,
-            path_source: PathSource(env),
-        }
-    }
-
-    /// Override the `PATH` source so the directory reads as already present
-    /// (or absent), for testing.
-    #[cfg(test)]
-    #[must_use]
-    pub(super) fn with_path_source(mut self, on_path: bool) -> Self {
-        let path = if on_path {
-            self.dir.clone().into_os_string()
-        } else {
-            std::ffi::OsString::from("")
-        };
-        self.path_source = PathSource(
-            crate::infra::env::MapEnv::new()
-                .with("PATH", path)
-                .into_handle(),
-        );
-        self
+        Self { dir, strategy }
     }
 
     fn shell_profile_contains_managed_line(path: &Path, line: &str) -> Result<bool> {
@@ -155,12 +145,15 @@ impl Resource for PathEntryResource {
                 writeln!(file, "{line}")?;
                 Ok(ResourceChange::Applied)
             }
-            PathStrategy::WindowsRegistry { dir, executor } => {
-                if self.path_source.is_on_path(&self.dir) {
+            PathStrategy::WindowsRegistry {
+                dir,
+                store,
+                executor,
+            } => {
+                if !store.append(dir)? {
                     return Ok(ResourceChange::AlreadyCorrect);
                 }
 
-                append_user_path(dir)?;
                 // Best-effort broadcast of the environment change so already-
                 // running shells / Explorer pick up the new PATH without a
                 // logoff.  SetEnvironmentVariable would do this automatically
@@ -193,36 +186,13 @@ impl IntrinsicState for PathEntryResource {
                     Ok(ResourceState::Missing)
                 }
             }
-            #[cfg(windows)]
-            PathStrategy::WindowsRegistry { dir, .. } => {
-                // Fast path: directory is already on the runtime PATH.
-                if self.path_source.is_on_path(&self.dir) {
-                    return Ok(ResourceState::Correct);
-                }
-
-                // Also check the persisted user PATH in the registry — it may
-                // already contain the directory even if the current process's
-                // environment block does not.
-                match user_path_contains(dir) {
-                    Ok(true) => return Ok(ResourceState::Correct),
-                    Ok(false) => {}
-                    Err(e) => {
-                        return Ok(ResourceState::Unknown {
-                            reason: e.to_string(),
-                        });
-                    }
-                }
-
-                Ok(ResourceState::Missing)
-            }
-            #[cfg(not(windows))]
-            PathStrategy::WindowsRegistry { .. } => {
-                if self.path_source.is_on_path(&self.dir) {
-                    return Ok(ResourceState::Correct);
-                }
-
-                Ok(ResourceState::Missing)
-            }
+            PathStrategy::WindowsRegistry { dir, store, .. } => match store.contains(dir) {
+                Ok(true) => Ok(ResourceState::Correct),
+                Ok(false) => Ok(ResourceState::Missing),
+                Err(error) => Ok(ResourceState::Unknown {
+                    reason: error.to_string(),
+                }),
+            },
         }
     }
 }
@@ -230,7 +200,7 @@ impl IntrinsicState for PathEntryResource {
 /// Append `dir` to the Windows user `PATH` in the registry, preserving the
 /// original value type (`REG_EXPAND_SZ` by default).
 #[cfg(windows)]
-fn append_user_path(dir: &str) -> Result<()> {
+fn append_user_path(dir: &str, environment: &dyn crate::infra::env::Env) -> Result<bool> {
     use winreg::RegKey;
     use winreg::RegValue;
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_EXPAND_SZ};
@@ -251,8 +221,8 @@ fn append_user_path(dir: &str) -> Result<()> {
         }
     };
 
-    if path_contains_entry(&existing_value, dir) {
-        return Ok(());
+    if path_contains_entry(&existing_value, dir, environment) {
+        return Ok(false);
     }
 
     let new_value = if existing_value.is_empty() {
@@ -267,24 +237,24 @@ fn append_user_path(dir: &str) -> Result<()> {
     };
     env.set_raw_value("Path", &new_raw)
         .context("writing HKCU\\Environment\\Path")?;
-    Ok(())
+    Ok(true)
 }
 
-/// No-op non-Windows backend so the cross-platform strategy enum can compile.
+/// Native registry access is unavailable on non-Windows hosts.
 #[cfg(not(windows))]
-#[allow(
-    clippy::unnecessary_wraps,
-    clippy::missing_const_for_fn,
-    reason = "matches Windows backend signature"
-)]
-fn append_user_path(_dir: &str) -> Result<()> {
-    Ok(())
+fn append_user_path(_dir: &str, _environment: &dyn crate::infra::env::Env) -> Result<bool> {
+    anyhow::bail!("user PATH registry access is only supported on Windows")
+}
+
+#[cfg(not(windows))]
+fn user_path_contains(_dir: &str, _environment: &dyn crate::infra::env::Env) -> Result<bool> {
+    anyhow::bail!("user PATH registry access is only supported on Windows")
 }
 
 /// Return `true` when the persisted user `PATH` in the registry already
 /// contains `dir`.
 #[cfg(windows)]
-fn user_path_contains(dir: &str) -> Result<bool> {
+fn user_path_contains(dir: &str, environment: &dyn crate::infra::env::Env) -> Result<bool> {
     use winreg::RegKey;
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
 
@@ -297,7 +267,11 @@ fn user_path_contains(dir: &str) -> Result<bool> {
             }
         };
     match env.get_raw_value("Path") {
-        Ok(v) => Ok(path_contains_entry(&decode_reg_string(&v.bytes), dir)),
+        Ok(v) => Ok(path_contains_entry(
+            &decode_reg_string(&v.bytes),
+            dir,
+            environment,
+        )),
         Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(anyhow::Error::from(e).context("reading HKCU\\Environment\\Path")),
     }
@@ -334,17 +308,17 @@ fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {
 
 /// Return `true` when `dir` already appears as a `;`-separated entry in
 /// `path` (case-insensitive on Windows).
-#[cfg(windows)]
-fn path_contains_entry(path: &str, dir: &str) -> bool {
-    let target = normalize_path_entry(&expand_env_vars(dir));
+#[cfg(any(windows, test))]
+fn path_contains_entry(path: &str, dir: &str, environment: &dyn crate::infra::env::Env) -> bool {
+    let target = normalize_path_entry(&expand_env_vars(dir, environment));
     path.split(';')
-        .map(|entry| normalize_path_entry(&expand_env_vars(entry)))
+        .map(|entry| normalize_path_entry(&expand_env_vars(entry, environment)))
         .any(|entry| entry.eq_ignore_ascii_case(&target))
 }
 
 /// Expand `%VAR%` tokens in `value` against the current process environment.
-#[cfg(windows)]
-fn expand_env_vars(value: &str) -> String {
+#[cfg(any(windows, test))]
+fn expand_env_vars(value: &str, environment: &dyn crate::infra::env::Env) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
     while let Some(start) = rest.find('%') {
@@ -353,7 +327,7 @@ fn expand_env_vars(value: &str) -> String {
         if let Some(end) = after.find('%') {
             let name = &after[..end];
             if !name.is_empty()
-                && let Some(val) = std::env::var_os(name)
+                && let Some(val) = environment.var_os(name)
             {
                 out.push_str(&val.to_string_lossy());
                 rest = &after[end + 1..];
@@ -374,7 +348,7 @@ fn expand_env_vars(value: &str) -> String {
 }
 
 /// Normalize a path entry for comparison.
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 fn normalize_path_entry(entry: &str) -> String {
     let trimmed = entry.trim();
     let unified: String = trimmed
@@ -405,4 +379,148 @@ fn encode_reg_string(value: &str) -> Vec<u8> {
     let mut out: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
     out.extend_from_slice(&[0, 0]);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::env::MapEnv;
+    use crate::infra::exec::MockExecutor;
+    use crate::infra::platform::{Os, Platform};
+
+    fn windows_resource(home: &Path, store: MockUserPath) -> PathEntryResource {
+        let executor = MockExecutor::new();
+        #[cfg(windows)]
+        let executor = {
+            let mut executor = executor;
+            executor
+                .expect_which()
+                .with(mockall::predicate::eq("pwsh"))
+                .returning(|_| true);
+            executor
+                .expect_execute()
+                .once()
+                .withf(|spec| spec.program() == "pwsh")
+                .returning(|_| Ok(crate::infra::exec::ExecResult::success("")));
+            executor
+        };
+        let env = MapEnv::new()
+            .with("PATH", home.join(".local/bin").into_os_string())
+            .into_handle();
+        let mut resource = PathEntryResource::new(
+            home,
+            Platform::new(Os::Windows, false),
+            Arc::new(executor),
+            env,
+        );
+        if let PathStrategy::WindowsRegistry { store: backend, .. } = &mut resource.strategy {
+            *backend = Arc::new(store);
+        }
+        resource
+    }
+
+    #[test]
+    fn transient_runtime_path_does_not_skip_persistence_and_repeated_apply_is_current() {
+        let home = tempfile::tempdir().unwrap();
+        let mut store = MockUserPath::new();
+        let mut sequence = mockall::Sequence::new();
+        store
+            .expect_contains()
+            .once()
+            .in_sequence(&mut sequence)
+            .returning(|_| Ok(false));
+        store
+            .expect_append()
+            .once()
+            .in_sequence(&mut sequence)
+            .returning(|_| Ok(true));
+        store
+            .expect_contains()
+            .once()
+            .in_sequence(&mut sequence)
+            .returning(|_| Ok(true));
+        store
+            .expect_append()
+            .once()
+            .in_sequence(&mut sequence)
+            .returning(|_| Ok(false));
+        let resource = windows_resource(home.path(), store);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+        assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+        assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+    }
+
+    #[test]
+    fn persisted_path_read_and_write_errors_cannot_report_success() {
+        let home = tempfile::tempdir().unwrap();
+        let mut store = MockUserPath::new();
+        store
+            .expect_contains()
+            .once()
+            .returning(|_| anyhow::bail!("fixture registry read failure"));
+        store
+            .expect_append()
+            .once()
+            .returning(|_| anyhow::bail!("fixture registry write failure"));
+        let resource = PathEntryResource {
+            dir: home.path().join(".local/bin"),
+            strategy: PathStrategy::WindowsRegistry {
+                dir: "fixture".into(),
+                store: Arc::new(store),
+                executor: Arc::new(MockExecutor::new()),
+            },
+        };
+        assert_eq!(
+            resource.current_state().unwrap(),
+            ResourceState::Unknown {
+                reason: "fixture registry read failure".into()
+            }
+        );
+        assert!(resource.apply().is_err());
+    }
+
+    #[test]
+    fn registry_preview_only_reads_persisted_state() {
+        let home = tempfile::tempdir().unwrap();
+        let mut store = MockUserPath::new();
+        store.expect_contains().once().returning(|_| Ok(false));
+        let resource = PathEntryResource {
+            dir: home.path().join(".local/bin"),
+            strategy: PathStrategy::WindowsRegistry {
+                dir: "fixture".into(),
+                store: Arc::new(store),
+                executor: Arc::new(MockExecutor::new()),
+            },
+        };
+        let ctx =
+            crate::test_helpers::make_linux_context(home.path().into(), None).with_dry_run(true);
+        let result = crate::engine::process_resources(
+            &ctx,
+            [resource],
+            &crate::engine::ProcessOpts::strict("configure"),
+        )
+        .unwrap();
+        assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+        assert_eq!(std::fs::read_dir(home.path()).unwrap().count(), 0);
+    }
+    #[test]
+    fn persisted_entries_match_expanded_windows_paths_without_runtime_path() {
+        let env = MapEnv::new().with("USERPROFILE", r"C:\Users\Fixture User");
+        for path in [
+            r"%USERPROFILE%/.local/bin",
+            r"c:\users\fixture user\.local\bin\",
+        ] {
+            assert!(
+                path_contains_entry(path, r"C:\Users\Fixture User\.local\bin", &env),
+                "{path}"
+            );
+        }
+        assert!(!path_contains_entry(
+            r"C:\Other\bin",
+            r"C:\Users\Fixture User\.local\bin",
+            &env
+        ));
+        assert_eq!(expand_env_vars(r"%UNKNOWN%\bin", &env), r"%UNKNOWN%\bin");
+    }
 }

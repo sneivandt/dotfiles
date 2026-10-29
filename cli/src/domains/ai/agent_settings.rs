@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use crate::domains::ai::config::agent_settings::{AgentHarness, AgentSetting, validate_conflicts};
+use crate::domains::ai::config::agent_settings::{AgentHarness, AgentSetting, validate};
 use crate::domains::ai::resources::agent_settings::{AgentSettingResource, SettingsFormat};
 use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
 
@@ -54,7 +54,10 @@ impl Task for ConfigureAgentSettings {
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
         let settings = self.config.get();
-        if let Some(conflict) = validate_conflicts(settings).first() {
+        if let Some(conflict) = validate(settings)
+            .iter()
+            .find(|diagnostic| diagnostic.severity == crate::infra::config::Severity::Error)
+        {
             anyhow::bail!("{}: {}", conflict.item, conflict.message);
         }
         let resources = settings
@@ -258,5 +261,36 @@ mod tests {
                 home.join(".codex").join("config.toml")
             )
         );
+    }
+
+    #[test]
+    fn invalid_desired_settings_fail_before_any_document_is_changed() {
+        for invalid in [
+            AgentSetting {
+                target: AgentHarness::Copilot,
+                key: "footer".into(),
+                value: toml::from_str::<toml::Table>("showBranch = false")
+                    .unwrap()
+                    .into(),
+            },
+            AgentSetting {
+                target: AgentHarness::Copilot,
+                key: "another".into(),
+                value: toml::Value::Float(f64::INFINITY),
+            },
+        ] {
+            let home = tempfile::tempdir().unwrap();
+            let ctx = make_linux_context(home.path().into(), None).with_home(home.path().into());
+            let task = ConfigureAgentSettings::new(ConfigHandle::new(vec![
+                AgentSetting {
+                    target: AgentHarness::Copilot,
+                    key: "footer.showBranch".into(),
+                    value: true.into(),
+                },
+                invalid,
+            ]));
+            assert!(task.run(&ctx).is_err());
+            assert!(!home.path().join(".copilot").exists());
+        }
     }
 }

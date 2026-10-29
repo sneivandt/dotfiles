@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPTS = Path(__file__).resolve().parent
@@ -246,6 +247,116 @@ class PrePushPlanTests(unittest.TestCase):
                 self.assertNotIn("All requested checks passed", result.stdout)
 
 
+class LocalCheckTests(unittest.TestCase):
+    def test_tool_failures_are_not_optional_tool_skips(self):
+        stages = (
+            "fmt", "clippy", "test", "rustdoc", "config", "docs", "ci",
+            "shell", "powershell", "audit", "deny", "msrv", "qml",
+        )
+        with tempfile.TemporaryDirectory(prefix="dotfiles-check-status-") as temporary:
+            root = Path(temporary)
+            scripts = root / LINUX
+            scripts.mkdir(parents=True)
+            (root / "cli").mkdir()
+            (root / "cli/Cargo.toml").write_text(
+                '[package]\nrust-version = "1.91"\n', encoding="utf-8", newline="\n",
+            )
+            (root / "hooks").mkdir()
+            (root / "hooks/check-toolchain.sh").write_text(
+                "#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n",
+            )
+            shutil.copyfile(SCRIPTS / "check.sh", scripts / "check.sh")
+            for name in (
+                "test-docs.sh", "test-static-analysis.sh", "test-workflows.sh",
+                "test-desktop-qml.sh",
+            ):
+                (scripts / name).write_text(
+                    '#!/bin/sh\nexit "$CHECK_STATUS"\n', encoding="utf-8", newline="\n",
+                )
+            tools = root / "tools"
+            tools.mkdir()
+            for name in ("cargo", "rustup", "python3", "shellcheck", "pwsh",
+                         "actionlint", "qmltestrunner"):
+                tool = tools / name
+                tool.write_text(
+                    '#!/bin/sh\n'
+                    '[ "${2:-}" = --version ] && exit 0\n'
+                    '[ "${1:-}" = toolchain ] && exit 0\n'
+                    'exit "$CHECK_STATUS"\n',
+                    encoding="utf-8", newline="\n",
+                )
+                tool.chmod(0o755)
+            env = os.environ | {
+                "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+                "DOTFILES_CHECK_STRICT": "0",
+            }
+            for status in (0, 1, 2, 17):
+                with self.subTest(status=status):
+                    result = subprocess.run(
+                        ["sh", str(scripts / "check.sh"), *stages],
+                        env=env | {"CHECK_STATUS": str(status)},
+                        capture_output=True, text=True, timeout=120,
+                    )
+                    self.assertEqual(result.returncode, int(status != 0), result.stdout + result.stderr)
+                    self.assertNotIn("SKIP", result.stdout)
+                    for stage in stages:
+                        self.assertRegex(
+                            result.stdout,
+                            rf"(?m)^\s+{'PASS' if status == 0 else 'FAIL'} {stage}$",
+                        )
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is unavailable")
+    def test_windows_command_start_failures_do_not_pass(self):
+        command = r"""
+$ErrorActionPreference = 'Continue'
+$source = [System.Management.Automation.Language.Parser]::ParseFile(
+    $env:CHECK_SCRIPT, [ref]$null, [ref]$null)
+foreach ($name in @('Write-Note', 'Invoke-Tool')) {
+    $function = $source.Find({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq $name
+    }, $true)
+    Invoke-Expression $function.Extent.Text
+}
+$global:LASTEXITCODE = 0
+$status = Invoke-Tool -FilePath 'dotfiles-fixture-command-that-does-not-exist' -ToolArguments @('--version')
+if ($status -ne 'FAIL') { throw "Expected FAIL, got $status" }
+"""
+        result = subprocess.run(
+            [shutil.which("pwsh"), "-NoProfile", "-NonInteractive", "-Command", command],
+            env=os.environ | {"CHECK_SCRIPT": str(SCRIPTS.parent / "windows/Check.ps1")},
+            capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is unavailable")
+    def test_windows_skips_are_reported_and_strict_mode_fails(self):
+        with tempfile.TemporaryDirectory(prefix="dotfiles-check-windows-") as temporary:
+            root = Path(temporary)
+            script = root / WINDOWS / "Check.ps1"
+            script.parent.mkdir(parents=True)
+            (root / "cli").mkdir()
+            shutil.copyfile(SCRIPTS.parent / "windows/Check.ps1", script)
+            env = os.environ | {"PATH": "", "DOTFILES_CHECK_STRICT": "0"}
+            for strict, inherited in ((False, False), (True, False), (False, True)):
+                with self.subTest(strict=strict, inherited=inherited):
+                    result = subprocess.run(
+                        [shutil.which("pwsh"), "-NoProfile", "-NonInteractive", "-File", str(script),
+                         *(["-Strict"] if strict else []), "fmt"],
+                        env=env | {"DOTFILES_CHECK_STRICT": "1" if inherited else "0"},
+                        capture_output=True, text=True, timeout=120,
+                    )
+                    self.assertEqual(
+                        result.returncode, int(strict or inherited),
+                        result.stdout + result.stderr,
+                    )
+                    self.assertIn("SKIP fmt", result.stdout)
+                    self.assertNotIn("All checks passed", result.stdout)
+                    if not (strict or inherited):
+                        self.assertIn("Some requested checks were skipped", result.stdout)
+
+
 class GateTests(unittest.TestCase):
     def test_scheduled_security_checks_are_independent_and_read_only(self):
         workflow = CONTRACT["WORKFLOW"].with_name("dependency-security.yml").read_text(encoding="utf-8")
@@ -404,15 +515,35 @@ class GitRangeTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.repo = self.root / "repo"
         self.repo.mkdir()
+        home = self.root / "home"
+        home.mkdir()
+        gitconfig = self.root / "fixture-gitconfig"
+        gitconfig.write_text(
+            "[core]\n\tfsmonitor = false\n"
+            "[maintenance]\n\tauto = false\n"
+            "[gc]\n\tauto = 0\n",
+            encoding="utf-8",
+        )
         self.env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
         self.env.update(
-            GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+            HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+            GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=str(gitconfig), GIT_CONFIG_COUNT="0",
+            GIT_CEILING_DIRECTORIES=str(self.root),
             GIT_AUTHOR_NAME="Fixture", GIT_AUTHOR_EMAIL="fixture@test.local",
             GIT_COMMITTER_NAME="Fixture", GIT_COMMITTER_EMAIL="fixture@test.local",
             DIR=str(self.repo), GITHUB_OUTPUT=str(self.root / "outputs"),
             GITHUB_EVENT_NAME="push", GITHUB_REPOSITORY="fixture/repository",
         )
-        self.git("init", "-q", "--template=")
+        # Imported helpers also spawn Git, without receiving self.env explicitly.
+        environment = patch.dict(os.environ, self.env, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
+        # TMPDIR may be inside a checkout. Neither archive checks nor Git
+        # initialization should discover that enclosing repository.
+        working_directory = Path.cwd()
+        os.chdir(self.root)
+        self.addCleanup(os.chdir, working_directory)
+        self.git("init", "-q", "--template=", "--initial-branch=fixture")
         self.git("config", "core.hooksPath", os.devnull)
         self.git("config", "core.autocrlf", "false")
         for name in ("classify-release.sh", "classify-ci-changes.sh", "classify-ci-changes.py"):
@@ -426,15 +557,38 @@ class GitRangeTests(unittest.TestCase):
         self.env["HEAD_SHA"] = self.base
 
     def git(self, *args):
-        return subprocess.run(
-            ["git", "-C", str(self.repo), *args], env=self.env, check=True,
+        git_dir = self.repo / ".git"
+        env = self.env | {
+            "GIT_DIR": str(git_dir),
+            "GIT_COMMON_DIR": str(git_dir),
+            "GIT_WORK_TREE": str(self.repo),
+            "GIT_INDEX_FILE": str(git_dir / "index"),
+        }
+        result = subprocess.run(
+            ["git", *args], cwd=self.repo, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        ).stdout.strip()
+        )
+        self.assertEqual(result.returncode, 0, f"git {args!r}: {result.stderr}")
+        return result.stdout.strip()
 
     def write(self, path, text):
         target = self.repo / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
+
+    def test_imported_helpers_use_the_isolated_git_environment(self):
+        for key in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_KEY_0",
+                    "GIT_CONFIG_VALUE_0", "GIT_EXEC_PATH"):
+            self.assertNotIn(key, os.environ)
+        self.assertEqual(os.environ["GIT_CONFIG_GLOBAL"], self.env["GIT_CONFIG_GLOBAL"])
+        self.assertEqual(
+            PRE_PUSH["git"](self.repo, "config", "--global", "--get", "maintenance.auto"),
+            "false",
+        )
+        self.assertEqual(
+            Path(PRE_PUSH["git"](self.repo, "rev-parse", "--show-toplevel")),
+            self.repo,
+        )
 
     def commit(self):
         self.git("add", ".")

@@ -25,9 +25,6 @@ fi
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 WORKTREE_ROOT="$REPO_ROOT"
-# Scope classification includes deletions and both sides of renames. Individual
-# file checks below select only paths still present in the exported index.
-STAGED=$(git diff --cached --name-only --no-renames "$against")
 MANIFEST="$REPO_ROOT/cli/Cargo.toml"
 CHECK_ROOT=""
 trap '[ -z "$CHECK_ROOT" ] || rm -rf "$CHECK_ROOT"' EXIT
@@ -60,18 +57,10 @@ full_checks_enabled() {
 }
 
 has_staged_match() {
-  pattern="$1"
-  printf '%s\n' "$STAGED" | grep -Eq "$pattern"
-}
-
-staged_shell_files() {
-  printf '%s\n' "$STAGED" \
-    | grep -E '(^dotfiles\.sh$|^install\.sh$|\.sh$|^hooks/pre-commit$|^hooks/[^/]+\.sh$)' \
-    | while IFS= read -r file; do
-        if [ -f "$REPO_ROOT/$file" ]; then
-          printf '%s\n' "$REPO_ROOT/$file"
-        fi
-      done
+  # Filter before Git quotes display filenames. Include deletions and both
+  # sides of renames when deciding which checks a commit needs.
+  changed=$(git diff --cached --name-only --no-renames "$against" -- "$@") || exit 1
+  [ -n "$changed" ]
 }
 
 abort_with_hint() {
@@ -141,17 +130,21 @@ run_shell_guards() {
   if command -v shellcheck >/dev/null 2>&1; then
     prepare_staged_tree
     printf "Running ShellCheck...\n"
-    shell_files="$(staged_shell_files)"
-    if [ -z "$shell_files" ]; then
+    git diff --cached --name-only --no-renames --diff-filter=d -z "$against" -- \
+      '*.sh' hooks/pre-commit > "$CHECK_ROOT/.shell-inputs"
+    if [ ! -s "$CHECK_ROOT/.shell-inputs" ]; then
       return 0
     fi
-    set --
-    while IFS= read -r file; do
-      set -- "$@" "$file"
-    done <<EOF
-$shell_files
-EOF
-    if ! sh "$(dirname -- "$0")/../cli/src/app/validation/scripts/shellcheck.sh" "$@"; then
+    analyzer="$(CDPATH='' cd -- "$(dirname -- "$0")/../cli/src/app/validation/scripts" && pwd)/shellcheck.sh"
+    if ! (cd "$CHECK_ROOT" && xargs -0 sh -c '
+      analyzer=$1
+      shift
+      for file do
+        set -- "$@" "./$file"
+        shift
+      done
+      exec sh "$analyzer" "$@"
+    ' sh "$analyzer" < .shell-inputs); then
       abort_with_hint \
         "ShellCheck reported issues." \
         "sh cli/src/app/validation/scripts/shellcheck.sh <staged shell files>"
@@ -248,25 +241,25 @@ run_release_workflow_guards() {
   fi
 }
 
-if has_staged_match '^(conf/.*\.toml|symlinks/)'; then
+if has_staged_match 'conf/*.toml' 'symlinks/*'; then
   run_config_validation
 fi
 
-if has_staged_match '^(cli/Cargo\.toml|cli/Cargo\.lock|cli/deny\.toml)$'; then
+if has_staged_match cli/Cargo.toml cli/Cargo.lock cli/deny.toml; then
   run_dependency_guards
 fi
 
-if has_staged_match '(^dotfiles\.sh$|\.sh$|^hooks/)'; then
+if has_staged_match '*.sh' 'hooks/*'; then
   run_shell_guards
 fi
 
-if full_checks_enabled && has_staged_match '(^dotfiles\.sh$|^\.github/workflows/scripts/linux/test-shell-wrapper\.sh$)'; then
+if full_checks_enabled && has_staged_match dotfiles.sh .github/workflows/scripts/linux/test-shell-wrapper.sh; then
   run_wrapper_guards
-elif has_staged_match '(^dotfiles\.sh$|^\.github/workflows/scripts/linux/test-shell-wrapper\.sh$)'; then
+elif has_staged_match dotfiles.sh .github/workflows/scripts/linux/test-shell-wrapper.sh; then
   printf '%sSkipping Linux shell wrapper tests: set DOTFILES_HOOKS_FULL=1 to run them.%s\n' "$DIM" "$NC"
 fi
 
-if has_staged_match '^\.github/workflows/release\.yml$'; then
+if has_staged_match .github/workflows/release.yml; then
   run_release_workflow_guards
 fi
 

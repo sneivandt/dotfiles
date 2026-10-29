@@ -220,6 +220,9 @@ Paths are calculated for the current user. The build root follows `AURDEST`
 when set, otherwise `$XDG_CACHE_HOME/paru/clone`, falling back to
 `~/.cache/paru/clone`. Use the same build-directory environment when updating
 dotfiles and running Paru. A later `--clonedir` override can break that alignment.
+Paths written into the generated configuration may contain internal spaces,
+but cannot start or end with whitespace or contain newlines, carriage returns,
+or `#`: Paru would trim or reinterpret those characters.
 
 The task creates one local repository section per package base. `Path` points
 to its prepared snapshot, and dotfiles publishes the validated `.SRCINFO`
@@ -257,6 +260,13 @@ Snapshots carry an ownership marker inside their own `.git` directory. The
 task refuses existing unmanaged directories, linked worktrees, symlinked
 snapshot directories, and repositories pointing outside the snapshot. It does
 not repurpose an unrelated cached package checkout.
+Snapshot inputs must be regular files in both the working tree and the committed
+tree. Replaced input symlinks invalidate reuse even if their contents match;
+refresh replaces the links without modifying their targets and restores regular
+committed inputs for subsequent Git cleanup.
+Snapshot-local Git attributes disable text normalization so cleanup preserves
+the exact input bytes, even with global Windows line-ending rules. Missing or
+changed snapshot attributes are repaired before reuse.
 
 Before publishing repository entries, apply runs `makepkg --printsrcinfo` on
 temporary copies of each recipe and its pins. Package base, package names, and

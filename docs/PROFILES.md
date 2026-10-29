@@ -83,7 +83,9 @@ Configuration-aware commands resolve the role in this order:
 
 The first selected value is validated. An invalid environment or persisted
 value does not fall through to a lower-priority choice. Whitespace is not
-trimmed from profile values: `DOTFILES_PROFILE=" base "` is invalid.
+trimmed from profile values: `DOTFILES_PROFILE=" base "` is invalid. A non-Unicode
+environment value is also an error, not an absent selection. An explicit
+`--profile` can override either invalid environment value.
 
 An explicit profile affects only that invocation; it does **not** rewrite the
 saved choice. The interactive prompt does persist its answer. This can happen
@@ -111,6 +113,11 @@ unambiguous per-run selection.
 profile from the first three sources. Engine commands also require one of
 those sources when stdin is not a terminal, `--non-interactive` is passed, or
 `CI` is present. `log` and help/version output do not require a profile.
+
+Shell task completions use the same read-only discovery and forward the
+invocation's `--profile`, `--root`, and `--overlay` options, including a profile
+in a short-option cluster such as `-vpbase`. Completing a task selector does
+not prompt for or save a profile.
 
 ## Changing profiles or categories
 

@@ -63,7 +63,7 @@ impl CopilotTarget {
                 path.try_exists()
                     .with_context(|| format!("checking Copilot App database {}", path.display()))
             }
-            Self::Cowork => Ok(copilot_cowork_skills_path(ctx).is_some()),
+            Self::Cowork => Ok(copilot_cowork_skills_path(ctx)?.is_some()),
         }
     }
 
@@ -98,7 +98,7 @@ impl ApmTargets {
     ///
     /// # Errors
     ///
-    /// Returns an error when the Copilot App database path cannot be probed.
+    /// Returns an error when a target path or its configuration cannot be read.
     pub(super) fn detect(ctx: &Context) -> Result<Self> {
         let mut active = Vec::new();
         for target in CopilotTarget::ALL {
@@ -144,39 +144,54 @@ pub(super) fn copilot_app_db_path(ctx: &Context) -> PathBuf {
 }
 
 /// Resolve Cowork's skills directory using the same precedence as APM.
-pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Option<PathBuf> {
+///
+/// Invalid or unreadable persisted configuration is not an absent override:
+/// falling back could deploy skills into a different directory.
+pub(super) fn copilot_cowork_skills_path(ctx: &Context) -> Result<Option<PathBuf>> {
     if let Some(path) = ctx
         .env()
         .var_os(COWORK_OVERRIDE)
         .filter(|value| !value.is_empty())
     {
-        return Some(PathBuf::from(path));
+        return Ok(Some(PathBuf::from(path)));
     }
 
     let config_path = ctx.home().join(".apm").join("config.json");
-    if let Ok(raw) = std::fs::read_to_string(config_path)
-        && let Ok(config) = serde_json::from_str::<serde_json::Value>(&raw)
-        && let Some(path) = config
-            .get("copilot_cowork_skills_dir")
-            .and_then(serde_json::Value::as_str)
-            .filter(|path| !path.trim().is_empty())
-    {
-        return Some(PathBuf::from(path));
+    let raw = match std::fs::read_to_string(&config_path) {
+        Ok(raw) => Some(raw),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            return Err(error).with_context(|| format!("reading {}", config_path.display()));
+        }
+    };
+    if let Some(raw) = raw {
+        let config: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&raw)
+            .with_context(|| format!("parsing {}", config_path.display()))?;
+        match config.get("copilot_cowork_skills_dir") {
+            Some(serde_json::Value::String(path)) if !path.trim().is_empty() => {
+                return Ok(Some(PathBuf::from(path)));
+            }
+            None | Some(serde_json::Value::Null | serde_json::Value::String(_)) => {}
+            Some(_) => anyhow::bail!(
+                "copilot_cowork_skills_dir in {} must be a string",
+                config_path.display()
+            ),
+        }
     }
 
     if ctx.platform().is_windows() {
         for name in [ONEDRIVE_COMMERCIAL, ONEDRIVE_CONSUMER] {
             if let Some(root) = ctx.env().var_os(name).filter(|value| !value.is_empty()) {
-                return Some(
+                return Ok(Some(
                     PathBuf::from(root)
                         .join("Documents")
                         .join("Cowork")
                         .join("skills"),
-                );
+                ));
             }
         }
     }
-    None
+    Ok(None)
 }
 
 /// Return a platform-specific reason for skipping APM work when `apm` is absent.
@@ -238,7 +253,7 @@ mod tests {
         )
         .with_env(Arc::new(MapEnv::new().with(COWORK_OVERRIDE, &path)));
 
-        assert_eq!(copilot_cowork_skills_path(&ctx), Some(path));
+        assert_eq!(copilot_cowork_skills_path(&ctx).unwrap(), Some(path));
     }
 
     #[test]
@@ -261,7 +276,7 @@ mod tests {
         )
         .with_env(Arc::new(MapEnv::new()));
 
-        assert_eq!(copilot_cowork_skills_path(&ctx), Some(path));
+        assert_eq!(copilot_cowork_skills_path(&ctx).unwrap(), Some(path));
     }
 
     #[test]
@@ -276,7 +291,7 @@ mod tests {
         .with_env(Arc::new(MapEnv::new().with(ONEDRIVE_COMMERCIAL, &root)));
 
         assert_eq!(
-            copilot_cowork_skills_path(&ctx),
+            copilot_cowork_skills_path(&ctx).unwrap(),
             Some(root.join("Documents").join("Cowork").join("skills"))
         );
     }
@@ -294,6 +309,84 @@ mod tests {
         let targets = ApmTargets::detect(&ctx).expect("detect targets");
 
         assert!(!targets.includes(CopilotTarget::Cowork));
+    }
+
+    #[test]
+    fn cowork_path_does_not_fall_back_after_config_read_or_parse_failures() {
+        for content in [
+            None,
+            Some("{"),
+            Some("[]"),
+            Some(r#"{"copilot_cowork_skills_dir":42}"#),
+        ] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let config_path = dir.path().join(".apm").join("config.json");
+            std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+            if let Some(content) = content {
+                std::fs::write(&config_path, content).unwrap();
+            } else {
+                std::fs::create_dir(&config_path).unwrap();
+            }
+            let root = dir.path().join("OneDrive");
+            let ctx = make_context_with_home(
+                dir.path(),
+                Platform::new(Os::Windows, false),
+                MockExecutor::new(),
+            )
+            .with_env(Arc::new(MapEnv::new().with(ONEDRIVE_COMMERCIAL, &root)));
+
+            let error = ApmTargets::detect(&ctx).unwrap_err();
+            assert!(
+                format!("{error:#}").contains("config.json"),
+                "content={content:?}: {error:#}"
+            );
+            assert!(!root.exists(), "target discovery must remain read-only");
+        }
+    }
+
+    #[test]
+    fn cowork_override_does_not_read_lower_priority_config() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        std::fs::create_dir_all(dir.path().join(".apm").join("config.json")).unwrap();
+        let path = dir.path().join("override");
+        let ctx = make_context_with_home(
+            dir.path(),
+            Platform::new(Os::Windows, false),
+            MockExecutor::new(),
+        )
+        .with_env(Arc::new(
+            MapEnv::new()
+                .with(COWORK_OVERRIDE, &path)
+                .with(ONEDRIVE_COMMERCIAL, dir.path().join("OneDrive")),
+        ));
+
+        assert_eq!(copilot_cowork_skills_path(&ctx).unwrap(), Some(path));
+    }
+
+    #[test]
+    fn cowork_empty_configured_path_retains_onedrive_fallback() {
+        for content in [
+            "{}",
+            r#"{"copilot_cowork_skills_dir":null}"#,
+            r#"{"copilot_cowork_skills_dir":" "}"#,
+        ] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            std::fs::create_dir(dir.path().join(".apm")).unwrap();
+            std::fs::write(dir.path().join(".apm").join("config.json"), content).unwrap();
+            let root = dir.path().join("OneDrive");
+            let ctx = make_context_with_home(
+                dir.path(),
+                Platform::new(Os::Windows, false),
+                MockExecutor::new(),
+            )
+            .with_env(Arc::new(MapEnv::new().with(ONEDRIVE_CONSUMER, &root)));
+
+            assert_eq!(
+                copilot_cowork_skills_path(&ctx).unwrap(),
+                Some(root.join("Documents").join("Cowork").join("skills")),
+                "{content}"
+            );
+        }
     }
 
     #[test]

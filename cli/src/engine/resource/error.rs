@@ -118,8 +118,8 @@ impl ResourceError {
 
     /// Short, stable category label for diagnostic logging.
     ///
-    /// Recurses into [`Other`](Self::Other) so a typed error converted through
-    /// [`anyhow::Error`] retains its original category.
+    /// Recurses into [`Other`](Self::Other) so resource, executor, and I/O errors
+    /// converted through [`anyhow::Error`] retain their original category.
     #[must_use]
     pub fn category(&self) -> &'static str {
         match self {
@@ -135,9 +135,23 @@ impl ResourceError {
                     "command_failed"
                 }
             }
-            Self::Other { source } => source
-                .downcast_ref::<Self>()
-                .map_or("unknown", Self::category),
+            Self::Other { source } => {
+                if let Some(resource) = source.downcast_ref::<Self>() {
+                    return resource.category();
+                }
+                if let Some(exec) = source.downcast_ref::<ExecError>() {
+                    return if exec.is_cancelled() {
+                        "cancelled"
+                    } else {
+                        "command_failed"
+                    };
+                }
+                if source.downcast_ref::<std::io::Error>().is_some() {
+                    "io"
+                } else {
+                    "unknown"
+                }
+            }
         }
     }
 
@@ -255,6 +269,44 @@ mod tests {
         let round_tripped: ResourceError = as_anyhow.into();
         assert!(matches!(round_tripped, ResourceError::Other { .. }));
         assert_eq!(round_tripped.category(), "command_failed");
+    }
+
+    #[test]
+    fn category_preserves_executor_and_io_errors_with_helper_context() {
+        let cases = [
+            (
+                anyhow::Error::new(ExecError::Cancelled {
+                    command: "fixture query".into(),
+                    result: crate::infra::exec::ExecResult::failure("", "", None),
+                }),
+                "cancelled",
+            ),
+            (
+                anyhow::Error::new(ExecError::non_zero(
+                    "fixture query",
+                    crate::infra::exec::ExecResult::failure("", "query failed", Some(1)),
+                )),
+                "command_failed",
+            ),
+            (
+                anyhow::Error::new(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "unreadable",
+                )),
+                "io",
+            ),
+            (anyhow::anyhow!("unclassified helper failure"), "unknown"),
+        ];
+
+        for (error, expected) in cases {
+            let mut resource = ResourceError::from(error.context("helper context"));
+            for _ in 0..3 {
+                assert_eq!(resource.category(), expected);
+                assert_eq!(resource.is_cancelled(), expected == "cancelled");
+                resource =
+                    ResourceError::from(anyhow::Error::new(resource).context("resource context"));
+            }
+        }
     }
 
     #[test]

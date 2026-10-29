@@ -88,8 +88,12 @@ With no stage names, each script runs its default stages:
 
 Missing top-level tools generally produce `SKIP` without failing the script.
 Read the summary: skipped stages mean incomplete coverage. Use `--strict` before
-stage arguments to fail on any skipped stage (Linux). Installed
-Cargo with a missing/broken subcommand can still fail rather than skip.
+stage arguments on Linux, or `-Strict` on Windows, to fail on any skipped stage.
+Both entrypoints also accept `DOTFILES_CHECK_STRICT=1`. Without strict mode,
+skips still report incomplete coverage rather than claiming all checks passed.
+An installed tool's nonzero exit is a failure, including exit code `2`; it is
+not confused with an unavailable tool. Installed Cargo with a missing/broken
+subcommand can still fail rather than skip.
 On Linux, absent `pwsh` skips `powershell`, but present `pwsh` without
 PSScriptAnalyzer fails. The Windows entrypoint explicitly skips a missing
 PSScriptAnalyzer module.
@@ -492,6 +496,9 @@ python3 -B .github/workflows/scripts/linux/test-shell-config.py
 python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
 pwsh -NoProfile -File symlinks/config/powershell/tests/Test-Prompt.ps1
 ```
+
+The PowerShell fixture covers first-start command discovery, custom Cargo paths,
+literal profile-fragment directories, and PATH deduplication on reload.
 
 Install the native tools needed by each suite. Missing-tool skips do not
 provide coverage.

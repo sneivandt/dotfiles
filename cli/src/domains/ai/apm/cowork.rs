@@ -253,7 +253,7 @@ pub(super) fn remove_legacy_cowork_lock_deployments(ctx: &Context) -> Result<boo
     if !strip_legacy_cowork_deployments(&mut lock, &mut legacy_skills) {
         return Ok(false);
     }
-    if let Some(target) = copilot_cowork_skills_path(ctx)
+    if let Some(target) = copilot_cowork_skills_path(ctx)?
         && target
             .try_exists()
             .with_context(|| format!("checking {}", target.display()))?
@@ -393,7 +393,7 @@ fn remove_skill_entry_point(target_skill: &Path) -> Result<bool> {
 
 fn cowork_skill_paths(ctx: &Context) -> Result<(PathBuf, PathBuf)> {
     let source = ctx.home().join(".agents").join("skills");
-    let target = copilot_cowork_skills_path(ctx).context(
+    let target = copilot_cowork_skills_path(ctx)?.context(
         "Copilot Cowork skills path is not configured; set \
          APM_COPILOT_COWORK_SKILLS_DIR or `apm config set copilot-cowork-skills-dir`",
     )?;

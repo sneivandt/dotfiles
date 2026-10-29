@@ -261,9 +261,79 @@ fn apply_paru_returns_applied_on_success() {
     assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
 }
 
+#[test]
+fn apply_preserves_executor_failure_types() {
+    for manager in [
+        PackageManager::Pacman,
+        PackageManager::Paru,
+        PackageManager::Winget,
+    ] {
+        for (exec_error, cancelled) in [
+            (
+                ExecError::Cancelled {
+                    command: "fixture install".into(),
+                    result: ExecResult::failure("", "", None),
+                },
+                true,
+            ),
+            (
+                ExecError::spawn(
+                    "fixture install",
+                    std::io::Error::other("fixture spawn failure"),
+                ),
+                false,
+            ),
+        ] {
+            let mut mock = MockExecutor::new();
+            if manager == PackageManager::Pacman {
+                expect_sudo_lookup_if_needed(&mut mock);
+            }
+            mock.expect_execute()
+                .once()
+                .return_once(move |_| Err(exec_error));
+            let resource = PackageResource::new("fixture".into(), manager, Arc::new(mock));
+
+            let error = resource.apply().unwrap_err();
+
+            assert!(matches!(
+                error,
+                crate::engine::resource::ResourceError::Exec { .. }
+            ));
+            assert_eq!(error.is_cancelled(), cancelled, "{manager}: {error}");
+            assert_eq!(
+                error.category(),
+                if cancelled {
+                    "cancelled"
+                } else {
+                    "command_failed"
+                },
+                "{manager}: {error}",
+            );
+        }
+    }
+}
+
 // ------------------------------------------------------------------
 // install_missing_packages
 // ------------------------------------------------------------------
+
+#[test]
+fn empty_install_batch_never_queries_or_invokes_a_package_manager() {
+    for manager in [
+        PackageManager::Pacman,
+        PackageManager::Paru,
+        PackageManager::Winget,
+    ] {
+        let report = install_missing_packages(manager, &[], &MockExecutor::new(), &|_| {
+            panic!("an empty batch must not announce package work");
+        })
+        .unwrap();
+
+        assert_eq!(report.applied_count(), 0, "{manager}");
+        assert_eq!(report.already_correct_count(), 0, "{manager}");
+        assert!(!report.has_failures(), "{manager}");
+    }
+}
 
 #[test]
 fn batch_install_announces_each_package_before_execution() {

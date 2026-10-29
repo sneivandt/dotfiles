@@ -112,7 +112,7 @@ impl ScriptResource {
         let (interpreter, fixed_args) = interpreter_args_for(&self.script_path, &*self.executor)?;
         let mut command = CommandSpec::new(interpreter)
             .args(&fixed_args)
-            .arg(self.script_path.display().to_string())
+            .arg(&self.script_path)
             .current_dir(&self.working_dir);
         if let Some(flag) = flag {
             command = command.arg(flag);
@@ -121,14 +121,8 @@ impl ScriptResource {
     }
 
     fn execute(&self, mode: ScriptMode) -> Result<(ResourceChange, String)> {
-        if !self.script_path.exists() {
-            return Ok((
-                ResourceChange::skipped(format!(
-                    "script not found: {}",
-                    self.script_path.display()
-                )),
-                String::new(),
-            ));
+        if !self.script_exists()? {
+            bail!("script not found: {}", self.script_path.display());
         }
         self.ensure_script_path_within_working_dir()?;
 
@@ -188,7 +182,7 @@ impl RemovableResource for ScriptResource {
 
 impl IntrinsicState for ScriptResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
-        if !self.script_path.exists() {
+        if !self.script_exists()? {
             return Ok(ResourceState::Invalid {
                 reason: format!("script not found: {}", self.script_path.display()),
             });
@@ -211,6 +205,12 @@ impl IntrinsicState for ScriptResource {
 }
 
 impl ScriptResource {
+    fn script_exists(&self) -> Result<bool> {
+        self.script_path
+            .try_exists()
+            .with_context(|| format!("inspect script path: {}", self.script_path.display()))
+    }
+
     fn ensure_script_path_within_working_dir(&self) -> Result<()> {
         ensure_script_path_within(&self.working_dir, &self.script_path)
     }
@@ -336,9 +336,42 @@ mod tests {
         let state = resource.current_state().unwrap();
         assert!(matches!(state, ResourceState::Invalid { .. }));
         for mode in [ScriptMode::Apply, ScriptMode::DryRun, ScriptMode::Remove] {
-            let (change, output) = resource.execute(mode).unwrap();
-            assert!(matches!(change, ResourceChange::Skipped { .. }), "{mode:?}");
-            assert!(output.is_empty(), "{mode:?}");
+            let error = resource.execute(mode).unwrap_err();
+            assert!(error.to_string().contains("script not found"), "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn script_inspection_failures_are_not_reported_as_missing() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let resource = make_script_resource(
+            "test",
+            &dir.path().join("invalid\0script.sh"),
+            Arc::new(MockExecutor::new()),
+        );
+        let state_error = resource.current_state().unwrap_err();
+        assert!(format!("{state_error:#}").contains("inspect script path"));
+        for mode in [ScriptMode::Apply, ScriptMode::DryRun, ScriptMode::Remove] {
+            let error = resource.execute(mode).unwrap_err();
+            assert!(
+                error.to_string().contains("inspect script path"),
+                "{mode:?}: {error:#}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn interpreter_preserves_non_utf8_script_path_arguments() {
+        use std::os::unix::ffi::OsStringExt as _;
+
+        let path = PathBuf::from(std::ffi::OsString::from_vec(b"script-\xff.sh".to_vec()));
+        let resource = make_script_resource("test", &path, Arc::new(MockExecutor::new()));
+        for flag in [None, Some("--check"), Some("--dryrun"), Some("--remove")] {
+            let command = resource.command(flag).unwrap();
+            let mut expected = vec![path.as_os_str().to_os_string()];
+            expected.extend(flag.map(std::ffi::OsString::from));
+            assert_eq!(command.arguments(), expected, "{flag:?}");
         }
     }
 

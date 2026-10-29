@@ -197,7 +197,7 @@ foreach ($case in $cases)
         }
     }
 
-    $pathFixture = Join-Path ([IO.Path]::GetTempPath()) ('dotfiles-path-' + [Guid]::NewGuid())
+    $pathFixture = Join-Path $repositoryRoot ('.dotfiles-path-' + [Guid]::NewGuid())
     $originalPath = $env:Path
     try
     {
@@ -217,6 +217,15 @@ foreach ($case in $cases)
         {
             throw 'Literal directory names containing brackets must be added exactly once.'
         }
+        $alternateDirectory = $directory.Replace(
+            [IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar
+        ) + [IO.Path]::AltDirectorySeparatorChar
+        $env:Path = $alternateDirectory
+        Add-PathEntry -Directory $directory
+        if ($env:Path -cne $alternateDirectory)
+        {
+            throw 'Equivalent directory separators and trailing slashes must not duplicate PATH entries.'
+        }
         Write-Output 'PASS: literal PATH directories, file rejection and idempotency'
     }
     finally
@@ -225,6 +234,109 @@ foreach ($case in $cases)
         if ([IO.Directory]::Exists($pathFixture))
         {
             Remove-Item -LiteralPath $pathFixture -Recurse -Force
+        }
+    }
+
+    $profileFixture = Join-Path $repositoryRoot ('.powershell-profile-' + [Guid]::NewGuid())
+    try
+    {
+        $fixtureHome = Join-Path $profileFixture '[literal] home'
+        $localBin = Join-Path $fixtureHome '.local\bin'
+        $defaultCargo = Join-Path $fixtureHome '.cargo'
+        $customCargo = Join-Path $profileFixture 'custom cargo'
+        $extensions = Join-Path $fixtureHome '.config\powershell\profile.d'
+        foreach ($directory in @($localBin, (Join-Path $defaultCargo 'bin'), (Join-Path $customCargo 'bin'), $extensions))
+        {
+            [IO.Directory]::CreateDirectory($directory) | Out-Null
+        }
+        foreach ($name in @('git', 'code-insiders'))
+        {
+            [IO.File]::WriteAllText((Join-Path $localBin "$name.ps1"), "'fixture $name'")
+        }
+        foreach ($directory in @($defaultCargo, $customCargo))
+        {
+            [IO.File]::WriteAllText((Join-Path $directory 'bin\codex.ps1'), "'fixture codex'")
+        }
+        [IO.File]::WriteAllText((Join-Path $extensions '20-second.ps1'), '$script:ExtensionOrder += "second"')
+        [IO.File]::WriteAllText((Join-Path $extensions '10-first.ps1'), '$script:ExtensionOrder += "first"')
+        $startupTest = {
+            $ErrorActionPreference = 'Stop'
+            Set-Variable -Name HOME -Value $env:PROFILE_TEST_HOME -Force
+            $env:PATH = ''
+            $script:ExtensionOrder = @()
+            . $env:PROFILE_TEST_SOURCE
+            if (-not (Get-Variable -Name GitExists -Scope Global -ValueOnly) -or (Get-Alias code).Definition -ne 'code-insiders' -or
+                (Get-Alias ai).Definition -ne 'Invoke-CodexChat')
+            {
+                throw 'First startup must detect integrations installed in user bin directories.'
+            }
+            $expected = @(
+                (Join-Path $HOME '.local\bin'),
+                (Join-Path $env:PROFILE_TEST_CARGO 'bin')
+            )
+            if (($env:PATH -split [IO.Path]::PathSeparator | ConvertTo-Json -Compress) -cne
+                ($expected | ConvertTo-Json -Compress))
+            {
+                throw "Startup did not honor the selected Cargo home: $env:PATH"
+            }
+            if (($script:ExtensionOrder -join ',') -ne 'first,second')
+            {
+                throw 'Profile fragments beneath literal bracket paths must load in sorted order.'
+            }
+            $initialPath = $env:PATH
+            . $env:PROFILE_TEST_SOURCE
+            if ($env:PATH -cne $initialPath)
+            {
+                throw 'Reloading the profile duplicated user bin directories.'
+            }
+        }.ToString()
+        foreach ($cargoHome in @('', $customCargo))
+        {
+            $start = [Diagnostics.ProcessStartInfo]::new()
+            $start.FileName = (Get-Process -Id $PID).Path
+            $start.WorkingDirectory = $repositoryRoot
+            $start.UseShellExecute = $false
+            $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
+            $start.Environment['PATH'] = ''
+            $start.Environment['CARGO_HOME'] = $cargoHome
+            $start.Environment['PROFILE_TEST_HOME'] = $fixtureHome
+            $start.Environment['PROFILE_TEST_SOURCE'] = $profilePath
+            $start.Environment['PROFILE_TEST_CARGO'] = if ($cargoHome) { $cargoHome } else { $defaultCargo }
+            foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand',
+                    [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($startupTest))))
+            {
+                $start.ArgumentList.Add($argument)
+            }
+            $process = [Diagnostics.Process]::Start($start)
+            try
+            {
+                $stdout = $process.StandardOutput.ReadToEndAsync()
+                $stderr = $process.StandardError.ReadToEndAsync()
+                if (-not $process.WaitForExit(15000))
+                {
+                    $process.Kill($true)
+                    throw 'Isolated profile startup timed out.'
+                }
+                $output = $stdout.GetAwaiter().GetResult()
+                $errors = $stderr.GetAwaiter().GetResult()
+                if ($process.ExitCode -ne 0)
+                {
+                    throw "Isolated profile startup failed (CARGO_HOME='$cargoHome'):`n$output`n$errors"
+                }
+            }
+            finally
+            {
+                $process.Dispose()
+            }
+        }
+        Write-Output 'PASS: first-start integration discovery, custom/default Cargo home, literal profile fragments and reload'
+    }
+    finally
+    {
+        if ([IO.Directory]::Exists($profileFixture))
+        {
+            Remove-Item -LiteralPath $profileFixture -Recurse -Force
         }
     }
 

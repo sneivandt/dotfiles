@@ -272,6 +272,11 @@ fn failed_warning_discovery_prevents_mutation_but_is_not_queried_in_dry_run() {
                     .downcast_ref::<crate::engine::resource::ResourceError>()
                     .unwrap();
                 assert_eq!(cause.category(), "permission_denied");
+                assert!(
+                    format!("{error:#}")
+                        .contains("failed to check pre-apply warning for destructive resource"),
+                    "warning discovery errors must identify the resource: {error:#}"
+                );
                 assert_eq!(events.lock().unwrap().as_slice(), ["warning check"]);
             }
         }

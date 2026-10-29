@@ -211,7 +211,7 @@ fn append_user_path(dir: &str, environment: &dyn crate::infra::env::Env) -> Resu
 
     let (existing_value, existing_vtype) = match env.get_raw_value("Path") {
         Ok(v) => {
-            let s = decode_reg_string(&v.bytes);
+            let s = decode_reg_string(&v)?;
             let vtype = v.vtype;
             (s, vtype)
         }
@@ -268,7 +268,7 @@ fn user_path_contains(dir: &str, environment: &dyn crate::infra::env::Env) -> Re
         };
     match env.get_raw_value("Path") {
         Ok(v) => Ok(path_contains_entry(
-            &decode_reg_string(&v.bytes),
+            &decode_reg_string(&v)?,
             dir,
             environment,
         )),
@@ -358,19 +358,29 @@ fn normalize_path_entry(entry: &str) -> String {
     unified.trim_end_matches('\\').to_string()
 }
 
-/// Decode a UTF-16LE registry string payload, stripping any trailing NUL.
+/// Decode a registry string without silently corrupting unsupported or malformed data.
 #[cfg(windows)]
-fn decode_reg_string(bytes: &[u8]) -> String {
-    let wide: Vec<u16> = bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .copied()
-        .map(u16::from_le_bytes)
-        .collect();
-    String::from_utf16_lossy(&wide)
-        .trim_end_matches('\0')
-        .to_string()
+fn decode_reg_string(value: &winreg::RegValue) -> Result<String> {
+    use winreg::enums::{REG_EXPAND_SZ, REG_SZ};
+
+    anyhow::ensure!(
+        matches!(value.vtype, REG_SZ | REG_EXPAND_SZ),
+        "HKCU\\Environment\\Path has unsupported registry type {:?}",
+        value.vtype
+    );
+    let (pairs, remainder) = value.bytes.as_chunks::<2>();
+    anyhow::ensure!(
+        remainder.is_empty(),
+        "HKCU\\Environment\\Path has an incomplete UTF-16 code unit"
+    );
+    let wide: Vec<u16> = pairs.iter().copied().map(u16::from_le_bytes).collect();
+    let decoded = String::from_utf16(&wide).context("decoding HKCU\\Environment\\Path")?;
+    let decoded = decoded.trim_end_matches('\0');
+    anyhow::ensure!(
+        !decoded.contains('\0'),
+        "HKCU\\Environment\\Path contains an embedded NUL"
+    );
+    Ok(decoded.to_string())
 }
 
 /// Encode `value` as a NUL-terminated UTF-16LE byte buffer.
@@ -387,6 +397,58 @@ mod tests {
     use crate::infra::env::MapEnv;
     use crate::infra::exec::MockExecutor;
     use crate::infra::platform::{Os, Platform};
+
+    #[cfg(windows)]
+    #[test]
+    fn registry_path_decoding_preserves_supported_string_values() {
+        use winreg::enums::{REG_EXPAND_SZ, REG_SZ};
+
+        for vtype in [REG_SZ, REG_EXPAND_SZ] {
+            for content in ["", r"%USERPROFILE%\bin;C:\café"] {
+                for terminated in [false, true] {
+                    let mut bytes = encode_reg_string(content);
+                    if !terminated {
+                        bytes.truncate(bytes.len() - 2);
+                    }
+                    let value = winreg::RegValue {
+                        bytes: bytes.into(),
+                        vtype: vtype.clone(),
+                    };
+                    assert_eq!(decode_reg_string(&value).unwrap(), content);
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn registry_path_decoding_rejects_values_that_would_be_lossily_rewritten() {
+        use winreg::enums::{REG_BINARY, REG_DWORD, REG_EXPAND_SZ, REG_MULTI_SZ, REG_SZ};
+
+        for (vtype, bytes, detail) in [
+            (
+                REG_BINARY,
+                encode_reg_string("path"),
+                "unsupported registry type",
+            ),
+            (REG_DWORD, vec![1, 0, 0, 0], "unsupported registry type"),
+            (
+                REG_MULTI_SZ,
+                encode_reg_string("path"),
+                "unsupported registry type",
+            ),
+            (REG_SZ, vec![b'C'], "incomplete UTF-16 code unit"),
+            (REG_EXPAND_SZ, vec![0, 0xd8, 0, 0], "decoding HKCU"),
+            (REG_SZ, encode_reg_string("first\0second"), "embedded NUL"),
+        ] {
+            let value = winreg::RegValue {
+                bytes: bytes.into(),
+                vtype,
+            };
+            let error = decode_reg_string(&value).unwrap_err();
+            assert!(format!("{error:#}").contains(detail), "{error:#}");
+        }
+    }
 
     #[cfg(not(windows))]
     #[test]

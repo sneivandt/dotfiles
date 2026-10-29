@@ -609,28 +609,37 @@ fn format_size(bytes: u64) -> String {
 /// Files that do not match the run-log naming pattern are ignored, so
 /// unrelated files in the directory never appear in listings.
 fn discover_runs(log_dir: &Path) -> Result<Vec<RunEntry>> {
-    if !log_dir.is_dir() {
-        return Ok(Vec::new());
-    }
-
-    let entries = std::fs::read_dir(log_dir)
-        .with_context(|| format!("reading dotfiles log directory {}", log_dir.display()))?;
+    let entries = match std::fs::read_dir(log_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("reading dotfiles log directory {}", log_dir.display()));
+        }
+    };
     let mut runs = Vec::new();
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry =
+            entry.with_context(|| format!("reading directory entry in {}", log_dir.display()))?;
         let Ok(name) = entry.file_name().into_string() else {
             continue;
         };
         let Some(parsed) = parse_run_log_file_name(&name) else {
             continue;
         };
-        let size = entry.metadata().map_or(0, |meta| meta.len());
+        let metadata = entry
+            .metadata()
+            .with_context(|| format!("reading dotfiles log metadata {}", entry.path().display()))?;
+        if !metadata.is_file() {
+            continue;
+        }
         let run = RunEntry {
             stamp: parsed.stamp.to_string(),
             sort_stamp: run_log_sort_stamp(&entry.path(), parsed.stamp),
             command: parsed.command.to_string(),
             path: entry.path(),
-            size,
+            size: metadata.len(),
             outcome: None,
             profile: None,
             elapsed_us: None,
@@ -1037,6 +1046,53 @@ mod tests {
         write_run(dir, "install.log", "legacy name\n");
 
         assert_eq!(capture(dir, &opts(), false), "No dotfiles log found yet.\n");
+    }
+
+    #[test]
+    fn ignores_directories_named_like_retained_logs() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let dir = fixture.path();
+        std::fs::create_dir(dir.join("20260731T154902Z-update-2.log")).unwrap();
+        write_run(dir, "20260731T154210Z-update-1.log", "actual log\n");
+
+        assert_eq!(capture(dir, &opts(), false), "actual log\n");
+        let listed = capture(
+            dir,
+            &LogOpts {
+                list: true,
+                format: Some(DiscoveryFormat::Json),
+                ..opts()
+            },
+            false,
+        );
+        let runs: Vec<serde_json::Value> = serde_json::from_str(&listed).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["id"], "20260731T154210Z-update-1");
+    }
+
+    #[test]
+    fn invalid_log_directory_is_reported_instead_of_empty_history() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let dir = fixture.path().join("logs");
+        std::fs::write(&dir, "not a directory").unwrap();
+        for options in [
+            opts(),
+            LogOpts {
+                list: true,
+                format: Some(DiscoveryFormat::Json),
+                ..opts()
+            },
+        ] {
+            let mut output = Vec::new();
+            let error = run_in_dir(&dir, &options, false, &mut output)
+                .expect_err("invalid log directory must not masquerade as absent history");
+            assert!(error.to_string().contains(&dir.display().to_string()));
+            assert!(error.downcast_ref::<std::io::Error>().is_some());
+            assert!(
+                output.is_empty(),
+                "failed discovery must not emit an empty listing"
+            );
+        }
     }
 
     #[test]

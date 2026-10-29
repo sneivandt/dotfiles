@@ -161,6 +161,55 @@ fn command_spec_applies_working_directory_and_child_only_environment_overrides()
 }
 
 #[test]
+fn every_command_kind_preserves_working_directory_and_environment() {
+    for spec in [
+        CommandSpec::new("fixture"),
+        CommandSpec::windows_cmd("echo fixture"),
+    ] {
+        let command = spec
+            .current_dir("working directory")
+            .env("DOTFILES_EXEC_TEST_VALUE", "first")
+            .envs(&[("DOTFILES_EXEC_TEST_VALUE", "last")])
+            .into_command();
+
+        assert_eq!(
+            command.get_current_dir(),
+            Some(Path::new("working directory"))
+        );
+        assert_eq!(
+            command.get_envs().collect::<Vec<_>>(),
+            [(
+                OsStr::new("DOTFILES_EXEC_TEST_VALUE"),
+                Some(OsStr::new("last"))
+            )]
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_cmd_applies_working_directory_and_child_only_environment_overrides() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let working_dir = crate::infra::fs::canonicalize(root.path()).unwrap();
+    let key = "DOTFILES_EXEC_CMD_TEST_VALUE";
+    let original_env = std::env::var_os(key);
+    let result = ProcessExecutor::system()
+        .execute(
+            CommandSpec::windows_cmd(r#""cd & echo %DOTFILES_EXEC_CMD_TEST_VALUE%""#)
+                .current_dir(&working_dir)
+                .env(key, "child-only value"),
+        )
+        .unwrap();
+
+    assert!(result.success, "{result:?}");
+    assert_eq!(
+        result.stdout.lines().map(str::trim).collect::<Vec<_>>(),
+        [working_dir.to_str().unwrap(), "child-only value"]
+    );
+    assert_eq!(std::env::var_os(key), original_env);
+}
+
+#[test]
 fn stream_summary_ignores_blank_output() {
     assert_eq!(stream_summary("\n \n"), "");
 }

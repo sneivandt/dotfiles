@@ -591,6 +591,103 @@ fn failed_batch_load_never_checks_or_applies_resources() {
             let cause = error.downcast_ref::<std::io::Error>().unwrap();
             assert_eq!(cause.kind(), std::io::ErrorKind::PermissionDenied);
             assert_eq!(cause.to_string(), "batch discovery denied");
+            let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+            assert_eq!(report.completion(), crate::engine::BatchCompletion::Failed);
+            assert_eq!(report.not_attempted_count(), 3);
+            assert_eq!(report.interrupted_count(), 0);
+            assert_eq!(report.stats().failed_count(), 0);
+            assert_eq!(report.stats().changed_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn batch_load_failure_and_cancellation_record_every_unattempted_resource() {
+    struct InventoryTask {
+        interrupted: bool,
+        cancel_during_load: bool,
+        loads: AtomicUsize,
+    }
+
+    impl Task for InventoryTask {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("inventory")
+        }
+
+        fn run(&self, ctx: &Context) -> Result<TaskResult> {
+            run_batch_resource_task(
+                ctx,
+                vec![DummyResource, DummyResource, DummyResource],
+                |_, ctx| {
+                    self.loads.fetch_add(1, Ordering::SeqCst);
+                    if self.cancel_during_load {
+                        ctx.cancellation_token().cancel();
+                    }
+                    Err::<(), _>(if self.interrupted {
+                        crate::infra::exec::ExecError::Cancelled {
+                            command: "inventory query".into(),
+                            result: crate::infra::exec::ExecResult::failure("", "", None),
+                        }
+                        .into()
+                    } else {
+                        std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "inventory denied",
+                        )
+                        .into()
+                    })
+                },
+                |_, &()| panic!("failed inventory must never query resource state"),
+                &ProcessOpts::lenient("configure"),
+            )
+        }
+    }
+
+    for parallel in [false, true] {
+        for dry_run in [false, true] {
+            for (pre_cancelled, interrupted, cancel_during_load) in [
+                (false, false, false),
+                (false, true, false),
+                (false, false, true),
+                (true, false, false),
+            ] {
+                let (ctx, log) = make_static_context("/fixture".into(), None);
+                let ctx = ctx.with_parallel(parallel).with_dry_run(dry_run);
+                if pre_cancelled {
+                    ctx.cancellation_token().cancel();
+                }
+                let task = InventoryTask {
+                    interrupted,
+                    cancel_during_load,
+                    loads: AtomicUsize::new(0),
+                };
+                let stopped_by_cancellation = pre_cancelled || interrupted;
+                let expected = if stopped_by_cancellation {
+                    TaskStatus::Interrupted
+                } else {
+                    TaskStatus::Failed
+                };
+                assert_eq!(execute(&task, &ctx), expected);
+                assert_eq!(
+                    task.loads.load(Ordering::SeqCst),
+                    usize::from(!pre_cancelled)
+                );
+                let entry = log.task_entries().pop().unwrap();
+                assert_eq!(
+                    entry.actions,
+                    ActionCounts {
+                        not_attempted: 3,
+                        ..ActionCounts::default()
+                    },
+                    "shared query failure does not invent a failed or interrupted resource"
+                );
+                let message = entry.message.unwrap();
+                assert!(message.contains("3 not attempted"), "{message}");
+                if !stopped_by_cancellation {
+                    assert!(message.contains("inventory denied"), "{message}");
+                }
+                assert_eq!(log.failure_count(), usize::from(!stopped_by_cancellation));
+            }
         }
     }
 }

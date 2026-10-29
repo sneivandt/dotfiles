@@ -142,8 +142,18 @@ impl Resource for SystemFileResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        if matches!(self.current_state()?, ResourceState::Correct) {
-            return Ok(ResourceChange::AlreadyCorrect);
+        match self.current_state()? {
+            ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
+            ResourceState::Invalid { reason } => {
+                return Err(crate::engine::resource::ResourceError::conflicting_state(
+                    self.entry.target.display().to_string(),
+                    "a valid system file and fragment",
+                    reason,
+                ));
+            }
+            ResourceState::Missing
+            | ResourceState::Incorrect { .. }
+            | ResourceState::Unknown { .. } => {}
         }
         let fragment = self.fragment()?;
         let current = match self.current_content()? {
@@ -188,6 +198,10 @@ impl IntrinsicState for SystemFileResource {
                             "required PAM service file {} is missing",
                             self.entry.target.display()
                         ),
+                    }
+                } else if let Err(error) = self.content_is_correct("", &fragment) {
+                    ResourceState::Invalid {
+                        reason: error.to_string(),
                     }
                 } else {
                     ResourceState::Missing
@@ -288,6 +302,7 @@ fn ini_settings(
 ) -> anyhow::Result<Vec<(String, String, Option<String>)>> {
     let mut section = None::<String>;
     let mut settings = Vec::new();
+    let mut desired_values = std::collections::BTreeMap::new();
     for raw in content.lines() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with(['#', ';']) {
@@ -309,6 +324,12 @@ fn ini_settings(
             }
             continue;
         };
+        if strict
+            && let Some(previous) = desired_values.insert((section.clone(), key), value)
+            && previous != value
+        {
+            bail!("INI fragment contains conflicting values for {key} in {section}");
+        }
         settings.push((section.clone(), key.to_string(), value.map(str::to_string)));
     }
     Ok(settings)
@@ -430,7 +451,7 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
     for rule in fragment
         .lines()
         .map(str::trim)
-        .filter(|line| !line.is_empty())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
     {
         let (facility, module) = pam_rule_identity(rule)?;
         let Some(index) = lines
@@ -526,6 +547,39 @@ mod tests {
             resource.current_state().unwrap(),
             ResourceState::Invalid { reason } if reason.contains("is missing")
         ));
+    }
+
+    #[test]
+    fn missing_pam_target_cannot_be_created_by_direct_apply() {
+        for fragment in ["", "# Managed login rules\n", "auth optional keyring.so\n"] {
+            let root = tempfile::tempdir_in(".").unwrap();
+            fs::create_dir(root.path().join("system")).unwrap();
+            fs::write(root.path().join("system/login"), fragment).unwrap();
+            let target = root.path().join("missing-login");
+            let mut resource = SystemFileResource::new(
+                entry(root.path(), &target, "login", MergeStrategy::Pam),
+                Arc::new(MockExecutor::new()),
+            );
+            resource.temp_dir = root.path().join("staging-must-not-be-created");
+
+            let error = resource.apply().unwrap_err();
+
+            assert!(error.to_string().contains("is missing"), "{error}");
+            assert!(!target.exists(), "{fragment:?}");
+            assert!(!resource.temp_dir.exists());
+        }
+    }
+
+    #[test]
+    fn pam_fragment_comments_do_not_become_rules_or_target_content() {
+        let current = "# Preserve this comment\nauth include system-auth\n";
+        let fragment = "# Managed rules\n\n  # Ignore indented comments\n\
+            auth optional keyring.so\n";
+        let merged = merge_pam(current, fragment).unwrap();
+
+        assert_eq!(merged, format!("{current}auth optional keyring.so\n"));
+        assert_eq!(merge_pam(&merged, fragment).unwrap(), merged);
+        assert_eq!(merge_pam(current, "# No rules\n").unwrap(), current);
     }
 
     #[test]
@@ -756,6 +810,132 @@ mod tests {
         assert!(contains_ini(&merged, fragment).unwrap());
         assert!(!contains_ini("[options]\ncolor\n", "[options]\nColor\n").unwrap());
         assert!(merge_ini("[options]\nColor\n", "[options]\nColor enabled\n").is_err());
+    }
+
+    #[test]
+    fn ini_fragments_reject_conflicting_values_including_repeated_sections() {
+        for fragment in [
+            "[options]\nmanaged=first\nmanaged=second\n",
+            "[options]\nmanaged\nmanaged=value\n",
+            "[options]\nmanaged=first\n[other]\nkeep=yes\n[options]\nmanaged=second\n",
+        ] {
+            let error = ini_settings(fragment, true).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("conflicting values for managed in [options]"),
+                "{fragment}: {error}"
+            );
+            assert!(merge_ini("", fragment).is_err(), "{fragment}");
+            assert!(contains_ini("", fragment).is_err(), "{fragment}");
+            assert!(
+                ini_settings(fragment, false).is_ok(),
+                "existing target duplicates remain repairable"
+            );
+        }
+    }
+
+    #[test]
+    fn identical_ini_fragment_duplicates_and_keys_in_other_sections_converge() {
+        let fragment = "[options]\nmanaged=value\nmanaged=value\nFlag\nFlag\n\
+            [other]\nmanaged=other\n[options]\nmanaged=value\n";
+        let current = "[options]\nmanaged=old\nmanaged=duplicate\nFlag=old\n\
+            [unmanaged]\nmanaged=keep\n";
+
+        let merged = merge_ini(current, fragment).unwrap();
+
+        assert!(contains_ini(&merged, fragment).unwrap());
+        assert_eq!(merge_ini(&merged, fragment).unwrap(), merged);
+        assert!(merged.contains("[unmanaged]\nmanaged=keep\n"));
+        assert_eq!(merged.matches("managed=value").count(), 1);
+        assert_eq!(merged.lines().filter(|line| *line == "Flag").count(), 1);
+        assert!(merged.contains("[other]\nmanaged=other\n"));
+    }
+
+    #[test]
+    fn malformed_fragments_are_invalid_for_missing_and_existing_targets() {
+        for (merge, fragment, reason) in [
+            (MergeStrategy::Toml, "managed = [\n", "parsing TOML"),
+            (MergeStrategy::Ini, "managed=true\n", "outside a section"),
+            (
+                MergeStrategy::Ini,
+                "[options]\nmanaged=true\nmanaged=false\n",
+                "conflicting values",
+            ),
+        ] {
+            for existing in [false, true] {
+                let root = tempfile::tempdir_in(".").unwrap();
+                fs::create_dir(root.path().join("system")).unwrap();
+                fs::write(root.path().join("system/fragment"), fragment).unwrap();
+                let target = root.path().join("target");
+                let original = "# Keep existing content\n";
+                if existing {
+                    fs::write(&target, original).unwrap();
+                }
+                let mut resource = SystemFileResource::new(
+                    entry(root.path(), &target, "fragment", merge),
+                    Arc::new(MockExecutor::new()),
+                );
+                resource.temp_dir = root.path().join("staging-must-not-be-created");
+
+                assert!(
+                    matches!(
+                        resource.current_state().unwrap(),
+                        ResourceState::Invalid { reason: detail } if detail.contains(reason)
+                    ),
+                    "{merge:?}, existing={existing}"
+                );
+                let error = resource.apply().unwrap_err();
+                assert!(error.to_string().contains(reason), "{error}");
+                assert!(!resource.temp_dir.exists());
+                if existing {
+                    assert_eq!(fs::read_to_string(&target).unwrap(), original);
+                } else {
+                    assert!(!target.exists());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn valid_missing_system_file_is_planned_without_writing_in_dry_run() {
+        use crate::engine::{ProcessOpts, TaskResult, process_resources};
+        use crate::test_helpers::ContextBuilder;
+
+        for (merge, fragment) in [
+            (MergeStrategy::Toml, "managed = true\n"),
+            (MergeStrategy::Ini, "[options]\nmanaged=true\n"),
+        ] {
+            let root = tempfile::tempdir_in(".").unwrap();
+            fs::create_dir(root.path().join("system")).unwrap();
+            fs::write(root.path().join("system/fragment"), fragment).unwrap();
+            let target = root.path().join("target");
+            let staging = root.path().join("staging-must-not-be-created");
+            let mut resource = SystemFileResource::new(
+                entry(root.path(), &target, "fragment", merge),
+                Arc::new(MockExecutor::new()),
+            );
+            resource.temp_dir = staging.clone();
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+            let ctx = ContextBuilder::new(root.path().to_path_buf())
+                .overlay(None)
+                .build()
+                .with_dry_run(true);
+
+            let result =
+                process_resources(&ctx, [resource], &ProcessOpts::strict("configure")).unwrap();
+
+            assert!(
+                matches!(result, TaskResult::Batch(stats) if stats.changed_count() == 1),
+                "{merge:?}"
+            );
+            assert!(!target.exists());
+            assert!(!staging.exists());
+            assert_eq!(
+                fs::read_to_string(root.path().join("system/fragment")).unwrap(),
+                fragment
+            );
+        }
     }
 
     #[test]

@@ -18,6 +18,9 @@
 .PARAMETER List
     List available stages and exit.
 
+.PARAMETER Strict
+    Fail if any requested stage is skipped. Also enabled by DOTFILES_CHECK_STRICT=1.
+
 .EXAMPLE
     pwsh -File .github\workflows\scripts\windows\Check.ps1
 
@@ -34,13 +37,16 @@ param(
 
     [switch]$All,
 
-    [switch]$List
+    [switch]$List,
+
+    [switch]$Strict
 )
 
 Set-StrictMode -Version Latest
 
 # Individual stages report their own failures; the summary is authoritative.
 $ErrorActionPreference = 'Continue'
+$Strict = $Strict -or $env:DOTFILES_CHECK_STRICT -eq '1'
 
 $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 $Manifest = Join-Path $RepoRoot 'cli' 'Cargo.toml'
@@ -90,7 +96,15 @@ function Invoke-Tool
         [Parameter(Mandatory = $true)][string[]]$ToolArguments
     )
 
-    & $FilePath @ToolArguments | Out-Host
+    try
+    {
+        & $FilePath @ToolArguments | Out-Host
+    }
+    catch
+    {
+        Write-Note "Cannot run ${FilePath}: $_"
+        return 'FAIL'
+    }
     if ($LASTEXITCODE -ne 0)
     {
         return 'FAIL'
@@ -316,13 +330,18 @@ foreach ($name in $selected)
 Write-Output ''
 Write-Output '== summary =='
 $failed = $false
+$skipped = $false
 foreach ($name in $results.Keys)
 {
     $status = $results[$name]
     switch ($status)
     {
         'pass' { Write-Output "  PASS $name" }
-        'skip' { Write-Output "  SKIP $name" }
+        'skip'
+        {
+            Write-Output "  SKIP $name"
+            $skipped = $true
+        }
         default
         {
             Write-Output "  FAIL $name"
@@ -331,12 +350,19 @@ foreach ($name in $results.Keys)
     }
 }
 
-if ($failed)
+if ($failed -or ($Strict -and $skipped))
 {
-    Write-Error 'Checks failed.'
+    Write-Error 'Checks failed or required stages were skipped.'
     exit 1
 }
 
 Write-Output ''
-Write-Output 'All checks passed.'
+if ($skipped)
+{
+    Write-Output 'Some requested checks were skipped; coverage is incomplete.'
+}
+else
+{
+    Write-Output 'All checks passed.'
+}
 exit 0

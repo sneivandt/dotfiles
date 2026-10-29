@@ -7,6 +7,7 @@ use anyhow::{Context as _, Result, ensure};
 use std::path::{Path, PathBuf};
 
 const MARKER: &str = "dotfiles local PKGBUILD snapshot v1\n";
+const ATTRIBUTES: &str = "* -text\n";
 
 pub(super) struct Snapshot {
     pub path: PathBuf,
@@ -167,6 +168,9 @@ impl Snapshot {
         let Some(repo) = self.open_owned()? else {
             return Ok(true);
         };
+        if read_optional(&repo.path().join("info/attributes"))?.as_deref() != Some(ATTRIBUTES) {
+            return Ok(true);
+        }
         let tree = match repo.head() {
             Ok(head) => Some(head.peel_to_tree()?),
             Err(error)
@@ -186,6 +190,13 @@ impl Snapshot {
             return Ok(true);
         }
         for (name, content) in self.inputs(srcinfo) {
+            let metadata = crate::infra::fs::symlink_metadata_optional(
+                &self.path.join(name),
+                "inspect local build snapshot input",
+            )?;
+            if metadata.is_none_or(|metadata| !metadata.is_file()) {
+                return Ok(true);
+            }
             if read_optional(&self.path.join(name))?.as_deref() != Some(content) {
                 return Ok(true);
             }
@@ -193,6 +204,9 @@ impl Snapshot {
             let Some(entry) = tree.get_name(name) else {
                 return Ok(true);
             };
+            if !matches!(entry.filemode(), 0o100_644 | 0o100_755) {
+                return Ok(true);
+            }
             if repo.find_blob(entry.id())?.content() != content.as_bytes() {
                 return Ok(true);
             }
@@ -225,8 +239,9 @@ impl Snapshot {
             repo
         };
         // Keep package inputs byte-for-byte stable through Git reset/clean,
-        // regardless of the host's global Windows line-ending preferences.
+        // including hosts whose global attributes enable text normalization.
         repo.config()?.set_bool("core.autocrlf", false)?;
+        crate::infra::fs::write_atomic(&repo.path().join("info/attributes"), ATTRIBUTES)?;
         let parent = match repo.head() {
             Ok(head) => Some(head.peel_to_commit()?),
             Err(error)

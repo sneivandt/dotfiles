@@ -308,14 +308,10 @@ impl CommandSpec {
     }
 
     fn into_command(self) -> Command {
-        match self.command {
+        let mut command = match self.command {
             CommandKind::Program(program) => {
                 let mut command = new_command(program);
                 command.args(self.args);
-                if let Some(dir) = self.current_dir {
-                    command.current_dir(dir);
-                }
-                command.envs(self.env);
                 command
             }
             #[cfg(windows)]
@@ -334,7 +330,12 @@ impl CommandSpec {
                 command.args(["/D", "/V:OFF", "/S", "/C"]).arg(command_line);
                 command
             }
+        };
+        if let Some(dir) = self.current_dir {
+            command.current_dir(dir);
         }
+        command.envs(self.env);
+        command
     }
 }
 

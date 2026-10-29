@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::engine::Context;
-use crate::infra::exec::{CommandSpec, ExecResult};
+use crate::infra::exec::{CommandSpec, ExecError, ExecResult};
 use crate::infra::logging::OutputExt as _;
 use anyhow::{Context as _, Result};
 
@@ -82,15 +82,18 @@ pub(super) fn run_apm_invocation(
             report_apm_output(ctx, &result.stdout, &result.stderr);
             Ok(ApmCommandResult::Success(result))
         }
-        Err(err) => classify_apm_error(ctx, command, err.into()),
+        Err(err) => classify_apm_error(ctx, command, err),
     }
 }
 
 fn classify_apm_error(
     ctx: &Context,
     command: ApmCommand,
-    err: anyhow::Error,
+    err: ExecError,
 ) -> Result<ApmCommandResult> {
+    if !matches!(err, ExecError::NonZero { .. }) {
+        return Err(err).context(command.error_context());
+    }
     let msg = format!("{err:#}");
     if looks_like_auth_failure(&msg) {
         let reason = command.auth_reason();
@@ -103,7 +106,14 @@ fn classify_apm_error(
 }
 
 /// Best-effort enable of an experimental APM deployment target.
-pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, config_key: &str) {
+///
+/// Cancellation must stop deployment even though other enablement failures
+/// remain best-effort for compatibility with older APM versions.
+pub(super) fn ensure_experimental_target_enabled(
+    ctx: &Context,
+    target: &str,
+    config_key: &str,
+) -> Result<()> {
     let cwd = ctx.home();
 
     // The CLI call costs a full apm process start (~1.3s) purely to re-assert a
@@ -117,7 +127,7 @@ pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, co
                 apm_config_path(cwd).display()
             )
         });
-        return;
+        return Ok(());
     }
 
     ctx.debug_fmt(|| {
@@ -134,6 +144,9 @@ pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, co
             .timeout(Duration::from_mins(2)),
     ) {
         Ok(result) => report_apm_output(ctx, &result.stdout, &result.stderr),
+        Err(err) if err.is_cancelled() => {
+            return Err(err).with_context(|| format!("enabling apm experimental {target}"));
+        }
         Err(err) => {
             let msg = format!("{err:#}");
             ctx.log().warn(format!(
@@ -143,6 +156,7 @@ pub(super) fn ensure_experimental_target_enabled(ctx: &Context, target: &str, co
             ));
         }
     }
+    Ok(())
 }
 
 /// Path to the machine-local apm configuration file.
@@ -200,4 +214,69 @@ pub(super) fn looks_like_auth_failure(message: &str) -> bool {
     ]
     .iter()
     .any(|needle| lowered.contains(needle))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domains::ai::apm::test_fixture::{assert_apm_command, make_context_with_home};
+    use crate::infra::exec::MockExecutor;
+    use crate::infra::platform::{Os, Platform};
+
+    #[test]
+    fn native_execution_failures_are_not_classified_by_auth_text() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        let ctx = make_context_with_home(
+            dir.path(),
+            Platform::new(Os::Linux, false),
+            MockExecutor::new(),
+        );
+        let output = || ExecResult::failure("", "authentication required", None);
+        for error in [
+            ExecError::TimedOut {
+                command: "apm".into(),
+                timeout: Duration::from_secs(1),
+                result: output(),
+            },
+            ExecError::OutputLimit {
+                command: "apm".into(),
+                stream: "stderr",
+                limit: 20,
+                result: output(),
+            },
+            ExecError::spawn("apm", std::io::Error::other("authentication required")),
+            ExecError::Io {
+                command: "apm".into(),
+                operation: "reading output",
+                source: std::io::Error::other("authentication required"),
+            },
+        ] {
+            let expected = std::mem::discriminant(&error);
+            let error = classify_apm_error(&ctx, ApmCommand::Install, error).unwrap_err();
+            assert_eq!(
+                std::mem::discriminant(error.downcast_ref::<ExecError>().unwrap()),
+                expected,
+                "{error:#}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_cancelled_target_enablement_failure_remains_best_effort() {
+        for target in ["copilot-app", "copilot-cowork"] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let mut mock = MockExecutor::new();
+            mock.expect_execute().once().returning(move |spec| {
+                assert_apm_command(&spec);
+                assert_eq!(spec.arguments(), ["experimental", "enable", target]);
+                Err(ExecError::non_zero(
+                    "apm",
+                    ExecResult::failure("", "unsupported experimental target", Some(1)),
+                ))
+            });
+            let ctx = make_context_with_home(dir.path(), Platform::new(Os::Linux, false), mock);
+
+            ensure_experimental_target_enabled(&ctx, target, "fixture").unwrap();
+        }
+    }
 }

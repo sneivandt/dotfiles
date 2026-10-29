@@ -455,6 +455,11 @@ function Test-IsolatedWrapperPath {
             if ($env:GH_PROMPT_DISABLED -cne '1' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'disabled:') {
                 throw 'Verification allowed terminal or desktop keyring prompts'
             }
+            if ($env:WRAPPER_TEST_GH_EXIT -eq 'throw') {
+                # A concurrent bootstrap must survive this failed verification.
+                [System.IO.File]::WriteAllText($Binary, 'concurrent fixture')
+                throw 'Fixture attestation process could not start'
+            }
             $global:LASTEXITCODE = [int]$env:WRAPPER_TEST_GH_EXIT
         }
         Set-Item Function:Invoke-WebRequest -Value {
@@ -544,6 +549,25 @@ function Test-IsolatedWrapperPath {
         if (-not $rejected) { throw 'Wrapper accepted a mismatched checksum' }
         if ((Test-Path -LiteralPath $binary) -or (Test-Path -LiteralPath "$binary.download-$PID")) {
             throw 'Rejected download was not removed from the literal path'
+        }
+        $env:WRAPPER_TEST_BAD_CHECKSUM = '0'
+        $env:WRAPPER_TEST_GH_EXIT = 'throw'
+        $rejected = $false
+        try {
+            & $wrapper --version | Out-Null
+        } catch {
+            if ($_ -notmatch 'Fixture attestation process could not start') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Wrapper ignored an attestation invocation error' }
+        if (Test-Path -LiteralPath "$binary.download-$PID") {
+            throw 'Unexpected verification failure leaked the downloaded binary'
+        }
+        if ([System.IO.File]::ReadAllText($binary) -cne 'concurrent fixture') {
+            throw 'Failed bootstrap changed the concurrently installed binary'
+        }
+        if ($env:GH_PROMPT_DISABLED -cne 'caller' -or $env:DBUS_SESSION_BUS_ADDRESS -cne 'caller') {
+            throw 'Attestation invocation error changed the caller credential environment'
         }
         Write-TestPass 'Wrappers preserve literal paths, cwd, arguments, exit codes, and failed-download cleanup'
         return $true

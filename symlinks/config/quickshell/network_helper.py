@@ -336,10 +336,12 @@ def action(request):
         result = nmcli(["--wait", "10", "radio", "wifi", "on" if request["enabled"] else "off"])
     elif operation == "scan":
         devices = query(["-f", "DEVICE,TYPE,STATE", "device", "status"], 3)
+        adapters = [device for device, kind, state in devices
+                    if kind == "wifi" and state not in ("unmanaged", "unavailable")]
+        if not adapters:
+            raise NetworkError("No available, managed Wi-Fi adapter can scan. Check Wi-Fi or Advanced settings.")
         failures = []
-        for device, kind, state in devices:
-            if kind != "wifi" or state in ("unmanaged", "unavailable"):
-                continue
+        for device in adapters:
             result = nmcli(["--wait", "10", "device", "wifi", "rescan", "ifname", device])
             if result.returncode:
                 failures.append(device)

@@ -18,6 +18,7 @@ enum Behavior {
     CancelAfterApply,
     Current,
     ProbeFail,
+    ProbeInterrupt,
     Unknown,
 }
 
@@ -52,9 +53,11 @@ impl Resource for ProbeResource {
                 self.ctx.cancellation_token().cancel();
                 Ok(ResourceChange::Applied)
             }
-            Behavior::Apply | Behavior::Current | Behavior::ProbeFail | Behavior::Unknown => {
-                Ok(ResourceChange::Applied)
-            }
+            Behavior::Apply
+            | Behavior::Current
+            | Behavior::ProbeFail
+            | Behavior::ProbeInterrupt
+            | Behavior::Unknown => Ok(ResourceChange::Applied),
         }
     }
 }
@@ -64,6 +67,11 @@ impl IntrinsicState for ProbeResource {
         match self.behavior {
             Behavior::Current => Ok(ResourceState::Correct),
             Behavior::ProbeFail => Err(std::io::Error::other("probe failed").into()),
+            Behavior::ProbeInterrupt => Err(ExecError::Cancelled {
+                command: self.description(),
+                result: ExecResult::failure("", "", None),
+            }
+            .into()),
             Behavior::Unknown => Ok(ResourceState::Unknown {
                 reason: "ownership probe failed".into(),
             }),
@@ -167,6 +175,24 @@ fn stopped_batches_retain_counts_and_typed_causes() {
             0,
             1,
             vec![0, 1],
+        ),
+        (
+            Behavior::ProbeInterrupt,
+            false,
+            BatchCompletion::Interrupted,
+            1,
+            0,
+            1,
+            vec![0],
+        ),
+        (
+            Behavior::ProbeInterrupt,
+            true,
+            BatchCompletion::Interrupted,
+            1,
+            0,
+            1,
+            vec![],
         ),
     ] {
         let (ctx, _) = test_context("/fixture".into(), None);

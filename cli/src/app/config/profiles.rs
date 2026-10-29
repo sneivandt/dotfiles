@@ -22,10 +22,10 @@ fn selected_profile_name(
     root: &Path,
     env: &dyn crate::infra::env::Env,
 ) -> Result<Option<String>> {
-    let explicit = cli_profile
-        .map(str::to_owned)
-        .or_else(|| read_from_env(env));
-    explicit.map_or_else(|| read_persisted(root), |name| Ok(Some(name)))
+    if let Some(name) = cli_profile {
+        return Ok(Some(name.to_owned()));
+    }
+    read_from_env(env)?.map_or_else(|| read_persisted(root), |name| Ok(Some(name)))
 }
 
 /// One built-in role profile used by selection prompts and completions.
@@ -229,10 +229,54 @@ mod tests {
                 MapEnv::new().with("DOTFILES_PROFILE", value)
             });
             assert_eq!(
-                read_from_env(&env).as_deref(),
+                read_from_env(&env).unwrap().as_deref(),
                 value.filter(|value| !value.is_empty()),
                 "{value:?}: nonempty values must be validated, not silently defaulted"
             );
+        }
+    }
+
+    #[test]
+    fn non_unicode_environment_does_not_fall_back_but_cli_can_override() {
+        use crate::infra::env::MapEnv;
+
+        #[cfg(unix)]
+        let value = {
+            use std::os::unix::ffi::OsStringExt as _;
+            std::ffi::OsString::from_vec(vec![0xff])
+        };
+        #[cfg(windows)]
+        let value = {
+            use std::os::windows::ffi::OsStringExt as _;
+            std::ffi::OsString::from_wide(&[0xd800])
+        };
+        let env = MapEnv::new().with("DOTFILES_PROFILE", value);
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let repo = git2::Repository::init(fixture.path()).unwrap();
+        persist(fixture.path(), "desktop").unwrap();
+        let config_path = repo.path().join("config");
+        let original = std::fs::read(&config_path).unwrap();
+
+        for read_only in [false, true] {
+            for cli in [None, Some("base")] {
+                let result = if read_only {
+                    resolve_read_only(cli, fixture.path(), linux_platform(), &env)
+                } else {
+                    resolve_from_args(cli, fixture.path(), linux_platform(), &env, true)
+                };
+                if cli.is_some() {
+                    assert_eq!(result.unwrap().name, "base");
+                } else {
+                    let error = result.expect_err("invalid environment must not select desktop");
+                    assert!(error.to_string().contains("DOTFILES_PROFILE"));
+                    assert!(error.to_string().contains("valid Unicode"));
+                }
+                assert_eq!(
+                    std::fs::read(&config_path).unwrap(),
+                    original,
+                    "invalid environment and explicit overrides must not rewrite saved selection"
+                );
+            }
         }
     }
 

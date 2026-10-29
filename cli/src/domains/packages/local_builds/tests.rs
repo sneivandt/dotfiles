@@ -374,6 +374,31 @@ fn config_preview_apply_and_repeat() {
     );
 }
 
+#[test]
+fn config_paths_must_survive_paru_whitespace_and_comment_parsing() {
+    for path in [
+        "cache with spaces",
+        "cache/internal space/clone",
+        "cache\twith\ttabs",
+    ] {
+        assert_eq!(config_path(Path::new(path)).unwrap(), path);
+    }
+    for path in [
+        " cache",
+        "cache ",
+        "\tcache",
+        "cache\t",
+        "cache\nother",
+        "cache\rother",
+        "cache#comment",
+    ] {
+        assert!(
+            config_path(Path::new(path)).is_err(),
+            "Paru would interpret {path:?} as a different path"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn config_migrates_old_link_without_overwriting_tracked_source() {
@@ -677,6 +702,144 @@ fn snapshot_commits_install_script_and_refreshes_changes_for_cleanup() {
         .find_blob(tree.get_name("package.install").unwrap().id())
         .unwrap();
     assert_eq!(blob.content(), b"post_install() { echo updated; }\n");
+}
+
+#[test]
+fn snapshot_repairs_attributes_and_preserves_exact_bytes_through_git_reset() {
+    let dir = fixture();
+    let source = dir.path().join("packages/tool-bin");
+    let build_root = dir.path().join("builds");
+    let script = "post_install() { :; }\r\n";
+    let metadata = "fixture metadata\n";
+    std::fs::write(source.join("package.install"), script).unwrap();
+    let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+    snapshot.apply(metadata).unwrap();
+    let repo = git2::Repository::open(&snapshot.path).unwrap();
+    let attributes = repo.path().join("info/attributes");
+    std::fs::write(snapshot.path.join(".gitattributes"), "* text eol=crlf\n").unwrap();
+
+    for contents in [None, Some("* text eol=crlf\n")] {
+        if let Some(contents) = contents {
+            std::fs::write(&attributes, contents).unwrap();
+        } else {
+            std::fs::remove_file(&attributes).unwrap();
+        }
+        let planned = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        assert!(planned.needs_write().unwrap());
+        assert_eq!(read_optional(&attributes).unwrap().as_deref(), contents);
+        planned.apply(metadata).unwrap();
+
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        for name in ["package.install", ".SRCINFO"] {
+            std::fs::write(snapshot.path.join(name), "changed\n").unwrap();
+        }
+        repo.reset(head.as_object(), git2::ResetType::Hard, None)
+            .unwrap();
+
+        for (name, expected) in [("package.install", script), (".SRCINFO", metadata)] {
+            assert_eq!(
+                std::fs::read(snapshot.path.join(name)).unwrap(),
+                expected.as_bytes(),
+                "{name}: snapshot-local attributes must preserve both CRLF and LF inputs"
+            );
+        }
+        assert!(
+            !Snapshot::plan(&build_root, "tool-bin", &source, false)
+                .unwrap()
+                .needs_write()
+                .unwrap()
+        );
+    }
+}
+
+#[test]
+fn snapshot_repairs_committed_symlink_inputs_even_when_blob_contents_match() {
+    for name in ["PKGBUILD", "version.sh", ".SRCINFO"] {
+        let dir = fixture();
+        let source = dir.path().join("packages/tool-bin");
+        let build_root = dir.path().join("builds");
+        let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        snapshot.apply("fixture metadata\n").unwrap();
+        let repo = git2::Repository::open(&snapshot.path).unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        let original = parent.tree().unwrap();
+        let mut builder = repo.treebuilder(Some(&original)).unwrap();
+        builder
+            .insert(name, original.get_name(name).unwrap().id(), 0o120_000)
+            .unwrap();
+        let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+        let signature = git2::Signature::now("fixture", "ci@test.local").unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            "replace input with committed symlink",
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+
+        let damaged = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        assert!(
+            damaged.needs_write().unwrap(),
+            "{name}: Git cleanup would restore a symlink rather than a usable input"
+        );
+        damaged.apply("fixture metadata\n").unwrap();
+        assert_eq!(
+            repo.head()
+                .unwrap()
+                .peel_to_tree()
+                .unwrap()
+                .get_name(name)
+                .unwrap()
+                .filemode(),
+            0o100_644,
+            "{name}",
+        );
+        assert!(
+            !Snapshot::plan(&build_root, "tool-bin", &source, false)
+                .unwrap()
+                .needs_write()
+                .unwrap(),
+            "{name}: repaired snapshot must converge",
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn snapshot_repairs_working_symlinks_without_modifying_their_targets() {
+    for name in ["PKGBUILD", "version.sh", ".SRCINFO"] {
+        let dir = fixture();
+        let source = dir.path().join("packages/tool-bin");
+        let build_root = dir.path().join("builds");
+        let snapshot = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        snapshot.apply("fixture metadata\n").unwrap();
+        let input = snapshot.path.join(name);
+        let original = std::fs::read_to_string(&input).unwrap();
+        let target = dir.path().join("outside-snapshot");
+        std::fs::write(&target, &original).unwrap();
+        std::fs::remove_file(&input).unwrap();
+        std::os::unix::fs::symlink(&target, &input).unwrap();
+
+        let damaged = Snapshot::plan(&build_root, "tool-bin", &source, false).unwrap();
+        assert!(
+            damaged.needs_write().unwrap(),
+            "{name}: matching symlink contents must not bypass snapshot repair"
+        );
+        damaged.apply("fixture metadata\n").unwrap();
+
+        assert!(std::fs::symlink_metadata(&input).unwrap().is_file());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), original);
+        assert_eq!(std::fs::read_to_string(&input).unwrap(), original);
+        assert!(
+            !Snapshot::plan(&build_root, "tool-bin", &source, false)
+                .unwrap()
+                .needs_write()
+                .unwrap(),
+            "{name}: repaired snapshot must converge",
+        );
+    }
 }
 
 #[test]

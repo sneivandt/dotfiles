@@ -418,13 +418,19 @@ show `unknown`; malformed or unfamiliar records remain readable as raw text.
 An empty or unmatched history remains machine-readable: `--list --format json`
 returns `[]`, and plain format emits no rows.
 
-Log-directory precedence is:
+Log-directory precedence is platform-specific:
 
-1. `DOTFILES_LOG_DIR`, used as supplied.
-2. `LOCALAPPDATA` plus `dotfiles/logs`.
-3. `XDG_STATE_HOME` plus `dotfiles/logs`.
-4. The home directory plus `.local/state/dotfiles/logs`.
-5. `./dotfiles/logs`.
+1. `DOTFILES_LOG_DIR`, used as supplied, including relative paths.
+2. On Windows, `LOCALAPPDATA` plus `dotfiles/logs`; otherwise,
+   `XDG_STATE_HOME` plus `dotfiles/logs`.
+3. On Windows, `USERPROFILE` plus `AppData/Local/dotfiles/logs`; otherwise,
+   `HOME` plus `.local/state/dotfiles/logs`.
+4. `./dotfiles/logs`.
+
+Standard state/home variables must be absolute; empty or relative values are
+ignored. Variables belonging to the other platform do not override the native
+location. Log discovery reports unreadable or invalid directories as errors,
+not empty history, and ignores directories named like log files.
 
 Files use `<utc-timestamp>-<command>-<pid>.log`. Legacy cache-directory logs are
 removed on the next run. Viewing logs does not create another log.

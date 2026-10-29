@@ -566,6 +566,62 @@ fn parallel_fetch_failure_reports_the_first_declared_repository() {
 }
 
 #[test]
+fn parallel_fetch_cancellation_takes_precedence_over_another_repository_failure() {
+    for cancel_overlay in [false, true] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let main_root = root.path().join("main");
+        let overlay_root = root.path().join("overlay");
+        let config = overlay_config(&main_root, &overlay_root);
+        let cancelled_root = if cancel_overlay {
+            overlay_root
+        } else {
+            main_root
+        };
+        let mut mock = MockExecutor::new();
+        mock.expect_execute().times(6).returning(move |spec| {
+            assert_eq!(spec.program(), "git");
+            assert!(spec.is_checked());
+            match spec.arguments().first().and_then(|arg| arg.to_str()) {
+                Some("symbolic-ref") => {
+                    assert_eq!(spec.arguments(), ["symbolic-ref", "--quiet", "HEAD"]);
+                    Ok(ExecResult::success("refs/heads/main"))
+                }
+                Some("status") => {
+                    assert_eq!(
+                        spec.arguments(),
+                        ["status", "--porcelain", "--untracked-files=no"]
+                    );
+                    Ok(ExecResult::success(""))
+                }
+                Some("fetch") => {
+                    assert_eq!(spec.arguments(), ["fetch", "--quiet"]);
+                    Err(if spec.working_dir() == Some(cancelled_root.as_path()) {
+                        cancelled_git_error()
+                    } else {
+                        git_error("simulated fetch failure")
+                    })
+                }
+                _ => panic!("unexpected git call {:?}", spec.arguments()),
+            }
+        });
+        let ctx = make_update_context(config.root, config.overlay, mock).with_parallel(true);
+        let signal = UpdateSignal::new();
+
+        let error = UpdateRepository::new(signal.clone())
+            .run(&ctx)
+            .expect_err("cancellation must escape even when the other fetch also fails");
+
+        assert!(
+            error
+                .downcast_ref::<ExecError>()
+                .is_some_and(ExecError::is_cancelled),
+            "cancel_overlay={cancel_overlay}: {error:#}"
+        );
+        assert!(!signal.was_updated());
+    }
+}
+
+#[test]
 fn partial_multi_repository_merge_failure_records_that_the_checkout_changed() {
     use super::models::{CheckedRepository, UpdateTarget, UpdateTargetKind};
 

@@ -1,8 +1,8 @@
 use crate::engine::mode::ProcessOpts;
 use crate::engine::orchestrate::process_resources_with_state;
 use crate::engine::{
-    Context, IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState, TaskResult,
-    process_resources, process_resources_remove,
+    Context, IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult,
+    ResourceState, TaskResult, process_resources, process_resources_remove,
 };
 use std::{
     path::PathBuf,
@@ -497,5 +497,68 @@ fn state_discovery_error_prevents_mutation_in_both_modes() {
             &ProcessOpts::strict("install"),
         );
         assert!(format!("{:#}", result.unwrap_err()).contains("state query failed"));
+    }
+}
+
+#[test]
+fn discovery_errors_identify_the_resource_and_preserve_the_typed_cause() {
+    struct UnreadableResource;
+
+    impl Resource for UnreadableResource {
+        fn description(&self) -> String {
+            "unreadable resource".into()
+        }
+
+        fn apply(&self) -> ResourceResult<ResourceChange> {
+            panic!("failed discovery must never authorize apply")
+        }
+    }
+
+    impl IntrinsicState for UnreadableResource {
+        fn current_state(&self) -> ResourceResult<ResourceState> {
+            Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "probe denied").into())
+        }
+    }
+
+    impl RemovableResource for UnreadableResource {
+        fn remove(&self) -> ResourceResult<ResourceChange> {
+            panic!("failed discovery must never authorize removal")
+        }
+    }
+
+    for parallel in [false, true] {
+        for dry_run in [false, true] {
+            for pipeline in [Pipeline::Intrinsic, Pipeline::Precomputed, Pipeline::Remove] {
+                let ctx = test_ctx().with_parallel(parallel).with_dry_run(dry_run);
+                let resources = [UnreadableResource, UnreadableResource];
+                let error = match pipeline {
+                    Pipeline::Intrinsic => process_resources(&ctx, resources, &bail_opts()),
+                    Pipeline::Precomputed => process_resources_with_state(
+                        &ctx,
+                        resources,
+                        IntrinsicState::current_state,
+                        &bail_opts(),
+                    ),
+                    Pipeline::Remove => process_resources_remove(&ctx, resources, "unlink"),
+                }
+                .unwrap_err();
+                let message = format!("{error:#}");
+                let expected = if matches!(pipeline, Pipeline::Remove) {
+                    "failed to check unreadable resource for removal"
+                } else {
+                    "failed to check unreadable resource"
+                };
+                assert!(message.contains(expected), "{pipeline:?}: {message}");
+                let cause = error
+                    .downcast_ref::<crate::engine::resource::ResourceError>()
+                    .unwrap();
+                assert_eq!(cause.category(), "io");
+                assert!(matches!(
+                    cause,
+                    crate::engine::resource::ResourceError::Io { source }
+                        if source.kind() == std::io::ErrorKind::PermissionDenied
+                ));
+            }
+        }
     }
 }

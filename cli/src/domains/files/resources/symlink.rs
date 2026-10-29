@@ -111,12 +111,18 @@ impl Resource for SymlinkResource {
     }
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
-        if let ResourceState::Invalid { reason } = self.current_state()? {
-            return Err(crate::engine::resource::ResourceError::conflicting_state(
-                self.target.display().to_string(),
-                "a target separate from a valid symlink source",
-                reason,
-            ));
+        match self.current_state()? {
+            ResourceState::Correct => return Ok(ResourceChange::AlreadyCorrect),
+            ResourceState::Invalid { reason } => {
+                return Err(crate::engine::resource::ResourceError::conflicting_state(
+                    self.target.display().to_string(),
+                    "a target separate from a valid symlink source",
+                    reason,
+                ));
+            }
+            ResourceState::Missing
+            | ResourceState::Incorrect { .. }
+            | ResourceState::Unknown { .. } => {}
         }
         crate::infra::fs::ensure_parent_dir(&self.target)?;
 

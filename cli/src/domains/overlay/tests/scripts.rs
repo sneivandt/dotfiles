@@ -228,6 +228,56 @@ fn removal_dry_run_does_not_execute_remove() {
 }
 
 #[test]
+fn script_disappearing_after_check_fails_apply_preview_and_remove() {
+    for (mode, dry_run) in [
+        (ScriptTaskMode::Apply, false),
+        (ScriptTaskMode::Apply, true),
+        (ScriptTaskMode::Remove, false),
+    ] {
+        let overlay = tempfile::tempdir_in(".").unwrap();
+        let script_path = overlay.path().join("test.sh");
+        std::fs::write(&script_path, "#!/bin/sh\n").unwrap();
+        let expected_root = overlay.path().to_path_buf();
+        let expected_args = [
+            script_path.as_os_str().to_os_string(),
+            std::ffi::OsString::from("--check"),
+        ];
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(move |spec| {
+                spec.program() == "sh"
+                    && spec.arguments() == expected_args
+                    && spec.working_dir() == Some(expected_root.as_path())
+                    && !spec.is_checked()
+            })
+            .return_once(move |_| {
+                std::fs::remove_file(script_path).unwrap();
+                Ok(if mode == ScriptTaskMode::Remove {
+                    ExecResult::success("")
+                } else {
+                    ExecResult::failure("", "", Some(1))
+                })
+            });
+        let ctx = context_with_executor(overlay.path(), mock).with_dry_run(dry_run);
+        let task = OverlayScriptTask::with_mode(
+            script_entry("Setup test", "test.sh"),
+            overlay.path().to_path_buf(),
+            mode,
+        );
+
+        let error = task
+            .run(&ctx)
+            .expect_err("a vanished script cannot count as successful or benignly skipped");
+
+        assert!(
+            format!("{error:#}").contains("script not found"),
+            "{mode:?}, dry_run={dry_run}: {error:#}"
+        );
+    }
+}
+
+#[test]
 fn removal_task_propagates_remove_failure() {
     let (overlay, entry, script_arg) = shell_script_fixture();
     let check_arg = script_arg.clone();

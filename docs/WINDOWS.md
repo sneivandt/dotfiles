@@ -251,6 +251,12 @@ Profile content is delivered from `symlinks/` by the active Windows category.
 Edit tracked sources rather than installed links. New sessions load profile
 changes; completion registration is managed by its own `completions` task.
 
+The profile adds existing `~/.local/bin` and Cargo's `bin` directory to PATH
+before detecting optional command integrations. Cargo uses `CARGO_HOME` when
+set, otherwise `~/.cargo`; reloading the profile does not duplicate entries
+with alternate separators. Profile fragments are loaded from literal paths,
+including home directories whose names contain brackets.
+
 Bootstrap compatibility with Windows PowerShell does not imply analyzer
 compatibility. The repository check requires **`pwsh`**, and once present it
 requires the PSScriptAnalyzer module. Missing `pwsh` is a skip; missing the

@@ -84,6 +84,9 @@ running their checks. An unstaged fix cannot hide a staged error, an unstaged
 deletion cannot hide a staged file, and untracked files cannot satisfy the
 build. These guards do not stash or overwrite the working tree. They reuse the
 checkout's Cargo target cache, so a staged build still writes build artifacts.
+Shell and PowerShell input discovery preserves literal filenames, including
+spaces, non-ASCII characters and (where supported) tabs or newlines; Git's
+quoted display paths are never passed to an analyzer.
 
 **The check implementation is different from the checked input.** The installed
 entrypoint resolves `git rev-parse --show-toplevel` and runs helpers from that

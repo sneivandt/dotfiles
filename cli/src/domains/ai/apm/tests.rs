@@ -582,6 +582,35 @@ fn install_dry_run_does_not_write_generated_manifest() {
 }
 
 #[test]
+fn invalid_target_configuration_fails_before_manifest_writes_or_native_commands() {
+    for update in [false, true] {
+        for dry_run in [false, true] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            write_default_home_fragment(dir.path());
+            let config = dir.path().join(".apm").join("config.json");
+            std::fs::write(&config, "{invalid").unwrap();
+            let mut mock = MockExecutor::new();
+            if update || !dry_run {
+                expect_which_apm(&mut mock, true);
+            }
+            let ctx = linux_context(dir.path(), mock).with_dry_run(dry_run);
+            let error = if update {
+                update_task()
+            } else {
+                install_task()
+            }
+            .run(&ctx)
+            .unwrap_err();
+
+            assert!(format!("{error:#}").contains("config.json"), "{error:#}");
+            assert_eq!(std::fs::read_to_string(&config).unwrap(), "{invalid");
+            assert!(!dir.path().join(".apm").join("apm.yml").exists());
+            assert!(!dir.path().join(".apm").join("apm.lock.yaml").exists());
+        }
+    }
+}
+
+#[test]
 fn native_commands_classify_auth_failures_but_propagate_other_failures() {
     for (update, message, auth_failure) in [
         (
@@ -662,7 +691,11 @@ fn cancelled_native_commands_preserve_cancellation_instead_of_skipping() {
             );
             Err(ExecError::Cancelled {
                 command: "apm".to_string(),
-                result: ExecResult::failure("", "cancelled", None),
+                result: ExecResult::failure(
+                    "",
+                    "authentication required before cancellation",
+                    None,
+                ),
             })
         });
         let ctx = linux_context(dir.path(), mock);
@@ -690,6 +723,51 @@ fn auth_failure_detection_cases() {
         ("archive extraction failed", false),
     ] {
         assert_eq!(looks_like_auth_failure(message), expected, "{message}");
+    }
+}
+
+#[test]
+fn cancelled_target_enablement_stops_before_native_install_or_cowork_copy() {
+    for target in ["copilot-app", "copilot-cowork"] {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        write_current_manifest_and_lock(dir.path());
+        if target == "copilot-app" {
+            write_copilot_app_db(dir.path());
+        }
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        expect_primary_install(&mut mock, &mut sequence, dir.path());
+        mock.expect_execute()
+            .once()
+            .in_sequence(&mut sequence)
+            .returning(move |spec| {
+                assert_apm_command(&spec);
+                assert_eq!(spec.arguments(), ["experimental", "enable", target]);
+                Err(ExecError::Cancelled {
+                    command: "apm".to_string(),
+                    result: ExecResult::failure("", "cancelled", None),
+                })
+            });
+        let ctx = if target == "copilot-app" {
+            linux_context(dir.path(), mock)
+        } else {
+            make_windows_cowork_context(dir.path(), mock)
+        };
+        let error = managed_targets::ManagedTargets::detect(&ctx)
+            .unwrap()
+            .run_apm_command(&ctx, commands::ApmCommand::Install)
+            .unwrap_err();
+
+        assert!(
+            error
+                .downcast_ref::<ExecError>()
+                .is_some_and(ExecError::is_cancelled),
+            "{target}: {error:#}"
+        );
+        assert!(
+            !dir.path().join("OneDrive - Test").exists(),
+            "cancelled target enablement must not copy Cowork files"
+        );
     }
 }
 

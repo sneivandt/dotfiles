@@ -77,7 +77,8 @@ record()
 
 # Run a stage function and record pass/fail/skip.
 #
-# Stage functions return 0 for pass, 2 for skip, and anything else for fail.
+# Stage functions return 0 for pass, 2 for skip, and 1 for fail. Normalize tool
+# errors to 1: an installed tool can itself return 2 without being unavailable.
 run_stage()
 {
   heading "$1"
@@ -106,7 +107,7 @@ stage_fmt()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
   sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
-  cargo fmt --check --manifest-path "$MANIFEST"
+  cargo fmt --check --manifest-path "$MANIFEST" || return 1
 }
 
 stage_clippy()
@@ -114,14 +115,14 @@ stage_clippy()
   have cargo || { note "cargo not installed; skipping"; return 2; }
   sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo clippy --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
-    --all-targets -- -D warnings
+    --all-targets -- -D warnings || return 1
 }
 
 stage_test()
 {
   have cargo || { note "cargo not installed; skipping"; return 2; }
   sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
-  cargo test --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST"
+  cargo test --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" || return 1
 }
 
 stage_rustdoc()
@@ -129,7 +130,7 @@ stage_rustdoc()
   have cargo || { note "cargo not installed; skipping"; return 2; }
   sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo doc --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" \
-    --no-deps --document-private-items
+    --no-deps --document-private-items || return 1
 }
 
 # Runs the CLI's own repository validator against this working tree.
@@ -138,7 +139,7 @@ stage_config()
   have cargo || { note "cargo not installed; skipping"; return 2; }
   sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo run --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" -- \
-    check --root "$REPO_ROOT" --profile desktop --only config-warnings,symlink-sources,config-files
+    check --root "$REPO_ROOT" --profile desktop --only config-warnings,symlink-sources,config-files || return 1
 }
 
 # Mirrors the CI documentation consistency job.
@@ -148,7 +149,7 @@ stage_docs()
     sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   fi
   DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-docs.sh" \
-    docs_links docs_task_selectors
+    docs_links docs_task_selectors || return 1
 }
 
 stage_ci()
@@ -157,21 +158,21 @@ stage_ci()
   python3 "$REPO_ROOT/.github/workflows/scripts/linux/check-ci-contract.py" &&
     python3 -B "$REPO_ROOT/.github/workflows/scripts/linux/test-ci-changes.py" || return 1
   have actionlint || { note "actionlint not installed; workflow lint skipped"; return 2; }
-  sh "$REPO_ROOT/.github/workflows/scripts/linux/test-workflows.sh"
+  sh "$REPO_ROOT/.github/workflows/scripts/linux/test-workflows.sh" || return 1
 }
 
 stage_shell()
 {
   have shellcheck || { note "shellcheck not installed; skipping"; return 2; }
   DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-static-analysis.sh" \
-    test_shellcheck
+    test_shellcheck || return 1
 }
 
 stage_powershell()
 {
   have pwsh || { note "pwsh not installed; skipping"; return 2; }
   DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-static-analysis.sh" \
-    test_psscriptanalyzer
+    test_psscriptanalyzer || return 1
 }
 
 stage_audit()
@@ -181,7 +182,7 @@ stage_audit()
     note "cargo-audit not installed; skipping (cargo install cargo-audit)"
     return 2
   fi
-  cargo audit --file "$REPO_ROOT/cli/Cargo.lock"
+  cargo audit --file "$REPO_ROOT/cli/Cargo.lock" || return 1
 }
 
 stage_deny()
@@ -191,7 +192,7 @@ stage_deny()
     note "cargo-deny not installed; skipping (cargo install cargo-deny)"
     return 2
   fi
-  cargo deny --manifest-path "$MANIFEST" check all
+  cargo deny --manifest-path "$MANIFEST" check all || return 1
 }
 
 # Uses inert Quickshell mocks; no live desktop or services are started.
@@ -202,7 +203,7 @@ stage_qml()
     note "Qt Quick Test not installed; skipping (requires Qt >= 6.8)"
     return 2
   fi
-  sh "$REPO_ROOT/.github/workflows/scripts/linux/test-desktop-qml.sh"
+  sh "$REPO_ROOT/.github/workflows/scripts/linux/test-desktop-qml.sh" || return 1
 }
 
 # Checks the crate still compiles on the declared minimum toolchain.
@@ -216,7 +217,7 @@ stage_msrv()
   fi
   note "MSRV from Cargo.toml: $msrv"
   rustup toolchain install "$msrv" --profile minimal >/dev/null 2>&1 || true
-  cargo "+$msrv" check --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" --all-targets
+  cargo "+$msrv" check --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" --all-targets || return 1
 }
 
 # ── Argument handling ─────────────────────────────────

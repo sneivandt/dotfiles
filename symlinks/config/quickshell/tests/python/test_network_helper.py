@@ -379,6 +379,40 @@ class NetworkTests(unittest.TestCase):
         network.action({"operation": "wifi", "enabled": False})
         self.assertEqual(run.call_args.args[0], ["--wait", "10", "radio", "wifi", "off"])
 
+    @patch("network_helper.nmcli")
+    @patch("network_helper.query")
+    def test_rescan_without_usable_adapter_is_not_success(self, query, run):
+        for devices in ([], [["eth0", "ethernet", "connected"]],
+                        [["wlan0", "wifi", "unavailable"], ["wlan1", "wifi", "unmanaged"]]):
+            with self.subTest(devices=devices):
+                query.return_value = devices
+                result = self.run_main('{"operation":"scan"}')
+                self.assertFalse(result["ok"])
+                self.assertIn("Wi-Fi adapter", result["error"])
+        run.assert_not_called()
+
+    @patch("network_helper.nmcli")
+    @patch("network_helper.query")
+    def test_rescan_uses_all_usable_adapters_and_reports_partial_failure(self, query, run):
+        query.return_value = [
+            ["eth0", "ethernet", "connected"],
+            ["wlan0", "wifi", "connected"],
+            ["wlan1", "wifi", "disconnected"],
+            ["wlan2", "wifi", "unmanaged"],
+            ["wlan3", "wifi", "unavailable"],
+        ]
+        for codes in ((0, 0), (4, 0), (0, 10)):
+            with self.subTest(codes=codes):
+                run.reset_mock()
+                run.side_effect = [subprocess.CompletedProcess([], code, "", "") for code in codes]
+                result = self.run_main('{"operation":"scan"}')
+                self.assertEqual(result["ok"], not any(codes))
+                self.assertEqual([call.args[0][-1] for call in run.call_args_list], ["wlan0", "wlan1"])
+                if any(codes):
+                    self.assertIn("wlan" + str(next(index for index, code in enumerate(codes) if code)),
+                                  result["error"])
+                    self.assertIn("Cached networks", result["error"])
+
     @patch("network_helper.wifi_profiles", return_value=[])
     @patch("network_helper.query")
     def test_cached_status_preserves_ethernet_and_never_scans(self, query, profiles):

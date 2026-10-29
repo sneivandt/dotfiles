@@ -1,6 +1,6 @@
 //! Single-resource processing: check state, apply or remove one resource.
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use super::context::Context;
 use super::mode::ProcessOpts;
@@ -164,7 +164,12 @@ where
         return Ok(TaskStats::changed());
     }
     if mutation.warn_before_apply
-        && let Some(warning) = resource.pre_apply_warning()?
+        && let Some(warning) = resource.pre_apply_warning().with_context(|| {
+            format!(
+                "failed to check pre-apply warning for {}",
+                mutation.description
+            )
+        })?
     {
         ctx.log().warn(&warning);
     }

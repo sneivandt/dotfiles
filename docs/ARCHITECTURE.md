@@ -246,6 +246,12 @@ Stopped batches carry a typed [`BatchReport`](../cli/src/engine/batch.rs):
 completed statistics, interrupted work and unattempted items. Parallel execution
 joins already-started work before reporting. Do not replace a partial failure
 with an empty failure or let later cancellation erase an earlier error.
+If a shared state query fails, every prepared resource is reported as not
+attempted; the query failure is task-level, not an invented failed resource.
+A batch cancelled before its shared query does not perform that query.
+Per-resource discovery and pre-apply warning errors retain the resource's
+description and typed cause. These checks remain fatal even in lenient mode;
+only apply failures can be counted while continuing independent items.
 
 ## Operations
 
@@ -280,6 +286,8 @@ Use checked [`CommandSpec`](../cli/src/infra/exec/mod.rs) requests unless a
 nonzero exit has a specific domain meaning that the caller handles.
 Typed errors preserve spawn, I/O, capture-limit, nonzero-exit, timeout and cancellation causes
 through resource/task boundaries.
+Resource diagnostic categories also survive executor and I/O errors wrapped in
+helper context, rather than becoming unknown after conversion through `anyhow`.
 Required-source inspection distinguishes absence from filesystem errors; an
 unreadable source is not reported as missing.
 

@@ -136,12 +136,11 @@ fn fetch_all(
             fetch_one(repository)
         })
         .collect::<Vec<_>>();
-    for outcome in outcomes {
-        if let Some(reason) = outcome? {
-            return Ok(Some(reason));
-        }
-    }
-    Ok(None)
+    // A later cancellation must not be hidden by an earlier ordinary failure.
+    let outcomes = outcomes
+        .into_iter()
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(outcomes.into_iter().flatten().next())
 }
 
 fn fetch_with_retry(

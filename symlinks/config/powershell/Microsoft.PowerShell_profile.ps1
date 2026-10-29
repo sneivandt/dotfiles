@@ -7,6 +7,68 @@
 )]
 param()
 
+function Add-PathEntry
+{
+    param (
+        [string]$Directory
+    )
+
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container))
+    {
+        return
+    }
+
+    $comparison = [System.StringComparison]::Ordinal
+    if ($null -ne $env:windir)
+    {
+        $comparison = [System.StringComparison]::OrdinalIgnoreCase
+    }
+
+    $trimChars = [char[]]@(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $normalizedDirectory = $Directory.Replace(
+        [IO.Path]::AltDirectorySeparatorChar, [IO.Path]::DirectorySeparatorChar
+    ).TrimEnd($trimChars)
+
+    foreach ($entry in @($env:Path -split [System.IO.Path]::PathSeparator))
+    {
+        if ([string]::IsNullOrWhiteSpace($entry))
+        {
+            continue
+        }
+
+        $normalizedEntry = $entry.Replace(
+            [IO.Path]::AltDirectorySeparatorChar, [IO.Path]::DirectorySeparatorChar
+        ).TrimEnd($trimChars)
+        if ([string]::Equals($normalizedEntry, $normalizedDirectory, $comparison))
+        {
+            return
+        }
+    }
+
+    if ([string]::IsNullOrEmpty($env:Path))
+    {
+        $env:Path = $Directory
+    }
+    else
+    {
+        $env:Path += "$([System.IO.Path]::PathSeparator)$Directory"
+    }
+}
+
+# Discover user-installed commands before configuring optional integrations.
+$localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
+Add-PathEntry -Directory $localBinDir
+
+$cargoHome = $env:CARGO_HOME
+if ([string]::IsNullOrEmpty($cargoHome))
+{
+    $cargoHome = Join-Path $HOME ".cargo"
+}
+Add-PathEntry -Directory (Join-Path $cargoHome "bin")
+
 if (Get-Module PSReadLine)
 {
     Set-PSReadLineOption -BellStyle None
@@ -174,65 +236,11 @@ if (Get-Command "codex" -ErrorAction SilentlyContinue)
     Set-Alias -Name ai -Value Invoke-CodexChat
 }
 
-function Add-PathEntry
-{
-    param (
-        [string]$Directory
-    )
-
-    if (-not (Test-Path -LiteralPath $Directory -PathType Container))
-    {
-        return
-    }
-
-    $comparison = [System.StringComparison]::Ordinal
-    if ($null -ne $env:windir)
-    {
-        $comparison = [System.StringComparison]::OrdinalIgnoreCase
-    }
-
-    $trimChars = [char[]]@(
-        [System.IO.Path]::DirectorySeparatorChar,
-        [System.IO.Path]::AltDirectorySeparatorChar
-    )
-    $normalizedDirectory = $Directory.TrimEnd($trimChars)
-
-    foreach ($entry in @($env:Path -split [System.IO.Path]::PathSeparator))
-    {
-        if ([string]::IsNullOrWhiteSpace($entry))
-        {
-            continue
-        }
-
-        if ([string]::Equals($entry.TrimEnd($trimChars), $normalizedDirectory, $comparison))
-        {
-            return
-        }
-    }
-
-    if ([string]::IsNullOrEmpty($env:Path))
-    {
-        $env:Path = $Directory
-    }
-    else
-    {
-        $env:Path += "$([System.IO.Path]::PathSeparator)$Directory"
-    }
-}
-
-# Ensure local bin directory is in PATH
-$localBinDir = Join-Path (Join-Path $HOME ".local") "bin"
-Add-PathEntry -Directory $localBinDir
-
-# Ensure Cargo (Rust) bin directory is in PATH
-$cargoDir = Join-Path (Join-Path $HOME ".cargo") "bin"
-Add-PathEntry -Directory $cargoDir
-
 # Load additional profile scripts from profile.d directory
 $profileDir = Join-Path $HOME ".config\powershell\profile.d"
-if (Test-Path $profileDir)
+if (Test-Path -LiteralPath $profileDir -PathType Container)
 {
-    Get-ChildItem -Path $profileDir -Filter "*.ps1" -File |
+    Get-ChildItem -LiteralPath $profileDir -Filter "*.ps1" -File |
         Sort-Object -Property FullName |
         ForEach-Object {
             . $_.FullName

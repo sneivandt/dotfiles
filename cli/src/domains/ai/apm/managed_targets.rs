@@ -120,7 +120,7 @@ impl ManagedTargets {
         for target in self.active.active() {
             match target.deployment() {
                 CopilotDeployment::NativeApm { config_key, args } => {
-                    ensure_experimental_target_enabled(ctx, target.apm_name(), config_key);
+                    ensure_experimental_target_enabled(ctx, target.apm_name(), config_key)?;
                     let result = run_apm_invocation(ctx, ApmCommand::Install, args)?;
                     if !matches!(result, ApmCommandResult::Success(_)) {
                         return Ok(ManagedCommandResult {
@@ -130,7 +130,7 @@ impl ManagedTargets {
                     }
                 }
                 CopilotDeployment::CoworkFileReconcile { config_key } => {
-                    ensure_experimental_target_enabled(ctx, target.apm_name(), config_key);
+                    ensure_experimental_target_enabled(ctx, target.apm_name(), config_key)?;
                     changed |= reconcile_cowork_skills(ctx)?;
                 }
             }

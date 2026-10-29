@@ -135,6 +135,67 @@ EOF
   grep -q 'wildcard dependency' "$fixture/output" || log_error "Unexpected staged manifest failure"
 )}
 
+test_staged_quoted_shell()
+{(
+  log_stage "Checking shell hook arguments with quoted Git filenames"
+  fixture="$DIR/.ci-quoted-shell-$$"
+  mkdir "$fixture"
+  trap 'rm -rf "$fixture"' EXIT
+  mkdir -p "$fixture/repo/hooks" "$fixture/repo/cli/src/app/validation/scripts" "$fixture/mock-bin"
+  cp "$DIR/hooks/check-ci-guards.sh" "$fixture/repo/hooks/check-ci-guards.sh"
+  # Isolate the hook's selection and forwarding from the analyzer itself.
+  cat > "$fixture/repo/cli/src/app/validation/scripts/shellcheck.sh" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$#" -eq 1 ]
+[ "${1##*/}" = "$HOOK_EXPECTED_SHELL_FILE" ]
+printf 'shellcheck\n' >> "$HOOK_INPUT_LOG"
+[ "$(cat "$1")" = valid-staged ]
+EOF
+  printf '#!/bin/sh\nexit 0\n' > "$fixture/mock-bin/shellcheck"
+  chmod +x "$fixture/mock-bin/shellcheck"
+  PATH="$fixture/mock-bin:$PATH"
+  HOOK_INPUT_LOG="$fixture/checks.log"
+  export PATH HOOK_INPUT_LOG HOOK_EXPECTED_SHELL_FILE
+  cd "$fixture/repo"
+  init_fixture_repository
+  for file in 'script with spaces.sh' "$(printf 'caf\303\251.sh')" \
+    "$(printf 'tab\tname.sh')" "$(printf 'line\nbreak.sh')" 'quote"name.sh' \
+    '-option.sh' 'glob[name].sh'; do
+    # Windows prohibits control characters and double quotes in filenames.
+    if command -v cygpath >/dev/null 2>&1; then
+      case "$file" in *'"'*|*"$(printf '\t')"*|*'
+'*) continue ;; esac
+    fi
+    HOOK_EXPECTED_SHELL_FILE=$file
+    printf 'valid-staged\n' > "$file"
+    git add -- "$file"
+    printf 'invalid-unstaged\n' > "$file"
+    : > "$HOOK_INPUT_LOG"
+    sh hooks/check-ci-guards.sh
+    [ "$(cat "$HOOK_INPUT_LOG")" = shellcheck ] || log_error "Quoted shell input was skipped"
+    printf 'invalid-staged\n' > "$file"
+    git add -- "$file"
+    printf 'valid-staged\n' > "$file"
+    if sh hooks/check-ci-guards.sh > "$fixture/output" 2>&1; then
+      log_error "Quoted shell filename hid invalid staged content"
+    fi
+    grep -q 'ShellCheck reported issues' "$fixture/output" || log_error "Unexpected shell failure"
+    git add -- "$file"
+    git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm fixture
+    renamed="renamed $file"
+    git mv -- "$file" "$renamed"
+    HOOK_EXPECTED_SHELL_FILE=$renamed
+    sh hooks/check-ci-guards.sh
+    git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm rename
+    git rm -q -- "$renamed"
+    : > "$HOOK_INPUT_LOG"
+    sh hooks/check-ci-guards.sh
+    [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Deleted shell input was analyzed"
+    git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm deletion
+  done
+)}
+
 test_staged_quoted_powershell()
 {(
   log_stage "Checking PowerShell hook arguments with quoted Git filenames"
@@ -598,4 +659,5 @@ test_staged_ci_guard_deletions
 test_build_version_ref_triggers
 test_github_ssh_allowlist
 test_pkgbuild_checksum_allowlist
+test_staged_quoted_shell
 test_staged_quoted_powershell

@@ -57,8 +57,10 @@ impl Task for InstallVsCodeExtensions {
         });
         let installed = get_installed_extensions(&cmd, ctx.executor())?;
 
+        let mut seen = HashSet::new();
         let resources = extensions
             .iter()
+            .filter(|id| seen.insert(id.to_lowercase()))
             .map(|id| VsCodeExtensionResource::new(id.clone(), cmd.clone(), ctx.executor_arc()));
         process_resources_with_cache(
             ctx,
@@ -116,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn bulk_inventory_installs_only_missing_extensions_and_converges() {
+    fn bulk_inventory_deduplicates_case_variants_and_converges() {
         for dry_run in [false, true] {
             let root = tempfile::tempdir_in(".").unwrap();
             let launcher = root.path().join("Code Insiders").join(if cfg!(windows) {
@@ -165,10 +167,13 @@ mod tests {
                 Platform::new(Os::Linux, false),
                 Arc::new(mock),
             )
-            .with_dry_run(dry_run);
+            .with_dry_run(dry_run)
+            .with_parallel(true);
             let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![
                 "GitHub.Copilot".to_string(),
+                "github.copilot".to_string(),
                 "ms-python.python".to_string(),
+                "MS-PYTHON.PYTHON".to_string(),
             ]));
 
             let first = task.run(&ctx).unwrap();

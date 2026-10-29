@@ -142,6 +142,8 @@ and moving the checkout can invalidate the saved path.
 Requires **Dotfiles launcher**. On Linux, persists an export in `~/.profile`
 when needed. On Windows, updates the user PATH while preserving registry value
 type and expandable tokens. Start a new shell before relying on the change.
+Unsupported registry types, malformed UTF-16, and embedded NULs fail without
+rewriting the existing Windows PATH.
 Comments and example text do not satisfy Linux PATH persistence; detection
 requires the standalone managed export line.
 Remove leaves the PATH addition in place.

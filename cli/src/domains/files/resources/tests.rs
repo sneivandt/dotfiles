@@ -805,6 +805,41 @@ mod symlink {
         assert_eq!(state, ResourceState::Missing);
     }
 
+    #[test]
+    fn applying_correct_symlink_preserves_its_relative_target() {
+        for directory in [false, true] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            let source = root.join("source");
+            let target = root.join("target");
+            if directory {
+                std::fs::create_dir(&source).unwrap();
+            } else {
+                std::fs::write(&source, "managed content").unwrap();
+            }
+            #[cfg(unix)]
+            std::os::unix::fs::symlink("source", &target).unwrap();
+            #[cfg(windows)]
+            if directory {
+                std::os::windows::fs::symlink_dir("source", &target).unwrap();
+            } else {
+                std::os::windows::fs::symlink_file("source", &target).unwrap();
+            }
+            let resource = SymlinkResource::new(
+                source,
+                target.clone(),
+                Arc::new(crate::infra::exec::MockExecutor::new()),
+            );
+
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+            for _ in 0..2 {
+                assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+                assert_eq!(std::fs::read_link(&target).unwrap(), Path::new("source"));
+            }
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn symlink_resource_classifies_absolute_relative_wrong_and_dangling_targets() {

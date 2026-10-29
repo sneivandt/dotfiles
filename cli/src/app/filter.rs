@@ -117,6 +117,7 @@ fn closest_selector<'a>(tasks: &[&'a dyn Task], filter: &str) -> Option<&'a str>
     let normalized = normalize_task_filter(filter);
     tasks
         .iter()
+        .filter(|task| task.visibility().is_visible())
         .map(|task| {
             (
                 task.selector(),
@@ -348,6 +349,21 @@ mod tests {
             .expect_err("unknown selector should fail");
 
         assert!(error.to_string().contains("did you mean 'symlinks'?"));
+    }
+
+    #[test]
+    fn selector_suggestions_never_recommend_internal_tasks() {
+        let tasks: [&dyn Task; 2] = [&SampleTask, &InternalTask];
+        for filter in ["reload-configuration", "reload-configuratio"] {
+            let filters = [filter.to_string()];
+            let error =
+                selected_task_ids(&tasks, &filters, &[], false).expect_err("internal selector");
+            assert!(
+                !error.to_string().contains("did you mean"),
+                "unselectable tasks must not be suggested: {error}"
+            );
+        }
+        assert_eq!(closest_selector(&tasks, "symlink"), Some("symlinks"));
     }
 
     #[test]

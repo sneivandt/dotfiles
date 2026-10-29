@@ -356,11 +356,15 @@ the same target replaces the main entry, including its source and merge strategy
 Unrelated settings are preserved. These are privileged changes; review the
 fragment and preview before applying. Removing the declaration does not restore
 the old file.
+TOML and INI fragments are validated even when the destination does not yet
+exist. INI fragments cannot assign conflicting values to the same key in a
+section; repeated identical assignments are allowed.
 PAM merges require an existing facility stack; a stack consisting solely of
 the managed module is valid and remains convergent on subsequent runs.
 Ownership matches the facility and actual module field, including after
 bracketed controls; module names used as arguments or included stack names
-do not make an unrelated rule managed.
+do not make an unrelated rule managed. Blank lines and full-line comments in
+PAM fragments are ignored rather than inserted into the destination.
 
 ## VS Code extensions
 
@@ -370,7 +374,8 @@ extensions = ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"]
 ```
 
 Use full `<publisher>.<extension>` identifiers. The task uses an available
-VS Code CLI to install missing extensions.
+VS Code CLI to install missing extensions. Repeated IDs, including
+case-only variants, are installed once using their first declared spelling.
 
 ## Overlays
 
@@ -470,8 +475,10 @@ Implement the complete protocol:
 
 Install checks first and applies or previews only if needed. Uninstall uses the
 same check: `0` means there is state to remove, `1` means nothing to remove.
-An remove dry run checks and reports the removal but never invokes
+A remove dry run checks and reports the removal but never invokes
 `--remove` or `--dryrun`.
+Missing or unreadable scripts fail explicitly, including scripts that disappear
+between inspection and apply, preview, or removal; they are not benign skips.
 
 **Script dry-run safety is cooperative, not sandboxed.** Both inspection and
 preview must be read-only. Avoid secrets in output: script output can appear

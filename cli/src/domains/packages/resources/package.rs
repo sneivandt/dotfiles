@@ -100,6 +100,9 @@ pub trait PackageProvider: std::fmt::Debug + Send + Sync {
         executor: &dyn Executor,
         progress: &dyn Fn(&str),
     ) -> Result<PackageInstallReport> {
+        if resources.is_empty() {
+            return Ok(PackageInstallReport::new());
+        }
         let names: Vec<&str> = resources
             .iter()
             .map(|resource| resource.name.as_str())
@@ -308,11 +311,9 @@ impl Resource for PackageResource {
     fn apply(&self) -> ResourceResult<ResourceChange> {
         self.provider
             .install(&self.name, &*self.executor)
-            .map_err(|err| {
-                crate::engine::resource::ResourceError::command_failed(
-                    self.provider.name(),
-                    err.to_string(),
-                )
+            .map_err(|error| match error.downcast::<ExecError>() {
+                Ok(error) => error.into(),
+                Err(error) => error.into(),
             })
     }
 }

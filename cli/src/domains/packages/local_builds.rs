@@ -164,7 +164,7 @@ fn recipe_directories(ctx: &Context) -> Result<Vec<PathBuf>> {
 fn config_path(path: &Path) -> Result<&str> {
     let text = path.to_str().context("Paru path is not UTF-8")?;
     ensure!(
-        !text.contains(['\n', '\r', '#']),
+        text.trim() == text && !text.contains(['\n', '\r', '#']),
         "unsupported character in Paru path"
     );
     Ok(text)

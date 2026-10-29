@@ -272,6 +272,11 @@ Cowork reconciliation is enabled when a skills path resolves, in this order:
 3. On Windows, `ONEDRIVECOMMERCIAL`, then `ONEDRIVE`, with
    `Documents/Cowork/skills` appended.
 
+An unreadable or malformed persisted configuration, or a non-string skills
+path, fails instead of silently deploying to a fallback directory. An explicit
+environment override takes precedence without reading that lower-priority
+configuration. Missing, null, and blank persisted paths retain the fallback.
+
 An explicit path also works on Linux. Dotfiles reasserts the experimental
 feature when needed, but deliberately does **not** invoke APM's native
 `copilot-cowork` deployment. It copies resolved skills from `~/.agents/skills`

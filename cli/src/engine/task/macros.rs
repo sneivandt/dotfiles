@@ -109,6 +109,9 @@ where
 
 /// Run a resource task whose state for every resource comes from one shared
 /// query rather than from each resource individually.
+///
+/// A failed or cancelled shared query leaves every resource unattempted; retain
+/// that count without assigning the shared failure to an arbitrary resource.
 pub(crate) fn run_batch_resource_task<Cache, R>(
     ctx: &crate::engine::Context,
     resources: Vec<R>,
@@ -126,6 +129,17 @@ where
             "nothing configured".to_string(),
         ));
     }
+    let unstarted = |completion| {
+        crate::engine::BatchReport::new(
+            crate::engine::TaskStats::new(),
+            completion,
+            0,
+            u32::try_from(resources.len()).unwrap_or(u32::MAX),
+        )
+    };
+    if ctx.is_cancelled() {
+        return Err(unstarted(crate::engine::BatchCompletion::Interrupted).into());
+    }
     ctx.trace_fmt(|| {
         format!(
             "batch-checking {} resources with a single query",
@@ -133,6 +147,13 @@ where
         )
     });
 
-    let cache = load(&resources, ctx)?;
+    let cache = load(&resources, ctx).map_err(|error| {
+        let completion = if crate::engine::batch::is_interrupted(&error) {
+            crate::engine::BatchCompletion::Interrupted
+        } else {
+            crate::engine::BatchCompletion::Failed
+        };
+        error.context(unstarted(completion))
+    })?;
     crate::engine::process_resources_with_cache(ctx, resources, &cache, state, opts)
 }

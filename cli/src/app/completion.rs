@@ -287,41 +287,79 @@ fn task_memberships(words: &[OsString]) -> &'static [&'static str] {
 }
 
 fn option_value<'a>(words: &'a [OsString], option: &str) -> Option<&'a str> {
-    let mut words = words.iter();
-    while let Some(word) = words.next() {
-        let text = word.to_str()?;
-        if text == option {
-            return words.next()?.to_str();
-        }
-        if let Some((name, value)) = text.split_once('=')
-            && name == option
-        {
-            return Some(value);
-        }
-    }
-    None
+    option_values(words)
+        .into_iter()
+        .find(|(name, _)| Some(name.as_str()) == option.strip_prefix("--"))
+        .and_then(|(_, value)| value.to_str())
 }
 
 fn repository_args(words: &[OsString]) -> Vec<OsString> {
-    let mut result = Vec::new();
+    option_values(words)
+        .into_iter()
+        .filter(|(name, _)| matches!(name.as_str(), "profile" | "root" | "overlay"))
+        .flat_map(|(name, value)| [format!("--{name}").into(), value.to_os_string()])
+        .collect()
+}
+
+/// Read values with the same option boundaries as command normalization, even
+/// while the current completion word is incomplete.
+fn option_values(words: &[OsString]) -> Vec<(String, &std::ffi::OsStr)> {
+    use clap::CommandFactory as _;
+
+    let command = super::cli::Cli::command();
+    let options = command
+        .get_arguments()
+        .chain(
+            command
+                .get_subcommands()
+                .flat_map(clap::Command::get_arguments),
+        )
+        .collect::<Vec<_>>();
+    let mut values = Vec::new();
     let mut words = words.iter();
     while let Some(word) = words.next() {
         let Some(text) = word.to_str() else {
             continue;
         };
-        if matches!(text, "--profile" | "-p" | "--root" | "--overlay") {
-            if let Some(value) = words.next() {
-                result.extend([word.clone(), value.clone()]);
+        if text == "--" {
+            break;
+        }
+        if let Some(long) = text.strip_prefix("--") {
+            let (name, attached) = long
+                .split_once('=')
+                .map_or((long, None), |(name, value)| (name, Some(value)));
+            if options
+                .iter()
+                .any(|arg| arg.get_long() == Some(name) && arg.get_action().takes_values())
+                && let Some(value) = attached
+                    .map(std::ffi::OsStr::new)
+                    .or_else(|| words.next().map(OsString::as_os_str))
+            {
+                values.push((name.to_owned(), value));
             }
-        } else if text.starts_with("--profile=")
-            || text.starts_with("--root=")
-            || text.starts_with("--overlay=")
-            || (text.starts_with("-p") && text.len() > 2)
-        {
-            result.push(word.clone());
+        } else if let Some(shorts) = text.strip_prefix('-') {
+            let mut shorts = shorts.chars();
+            while let Some(short) = shorts.next() {
+                let Some(arg) = options
+                    .iter()
+                    .find(|arg| arg.get_short() == Some(short) && arg.get_action().takes_values())
+                else {
+                    continue;
+                };
+                let rest = shorts.as_str();
+                let value = if rest.is_empty() {
+                    words.next().map(OsString::as_os_str)
+                } else {
+                    Some(std::ffi::OsStr::new(rest.strip_prefix('=').unwrap_or(rest)))
+                };
+                if let (Some(name), Some(value)) = (arg.get_long(), value) {
+                    values.push((name.to_owned(), value));
+                }
+                break;
+            }
         }
     }
-    result
+    values
 }
 
 fn task_candidates_from_json(json: &[u8], memberships: &[&str]) -> Vec<CompletionCandidate> {
@@ -697,11 +735,14 @@ mod tests {
         assert_eq!(
             repository_args(&words),
             [
-                "--profile=desktop",
+                "--profile",
+                "desktop",
                 "--root",
                 "/repo",
-                "-pbase",
-                "--overlay=/private"
+                "--profile",
+                "base",
+                "--overlay",
+                "/private"
             ]
             .map(OsString::from)
         );
@@ -712,17 +753,98 @@ mod tests {
         for (words, expected) in [
             (vec![], vec![]),
             (vec!["--root"], vec![]),
-            (vec!["-p", "base", "--root"], vec!["-p", "base"]),
+            (vec!["-p", "base", "--root"], vec!["--profile", "base"]),
             (vec!["--root", "--overlay"], vec!["--root", "--overlay"]),
             (
                 vec!["--overlay", "", "--root=/repo", "--root", "/other"],
-                vec!["--overlay", "", "--root=/repo", "--root", "/other"],
+                vec!["--overlay", "", "--root", "/repo", "--root", "/other"],
+            ),
+            (
+                vec!["--only", "--profile=desktop", "--root=/repo"],
+                vec!["--root", "/repo"],
+            ),
+            (
+                vec!["--root=/repo", "--", "--profile=desktop"],
+                vec!["--root", "/repo"],
             ),
         ] {
             let words = words.into_iter().map(OsString::from).collect::<Vec<_>>();
             let expected = expected.into_iter().map(OsString::from).collect::<Vec<_>>();
             assert_eq!(repository_args(&words), expected, "{words:?}");
         }
+    }
+
+    #[test]
+    fn clustered_profile_options_reach_task_discovery() {
+        for flags in [
+            vec!["-vpbase"],
+            vec!["-vp", "base"],
+            vec!["-vp=base"],
+            vec!["--profile=base"],
+        ] {
+            let words = ["dotfiles", "check"]
+                .into_iter()
+                .chain(flags.iter().copied())
+                .map(OsString::from)
+                .collect::<Vec<_>>();
+            let super::super::cli::Command::Check(source) =
+                super::super::cli::Cli::try_parse_from(&words)
+                    .unwrap()
+                    .command
+            else {
+                panic!("expected check command");
+            };
+            let forwarded = ["dotfiles", "list"]
+                .map(OsString::from)
+                .into_iter()
+                .chain(repository_args(&words));
+            let super::super::cli::Command::List(discovery) =
+                super::super::cli::Cli::try_parse_from(forwarded)
+                    .unwrap()
+                    .command
+            else {
+                panic!("expected discovery command");
+            };
+            assert_eq!(
+                source.repository.profile.as_deref(),
+                Some("base"),
+                "{flags:?}"
+            );
+            assert_eq!(
+                discovery.repository.profile, source.repository.profile,
+                "{flags:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn graph_values_respect_other_options_and_the_end_of_options() {
+        for words in [
+            vec!["dotfiles", "list", "--root", "--graph=update"],
+            vec!["dotfiles", "list", "--", "--graph=update"],
+        ] {
+            let words = words.into_iter().map(OsString::from).collect::<Vec<_>>();
+            assert_eq!(option_value(&words, "--graph"), None, "{words:?}");
+            assert!(task_memberships(&words).is_empty(), "{words:?}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_unicode_repository_paths_preserve_graph_and_discovery_options() {
+        use std::os::unix::ffi::OsStringExt as _;
+
+        let root = OsString::from_vec(b"/repo-\xff".to_vec());
+        let words = vec![
+            "dotfiles".into(),
+            "list".into(),
+            "--root".into(),
+            root.clone(),
+            "--graph".into(),
+            "check".into(),
+        ];
+        assert_eq!(task_memberships(&words), ["check"]);
+        assert_eq!(repository_args(&words), [OsString::from("--root"), root]);
     }
 
     #[test]

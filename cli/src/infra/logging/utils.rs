@@ -2,6 +2,9 @@
 use std::fs;
 use std::path::PathBuf;
 
+use crate::infra::env::{Env, SystemEnv};
+use crate::infra::platform::Platform;
+
 /// Format a duration as a human-readable string (e.g., "1.2s", "2m 5s").
 pub(crate) fn format_elapsed(d: std::time::Duration) -> String {
     let secs = d.as_secs();
@@ -131,37 +134,40 @@ pub(crate) fn dotfiles_log_dir_readonly() -> PathBuf {
 /// `$XDG_STATE_HOME/dotfiles/logs` (default `~/.local/state/dotfiles/logs`)
 /// elsewhere. `DOTFILES_LOG_DIR` overrides the whole path.
 fn log_dir_path() -> PathBuf {
-    log_dir_from(
-        std::env::var("DOTFILES_LOG_DIR").ok(),
-        std::env::var("LOCALAPPDATA").ok(),
-        std::env::var("XDG_STATE_HOME").ok(),
-        std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .ok(),
-    )
+    log_dir_from(&SystemEnv, Platform::detect().is_windows())
 }
 
-/// Inner implementation of [`log_dir_path`] that accepts the relevant
-/// environment variables as parameters so tests can exercise every branch
-/// without mutating process-global state.
+/// Resolve native state paths without consulting the other platform's variables.
 ///
-/// `LOCALAPPDATA` is only set on Windows and `XDG_STATE_HOME` only on Unix in
-/// practice, so consulting both unconditionally keeps this function free of
-/// platform conditionals while still resolving natively on each platform.
-fn log_dir_from(
-    explicit: Option<String>,
-    local_app_data: Option<String>,
-    state_home: Option<String>,
-    home: Option<String>,
-) -> PathBuf {
-    let non_empty = |value: Option<String>| value.filter(|v| !v.is_empty());
-    if let Some(dir) = non_empty(explicit) {
+/// Explicit overrides may be relative; standard state/home variables must be
+/// absolute. Paths retain their native encoding, including non-Unicode values.
+fn log_dir_from(env: &dyn Env, windows: bool) -> PathBuf {
+    if let Some(dir) = env
+        .var_os("DOTFILES_LOG_DIR")
+        .filter(|value| !value.is_empty())
+    {
         return PathBuf::from(dir);
     }
-    non_empty(local_app_data)
-        .map(PathBuf::from)
-        .or_else(|| non_empty(state_home).map(PathBuf::from))
-        .or_else(|| non_empty(home).map(|dir| PathBuf::from(dir).join(".local").join("state")))
+    let absolute_path = |key| {
+        env.var_os(key)
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+    };
+    let (state_key, home_key) = if windows {
+        ("LOCALAPPDATA", "USERPROFILE")
+    } else {
+        ("XDG_STATE_HOME", "HOME")
+    };
+    absolute_path(state_key)
+        .or_else(|| {
+            absolute_path(home_key).map(|home| {
+                if windows {
+                    home.join("AppData").join("Local")
+                } else {
+                    home.join(".local").join("state")
+                }
+            })
+        })
         .unwrap_or_else(|| PathBuf::from("."))
         .join("dotfiles")
         .join("logs")
@@ -234,6 +240,7 @@ pub(super) fn format_utc_compact() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::env::MapEnv;
 
     #[cfg(unix)]
     #[test]
@@ -420,77 +427,119 @@ mod tests {
 
     #[test]
     fn log_dir_prefers_explicit_override() {
-        let dir = log_dir_from(
-            Some("/explicit".to_string()),
-            Some("/local".to_string()),
-            Some("/state".to_string()),
-            Some("/home".to_string()),
-        );
-        assert_eq!(
-            dir,
-            PathBuf::from("/explicit"),
-            "DOTFILES_LOG_DIR should be used verbatim"
-        );
+        let root = std::path::absolute("log-path-fixture").unwrap();
+        let env = MapEnv::new()
+            .with("DOTFILES_LOG_DIR", "explicit relative logs")
+            .with("LOCALAPPDATA", root.join("local"))
+            .with("XDG_STATE_HOME", root.join("state"));
+        for windows in [false, true] {
+            assert_eq!(
+                log_dir_from(&env, windows),
+                PathBuf::from("explicit relative logs"),
+                "DOTFILES_LOG_DIR should be used verbatim"
+            );
+        }
     }
 
     #[test]
-    fn log_dir_prefers_local_app_data_then_state_home() {
-        assert_eq!(
-            log_dir_from(
-                None,
-                Some("/local".to_string()),
-                Some("/state".to_string()),
-                Some("/home".to_string())
-            ),
-            PathBuf::from("/local").join("dotfiles").join("logs"),
-            "LOCALAPPDATA should win when present"
-        );
-        assert_eq!(
-            log_dir_from(
-                None,
-                None,
-                Some("/state".to_string()),
-                Some("/home".to_string())
-            ),
-            PathBuf::from("/state").join("dotfiles").join("logs"),
-            "XDG_STATE_HOME should be used when LOCALAPPDATA is absent"
-        );
+    fn log_dir_uses_only_native_state_and_home_variables() {
+        let root = std::path::absolute("log-path-fixture").unwrap();
+        let local = root.join("local");
+        let state = root.join("state");
+        let userprofile = root.join("windows-home");
+        let home = root.join("unix-home");
+        let env = MapEnv::new()
+            .with("LOCALAPPDATA", &local)
+            .with("XDG_STATE_HOME", &state)
+            .with("USERPROFILE", &userprofile)
+            .with("HOME", &home);
+        for (windows, expected, fallback) in [
+            (true, local, userprofile.join("AppData").join("Local")),
+            (false, state, home.join(".local").join("state")),
+        ] {
+            assert_eq!(
+                log_dir_from(&env, windows),
+                expected.join("dotfiles").join("logs")
+            );
+            for value in ["", "relative-state"] {
+                let without_state = env
+                    .clone()
+                    .with("LOCALAPPDATA", value)
+                    .with("XDG_STATE_HOME", value);
+                assert_eq!(
+                    log_dir_from(&without_state, windows),
+                    fallback.join("dotfiles").join("logs"),
+                    "windows={windows}, state={value:?}: use the native home fallback"
+                );
+            }
+        }
     }
 
     #[test]
-    fn log_dir_falls_back_to_home_state_dir() {
-        assert_eq!(
-            log_dir_from(None, None, None, Some("/home/user".to_string())),
-            PathBuf::from("/home/user")
-                .join(".local")
-                .join("state")
-                .join("dotfiles")
-                .join("logs"),
-            "home should resolve to the XDG default state directory"
-        );
+    fn log_dir_ignores_foreign_and_relative_standard_paths() {
+        let root = std::path::absolute("log-path-fixture").unwrap();
+        for (windows, state_key, home_key) in [
+            (false, "LOCALAPPDATA", "USERPROFILE"),
+            (true, "XDG_STATE_HOME", "HOME"),
+        ] {
+            let foreign = MapEnv::new().with(state_key, &root).with(home_key, &root);
+            assert_eq!(
+                log_dir_from(&foreign, windows),
+                PathBuf::from(".").join("dotfiles").join("logs")
+            );
+        }
+        for windows in [false, true] {
+            for value in ["", "relative"] {
+                let env = MapEnv::new()
+                    .with("DOTFILES_LOG_DIR", "")
+                    .with("LOCALAPPDATA", value)
+                    .with("XDG_STATE_HOME", value)
+                    .with("USERPROFILE", value)
+                    .with("HOME", value);
+                assert_eq!(
+                    log_dir_from(&env, windows),
+                    PathBuf::from(".").join("dotfiles").join("logs"),
+                    "windows={windows}, value={value:?}"
+                );
+            }
+        }
     }
 
     #[test]
-    fn log_dir_ignores_empty_values_and_falls_back_to_relative() {
-        assert_eq!(
-            log_dir_from(
-                Some(String::new()),
-                Some(String::new()),
-                Some(String::new()),
-                Some(String::new())
-            ),
-            PathBuf::from(".").join("dotfiles").join("logs"),
-            "empty environment values should be treated as unset"
-        );
+    fn log_dir_preserves_non_unicode_environment_paths() {
+        #[cfg(unix)]
+        let name = {
+            use std::os::unix::ffi::OsStringExt as _;
+            std::ffi::OsString::from_vec(vec![0xff])
+        };
+        #[cfg(windows)]
+        let name = {
+            use std::os::windows::ffi::OsStringExt as _;
+            std::ffi::OsString::from_wide(&[0xd800])
+        };
+        let path = std::path::absolute("log-path-fixture").unwrap().join(name);
+        for windows in [false, true] {
+            let explicit_env = MapEnv::new().with("DOTFILES_LOG_DIR", &path);
+            assert_eq!(log_dir_from(&explicit_env, windows), path);
+            let env = MapEnv::new()
+                .with("LOCALAPPDATA", &path)
+                .with("XDG_STATE_HOME", &path);
+            assert_eq!(
+                log_dir_from(&env, windows),
+                path.join("dotfiles").join("logs")
+            );
+        }
     }
 
+    #[cfg(windows)]
     #[test]
-    fn log_dir_is_never_the_cache_dir() {
-        let dir = log_dir_from(None, None, Some("/state".to_string()), None);
-        assert!(
-            !dir.to_string_lossy().contains(".cache"),
-            "run logs are state, not cache: {}",
-            dir.display()
-        );
+    fn log_dir_preserves_windows_drive_unc_and_extended_paths() {
+        for path in [r"C:\", r"\\server\share", r"\\?\C:\Users\Fixture"] {
+            let env = MapEnv::new().with("LOCALAPPDATA", path);
+            assert_eq!(
+                log_dir_from(&env, true),
+                PathBuf::from(path).join("dotfiles").join("logs")
+            );
+        }
     }
 }

@@ -13,6 +13,8 @@ use std::path::Path;
 /// This prevents unexpected traversal of symlinks that point outside the
 /// intended source tree. Existing destination links are rejected rather than
 /// followed, so copying into an existing tree cannot write through those links.
+/// A destination inside the source tree is rejected before anything is changed,
+/// including when an existing ancestor aliases the source through a link.
 ///
 /// # Errors
 ///
@@ -28,6 +30,7 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
         src.display()
     );
     reject_destination_link(dst)?;
+    reject_recursive_destination(src, dst)?;
     std::fs::create_dir_all(dst)
         .with_context(|| format!("creating directory {}", dst.display()))?;
     #[cfg(unix)]
@@ -81,6 +84,44 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path, skip_git: bool) -> Result<()> 
     std::fs::set_permissions(dst, permissions)
         .with_context(|| format!("preserving directory permissions for {}", dst.display()))?;
     Ok(())
+}
+
+fn reject_recursive_destination(src: &Path, dst: &Path) -> Result<()> {
+    let source = std::fs::canonicalize(src)
+        .with_context(|| format!("resolving copy source {}", src.display()))?;
+    let destination = std::path::absolute(dst)
+        .with_context(|| format!("resolving copy destination {}", dst.display()))?;
+
+    // Missing destination components have no canonical path yet. Resolve the
+    // nearest existing ancestor first so symlinks followed by `..` retain their
+    // filesystem meaning instead of being normalized lexically too early.
+    for ancestor in destination.ancestors() {
+        match std::fs::canonicalize(ancestor) {
+            Ok(mut resolved) => {
+                for component in destination.strip_prefix(ancestor)?.components() {
+                    if component == std::path::Component::ParentDir {
+                        resolved.pop();
+                    } else {
+                        resolved.push(component.as_os_str());
+                    }
+                }
+                anyhow::ensure!(
+                    !resolved.starts_with(&source),
+                    "refusing to copy {} into itself: {}",
+                    src.display(),
+                    dst.display()
+                );
+                return Ok(());
+            }
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound && ancestor.parent().is_some() => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("resolving copy destination {}", dst.display()));
+            }
+        }
+    }
+    anyhow::bail!("cannot resolve copy destination {}", dst.display())
 }
 
 /// Reject an existing symlink or junction before copying into `path`.

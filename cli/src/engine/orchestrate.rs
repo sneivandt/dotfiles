@@ -1,7 +1,7 @@
 //! Top-level resource orchestration: check state, dispatch to sequential or
 //! parallel processing, and collect stats.
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use super::apply;
 use super::batch::BatchProgress;
@@ -71,7 +71,8 @@ where
     );
     let _enter = span.enter();
     process_items(ctx, resources, opts.sequential, |resource| {
-        let current = state(&resource)?;
+        let current = state(&resource)
+            .with_context(|| format!("failed to check {}", resource.description()))?;
         apply::process_single(ctx, &resource, &current, opts)
     })
 }
@@ -137,7 +138,9 @@ pub fn process_resources_remove<R: IntrinsicState + RemovableResource + Send>(
     let span = tracing::debug_span!("process_resources_remove", verb, count = resources.len());
     let _enter = span.enter();
     process_items(ctx, resources, false, |resource| {
-        let current = resource.current_state()?;
+        let current = resource
+            .current_state()
+            .with_context(|| format!("failed to check {} for removal", resource.description()))?;
         apply::remove_single(ctx, &resource, &current, verb)
     })
 }

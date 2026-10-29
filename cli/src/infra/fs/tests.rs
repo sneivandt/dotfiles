@@ -69,6 +69,85 @@ fn recursive_copy_rejects_invalid_sources_before_creating_a_destination() {
 }
 
 #[test]
+fn recursive_copy_rejects_itself_and_descendants_before_mutating_source() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let source = root.path().join("source");
+    let existing = source.join("existing");
+    std::fs::create_dir_all(&existing).unwrap();
+    std::fs::write(source.join("data"), "keep source").unwrap();
+    std::fs::write(existing.join("extra"), "keep nested").unwrap();
+    let permissions = source.metadata().unwrap().permissions();
+    for destination in [
+        source.clone(),
+        existing.clone(),
+        source.join("new-parent").join("destination"),
+        existing.join(".."),
+        existing.join("..").join("new-destination"),
+    ] {
+        let error = copy_dir_recursive(&source, &destination, false).unwrap_err();
+
+        assert!(error.to_string().contains("into itself"), "{error:#}");
+        assert_eq!(
+            std::fs::read_to_string(source.join("data")).unwrap(),
+            "keep source"
+        );
+        assert_eq!(
+            std::fs::read_to_string(existing.join("extra")).unwrap(),
+            "keep nested"
+        );
+        assert_eq!(std::fs::read_dir(&source).unwrap().count(), 2);
+        assert_eq!(std::fs::read_dir(&existing).unwrap().count(), 1);
+        assert_eq!(source.metadata().unwrap().permissions(), permissions);
+    }
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn recursive_copy_rejects_descendants_through_source_and_destination_aliases() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let source = root.path().join("source");
+    let alias = root.path().join("alias");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("data"), "keep source").unwrap();
+    create_native_symlink(&std::path::absolute(&source).unwrap(), &alias, true).unwrap();
+
+    for (source_path, destination) in [
+        (&source, alias.join("nested").join("destination")),
+        (&alias, source.join("nested").join("destination")),
+        (&alias, source.clone()),
+    ] {
+        let error = copy_dir_recursive(source_path, &destination, false).unwrap_err();
+        assert!(error.to_string().contains("into itself"), "{error:#}");
+        assert_eq!(std::fs::read_dir(&source).unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read_to_string(source.join("data")).unwrap(),
+            "keep source"
+        );
+    }
+}
+
+#[test]
+fn recursive_copy_allows_distinct_destinations_with_shared_prefixes_and_parent_components() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let source = root.path().join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("data"), "source content").unwrap();
+
+    for destination in [
+        root.path().join("source-copy").join("nested"),
+        source.join("..").join("sibling"),
+        root.path().join("new-parent").join("..").join("other"),
+    ] {
+        copy_dir_recursive(&source, &destination, false).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(destination.join("data")).unwrap(),
+            "source content"
+        );
+        assert_eq!(std::fs::read_dir(&source).unwrap().count(), 1);
+    }
+}
+
+#[test]
 fn recursive_copy_skips_worktree_git_files_only_when_requested() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");

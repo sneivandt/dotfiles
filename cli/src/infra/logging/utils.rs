@@ -102,8 +102,21 @@ pub(super) fn terminal_columns_with(columns_env: Option<String>) -> usize {
 /// Return the run-log directory, creating it if needed.
 pub(super) fn dotfiles_log_dir() -> Option<PathBuf> {
     let dir = log_dir_path();
-    fs::create_dir_all(&dir).ok()?;
+    create_log_directory(&dir).ok()?;
     Some(dir)
+}
+
+// Set permissions at creation time, including newly created parents. Existing
+// directories (including explicit overrides) retain their owner's permissions.
+fn create_log_directory(dir: &std::path::Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        builder.mode(0o700);
+    }
+    builder.create(dir)
 }
 
 /// Return the run-log directory without creating it.
@@ -160,7 +173,7 @@ fn log_dir_from(
 /// path so tests can isolate the run log without touching the environment.
 pub(super) fn dotfiles_log_subdir(base: &std::path::Path) -> Option<PathBuf> {
     let dir = base.join("dotfiles").join("logs");
-    fs::create_dir_all(&dir).ok()?;
+    create_log_directory(&dir).ok()?;
     Some(dir)
 }
 
@@ -221,6 +234,28 @@ pub(super) fn format_utc_compact() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn new_log_directories_are_private_and_existing_parents_are_preserved() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        fs::set_permissions(fixture.path(), fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = dotfiles_log_subdir(fixture.path()).unwrap();
+        for path in [&dir, &fixture.path().join("dotfiles")] {
+            assert_eq!(
+                fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+        assert_eq!(
+            fs::metadata(fixture.path()).unwrap().permissions().mode() & 0o777,
+            0o755,
+            "creating logs must not chmod an existing parent"
+        );
+        assert_eq!(dotfiles_log_subdir(fixture.path()), Some(dir));
+    }
 
     #[test]
     fn strip_ansi_removes_colors() {

@@ -495,8 +495,20 @@ delegates selection to the standard-library-only
 [`Python classifier`](../.github/workflows/scripts/linux/classify-ci-changes.py).
 Documentation checks, scheduling-contract checks and classifier regressions
 remain always-on, including for documentation-only changes. Pinned actionlint
-also validates both workflows for syntax, expression types and action inputs;
+also validates all workflows for syntax, expression types and action inputs;
 the local `ci` stage runs it when installed.
+
+[`dependency-security.yml`](../.github/workflows/dependency-security.yml) runs
+the dependency advisory and policy checks every Monday at 09:23 UTC and on
+manual dispatch, independently of change classification. Both checks report
+failures, and the policy check still runs after an advisory-check failure.
+This separate workflow does not satisfy the `ci-success` gate or trigger
+publication; inspect its results and enable GitHub failure notifications.
+In [notification settings](https://github.com/settings/notifications), enable
+Actions email notifications and optionally select failed workflows only.
+Scheduled-run notifications go to the workflow's creator or the user who last
+changed its cron schedule (or re-enabled it). GitHub can disable scheduled
+workflows after 60 days of repository inactivity; check that it remains enabled.
 
 The `ci-success` job runs with `always()` and depends on every gating job.
 [`check-ci-contract.py`](../.github/workflows/scripts/linux/check-ci-contract.py)

@@ -367,12 +367,26 @@ fn lease_path(path: &Path) -> PathBuf {
 }
 
 fn open_lock(path: &Path) -> std::io::Result<fs::File> {
-    fs::OpenOptions::new()
+    private_file_options()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
         .open(path)
+}
+
+// Logs and their lock sidecars must not inherit group/other access from umask.
+fn private_file_options() -> fs::OpenOptions {
+    #[cfg(unix)]
+    let mut options = fs::OpenOptions::new();
+    #[cfg(not(unix))]
+    let options = fs::OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(0o600);
+    }
+    options
 }
 
 // Serialize lease creation/removal so no contender can lock an unlinked,
@@ -420,7 +434,7 @@ fn create_run_log_file(
                 return None;
             }
         }
-        match fs::OpenOptions::new()
+        match private_file_options()
             .create_new(true)
             .append(true)
             .open(&path)
@@ -534,6 +548,28 @@ fn format_log_message(message: &str) -> Option<String> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[cfg(unix)]
+    #[test]
+    fn new_logs_and_lock_sidecars_are_private_in_existing_directories() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let fixture = tempfile::tempdir().unwrap();
+        fs::set_permissions(fixture.path(), fs::Permissions::from_mode(0o755)).unwrap();
+        let (path, _file, _lease) =
+            create_run_log_file("check", fixture.path(), "20200101T000000Z").unwrap();
+        for private_path in [
+            path.clone(),
+            lease_path(&path),
+            fixture.path().join(RETENTION_LOCK),
+        ] {
+            assert_eq!(
+                fs::metadata(private_path).unwrap().permissions().mode() & 0o777,
+                0o600,
+                "new diagnostic files must be owner-only even in an existing directory"
+            );
+        }
+    }
 
     #[test]
     fn creation_skips_closed_log_collisions_without_truncating_them() {

@@ -161,6 +161,12 @@ clean scan nor a green CI result establishes that a patch is secret-free.
 
 ### Logs are a separate disclosure boundary
 
+On Unix, newly created log directories (including new parent directories) use
+owner-only `0700` permissions; new logs and lock sidecars use `0600`, restricted
+further by the process umask. Existing directories and files retain their
+permissions, including an explicitly configured log directory. This is not a
+retroactive permissions repair. Windows continues to inherit filesystem ACLs.
+
 [`CommandSpec`](../cli/src/infra/exec/mod.rs) controls two independent things:
 
 - `redact_arguments()` suppresses command arguments in diagnostics.
@@ -187,6 +193,13 @@ failure or an unexpected skip fails the gate. Coverage and mutation reports are
 informational. See
 [CI gates](TESTING.md#ci-gates) for exact coverage instead of treating “CI green”
 as a universal security claim.
+
+[`dependency-security.yml`](../.github/workflows/dependency-security.yml) runs
+`cargo audit` and `cargo deny check all` weekly and on manual dispatch, even
+when no dependency files change. It has read-only repository permissions and
+does not trigger release publication. These checks supplement Dependabot;
+repository administrators must separately enable Dependabot alerts and security
+updates in GitHub settings and arrange to receive failure notifications.
 
 [`release.yml`](../.github/workflows/release.yml) has a narrower publishing
 boundary:

@@ -247,6 +247,21 @@ class PrePushPlanTests(unittest.TestCase):
 
 
 class GateTests(unittest.TestCase):
+    def test_scheduled_security_checks_are_independent_and_read_only(self):
+        workflow = CONTRACT["WORKFLOW"].with_name("dependency-security.yml").read_text(encoding="utf-8")
+        self.assertRegex(workflow, r"(?m)^  schedule:$")
+        self.assertRegex(workflow, r"(?m)^    - cron: '.+'$")
+        self.assertIn("  workflow_dispatch:", workflow)
+        self.assertIn("permissions:\n  contents: read\n", workflow)
+        self.assertNotRegex(workflow, r"(?m)^\s+(?:paths|paths-ignore):")
+        for block in CONTRACT["job_blocks"](workflow).values():
+            self.assertIsNone(CONTRACT["job_condition"](block))
+            self.assertFalse(CONTRACT["job_needs"](block))
+        self.assertIn("run: cargo audit", workflow)
+        self.assertIn("if: ${{ !cancelled() }}\n        run: cargo deny check all", workflow)
+        self.assertNotIn("continue-on-error:", workflow)
+        self.assertNotIn("write", workflow)
+
     def results(self, paths):
         outputs = {name: str(value).lower() for name, value in classify(paths).items()}
         needs = {

@@ -161,16 +161,40 @@ foreach ($case in $cases)
     Write-Output 'PASS: Unix root and Windows non-root identity cases'
 
     & {
-        Set-Variable -Name GitExists -Value $true -Scope Global
-        Set-Variable -Name IsNestedPwsh -Value $false -Scope Global
-        $Global:LASTEXITCODE = 42
-        function git { $global:LASTEXITCODE = 128; 'HEAD' }
-        $text = Prompt
-        if ($text.Contains('HEAD') -or $Global:LASTEXITCODE -ne 42)
+        $originalVariables = @{}
+        foreach ($name in @('GitExists', 'IsNestedPwsh', 'LASTEXITCODE'))
         {
-            throw 'A failed Git query must not display its stdout as a branch or change LASTEXITCODE.'
+            $variable = Get-Variable -Name $name -Scope Global -ErrorAction SilentlyContinue
+            $originalVariables[$name] = @{ Exists = $null -ne $variable; Value = $variable.Value }
         }
-        Write-Output 'PASS: failed Git stdout is excluded from the prompt'
+        try
+        {
+            Set-Variable -Name GitExists -Value $true -Scope Global
+            Set-Variable -Name IsNestedPwsh -Value $false -Scope Global
+            $Global:LASTEXITCODE = 42
+            function git { $global:LASTEXITCODE = 128; 'HEAD' }
+            $text = Prompt
+            if ($text.Contains('HEAD') -or $Global:LASTEXITCODE -ne 42)
+            {
+                throw 'A failed Git query must not display its stdout as a branch or change LASTEXITCODE.'
+            }
+            Write-Output 'PASS: failed Git stdout is excluded from the prompt'
+        }
+        finally
+        {
+            # GitHub's pwsh wrapper exits with LASTEXITCODE after dot-sourcing.
+            foreach ($entry in $originalVariables.GetEnumerator())
+            {
+                if (-not $entry.Value.Exists)
+                {
+                    Remove-Variable -Name $entry.Key -Scope Global -ErrorAction SilentlyContinue
+                }
+                else
+                {
+                    Set-Variable -Name $entry.Key -Scope Global -Value $entry.Value.Value
+                }
+            }
+        }
     }
 
     $pathFixture = Join-Path ([IO.Path]::GetTempPath()) ('dotfiles-path-' + [Guid]::NewGuid())

@@ -900,7 +900,14 @@ class ShellConfigTests(unittest.TestCase):
         self.assertEqual(result.stdout, "-selected\n")
 
     def test_fzf_file_preview_delimits_option_like_filenames(self):
-        self.assertIsNotNone(shutil.which("bat"), "bat is required for preview coverage")
+        bat = shutil.which("bat") or shutil.which("batcat")
+        self.assertIsNotNone(bat, "bat or batcat is required for preview coverage")
+        # Debian/Ubuntu package the executable as batcat; exercise the configured
+        # bat command through a fixture wrapper on both distributions.
+        wrapper = self.write(
+            self.fixture / "bin/bat", '#!/bin/sh\nexec "$BAT_BINARY" "$@"\n', executable=True,
+        )
+        self.env.update(BAT_BINARY=bat, PATH=str(wrapper.parent) + ":" + self.env["PATH"])
         self.write(self.fixture / "-preview", "preview fixture content\n")
         for shell in ("bash", "zsh"):
             with self.subTest(shell=shell):

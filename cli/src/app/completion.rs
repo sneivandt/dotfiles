@@ -764,6 +764,14 @@ mod tests {
                 vec!["--root", "/repo"],
             ),
             (
+                vec!["--quiet", "--profile=desktop"],
+                vec!["--profile", "desktop"],
+            ),
+            (
+                vec!["--unknown-option", "--root=/repo"],
+                vec!["--root", "/repo"],
+            ),
+            (
                 vec!["--root=/repo", "--", "--profile=desktop"],
                 vec!["--root", "/repo"],
             ),

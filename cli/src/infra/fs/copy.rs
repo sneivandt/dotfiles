@@ -153,3 +153,29 @@ fn is_link_like(path: &Path, metadata: &std::fs::Metadata) -> bool {
         metadata.is_symlink()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn destination_resolution_preserves_non_missing_io_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        let destination = root.path().join("invalid\0destination");
+        let expected = std::fs::canonicalize(&destination).unwrap_err().kind();
+        assert_ne!(expected, std::io::ErrorKind::NotFound);
+
+        let error = reject_recursive_destination(&source, &destination).unwrap_err();
+
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            expected
+        );
+        assert_eq!(
+            error.to_string(),
+            format!("resolving copy destination {}", destination.display())
+        );
+    }
+}

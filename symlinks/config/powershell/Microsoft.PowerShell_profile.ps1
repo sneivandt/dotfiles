@@ -32,7 +32,7 @@ function Add-PathEntry
         [IO.Path]::AltDirectorySeparatorChar, [IO.Path]::DirectorySeparatorChar
     ).TrimEnd($trimChars)
 
-    foreach ($entry in @($env:Path -split [System.IO.Path]::PathSeparator))
+    foreach ($entry in @($env:PATH -split [System.IO.Path]::PathSeparator))
     {
         if ([string]::IsNullOrWhiteSpace($entry))
         {
@@ -48,13 +48,13 @@ function Add-PathEntry
         }
     }
 
-    if ([string]::IsNullOrEmpty($env:Path))
+    if ([string]::IsNullOrEmpty($env:PATH))
     {
-        $env:Path = $Directory
+        $env:PATH = $Directory
     }
     else
     {
-        $env:Path += "$([System.IO.Path]::PathSeparator)$Directory"
+        $env:PATH += "$([System.IO.Path]::PathSeparator)$Directory"
     }
 }
 

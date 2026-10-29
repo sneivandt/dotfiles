@@ -198,31 +198,31 @@ foreach ($case in $cases)
     }
 
     $pathFixture = Join-Path $repositoryRoot ('.dotfiles-path-' + [Guid]::NewGuid())
-    $originalPath = $env:Path
+    $originalPath = $env:PATH
     try
     {
         $directory = Join-Path $pathFixture '[literal] bin'
         [IO.Directory]::CreateDirectory($directory) | Out-Null
         $file = Join-Path $pathFixture 'ordinary-file'
         [IO.File]::WriteAllText($file, 'fixture')
-        $env:Path = ''
+        $env:PATH = ''
         Add-PathEntry -Directory $file
-        if (-not [string]::IsNullOrEmpty($env:Path))
+        if (-not [string]::IsNullOrEmpty($env:PATH))
         {
             throw 'Ordinary files must not be added to PATH.'
         }
         Add-PathEntry -Directory $directory
         Add-PathEntry -Directory $directory
-        if ($env:Path -cne $directory)
+        if ($env:PATH -cne $directory)
         {
             throw 'Literal directory names containing brackets must be added exactly once.'
         }
         $alternateDirectory = $directory.Replace(
             [IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar
         ) + [IO.Path]::AltDirectorySeparatorChar
-        $env:Path = $alternateDirectory
+        $env:PATH = $alternateDirectory
         Add-PathEntry -Directory $directory
-        if ($env:Path -cne $alternateDirectory)
+        if ($env:PATH -cne $alternateDirectory)
         {
             throw 'Equivalent directory separators and trailing slashes must not duplicate PATH entries.'
         }
@@ -230,7 +230,7 @@ foreach ($case in $cases)
     }
     finally
     {
-        $env:Path = $originalPath
+        $env:PATH = $originalPath
         if ([IO.Directory]::Exists($pathFixture))
         {
             Remove-Item -LiteralPath $pathFixture -Recurse -Force
@@ -249,13 +249,24 @@ foreach ($case in $cases)
         {
             [IO.Directory]::CreateDirectory($directory) | Out-Null
         }
-        foreach ($name in @('git', 'code-insiders'))
+        foreach ($commandPath in @(
+                (Join-Path $localBin 'git'),
+                (Join-Path $localBin 'code-insiders'),
+                (Join-Path $defaultCargo 'bin\codex'),
+                (Join-Path $customCargo 'bin\codex')
+            ))
         {
-            [IO.File]::WriteAllText((Join-Path $localBin "$name.ps1"), "'fixture $name'")
-        }
-        foreach ($directory in @($defaultCargo, $customCargo))
-        {
-            [IO.File]::WriteAllText((Join-Path $directory 'bin\codex.ps1'), "'fixture codex'")
+            if ([IO.Path]::DirectorySeparatorChar -eq '\')
+            {
+                [IO.File]::WriteAllText("$commandPath.ps1", "'fixture'")
+            }
+            else
+            {
+                # Unix command lookup does not infer .ps1 extensions.
+                [IO.File]::WriteAllText($commandPath, "#!/bin/sh`nexit 0`n")
+                [IO.File]::SetUnixFileMode($commandPath,
+                    [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite -bor [IO.UnixFileMode]::UserExecute)
+            }
         }
         [IO.File]::WriteAllText((Join-Path $extensions '20-second.ps1'), '$script:ExtensionOrder += "second"')
         [IO.File]::WriteAllText((Join-Path $extensions '10-first.ps1'), '$script:ExtensionOrder += "first"')

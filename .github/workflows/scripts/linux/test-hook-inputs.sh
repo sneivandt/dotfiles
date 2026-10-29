@@ -475,6 +475,7 @@ if [ "$#" -gt 0 ]; then
   exit 0
 fi
 
+(
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 export GIT_CONFIG_NOSYSTEM=1
@@ -652,6 +653,7 @@ mkdir -p "$fixture/shell repo [literal]/hooks" "$fixture/shell repo [literal]/sy
   fi
 )
 log_verbose "Hook input regression tests passed"
+)
 test_fixture_git_context
 test_staged_ci_guards
 test_ci_change_classification

@@ -21,7 +21,7 @@ FLAGS = (
 )
 APPS = {
     "git": {"application": "git", "packages": "git", "tests": "config aliases behavior clean"},
-    "zsh": {"application": "zsh", "packages": "zsh fzf wget libarchive-tools", "tests": "completion history configuration"},
+    "zsh": {"application": "zsh", "packages": "zsh fzf wget libarchive-tools bat zstd", "tests": "completion history configuration"},
     "vim": {"application": "vim", "packages": "vim", "tests": "opens configuration"},
     "nvim": {"application": "nvim", "packages": "neovim", "tests": "opens plugins configuration"},
 }

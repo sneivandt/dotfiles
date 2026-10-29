@@ -183,28 +183,31 @@ impl Logger {
     }
 
     pub(crate) fn start_progress(self: &std::sync::Arc<Self>) -> impl Drop {
+        self.start_progress_with_terminal(stdout_supports_progress())
+    }
+
+    fn start_progress_with_terminal(self: &std::sync::Arc<Self>, terminal: bool) -> ProgressTicker {
         let (stop, receiver) = std::sync::mpsc::channel();
         let weak = std::sync::Arc::downgrade(self);
-        let thread = if stdout_supports_progress()
-            && self.console.lock().mode == crate::infra::logging::OutputMode::Human
-        {
-            std::thread::Builder::new()
-                .name("cli-progress".into())
-                .spawn(move || {
-                    while matches!(
-                        receiver.recv_timeout(std::time::Duration::from_millis(100)),
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-                    ) {
-                        let Some(log) = weak.upgrade() else {
-                            break;
-                        };
-                        log.tick_progress();
-                    }
-                })
-                .ok()
-        } else {
-            None
-        };
+        let thread =
+            if terminal && self.console.lock().mode == crate::infra::logging::OutputMode::Human {
+                std::thread::Builder::new()
+                    .name("cli-progress".into())
+                    .spawn(move || {
+                        while matches!(
+                            receiver.recv_timeout(std::time::Duration::from_millis(100)),
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                        ) {
+                            let Some(log) = weak.upgrade() else {
+                                break;
+                            };
+                            log.tick_progress();
+                        }
+                    })
+                    .ok()
+            } else {
+                None
+            };
         ProgressTicker { stop, thread }
     }
 
@@ -303,6 +306,44 @@ mod tests {
                 StyleChoice::colored()
             ),
             "\x1b[2;36m⠋\x1b[0m \x1b[2m4 tasks left · \x1b[0mPackages, Symlinks, Fonts\x1b[2m +1\x1b[0m"
+        );
+    }
+
+    #[test]
+    fn exact_width_names_do_not_reserve_space_for_a_zero_overflow_count() {
+        let names = ["Packages", "Symlinks", "Fonts"];
+        for count in 1..=names.len() {
+            let shown = names.get(..count).unwrap();
+            let expected = format!("⠋ {}", shown.join(", "));
+            let cols = unicode_width::UnicodeWidthStr::width(expected.as_str());
+            for verbose in [false, true] {
+                assert_eq!(render(shown, None, cols, verbose), expected);
+            }
+        }
+        assert_eq!(
+            render(&["Long package task"], None, 14, false),
+            "⠋ Long packa …"
+        );
+    }
+
+    #[test]
+    fn exact_width_footer_retains_its_styling() {
+        let names = ["Packages", "Symlinks", "Fonts", "Git"].map(String::from);
+        let plain =
+            super::active_display_line(&names, Some(4), 0, true, false, 80, StyleChoice::plain());
+        let exact_width = unicode_width::UnicodeWidthStr::width(plain.as_str());
+        assert_eq!(
+            super::active_display_line(
+                &names,
+                Some(4),
+                0,
+                true,
+                false,
+                exact_width,
+                StyleChoice::colored()
+            ),
+            super::active_display_line(&names, Some(4), 0, true, false, 80, StyleChoice::colored()),
+            "a footer that fits exactly must keep its colors and dim context"
         );
     }
 
@@ -423,6 +464,72 @@ mod tests {
         assert_eq!(log.console.lock().captured.len(), completed_writes);
         let stored = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
         assert!(!stored.contains("⠋") && !stored.contains("⠙"));
+    }
+
+    #[test]
+    fn animation_shutdown_signals_and_joins_the_worker() {
+        let (stop, receiver) = std::sync::mpsc::channel();
+        let (completed, completion) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            completed.send(receiver.recv().is_ok()).unwrap();
+        });
+        let progress = super::ProgressTicker {
+            stop,
+            thread: Some(worker),
+        };
+        drop(progress);
+        assert_eq!(
+            completion.try_recv(),
+            Ok(true),
+            "shutdown must signal and join before returning"
+        );
+    }
+
+    #[test]
+    fn durable_output_suspends_animation_until_the_footer_is_redrawn() {
+        use crate::infra::logging::OutputExt as _;
+        let (log, _tmp, _guard) = isolated_logger();
+        log.notify_task_start_with_progress("Packages", true);
+        log.always("durable output");
+        let writes = log.console.lock().captured.len();
+        log.tick_progress();
+        assert_eq!(log.console.lock().captured.len(), writes);
+        log.notify_task_start_with_progress("Fonts", true);
+        log.tick_progress();
+        assert!(
+            log.console
+                .lock()
+                .captured
+                .last()
+                .unwrap()
+                .1
+                .contains("⠙ Packages, Fonts")
+        );
+    }
+
+    #[test]
+    fn animation_worker_starts_only_for_a_human_terminal_and_releases_the_logger() {
+        use crate::infra::logging::OutputMode;
+        for mode in [OutputMode::Human, OutputMode::Quiet, OutputMode::Jsonl] {
+            for terminal in [false, true] {
+                let (mut log, _tmp, _guard) = isolated_logger();
+                log.set_output_mode(mode);
+                let log = std::sync::Arc::new(log);
+                let weak = std::sync::Arc::downgrade(&log);
+                let progress = log.start_progress_with_terminal(terminal);
+                assert_eq!(
+                    progress.thread.is_some(),
+                    terminal && mode == OutputMode::Human,
+                    "terminal={terminal}, mode={mode:?}"
+                );
+                drop(progress);
+                drop(log);
+                assert!(
+                    weak.upgrade().is_none(),
+                    "animation must not retain the run logger"
+                );
+            }
+        }
     }
 
     #[test]

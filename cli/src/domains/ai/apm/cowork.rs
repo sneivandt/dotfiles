@@ -87,11 +87,8 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
         // Case-only renames still address the desired directory on Windows.
         // Use filesystem identity without rewriting Unicode path components.
         #[cfg(windows)]
-        match std::fs::canonicalize(target.join(name)) {
-            Ok(path) if desired_directories.contains(&path) => continue,
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error).context("resolving owned Cowork skill directory"),
+        if is_desired_skill_directory(&target.join(name), &desired_directories)? {
+            continue;
         }
         if remove_skill_entry_point(&target.join(name))? {
             changed = true;
@@ -109,6 +106,15 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
     }
 
     Ok(changed)
+}
+
+#[cfg(windows)]
+fn is_desired_skill_directory(path: &Path, desired: &BTreeSet<PathBuf>) -> Result<bool> {
+    match std::fs::canonicalize(path) {
+        Ok(path) => Ok(desired.contains(&path)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).context("resolving owned Cowork skill directory"),
+    }
 }
 
 fn read_owned_skills(target: &Path) -> Result<BTreeSet<String>> {
@@ -613,6 +619,17 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn desired_skill_directory_distinguishes_missing_paths_from_inspection_errors() {
+        let fixture = tempfile::tempdir().unwrap();
+        let desired = BTreeSet::new();
+        assert!(!is_desired_skill_directory(&fixture.path().join("missing"), &desired).unwrap());
+        assert!(
+            is_desired_skill_directory(&fixture.path().join("invalid\0name"), &desired).is_err()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn reconcile_case_only_skill_rename_does_not_remove_the_desired_entry_point() {
         for (before, after) in [("example", "Example"), ("İExample", "İEXAMPLE")] {
             let dir = tempfile::tempdir_in(".").unwrap();
@@ -897,6 +914,31 @@ mod tests {
         assert_eq!(lock, serde_yaml_ng::from_str::<Value>(retained).unwrap());
         assert_eq!(names, BTreeSet::from(["example".to_string()]));
         assert!(!strip_legacy_cowork_deployments(&mut lock, &mut names));
+    }
+
+    #[test]
+    fn legacy_deployment_classification_does_not_depend_on_a_cowork_uri() {
+        for (record, expected) in [
+            ("target: copilot-cowork", true),
+            (
+                "target: copilot\nvalue: .github/skills/example/SKILL.md",
+                false,
+            ),
+            ("value: .agents/skills/example/SKILL.md", false),
+            ("{}", false),
+        ] {
+            let value = serde_yaml_ng::from_str::<Value>(record).unwrap();
+            let mut names = BTreeSet::new();
+            assert_eq!(
+                record_legacy_cowork_deployment(&value, &mut names),
+                expected,
+                "{record}"
+            );
+            assert!(
+                names.is_empty(),
+                "only a Cowork URI establishes named ownership"
+            );
+        }
     }
 
     #[test]

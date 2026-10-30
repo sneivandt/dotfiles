@@ -458,6 +458,7 @@ jobs:
           --shard "$MUTATION_SHARD/8"
           --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b'
           --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b'
+          --exclude-re '^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b'
           --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::'
           --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$'
           --cargo-arg=--profile=ci --cargo-arg=--locked

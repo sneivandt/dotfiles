@@ -200,6 +200,7 @@ commit when needed:
   cargo mutants --in-place --no-shuffle --in-diff mutants.diff \
     --exclude-re '^src/infra/elevation\.rs:.*\b(run_elevated_child|wait_if_elevated)\b' \
     --exclude-re '^src/domains/dotfiles/resources/path_entry\.rs:.*\b(decode_reg_string|append_user_path|user_path_contains)\b' \
+    --exclude-re '^src/domains/ai/apm/cowork\.rs:.*\bis_desired_skill_directory\b' \
     --exclude-re '^src/domains/system/resources/registry\.rs:.*\bnative::' \
     --exclude-re '^src/domains/ai/resources/agent_settings\.rs:[0-9]+:[0-9]+: replace match guard metadata\.is_symlink\(\) with true in <impl Resource for AgentSettingResource>::apply$' \
     --cargo-arg=--profile=ci --cargo-arg=--locked
@@ -210,9 +211,11 @@ commit when needed:
 ```
 
 These exclusions match Linux CI's native-code and equivalent-mutation exclusions.
-The PATH registry implementations are Windows-only;
+The PATH registry implementations and Cowork directory-identity helper are Windows-only;
 Linux tests cover the unsupported-host stubs and injected persistence contract,
-not native registry behavior. CI also excludes the single equivalent mutation
+not native registry behavior or case-insensitive directory aliases. Native Windows
+tests cover Cowork case-only renames, orphan removal, and inspection errors.
+CI also excludes the single equivalent mutation
 that canonicalizes existing regular agent settings files as well as symlinks.
 The opposite guard mutation remains covered by symlink-preservation tests.
 The file-size-limited settings writer disables child profile output so its

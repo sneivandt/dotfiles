@@ -9,9 +9,11 @@ use crate::domains::packages::resources::package::{
 };
 use crate::engine::Resource as _;
 use crate::engine::{
-    BatchCompletion, BatchReport, Context, Operation, OperationState, Task, TaskResult, TaskStats,
-    process_operation, task_metadata,
+    BatchCompletion, BatchReport, Context, Operation, OperationState, Requirement,
+    RequirementState, Task, TaskResult, TaskStats, process_operation, process_requirement,
+    task_metadata,
 };
+use crate::infra::ConfigHandle;
 use crate::infra::exec::ExecError;
 use crate::infra::logging::OutputExt as _;
 
@@ -23,39 +25,41 @@ use paru::{
     prepare_build_directory,
 };
 use planning::{
-    PackageInstallPlan, build_install_plan, predict_sudo, resolve_native_manager, select_packages,
+    PackageInstallPlan, build_install_plan, native_manager_requirement, predict_sudo,
+    select_packages,
 };
 
-/// Prove this phase cannot install or rebuild packages before releasing consumers.
-/// Unknown inventories and unsupported managers retain the normal ordering.
-pub(crate) fn package_work_is_current(ctx: &Context, packages: &[Package]) -> bool {
+/// Prove selected package work cannot invalidate a consumer's observed inputs.
+pub(crate) fn package_stability_requirement(
+    packages: ConfigHandle<Vec<Package>>,
+) -> Requirement<'static> {
+    Requirement::new("package-inputs-stable", move |ctx, _| {
+        check_package_stability(ctx, packages.get())
+    })
+}
+
+fn check_package_stability(ctx: &Context, packages: &[Package]) -> Result<RequirementState<()>> {
     if !ctx.platform().uses_pacman() || !ctx.which("pacman") {
-        return false;
+        return Ok(RequirementState::unsatisfied(
+            "package stability requires a supported pacman inventory",
+        ));
     }
-    let installed = match super::resources::package::get_installed_packages(
-        PackageManager::Pacman,
-        ctx.executor(),
-    ) {
-        Ok(installed) => installed,
-        Err(error) => {
-            ctx.debug_fmt(|| format!("retaining package waits: {error:#}"));
-            return false;
-        }
-    };
+    let installed =
+        super::resources::package::get_installed_packages(PackageManager::Pacman, ctx.executor())?;
     if packages
         .iter()
         .any(|package| !installed.contains(&package.name))
     {
-        return false;
+        return Ok(RequirementState::unsatisfied(
+            "configured packages still need installation",
+        ));
     }
-    match check_paru_health(ctx.executor()) {
-        Ok(ParuHealth::Healthy { .. }) => true,
-        Ok(_) => false,
-        Err(error) => {
-            ctx.debug_fmt(|| format!("retaining Paru wait: {error:#}"));
-            false
+    Ok(match check_paru_health(ctx.executor())? {
+        ParuHealth::Healthy { .. } => RequirementState::Satisfied(()),
+        ParuHealth::Missing { reason } | ParuHealth::Broken { reason, .. } => {
+            RequirementState::unsatisfied(reason)
         }
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -139,10 +143,9 @@ impl PackageTaskKind {
         let manager = match self {
             Self::Native => {
                 ctx.trace_fmt(|| format!("{} non-AUR packages to process", selected.len()));
-                match resolve_native_manager(ctx) {
-                    Ok(manager) => manager,
-                    Err(reason) => return Ok(TaskResult::unmet(reason)),
-                }
+                return process_requirement(ctx, &native_manager_requirement(), |manager| {
+                    process_operation(ctx, &PackageInstallOperation::new(selected, manager))
+                });
             }
             // A preview queries pacman's database but must not require the helper
             // that the preceding bootstrap task only *planned* to install.

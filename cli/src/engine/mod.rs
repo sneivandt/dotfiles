@@ -25,6 +25,7 @@ mod operation;
 mod orchestrate;
 mod parallel;
 pub(crate) mod plan;
+pub(crate) mod requirement;
 /// Dependency-driven parallel task scheduling.
 pub(crate) mod scheduler;
 mod stats;
@@ -43,6 +44,7 @@ pub use mode::ProcessMode;
 pub use mode::ProcessOpts;
 pub(crate) use operation::{Operation, OperationState, process_operation};
 pub use orchestrate::{process_resources, process_resources_remove, process_resources_with_cache};
+pub use requirement::{Requirement, RequirementStage, RequirementState, process_requirement};
 pub use resource::{
     IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
     SkipKind,

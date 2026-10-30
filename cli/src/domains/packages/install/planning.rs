@@ -4,7 +4,9 @@ use crate::domains::packages::config::packages::Package;
 use crate::domains::packages::resources::package::{
     PackageManager, PackageResource, get_installed_packages,
 };
-use crate::engine::{Context, Resource as _, ResourceState, TaskStats};
+use crate::engine::{
+    Context, Requirement, RequirementState, Resource as _, ResourceState, TaskStats,
+};
 use crate::infra::logging::OutputExt as _;
 
 #[derive(Debug, Clone)]
@@ -54,19 +56,21 @@ pub(super) fn select_packages(packages: &[Package], is_aur: bool) -> Vec<Package
 /// Resolve the package manager for native (non-AUR) installs based on platform
 /// and tool availability.
 ///
-/// Returns `Ok(manager)` when one is usable, or `Err(reason)` describing why
-/// the task should skip.
-pub(super) fn resolve_native_manager(ctx: &Context) -> Result<PackageManager, String> {
-    let manager = if ctx.platform().is_linux() {
-        PackageManager::Pacman
-    } else {
-        PackageManager::Winget
-    };
-    ctx.log().debug(format!("using {manager} package manager"));
-    if !ctx.which(manager.provider().name()) {
-        return Err(format!("{manager} not found"));
-    }
-    Ok(manager)
+/// The resolved manager is passed to installation without a second lookup.
+pub(super) fn native_manager_requirement() -> Requirement<'static, PackageManager> {
+    Requirement::new("native-package-manager", |ctx, _| {
+        let manager = if ctx.platform().is_linux() {
+            PackageManager::Pacman
+        } else {
+            PackageManager::Winget
+        };
+        ctx.log().debug(format!("using {manager} package manager"));
+        Ok(if ctx.which(manager.provider().name()) {
+            RequirementState::Satisfied(manager)
+        } else {
+            RequirementState::unsatisfied(format!("{manager} not found"))
+        })
+    })
 }
 
 /// Predict whether an install of `packages` via `manager` will require sudo.

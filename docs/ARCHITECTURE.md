@@ -196,9 +196,9 @@ belong in the task; cross-domain edges belong in the application catalog.
 
 Applicability and elevation are assessed once per execution phase and reused
 for dispatch. These probes must be read-only and depend on phase-stable state.
-Check for a tool or file produced by a prerequisite inside `run()`, after that
-prerequisite finishes. Empty configuration should return `NotApplicable`, not
-claim that work was applied.
+Check execution requirements inside `run()`, after prerequisites finish, using
+the shared requirement lifecycle below. Empty configuration should return
+`NotApplicable`, not claim that work was applied.
 
 A private prepared phase owns the remaining tasks, their indexed graph and
 cached assessments after elevation preparation; schedulers consume these
@@ -241,6 +241,47 @@ snapshot and exposes selectors and graph relationships without a run log, lock,
 or persisted selections. Its graph describes selection, not actual runtime
 applicability. Internal tasks can appear in graph diagnostics but are not public
 selectors. See [Task reference](TASKS.md) for user-facing discovery and filtering.
+
+## Requirements
+
+A [`Requirement<T>`](../cli/src/engine/requirement.rs) describes a named,
+read-only prerequisite and returns the evidence its consumer needs. It does not
+create state or install a provider. A task finishing is not proof that a needed
+tool, file or service is available.
+
+| Probe outcome | Execution meaning |
+|---|---|
+| `Satisfied(evidence)` | Pass this exact evidence to the consumer |
+| `Unsatisfied { reason }` | Report unmet work; do not run the consumer |
+| `Unknown { error }` | Propagate the original typed inspection error |
+
+Tasks call `process_requirement()` from `run()`, just as they call the resource
+and operation lifecycle helpers. The helper checks once for `Preview` or
+`Apply`, preserves missing-input versus inspection-failure semantics, and
+passes typed evidence directly to the continuation. The continuation retains
+the ordinary resource/operation dry-run gate. For example, VS Code uses its
+resolved launcher and APM uses its detected deployment targets without repeating
+those probes within the task body.
+
+Requirements are stage-specific: an APM install preview can describe local
+changes without APM installed, whereas apply and native pin-update previews need
+the executable. No preview asserts that a prerequisite was actually installed.
+Platform/profile eligibility and deliberate alternatives, such as first-login
+VS Code deferral during chroot provisioning, remain task policy.
+
+`Task::ordering_requirements()` supplies the conditions needed to waive selected
+ordering-only edges. The application catalog attaches the producer task IDs and
+a separate provider-stability requirement through `TaskWithExtraDeps`.
+Assessment checks these with the `Ordering` stage: every consumer condition
+must hold, and the provider must prove it will not invalidate those inputs.
+The package-stability requirement conservatively proves no configured package
+installation or Paru rebuild is needed. Empty declarations, missing inputs and
+unknown inspection results retain the waits; unknown causes are logged.
+
+Only the resulting edge assessment survives into dispatch. Execution rechecks
+its requirements after dependencies finish, rather than reusing stale startup
+evidence. True blocking dependencies can never be waived. Requirements do not
+change task selection, discover new tasks, or override `--only`/`--skip`.
 
 ## Resources
 
@@ -379,6 +420,7 @@ Choose the smallest suitable boundary:
 | Different desired values or managed application content | `conf/`, `symlinks/` or `system/` |
 | Another independently convergent item | Resource plus a thin task adapter |
 | One idempotent multi-step workflow | Operation |
+| A read-only prerequisite with typed evidence | Requirement plus `process_requirement()` |
 | Selection, dependencies, visibility or elevation policy | Task/application catalog |
 | OS/tool interaction reusable below a domain | Infrastructure adapter |
 | Pure parsing or transformation | Plain function/module |

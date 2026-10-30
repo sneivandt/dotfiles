@@ -565,7 +565,10 @@ fn early_systemd_readiness_requires_converged_unit_state() {
             Arc::new(mock),
         );
         assert_eq!(
-            systemd_task("example.service", UnitScope::System, true).prerequisites_available(&ctx),
+            crate::engine::requirement::ordering_requirements_satisfied(
+                &ctx,
+                &systemd_task("example.service", UnitScope::System, true).ordering_requirements(),
+            ),
             expected,
             "{case}"
         );
@@ -588,6 +591,7 @@ fn early_systemd_readiness_requires_the_command_and_a_usable_manager() {
                 })
                 .returning(|_| Ok(ExecResult::failure("offline", "", Some(1))));
         }
+
         let platform = if wsl {
             Platform::new_wsl()
         } else {
@@ -595,7 +599,59 @@ fn early_systemd_readiness_requires_the_command_and_a_usable_manager() {
         };
         let ctx = make_context("/tmp".into(), None, platform, Arc::new(mock));
         assert!(
-            !systemd_task("example.service", UnitScope::System, true).prerequisites_available(&ctx)
+            !crate::engine::requirement::ordering_requirements_satisfied(
+                &ctx,
+                &systemd_task("example.service", UnitScope::System, true).ordering_requirements(),
+            )
         );
+    }
+}
+
+#[test]
+fn failed_manager_probes_are_not_offline_or_inapplicable() {
+    for wsl in [false, true] {
+        for dry_run in [false, true] {
+            let mut mock = MockExecutor::new();
+            mock.expect_which()
+                .once()
+                .with(mockall::predicate::eq("systemctl"))
+                .return_const(true);
+            mock.expect_execute()
+                .once()
+                .withf(move |spec| {
+                    spec.program() == "systemctl"
+                        && !spec.is_checked()
+                        && spec.arguments()
+                            == if wsl {
+                                vec!["is-system-running"]
+                            } else {
+                                vec!["--user", "show-environment"]
+                            }
+                })
+                .returning(|_| {
+                    Err(ExecError::spawn(
+                        "systemctl",
+                        std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            "manager probe refused",
+                        ),
+                    ))
+                });
+            let ctx = make_context(
+                "/tmp".into(),
+                None,
+                if wsl {
+                    Platform::new_wsl()
+                } else {
+                    Platform::new(Os::Linux, true)
+                },
+                Arc::new(mock),
+            )
+            .with_dry_run(dry_run);
+            let error = systemd_task("example.service", UnitScope::User, true)
+                .run(&ctx)
+                .unwrap_err();
+            assert!(error.downcast_ref::<ExecError>().is_some(), "{error:#}");
+        }
     }
 }

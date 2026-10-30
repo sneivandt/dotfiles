@@ -126,12 +126,20 @@ fn nonempty_output(output: &str) -> &str {
 /// a `.cmd` launcher in the same directory. The Windows command must include
 /// the extension and be resolved to an absolute path because the launcher uses
 /// `%~dp0` to locate the adjacent VS Code executable.
-#[must_use]
-pub fn find_code_command(executor: &dyn Executor) -> Option<String> {
-    CODE_COMMANDS
-        .iter()
-        .find_map(|cmd| executor.which_path(cmd).ok())
-        .map(|path| path.to_string_lossy().into_owned())
+///
+/// # Errors
+///
+/// Returns an error if an available launcher cannot be resolved. That failure
+/// must not silently select a different VS Code installation.
+pub fn find_code_command(executor: &dyn Executor) -> Result<Option<String>> {
+    for command in CODE_COMMANDS {
+        if executor.which(command) {
+            return executor
+                .which_path(command)
+                .map(|path| Some(path.to_string_lossy().into_owned()));
+        }
+    }
+    Ok(None)
 }
 
 /// Run a VS Code CLI command. On Windows, `.cmd` wrappers need `cmd.exe /C`.
@@ -205,6 +213,10 @@ mod tests {
     fn find_code_command_prefers_platform_specific_insiders_launcher() {
         let mut mock = MockExecutor::new();
         let expected = std::path::PathBuf::from(CODE_COMMANDS[0]);
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq(CODE_COMMANDS[0]))
+            .return_const(true);
         mock.expect_which_path()
             .once()
             .with(mockall::predicate::eq(CODE_COMMANDS[0]))
@@ -214,7 +226,7 @@ mod tests {
             });
 
         assert_eq!(
-            find_code_command(&mock).as_deref(),
+            find_code_command(&mock).unwrap().as_deref(),
             expected.to_str(),
             "the platform-specific Code Insiders launcher should be preferred"
         );
@@ -225,11 +237,16 @@ mod tests {
         let mut sequence = mockall::Sequence::new();
         let mut mock = MockExecutor::new();
         let expected = std::path::PathBuf::from(CODE_COMMANDS[1]);
-        mock.expect_which_path()
+        mock.expect_which()
             .once()
             .with(mockall::predicate::eq(CODE_COMMANDS[0]))
             .in_sequence(&mut sequence)
-            .returning(|cmd| anyhow::bail!("{cmd} not found"));
+            .return_const(false);
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq(CODE_COMMANDS[1]))
+            .in_sequence(&mut sequence)
+            .return_const(true);
         mock.expect_which_path()
             .once()
             .with(mockall::predicate::eq(CODE_COMMANDS[1]))
@@ -240,9 +257,33 @@ mod tests {
             });
 
         assert_eq!(
-            find_code_command(&mock).as_deref(),
+            find_code_command(&mock).unwrap().as_deref(),
             expected.to_str(),
             "the platform-specific stable launcher should be used as fallback"
+        );
+    }
+
+    #[test]
+    fn launcher_resolution_errors_do_not_fall_back_to_another_installation() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which()
+            .once()
+            .with(mockall::predicate::eq(CODE_COMMANDS[0]))
+            .return_const(true);
+        mock.expect_which_path()
+            .once()
+            .with(mockall::predicate::eq(CODE_COMMANDS[0]))
+            .returning(|_| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "launcher inaccessible",
+                )
+                .into())
+            });
+        let error = find_code_command(&mock).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::PermissionDenied,
         );
     }
 

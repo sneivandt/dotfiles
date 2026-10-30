@@ -1371,8 +1371,14 @@ fn prepared_phase_resolves_conditional_waits_again_for_each_run() {
         fn meta(&self) -> TaskMeta<'_> {
             TaskMeta::new("consumer")
         }
-        fn prerequisites_available(&self, _ctx: &Context) -> bool {
-            self.ready
+        fn ordering_requirements(&self) -> Vec<crate::engine::Requirement<'_>> {
+            vec![crate::engine::Requirement::new("consumer-input", |_, _| {
+                Ok(if self.ready {
+                    crate::engine::RequirementState::Satisfied(())
+                } else {
+                    crate::engine::RequirementState::unsatisfied("input missing")
+                })
+            })]
         }
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
             self.trace.lock().unwrap().push("consumer".into());
@@ -1393,7 +1399,12 @@ fn prepared_phase_resolves_conditional_waits_again_for_each_run() {
             &[],
             &[provider.task_id()],
         )
-        .with_conditional_ordering(&[provider.task_id()], |_| true);
+        .with_conditional_ordering(
+            &[provider.task_id()],
+            crate::engine::Requirement::new("provider-stable", |_, _| {
+                Ok(crate::engine::RequirementState::Satisfied(()))
+            }),
+        );
         let tasks: [&dyn Task; 2] = [&consumer, &provider];
         run_tasks_to_completion(tasks, &ctx, &log).unwrap();
         let expected = if ready {

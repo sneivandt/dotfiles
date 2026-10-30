@@ -134,6 +134,50 @@ fn cancellation_interrupts_task_claim_acquisition_without_running_the_body() {
     assert!(ctx.try_access(&[claim]).is_some());
 }
 
+#[test]
+fn task_claims_cover_requirement_probes_and_their_consumers() {
+    for dry_run in [false, true] {
+        let (base_ctx, _log, _root, _guard) = fixture(Mode::Parallel, false);
+        let ctx = base_ctx.with_dry_run(dry_run);
+        let claim = AccessClaim::exclusive("fixture", "required-document");
+        let body_claim = claim.clone();
+        let observer = ctx.clone();
+        let task = ClaimedTask {
+            key: "claimed-requirement",
+            claims: vec![claim.clone()],
+            body: Box::new(move |task_ctx| {
+                let requirement = engine::Requirement::new("document-input", |_, stage| {
+                    assert_eq!(
+                        stage,
+                        if dry_run {
+                            engine::RequirementStage::Preview
+                        } else {
+                            engine::RequirementStage::Apply
+                        }
+                    );
+                    assert!(
+                        observer
+                            .try_access(std::slice::from_ref(&body_claim))
+                            .is_none()
+                    );
+                    Ok(engine::RequirementState::Satisfied(17))
+                });
+                engine::process_requirement(task_ctx, &requirement, |evidence| {
+                    assert_eq!(evidence, 17);
+                    assert!(
+                        observer
+                            .try_access(std::slice::from_ref(&body_claim))
+                            .is_none()
+                    );
+                    Ok(TaskResult::Ok)
+                })
+            }),
+        };
+        assert_eq!(engine::execute(&task, &ctx), TaskStatus::Ok);
+        assert!(ctx.try_access(&[claim]).is_some());
+    }
+}
+
 struct SlowTask {
     started: mpsc::Sender<()>,
     release: Mutex<mpsc::Receiver<()>>,

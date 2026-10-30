@@ -87,20 +87,17 @@ pub(crate) fn update_tasks_for_run(
     repo_updated: &RepositoryUpdateSignal,
     apm_mode: ApmPackageMode,
 ) -> Vec<Box<dyn Task>> {
-    let conditional_packages = |inner: Box<dyn Task>,
-                                blocking: &[TaskId],
-                                ordering: &[TaskId]|
-     -> Box<dyn Task> {
-        let packages = store.packages.clone();
-        Box::new(
-            TaskWithExtraDeps::new(inner, blocking, ordering).with_conditional_ordering(
-                &[id::<InstallPackages>(), id::<InstallAurPackages>()],
-                move |ctx| {
-                    crate::domains::packages::install::package_work_is_current(ctx, packages.get())
-                },
-            ),
-        )
-    };
+    let conditional_packages =
+        |inner: Box<dyn Task>, blocking: &[TaskId], ordering: &[TaskId]| -> Box<dyn Task> {
+            Box::new(
+                TaskWithExtraDeps::new(inner, blocking, ordering).with_conditional_ordering(
+                    &[id::<InstallPackages>(), id::<InstallAurPackages>()],
+                    crate::domains::packages::install::package_stability_requirement(
+                        store.packages.clone(),
+                    ),
+                ),
+            )
+        };
     let zsh_completions = generate_zsh_completions();
     let powershell_completions = generate_powershell_completions();
 

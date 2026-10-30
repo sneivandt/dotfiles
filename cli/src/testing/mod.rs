@@ -49,7 +49,8 @@ pub mod config {
 pub mod engine {
     pub use crate::engine::{
         AccessClaim, BatchCompletion, BatchReport, CancellationToken, Context, ContextOpts,
-        ProcessOpts, process_resources,
+        ProcessOpts, Requirement, RequirementStage, RequirementState, process_requirement,
+        process_resources,
     };
 
     pub mod graph {

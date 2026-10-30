@@ -3,7 +3,10 @@
 use anyhow::Result;
 
 use crate::domains::shell::resources::shell::DefaultShellResource;
-use crate::engine::{Context, ProcessOpts, Task, TaskResult, run_resource_task, task_metadata};
+use crate::engine::{
+    Context, ProcessOpts, Requirement, Task, TaskResult, process_requirement, run_resource_task,
+    task_metadata,
+};
 
 /// Configure the default shell to zsh.
 #[derive(Debug)]
@@ -22,17 +25,20 @@ impl Task for ConfigureShell {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if !ctx.which("zsh") {
-            return Ok(TaskResult::unmet("zsh not found in PATH"));
-        }
-        run_resource_task(
+        process_requirement(
             ctx,
-            vec![DefaultShellResource::new(
-                "zsh".to_string(),
-                ctx.executor_arc(),
-                std::sync::Arc::clone(ctx.env()),
-            )],
-            &ProcessOpts::strict("configure"),
+            &Requirement::command("login-shell", "zsh", "zsh not found in PATH"),
+            |()| {
+                run_resource_task(
+                    ctx,
+                    vec![DefaultShellResource::new(
+                        "zsh".to_string(),
+                        ctx.executor_arc(),
+                        std::sync::Arc::clone(ctx.env()),
+                    )],
+                    &ProcessOpts::strict("configure"),
+                )
+            },
         )
     }
 }

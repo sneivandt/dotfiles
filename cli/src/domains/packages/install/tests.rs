@@ -1567,14 +1567,17 @@ fn consumers_are_released_only_when_inventory_and_paru_prove_no_package_work() {
             }
         }
         let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock);
-        assert_eq!(
-            package_work_is_current(
-                &ctx,
-                packages(&[("native-tool", false), ("aur-tool", true)]).get()
+        let state =
+            package_stability_requirement(packages(&[("native-tool", false), ("aur-tool", true)]))
+                .check(&ctx, crate::engine::RequirementStage::Ordering);
+        match case {
+            "current" => assert!(matches!(state, RequirementState::Satisfied(()))),
+            "database-error" => assert!(matches!(state, RequirementState::Unknown { .. })),
+            _ => assert!(
+                matches!(state, RequirementState::Unsatisfied { .. }),
+                "{case}: {state:?}"
             ),
-            case == "current",
-            "{case}"
-        );
+        }
     }
 }
 
@@ -1588,9 +1591,10 @@ fn consumer_package_readiness_retains_waits_without_a_supported_manager() {
             .return_const(false);
         // No inventory or health command may run without a supported manager.
         let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, arch, mock);
-        assert!(!package_work_is_current(
-            &ctx,
-            packages(&[("tool", false)]).get()
+        assert!(matches!(
+            package_stability_requirement(packages(&[("tool", false)]))
+                .check(&ctx, crate::engine::RequirementStage::Ordering),
+            RequirementState::Unsatisfied { .. },
         ));
     }
 }

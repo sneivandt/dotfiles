@@ -2,7 +2,8 @@
 name: engine-orchestration
 description: >
   Use for task graph and execution changes in cli/src/engine/, command task
-  membership, dependencies, access claims, startup runtime policy, task discovery, restart boundaries, Operation plans,
+  membership, dependencies, access claims, Requirement probes, startup runtime
+  policy, task discovery, restart boundaries, Operation plans,
   ProcessMode, or task/resource parallelism. Not for a standalone Resource.
 ---
 
@@ -15,6 +16,8 @@ description: >
 | identity, eligibility, elevation, dependencies | `Task` |
 | independent items with separate state | `Resource` |
 | one idempotent multi-step workflow | `Operation` |
+| read-only prerequisites and their resolved inputs | `Requirement` |
+| exclusive access to shared state | `AccessClaim` |
 | pure parsing or transformation | plain module/function |
 
 Use `resource-implementation` for a concrete resource that does not alter
@@ -42,8 +45,9 @@ the resolved non-interactive policy; window detection remains in elevation.
   domain imports.
 - `dependencies()` block on predecessor failure.
   `ordering_dependencies()` wait without propagating failure.
-- Conditional ordering belongs in `TaskWithExtraDeps`: consumer readiness and
-  application-owned provider probes populate `TaskAssessment` once per phase.
+- Conditional ordering belongs in `TaskWithExtraDeps`: a nonempty set of
+  `Task::ordering_requirements()` plus an application-selected provider-stability
+  requirement must all hold to populate `TaskAssessment` once per phase.
   Execution uses `ResolvedTaskGraph::resolve_assessed`; static discovery and
   selection retain all declared edges. Never waive blocking edges or perform
   mutations in readiness probes. Unknown state retains the wait.
@@ -73,6 +77,11 @@ the resolved non-interactive policy; window detection remains in elevation.
   handwritten declarations.
 - Use `process_resources*()` for item-shaped work.
 - Use `Operation` plus `process_operation()` for workflow-shaped work.
+- Use `Requirement` plus `process_requirement()` inside `run()` for execution
+  prerequisites. Probes are read-only and stage-aware (`Ordering`, `Preview`,
+  `Apply`); consume their typed evidence instead of querying again. Missing
+  inputs are unmet work; unknown inspection errors retain their typed cause.
+  Never reuse ordering evidence during execution or provision hidden tasks.
 - An operation computes one immutable plan in `current_state()` and passes that
   exact plan to `preview()` or `apply()`; never recompute it.
 - `ConfigHandle::get()` borrows the immutable snapshot; clone the handle when
@@ -98,7 +107,8 @@ the resolved non-interactive policy; window detection remains in elevation.
 Use the matching `ProcessOpts` constructor and an existing canonical verb.
 Lenient continuation never erases failed-item accounting.
 
-Read [operation lifecycle](../../../cli/src/engine/operation.rs) and
+Read [requirement lifecycle](../../../cli/src/engine/requirement.rs),
+[operation lifecycle](../../../cli/src/engine/operation.rs) and
 [processing modes](../../../cli/src/engine/mode.rs) when changing convergence.
 Cover selection (`--only`, `--skip`, update-only membership), dependency failure,
 ordering-only continuation, internal visibility, and sequential/parallel parity

@@ -785,11 +785,47 @@ fn early_apm_readiness_retains_waits_without_apm_or_with_uncertain_targets() {
             // deterministic lookup error without relying on user permissions.
             std::fs::write(dir.path().join(".copilot"), "not a directory").unwrap();
         }
+
         let ctx = linux_context(dir.path(), mock);
-        assert_eq!(
-            install_task().prerequisites_available(&ctx),
-            case == "ready",
-            "{case}"
-        );
+        let task = install_task();
+        let requirements = task.ordering_requirements();
+        let state = requirements[0].check(&ctx, crate::engine::RequirementStage::Ordering);
+        match case {
+            "ready" => assert!(matches!(
+                state,
+                crate::engine::RequirementState::Satisfied(())
+            )),
+            "missing-apm" => assert!(matches!(
+                state,
+                crate::engine::RequirementState::Unsatisfied { .. }
+            )),
+            _ => assert!(matches!(
+                state,
+                crate::engine::RequirementState::Unknown { .. }
+            )),
+        }
     }
+}
+
+#[test]
+fn missing_apm_blocks_ordering_and_update_preview_but_not_install_preview() {
+    use crate::engine::{RequirementStage, RequirementState};
+
+    let dir = tempfile::tempdir_in(".").unwrap();
+    write_default_home_fragment(dir.path());
+    let mut mock = MockExecutor::new();
+    mock.expect_which()
+        .times(2)
+        .with(mockall::predicate::eq("apm"))
+        .return_const(false);
+    let ctx = linux_context(dir.path(), mock).with_dry_run(true);
+    let install = install_task();
+    assert!(matches!(
+        install.ordering_requirements()[0].check(&ctx, RequirementStage::Ordering),
+        RequirementState::Unsatisfied { .. },
+    ));
+    assert_task_changed(&install.run(&ctx).unwrap());
+    assert!(task_skipped(&update_task().run(&ctx).unwrap()).contains("apm not found"));
+    assert!(!dir.path().join(".apm/apm.yml").exists());
+    assert!(!dir.path().join(".apm/apm.lock.yaml").exists());
 }

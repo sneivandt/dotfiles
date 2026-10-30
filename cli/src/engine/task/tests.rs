@@ -843,8 +843,14 @@ fn conditional_ordering_is_assessed_once_without_changing_static_edges() {
         fn meta(&self) -> TaskMeta<'_> {
             TaskMeta::new("ready consumer")
         }
-        fn prerequisites_available(&self, _ctx: &Context) -> bool {
-            self.0
+        fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+            vec![Requirement::new("consumer-input", |_, _| {
+                Ok(if self.0 {
+                    crate::engine::RequirementState::Satisfied(())
+                } else {
+                    crate::engine::RequirementState::unsatisfied("consumer not ready")
+                })
+            })]
         }
         fn run(&self, _ctx: &Context) -> Result<TaskResult> {
             Ok(TaskResult::Ok)
@@ -865,10 +871,17 @@ fn conditional_ordering_is_assessed_once_without_changing_static_edges() {
                 &[],
                 std::slice::from_ref(&id),
             )
-            .with_conditional_ordering(std::slice::from_ref(&id), move |_| {
-                count.fetch_add(1, Ordering::SeqCst);
-                provider_ready
-            });
+            .with_conditional_ordering(
+                std::slice::from_ref(&id),
+                Requirement::new("provider-stable", move |_, _| {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    Ok(if provider_ready {
+                        crate::engine::RequirementState::Satisfied(())
+                    } else {
+                        crate::engine::RequirementState::unsatisfied("provider has pending work")
+                    })
+                }),
+            );
             let assessment = task.assess(&ctx);
             assert_eq!(
                 assessment.ordering_satisfied(&id),
@@ -893,6 +906,50 @@ fn default_readiness_keeps_conditional_dependencies() {
         &[],
         std::slice::from_ref(&dependency),
     )
-    .with_conditional_ordering(std::slice::from_ref(&dependency), |_| true);
+    .with_conditional_ordering(
+        std::slice::from_ref(&dependency),
+        Requirement::new("provider-stable", |_, _| {
+            panic!("without consumer requirements, provider proof must not be queried")
+        }),
+    );
     assert!(!task.assess(&ctx).ordering_satisfied(&dependency));
+}
+
+#[test]
+fn unknown_consumer_or_provider_requirements_never_waive_ordering() {
+    struct Consumer(bool);
+    impl Task for Consumer {
+        fn meta(&self) -> TaskMeta<'_> {
+            TaskMeta::new("consumer")
+        }
+        fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+            vec![Requirement::new("consumer-input", |_, _| {
+                anyhow::ensure!(!self.0, "cannot inspect consumer");
+                Ok(crate::engine::RequirementState::Satisfied(()))
+            })]
+        }
+        fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+            panic!("assessment must never execute the task")
+        }
+    }
+    let (ctx, _) = make_static_context("/tmp".into(), None);
+    for consumer_unknown in [false, true] {
+        let dependency = TaskId::Type(TypeId::of::<DummyResource>());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let probe_calls = Arc::clone(&calls);
+        let task = TaskWithExtraDeps::new(
+            Box::new(Consumer(consumer_unknown)),
+            &[],
+            std::slice::from_ref(&dependency),
+        )
+        .with_conditional_ordering(
+            std::slice::from_ref(&dependency),
+            Requirement::new("provider-stable", move |_, _| {
+                probe_calls.fetch_add(1, Ordering::SeqCst);
+                anyhow::bail!("cannot inspect provider")
+            }),
+        );
+        assert!(!task.assess(&ctx).ordering_satisfied(&dependency));
+        assert_eq!(calls.load(Ordering::SeqCst), usize::from(!consumer_unknown));
+    }
 }

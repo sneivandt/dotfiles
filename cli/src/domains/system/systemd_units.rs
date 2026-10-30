@@ -7,8 +7,8 @@ use anyhow::{Context as _, Result};
 use crate::domains::system::config::systemd_units::{SystemdUnit, UnitScope};
 use crate::domains::system::resources::systemd_unit::SystemdUnitResource;
 use crate::engine::{
-    Context, IntrinsicState, ProcessOpts, ResourceState, Task, TaskMeta, TaskResult,
-    process_resources,
+    Context, IntrinsicState, ProcessOpts, Requirement, RequirementState, ResourceState, Task,
+    TaskMeta, TaskResult, process_requirement, process_resources,
 };
 use crate::infra::exec::CommandSpec;
 use crate::infra::logging::OutputExt as _;
@@ -31,25 +31,42 @@ impl Task for ConfigureSystemd {
         system_unit_needs_change(ctx, self.config.get())
     }
 
-    fn prerequisites_available(&self, ctx: &Context) -> bool {
-        if !ctx.which("systemctl") || !systemd_available(ctx) {
-            return false;
-        }
-        let user_manager = user_manager_available(ctx, self.config.get());
-        // Only waive package waits for units already fully converged. Missing,
-        // inactive or uncertain units may still need package-provided inputs.
-        self.config.get().iter().all(|entry| {
-            matches!(
-                SystemdUnitResource::from_entry(
-                    entry,
-                    ctx.executor_arc(),
-                    ctx.home(),
-                    user_manager,
-                )
-                .current_state(),
-                Ok(ResourceState::Correct)
-            )
-        })
+    fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+        vec![
+            systemctl_requirement(),
+            Requirement::new("systemd-units-current", |ctx, _| {
+                if !systemd_available(ctx)? {
+                    return Ok(RequirementState::unsatisfied("systemd unavailable"));
+                }
+                let user_manager = user_manager_available(ctx, self.config.get())?;
+                // Non-current units may still need package-provided inputs.
+                for entry in self.config.get() {
+                    match SystemdUnitResource::from_entry(
+                        entry,
+                        ctx.executor_arc(),
+                        ctx.home(),
+                        user_manager,
+                    )
+                    .current_state()
+                    .with_context(|| format!("checking systemd unit {}", entry.name))?
+                    {
+                        ResourceState::Correct => {}
+                        ResourceState::Unknown { reason } => {
+                            anyhow::bail!("{}: {reason}", entry.name)
+                        }
+                        state @ (ResourceState::Missing
+                        | ResourceState::Incorrect { .. }
+                        | ResourceState::Invalid { .. }) => {
+                            return Ok(RequirementState::unsatisfied(format!(
+                                "{} is {state}",
+                                entry.name
+                            )));
+                        }
+                    }
+                }
+                Ok(RequirementState::Satisfied(()))
+            }),
+        ]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -57,32 +74,35 @@ impl Task for ConfigureSystemd {
         if units.is_empty() {
             return Ok(TaskResult::NotApplicable("nothing configured".to_string()));
         }
-        if !ctx.which("systemctl") {
-            return Ok(TaskResult::unmet("systemctl unavailable"));
-        }
-        if !systemd_available(ctx) {
-            return Ok(TaskResult::NotApplicable("systemd unavailable".to_string()));
-        }
+        process_requirement(ctx, &systemctl_requirement(), |()| {
+            if !systemd_available(ctx)? {
+                return Ok(TaskResult::NotApplicable("systemd unavailable".to_string()));
+            }
 
-        let user_manager_available = user_manager_available(ctx, units);
-        let system_reload_required = system_unit_needs_change(ctx, units);
-        reload_daemons(ctx, user_manager_available, system_reload_required)?;
+            let user_manager_available = user_manager_available(ctx, units)?;
+            let system_reload_required = system_unit_needs_change(ctx, units);
+            reload_daemons(ctx, user_manager_available, system_reload_required)?;
 
-        let executor = ctx.executor_arc();
-        let resources = units.iter().map(|entry| {
-            SystemdUnitResource::from_entry(
-                entry,
-                Arc::clone(&executor),
-                ctx.home(),
-                user_manager_available,
+            let executor = ctx.executor_arc();
+            let resources = units.iter().map(|entry| {
+                SystemdUnitResource::from_entry(
+                    entry,
+                    Arc::clone(&executor),
+                    ctx.home(),
+                    user_manager_available,
+                )
+            });
+            process_resources(
+                ctx,
+                resources,
+                &ProcessOpts::lenient("configure").sequential(),
             )
-        });
-        process_resources(
-            ctx,
-            resources,
-            &ProcessOpts::lenient("configure").sequential(),
-        )
+        })
     }
+}
+
+fn systemctl_requirement() -> Requirement<'static> {
+    Requirement::command("systemctl", "systemctl", "systemctl unavailable")
 }
 
 fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
@@ -99,44 +119,49 @@ fn system_unit_needs_change(ctx: &Context, units: &[SystemdUnit]) -> bool {
         })
 }
 
-fn systemd_available(ctx: &Context) -> bool {
+fn systemd_available(ctx: &Context) -> Result<bool> {
     if ctx.platform().is_wsl() {
-        ctx.executor()
-            .execute(
-                CommandSpec::new("systemctl")
-                    .arg("is-system-running")
-                    .unchecked(),
-            )
-            .is_ok_and(|result| result.success || result.stdout.trim() == "degraded")
+        let result = ctx.executor().execute(
+            CommandSpec::new("systemctl")
+                .arg("is-system-running")
+                .unchecked(),
+        )?;
+        anyhow::ensure!(
+            result.code.is_some(),
+            "systemd availability probe terminated without an exit code"
+        );
+        Ok(result.success || result.stdout.trim() == "degraded")
     } else {
-        true
+        Ok(true)
     }
 }
 
-fn user_manager_available(ctx: &Context, units: &[SystemdUnit]) -> bool {
+fn user_manager_available(ctx: &Context, units: &[SystemdUnit]) -> Result<bool> {
     if !units.iter().any(|unit| unit.scope == UnitScope::User) {
-        return false;
+        return Ok(false);
     }
     if crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()) {
         ctx.log().debug(
             "Arch chroot provisioning has no user session; enabling user units offline for the next login",
         );
-        return false;
+        return Ok(false);
     }
-    let available = ctx
-        .executor()
-        .execute(
-            CommandSpec::new("systemctl")
-                .args(&["--user", "show-environment"])
-                .unchecked(),
-        )
-        .is_ok_and(|result| result.success);
+    let result = ctx.executor().execute(
+        CommandSpec::new("systemctl")
+            .args(&["--user", "show-environment"])
+            .unchecked(),
+    )?;
+    anyhow::ensure!(
+        result.code.is_some(),
+        "user systemd manager probe terminated without an exit code"
+    );
+    let available = result.success;
     if !available {
         ctx.log().debug(
             "user systemd manager unavailable; enabling user units offline for the next login",
         );
     }
-    available
+    Ok(available)
 }
 
 fn reload_daemons(

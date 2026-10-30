@@ -15,7 +15,10 @@ use super::manifest::{
 use super::skip;
 use super::targets::missing_apm_reason;
 use super::update::preview_apm_update;
-use crate::engine::{Context, Task, TaskMeta, TaskResult, TaskStats};
+use crate::engine::{
+    Context, Requirement, RequirementStage, RequirementState, Task, TaskMeta, TaskResult,
+    TaskStats, process_requirement,
+};
 use crate::infra::ConfigHandle;
 use crate::infra::logging::OutputExt as _;
 
@@ -71,26 +74,37 @@ impl Task for InstallApmPackages {
         apm_task_should_run(ctx, self.fragments.get())
     }
 
-    fn prerequisites_available(&self, ctx: &Context) -> bool {
-        ctx.which("apm") && ManagedTargets::detect(ctx).is_ok()
+    fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+        vec![environment_requirement(self.mode).without_evidence()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        if (!ctx.dry_run() || self.mode == ApmPackageMode::UpdatePins) && !ctx.which("apm") {
-            return Ok(skip(missing_apm_reason(ctx)));
-        }
+        process_requirement(ctx, &environment_requirement(self.mode), |targets| {
+            let fragments = discover_effective_fragment_files(ctx.home(), self.fragments.get())?;
+            if fragments.is_empty() {
+                return Ok(skip("no manifest fragments found under ~/.apm/config/"));
+            }
 
-        let fragments = discover_effective_fragment_files(ctx.home(), self.fragments.get())?;
-        if fragments.is_empty() {
-            return Ok(skip("no manifest fragments found under ~/.apm/config/"));
-        }
-
-        let plan = ApmInstallPlan::build(ctx, &fragments, self.mode)?;
-        if ctx.dry_run() {
-            return plan.preview(ctx);
-        }
-        plan.apply(ctx)
+            let plan = ApmInstallPlan::build(ctx, &fragments, self.mode, targets)?;
+            if ctx.dry_run() {
+                return plan.preview(ctx);
+            }
+            plan.apply(ctx)
+        })
     }
+}
+
+fn environment_requirement(mode: ApmPackageMode) -> Requirement<'static, ManagedTargets> {
+    Requirement::new("apm-environment", move |ctx, stage| {
+        // Install previews render a local plan without invoking APM. Ordering
+        // proof and pin-update previews still require the executable.
+        if (stage != RequirementStage::Preview || mode == ApmPackageMode::UpdatePins)
+            && !ctx.which("apm")
+        {
+            return Ok(RequirementState::unsatisfied(missing_apm_reason(ctx)));
+        }
+        Ok(RequirementState::Satisfied(ManagedTargets::detect(ctx)?))
+    })
 }
 
 #[derive(Debug)]
@@ -105,14 +119,19 @@ struct ApmInstallPlan {
 }
 
 impl ApmInstallPlan {
-    fn build(ctx: &Context, fragments: &[PathBuf], mode: ApmPackageMode) -> Result<Self> {
+    fn build(
+        ctx: &Context,
+        fragments: &[PathBuf],
+        mode: ApmPackageMode,
+        targets: ManagedTargets,
+    ) -> Result<Self> {
         let apm_dir = ctx.home().join(".apm");
         let manifest_path = apm_dir.join("apm.yml");
         let lock_path = apm_dir.join("apm.lock.yaml");
         let merged = merge_fragments(fragments)?;
         let manifest_needs_write = merged_manifest_needs_write(&manifest_path, &merged)?;
         Ok(Self {
-            targets: ManagedTargets::detect(ctx)?,
+            targets,
             fragment_count: fragments.len(),
             manifest_path,
             lock_path,

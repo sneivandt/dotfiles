@@ -47,8 +47,9 @@ reinstallation of everything.
   packages without inheriting unrelated package failures. AUR dry-run queries
   pacman's database without requiring a helper that bootstrap only previewed.
 - Consumer tasks can waive application-selected package ordering edges only
-  after readiness and read-only inventory prove no package install or Paru
-  rebuild is needed. Failed inventory is uncertainty, not proof of no work.
+  after their ordering requirements and `package_stability_requirement` prove
+  no package install or Paru rebuild is needed. Failed inventory is unknown
+  readiness with its cause retained, not proof of no work.
   Preserve ordinary waits on unsupported managers and fresh provisioning.
 - Winget uses exact IDs, prefers user scope, and retries unscoped only when no
   user-scope installer exists. Privilege and policy refusals return

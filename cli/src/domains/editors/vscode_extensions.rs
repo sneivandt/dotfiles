@@ -4,8 +4,8 @@ use crate::domains::editors::resources::vscode_extension::{
     VsCodeExtensionResource, find_code_command, get_installed_extensions,
 };
 use crate::engine::{
-    Context, ProcessOpts, Task, TaskResult, process_resources, process_resources_with_cache,
-    task_metadata,
+    Context, ProcessOpts, Requirement, RequirementState, Task, TaskResult, process_requirement,
+    process_resources, process_resources_with_cache, task_metadata,
 };
 use crate::infra::logging::OutputExt as _;
 use anyhow::Result;
@@ -26,9 +26,8 @@ impl Task for InstallVsCodeExtensions {
         !self.config.get().is_empty()
     }
 
-    fn prerequisites_available(&self, ctx: &Context) -> bool {
-        !crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref())
-            && find_code_command(ctx.executor()).is_some()
+    fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+        vec![launcher_requirement().without_evidence()]
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
@@ -42,36 +41,49 @@ impl Task for InstallVsCodeExtensions {
                 &ProcessOpts::install_missing("defer").sequential(),
             );
         }
-        let Some(cmd) = find_code_command(ctx.executor()) else {
-            ctx.log().debug("no VS Code CLI launcher found in PATH");
-            return Ok(TaskResult::unmet("VS Code CLI not found"));
-        };
+        process_requirement(ctx, &launcher_requirement(), |cmd| {
+            ctx.debug_fmt(|| format!("using VS Code CLI: {cmd}"));
+            let extensions = self.config.get();
+            ctx.trace_fmt(|| {
+                format!(
+                    "batch-checking {} extensions with a single query",
+                    extensions.len()
+                )
+            });
+            let installed = get_installed_extensions(&cmd, ctx.executor())?;
 
-        ctx.debug_fmt(|| format!("using VS Code CLI: {cmd}"));
-        let extensions = self.config.get();
-        ctx.trace_fmt(|| {
-            format!(
-                "batch-checking {} extensions with a single query",
-                extensions.len()
+            let mut seen = HashSet::new();
+            let resources = extensions
+                .iter()
+                .filter(|id| seen.insert(id.to_lowercase()))
+                .map(|id| {
+                    VsCodeExtensionResource::new(id.clone(), cmd.clone(), ctx.executor_arc())
+                });
+            process_resources_with_cache(
+                ctx,
+                resources,
+                &installed,
+                |resource: &VsCodeExtensionResource, installed: &HashSet<String>| {
+                    Ok(resource.state_from_installed(installed))
+                },
+                &ProcessOpts::install_missing("install"),
             )
-        });
-        let installed = get_installed_extensions(&cmd, ctx.executor())?;
-
-        let mut seen = HashSet::new();
-        let resources = extensions
-            .iter()
-            .filter(|id| seen.insert(id.to_lowercase()))
-            .map(|id| VsCodeExtensionResource::new(id.clone(), cmd.clone(), ctx.executor_arc()));
-        process_resources_with_cache(
-            ctx,
-            resources,
-            &installed,
-            |resource: &VsCodeExtensionResource, installed: &HashSet<String>| {
-                Ok(resource.state_from_installed(installed))
-            },
-            &ProcessOpts::install_missing("install"),
-        )
+        })
     }
+}
+
+fn launcher_requirement() -> Requirement<'static, String> {
+    Requirement::new("vscode-launcher", |ctx, _| {
+        if crate::infra::provisioning::is_arch_chroot(ctx.env().as_ref()) {
+            return Ok(RequirementState::unsatisfied(
+                "VS Code extensions require a real user session",
+            ));
+        }
+        Ok(find_code_command(ctx.executor())?.map_or_else(
+            || RequirementState::unsatisfied("VS Code CLI not found"),
+            RequirementState::Satisfied,
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -133,6 +145,10 @@ mod tests {
                 "code-insiders"
             };
             let expected_launcher = launcher.clone();
+            mock.expect_which()
+                .times(if dry_run { 1 } else { 2 })
+                .withf(move |program| program == command)
+                .return_const(true);
             mock.expect_which_path()
                 .times(if dry_run { 1 } else { 2 })
                 .withf(move |program| program == command)
@@ -311,7 +327,7 @@ mod tests {
         for (chroot, available) in [(false, false), (false, true), (true, true)] {
             let root = tempfile::tempdir().unwrap();
             let mut mock = MockExecutor::new();
-            mock.expect_which_path()
+            mock.expect_which()
                 .times(if chroot {
                     0
                 } else if available {
@@ -319,13 +335,10 @@ mod tests {
                 } else {
                     2
                 })
-                .returning(move |program| {
-                    if available {
-                        Ok(PathBuf::from(program))
-                    } else {
-                        anyhow::bail!("fixture launcher unavailable")
-                    }
-                });
+                .return_const(available);
+            mock.expect_which_path()
+                .times(usize::from(!chroot && available))
+                .returning(|program| Ok(PathBuf::from(program)));
             let env = MapEnv::new().with(
                 crate::infra::provisioning::ENV_VAR,
                 if chroot {
@@ -343,7 +356,10 @@ mod tests {
             .with_env(env.into_handle());
             let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
             assert_eq!(
-                task.prerequisites_available(&ctx),
+                crate::engine::requirement::ordering_requirements_satisfied(
+                    &ctx,
+                    &task.ordering_requirements(),
+                ),
                 !chroot && available,
                 "chroot={chroot}, available={available}"
             );

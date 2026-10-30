@@ -20,7 +20,8 @@ use std::any::TypeId;
 
 use anyhow::Result;
 
-use super::{AccessClaim, Context, TaskResult};
+use super::requirement::ordering_requirements_satisfied;
+use super::{AccessClaim, Context, Requirement, TaskResult};
 
 /// A named, executable task.
 ///
@@ -140,11 +141,13 @@ pub trait Task: Send + Sync + 'static {
         false
     }
 
-    /// Read-only readiness for application-selected conditional ordering edges.
-    /// False or uncertain readiness retains the declared waits. Runtime checks
-    /// remain authoritative after provider tasks have finished.
-    fn prerequisites_available(&self, _ctx: &Context) -> bool {
-        false
+    /// Conditions proving application-selected ordering waits may be waived.
+    ///
+    /// Empty, unmet or unknown requirements retain the declared waits. These
+    /// observations are not execution evidence: use [`crate::engine::process_requirement`]
+    /// in the task body to recheck runtime inputs after dependencies finish.
+    fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+        Vec::new()
     }
 
     /// Assess this task once for the current execution phase.
@@ -199,11 +202,9 @@ pub struct TaskWithExtraDeps {
     conditional_ordering: Option<ConditionalOrdering>,
 }
 
-type ReadinessProbe = dyn Fn(&Context) -> bool + Send + Sync;
-
 struct ConditionalOrdering {
     ids: Vec<TaskId>,
-    providers_ready: Box<ReadinessProbe>,
+    provider_stability: Requirement<'static>,
 }
 
 impl TaskWithExtraDeps {
@@ -227,16 +228,17 @@ impl TaskWithExtraDeps {
         }
     }
 
-    /// Waive selected ordering edges only when providers and consumer are ready.
+    /// Waive selected ordering edges only when consumer requirements hold and
+    /// the provider requirement proves their inputs will remain stable.
     #[must_use]
     pub fn with_conditional_ordering(
         mut self,
         ids: &[TaskId],
-        providers_ready: impl Fn(&Context) -> bool + Send + Sync + 'static,
+        provider_stability: Requirement<'static>,
     ) -> Self {
         self.conditional_ordering = Some(ConditionalOrdering {
             ids: ids.to_vec(),
-            providers_ready: Box::new(providers_ready),
+            provider_stability,
         });
         self
     }
@@ -302,16 +304,19 @@ impl Task for TaskWithExtraDeps {
         self.inner.needs_elevation(ctx)
     }
 
-    fn prerequisites_available(&self, ctx: &Context) -> bool {
-        self.inner.prerequisites_available(ctx)
+    fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
+        self.inner.ordering_requirements()
     }
 
     fn assess(&self, ctx: &Context) -> TaskAssessment {
         let assessment = self.inner.assess(ctx);
         if assessment.is_applicable()
             && let Some(conditional) = &self.conditional_ordering
-            && self.inner.prerequisites_available(ctx)
-            && (conditional.providers_ready)(ctx)
+            && ordering_requirements_satisfied(ctx, &self.inner.ordering_requirements())
+            && ordering_requirements_satisfied(
+                ctx,
+                std::slice::from_ref(&conditional.provider_stability),
+            )
         {
             return assessment.with_satisfied_ordering(&conditional.ids);
         }

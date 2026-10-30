@@ -1,6 +1,8 @@
 //! Mode-independent readiness, outcomes, cancellation, and phase boundaries.
 
 use super::*;
+use crate::engine::{Requirement, RequirementState, process_requirement};
+use std::sync::atomic::AtomicBool;
 
 #[test]
 fn claims_do_not_propagate_failures_and_are_released_after_errors_and_panics() {
@@ -581,4 +583,166 @@ fn conditional_ordering_applies_to_prior_phase_outcomes() {
         );
         summary
     });
+}
+
+struct RequirementProvider {
+    available: Arc<AtomicBool>,
+    after: bool,
+    fails: bool,
+}
+
+impl Task for RequirementProvider {
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("input provider")
+    }
+
+    fn run(&self, _ctx: &Context) -> Result<TaskResult> {
+        self.available.store(self.after, Ordering::SeqCst);
+        anyhow::ensure!(!self.fails, "unrelated provider work failed");
+        Ok(TaskResult::Ok)
+    }
+}
+
+struct RequirementConsumer {
+    available: Arc<AtomicBool>,
+    deps: Vec<TaskId>,
+    blocking: bool,
+    unknown: bool,
+    probes: AtomicUsize,
+    mutations: AtomicUsize,
+}
+
+impl Task for RequirementConsumer {
+    fn meta(&self) -> TaskMeta<'_> {
+        TaskMeta::new("input consumer")
+    }
+
+    fn dependencies(&self) -> &[TaskId] {
+        if self.blocking { &self.deps } else { &[] }
+    }
+
+    fn ordering_dependencies(&self) -> &[TaskId] {
+        if self.blocking { &[] } else { &self.deps }
+    }
+
+    fn run(&self, ctx: &Context) -> Result<TaskResult> {
+        process_requirement(
+            ctx,
+            &Requirement::new("fixture-input", |_, _| {
+                self.probes.fetch_add(1, Ordering::SeqCst);
+                if self.unknown {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "probe refused",
+                    )
+                    .into());
+                }
+                Ok(if self.available.load(Ordering::SeqCst) {
+                    RequirementState::Satisfied(())
+                } else {
+                    RequirementState::unsatisfied("fixture input unavailable")
+                })
+            }),
+            |()| {
+                self.mutations.fetch_add(1, Ordering::SeqCst);
+                Ok(TaskResult::Ok)
+            },
+        )
+    }
+}
+
+#[test]
+fn requirements_check_actual_inputs_after_selected_providers_finish() {
+    use TaskOutcome::{Blocked, Failed, Satisfied, Unmet};
+    for (case, initial, provider_result, blocking, unknown, expected) in [
+        ("preinstalled", true, None, false, false, Satisfied),
+        ("missing, no provider", false, None, false, false, Unmet),
+        (
+            "provider supplies input",
+            false,
+            Some((true, false)),
+            false,
+            false,
+            Satisfied,
+        ),
+        (
+            "success without input",
+            false,
+            Some((false, false)),
+            false,
+            false,
+            Unmet,
+        ),
+        (
+            "usable after failure",
+            false,
+            Some((true, true)),
+            false,
+            false,
+            Satisfied,
+        ),
+        (
+            "input invalidated",
+            true,
+            Some((false, false)),
+            false,
+            false,
+            Unmet,
+        ),
+        ("probe failed", true, None, false, true, Failed),
+        (
+            "blocking failure",
+            true,
+            Some((true, true)),
+            true,
+            false,
+            Blocked,
+        ),
+    ] {
+        conformance(case, |mode, ctx, log| {
+            let available = Arc::new(AtomicBool::new(initial));
+            let (after, fails) = provider_result.unwrap_or((initial, false));
+            let provider = RequirementProvider {
+                available: Arc::clone(&available),
+                after,
+                fails,
+            };
+            let consumer = RequirementConsumer {
+                available,
+                deps: vec![provider.task_id()],
+                blocking,
+                unknown,
+                probes: AtomicUsize::new(0),
+                mutations: AtomicUsize::new(0),
+            };
+            let mut tasks: Vec<&dyn Task> = vec![&consumer];
+            if provider_result.is_some() {
+                tasks.push(&provider);
+            }
+            let summary = mode.run(&tasks, ctx, log, None);
+            assert_eq!(
+                summary.outcome(&consumer.task_id()),
+                Some(expected),
+                "{case}"
+            );
+            assert_eq!(
+                consumer.probes.load(Ordering::SeqCst),
+                usize::from(expected != Blocked),
+                "{case}: inspect once, only after dependencies allow execution",
+            );
+            assert_eq!(
+                consumer.mutations.load(Ordering::SeqCst),
+                usize::from(expected == Satisfied),
+                "{case}: never mutate without proof",
+            );
+            if fails {
+                assert_eq!(
+                    summary.failure_count(),
+                    1,
+                    "{case}: retain the provider failure"
+                );
+            }
+            summary
+        });
+    }
 }

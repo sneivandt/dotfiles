@@ -230,6 +230,10 @@ fn cancellation_stops_a_claim_wait_without_discovery_or_releasing_the_holder() {
         assert_eq!(report.not_attempted_count(), 1);
     });
     assert_eq!(active.load(Ordering::SeqCst), 0);
+    assert!(
+        ctx.wait_for_access().is_err(),
+        "context must propagate cancellation rather than busy-spin"
+    );
     assert!(ctx.try_access(&[claim("document")]).is_none());
     drop(holder);
     assert!(ctx.try_access(&[claim("document")]).is_some());

@@ -116,7 +116,7 @@ pub(super) struct BatchProgress {
 
 impl BatchProgress {
     pub(super) const fn stopped(&self) -> bool {
-        self.error.is_some() || self.not_attempted > 0
+        self.error.is_some()
     }
 
     /// Record a dispatched resource, returning whether dispatch should stop.

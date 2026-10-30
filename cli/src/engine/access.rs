@@ -148,6 +148,16 @@ mod tests {
     }
 
     #[test]
+    fn cancelled_waits_fail_without_reserving_access() {
+        let registry = Arc::new(AccessRegistry::default());
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        assert!(registry.wait(&cancelled).is_err());
+        assert!(registry.acquire(&[claim("document")], &cancelled).is_err());
+        assert!(registry.try_acquire(&[claim("document")]).is_some());
+    }
+
+    #[test]
     fn unwinding_releases_claims() {
         let registry = Arc::new(AccessRegistry::default());
         let result = std::panic::catch_unwind(|| {

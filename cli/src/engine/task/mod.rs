@@ -111,7 +111,7 @@ pub trait Task: Send + Sync + 'static {
     /// waits. Claims do not imply ordering or dependency failure propagation.
     /// Nested resources must claim only keys declared here when this is nonempty.
     fn access_claims(&self, _ctx: &Context) -> Vec<AccessClaim> {
-        Vec::new()
+        vec![]
     }
 
     /// Persistent identity across rebuilds. Display labels do not affect it.
@@ -147,7 +147,7 @@ pub trait Task: Send + Sync + 'static {
     /// observations are not execution evidence: use [`crate::engine::process_requirement`]
     /// in the task body to recheck runtime inputs after dependencies finish.
     fn ordering_requirements(&self) -> Vec<Requirement<'_>> {
-        Vec::new()
+        vec![]
     }
 
     /// Assess this task once for the current execution phase.

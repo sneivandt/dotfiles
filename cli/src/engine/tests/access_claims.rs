@@ -1,7 +1,7 @@
 //! Exclusive access across complete resource lifecycles and execution pools.
 
 use std::sync::{
-    Arc, Barrier,
+    Arc,
     atomic::{AtomicUsize, Ordering},
     mpsc,
 };
@@ -25,7 +25,7 @@ fn context() -> Context {
 struct Probe {
     claims: Vec<AccessClaim>,
     active: Arc<AtomicUsize>,
-    overlap: Option<Arc<Barrier>>,
+    overlap: Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>,
     fail: Option<&'static str>,
     removal: bool,
 }
@@ -74,8 +74,10 @@ impl IntrinsicState for Probe {
             0,
             "discovery must not overlap a conflicting lifecycle"
         );
-        if let Some(barrier) = &self.overlap {
-            barrier.wait();
+        if let Some((entered, peer)) = &self.overlap {
+            entered.send(()).map_err(anyhow::Error::from)?;
+            peer.recv_timeout(Duration::from_secs(5))
+                .map_err(anyhow::Error::from)?;
         }
         Ok(if self.removal {
             ResourceState::Correct
@@ -131,15 +133,28 @@ fn independent_resources_can_discover_concurrently() {
         .num_threads(2)
         .build()
         .unwrap();
-    let barrier = Arc::new(Barrier::new(2));
-    let resources = ["copilot-document", "codex-document"].map(|key| {
-        let mut probe = Probe::new(key, &Arc::new(AtomicUsize::new(0)));
-        probe.overlap = Some(Arc::clone(&barrier));
-        probe
-    });
-    let _result = pool.install(|| {
-        process_resources(&context(), resources, &ProcessOpts::strict("configure")).unwrap()
-    });
+    for remove in [false, true] {
+        let (left_tx, left_rx) = mpsc::channel();
+        let (right_tx, right_rx) = mpsc::channel();
+        let resources = [
+            ("copilot-document", (left_tx, right_rx)),
+            ("codex-document", (right_tx, left_rx)),
+        ]
+        .map(|(key, overlap)| {
+            let mut probe = Probe::new(key, &Arc::new(AtomicUsize::new(0)));
+            probe.overlap = Some(overlap);
+            probe.removal = remove;
+            probe
+        });
+        let _result = pool.install(|| {
+            if remove {
+                process_resources_remove(&context(), resources, "remove")
+            } else {
+                process_resources(&context(), resources, &ProcessOpts::strict("configure"))
+            }
+            .unwrap()
+        });
+    }
 }
 
 #[test]

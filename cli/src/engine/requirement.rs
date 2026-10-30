@@ -198,6 +198,11 @@ mod tests {
                     "/fixture/launcher",
                 )))
             });
+            assert_eq!(
+                format!("{requirement:?}"),
+                "Requirement { id: \"resolved-launcher\" }",
+                "diagnostic formatting identifies the requirement without exposing its probe"
+            );
             let result = process_requirement(&ctx.with_dry_run(dry_run), &requirement, |path| {
                 assert_eq!(path, "/fixture/launcher");
                 Ok(TaskResult::CheckPassed)

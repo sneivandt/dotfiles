@@ -26,7 +26,7 @@ pub trait Resource {
     /// Cached discovery must not pre-read claimed mutable state before dispatch.
     /// Inside a claimed task, these must be a subset of the task's claims.
     fn access_claims(&self) -> Vec<crate::engine::AccessClaim> {
-        Vec::new()
+        vec![]
     }
 
     /// Human-readable description of this resource.

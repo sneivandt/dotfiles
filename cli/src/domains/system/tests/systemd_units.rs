@@ -208,6 +208,36 @@ fn unavailable_wsl_manager_is_checked_at_run_time() {
 }
 
 #[test]
+fn wsl_systemd_availability_accepts_running_or_degraded_managers() {
+    for (name, observed, expected) in [
+        ("running", ExecResult::success("running\n"), true),
+        (
+            "degraded",
+            ExecResult::failure("  degraded\n", "", Some(1)),
+            true,
+        ),
+        (
+            "offline",
+            ExecResult::failure("offline\n", "", Some(1)),
+            false,
+        ),
+    ] {
+        let executor = script().command(systemctl(&["is-system-running"]), Ok(observed));
+        let ctx = make_context(
+            "/fixture".into(),
+            None,
+            Platform {
+                os: Os::Linux,
+                is_arch: false,
+                is_wsl: true,
+            },
+            Arc::new(executor),
+        );
+        assert_eq!(systemd_available(&ctx).unwrap(), expected, "{name}");
+    }
+}
+
+#[test]
 fn run_skips_daemon_reload_in_dry_run() {
     let task = systemd_task("dunst.service", UnitScope::User, true);
     let executor = script()

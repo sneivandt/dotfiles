@@ -419,6 +419,14 @@ fn ensure_ini_key(lines: &mut Vec<String>, section: &str, key: &str, value: Opti
     lines.insert(insertion_index, setting);
 }
 
+fn same_pam_facility(current: &str, desired: &str) -> bool {
+    // A leading '-' suppresses missing-module logging, not stack membership.
+    current
+        .strip_prefix('-')
+        .unwrap_or(current)
+        .eq_ignore_ascii_case(desired.strip_prefix('-').unwrap_or(desired))
+}
+
 fn pam_rule_identity(line: &str) -> anyhow::Result<(&str, &str)> {
     let mut tokens = line.split_whitespace();
     let Some(facility) = tokens.next() else {
@@ -427,7 +435,7 @@ fn pam_rule_identity(line: &str) -> anyhow::Result<(&str, &str)> {
     let Some(control) = tokens.next() else {
         bail!("PAM fragment rule has no control field: {line}");
     };
-    if matches!(control, "include" | "substack") {
+    if control.eq_ignore_ascii_case("include") || control.eq_ignore_ascii_case("substack") {
         bail!("PAM fragment rule includes a stack rather than a module: {line}");
     }
     if control.starts_with('[')
@@ -454,16 +462,19 @@ fn merge_pam(current: &str, fragment: &str) -> anyhow::Result<String> {
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
     {
         let (facility, module) = pam_rule_identity(rule)?;
-        let Some(index) = lines
-            .iter()
-            .rposition(|line| line.split_whitespace().next() == Some(facility))
-        else {
+        let Some(index) = lines.iter().rposition(|line| {
+            line.split_whitespace()
+                .next()
+                .is_some_and(|current_facility| same_pam_facility(current_facility, facility))
+        }) else {
             bail!("PAM service has no {facility} stack; refusing to synthesize one");
         };
         let mut trailing = lines.split_off(index.saturating_add(1));
         lines.retain(|line| {
             let code = line.split_once('#').map_or(line.as_str(), |(code, _)| code);
-            !pam_rule_identity(code).is_ok_and(|identity| identity == (facility, module))
+            !pam_rule_identity(code).is_ok_and(|(current_facility, current_module)| {
+                same_pam_facility(current_facility, facility) && current_module == module
+            })
         });
         lines.push(rule.to_string());
         lines.append(&mut trailing);
@@ -609,6 +620,8 @@ mod tests {
         let unmanaged = "auth include system-auth\n\
             auth required pam_exec.so keyring.so\n\
             auth [success=1 default=ignore] pam_debug.so keyring.so\n\
+            -AUTH INCLUDE keyring.so\n\
+            AUTH SUBSTACK keyring.so\n\
             auth include keyring.so\n";
         let current = format!(
             "{unmanaged}auth optional keyring.so old_option\nsession include system-login\n"
@@ -620,6 +633,36 @@ mod tests {
 
         assert_eq!(merged, expected, "unmanaged PAM rules must be preserved");
         assert_eq!(merge_pam(&merged, fragment).unwrap(), merged);
+    }
+
+    #[test]
+    fn pam_merge_recognizes_prefixed_and_case_insensitive_facilities() {
+        for (current, fragment, expected) in [
+            (
+                "-auth include system-auth\nsession include system-login\n",
+                "auth optional keyring.so\n",
+                "-auth include system-auth\nauth optional keyring.so\nsession include system-login\n",
+            ),
+            (
+                "auth include system-auth\n-auth optional keyring.so old_option\n",
+                "auth optional keyring.so\n",
+                "auth include system-auth\nauth optional keyring.so\n",
+            ),
+            (
+                "session include system-login\nSESSION optional keyring.so old_option\n",
+                "-session optional keyring.so\n",
+                "session include system-login\n-session optional keyring.so\n",
+            ),
+            (
+                "-session optional keyring.so\n",
+                "SESSION optional keyring.so\n",
+                "SESSION optional keyring.so\n",
+            ),
+        ] {
+            let merged = merge_pam(current, fragment).unwrap();
+            assert_eq!(merged, expected, "{current:?} with {fragment:?}");
+            assert_eq!(merge_pam(&merged, fragment).unwrap(), merged);
+        }
     }
 
     #[test]
@@ -635,6 +678,8 @@ mod tests {
             "auth optional script keyring.so",
             "auth include keyring.so",
             "auth substack keyring.so",
+            "-AUTH INCLUDE keyring.so",
+            "AUTH SUBSTACK keyring.so",
             "auth [success=1 keyring.so",
         ] {
             assert!(

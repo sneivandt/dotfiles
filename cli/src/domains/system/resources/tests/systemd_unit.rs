@@ -680,6 +680,122 @@ fn offline_user_unit_supports_required_by_targets() {
 }
 
 #[test]
+fn offline_install_targets_join_continued_directives() {
+    for (content, expected) in [
+        (
+            "[Install]\nWantedBy=default.target \\\n  graphical-session.target\n\
+             RequiredBy=basic.target \\\n# ignored comment\n; another comment\n  sockets.target\n",
+            vec![
+                "default.target.wants",
+                "graphical-session.target.wants",
+                "basic.target.requires",
+                "sockets.target.requires",
+            ],
+        ),
+        (
+            "[Install]\nWantedBy=old.target\nWantedBy=\\\n  new.target\n",
+            vec!["old.target.wants", "new.target.wants"],
+        ),
+        (
+            "[Unit]\nDescription=continued \\\n  WantedBy=ignored.target\n\
+             [Install]\nWantedBy=default.target \\\n",
+            vec!["default.target.wants"],
+        ),
+        (
+            "[Unit]\nDescription=literal backslash \\\\\n\
+             [Install]\nWantedBy=default.target\n",
+            vec!["default.target.wants"],
+        ),
+    ] {
+        assert_eq!(install_targets(content).unwrap(), expected, "{content}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn offline_enablement_converges_all_continued_install_targets() {
+    use crate::engine::{ProcessOpts, TaskResult, process_resources};
+    use crate::test_helpers::ContextBuilder;
+
+    let fixture = tempfile::tempdir_in(".").unwrap();
+    let home = fixture.path().canonicalize().unwrap();
+    let unit_dir = home.join(".config/systemd/user");
+    std::fs::create_dir_all(&unit_dir).unwrap();
+    std::fs::write(
+        unit_dir.join("example.service"),
+        "[Install]\nWantedBy=default.target \\\n# continued\n  graphical-session.target\n\
+         RequiredBy=basic.target \\\n  sockets.target\n",
+    )
+    .unwrap();
+    let resource = || offline_unit(&home, "example.service", true);
+    let ctx = ContextBuilder::new(home.clone()).overlay(None).build();
+    let opts = ProcessOpts::strict("configure");
+
+    let preview = process_resources(&ctx.with_dry_run(true), [resource()], &opts).unwrap();
+    assert!(matches!(preview, TaskResult::Batch(stats) if stats.changed_count() == 1));
+    assert_eq!(std::fs::read_dir(&unit_dir).unwrap().count(), 1);
+
+    let applied = process_resources(&ctx, [resource()], &opts).unwrap();
+    assert!(matches!(applied, TaskResult::Batch(stats) if stats.changed_count() == 1));
+    for target in [
+        "default.target.wants",
+        "graphical-session.target.wants",
+        "basic.target.requires",
+        "sockets.target.requires",
+    ] {
+        assert_eq!(
+            std::fs::read_link(unit_dir.join(target).join("example.service")).unwrap(),
+            unit_dir.join("example.service"),
+        );
+    }
+    let repeated = process_resources(&ctx, [resource()], &opts).unwrap();
+    assert!(matches!(repeated, TaskResult::Batch(stats) if stats.already_ok_count() == 1));
+}
+
+#[test]
+fn offline_install_targets_blank_lines_end_continuations() {
+    for blank in ["", "  \t"] {
+        for (prefix, expected) in [
+            (
+                "WantedBy=first.target \\\n",
+                vec!["first.target.wants", "second.target.wants"],
+            ),
+            (
+                "WantedBy=old.target\nWantedBy=\\\n",
+                vec!["second.target.wants"],
+            ),
+        ] {
+            let content =
+                format!("[Install]\n{prefix}# skipped comment\n{blank}\nWantedBy=second.target\n");
+            assert_eq!(install_targets(&content).unwrap(), expected, "{content:?}");
+        }
+    }
+}
+
+#[test]
+fn offline_install_targets_continue_only_after_an_unescaped_final_backslash() {
+    for count in 0..=5 {
+        let content = format!(
+            "[Unit]\nDescription=trailing {}\n[Install]\nWantedBy=default.target\n",
+            "\\".repeat(count),
+        );
+        let expected = if count % 2 == 0 {
+            vec!["default.target.wants"]
+        } else {
+            vec![]
+        };
+        assert_eq!(
+            install_targets(&content).unwrap(),
+            expected,
+            "{count} backslashes"
+        );
+    }
+    let content = "[Unit]\nDescription=backslash followed by whitespace \\ \t\n\
+                   [Install]\nWantedBy=default.target\n";
+    assert_eq!(install_targets(content).unwrap(), ["default.target.wants"]);
+}
+
+#[test]
 fn offline_install_targets_reset_each_relationship_list_independently() {
     for (content, expected) in [
         (

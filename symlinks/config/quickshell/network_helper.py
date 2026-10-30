@@ -219,11 +219,12 @@ def build_networks(aps, adapters, profiles, active_by_device):
             "advanced": kind in ("enterprise", "legacy", "unknown"),
             "available": True,
         }
+        ap_id = device + "/ap/" + ("ssid/" + ssid if ssid else "bssid/" + bssid) + "/" + kind
         for profile in matching or [None]:
             uuid = profile["uuid"] if profile else ""
             entry = {
                 **ap,
-                "id": device + "/saved/" + uuid if profile else device + "/ap/" + (ssid or bssid) + "/" + kind,
+                "id": device + "/saved/" + uuid if profile else ap_id,
                 "active": in_use == "*" and (profile is None or uuid == active_by_device.get(device)),
                 "saved": profile is not None,
                 "uuid": uuid,
@@ -342,7 +343,11 @@ def action(request):
             raise NetworkError("No available, managed Wi-Fi adapter can scan. Check Wi-Fi or Advanced settings.")
         failures = []
         for device in adapters:
-            result = nmcli(["--wait", "10", "device", "wifi", "rescan", "ifname", device])
+            try:
+                result = nmcli(["--wait", "10", "device", "wifi", "rescan", "ifname", device])
+            except NetworkError as error:
+                failures.append(f"{device} ({error})")
+                continue
             if result.returncode:
                 failures.append(device)
         if failures:

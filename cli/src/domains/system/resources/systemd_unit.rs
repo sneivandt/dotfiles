@@ -355,13 +355,27 @@ fn runtime_state(enabled: bool, properties: &str) -> ResourceState {
 fn install_targets(content: &str) -> ResourceResult<Vec<String>> {
     let mut in_install = false;
     let mut targets: Vec<String> = Vec::new();
-    for raw_line in content.lines() {
-        let line = raw_line.trim();
+    let mut lines = content.lines();
+    while let Some(raw_line) = lines.next() {
+        let mut line = raw_line.to_string();
+        if line.trim().is_empty() || line.trim_start().starts_with(['#', ';']) {
+            continue;
+        }
+        // Comments are skipped during continuation, but blank lines end it.
+        while line.bytes().rev().take_while(|byte| *byte == b'\\').count() % 2 == 1 {
+            line.pop();
+            line.push(' ');
+            let Some(next) = lines.find(|next| !next.trim_start().starts_with(['#', ';'])) else {
+                break;
+            };
+            line.push_str(next);
+        }
+        let line = line.trim();
         if line.starts_with('[') && line.ends_with(']') {
             in_install = line == "[Install]";
             continue;
         }
-        if !in_install || line.is_empty() || line.starts_with(['#', ';']) {
+        if !in_install {
             continue;
         }
         let Some((key, value)) = line.split_once('=') else {

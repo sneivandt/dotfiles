@@ -292,6 +292,23 @@ class NetworkTests(unittest.TestCase):
         self.assertTrue(saved["hidden"])
         self.assertFalse(saved["requiresSsid"])
 
+    def test_hidden_access_point_and_bssid_shaped_ssid_remain_distinct(self):
+        adapters = [{"name": "wlan0", "managed": True}]
+        bssid = "AA:BB:CC:DD:EE:FF"
+        aps = [
+            ["", "", bssid, "20", "WPA2", "wlan0"],
+            ["", bssid, "11:22:33:44:55:66", "90", "WPA2", "wlan0"],
+        ]
+        entries = network.build_networks(aps, adapters, [], {})
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(len({entry["id"] for entry in entries}), 2)
+        hidden = next(entry for entry in entries if entry["hidden"])
+        visible = next(entry for entry in entries if not entry["hidden"])
+        self.assertEqual(hidden["bssid"], bssid)
+        self.assertTrue(hidden["requiresSsid"])
+        self.assertEqual(visible["ssid"], bssid)
+        self.assertFalse(visible["requiresSsid"])
+
     def test_saved_activity_is_specific_to_adapter(self):
         adapters = [{"name": "wlan0", "managed": True}, {"name": "wlan1", "managed": True}]
         entries = network.build_networks([], adapters, [profile()], {"wlan0": "saved-uuid"})
@@ -412,6 +429,32 @@ class NetworkTests(unittest.TestCase):
                     self.assertIn("wlan" + str(next(index for index, code in enumerate(codes) if code)),
                                   result["error"])
                     self.assertIn("Cached networks", result["error"])
+
+    @patch("network_helper.subprocess.run")
+    @patch("network_helper.query")
+    def test_rescan_timeout_does_not_skip_other_adapters(self, query, run):
+        query.return_value = [
+            ["wlan0", "wifi", "connected"],
+            ["wlan1", "wifi", "disconnected"],
+        ]
+        for failing_index in (0, 1):
+            with self.subTest(failing_index=failing_index):
+                run.reset_mock()
+                results = [subprocess.CompletedProcess([], 0, "", "") for _ in range(2)]
+                results[failing_index] = subprocess.TimeoutExpired(
+                    ["nmcli"], 15, output="private-value", stderr="private-value"
+                )
+                run.side_effect = results
+                result = self.run_main('{"operation":"scan"}')
+                self.assertEqual(
+                    [call.args[0][-1] for call in run.call_args_list],
+                    ["wlan0", "wlan1"],
+                )
+                self.assertFalse(result["ok"])
+                self.assertIn("wlan" + str(failing_index), result["error"])
+                self.assertIn("did not respond in time", result["error"])
+                self.assertIn("Cached networks", result["error"])
+                self.assertNotIn("private-value", repr(result))
 
     @patch("network_helper.wifi_profiles", return_value=[])
     @patch("network_helper.query")

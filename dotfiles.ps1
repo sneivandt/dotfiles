@@ -17,6 +17,8 @@
 #>
 
 $ErrorActionPreference = 'Stop'
+# Native failures are handled explicitly so caller preferences cannot replace their exit codes.
+$PSNativeCommandUseErrorActionPreference = $false
 $DotfilesRoot = $PSScriptRoot -replace '^\\\\\?\\', ''
 $env:DOTFILES_ROOT = $DotfilesRoot
 $env:DOTFILES_WRAPPER = "pwsh"

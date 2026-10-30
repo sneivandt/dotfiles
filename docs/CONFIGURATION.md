@@ -321,6 +321,9 @@ Offline disabling removes matching existing `.wants` and `.requires` links,
 even if the unit file has disappeared or its `[Install]` directives changed.
 Offline enablement honors empty `WantedBy=` and `RequiredBy=` assignments,
 which reset only their respective lists of earlier relationships.
+Backslash-continued assignments are joined, including across intervening comments.
+Only an unescaped backslash at the physical end of a line continues the assignment;
+trailing whitespace prevents continuation, and a blank line ends it.
 
 ## System files
 
@@ -365,6 +368,8 @@ Ownership matches the facility and actual module field, including after
 bracketed controls; module names used as arguments or included stack names
 do not make an unrelated rule managed. Blank lines and full-line comments in
 PAM fragments are ignored rather than inserted into the destination.
+Facility matching is case-insensitive and ignores the optional leading `-`;
+the fragment's spelling and missing-module logging policy are retained.
 
 ## VS Code extensions
 

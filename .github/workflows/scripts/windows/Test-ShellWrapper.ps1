@@ -583,6 +583,67 @@ function Test-IsolatedWrapperPath {
     }
 }
 
+function Test-NativeExitCode {
+    Write-TestStage 'Testing native child and Cargo exit codes with caller error preferences'
+    $fixture = Join-Path (Join-Path $PSScriptRoot '..\..\..\..') ".wrapper-native-exit-$([guid]::NewGuid())"
+    $fixture = [System.IO.Path]::GetFullPath($fixture)
+    $wrapper = Join-Path $fixture 'dotfiles.ps1'
+    $nativeShell = (Get-Command pwsh -CommandType Application).Source
+    $originalLocation = Get-Location
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
+    try {
+        [void][System.IO.Directory]::CreateDirectory((Join-Path $fixture 'cli'))
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\..\..\..\dotfiles.ps1') -Destination $wrapper
+        $PSNativeCommandUseErrorActionPreference = $true
+        Set-Item Function:cargo -Value {
+            @{
+                reason = 'compiler-artifact'
+                target = @{ name = 'dotfiles' }
+                executable = $nativeShell
+            } | ConvertTo-Json -Compress
+            $global:LASTEXITCODE = 0
+        }
+        $stdout = Join-Path $fixture 'stdout'
+        $stderr = Join-Path $fixture 'stderr'
+        & $wrapper --build -NoProfile -Command '[Console]::Out.WriteLine("child stdout"); [Console]::Error.WriteLine("child stderr"); exit 7' `
+            > $stdout 2> $stderr
+        if ($LASTEXITCODE -ne 7) { throw 'Wrapper lost the native child exit code' }
+        if ((Get-Content -LiteralPath $stdout -Raw).Trim() -cne 'child stdout') {
+            throw 'Wrapper changed native child stdout'
+        }
+        if ((Get-Content -LiteralPath $stderr -Raw).Trim() -cne 'child stderr') {
+            throw 'Wrapper changed native child stderr'
+        }
+        if (-not $PSNativeCommandUseErrorActionPreference) { throw 'Wrapper changed the caller native error preference' }
+
+        Set-Item Function:cargo -Value {
+            & $nativeShell -NoProfile -Command '[Console]::Error.WriteLine("cargo failed"); exit 23'
+        }
+        & $wrapper --build --version > $stdout 2> $stderr
+        if ($LASTEXITCODE -ne 23) { throw 'Wrapper lost the native Cargo exit code' }
+        if ((Get-Content -LiteralPath $stdout -Raw)) { throw 'Wrapper ran a child after Cargo failed' }
+        if ((Get-Content -LiteralPath $stderr -Raw).Trim() -cne 'cargo failed') {
+            throw 'Wrapper changed native Cargo stderr'
+        }
+        if ((Get-Location).Path -ne $originalLocation.Path) { throw 'Failed native Cargo changed the caller location' }
+        if (-not $PSNativeCommandUseErrorActionPreference) { throw 'Failed build changed the caller native error preference' }
+        Write-TestPass 'Native child and build exit codes are preserved independently of caller error preferences'
+        return $true
+    } catch {
+        Write-TestFail "Native exit-code regression failed: $_"
+        return $false
+    } finally {
+        Set-Location -LiteralPath $originalLocation.Path
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Test-CargoArtifactPath {
     Write-TestStage 'Testing Cargo output directories and stale-artifact rejection'
     $fixture = Join-Path (Join-Path $PSScriptRoot '..\..\..\..') ".wrapper-artifact-$([guid]::NewGuid())"
@@ -785,6 +846,7 @@ function Invoke-TestSuite {
     $results += Test-PlatformDetection
     $results += Test-ErrorHandling
     $results += Test-IsolatedWrapperPath
+    $results += Test-NativeExitCode
     $results += Test-CargoArtifactPath
     $results += Test-ReleaseRepository
 

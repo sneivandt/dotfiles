@@ -110,14 +110,11 @@ impl PathEntryResource {
     }
 
     fn shell_profile_contains_managed_line(path: &Path, line: &str) -> Result<bool> {
-        if !path.exists() {
-            return Ok(false);
+        match std::fs::read_to_string(path) {
+            Ok(content) => Ok(content.lines().any(|existing| existing.trim() == line)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error).with_context(|| format!("read {}", path.display())),
         }
-
-        Ok(std::fs::read_to_string(path)
-            .with_context(|| format!("read {}", path.display()))?
-            .lines()
-            .any(|existing| existing.trim() == line))
     }
 }
 
@@ -198,7 +195,8 @@ impl IntrinsicState for PathEntryResource {
 }
 
 /// Append `dir` to the Windows user `PATH` in the registry, preserving the
-/// original value type (`REG_EXPAND_SZ` by default).
+/// original value type (`REG_EXPAND_SZ` by default). Reject additions that
+/// cannot survive expansion and PATH splitting without changing their meaning.
 #[cfg(windows)]
 fn append_user_path(dir: &str, environment: &dyn crate::infra::env::Env) -> Result<bool> {
     use winreg::RegKey;
@@ -221,14 +219,14 @@ fn append_user_path(dir: &str, environment: &dyn crate::infra::env::Env) -> Resu
         }
     };
 
-    if path_contains_entry(&existing_value, dir, environment) {
+    let Some(new_value) = appended_path(
+        &existing_value,
+        dir,
+        existing_vtype == REG_EXPAND_SZ,
+        environment,
+    )?
+    else {
         return Ok(false);
-    }
-
-    let new_value = if existing_value.is_empty() {
-        dir.to_string()
-    } else {
-        format!("{existing_value};{dir}")
     };
 
     let new_raw = RegValue {
@@ -256,7 +254,7 @@ fn user_path_contains(_dir: &str, _environment: &dyn crate::infra::env::Env) -> 
 #[cfg(windows)]
 fn user_path_contains(dir: &str, environment: &dyn crate::infra::env::Env) -> Result<bool> {
     use winreg::RegKey;
-    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, REG_EXPAND_SZ};
 
     let env =
         match RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags("Environment", KEY_READ) {
@@ -270,6 +268,7 @@ fn user_path_contains(dir: &str, environment: &dyn crate::infra::env::Env) -> Re
         Ok(v) => Ok(path_contains_entry(
             &decode_reg_string(&v)?,
             dir,
+            v.vtype == REG_EXPAND_SZ,
             environment,
         )),
         Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -306,13 +305,47 @@ fn broadcast_environment_change(_executor: &dyn Executor) -> Result<()> {
     Ok(())
 }
 
-/// Return `true` when `dir` already appears as a `;`-separated entry in
-/// `path` (case-insensitive on Windows).
 #[cfg(any(windows, test))]
-fn path_contains_entry(path: &str, dir: &str, environment: &dyn crate::infra::env::Env) -> bool {
-    let target = normalize_path_entry(&expand_env_vars(dir, environment));
+fn appended_path(
+    existing: &str,
+    dir: &str,
+    expandable: bool,
+    environment: &dyn crate::infra::env::Env,
+) -> Result<Option<String>> {
+    if path_contains_entry(existing, dir, expandable, environment) {
+        return Ok(None);
+    }
+    let updated = if existing.is_empty() {
+        dir.to_string()
+    } else {
+        format!("{existing};{dir}")
+    };
+    anyhow::ensure!(
+        path_contains_entry(&updated, dir, expandable, environment),
+        "cannot persist literal directory in Windows PATH without changing existing entries: {dir}"
+    );
+    Ok(Some(updated))
+}
+
+/// Return `true` when `dir` already appears as a `;`-separated entry in
+/// `path` (case-insensitive on Windows). Only `REG_EXPAND_SZ` values expand
+/// environment variables, before splitting the resulting PATH into entries.
+/// The directory being added is a literal filesystem path.
+#[cfg(any(windows, test))]
+fn path_contains_entry(
+    path: &str,
+    dir: &str,
+    expandable: bool,
+    environment: &dyn crate::infra::env::Env,
+) -> bool {
+    let path = if expandable {
+        expand_env_vars(path, environment)
+    } else {
+        path.to_string()
+    };
+    let target = normalize_path_entry(dir);
     path.split(';')
-        .map(|entry| normalize_path_entry(&expand_env_vars(entry, environment)))
+        .map(normalize_path_entry)
         .any(|entry| entry.eq_ignore_ascii_case(&target))
 }
 
@@ -588,15 +621,132 @@ mod tests {
             r"c:\users\fixture user\.local\bin\",
         ] {
             assert!(
-                path_contains_entry(path, r"C:\Users\Fixture User\.local\bin", &env),
+                path_contains_entry(path, r"C:\Users\Fixture User\.local\bin", true, &env),
                 "{path}"
             );
         }
         assert!(!path_contains_entry(
             r"C:\Other\bin",
             r"C:\Users\Fixture User\.local\bin",
+            true,
             &env
         ));
         assert_eq!(expand_env_vars(r"%UNKNOWN%\bin", &env), r"%UNKNOWN%\bin");
+    }
+
+    #[test]
+    fn persisted_entries_do_not_expand_the_literal_directory_being_added() {
+        let env = MapEnv::new().with("USERNAME", "Expanded");
+        assert!(!path_contains_entry(
+            r"C:\Users\Expanded\.local\bin",
+            r"C:\Users\%USERNAME%\.local\bin",
+            true,
+            &env
+        ));
+    }
+
+    #[test]
+    fn path_append_rejects_literal_directories_that_cannot_converge() {
+        let env = MapEnv::new().with("USERNAME", "Expanded");
+        for existing in ["", r"%USERPROFILE%\bin;C:\Windows"] {
+            for (dir, expandable) in [
+                (r"C:\Users\%USERNAME%\.local\bin", true),
+                (r"C:\Users\semi;colon\.local\bin", true),
+                (r"C:\Users\semi;colon\.local\bin", false),
+            ] {
+                let error = appended_path(existing, dir, expandable, &env)
+                    .expect_err("an unrepresentable directory must fail before registry writes");
+                assert!(error.to_string().contains("literal directory"), "{error:#}");
+            }
+        }
+    }
+
+    #[test]
+    fn path_append_preserves_existing_entries_and_converges_on_repeat() {
+        let env = MapEnv::new().with("USERNAME", "Expanded");
+        for (dir, expandable) in [
+            (r"C:\Users\%USERNAME%\.local\bin", false),
+            (r"C:\Users\Fixture\.local\bin", true),
+            (r"C:\Users\Fixture\.local\bin", false),
+        ] {
+            for existing in ["", r"%USERPROFILE%\bin;C:\Windows"] {
+                let updated = appended_path(existing, dir, expandable, &env)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    updated,
+                    if existing.is_empty() {
+                        dir.to_string()
+                    } else {
+                        format!("{existing};{dir}")
+                    },
+                    "unrelated entries must remain byte-for-byte unchanged"
+                );
+                assert!(
+                    appended_path(&updated, dir, expandable, &env)
+                        .unwrap()
+                        .is_none(),
+                    "the persisted addition must make the next apply a no-op"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn persisted_entries_expand_only_expandable_values_before_splitting() {
+        let env = MapEnv::new()
+            .with("USERPROFILE", r"C:\Users\Fixture")
+            .with("TOOLS", r"C:\Other;C:\Users\Fixture\.local\bin");
+        for (path, dir, expandable, expected) in [
+            (
+                r"%USERPROFILE%\.local\bin",
+                r"C:\Users\Fixture\.local\bin",
+                false,
+                false,
+            ),
+            (
+                r"%USERPROFILE%\.local\bin",
+                r"C:\Users\Fixture\.local\bin",
+                true,
+                true,
+            ),
+            (
+                r"%USERPROFILE%\.local\bin",
+                r"%USERPROFILE%\.local\bin",
+                false,
+                true,
+            ),
+            (r"%TOOLS%", r"C:\Users\Fixture\.local\bin", true, true),
+        ] {
+            assert_eq!(
+                path_contains_entry(path, dir, expandable, &env),
+                expected,
+                "{path:?}, {dir:?}, expandable={expandable}"
+            );
+        }
+    }
+
+    #[test]
+    fn profile_discovery_propagates_non_missing_read_errors() {
+        let home = tempfile::tempdir_in(".").unwrap();
+        let path = home.path().join("invalid\0profile");
+        assert_ne!(
+            std::fs::read_to_string(&path).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound
+        );
+        let resource = PathEntryResource {
+            dir: home.path().join(".local").join("bin"),
+            strategy: PathStrategy::ShellProfile {
+                path,
+                line: "export PATH=\"$HOME/.local/bin:$PATH\"".into(),
+            },
+        };
+
+        assert!(
+            resource.current_state().is_err(),
+            "a profile inspection failure is not an absent managed PATH entry"
+        );
+        assert!(resource.apply().is_err());
+        assert_eq!(std::fs::read_dir(home.path()).unwrap().count(), 0);
     }
 }

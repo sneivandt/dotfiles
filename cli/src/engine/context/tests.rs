@@ -177,6 +177,59 @@ fn windows_home_prefers_userprofile_and_falls_back_to_home() {
 }
 
 #[test]
+fn home_paths_preserve_native_encoding_and_platform_precedence() {
+    use crate::infra::env::MapEnv;
+    use crate::infra::platform::Os;
+
+    #[cfg(unix)]
+    let home = {
+        use std::os::unix::ffi::OsStringExt as _;
+        std::ffi::OsString::from_vec(b"/home/fixture-\xff".to_vec())
+    };
+    #[cfg(windows)]
+    let home = {
+        use std::os::windows::ffi::OsStringExt as _;
+        std::ffi::OsString::from_wide(
+            &r"C:\Users\fixture-"
+                .encode_utf16()
+                .chain([0xd800])
+                .collect::<Vec<_>>(),
+        )
+    };
+    assert!(
+        home.to_str().is_none(),
+        "fixture must require native encoding"
+    );
+
+    for (os, env) in [
+        (Os::Linux, MapEnv::new().with("HOME", &home)),
+        (
+            Os::Windows,
+            MapEnv::new()
+                .with("USERPROFILE", &home)
+                .with("HOME", "different-home"),
+        ),
+        (Os::Windows, MapEnv::new().with("HOME", &home)),
+    ] {
+        let ctx = Context::new(
+            "fixture-repo".into(),
+            None,
+            Platform::new(os, false),
+            Arc::new(SilentLog),
+            Arc::new(crate::infra::exec::ProcessExecutor::system()),
+            env.into_handle(),
+            ContextOpts::default(),
+        )
+        .expect("a native path must not be reported as an unset home variable");
+        assert_eq!(
+            ctx.home(),
+            Path::new(&home),
+            "{os:?}: path encoding must not select a different home"
+        );
+    }
+}
+
+#[test]
 fn with_env_swaps_the_environment_without_touching_other_fields() {
     use crate::infra::env::MapEnv;
 

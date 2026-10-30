@@ -292,6 +292,8 @@ skills directory. For excluded or removed skills, reconciliation removes
 `SKILL.md` only when that inventory establishes ownership. It preserves
 directories, Cowork placeholders, and unrelated skills. A same-named source
 under `~/.agents/skills` alone is not proof that an older copy is managed.
+On Windows, case-only skill renames retain the desired entry point rather than
+treating its previous spelling as an orphan.
 
 Before native convergence, dotfiles removes legacy `cowork://` lockfile
 deployment records that could provoke directory deletion. Explicit legacy skill

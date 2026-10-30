@@ -547,12 +547,7 @@ fn pacman_task_uses_host_config_and_installs_only_missing_packages_in_one_batch(
     let executor = Arc::new(RecordingExecutor::new(
         &["pacman", "sudo"],
         vec![
-            expect(
-                CallKind::RunUnchecked,
-                "pacman",
-                &["-Q"],
-                ok("git 2.51.0\n"),
-            ),
+            expect(CallKind::Run, "pacman", &["-Q"], ok("git 2.51.0\n")),
             expect(
                 CallKind::Run,
                 "sudo",
@@ -609,12 +604,7 @@ fn paru_task_uses_host_config_and_installs_only_missing_aur_packages_without_sud
                 &["--version"],
                 ok("paru v2.1.0 - libalpm v16.0.1\n"),
             ),
-            expect(
-                CallKind::RunUnchecked,
-                "pacman",
-                &["-Q"],
-                ok("apm-bin 1.0.0\n"),
-            ),
+            expect(CallKind::Run, "pacman", &["-Q"], ok("apm-bin 1.0.0\n")),
             expect(
                 CallKind::Run,
                 "/usr/bin/paru",
@@ -654,7 +644,7 @@ fn winget_task_uses_exact_ids_and_installs_each_missing_package() {
         &["winget"],
         vec![
             expect(
-                CallKind::RunUnchecked,
+                CallKind::Run,
                 "winget",
                 &[
                     "list",

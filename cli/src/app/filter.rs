@@ -73,12 +73,13 @@ pub(crate) fn selected_task_ids(
         ResolvedTaskGraph::resolve(tasks)?
             .extend_dependency_closure(&mut selected, DependencyEdges::All);
     }
-    selected.retain(|task_id| {
-        tasks.iter().any(|task| {
-            task.task_id() == *task_id
-                && !skip.iter().any(|filter| task_matches_filter(*task, filter))
+    let selected = tasks
+        .iter()
+        .filter_map(|task| {
+            let id = task.task_id();
+            (selected.contains(&id) && task_passes_filters(*task, &[], skip)).then_some(id)
         })
-    });
+        .collect::<HashSet<_>>();
     if selected.is_empty() && (!only.is_empty() || !skip.is_empty()) {
         bail!("task filters selected no tasks; adjust --only or --skip");
     }
@@ -504,6 +505,59 @@ mod tests {
                 "{message}"
             );
             assert!(message.ends_with("Run 'dotfiles list' to list selectors"));
+        }
+    }
+
+    #[test]
+    fn selection_does_not_rescan_every_identity_for_each_task() {
+        use crate::engine::{Context, TaskMeta, TaskResult};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountedTask {
+            selector: String,
+            calls: Arc<AtomicUsize>,
+        }
+        impl Task for CountedTask {
+            fn meta(&self) -> TaskMeta<'_> {
+                TaskMeta::new(&self.selector).with_selector(&self.selector)
+            }
+
+            fn task_id(&self) -> TaskId {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                TaskId::dynamic::<Self>(self.selector.as_str())
+            }
+
+            fn run(&self, _: &Context) -> Result<TaskResult> {
+                panic!("selection must not execute tasks");
+            }
+        }
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let tasks = (0..128)
+            .map(|index| CountedTask {
+                selector: format!("task-{index}"),
+                calls: Arc::clone(&calls),
+            })
+            .collect::<Vec<_>>();
+        let refs = tasks
+            .iter()
+            .map(|task| -> &dyn Task { task })
+            .collect::<Vec<_>>();
+        for skip in [vec![], vec!["task-0".into()]] {
+            calls.store(0, Ordering::Relaxed);
+            let selected = selected_task_ids(&refs, &[], &skip, false).unwrap();
+            let count = calls.load(Ordering::Relaxed);
+            assert_eq!(selected.len(), tasks.len() - skip.len());
+            assert_eq!(
+                selected.contains(&TaskId::dynamic::<CountedTask>("task-0")),
+                skip.is_empty()
+            );
+            assert!(
+                count <= 2 * tasks.len(),
+                "task selection should inspect identities linearly, not {count} times for {} tasks",
+                tasks.len()
+            );
         }
     }
 }

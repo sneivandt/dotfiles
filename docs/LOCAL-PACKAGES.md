@@ -16,6 +16,10 @@ Dotfiles discovers release versions and prepares build inputs. Paru downloads,
 verifies, builds, installs, and upgrades the resulting Arch packages. The agent
 package task independently invokes the `apm` executable on PATH.
 
+Bootstrapping or rebuilding Paru uses an exclusively reserved build directory.
+Only that invocation's checkout is cleaned up; existing or concurrent builds
+are left untouched.
+
 ## Files and ownership
 
 | File or directory | Owner and purpose | Tracked here? |
@@ -188,6 +192,9 @@ unavailable. The installer checks current committed snapshot inputs and the
 published repository section before requesting a missing local package. Already
 installed packages need no reinstall. Errors reading or parsing ownership
 metadata fail closed rather than treating local packages as ordinary AUR names.
+Readiness also requires a successful metadata-validation record for the current
+recipe inputs and descriptor, so a descriptor-only change cannot reuse an old
+snapshot to send newly declared local packages to the AUR.
 
 A dry run can read fresh caches or query GitHub, but writes neither release
 caches, cooldowns, pins, nor snapshots. On a fresh checkout, snapshot preview

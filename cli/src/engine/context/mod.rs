@@ -232,11 +232,11 @@ impl Context {
         execution_policy: ExecutionPolicy,
     ) -> Result<Self> {
         let home = if platform.is_windows() {
-            env.var("USERPROFILE")
-                .or_else(|| env.var("HOME"))
+            env.var_os("USERPROFILE")
+                .or_else(|| env.var_os("HOME"))
                 .context("neither USERPROFILE nor HOME environment variable is set")?
         } else {
-            env.var("HOME")
+            env.var_os("HOME")
                 .context("HOME environment variable is not set")?
         };
 

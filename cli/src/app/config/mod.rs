@@ -334,7 +334,7 @@ impl Config {
     ///
     /// Returns an error if a configuration file cannot be parsed, symlink targets
     /// conflict within a source or overlap after merging, or active settings
-    /// specify contradictory values within the same source.
+    /// specify contradictory values within a source or across merged key hierarchies.
     pub fn load(
         root: &Path,
         profile: &profiles::Profile,
@@ -408,16 +408,11 @@ impl Config {
         }
         let config = config_section_inventory!(load_config);
 
+        // Exact-target conflicts are rejected per source; ancestor/descendant
+        // overlaps can still arise when otherwise valid sources are combined.
         symlinks::validate_unique_targets(&config.symlinks)
             .context("validating symlink targets")?;
-        system_files::validate_entries(&config.system_files)
-            .context("validating system file targets")?;
-
-        error::reject_conflicts(
-            git_config::validate_conflicts(&config.git_settings)
-                .into_iter()
-                .chain(registry::validate_conflicts(&config.registry)),
-        )?;
+        error::reject_conflicts(agent_settings::validate_conflicts(&config.agent_settings))?;
 
         Ok(config)
     }

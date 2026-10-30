@@ -158,6 +158,70 @@ fn independent_resources_can_discover_concurrently() {
 }
 
 #[test]
+fn sequential_resources_preserve_input_order_across_conflicting_claims() {
+    struct OrderedProbe<'a> {
+        id: usize,
+        key: &'static str,
+        visited: &'a std::sync::Mutex<Vec<(usize, &'static str)>>,
+    }
+
+    impl Resource for OrderedProbe<'_> {
+        fn access_claims(&self) -> Vec<AccessClaim> {
+            vec![claim(self.key)]
+        }
+
+        fn description(&self) -> String {
+            self.id.to_string()
+        }
+
+        fn apply(&self) -> ResourceResult<ResourceChange> {
+            self.visited.lock().unwrap().push((self.id, "apply"));
+            Ok(ResourceChange::Applied)
+        }
+    }
+
+    impl IntrinsicState for OrderedProbe<'_> {
+        fn current_state(&self) -> ResourceResult<ResourceState> {
+            self.visited.lock().unwrap().push((self.id, "discover"));
+            Ok(ResourceState::Missing)
+        }
+    }
+
+    for (parallel, sequential) in [(false, false), (false, true), (true, true)] {
+        let ctx = context().with_parallel(parallel);
+        let visited = std::sync::Mutex::new(Vec::new());
+        let resources = ["shared", "shared", "independent"]
+            .into_iter()
+            .enumerate()
+            .map(|(id, key)| OrderedProbe {
+                id,
+                key,
+                visited: &visited,
+            });
+        let mut opts = ProcessOpts::strict("configure");
+        opts.sequential = sequential;
+
+        let result = process_resources(&ctx, resources, &opts).unwrap();
+
+        assert!(
+            matches!(result, crate::engine::TaskResult::Batch(stats) if stats.changed_count() == 3)
+        );
+        assert_eq!(
+            *visited.lock().unwrap(),
+            [
+                (0, "discover"),
+                (0, "apply"),
+                (1, "discover"),
+                (1, "apply"),
+                (2, "discover"),
+                (2, "apply"),
+            ],
+            "parallel={parallel}, sequential={sequential}: a later independent resource must not overtake an earlier conflicting resource"
+        );
+    }
+}
+
+#[test]
 fn lifecycle_errors_release_claims_without_poisoning_later_work() {
     for stage in ["discovery", "apply", "remove"] {
         let ctx = context();

@@ -232,7 +232,11 @@ starts; save work before deliberately restarting either.
 The launcher task writes `%USERPROFILE%\.local\bin\dotfiles.cmd`. It calls the
 repository's `dotfiles.ps1` with `pwsh` if available, otherwise
 `powershell.exe`. The PATH task adds that directory to the persistent user PATH,
-preserving expandable registry tokens and the registry value type.
+preserving expandable registry tokens and the registry value type. Discovery
+expands `REG_EXPAND_SZ` values before splitting entries, but treats `REG_SZ`
+values literally. Additions that cannot retain their literal meaning, such as a
+directory containing a semicolon or an expanded variable reference, fail before
+writing rather than adding an ineffective entry on every run.
 
 Open a new terminal after first install. If `dotfiles` still cannot be found:
 

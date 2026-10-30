@@ -136,24 +136,15 @@ pub(super) fn check_prerequisites(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
-/// Prepare a clean build directory for paru.
-pub(super) fn prepare_build_directory(ctx: &Context, build_dir: &Path) -> Result<()> {
-    if build_dir.exists() {
-        ctx.log().debug("removing previous paru build directory");
-        std::fs::remove_dir_all(build_dir).context("removing previous paru build directory")?;
-    }
-    Ok(())
-}
-
 /// Clone the source-built paru AUR package.
 pub(super) fn clone_paru_from_aur(ctx: &Context, tmp: &Path) -> Result<()> {
     ctx.log().debug("cloning paru from AUR");
     ctx.executor()
-        .execute(CommandSpec::new("git").args(&[
-            "clone",
-            "https://aur.archlinux.org/paru.git",
-            &tmp.to_string_lossy(),
-        ]))
+        .execute(
+            CommandSpec::new("git")
+                .args(&["clone", "https://aur.archlinux.org/paru.git"])
+                .arg(tmp.as_os_str()),
+        )
         .context("cloning paru from AUR")?;
     Ok(())
 }

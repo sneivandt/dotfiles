@@ -82,7 +82,7 @@ pub(super) fn normalize_command_position(args: &mut Vec<std::ffi::OsString>) {
         .collect();
     let mut position = 1;
     while let Some(value) = args.get(position) {
-        let Some(arg) = value.to_str() else { break };
+        let arg = value.to_string_lossy();
         if arg == "--" {
             break;
         }
@@ -1124,6 +1124,46 @@ mod tests {
             );
         }
         assert!(Cli::try_parse_from(["dotfiles", "--", "list"]).is_err());
+    }
+
+    #[test]
+    fn non_unicode_repository_options_preserve_explicit_commands() {
+        use std::ffi::OsString;
+
+        #[cfg(unix)]
+        let path = {
+            use std::os::unix::ffi::OsStringExt as _;
+            OsString::from_vec(b"fixture-\xff".to_vec())
+        };
+        #[cfg(windows)]
+        let path = {
+            use std::os::windows::ffi::OsStringExt as _;
+            OsString::from_wide(&[b'f'.into(), 0xd800])
+        };
+        for option in ["--root", "--overlay"] {
+            for attached in [false, true] {
+                let mut args = vec![OsString::from("dotfiles")];
+                if attached {
+                    let mut value = OsString::from(format!("{option}="));
+                    value.push(&path);
+                    args.push(value);
+                } else {
+                    args.extend([option.into(), path.clone()]);
+                }
+                args.extend(["list".into(), "--profile=base".into()]);
+                let parsed =
+                    Cli::try_parse_from(args).expect("OS paths must not change command selection");
+                let Command::List(opts) = parsed.command else {
+                    panic!("a non-Unicode repository path must never select update");
+                };
+                let selected = if option == "--root" {
+                    opts.repository.root
+                } else {
+                    opts.repository.overlay
+                };
+                assert_eq!(selected.unwrap().as_os_str(), path);
+            }
+        }
     }
 
     #[test]

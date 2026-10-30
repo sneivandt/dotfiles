@@ -286,7 +286,15 @@ impl RunLog {
 
     pub(crate) fn record_in_context(&self, context: &str, record: Record) {
         match serde_json::to_string(&StoredRecord::new(context, record)) {
-            Ok(message) => self.write_event(LogEvent::Record, context, &message),
+            Ok(message) => {
+                // The JSON envelope retains identities that cannot fit the text header.
+                let header_context = if context.contains([']', '\r', '\n']) {
+                    "record-context"
+                } else {
+                    context
+                };
+                self.write_event(LogEvent::Record, header_context, &message);
+            }
             Err(error) => self.mark_degraded(&format!("encoding record failed: {error}")),
         }
     }
@@ -305,16 +313,25 @@ impl RunLog {
 
     /// Emit an event with an explicit task context, preserving multiline text.
     pub fn emit_task(&self, event: LogEvent, context: &str, message: &str) {
-        if message.contains(['\n', '\r']) {
+        let multiline = message.contains(['\n', '\r']);
+        let clean = strip_ansi(message);
+        if !multiline && clean.trim().is_empty() {
+            return;
+        }
+        if multiline || context.contains([']', '\r', '\n']) {
             self.record_in_context(
                 context,
                 Record::Message {
                     event: event.name().into(),
-                    text: strip_ansi(message),
+                    text: if multiline {
+                        clean
+                    } else {
+                        clean.trim().to_owned()
+                    },
                 },
             );
-        } else if let Some(formatted_message) = format_log_message(message) {
-            self.write_event(event, context, &formatted_message);
+        } else {
+            self.write_event(event, context, clean.trim());
         }
     }
 
@@ -525,22 +542,6 @@ fn prune_run_logs(dir: &Path, keep: usize) {
                 lease_path.display()
             );
         }
-    }
-}
-
-fn format_log_message(message: &str) -> Option<String> {
-    let clean = strip_ansi(message);
-    let mut formatted = String::new();
-    for line in clean.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        if !formatted.is_empty() {
-            formatted.push_str(" | ");
-        }
-        formatted.push_str(line);
-    }
-    if formatted.is_empty() {
-        None
-    } else {
-        Some(formatted)
     }
 }
 
@@ -1102,6 +1103,7 @@ mod tests {
         let (run_log, _tmp) = isolated_run_log();
         run_log.emit_task(LogEvent::TaskStart, "task-name", "");
         run_log.emit(LogEvent::Debug, "   \t");
+        run_log.emit(LogEvent::Debug, "\x1b[32m \t\x1b[0m");
         run_log.emit(LogEvent::Info, "after blanks");
         let contents = fs::read_to_string(run_log.path()).unwrap();
         assert!(
@@ -1114,6 +1116,26 @@ mod tests {
                 .any(|line| line.starts_with("000001 ") && line.contains("after blanks")),
             "blank messages should not consume sequence numbers"
         );
+    }
+
+    #[test]
+    fn run_log_trims_single_line_messages_without_changing_internal_spacing() {
+        let (run_log, _tmp) = isolated_run_log();
+        run_log.emit_task(
+            LogEvent::Info,
+            "fixture",
+            " \t\x1b[32mkeep  inner\tspace\x1b[0m \t",
+        );
+
+        let contents = fs::read_to_string(run_log.path()).unwrap();
+        assert!(
+            contents
+                .lines()
+                .last()
+                .unwrap()
+                .ends_with("[fixture] [info] keep  inner\tspace")
+        );
+        assert!(!contents.contains('\x1b'));
     }
 
     #[test]
@@ -1134,6 +1156,43 @@ mod tests {
             !contents.lines().any(str::is_empty),
             "run-log log should not contain blank lines"
         );
+    }
+
+    #[test]
+    fn run_log_preserves_contexts_with_record_delimiters_and_line_breaks() {
+        for context in ["overlay:before] [after", "overlay:first\r\nsecond"] {
+            let (run_log, _tmp) = isolated_run_log();
+            run_log.emit_task(LogEvent::Info, context, " \x1b[32msingle line\x1b[0m ");
+            run_log.emit_task(LogEvent::Info, context, " \t ");
+            run_log.emit_task(LogEvent::Warn, context, "first\nsecond");
+            run_log.record_in_context(
+                context,
+                Record::TaskDuration {
+                    task_id: context.into(),
+                    elapsed_us: 42,
+                },
+            );
+
+            let content = fs::read_to_string(run_log.path()).unwrap();
+            let lines: Vec<_> = content
+                .lines()
+                .filter(|line| !line.starts_with('#'))
+                .collect();
+            assert_eq!(lines.len(), 3, "contexts must not split log entries");
+            let records: Vec<_> = lines
+                .into_iter()
+                .map(|line| StoredRecord::from_line(line).expect("a complete structured record"))
+                .collect();
+            assert!(records.iter().all(|record| record.context == context));
+            assert!(matches!(&records[0].record, Record::Message { event, text }
+                    if event == "info" && text == "single line"));
+            assert!(matches!(&records[1].record, Record::Message { text, .. }
+                    if text == "first\nsecond"));
+            assert!(
+                matches!(&records[2].record, Record::TaskDuration { task_id, elapsed_us }
+                    if task_id == context && *elapsed_us == 42)
+            );
+        }
     }
 
     #[test]

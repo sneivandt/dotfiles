@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 
 use super::package::PackageProvider;
 use crate::engine::ResourceChange;
@@ -219,23 +219,13 @@ impl PackageProvider for WingetProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        let result = executor.execute(
-            CommandSpec::new("winget")
-                .args(&[
-                    "list",
-                    "--accept-source-agreements",
-                    "--disable-interactivity",
-                ])
-                .unchecked(),
-        )?;
-
-        if !result.success {
-            anyhow::bail!(
-                "winget list failed (exit {:?}): {}",
-                result.code,
-                result.stderr.trim()
-            );
-        }
+        let result = executor
+            .execute(CommandSpec::new("winget").args(&[
+                "list",
+                "--accept-source-agreements",
+                "--disable-interactivity",
+            ]))
+            .context("querying installed winget packages")?;
 
         parse_winget_ids(&result.stdout)
     }
@@ -424,7 +414,7 @@ mod tests {
                             "--accept-source-agreements",
                             "--disable-interactivity",
                         ]
-                    && !spec.is_checked()
+                    && spec.is_checked()
             })
             .returning(|_| {
                 Ok(ExecResult::success(

@@ -1084,9 +1084,7 @@ fn release_failure_executor(retained: bool) -> MockExecutor {
         .returning(|_| Ok(ExecResult::success("paru 2.1.0")));
     mock.expect_execute()
         .once()
-        .withf(|spec| {
-            spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
-        })
+        .withf(|spec| spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked())
         .returning(|_| Ok(ExecResult::success("")));
     mock.expect_execute()
         .once()
@@ -1304,6 +1302,57 @@ fn split_package_ownership_is_explicit_and_ordinary_names_default_to_base() {
         unavailable_packages(&ctx).is_err(),
         "missing descriptor must not erase ownership and permit AUR fallback"
     );
+}
+
+#[test]
+fn readiness_rejects_descriptor_changes_before_configuration_is_refreshed() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let _prepared = ConfigureParu.run(&ctx).unwrap();
+    assert!(unavailable_packages(&ctx).unwrap().is_empty());
+    let path = dir.path().join("packages/tool-bin/release.json");
+    let mut descriptor: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    descriptor["packages"] = serde_json::json!(["tool-cli", "tool-gui"]);
+    std::fs::write(path, descriptor.to_string()).unwrap();
+
+    let missing = unavailable_packages(&ctx).unwrap();
+
+    assert_eq!(
+        missing.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["tool-cli", "tool-gui"],
+        "an old snapshot must not send newly declared local packages to the AUR"
+    );
+}
+
+#[test]
+fn readiness_requires_successful_metadata_validation_for_current_inputs() {
+    let dir = fixture();
+    let ctx = snapshot_context(dir.path());
+    let _prepared = ConfigureParu.run(&ctx).unwrap();
+    let stamp = build_root(&ctx)
+        .unwrap()
+        .join("tool-bin/.git/dotfiles-validated-metadata");
+    for damaged in [None, Some("stale validation key")] {
+        if let Some(value) = damaged {
+            std::fs::write(&stamp, value).unwrap();
+        } else {
+            std::fs::remove_file(&stamp).unwrap();
+        }
+
+        assert!(
+            unavailable_packages(&ctx).unwrap().contains_key("tool-bin"),
+            "missing or stale validation is not proof of package readiness"
+        );
+        assert!(
+            unavailable_packages(&ctx.with_dry_run(true))
+                .unwrap()
+                .is_empty(),
+            "preview may plan prerequisite validation without executing recipes"
+        );
+        let _revalidated = ConfigureParu.run(&ctx).unwrap();
+        assert!(unavailable_packages(&ctx).unwrap().is_empty());
+    }
 }
 
 #[test]

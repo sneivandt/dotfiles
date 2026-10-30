@@ -652,11 +652,12 @@ pub(super) fn unavailable_packages(ctx: &Context) -> Result<BTreeMap<String, Str
     for (directory, source) in recipes {
         let readiness = (|| -> Result<()> {
             let snapshot = Snapshot::plan(&root, &source.package_base, &directory, ctx.dry_run())?;
-            let needs_write = snapshot.needs_write()?;
-            if !ctx.dry_run() {
+            if ctx.dry_run() {
+                snapshot.needs_write()?;
+            } else {
                 ensure!(
-                    !needs_write,
-                    "snapshot is not prepared for the current inputs"
+                    snapshot.validated_metadata(&source)?.is_some(),
+                    "snapshot is not validated for the current inputs and release descriptor"
                 );
                 let section = repository_section(&source.package_base, &snapshot.path)?;
                 let config = config

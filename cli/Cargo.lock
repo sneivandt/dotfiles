@@ -298,6 +298,7 @@ dependencies = [
  "base64",
  "clap",
  "clap_complete",
+ "clap_lex",
  "ctrlc",
  "dunce",
  "enable-ansi-support",

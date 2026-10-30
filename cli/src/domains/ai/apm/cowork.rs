@@ -74,7 +74,25 @@ pub(super) fn reconcile_cowork_skills(ctx: &Context) -> Result<bool> {
         }
     }
 
+    #[cfg(windows)]
+    let desired_directories = if owned.difference(&desired).next().is_none() {
+        BTreeSet::new()
+    } else {
+        desired
+            .iter()
+            .map(|name| std::fs::canonicalize(target.join(name)))
+            .collect::<std::io::Result<BTreeSet<_>>>()?
+    };
     for name in owned.difference(&desired) {
+        // Case-only renames still address the desired directory on Windows.
+        // Use filesystem identity without rewriting Unicode path components.
+        #[cfg(windows)]
+        match std::fs::canonicalize(target.join(name)) {
+            Ok(path) if desired_directories.contains(&path) => continue,
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("resolving owned Cowork skill directory"),
+        }
         if remove_skill_entry_point(&target.join(name))? {
             changed = true;
             ctx.log().action(
@@ -336,10 +354,10 @@ fn record_legacy_cowork_deployment(value: &Value, names: &mut BTreeSet<String>) 
     if record_legacy_cowork_uri(value, names) {
         return true;
     }
-    if let Some(uri) = value.get("value") {
-        record_legacy_cowork_uri(uri, names);
-    }
-    is_cowork_deployment(value)
+    let owned_uri = value
+        .get("value")
+        .is_some_and(|uri| record_legacy_cowork_uri(uri, names));
+    owned_uri || value.get("target").and_then(Value::as_str) == Some(COWORK_TARGET)
 }
 
 fn record_legacy_cowork_uri(value: &Value, names: &mut BTreeSet<String>) -> bool {
@@ -352,22 +370,6 @@ fn record_legacy_cowork_uri(value: &Value, names: &mut BTreeSet<String>) -> bool
         names.insert(name.to_string());
     }
     is_cowork_uri(value)
-}
-
-fn is_cowork_deployment(value: &Value) -> bool {
-    if is_cowork_uri(value) {
-        return true;
-    }
-    let Some(record) = value.as_mapping() else {
-        return false;
-    };
-    record
-        .get(Value::String("target".to_owned()))
-        .and_then(Value::as_str)
-        .is_some_and(|target| target == COWORK_TARGET)
-        || record
-            .get(Value::String("value".to_owned()))
-            .is_some_and(is_cowork_uri)
 }
 
 fn is_cowork_uri(value: &Value) -> bool {
@@ -607,6 +609,71 @@ mod tests {
             "current"
         );
         assert!(target_skill.join("placeholder.txt").exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn reconcile_case_only_skill_rename_does_not_remove_the_desired_entry_point() {
+        for (before, after) in [("example", "Example"), ("İExample", "İEXAMPLE")] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let (source, target, ctx) = setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+            if before != "example" {
+                std::fs::rename(&source, source.with_file_name(before)).unwrap();
+            }
+            let target = target.with_file_name(before);
+            let lock_path = dir.path().join(".apm").join("apm.lock.yaml");
+            let lock = std::fs::read_to_string(&lock_path).unwrap();
+            std::fs::write(
+                &lock_path,
+                lock.replace("skills/example/", &format!("skills/{before}/")),
+            )
+            .unwrap();
+            assert!(reconcile_cowork_skills(&ctx).unwrap());
+            std::fs::write(target.join("cowork-owned.txt"), "preserve").unwrap();
+            std::fs::write(
+                lock_path,
+                lock.replace("skills/example/", &format!("skills/{after}/")),
+            )
+            .unwrap();
+
+            reconcile_cowork_skills(&ctx).unwrap();
+
+            assert_eq!(
+                std::fs::read_to_string(target.join("SKILL.md")).unwrap(),
+                "current",
+                "the previous casing aliases the desired skill, not an orphan"
+            );
+            assert_eq!(
+                std::fs::read_to_string(target.join("cowork-owned.txt")).unwrap(),
+                "preserve"
+            );
+            assert!(!reconcile_cowork_skills(&ctx).unwrap());
+        }
+    }
+
+    #[test]
+    fn current_and_legacy_skill_ownership_preserve_configured_names() {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        std::fs::write(
+            dir.path().join(OWNERSHIP_FILE),
+            "[\"Example\", \"example\"]",
+        )
+        .unwrap();
+        let expected = BTreeSet::from(["Example".to_string(), "example".to_string()]);
+        assert_eq!(read_owned_skills(dir.path()).unwrap(), expected);
+
+        let content = "dependencies:\n- deployed_files: \
+            [.agents/skills/Example/SKILL.md, .agents/skills/example/SKILL.md]\n";
+        std::fs::create_dir(dir.path().join(".apm")).unwrap();
+        std::fs::write(dir.path().join(".apm").join("apm.lock.yaml"), content).unwrap();
+        assert_eq!(desired_cowork_skill_names(dir.path()).unwrap(), expected);
+
+        let mut lock: Value =
+            serde_yaml_ng::from_str(&content.replace(".agents/skills/", "cowork://skills/"))
+                .unwrap();
+        let mut legacy = BTreeSet::new();
+        assert!(strip_legacy_cowork_deployments(&mut lock, &mut legacy));
+        assert_eq!(legacy, expected);
     }
 
     #[test]

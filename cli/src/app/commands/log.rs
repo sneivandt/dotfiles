@@ -85,7 +85,7 @@ fn run_in_dir(
     } else if let Some(command) = opts.command {
         runs.retain(|run| command.matches(&run.command));
     }
-    if runs.is_empty() {
+    if runs.is_empty() && opts.run.is_none() {
         if opts.list
             && let Some(format @ (DiscoveryFormat::Json | DiscoveryFormat::Plain)) = opts.format
         {
@@ -902,6 +902,36 @@ mod tests {
         assert!(message.contains("No run at index 7"), "{message}");
         assert!(message.contains("1 retained"), "{message}");
         assert!(message.contains("--list"), "{message}");
+    }
+
+    #[test]
+    fn explicit_run_indices_fail_when_no_runs_are_retained_or_match() {
+        for existing_logs in [false, true] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let dir = fixture.path().join("logs");
+            if existing_logs {
+                write_run(&dir, "20260731T154210Z-install-1.log", "installation\n");
+            }
+            for index in [0, 7] {
+                let selected = LogOpts {
+                    run: Some(index),
+                    command: Some(crate::app::cli::LogCommand::Check),
+                    ..opts()
+                };
+                let mut output = Vec::new();
+                let error = run_in_dir(&dir, &selected, false, &mut output)
+                    .expect_err("an explicit index must identify a retained matching run");
+                assert_eq!(
+                    error.to_string(),
+                    format!("No run at index {index} (0 retained). {LIST_HINT}")
+                );
+                assert!(
+                    output.is_empty(),
+                    "invalid selection must not emit success output"
+                );
+                assert_eq!(dir.exists(), existing_logs);
+            }
+        }
     }
 
     #[test]

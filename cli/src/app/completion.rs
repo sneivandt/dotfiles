@@ -4,6 +4,7 @@ use std::ffi::OsString;
 use std::process::Command as ProcessCommand;
 
 use clap_complete::CompletionCandidate;
+use clap_lex::OsStrExt as _;
 use serde::Deserialize;
 
 /// Completion uses the same command context as argument parsing, including
@@ -92,7 +93,7 @@ fn present_arguments(command: &clap::Command, words: &[OsString]) -> Vec<clap::I
     let mut present = Vec::new();
     let mut words = words.iter();
     while let Some(word) = words.next() {
-        let Some(text) = word.to_str() else { continue };
+        let text = word.to_string_lossy();
         if text == "--" {
             break;
         }
@@ -318,26 +319,24 @@ fn option_values(words: &[OsString]) -> Vec<(String, &std::ffi::OsStr)> {
     let mut values = Vec::new();
     let mut words = words.iter();
     while let Some(word) = words.next() {
-        let Some(text) = word.to_str() else {
-            continue;
-        };
-        if text == "--" {
+        if word == "--" {
             break;
         }
-        if let Some(long) = text.strip_prefix("--") {
+        if let Some(long) = word.strip_prefix("--") {
             let (name, attached) = long
-                .split_once('=')
+                .split_once("=")
                 .map_or((long, None), |(name, value)| (name, Some(value)));
+            let Some(name) = name.to_str() else {
+                continue;
+            };
             if options
                 .iter()
                 .any(|arg| arg.get_long() == Some(name) && arg.get_action().takes_values())
-                && let Some(value) = attached
-                    .map(std::ffi::OsStr::new)
-                    .or_else(|| words.next().map(OsString::as_os_str))
+                && let Some(value) = attached.or_else(|| words.next().map(OsString::as_os_str))
             {
                 values.push((name.to_owned(), value));
             }
-        } else if let Some(shorts) = text.strip_prefix('-') {
+        } else if let Some(shorts) = word.to_str().and_then(|text| text.strip_prefix('-')) {
             let mut shorts = shorts.chars();
             while let Some(short) = shorts.next() {
                 let Some(arg) = options
@@ -837,22 +836,68 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn non_unicode_repository_paths_preserve_graph_and_discovery_options() {
-        use std::os::unix::ffi::OsStringExt as _;
-
-        let root = OsString::from_vec(b"/repo-\xff".to_vec());
-        let words = vec![
-            "dotfiles".into(),
-            "list".into(),
-            "--root".into(),
-            root.clone(),
-            "--graph".into(),
-            "check".into(),
-        ];
-        assert_eq!(task_memberships(&words), ["check"]);
-        assert_eq!(repository_args(&words), [OsString::from("--root"), root]);
+        #[cfg(unix)]
+        let path = {
+            use std::os::unix::ffi::OsStringExt as _;
+            OsString::from_vec(b"fixture=\xff=path".to_vec())
+        };
+        #[cfg(windows)]
+        let path = {
+            use std::os::windows::ffi::OsStringExt as _;
+            OsString::from_wide(&[b'f'.into(), b'='.into(), 0xd800, b'='.into(), b'p'.into()])
+        };
+        for option in ["--root", "--overlay"] {
+            let mut attached = OsString::from(format!("{option}="));
+            attached.push(&path);
+            for arguments in [vec![option.into(), path.clone()], vec![attached.clone()]] {
+                for before_command in [false, true] {
+                    let mut words = vec![OsString::from("dotfiles")];
+                    if !before_command {
+                        words.push("list".into());
+                    }
+                    words.extend(arguments.clone());
+                    if before_command {
+                        words.push("list".into());
+                    }
+                    words.extend(["--graph".into(), "check".into(), "-pbase".into()]);
+                    assert_eq!(task_memberships(&words), ["check"]);
+                    assert_eq!(
+                        repository_args(&words),
+                        [
+                            option.into(),
+                            path.clone(),
+                            "--profile".into(),
+                            "base".into()
+                        ],
+                        "{words:?}"
+                    );
+                    let command = command_for_words(&words);
+                    let argument = command
+                        .get_arguments()
+                        .find(|argument| argument.get_long() == option.strip_prefix("--"))
+                        .unwrap();
+                    assert!(
+                        argument.is_hide_set(),
+                        "{option} is already present: {words:?}"
+                    );
+                }
+            }
+            for boundary in ["--", "--only"] {
+                let words = [OsString::from(boundary), attached.clone()];
+                assert!(
+                    repository_args(&words).is_empty(),
+                    "an attached path after {boundary} is not an option"
+                );
+            }
+            let words = [OsString::from("--root"), attached.clone()];
+            assert_eq!(
+                repository_args(&words),
+                [OsString::from("--root"), attached],
+                "a following option-shaped value belongs to its preceding option"
+            );
+        }
     }
 
     #[test]

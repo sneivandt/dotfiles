@@ -20,10 +20,7 @@ use crate::infra::logging::OutputExt as _;
 mod paru;
 mod planning;
 
-use paru::{
-    ParuHealth, build_paru, check_paru_health, check_prerequisites, clone_paru_from_aur,
-    prepare_build_directory,
-};
+use paru::{ParuHealth, build_paru, check_paru_health, check_prerequisites, clone_paru_from_aur};
 use planning::{
     PackageInstallPlan, build_install_plan, native_manager_requirement, predict_sudo,
     select_packages,
@@ -205,8 +202,8 @@ impl Task for InstallAurPackages {
 #[derive(Debug)]
 pub struct InstallParu;
 
-fn run_paru_install(ctx: &Context, build_dir: &Path) -> Result<TaskResult> {
-    process_operation(ctx, &ParuInstallOperation { build_dir })
+fn run_paru_install(ctx: &Context, build_root: &Path) -> Result<TaskResult> {
+    process_operation(ctx, &ParuInstallOperation { build_root })
 }
 
 impl Task for InstallParu {
@@ -237,13 +234,13 @@ impl Task for InstallParu {
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {
-        run_paru_install(ctx, &std::env::temp_dir().join("paru-build"))
+        run_paru_install(ctx, &std::env::temp_dir())
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 struct ParuInstallOperation<'a> {
-    build_dir: &'a Path,
+    build_root: &'a Path,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -335,8 +332,9 @@ impl Operation for ParuInstallOperation<'_> {
             )),
         }
         check_prerequisites(ctx)?;
-        prepare_build_directory(ctx, self.build_dir)?;
-        let guard = crate::infra::fs::TempGuard::dir(self.build_dir.to_path_buf());
+        let guard =
+            crate::infra::fs::TempGuard::create_unique_dir(self.build_root, "paru-build", "")
+                .context("reserving paru build directory")?;
         clone_paru_from_aur(ctx, guard.path())?;
         build_paru(ctx, guard.path())
             .with_context(|| format!("paru {} attempt failed", plan.action()))?;

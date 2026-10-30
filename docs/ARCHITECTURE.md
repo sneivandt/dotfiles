@@ -142,8 +142,10 @@ to resolve paths. Overlay script definitions are deliberately
 loaded **only** from the overlay. Some sections also retain unfiltered records
 for validation, so inactive sources can still be checked.
 
-Structural errors, within-source target conflicts, merged symlink overlaps, and
-contradictory active Git/registry/agent settings within a source fail loading.
+Structural errors, within-source target conflicts, merged symlink overlaps,
+contradictory active Git/registry/agent settings within a source, and incompatible
+merged ancestor/descendant agent-setting values fail loading. Exact-key overlay
+settings still replace their public counterparts.
 Other semantic diagnostics are returned
 by `Config::validate`: startup displays them; the `config-warnings` check task
 fails if any remain. Do not silently turn diagnostics into defaults or make
@@ -341,6 +343,9 @@ adapters rather than scattering process-global reads or OS checks. Concrete
 platform implementations can still require compile-time `cfg` gates.
 [`platform.rs`](../cli/src/infra/platform.rs) owns capability detection;
 [`exec/`](../cli/src/infra/exec) owns process mechanics.
+Home paths retain their native OS encoding: Windows prefers `USERPROFILE` and
+falls back to `HOME`, while Linux uses `HOME`. A non-Unicode path is not an
+absent variable and must not cause selection of a different home.
 
 The [elevation broker](../cli/src/app/commands/execution/elevation.rs) scopes
 privilege to declared tasks: Linux primes sudo credentials for privileged
@@ -391,7 +396,10 @@ non-applicable tasks stay out of normal rows/totals. Completed rows retain
 completion order rather than being sorted after execution.
 
 Run logs retain chronological, schema-versioned records for task identity,
-actions, duration, requested task scope and commands. Each executed task has one
+actions, duration, requested task scope and commands. Task identities containing
+text-header delimiters or line breaks remain in the JSON envelope, with a safe
+header label, so each event still occupies exactly one physical log line.
+Each executed task has one
 start entry naming the task, one structured result and one structured duration;
 process-wide stages are separate. Unchecked command nonzero exits remain neutral
 until interpreted by the caller. Restarted/elevated processes have their own run

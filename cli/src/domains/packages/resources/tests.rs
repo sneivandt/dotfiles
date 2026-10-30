@@ -130,17 +130,20 @@ fn inventory_failures_are_not_reported_as_an_empty_package_set() {
                 assert_eq!(spec.program(), program);
                 assert_eq!(spec.arguments(), args);
                 assert_eq!(spec.working_dir(), None);
-                assert!(!spec.is_checked());
+                assert!(spec.is_checked());
                 if spawn_failure {
                     Err(ExecError::spawn(
                         program,
                         std::io::Error::other("fixture inventory failure"),
                     ))
                 } else {
-                    Ok(ExecResult::failure(
-                        "partial-package 1.0",
-                        "fixture inventory failure",
-                        Some(42),
+                    Err(ExecError::non_zero(
+                        program,
+                        ExecResult::failure(
+                            "partial-package 1.0",
+                            "fixture inventory failure",
+                            Some(42),
+                        ),
                     ))
                 }
             });
@@ -152,6 +155,10 @@ fn inventory_failures_are_not_reported_as_an_empty_package_set() {
             if !spawn_failure {
                 assert!(format!("{error:#}").contains("42"), "{error:#}");
             }
+            assert!(
+                error.downcast_ref::<ExecError>().is_some(),
+                "{manager} inventory must preserve the executor's failure classification"
+            );
         }
     }
 }
@@ -472,7 +479,7 @@ fn failed_native_batch_reports_packages_that_were_actually_installed() {
                 .once()
                 .in_sequence(&mut sequence)
                 .withf(|spec| {
-                    spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+                    spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
                 })
                 .returning(move |_| Ok(ExecResult::success(installed)));
             let executor: Arc<dyn Executor> = Arc::new(mock);
@@ -524,7 +531,7 @@ fn failed_batch_inventory_errors_remain_errors_not_partial_success() {
             .once()
             .in_sequence(&mut sequence)
             .withf(|spec| {
-                spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+                spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
             })
             .returning(move |_| {
                 let result = ExecResult::failure("first 1.0\n", "fixture query failure", Some(1));
@@ -534,7 +541,7 @@ fn failed_batch_inventory_errors_remain_errors_not_partial_success() {
                         result,
                     })
                 } else {
-                    Ok(result)
+                    Err(ExecError::non_zero("pacman -Q", result))
                 }
             });
         let executor: Arc<dyn Executor> = Arc::new(mock);

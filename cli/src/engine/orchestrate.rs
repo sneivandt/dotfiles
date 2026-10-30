@@ -1,6 +1,8 @@
 //! Top-level resource orchestration: check state, dispatch to sequential or
 //! parallel processing, and collect stats.
 
+use std::collections::VecDeque;
+
 use anyhow::{Context as _, Result};
 
 use super::apply;
@@ -22,11 +24,11 @@ fn process_items<T: Send>(
     access_claims: impl Fn(&T) -> Vec<AccessClaim>,
     process_one: impl Fn(T) -> Result<TaskStats> + Sync + Send,
 ) -> Result<TaskResult> {
-    let mut pending = Vec::with_capacity(items.len());
+    let mut pending = VecDeque::with_capacity(items.len());
     for item in items {
         let claims = access_claims(&item);
         ctx.validate_access(&claims)?;
-        pending.push((item, claims));
+        pending.push_back((item, claims));
     }
     let mut progress = BatchProgress::default();
     while !pending.is_empty() {
@@ -38,17 +40,19 @@ fn process_items<T: Send>(
         // Reserve on the caller, never on a Rayon worker: a task holding a
         // conflicting claim may itself need the entire pool to make progress.
         let mut ready = Vec::new();
-        let mut waiting = Vec::new();
-        for (index, (item, claims)) in pending.into_iter().enumerate() {
-            if (!sequential || index == 0)
-                && let Some(guard) = ctx.try_access(&claims)
-            {
+        let candidates = if sequential { 1 } else { pending.len() };
+        for _ in 0..candidates {
+            let Some((item, claims)) = pending.pop_front() else {
+                break;
+            };
+            if let Some(guard) = ctx.try_access(&claims) {
                 ready.push((item, guard));
+            } else if sequential {
+                pending.push_front((item, claims));
             } else {
-                waiting.push((item, claims));
+                pending.push_back((item, claims));
             }
         }
-        pending = waiting;
         if ready.is_empty() {
             if ctx.wait_for_access().is_err() {
                 ctx.log().warn("cancelled — stopping before next resource");

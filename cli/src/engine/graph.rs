@@ -95,18 +95,12 @@ impl ResolvedTaskGraph {
             .zip(&blocking_dependencies)
             .map(|(task, blocking)| {
                 let mut resolved = blocking.clone();
+                let assessment = assessments.get(&task.task_id());
                 extend_resolved_dependencies(
                     &mut resolved,
-                    &task
-                        .ordering_dependencies()
+                    task.ordering_dependencies()
                         .iter()
-                        .filter(|id| {
-                            !assessments
-                                .get(&task.task_id())
-                                .is_some_and(|assessment| assessment.ordering_satisfied(id))
-                        })
-                        .cloned()
-                        .collect::<Vec<_>>(),
+                        .filter(|id| !assessment.is_some_and(|state| state.ordering_satisfied(id))),
                     &id_to_idx,
                 );
                 resolved
@@ -231,9 +225,9 @@ fn resolve_dependencies(dependencies: &[TaskId], id_to_idx: &HashMap<TaskId, usi
     resolved
 }
 
-fn extend_resolved_dependencies(
+fn extend_resolved_dependencies<'a>(
     resolved: &mut Vec<usize>,
-    dependencies: &[TaskId],
+    dependencies: impl IntoIterator<Item = &'a TaskId>,
     id_to_idx: &HashMap<TaskId, usize>,
 ) {
     for dependency in dependencies {

@@ -555,6 +555,49 @@ fn load_agent_settings_rejects_conflicts_within_either_source_before_overriding(
 }
 
 #[test]
+fn load_agent_settings_cross_source_parent_child_conflicts_fail_before_task_execution() {
+    for harness in ["copilot", "codex"] {
+        for (parent_value, child_value, conflicting) in [
+            ("{ enabled = true }", "false", true),
+            ("false", "true", true),
+            ("{ enabled = true }", "true", false),
+        ] {
+            let parent = format!(
+                "[base]\nsettings = [{{ target = '{harness}', key = 'feature', value = {parent_value} }}]\n"
+            );
+            let child = format!(
+                "[base]\nsettings = [{{ target = '{harness}', key = 'feature.enabled', value = {child_value} }}]\n"
+            );
+            for (main_content, overlay_content) in [(&parent, &child), (&child, &parent)] {
+                let (main, profile, platform) =
+                    setup_load(linux(), &[("agent-settings.toml", main_content)]);
+                let overlay = tempfile::tempdir_in(".").unwrap();
+                write_overlay_config(&overlay, "agent-settings.toml", overlay_content);
+                let result = Config::load(main.path(), &profile, platform, Some(overlay.path()));
+                if conflicting {
+                    let error =
+                        result.expect_err("merged conflicts must abort configuration loading");
+                    let message = format!("{error:#}");
+                    assert!(
+                        message.contains("agent-settings.conflicting-values"),
+                        "{message}"
+                    );
+                    assert!(message.contains("feature.enabled"), "{message}");
+                    assert!(
+                        message.contains("conflicting parent/child settings"),
+                        "{message}"
+                    );
+                } else {
+                    let config = result.expect("compatible parent/child declarations remain valid");
+                    assert_eq!(config.agent_settings.len(), 2);
+                    assert!(agent_settings::validate_conflicts(&config.agent_settings).is_empty());
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn load_keeps_inactive_profile_sources_and_origins_for_validation() {
     let (dir, profile, platform) = setup_load(
         linux(),

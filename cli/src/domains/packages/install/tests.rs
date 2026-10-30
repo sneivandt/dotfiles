@@ -1,8 +1,8 @@
 //! Unit tests for package install tasks.
 
 use super::*;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use crate::domains::packages::config::packages::Package;
 use crate::infra::ConfigHandle;
@@ -33,14 +33,17 @@ fn aur_preview_uses_package_database_without_requiring_paru() {
         mock.expect_execute()
             .once()
             .withf(|spec| {
-                spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+                spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
             })
             .returning(move |_| {
-                Ok(if query_fails {
-                    ExecResult::failure("", "fixture database error", Some(1))
+                if query_fails {
+                    Err(ExecError::non_zero(
+                        "pacman -Q",
+                        ExecResult::failure("", "fixture database error", Some(1)),
+                    ))
                 } else {
-                    ExecResult::success("already-installed 1.0\n")
-                })
+                    Ok(ExecResult::success("already-installed 1.0\n"))
+                }
             });
         let ctx = make_package_context(PathBuf::from("/tmp"), None, Os::Linux, true, mock)
             .with_dry_run(true);
@@ -175,9 +178,9 @@ fn install_paru_run_returns_dry_run_when_not_installed_in_dry_run() {
 #[test]
 fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
     let fixture = tempfile::tempdir_in(".").unwrap();
-    let build_dir = fixture.path().join("paru-build");
-    std::fs::create_dir(&build_dir).unwrap();
-    std::fs::write(build_dir.join("stale-checkout"), "replace me").unwrap();
+    let legacy = fixture.path().join("paru-build");
+    std::fs::create_dir(&legacy).unwrap();
+    std::fs::write(legacy.join("keep"), "existing user checkout").unwrap();
     let unrelated = fixture.path().join("unrelated");
     std::fs::create_dir(&unrelated).unwrap();
     std::fs::write(unrelated.join("keep"), "unrelated content").unwrap();
@@ -206,23 +209,28 @@ fn install_paru_reports_change_and_cleans_its_fixture_build_directory() {
         .with(mockall::predicate::eq("paru"))
         .returning(|_| anyhow::bail!("paru not found on PATH"));
     expect_paru_build_prerequisites(&mut mock);
-    expect_paru_clone(&mut mock, &build_dir);
+    let build_dir = expect_paru_clone(&mut mock, fixture.path());
     mock.expect_execute()
         .once()
-        .withf(is_makepkg(build_dir.clone()))
+        .withf(is_makepkg(Arc::clone(&build_dir)))
         .returning(|_| Ok(ExecResult::success("")));
     expect_healthy_paru(&mut mock, 1);
 
     let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
-    let result = run_paru_install(&ctx, &build_dir).unwrap();
+    let result = run_paru_install(&ctx, fixture.path()).unwrap();
     let stats = task_batch(&result);
     assert!(
         stats.changed_count() > 0 && stats.message() == Some("installed paru"),
         "expected changed result after paru install, got {result:?}"
     );
     assert!(
-        !build_dir.exists(),
+        !build_dir.get().unwrap().exists(),
         "successful installation must clean its checkout"
+    );
+    assert_eq!(
+        std::fs::read_to_string(legacy.join("keep")).unwrap(),
+        "existing user checkout",
+        "a predictable old build directory is not owned by this invocation"
     );
     assert_eq!(
         std::fs::read_to_string(unrelated.join("keep")).unwrap(),
@@ -272,7 +280,7 @@ fn paru_preview_and_completed_state_preserve_existing_build_files() {
 #[test]
 fn failed_paru_clone_cleans_only_its_partial_checkout() {
     let fixture = tempfile::tempdir_in(".").unwrap();
-    let build_dir = fixture.path().join("paru-build");
+    let build_dir = Arc::new(OnceLock::<PathBuf>::new());
     let marker = fixture.path().join("keep");
     std::fs::write(&marker, "unrelated content").unwrap();
 
@@ -280,13 +288,18 @@ fn failed_paru_clone_cleans_only_its_partial_checkout() {
     expect_missing_paru_package(&mut mock, 1);
     expect_missing_paru_path(&mut mock, 1);
     expect_paru_build_prerequisites(&mut mock);
-    let partial = build_dir.clone();
+    let partial = Arc::clone(&build_dir);
     mock.expect_execute()
         .once()
-        .withf(is_git_clone(build_dir.clone()))
-        .returning(move |_| {
-            std::fs::create_dir(&partial).unwrap();
-            std::fs::write(partial.join("partial"), "incomplete checkout").unwrap();
+        .withf(is_git_clone(fixture.path().into()))
+        .returning(move |spec| {
+            let path = PathBuf::from(spec.arguments().last().unwrap());
+            assert!(
+                path.is_dir(),
+                "the build directory must be reserved before cloning"
+            );
+            std::fs::write(path.join("partial"), "incomplete checkout").unwrap();
+            partial.set(path).unwrap();
             Err(ExecError::non_zero(
                 "git clone",
                 ExecResult::failure("", "fixture clone failed", Some(128)),
@@ -294,14 +307,14 @@ fn failed_paru_clone_cleans_only_its_partial_checkout() {
         });
     let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
 
-    let error = run_paru_install(&ctx, &build_dir).unwrap_err();
+    let error = run_paru_install(&ctx, fixture.path()).unwrap_err();
 
     assert!(
         format!("{error:#}").contains("fixture clone failed"),
         "{error:#}"
     );
     assert!(
-        !build_dir.exists(),
+        !build_dir.get().unwrap().exists(),
         "failed clone must clean its partial checkout"
     );
     assert_eq!(
@@ -346,34 +359,37 @@ fn is_paru_package_query(spec: &CommandSpec) -> bool {
         && spec.working_dir().is_none()
 }
 
-fn is_git_clone(build_dir: PathBuf) -> impl Fn(&CommandSpec) -> bool {
+fn is_git_clone(build_root: PathBuf) -> impl Fn(&CommandSpec) -> bool {
     move |spec| {
         spec.program() == "git"
-            && spec.arguments()
-                == [
-                    std::ffi::OsString::from("clone"),
-                    std::ffi::OsString::from("https://aur.archlinux.org/paru.git"),
-                    build_dir.as_os_str().to_owned(),
-                ]
+            && matches!(spec.arguments(), [command, url, destination]
+                if command == "clone"
+                    && url == "https://aur.archlinux.org/paru.git"
+                    && Path::new(destination).parent() == Some(build_root.as_path())
+                    && Path::new(destination).file_name().unwrap().to_str().unwrap().starts_with("paru-build-"))
             && spec.is_checked()
             && spec.working_dir().is_none()
     }
 }
 
-fn expect_paru_clone(mock: &mut MockExecutor, build_dir: &Path) {
-    let build_dir = build_dir.to_path_buf();
+fn expect_paru_clone(mock: &mut MockExecutor, build_root: &Path) -> Arc<OnceLock<PathBuf>> {
+    let build_dir = Arc::new(OnceLock::new());
+    let captured = Arc::clone(&build_dir);
     mock.expect_execute()
         .once()
-        .withf(is_git_clone(build_dir.clone()))
-        .returning(move |_| {
-            assert!(
-                !build_dir.exists(),
-                "clone must receive a clean fixture directory"
+        .withf(is_git_clone(build_root.into()))
+        .returning(move |spec| {
+            let path = PathBuf::from(spec.arguments().last().unwrap());
+            assert_eq!(
+                std::fs::read_dir(&path).unwrap().count(),
+                0,
+                "clone must receive an exclusively reserved empty directory"
             );
-            std::fs::create_dir(&build_dir).unwrap();
-            std::fs::write(build_dir.join("PKGBUILD"), "fixture checkout").unwrap();
+            std::fs::write(path.join("PKGBUILD"), "fixture checkout").unwrap();
+            captured.set(path).unwrap();
             Ok(ExecResult::success(""))
         });
+    build_dir
 }
 
 fn is_cargo_version(spec: &CommandSpec) -> bool {
@@ -383,12 +399,12 @@ fn is_cargo_version(spec: &CommandSpec) -> bool {
         && spec.working_dir().is_none()
 }
 
-fn is_makepkg(build_dir: PathBuf) -> impl Fn(&CommandSpec) -> bool {
+fn is_makepkg(build_dir: Arc<OnceLock<PathBuf>>) -> impl Fn(&CommandSpec) -> bool {
     move |spec| {
         spec.program() == "makepkg"
             && spec.arguments() == ["-si", "--noconfirm"]
             && spec.is_checked()
-            && spec.working_dir() == Some(build_dir.as_path())
+            && spec.working_dir() == build_dir.get().map(PathBuf::as_path)
             && matches!(spec.environment(), [(key, value)] if key == "MAKEFLAGS"
                 && value.to_str().and_then(|value| value.strip_prefix("-j"))
                     .and_then(|jobs| jobs.parse::<usize>().ok()).is_some_and(|jobs| jobs > 0))
@@ -537,10 +553,9 @@ fn paru_inventory_failure_never_plans_a_bootstrap_or_rebuild() {
             .once()
             .withf(is_native_inventory)
             .returning(|_| {
-                Ok(ExecResult::failure(
-                    "",
-                    "fixture unreadable package database",
-                    Some(1),
+                Err(ExecError::non_zero(
+                    "pacman -Q",
+                    ExecResult::failure("", "fixture unreadable package database", Some(1)),
                 ))
             });
 
@@ -715,7 +730,6 @@ fn paru_prerequisites_reject_unconfigured_rustup_cargo() {
 #[test]
 fn broken_paru_is_rebuilt_and_revalidated() {
     let fixture = tempfile::tempdir_in(".").unwrap();
-    let build_dir = fixture.path().join("paru-build");
 
     let mut mock = MockExecutor::new();
     expect_installed_paru_package(&mut mock, 2);
@@ -733,19 +747,19 @@ fn broken_paru_is_rebuilt_and_revalidated() {
             Ok(ExecResult::success("paru v2.1.0 - libalpm v16.0.1\n"))
         });
     expect_paru_build_prerequisites(&mut mock);
-    expect_paru_clone(&mut mock, &build_dir);
+    let build_dir = expect_paru_clone(&mut mock, fixture.path());
     mock.expect_execute()
         .once()
-        .withf(is_makepkg(build_dir.clone()))
+        .withf(is_makepkg(Arc::clone(&build_dir)))
         .returning(|_| Ok(ExecResult::success("")));
 
     let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
-    let result = run_paru_install(&ctx, &build_dir).unwrap();
+    let result = run_paru_install(&ctx, fixture.path()).unwrap();
     let stats = task_batch(&result);
 
     assert_eq!(stats.message(), Some("rebuilt paru"));
     assert!(
-        !build_dir.exists(),
+        !build_dir.get().unwrap().exists(),
         "successful rebuild must clean its checkout"
     );
 }
@@ -753,19 +767,18 @@ fn broken_paru_is_rebuilt_and_revalidated() {
 #[test]
 fn failed_paru_rebuild_returns_clear_root_error() {
     let fixture = tempfile::tempdir_in(".").unwrap();
-    let build_dir = fixture.path().join("paru-build");
 
     let mut mock = MockExecutor::new();
-    expect_failed_paru_rebuild(&mut mock, &build_dir);
+    let build_dir = expect_failed_paru_rebuild(&mut mock, fixture.path());
 
     let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock);
-    let error = run_paru_install(&ctx, &build_dir).unwrap_err();
+    let error = run_paru_install(&ctx, fixture.path()).unwrap_err();
     let message = format!("{error:#}");
 
     assert!(message.contains("paru rebuild attempt failed"), "{message}");
     assert!(message.contains("package build failed"), "{message}");
     assert!(
-        !build_dir.exists(),
+        !build_dir.get().unwrap().exists(),
         "failed rebuild must clean its checkout"
     );
 }
@@ -799,10 +812,9 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
     }
 
     let fixture = tempfile::tempdir_in(".").unwrap();
-    let build_dir = fixture.path().join("paru-build");
     let packages = packages(&[("apm-bin", true)]);
     let mut mock = MockExecutor::new();
-    expect_failed_paru_rebuild(&mut mock, &build_dir);
+    let build_dir = expect_failed_paru_rebuild(&mut mock, fixture.path());
 
     let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
     let log = Arc::new(log);
@@ -811,7 +823,7 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
         .with_log(log_output);
     let install_paru = FixtureParuTask {
         inner: InstallParu,
-        build_dir: build_dir.clone(),
+        build_dir: fixture.path().into(),
     };
     let install_aur = InstallAurPackages::new(packages);
     let tasks: Vec<&dyn Task> = vec![&install_paru, &install_aur];
@@ -826,7 +838,7 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
 
     assert_eq!(summary.failure_count(), 1);
     assert!(
-        !build_dir.exists(),
+        !build_dir.get().unwrap().exists(),
         "scheduler failure must clean the fixture checkout"
     );
     let entries = log.task_entries();
@@ -867,7 +879,10 @@ fn failed_paru_rebuild_blocks_aur_package_task() {
     }
 }
 
-fn expect_failed_paru_rebuild(mock: &mut MockExecutor, build_dir: &Path) {
+fn expect_failed_paru_rebuild(
+    mock: &mut MockExecutor,
+    build_root: &Path,
+) -> Arc<OnceLock<PathBuf>> {
     expect_installed_paru_package(mock, 1);
     mock.expect_execute()
         .once()
@@ -879,16 +894,17 @@ fn expect_failed_paru_rebuild(mock: &mut MockExecutor, build_dir: &Path) {
             ))
         });
     expect_paru_build_prerequisites(mock);
-    expect_paru_clone(mock, build_dir);
+    let build_dir = expect_paru_clone(mock, build_root);
     mock.expect_execute()
         .once()
-        .withf(is_makepkg(build_dir.to_path_buf()))
+        .withf(is_makepkg(Arc::clone(&build_dir)))
         .returning(|_| {
             Err(ExecError::non_zero(
                 "makepkg -si --noconfirm",
                 ExecResult::failure("", "package build failed", Some(4)),
             ))
         });
+    build_dir
 }
 
 fn expect_paru_native_build_tools(mock: &mut MockExecutor) {
@@ -947,7 +963,7 @@ fn make_package_context(
 fn is_native_inventory(spec: &CommandSpec) -> bool {
     spec.program() == "pacman"
         && spec.arguments() == ["-Q"]
-        && !spec.is_checked()
+        && spec.is_checked()
         && spec.working_dir().is_none()
 }
 
@@ -1005,7 +1021,7 @@ fn install_packages_all_already_installed_returns_ok() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false)]);
     // which("pacman") → true
-    // run_unchecked("pacman", ["-Q"]) → git installed → no install needed
+    // pacman inventory → git installed → no install needed
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
     mock.expect_execute()
@@ -1022,7 +1038,7 @@ fn install_packages_dry_run_reports_missing_packages() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false)]);
     // which("pacman") → true
-    // run_unchecked("pacman", ["-Q"]) → nothing installed
+    // pacman inventory → nothing installed
     let mut mock = MockExecutor::new();
     mock.expect_which().returning(|_| true);
     mock.expect_execute()
@@ -1058,10 +1074,13 @@ fn native_inventory_failure_prevents_planning_and_installation() {
             .once()
             .withf(is_native_inventory)
             .returning(|_| {
-                Ok(ExecResult::failure(
-                    "partial-package 1.0\n",
-                    "fixture corrupt database",
-                    Some(42),
+                Err(ExecError::non_zero(
+                    "pacman -Q",
+                    ExecResult::failure(
+                        "partial-package 1.0\n",
+                        "fixture corrupt database",
+                        Some(42),
+                    ),
                 ))
             });
         let ctx = make_package_context(fixture.path().to_path_buf(), None, Os::Linux, true, mock)
@@ -1078,7 +1097,7 @@ fn install_packages_returns_failed_when_batch_install_fails() {
     let root = tempfile::tempdir_in(".").unwrap();
     let packages = packages(&[("git", false)]);
     // which("pacman") → true
-    // run_unchecked("pacman", ["-Q"]) → git not installed
+    // pacman inventory → git not installed
     // run("sudo", ["pacman", ...]) → error (simulating locked db)
     let mut seq = mockall::Sequence::new();
     let mut mock = MockExecutor::new();
@@ -1342,7 +1361,7 @@ fn winget_per_package_install_preserves_changed_and_already_current_counts() {
                 .withf(move |spec| {
                     spec.program() == "winget"
                         && spec.arguments() == args
-                        && !spec.is_checked()
+                        && spec.is_checked() == (args[0] == "list")
                         && spec.working_dir().is_none()
                 })
                 .return_once(|_| Ok(result));
@@ -1380,7 +1399,7 @@ fn winget_discovery_parse_failure_never_attempts_installation() {
                         .arguments()
                         .first()
                         .is_some_and(|argument| argument == "list")
-                    && !spec.is_checked()
+                    && spec.is_checked()
             })
             .returning(|_| {
                 Ok(ExecResult::success(
@@ -1543,8 +1562,13 @@ fn consumers_are_released_only_when_inventory_and_paru_prove_no_package_work() {
             .once()
             .withf(|spec| spec.program() == "pacman" && spec.arguments() == ["-Q"])
             .returning(move |_| {
+                if case == "database-error" {
+                    return Err(ExecError::non_zero(
+                        "pacman -Q",
+                        ExecResult::failure("", "database failure", Some(1)),
+                    ));
+                }
                 Ok(match case {
-                    "database-error" => ExecResult::failure("", "database failure", Some(1)),
                     "missing-native" => ExecResult::success("aur-tool 1\n"),
                     "missing-aur" => ExecResult::success("native-tool 1\n"),
                     _ => ExecResult::success("native-tool 1\naur-tool 1\n"),

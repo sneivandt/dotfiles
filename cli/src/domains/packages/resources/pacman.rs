@@ -9,23 +9,6 @@ use super::package::PackageProvider;
 use crate::engine::ResourceChange;
 use crate::infra::exec::{CommandSpec, Executor};
 
-fn query_names(executor: &dyn Executor, cmd: &str, args: &[&str]) -> Result<HashSet<String>> {
-    let result = executor.execute(CommandSpec::new(cmd).args(args).unchecked())?;
-    if !result.success {
-        anyhow::bail!(
-            "{cmd} query failed (exit {:?}): {}",
-            result.code,
-            result.stderr.trim()
-        );
-    }
-    Ok(result
-        .stdout
-        .lines()
-        .filter_map(|line| line.split_whitespace().next())
-        .map(str::to_string)
-        .collect())
-}
-
 /// Pacman provider for official Arch Linux packages.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct PacmanProvider;
@@ -68,7 +51,15 @@ impl PackageProvider for PacmanProvider {
     }
 
     fn query_installed(&self, executor: &dyn Executor) -> Result<HashSet<String>> {
-        query_names(executor, "pacman", &["-Q"]).context("querying installed pacman packages")
+        let result = executor
+            .execute(CommandSpec::new("pacman").arg("-Q"))
+            .context("querying installed pacman packages")?;
+        Ok(result
+            .stdout
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .map(str::to_string)
+            .collect())
     }
 
     fn install(&self, name: &str, executor: &dyn Executor) -> Result<ResourceChange> {
@@ -90,7 +81,7 @@ impl PackageProvider for PacmanProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::exec::{ExecResult, MockExecutor};
+    use crate::infra::exec::{ExecError, ExecResult, MockExecutor};
 
     #[test]
     fn query_names_extracts_first_tokens_and_ignores_blank_lines() {
@@ -98,11 +89,11 @@ mod tests {
         mock.expect_execute()
             .once()
             .withf(|spec| {
-                spec.program() == "pacman" && spec.arguments() == ["-Q"] && !spec.is_checked()
+                spec.program() == "pacman" && spec.arguments() == ["-Q"] && spec.is_checked()
             })
             .returning(|_| Ok(ExecResult::success("git 2.51.0\n\nbase-devel 1-2\nvim\n")));
 
-        let names = query_names(&mock, "pacman", &["-Q"]).unwrap();
+        let names = PacmanProvider.query_installed(&mock).unwrap();
 
         assert_eq!(names.len(), 3);
         assert!(names.contains("git"));
@@ -114,18 +105,21 @@ mod tests {
     #[test]
     fn query_names_includes_exit_code_and_stderr_on_failure() {
         let mut mock = MockExecutor::new();
-        mock.expect_execute()
-            .once()
-            .returning(|_| Ok(ExecResult::failure("", "database lock held", Some(42))));
+        mock.expect_execute().once().returning(|_| {
+            Err(ExecError::non_zero(
+                "pacman -Q",
+                ExecResult::failure("", "database lock held", Some(42)),
+            ))
+        });
 
-        let err = query_names(&mock, "pacman", &["-Q"]).unwrap_err();
-        let message = err.to_string();
+        let err = PacmanProvider.query_installed(&mock).unwrap_err();
+        let message = format!("{err:#}");
 
         assert!(
-            message.contains("pacman query failed"),
+            message.contains("querying installed pacman packages"),
             "message: {message}"
         );
-        assert!(message.contains("Some(42)"), "message: {message}");
+        assert!(message.contains("42"), "message: {message}");
         assert!(message.contains("database lock held"), "message: {message}");
     }
 

@@ -38,15 +38,22 @@ impl Snapshot {
         Ok(())
     }
 
-    // PKGBUILDs are executable code. Evaluate only during apply, from copies of
-    // the exact planned inputs, before changing the published build repository.
-    pub fn validate_metadata(&self, ctx: &Context, source: &ReleaseSource) -> Result<String> {
-        if let Some(srcinfo) = &self.srcinfo
+    pub fn validated_metadata(&self, source: &ReleaseSource) -> Result<Option<&str>> {
+        if let Some(srcinfo) = self.srcinfo.as_deref()
             && !self.needs_write()?
             && read_optional(&self.validation_path())?.as_deref()
                 == Some(self.validation_key(source, srcinfo)?.as_str())
         {
-            return Ok(srcinfo.clone());
+            return Ok(Some(srcinfo));
+        }
+        Ok(None)
+    }
+
+    // PKGBUILDs are executable code. Evaluate only during apply, from copies of
+    // the exact planned inputs, before changing the published build repository.
+    pub fn validate_metadata(&self, ctx: &Context, source: &ReleaseSource) -> Result<String> {
+        if let Some(srcinfo) = self.validated_metadata(source)? {
+            return Ok(srcinfo.to_owned());
         }
         let staging =
             TempGuard::create_unique_dir(&std::env::temp_dir(), "dotfiles-pkgbuild-", "")?;

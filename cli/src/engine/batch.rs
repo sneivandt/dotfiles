@@ -89,6 +89,12 @@ pub(crate) fn is_interrupted(error: &anyhow::Error) -> bool {
     if let Some(report) = error.downcast_ref::<BatchReport>() {
         return report.completion == BatchCompletion::Interrupted;
     }
+    if error
+        .downcast_ref::<super::access::AccessCancelled>()
+        .is_some()
+    {
+        return true;
+    }
     error.chain().any(|cause| {
         cause
             .downcast_ref::<ExecError>()
@@ -109,6 +115,10 @@ pub(super) struct BatchProgress {
 }
 
 impl BatchProgress {
+    pub(super) const fn stopped(&self) -> bool {
+        self.error.is_some() || self.not_attempted > 0
+    }
+
     /// Record a dispatched resource, returning whether dispatch should stop.
     pub(super) fn record(&mut self, result: Result<TaskStats>) -> bool {
         match result {

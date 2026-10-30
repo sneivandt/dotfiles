@@ -1,3 +1,4 @@
+mod access_claims;
 mod apply_tests;
 mod batch_reports;
 mod failure_paths;

@@ -2,7 +2,9 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    AccessClaim, IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 
 /// A git config entry resource that can be checked and applied.
 ///
@@ -156,6 +158,12 @@ impl GitConfigResource {
 }
 
 impl Resource for GitConfigResource {
+    fn access_claims(&self) -> Vec<AccessClaim> {
+        // Global configuration may include multiple files; keep one conservative
+        // domain-wide key, including explicit paths that could alias those files.
+        vec![AccessClaim::exclusive("git-config", "configuration")]
+    }
+
     fn description(&self) -> String {
         self.desired.as_ref().map_or_else(
             || format!("{} is unset", self.key),

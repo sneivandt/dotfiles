@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::Result;
 
 use super::*;
-use crate::engine::{TaskMeta, TaskResult, TaskStats};
+use crate::engine::{AccessClaim, TaskMeta, TaskResult, TaskStats, TaskWithExtraDeps};
 use crate::infra::exec::{ExecError, ExecResult};
 use crate::infra::logging::TaskEntry;
 use crate::test_helpers::ContextBuilder;
@@ -156,6 +156,7 @@ struct TestTask {
     metadata: Option<TaskMeta<'static>>,
     applicable: bool,
     satisfied_ordering: Vec<TaskId>,
+    claims: Vec<AccessClaim>,
     runs: AtomicUsize,
 }
 
@@ -170,6 +171,7 @@ impl TestTask {
             metadata: None,
             applicable: true,
             satisfied_ordering: Vec::new(),
+            claims: Vec::new(),
             runs: AtomicUsize::new(0),
         }
     }
@@ -237,6 +239,10 @@ impl Task for TestTask {
 
     fn ordering_dependencies(&self) -> &[TaskId] {
         &self.ordering
+    }
+
+    fn access_claims(&self, _ctx: &Context) -> Vec<AccessClaim> {
+        self.claims.clone()
     }
 
     fn should_run(&self, _ctx: &Context) -> bool {

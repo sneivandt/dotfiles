@@ -10,7 +10,9 @@ use anyhow::{Context as _, Result};
 use serde_json::{Map, Value};
 
 use crate::domains::ai::config::agent_settings::value_is_finite;
-use crate::engine::{IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState};
+use crate::engine::{
+    AccessClaim, IntrinsicState, Resource, ResourceChange, ResourceResult, ResourceState,
+};
 
 /// Serialization format of an agent settings document.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -167,6 +169,13 @@ impl AgentSettingResource {
 }
 
 impl Resource for AgentSettingResource {
+    fn access_claims(&self) -> Vec<AccessClaim> {
+        vec![AccessClaim::exclusive(
+            "agent-settings-document",
+            self.path.as_os_str(),
+        )]
+    }
+
     fn description(&self) -> String {
         format!("{}:{} = {}", self.target, self.key, self.desired_value)
     }

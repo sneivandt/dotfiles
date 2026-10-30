@@ -8,7 +8,8 @@ use crate::infra::exec::Executor;
 use crate::infra::logging::Log;
 use crate::infra::platform::Platform;
 
-use super::CancellationToken;
+use super::access::{AccessGuard, AccessRegistry};
+use super::{AccessClaim, CancellationToken};
 use crate::infra::logging::OutputExt as _;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -107,6 +108,9 @@ pub struct Context {
     /// Processing loops check this before dispatching each work item so that
     /// in-flight operations finish cleanly and a partial summary is printed.
     cancelled: CancellationToken,
+    access: Arc<AccessRegistry>,
+    held_claims: Arc<Vec<AccessClaim>>,
+    nested_access: Arc<AccessRegistry>,
 }
 
 impl std::fmt::Debug for Context {
@@ -122,11 +126,64 @@ impl std::fmt::Debug for Context {
             .field("execution_policy", &self.execution_policy)
             .field("env", &"<dyn Env>")
             .field("cancelled", &self.cancelled)
+            .field("access", &self.access)
+            .field("held_claims", &self.held_claims)
+            .field("nested_access", &self.nested_access)
             .finish()
     }
 }
 
 impl Context {
+    pub(crate) fn scoped_access(&self, claims: Vec<AccessClaim>) -> Result<(Self, AccessGuard)> {
+        self.validate_access(&claims)?;
+        let guard = self
+            .access
+            .acquire(self.unheld_claims(&claims), &self.cancelled)?;
+        let scoped = self.clone_with(|ctx| {
+            if !claims.is_empty() {
+                if self.held_claims.is_empty() {
+                    ctx.nested_access = Arc::default();
+                }
+                ctx.held_claims = Arc::new(claims);
+            }
+        });
+        Ok((scoped, guard))
+    }
+
+    pub(crate) fn validate_access(&self, claims: &[AccessClaim]) -> Result<()> {
+        anyhow::ensure!(
+            self.held_claims.is_empty()
+                || claims.iter().all(|claim| self.held_claims.contains(claim)),
+            "nested work must declare a subset of its task's access claims"
+        );
+        Ok(())
+    }
+
+    fn unheld_claims<'a>(&self, claims: &'a [AccessClaim]) -> &'a [AccessClaim] {
+        if self.held_claims.is_empty() {
+            claims
+        } else {
+            &[]
+        }
+    }
+
+    pub(crate) fn try_access(&self, claims: &[AccessClaim]) -> Option<AccessGuard> {
+        if self.held_claims.is_empty() {
+            self.access.try_acquire(claims)
+        } else {
+            self.nested_access.try_acquire(claims)
+        }
+    }
+
+    pub(crate) fn wait_for_access(&self) -> Result<()> {
+        let registry = if self.held_claims.is_empty() {
+            &self.access
+        } else {
+            &self.nested_access
+        };
+        Ok(registry.wait(&self.cancelled)?)
+    }
+
     fn clone_with(&self, update: impl FnOnce(&mut Self)) -> Self {
         let mut cloned = self.clone();
         update(&mut cloned);
@@ -196,6 +253,9 @@ impl Context {
             execution_policy,
             env,
             cancelled: CancellationToken::new(),
+            access: Arc::default(),
+            held_claims: Arc::default(),
+            nested_access: Arc::default(),
         })
     }
 
@@ -229,6 +289,9 @@ impl Context {
             execution_policy: ExecutionPolicy::from_options(opts, opts.is_ci.unwrap_or(false)),
             env: crate::infra::env::system(),
             cancelled: CancellationToken::new(),
+            access: Arc::default(),
+            held_claims: Arc::default(),
+            nested_access: Arc::default(),
         }
     }
 

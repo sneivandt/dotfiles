@@ -2,7 +2,7 @@
 name: engine-orchestration
 description: >
   Use for task graph and execution changes in cli/src/engine/, command task
-  membership, dependencies, startup runtime policy, task discovery, restart boundaries, Operation plans,
+  membership, dependencies, access claims, startup runtime policy, task discovery, restart boundaries, Operation plans,
   ProcessMode, or task/resource parallelism. Not for a standalone Resource.
 ---
 
@@ -79,8 +79,12 @@ the resolved non-interactive policy; window detection remains in elevation.
   sharing ownership. Give domain tasks only their typed slice; do not introduce
   mutable shared configuration or unnecessary deep config copies.
 - Task parallelism uses scoped threads; resource parallelism uses Rayon.
-  `ctx.parallel()` gates both. Resource `.sequential()` protects shared-file or
-  lock-bound writes; cross-task contention needs explicit graph policy.
+  `ctx.parallel()` gates both. Use `AccessClaim` for shared-state exclusion, not
+  graph edges invented only to prevent overlap. Task claims cover the body after
+  dependency waits; resource claims cover discovery through mutation. Declare a
+  claimed task's full nested claim set up front; nested resources must be subsets.
+  Claim waits stay on the caller, never Rayon workers. `.sequential()` remains
+  batch-local and does not coordinate separate tasks.
 
 ## Process modes
 

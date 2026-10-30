@@ -38,8 +38,12 @@ description: >
   applicability and process policy.
 - Use the existing task adapter (`run_resource_task()` or
   `run_batch_resource_task()`) where it fits; otherwise use `process_resources*()`.
-  Pick `ProcessOpts` deliberately and use `.sequential()` when items share a
-  file or exclusive lock.
+  Pick `ProcessOpts` deliberately. Declare `Resource::access_claims()` when items
+  share a document or exclusive state, so discovery through apply/remove is
+  protected across batches/tasks. Equal keys must identify the same shared state.
+  A claimed parent task must include every nested resource claim. Do not populate
+  a cache from mutable claimed state before acquiring access. `.sequential()`
+  remains available for batch-local sequencing, not cross-task exclusion.
 - Implement task execution in `run()`. The executor owns stage announcements;
   the adapters return `NotApplicable` for empty item lists. Keep readiness
   checks that depend on prerequisites in `run()`, after those tasks finish.

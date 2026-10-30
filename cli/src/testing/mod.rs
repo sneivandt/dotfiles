@@ -48,8 +48,8 @@ pub mod config {
 
 pub mod engine {
     pub use crate::engine::{
-        BatchCompletion, BatchReport, CancellationToken, Context, ContextOpts, ProcessOpts,
-        process_resources,
+        AccessClaim, BatchCompletion, BatchReport, CancellationToken, Context, ContextOpts,
+        ProcessOpts, process_resources,
     };
 
     pub mod graph {

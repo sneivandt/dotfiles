@@ -12,6 +12,7 @@
 //! - [`stats`] — result and statistics types
 //! - [`scheduler`] — dependency-driven parallel task scheduling
 
+mod access;
 /// Single-resource processing: check state, apply or remove one resource.
 pub mod apply;
 mod batch;
@@ -34,6 +35,7 @@ pub mod resource;
 pub mod task;
 
 pub use crate::infra::cancellation::CancellationToken;
+pub use access::AccessClaim;
 pub use batch::{BatchCompletion, BatchReport};
 pub use context::Context;
 pub use context::ContextOpts;

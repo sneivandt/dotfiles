@@ -65,10 +65,6 @@ impl Task for ConfigureGit {
                 }
             })
             .collect();
-        run_resource_task(
-            ctx,
-            resources,
-            &ProcessOpts::strict("configure").sequential(),
-        )
+        run_resource_task(ctx, resources, &ProcessOpts::strict("configure"))
     }
 }

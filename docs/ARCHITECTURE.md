@@ -207,7 +207,34 @@ matching inputs together.
 [`scheduler.rs`](../cli/src/engine/scheduler.rs) runs ready tasks in scoped
 threads; resource batches can independently use Rayon. `ctx.parallel()` gates
 both. Resource `.sequential()` protects shared-file or lock-bound writes within
-one task; it cannot serialize separate tasks. Those need graph edges.
+one batch and remains useful for unrelated ordering constraints, but does not
+coordinate separate tasks.
+
+[`AccessClaim`](../cli/src/engine/access.rs) expresses exclusive access to shared
+state, orthogonal to dependencies and read-only input requirements. Equal
+namespace/key pairs cannot overlap; keys identify the document or other shared
+state, not individual settings. Keys are explicit identities, not automatic
+filesystem alias detection. Claims coordinate only contexts sharing this CLI
+run's registry, not external applications or other processes.
+
+`Task::access_claims()` reserves the entire set atomically after dependency waits
+and before executing the body (including execution-time prerequisite probes).
+`Resource::access_claims()` reserves before discovery and retains access through
+planning, preview, apply or removal. Drop releases claims on success, error or
+panic; waits observe cancellation. Claims imply neither completion order nor
+failure propagation. Use graph edges only for real prerequisite/order relations.
+Agent settings claim their target document so Copilot and Codex can overlap;
+Git configuration uses a conservative shared key because global configuration
+can span/include multiple files.
+
+Resource dispatch reserves nonconflicting work on the caller thread before
+submitting a wave to Rayon. Workers never wait for claims, so a blocked resource
+cannot exhaust the pool needed by a claim holder. A task declaring claims must
+declare the complete set needed by its nested resources; undeclared nested
+claims fail explicitly instead of creating hold-and-wait deadlocks. Inner
+resources still serialize conflicting claims within that task's reserved scope.
+Cached discovery must not capture mutable claimed state before claim acquisition;
+use intrinsic discovery or move the cache query inside a task-level claim.
 
 [`list`](../cli/src/app/commands/list.rs) loads a read-only configuration
 snapshot and exposes selectors and graph relationships without a run log, lock,

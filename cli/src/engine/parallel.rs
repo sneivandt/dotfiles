@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use super::batch::BatchProgress;
 use super::context::Context;
-use super::stats::{TaskResult, TaskStats};
+use super::stats::TaskStats;
 use crate::infra::logging::OutputExt as _;
 use crate::infra::logging::{log_thread_name, set_log_thread_name};
 
@@ -27,7 +27,7 @@ pub(super) fn collect_parallel_stats<T: Send>(
     ctx: &Context,
     items: Vec<T>,
     work: impl Fn(T) -> Result<TaskStats> + Sync + Send,
-) -> Result<TaskResult> {
+) -> BatchProgress {
     use rayon::prelude::*;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -51,5 +51,4 @@ pub(super) fn collect_parallel_stats<T: Send>(
             progress
         })
         .reduce(BatchProgress::default, BatchProgress::merge)
-        .finish()
 }

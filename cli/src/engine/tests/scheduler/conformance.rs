@@ -3,6 +3,43 @@
 use super::*;
 
 #[test]
+fn claims_do_not_propagate_failures_and_are_released_after_errors_and_panics() {
+    for behavior in [Behavior::Error, Behavior::PanicStr] {
+        conformance("exclusive access is not a dependency", |mode, ctx, log| {
+            let claim = AccessClaim::exclusive("fixture", "document");
+            let mut failed = TestTask::new("failed").returning(behavior.clone());
+            failed.claims = vec![claim.clone()];
+            let mut independent = TestTask::new("independent");
+            independent.claims = vec![claim.clone()];
+            let summary = mode.run(&[&failed, &independent], ctx, log, None);
+            failed.assert_ran(true);
+            independent.assert_ran(true);
+            independent.assert_record(log, &summary, TaskStatus::Ok, TaskOutcome::Satisfied, None);
+            assert_eq!(summary.failure_count(), 1);
+            assert!(ctx.try_access(&[claim]).is_some());
+            summary
+        });
+    }
+}
+
+#[test]
+fn claims_are_acquired_after_dependency_waits_and_forwarded_by_decorators() {
+    conformance("shared claims across a real edge", |mode, ctx, log| {
+        let claim = AccessClaim::exclusive("fixture", "document");
+        let mut provider = TestTask::new("provider");
+        provider.claims = vec![claim.clone()];
+        let mut consumer = TestTask::new("consumer").after(&[&provider]);
+        consumer.claims = vec![claim.clone()];
+        let consumer = TaskWithExtraDeps::new(Box::new(consumer), &[], &[]);
+        assert_eq!(consumer.access_claims(ctx), vec![claim.clone()]);
+        let summary = mode.run(&[&consumer, &provider], ctx, log, None);
+        assert_eq!(summary.failure_count(), 0);
+        assert!(ctx.try_access(&[claim]).is_some());
+        summary
+    });
+}
+
+#[test]
 fn independent_missing_and_empty_graphs() {
     conformance("empty", |mode, ctx, log| {
         let summary = mode.run(&[], ctx, log, None);

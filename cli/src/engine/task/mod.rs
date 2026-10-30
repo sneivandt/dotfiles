@@ -20,7 +20,7 @@ use std::any::TypeId;
 
 use anyhow::Result;
 
-use super::{Context, TaskResult};
+use super::{AccessClaim, Context, TaskResult};
 
 /// A named, executable task.
 ///
@@ -104,6 +104,13 @@ pub trait Task: Send + Sync + 'static {
     /// failure must block this task.
     fn ordering_dependencies(&self) -> &[TaskId] {
         &[]
+    }
+
+    /// Shared state held exclusively while the body executes, after dependency
+    /// waits. Claims do not imply ordering or dependency failure propagation.
+    /// Nested resources must claim only keys declared here when this is nonempty.
+    fn access_claims(&self, _ctx: &Context) -> Vec<AccessClaim> {
+        Vec::new()
     }
 
     /// Persistent identity across rebuilds. Display labels do not affect it.
@@ -281,6 +288,10 @@ impl Task for TaskWithExtraDeps {
 
     fn ordering_dependencies(&self) -> &[TaskId] {
         &self.ordering_deps
+    }
+
+    fn access_claims(&self, ctx: &Context) -> Vec<AccessClaim> {
+        self.inner.access_claims(ctx)
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

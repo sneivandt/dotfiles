@@ -143,7 +143,11 @@ impl TaskRecording<'_> {
     /// Typed executor cancellation remains interrupted; unrelated failures retain
     /// their failure semantics even when cancellation was requested independently.
     fn record_run_outcome(&self) -> TaskExecution {
-        match self.task.run(self.ctx) {
+        let result = (|| {
+            let (ctx, _access) = self.ctx.scoped_access(self.task.access_claims(self.ctx))?;
+            self.task.run(&ctx)
+        })();
+        match result {
             Ok(result) => {
                 let classified =
                     classify_result(&result, self.ctx.dry_run(), self.ctx.require_complete());

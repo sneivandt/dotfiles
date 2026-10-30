@@ -12,8 +12,8 @@ crate::engine::config_task! {
     /// Configure agent harness settings from `agent-settings.toml`.
     ///
     /// Each managed key is converged inside its harness's user settings document
-    /// without disturbing unmanaged keys. Processing is forced sequential because
-    /// multiple resources can read and rewrite the same file. Contradictory values
+    /// without disturbing unmanaged keys. Document access claims serialize keys
+    /// in the same file while independent documents can overlap. Contradictory values
     /// for the same harness/key are rejected before any document is changed.
     pub struct ConfigureAgentSettings(Vec<AgentSetting>);
 }
@@ -64,11 +64,7 @@ impl Task for ConfigureAgentSettings {
             .iter()
             .map(|setting| Self::resource(setting, ctx.home()))
             .collect();
-        run_resource_task(
-            ctx,
-            resources,
-            &ProcessOpts::strict("configure").sequential(),
-        )
+        run_resource_task(ctx, resources, &ProcessOpts::strict("configure"))
     }
 }
 
@@ -261,6 +257,47 @@ mod tests {
                 home.join(".codex").join("config.toml")
             )
         );
+    }
+
+    #[test]
+    fn concurrent_batches_preserve_all_keys_in_shared_documents() {
+        let home = tempfile::tempdir().unwrap();
+        let ctx = make_linux_context(home.path().into(), None)
+            .with_home(home.path().into())
+            .with_parallel(true);
+        let tasks: Vec<_> = (0..2)
+            .map(|batch| {
+                let settings = (0..16)
+                    .flat_map(|key| {
+                        [AgentHarness::Copilot, AgentHarness::Codex].map(|target| AgentSetting {
+                            target,
+                            key: format!("fixture.batch{batch}.key{key}"),
+                            value: toml::Value::Integer(key),
+                        })
+                    })
+                    .collect();
+                ConfigureAgentSettings::new(ConfigHandle::new(settings))
+            })
+            .collect();
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = tasks
+                .iter()
+                .map(|task| {
+                    let ctx = &ctx;
+                    scope.spawn(move || task.run(ctx))
+                })
+                .collect();
+            for handle in handles {
+                assert_eq!(
+                    task_batch(&handle.join().unwrap().unwrap()).changed_count(),
+                    32
+                );
+            }
+        });
+        for task in tasks {
+            let result = task.run(&ctx).unwrap();
+            assert_eq!(task_batch(&result).already_ok_count(), 32);
+        }
     }
 
     #[test]

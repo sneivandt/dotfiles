@@ -21,6 +21,14 @@ pub type ResourceResult<T> = Result<T, ResourceError>;
 /// in the desired state. Intrinsic checks and checks against a shared batch
 /// cache use the same orchestration path.
 pub trait Resource {
+    /// Shared state held exclusively from discovery through preview/apply/remove.
+    ///
+    /// Cached discovery must not pre-read claimed mutable state before dispatch.
+    /// Inside a claimed task, these must be a subset of the task's claims.
+    fn access_claims(&self) -> Vec<crate::engine::AccessClaim> {
+        Vec::new()
+    }
+
     /// Human-readable description of this resource.
     fn description(&self) -> String;
 

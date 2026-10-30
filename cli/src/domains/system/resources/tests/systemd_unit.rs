@@ -753,6 +753,23 @@ fn offline_enablement_converges_all_continued_install_targets() {
 }
 
 #[test]
+fn offline_install_targets_ignore_standalone_continued_comments() {
+    for comment in [
+        "# ignored \\",
+        "; ignored \\",
+        " \t# ignored \\",
+        " \t; ignored \\",
+    ] {
+        let content = format!("[Unit]\n{comment}\n[Install]\n{comment}\nWantedBy=default.target\n");
+        assert_eq!(
+            install_targets(&content).unwrap(),
+            ["default.target.wants"],
+            "{comment:?}"
+        );
+    }
+}
+
+#[test]
 fn offline_install_targets_blank_lines_end_continuations() {
     for blank in ["", "  \t"] {
         for (prefix, expected) in [

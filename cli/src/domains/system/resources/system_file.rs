@@ -1089,7 +1089,7 @@ mod tests {
         ] {
             let root = tempfile::tempdir_in(".").unwrap();
             fs::create_dir(root.path().join("system")).unwrap();
-            let source = root.path().join("system/fragment");
+            let source = root.path().join("system").join("fragment");
             let target = root.path().join("target");
             let fragment = if failure == "fragment encoding" {
                 &b"\xff"[..]

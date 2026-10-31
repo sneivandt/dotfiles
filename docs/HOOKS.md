@@ -1,234 +1,262 @@
 # Git hooks
 
-The repository's pre-commit hook is a local safeguard for the **staged commit**,
-not a substitute for CI or a guarantee that a repository contains no secrets.
-This guide explains what it runs, which version of a file it sees, and how to
-diagnose a failure without losing partially staged work.
+The dotfiles pre-commit hook checks what you have **staged**, before Git creates
+the commit. It catches common mistakes early; it does not replace CI, pre-push
+validation, or a review for sensitive data.
 
-## Files
+There are two independent hook systems:
 
-| Source | Role |
-|---|---|
-| [`pre-commit`](../hooks/pre-commit) | Installed entrypoint; delegates to checkout helpers |
-| [`check-sensitive.sh`](../hooks/check-sensitive.sh) | Scans added staged lines for configured sensitive patterns |
-| [`sensitive-patterns.ini`](../hooks/sensitive-patterns.ini) | Case-insensitive extended-regex detection rules |
-| [`sensitive-allowlist.ini`](../hooks/sensitive-allowlist.ini) | Safe spans to redact before matching, not whole-line exemptions |
-| [`check-rust.sh`](../hooks/check-rust.sh) | Staged-change-aware Rust and PowerShell checks |
-| [`check-ci-guards.sh`](../hooks/check-ci-guards.sh) | Targeted configuration, dependency, shell, wrapper and release guards |
+| System | Purpose | Source |
+|---|---|---|
+| This repository's pre-commit hook | Check staged changes | [`hooks/`](../hooks/) |
+| Personal Git templates | Protect pushes and clean up merged branches in other repositories too | [`symlinks/config/git/templates/`](../symlinks/config/git/templates/) |
 
-These are POSIX `sh` scripts; keep that interpreter contract when editing.
-Application-wide Git templates under
-[`symlinks/config/git/templates/`](../symlinks/config/git/templates) are a
-separate mechanism, not extra entrypoints selected from this `hooks/` directory.
+## Before committing
 
-## Application-wide templates
-
-The `post-merge` and `post-rewrite` (rebase only) templates share
-`hooks.local/clean-merged-branches`. Cleanup preserves the current branch,
-`origin/HEAD`'s default branch, `main`, `master`, `dev`, `develop`, branches
-checked out in worktrees, and branches that Git refuses to delete safely.
-Without `origin/HEAD`, cleanup does nothing. Amend does not trigger cleanup.
-
-The `pre-push` template exempts repositories owned by `github.user` (or
-`github.username`). Elsewhere it protects `main`, `master`, `develop`, and the
-actual destination remote's default branch. It first uses that remote's cached
-HEAD; when absent, a read-only `ls-remote --symref` lookup runs without consuming
-push input or prompting for credentials. If discovery fails, the named branch
-protections still apply. Configure additional exact branch names with:
+Review the intended commit, then let Git invoke the installed hook:
 
 ```bash
-git config --add dotfiles.protectedBranch release/stable
-git config --add dotfiles.protectedBranch dev
+git diff --cached
+git commit
 ```
 
-Git copies template entrypoints when initializing or cloning repositories.
-Existing repositories need the new `post-rewrite` entrypoint installed explicitly
-before rebase cleanup is available; preserve any existing repository-specific
-hook. Shared helpers resolve from the managed template directory at runtime.
+To check the current index without creating a commit:
+
+```bash
+sh hooks/pre-commit
+```
+
+These checks do not stage fixes or stash your work. If a file is partially staged,
+fixing its working copy is not enough: review and stage the intended fix, then
+retry. Do not use `git add .` as a generic cure.
 
 ## Default pre-commit flow
 
-```text
-check-sensitive.sh -> check-rust.sh -> commit proceeds
-        any failure ----------------> commit aborts
-```
+The entrypoint runs the sensitive scan first, then Rust/PowerShell checks.
+A failure stops the commit. Checks are selected by staged paths:
 
-The sensitive scan always runs first. The remaining work depends on staged paths:
-
-| Staged change | Default behavior |
+| Staged change | Check |
 |---|---|
-| Added/modified/renamed text | Sensitive-pattern scan of added lines |
-| `.rs` change, including deletion or rename away from `.rs` | Whole-crate formatting and host Clippy (`ci` profile, all targets, warnings denied) |
-| Present `.ps1`/`.psm1`/`.psd1` change | PSScriptAnalyzer on those staged files, if `pwsh` exists |
-| Cargo manifest/lockfile, toolchain, or Cargo configuration (including deletion/rename) | Whole-crate formatting and host Clippy, using the staged compiler pin |
-| Only TOML data, shell script or workflow | No Rust compilation solely because of that path; use full guards/local checks as applicable |
+| Added text in the staged diff | Sensitive-pattern scan |
+| Rust source, including deletion or rename away from `.rs` | Whole-crate `cargo fmt --check` and host Clippy |
+| Cargo manifest/lockfile, Cargo config, or toolchain file | The same Rust checks, using the staged compiler pin |
+| Present `.ps1`, `.psm1`, or `.psd1` file | PSScriptAnalyzer on those staged files |
+| Only TOML data, shell, or workflow files | No Rust compilation solely because of that path; extra guards need full mode |
 
-Missing `pwsh` skips PowerShell analysis. If `pwsh` exists but PSScriptAnalyzer
-is missing or broken, the check fails. The hook does not install tools for you;
-Rust-triggered checks reject a compiler version that differs from the staged
-`cli/rust-toolchain.toml` pin; they do not switch or install toolchains.
+Clippy uses the `ci` profile, all targets, a locked dependency graph, and warnings
+as errors. The hook checks the compiler against the staged
+`cli/rust-toolchain.toml`; it does not install or switch toolchains.
+
+If `pwsh` is absent, PowerShell analysis is skipped. If `pwsh` exists but its
+PSScriptAnalyzer module is absent or broken, the check fails. **A skipped check
+is not coverage.**
 
 ## Scan scope
 
 ### The index is the input
 
-The sensitive scan compares the index to `HEAD` (or an empty tree for the first
-commit). Only added lines are scanned; deleted content and unchanged history
-are not. Renames are included with both old and new paths so an edited rename
-cannot evade scanning, without treating every unchanged line as an addition.
-File/line locations are printed, but matched contents are reported as
-`<redacted>`.
+The sensitive scanner reads the diff from `HEAD` to the index, or from an empty
+tree for the first commit. It scans added lines only. An edited rename is still
+scanned without treating every unchanged line as newly added.
 
-Rust and CI guards export the **entire index** into an isolated snapshot before
-running their checks. An unstaged fix cannot hide a staged error, an unstaged
-deletion cannot hide a staged file, and untracked files cannot satisfy the
-build. These guards do not stash or overwrite the working tree. They reuse the
-checkout's Cargo target cache, so a staged build still writes build artifacts.
-Shell and PowerShell input discovery preserves literal filenames, including
-spaces, non-ASCII characters and (where supported) tabs or newlines; Git's
-quoted display paths are never passed to an analyzer.
+Rust and CI guards export the **entire index** to an isolated snapshot.
+Consequently:
 
-**The check implementation is different from the checked input.** The installed
-entrypoint resolves `git rev-parse --show-toplevel` and runs helpers from that
-checkout's `hooks/`. Helpers and sensitive-pattern/allowlist files are therefore
-read from the working tree. If you are changing the checks themselves, review
-and stage those changes too; exported input does not mean an immutable or
-trusted verifier.
+- An unstaged fix cannot hide a staged error.
+- An unstaged deletion does not remove the staged file from checks.
+- An untracked file cannot satisfy a staged build.
+- The working tree is not overwritten or stashed.
 
-### Regex and allowlist behavior
+Builds reuse the checkout's Cargo target cache, so checks still write build
+artifacts. Shell and PowerShell input handling preserves literal filenames,
+including spaces and non-ASCII characters; quoted Git display names are not
+passed to analyzers.
 
-Patterns match each added line's own text. `^` and `$` anchor to that content,
-not to a prefixed line number. Allowlist matches are replaced by a safe marker
-before detection; the rest of the line is still scanned. For example, a pinned
-GitHub Action SHA can be allowed without allowing a credential later on the
-same line.
+**The verifier itself comes from the working tree.** The installed entrypoint
+finds the checkout with `git rev-parse --show-toplevel` and runs its `hooks/`
+helpers. Pattern files and analyzer helpers also come from that checkout.
+Review and stage verifier changes separately; an index snapshot does not make
+the verifier immutable or trusted.
 
-This is pattern matching, not a general secret detector. Binary content,
-unchanged historical secrets and unrecognized/encoded values are not covered.
-Do not upload raw scanner input, private overlays or unsanitized logs to explain
-a failure. See [Security](SECURITY.md#secrets).
+### What the sensitive scan can detect
+
+Detection rules are case-insensitive extended regular expressions. They match
+each added line's text, so `^` and `$` do not anchor to a diagnostic filename or
+line number. Findings show file/line locations but redact matched content.
+
+Allowlist matches replace only the safe span before detection. The rest of the
+line is still scanned: allowing an Action SHA or a package checksum must not
+hide an appended credential. Invalid detection or allowlist expressions fail
+the scan, even for an empty diff.
+
+This is not a general secret detector. It does not cover binary data, unchanged
+history, or every encoded/unknown credential format. Inspect findings locally;
+do not share raw sensitive input or unsanitized logs. See
+[Secrets](SECURITY.md#secrets).
 
 ## Full guard mode
 
-`DOTFILES_HOOKS_FULL=1`, `true` or `yes` enables the extra checks:
+Opt into broader, still **path-triggered**, checks:
 
 ```bash
 DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
+# Or for the commit itself:
+DOTFILES_HOOKS_FULL=1 git commit
 ```
 
-It also applies when Git invokes the hook, for example with
-`DOTFILES_HOOKS_FULL=1 git commit`. Checks remain **path-triggered**:
+`true` and `yes` also enable the flag.
 
-- Rust changes add Windows-target Clippy when that target is installed, then
-  the full Rust test suite. A missing Windows target is reported as skipped.
-- `conf/*.toml` or `symlinks/` changes trigger typed configuration validation
-  and `config_drift`.
-- Cargo manifest, lockfile or deny-policy changes trigger the wildcard-version
-  guard and, when available, cargo-deny bans/licenses/sources checks.
-- Shell/hook changes trigger ShellCheck when available.
-- POSIX wrapper or its test-script changes trigger Linux wrapper tests.
-- Release-workflow changes trigger staged publishing guards for CI provenance,
-  exact commit handoff, permissions, serialization and attestation publication.
+| Trigger | Additional coverage |
+|---|---|
+| Rust/build inputs | Windows GNU-target Clippy when installed, then the full Rust test suite |
+| `conf/*.toml` or `symlinks/` | Typed configuration validation and `config_drift` |
+| Cargo manifest, lockfile, or deny policy | Wildcard dependency guard and cargo-deny bans/licenses/sources when available |
+| Shell or hook paths | ShellCheck when available, on affected shell inputs |
+| POSIX wrapper or its test script | Linux wrapper tests |
+| Release workflow | Staged publishing invariants: provenance, exact commit handoff, permissions, serialization, and attestation publication |
 
-Configuration/shell/dependency/wrapper checks operate on the exported index;
-release guards read the staged workflow directly. Classification includes
-deletions and both sides of renames, so removing a required file still requests
-validation.
+Deletions and both sides of renames participate in trigger selection. Release
+guards read the staged workflow directly; the other guards use the index
+snapshot.
 
-Running `sh hooks/check-ci-guards.sh` directly enables its basic targeted checks
-without the environment flag; expensive additions still require full mode.
-It does **not** run every CI job or the aggregate `ci-success` contract checker.
-For aggregate job membership/scheduling, run the `ci` stage documented in
-[Testing](TESTING.md#fast-local-sequence).
+You can run `sh hooks/check-ci-guards.sh` directly for its basic targeted checks.
+Without full mode it omits config drift, cargo-deny, and wrapper tests.
+Neither invocation runs every CI job or checks the full `ci-success` contract.
+Use [Testing](TESTING.md#fast-local-sequence) for the canonical local stages and
+[Before pushing](TESTING.md#before-pushing) for push validation.
 
 ## Installation and removal
 
-The [`git-hooks` task](../cli/src/domains/git/hooks.rs) discovers extensionless
-files in `hooks/`. It installs `pre-commit`, not the `.sh` helpers
-or `.ini` data, as a **copy** using the
-[`hook resource`](../cli/src/domains/git/resources/hook.rs). On Unix it makes the
-installed file executable.
+The `git-hooks` task copies extensionless files from `hooks/` into Git's hook
+directory. Currently that means `pre-commit`, not the `.sh` helpers or `.ini`
+data. On Unix the installed copy is executable.
 
-Destination selection honors `core.hooksPath` (relative to the repository root
-when relative), otherwise Git's common-directory `hooks/`. Linked worktrees
-have a `.git` file, not a private `.git/hooks/` directory; the common-directory
-handling matters. A shared/global hooks path can affect more than this checkout,
-so inspect it before installing:
+Before installing, inspect the destination:
 
 ```bash
 git config --show-origin --get core.hooksPath
 git rev-parse --git-common-dir
 ```
 
-No output/status 1 from the first command means no configured override.
-When you deliberately want to deploy the hook:
+No output and status 1 from the first command means there is no override.
+Dotfiles honors `core.hooksPath`, resolving relative values from the repository
+root. Otherwise it uses the common Git directory's `hooks/`, including for
+linked worktrees. A global/shared hooks path can affect other repositories.
+
+When you deliberately want to deploy:
 
 ```bash
 dotfiles update --root . --no-repo-update --only git-hooks --dry-run
 dotfiles update --root . --no-repo-update --only git-hooks
-dotfiles remove --root . --only git-hooks --dry-run
 ```
 
-These are installation commands, not tests. Install can replace a differing
-hook at the destination; inspect custom hooks first. A changed copied
-`pre-commit` requires reinstalling that entrypoint. Helper-only edits are picked
-up immediately from the checkout.
+**Install can replace a differing destination hook.** Preserve custom hooks
+first. A changed copied `pre-commit` needs reinstallation; helper-only changes
+take effect directly from the checkout.
 
-In the full update graph the catalog orders hook installation after repository
-update; it is an ordering-only edge, not failure propagation. Missing `hooks/`
-or Git metadata makes the task inapplicable; repository validation warns about
-missing `hooks/`.
+To inspect removal, then apply only after review:
 
-Uninstall removes a hook only when its current state matches the managed
-source; modified/mismatched hooks are preserved. If `core.hooksPath` resolves
-directly to source hooks, including through a filesystem alias, install/removal
-leaves those sources intact. Neither command resets your `core.hooksPath`.
+```bash
+dotfiles remove --root . --only git-hooks --dry-run
+dotfiles remove --root . --only git-hooks
+```
 
-## Running checks manually
+Removal deletes only hooks matching the current managed source/state. Modified
+or mismatched hooks survive. If the configured destination is the source itself,
+including through a filesystem alias, install/removal leaves it intact.
+Neither operation resets `core.hooksPath`. Missing `hooks/` or Git metadata makes
+the task inapplicable.
 
-Use [Wrapper and hook tests](TESTING.md#wrapper-and-hook-tests) for commands,
-isolated staged-input regressions, and the full-suite safety procedure.
-Direct helper invocations test your current index without creating a commit.
+## Application-wide templates
 
-### Diagnosing a failure
+Git copies template entrypoints when initializing or cloning a repository.
+Their shared helpers resolve from the managed template directory at runtime.
+These templates are **not** installed by the repository's `git-hooks` task.
+
+### Merged-branch cleanup
+
+`post-merge` and `post-rewrite` after a **rebase** run the shared
+`clean-merged-branches` helper. It considers local branches merged into
+`origin/HEAD`, while preserving:
+
+- The current branch and the default branch.
+- `main`, `master`, `dev`, and `develop`.
+- Branches checked out in any worktree.
+- Any branch Git refuses to delete safely with `git branch -d`.
+
+Without `origin/HEAD`, cleanup does nothing. An amend does not trigger it.
+Existing repositories need a newly introduced template entrypoint, such as
+`post-rewrite`, installed explicitly; do not overwrite a repository-specific
+hook to do so.
+
+### Push protection
+
+The template pre-push hook blocks branch updates to `main`, `master`, `develop`,
+and the destination remote's default branch. It prefers that remote's cached
+HEAD, then tries a read-only, noninteractive `ls-remote --symref` lookup.
+If discovery fails, the named protections still apply.
+
+Add exact branch names—not globs—with:
+
+```bash
+git config --add dotfiles.protectedBranch release/stable
+git config --add dotfiles.protectedBranch dev
+```
+
+GitHub remotes whose URL owner matches `github.user` (or `github.username`) are
+exempt. This is a local configured-name check, not a GitHub permission check.
+It is separate from both CI and the repository's pre-push **validation script**.
+
+## Diagnosing a failure
 
 | Symptom | Check next |
 |---|---|
-| “I fixed it, but the hook still fails” | Compare `git diff` with `git diff --cached`; stage the intended fix, not unrelated hunks |
-| Formatting failure | Run `cargo fmt` from `cli/`, inspect the resulting diff, then restage only intended changes |
-| Clippy/build failure only in the hook | Look for an unstaged dependency/config/source change needed by the staged code |
-| Analyzer or cross-target check skipped | Read tool availability; a skip is not coverage |
-| Old entrypoint behavior after editing `pre-commit` | Inspect the actual hooks destination and deliberately reinstall the copy |
-| Hook never runs | Check `core.hooksPath`, the installed filename and Unix executable bit |
-| Sensitive match | Inspect the staged line locally; remove/rotate real secrets or narrowly cover a demonstrably safe construct |
+| “I fixed it, but it still fails” | Compare `git diff` and `git diff --cached`; stage only the intended fix |
+| Formatting failure | Run `cargo fmt` in `cli/`, review the diff, and restage the appropriate hunks |
+| Build fails only in the hook | Look for an unstaged or untracked source, dependency, or config needed by the staged code |
+| A check was skipped | Read the missing-tool reason and run the required coverage separately |
+| Entrypoint edits have no effect | Inspect the real hook destination; reinstall the copied entrypoint deliberately |
+| No hook runs | Check `core.hooksPath`, the installed filename, and the Unix executable bit |
+| Sensitive finding | Inspect the staged line locally; remove/rotate a real secret or test a narrow safe-span exception |
 
-Avoid `git add .` as a generic repair for partial-staging problems.
+## Changing the checks
+
+| File | Responsibility |
+|---|---|
+| [`pre-commit`](../hooks/pre-commit) | POSIX `sh` orchestration |
+| [`check-sensitive.sh`](../hooks/check-sensitive.sh) | Added-line scanning and redacted diagnostics |
+| [`sensitive-patterns.ini`](../hooks/sensitive-patterns.ini) | Detection expressions |
+| [`sensitive-allowlist.ini`](../hooks/sensitive-allowlist.ini) | Safe-span exceptions |
+| [`check-rust.sh`](../hooks/check-rust.sh) | Staged Rust and PowerShell checks |
+| [`check-toolchain.sh`](../hooks/check-toolchain.sh) | Staged compiler-pin verification |
+| [`check-ci-guards.sh`](../hooks/check-ci-guards.sh) | Targeted configuration, dependency, shell, wrapper, and release guards |
+
+Keep scripts POSIX `sh` compatible and preserve partially staged input,
+rename/deletion handling, unusual filenames, and empty-diff behavior.
+Installation lives in [`git/hooks.rs`](../cli/src/domains/git/hooks.rs) and
+[`resources/hook.rs`](../cli/src/domains/git/resources/hook.rs).
+
+### Changing sensitive patterns
+
+Use synthetic fixtures, never live credentials. Test both a detection and the
+intended safe case. Anchor an exception to its surrounding syntax, redact the
+smallest safe span, and prove that a secret elsewhere on the **same line** is
+still detected.
+
+Existing exceptions include Action SHA pins, Cargo/PKGBUILD checksums, fixture
+addresses at `test.local`, and GitHub SSH transport syntax. Documentation
+addresses at `example.com` are not generally allowlisted.
+
+### Running the hook test suite
+
+Follow [Wrapper and hook tests](TESTING.md#wrapper-and-hook-tests). The full
+integration suite creates commits and can leave a fixture committed when a test
+fails to block it. Run it only in the prescribed fresh disposable repository,
+**never this checkout**, even when clean. A dirty-tree guard is not isolation.
 
 ## Bypassing
 
-Git's `git commit --no-verify` skips the entire pre-commit safeguard, not just one
+`git commit --no-verify` skips the entire pre-commit safeguard, not just one
 false positive. It does not skip CI. Reserve it for a deliberately reviewed
-recovery from a broken hook, never for committing known sensitive data.
-Prefer fixing the hook or a narrow, tested allowlist entry for recurring false
-positives.
-
-## Changing sensitive patterns
-
-1. Use synthetic fixtures, never live credentials or private data.
-2. Cover both detection and the intended safe case.
-3. Anchor exceptions to surrounding syntax and redact the smallest safe span.
-4. Test that an unrelated secret on the **same line** is still detected.
-5. Preserve rename, partial-staging, anchored-pattern and redacted-output
-   regressions.
-
-Current exceptions include SHA-pinned GitHub Actions and the `ci@test.local`
-fixture identity. Documentation domains such as `example.com` are not generally
-allowlisted; they are also used to exercise PII detection. Do not weaken a broad
-secret family just to silence one example.
-
-## Running the hook test suite
-
-The full suite creates commits and can leave a fixture committed when a case
-fails to block. Run it only in the fresh disposable repository described in
-[Testing](TESTING.md#wrapper-and-hook-tests), never in the developer checkout,
-even if clean. Its dirty-tree guard is a backup, not an isolation mechanism.
+recovery from a broken hook, never to commit known sensitive data. Prefer fixing
+the check or adding a narrow, tested exception.

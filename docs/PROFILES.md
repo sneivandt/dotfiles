@@ -1,57 +1,98 @@
 # Profiles and categories
 
-A **profile** chooses a machine role. **Categories** combine that role with the
-detected environment to select configuration sections. **Task filters** choose
-which operations run against that configuration. These are separate controls:
-`--profile base --only symlinks` means “link the base role's active sources,”
-not “install every base task.”
+Choose a **profile** for the machine's role. Dotfiles adds **categories** for
+the operating environment, then uses those categories to select configuration.
+Use **task filters** separately when you want to run only part of that work.
 
 ## Built-in role profiles
 
-| Profile | Role categories | Choose it for |
+| Profile | Includes | Best fit |
 |---|---|---|
-| `base` | `base` | A shell-focused machine, server, or minimal WSL environment |
-| `desktop` | `base`, `desktop` | A workstation with GUI tools and desktop configuration |
+| `base` | Core shell configuration and tools | Servers, shell-focused machines, minimal WSL setups |
+| `desktop` | Everything in `base`, plus desktop configuration and tools | Workstations |
 
-`desktop` adds to `base`; it does not replace it. `base` is not a read-only or
-user-files-only mode: active platform configuration and tasks can still install
-packages, change the login shell, or manage system files. Review a dry run
-before applying either profile.
+For example:
 
-Profile names are exactly `base` and `desktop`, in lowercase. `linux`,
-`windows`, `arch`, and `wsl` are categories, not valid values for `--profile`.
+```bash
+dotfiles list --root . --profile base
+dotfiles list --root . --profile desktop
+```
+
+Names are exactly `base` and `desktop`, in lowercase. `linux`, `arch`, `windows`,
+and `wsl` describe the environment; they are not valid profile names.
+
+**Base does not mean harmless or unprivileged.** Platform settings can still
+install packages, change the login shell, or manage system files. Review the
+[preview](USAGE.md#dry-run-scope) before applying either role.
 
 ## Automatic categories
 
-| Category | How it becomes active |
+Every profile activates `base`. The desktop profile also activates `desktop`.
+Dotfiles then adds the detected platform categories:
+
+| Where the CLI runs | Automatic categories |
 |---|---|
-| `linux` | The CLI runs on Linux |
-| `windows` | The CLI runs on Windows |
-| `arch` | Linux detection finds `/etc/arch-release` |
-| `wsl` | Linux kernel release detection identifies WSL |
+| Windows | `windows` |
+| Non-Arch Linux | `linux` |
+| Arch Linux | `linux`, `arch` |
+| Non-Arch WSL | `linux`, `wsl` |
+| Arch WSL | `linux`, `arch`, `wsl` |
 
-These categories are independent where appropriate: Arch inside WSL activates
-both `arch` and `wsl`. The Windows executable and the Linux executable inside
-WSL resolve different environments, even on the same physical machine.
+Arch detection uses `/etc/arch-release`; WSL detection uses the Linux kernel
+release. Windows and Linux inside WSL select different environments, even
+when they run on the same computer.
 
-| Environment | `base` profile categories | Additional category for `desktop` |
-|---|---|---|
-| Windows | `base`, `windows` | `desktop` |
-| Non-Arch Linux | `base`, `linux` | `desktop` |
-| Arch Linux | `base`, `linux`, `arch` | `desktop` |
-| Non-Arch WSL | `base`, `linux`, `wsl` | `desktop` |
-| Arch WSL | `base`, `linux`, `arch`, `wsl` | `desktop` |
+```mermaid
+flowchart LR
+    role["Role: desktop"] --> categories["base + desktop + linux + arch"]
+    host["Host: Arch Linux"] --> categories
+    categories --> sections["All matching configuration sections"]
+```
 
-Selecting `desktop` does not make unsupported platform tasks applicable.
-For example, it does not add an apt or dnf package provider on non-Arch Linux;
-the Linux package task looks for pacman.
-Task discovery lists possible tasks; runtime capability checks decide which
-can actually run.
+Categories choose configuration; they do not add support for missing tools.
+For example, a desktop profile on Ubuntu does not provide an apt package
+adapter. The Linux package task looks for pacman.
+
+## Resolution priority
+
+Dotfiles takes the first available selection:
+
+1. `--profile <name>`.
+2. Nonempty `DOTFILES_PROFILE`.
+3. Repository-local Git setting `dotfiles.profile`.
+4. An interactive profile prompt, when the command allows one.
+
+An explicit flag is a **one-run override**; it does not save a new default.
+Only an interactive prompt saves its answer automatically. That prompt can
+also occur during `check` or `--dry-run`.
+
+To inspect or deliberately change the saved default, run these from the
+intended checkout:
+
+```bash
+git config --local --get dotfiles.profile
+git config --local dotfiles.profile base
+```
+
+The first command returns no value and a nonzero status if the setting is
+absent. The second writes local Git configuration, not a tracked file.
+Linked worktrees can share that setting; use `--profile` when you need a
+specific role for one invocation.
+
+### When there is no prompt
+
+`list` requires a flag, environment value, or saved choice. It never prompts
+for or saves a profile. Update, remove, and check also require an existing
+selection with non-terminal stdin, `--non-interactive`, JSON Lines output, or
+any present `CI` variable. Help, version, and log viewing need no profile.
+
+A selected value must be valid. `DOTFILES_PROFILE=unknown` does not fall back
+to a saved `base`, and `" base "` is not trimmed. Invalid text encoding is
+also an error. An explicit valid `--profile` overrides the bad environment value.
 
 ## Section matching
 
-For category-based configuration, hyphens mean **AND**: every tag must be
-active. Matching sections accumulate.
+For category-based TOML sections, hyphens mean **AND**:
 
 ```toml
 [base]
@@ -61,98 +102,48 @@ packages = ["git"]
 packages = ["quickshell"]
 ```
 
-On an Arch desktop both sections match. On an Arch base machine only `[base]`
-matches. `[arch-desktop]` and `[desktop-arch]` express the same condition;
-neither means “Arch OR desktop.” Because `base` is always active, `[base]`
-applies to both roles.
+An Arch desktop selects both sections. An Arch base machine selects only
+`[base]`. `[arch-desktop]` and `[desktop-arch]` mean the same thing. All matching
+sections contribute; the most specific one is not a replacement for the rest.
 
-Use the known categories rather than inventing machine names as section tags:
-unknown tags are configuration errors, not a way to declare a new profile.
-Not every TOML table is a category section; registry tables, for example,
-represent named registry entries. See [Category sections](CONFIGURATION.md#category-sections)
-for file-specific rules.
-
-## Resolution priority
-
-Configuration-aware commands resolve the role in this order:
-
-1. `--profile <name>`.
-2. A nonempty `DOTFILES_PROFILE`.
-3. Repository-local Git config `dotfiles.profile`.
-4. An interactive profile prompt, when the command permits it.
-
-The first selected value is validated. An invalid environment or persisted
-value does not fall through to a lower-priority choice. Whitespace is not
-trimmed from profile values: `DOTFILES_PROFILE=" base "` is invalid. A non-Unicode
-environment value is also an error, not an absent selection. An explicit
-`--profile` can override either invalid environment value.
-
-An explicit profile affects only that invocation; it does **not** rewrite the
-saved choice. The interactive prompt does persist its answer. This can happen
-during `check` or `--dry-run`, so use an explicit profile when you do not want
-the prompt or its persistence.
-
-From the intended checkout, inspect the saved choice:
-
-```bash
-git config --local --get dotfiles.profile
-```
-
-No output with a nonzero Git status normally means the key is unset.
-To deliberately change the default for future runs:
-
-```bash
-git config --local dotfiles.profile base
-```
-
-This changes local repository settings, not tracked configuration. Linked
-worktrees can share this local Git configuration; use `--profile` for an
-unambiguous per-run selection.
-
-`list` never opens the profile prompt or persists a selection. It requires a
-profile from the first three sources. Engine commands also require one of
-those sources when stdin is not a terminal, `--non-interactive` is passed, or
-`CI` is present. `log` and help/version output do not require a profile.
-
-Shell task completions use the same read-only discovery and forward the
-invocation's `--profile`, `--root`, and `--overlay` options, including a profile
-in a short-option cluster such as `-vpbase`. Completing a task selector does
-not prompt for or save a profile.
+Not every table is a category. For example, registry tables are named settings
+groups and are not filtered by role. See
+[Category sections](CONFIGURATION.md#category-sections) for the file-specific
+rules and overlay merging.
 
 ## Changing profiles or categories
 
 ### Preview a different role
-
-With an existing CLI on PATH, run from the repository root:
 
 ```bash
 dotfiles list --root . --profile desktop
 dotfiles update --root . --profile desktop --no-repo-update --dry-run --verbose
 ```
 
-The second command previews task changes, but still has the bookkeeping and
-external-probe effects described in [Dry-run scope](USAGE.md#dry-run-scope).
-It does not update the saved profile.
+Neither command changes the saved profile. The preview still has the
+[bookkeeping and external-tool effects](USAGE.md#dry-run-scope) of any dry run.
 
-**Switching roles is not a migration or cleanup operation.** Selecting `base`
-after installing `desktop` stops selecting desktop-only entries; it does not
-remove their packages, disable their services, or remove previously
-installed links. Plan any cleanup while the original profile and sources are
-still available. `remove` also uses the current selection and only removes
-the integrations in [Remove tasks](TASKS.md#remove-tasks).
+**Switching from desktop to base does not uninstall desktop configuration.**
+It stops selecting desktop-only entries. Their packages, services, links, and
+settings remain. Removing a declaration has the same limitation.
 
-If configuration seems missing, distinguish:
+If you need cleanup, plan it while the original profile and sources are still
+available. `remove` uses the current selection and supports only the limited
+[remove tasks](TASKS.md#remove-tasks); it is not a general migration command.
 
-- **Section not selected:** one of its category tags is inactive.
-- **Task filtered out:** `--only`/`--skip` excluded the operation.
-- **Task not applicable or unmet:** the host/tool capability cannot perform it.
-- **Already current:** the default output omits that task; use `--verbose`.
+### Distinguish profiles from task filters
+
+`--profile base --only symlinks` means “link the base role's active sources.”
+It does not install every base task, and `--only` does not change which
+configuration sections match.
+
+If expected work is missing, check the category selection, task filters, and
+runtime capabilities separately. Already-current tasks are hidden unless you
+use `--verbose`. See [A task does not run](TROUBLESHOOTING.md#a-task-does-not-run).
 
 ### Extend the built-in model
 
-Profiles are implemented in `cli/src/app/config/profiles.rs` and
-`cli/src/app/config/profiles/`; category parsing/matching lives in
-`cli/src/infra/config/category_matcher.rs`. Adding a role or environment
-category is a code change, not just a new TOML heading. Keep resolution,
-known-category preflight, applicable configuration, and tests aligned.
-Use [Testing](TESTING.md) for the validation workflow.
+Custom profiles and category tags are not supported in configuration alone.
+An invented heading is an error, not a new machine role. Use the existing
+categories and a [private overlay](CONFIGURATION.md#overlays) for personal
+configuration; adding a new built-in role requires a CLI change.

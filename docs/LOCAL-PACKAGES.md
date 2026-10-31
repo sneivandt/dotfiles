@@ -1,111 +1,116 @@
 # Local package recipes
 
-On Arch Linux, dotfiles can maintain package recipes locally and expose them
-to Paru. These recipes repackage official release binaries rather than compile
-applications from source.
+On Arch Linux, dotfiles maintains a small set of PKGBUILDs for official release
+binaries. You review the recipes here; dotfiles discovers versions and prepares
+them; Paru builds and installs the packages.
 
-| Local package | Tracked recipe | Upstream |
+| Package | Recipe | Upstream |
 |---|---|---|
-| `apm-dotfiles` | [packages/apm/](../packages/apm/) | Microsoft APM |
-| `github-copilot-app-dotfiles` | [packages/github-copilot-app/](../packages/github-copilot-app/) | GitHub Copilot App |
-| `powershell-dotfiles` | [packages/powershell/](../packages/powershell/) | Microsoft PowerShell |
-| `github-copilot-cli-dotfiles` | [packages/github-copilot-cli/](../packages/github-copilot-cli/) | GitHub Copilot CLI |
-| `openai-codex-dotfiles` | [packages/openai-codex/](../packages/openai-codex/) | OpenAI Codex CLI |
+| `apm-dotfiles` | [`packages/apm/`](../packages/apm/) | Microsoft APM |
+| `github-copilot-app-dotfiles` | [`packages/github-copilot-app/`](../packages/github-copilot-app/) | GitHub Copilot App |
+| `powershell-dotfiles` | [`packages/powershell/`](../packages/powershell/) | Microsoft PowerShell |
+| `github-copilot-cli-dotfiles` | [`packages/github-copilot-cli/`](../packages/github-copilot-cli/) | GitHub Copilot CLI |
+| `openai-codex-dotfiles` | [`packages/openai-codex/`](../packages/openai-codex/) | OpenAI Codex CLI |
 
-Dotfiles discovers release versions and prepares build inputs. Paru downloads,
-verifies, builds, installs, and upgrades the resulting Arch packages. The agent
-package task independently invokes the `apm` executable on PATH.
-
-Bootstrapping or rebuilding Paru uses an exclusively reserved build directory.
-Only that invocation's checkout is cleaned up; existing or concurrent builds
-are left untouched.
-
-## Files and ownership
-
-| File or directory | Owner and purpose | Tracked here? |
-|---|---|---|
-| `packages/apm/PKGBUILD` | Package name, dependencies, release URLs, packaging steps, and packaging revision (`pkgrel`) | Yes |
-| `packages/apm/release.json` | Upstream repository, release asset names, and package base | Yes |
-| `packages/apm/version.sh` | Discovered upstream version and SHA-256 digests | No |
-| `symlinks/config/paru/paru.conf.base` | Shared Paru options, including `CleanAfter` | Yes |
-| `~/.config/paru/paru.conf.base` | Home symlink to the tracked base | No |
-| `~/.config/paru/paru.conf` | Generated options and local repository paths | No |
-| `<CloneDir>/apm-dotfiles/` | Disposable Git snapshot and Paru build output | No |
-
-The snapshot commits are local cache state. They do not commit version pins to
-the dotfiles repository, create a remote, or publish anything.
+**A refreshed recipe is not an upgraded application.** Dotfiles prepares the
+available version and installs missing selected packages. Paru upgrades packages
+that are already installed.
 
 ## Normal use
+
+For a normal machine update followed by package upgrades:
 
 ```bash
 dotfiles update
 paru -Syu
 ```
 
-During `dotfiles update`:
+These are applying commands. The first runs the full selected dotfiles update;
+the second upgrades packages, not just these local recipes.
 
-1. **Local package versions** (`local-package-versions`) discovers current
-   release versions independently and writes each successful recipe’s changed
-   `version.sh` file. Failed refreshes retain that recipe’s existing pins and
-   remain failures in the run summary. Release requests are serialized in
-   recipe order, including in parallel mode, so a rate-limit response can stop
-   subsequent requests. Fresh cached metadata avoids network requests.
-2. **Paru configuration** (`paru-config`) waits for discovery to finish,
-   refreshes usable build snapshots (including current `.SRCINFO` metadata),
-   and writes Paru configuration containing
-   only available recipes. Existing pins can be used after a failed refresh.
-   Successful `makepkg --printsrcinfo` validation is cached under each snapshot's
-   `.git/` directory against the exact copied inputs, release descriptor, and
-   validation format version. Unchanged working files and committed inputs are
-   still checked every run. Changed or damaged inputs and missing validation
-   records require validation again; failures are never cached. Independent
-   validation uses up to four workers, followed by ordered snapshot publication.
-   Preview does not execute recipes or write validation records.
-3. **AUR packages** (`aur-packages`) requires a working Paru and waits for
-   configuration preparation. It installs missing configured packages whose
-   inputs are ready, including `apm-dotfiles` from the local repository. Missing
-   local packages without prepared inputs are counted as failures and excluded
-   from installation; unrelated AUR packages continue. Unavailable local package
-   names are never submitted as direct AUR install targets.
-4. **Agent packages** (`apm`) runs APM from PATH. Its package waits can be
-   waived when APM and target detection are ready and read-only package checks
-   prove every configured package is installed and Paru is healthy. Otherwise
-   it waits for package installation. An unrelated package failure does not prevent it using an available APM.
+To inspect only local recipe preparation from this checkout:
 
-The default package task installs missing packages. Once `apm-dotfiles` is
-installed, use `paru -Syu` to upgrade it after refreshing its available version.
-For an explicit first installation, `paru -S apm-dotfiles` also works after
-snapshot preparation.
+```bash
+dotfiles update --root . --no-repo-update --only local-package-versions,paru-config --dry-run
+```
 
-The desktop Arch category also selects `github-copilot-app-dotfiles`. Its
-recipe extracts the official Debian package, preserving the app's executable,
-desktop entry, and bundled resources. It supports x86_64 and aarch64. The same
-version and snapshot tasks discover its `github/app` release assets automatically;
-no separate updater or hardcoded version is needed.
+After reviewing the recipes and plan, remove `--dry-run` to prepare them.
+This scoped command does **not** install packages or bootstrap missing tools.
+On an already prepared machine, inspect Paru's repository listing without
+upgrading:
 
-The Arch category selects `powershell-dotfiles` instead of `powershell-bin`.
-It packages Microsoft's x86_64 and aarch64 archives with the bundled .NET runtime
-and installs `pwsh` under `/opt/microsoft/powershell/<major>`, linked from
-`/usr/bin/pwsh`. Its `package.install` script registers PowerShell in
-`/etc/shells` on install/upgrade and removes that entry on uninstall.
-The first installation conflicts with the existing `powershell-bin` package;
-review that replacement when Paru installs it.
+```bash
+paru -Sl --pkgbuilds
+```
 
-The Arch category also selects `github-copilot-cli-dotfiles` and
-`openai-codex-dotfiles` instead of their AUR binary packages. Both use official
-GitHub release archives, install shell completions and upstream licenses, and
-declare conflicts with their previous packages. Codex preserves the complete
-upstream bundle, including its code-mode helper and voice runtime. The Copilot
-recipe installs Bash, Zsh, and Fish completions; Codex also installs Elvish and
-PowerShell completions. Optional features retain their declared dependencies.
+An explicit first installation, such as `paru -S apm-dotfiles`, works once
+preparation succeeds. Running Paru alone uses the **last prepared snapshot**;
+it does not discover a newer GitHub release or read your latest source edits.
 
-Paru does not query GitHub for these release versions. Running Paru without
-first running dotfiles uses the last prepared snapshot. Changes to a tracked
-recipe also reach Paru when `paru-config` refreshes its snapshot.
+### What happens during an update
+
+```mermaid
+flowchart LR
+    Release["GitHub release metadata"] --> Pins["Local version.sh pins"]
+    Recipe["Reviewed PKGBUILD"] --> Snapshot["Paru build snapshot"]
+    Pins --> Snapshot
+    Snapshot --> Paru["Paru build and install"]
+```
+
+| Task | Changes | Does not do |
+|---|---|---|
+| `local-package-versions` | Refreshes successful recipes' version/checksum pins | Download archives, execute recipes, or install packages |
+| `paru-config` | Validates recipe metadata, prepares snapshots, and writes available repositories into Paru config | Install or upgrade packages |
+| `aur-packages` | Installs missing selected packages whose inputs are ready | Upgrade every already-installed package |
+| `apm` | Deploys agent dependencies using `apm` on PATH | Upgrade the APM executable |
+
+Preparation waits for version discovery, but can use retained pins after an
+upstream failure. Installation requires healthy Paru and ready inputs. A missing
+local package whose inputs are unavailable is counted as a failure and omitted
+from install requests; unrelated AUR packages can continue. It is **not** silently
+installed from the AUR instead.
+
+Agent deployment is independent of how APM was installed. An unrelated package
+failure does not prevent use of an available APM; see
+[Agent tooling](AGENT-TOOLING.md).
+
+## Files and ownership
+
+| Edit or inspect | Purpose | Tracked? |
+|---|---|---|
+| `packages/<recipe>/PKGBUILD` | Names, dependencies, URLs, packaging steps, and `pkgrel` | Yes |
+| `packages/<recipe>/release.json` | GitHub source, asset names, and owned package names | Yes |
+| Optional `package.install`, `LICENSE`, `NOTICE` | Lifecycle hooks and reviewed legal files | Yes |
+| `packages/<recipe>/version.sh` | Discovered version and SHA-256 arrays | No |
+| [`paru.conf.base`](../symlinks/config/paru/paru.conf.base) | Shared Paru options, including `CleanAfter` | Yes |
+| Effective `paru.conf` | Generated machine-specific options and repository paths | No |
+| `<CloneDir>/<package_base>/` | Disposable Git snapshot and Paru build output | No |
+
+Edit tracked sources, not generated pins or cached recipes. Snapshot commits
+are local cache state: they do not commit pins to the dotfiles repository,
+create a remote, or publish anything.
+
+Keep `pkgrel` in the PKGBUILD and bump it when a packaging-only change should
+produce a newer Arch package. Release discovery manages `pkgver`, not `pkgrel`.
+
+### Package-specific notes
+
+- The Arch category selects APM, PowerShell, Copilot CLI, and Codex. The desktop
+  Arch category additionally selects the Copilot App.
+- Recipes use distinct `*-dotfiles` names and declare replacements/conflicts
+  with their former packages. Review Paru's replacement prompt on first install.
+- The Copilot App recipe extracts the official Debian package.
+- PowerShell includes its .NET runtime. Its lifecycle script adds
+  `/usr/bin/pwsh` to `/etc/shells` on install/upgrade and removes that entry
+  on uninstall.
+- Codex keeps the full upstream bundle, including helper/runtime files.
+  CLI recipes also install completions and licenses; preserve those when
+  changing packaging.
 
 ## Version discovery
 
-[`release.json`](../packages/apm/release.json) declares:
+A descriptor names a stable GitHub release source and one asset per architecture.
+For example, the APM descriptor is:
 
 ```json
 {
@@ -118,254 +123,197 @@ recipe also reach Paru when `paru-config` refreshes its snapshot.
 }
 ```
 
-The update-only version task scans immediate directories under `packages/`, in
-sorted order, and reads each `release.json`. This discovery is independent of
-`conf/packages.toml`: a recipe can be maintained without being selected for
-automatic installation. Directories without a recipe or descriptor are skipped;
-a PKGBUILD without its descriptor is an error.
+| Field | Meaning |
+|---|---|
+| `package_base` | Actual makepkg `pkgbase`, or `pkgname` when no explicit base exists; not necessarily the source directory name |
+| `repository` | GitHub `owner/repo` queried through `/releases/latest` |
+| `assets` | Exact release asset names keyed by makepkg architecture |
+| `packages` (optional) | All actual package names for split packages or names differing from the base; defaults to the base |
+| `tag_prefix` (optional) | Exact prefix to strip before validating a release version |
 
-For APM, the shared native GitHub client queries:
+Discovery scans immediate directories under `packages/` in sorted order.
+It is independent of `conf/packages.toml`: maintaining a recipe does not
+automatically select it for installation. A directory with neither descriptor
+nor PKGBUILD is ignored; a PKGBUILD without `release.json` is an error.
+Package bases and owned package names must be unique across descriptors.
 
-```text
-https://api.github.com/repos/microsoft/apm/releases/latest
-```
+For each recipe, dotfiles rejects drafts/prereleases, validates the version,
+and requires a valid `sha256:` digest for **every configured architecture**.
+It reads GitHub's metadata rather than downloading archives or executing a
+version command. Only after all assets validate can that recipe's pins change.
+The PKGBUILD sources `./version.sh`; makepkg later verifies the downloads
+against those generated checksum arrays.
 
-Both package discovery and CLI self-update prefer `GH_TOKEN`, then
-`GITHUB_TOKEN`, then the active non-interactive `gh` login for github.com.
-Without credentials they can still query public releases anonymously.
-Tokens are not passed as subprocess arguments, logged, or stored in caches.
-Denied credentials are reported rather than silently retried anonymously.
+Without `tag_prefix`, a leading `v` is stripped. Codex instead declares
+`"tag_prefix": "rust-v"`; an unexpected prefix fails. Asset names can contain
+`{version}`, substituted with the validated version after prefix removal.
+PowerShell uses this for versioned archive names.
 
-Validated release responses are cached for ten minutes under
-`bin/.github-releases-v1/`, scoped by repository and credentials. Linux entries
-must also match the current boot; future timestamps are rejected. Expired
-entries use ETags for conditional requests, and every cache reuse validates
-the current recipe descriptor and asset digests. Authenticated `304` responses
-do not consume GitHub's primary quota; anonymous requests do not receive that
-exemption. Invalid metadata is not cached.
+Tracked license/notice files are not release metadata. Review and refresh them
+separately when upstream terms change.
 
-Rate-limit responses record a credential-scoped cooldown using `Retry-After`
-and `X-RateLimit-Reset`, shared across repositories and invocations. When no
-usable deadline is available, a confirmed rate limit waits at least one minute.
-Fresh cache entries remain usable during cooldown, but stale metadata is not
-reported as a successful refresh. Transport/server failures have bounded
-retries; ordinary permission denials are not treated as rate limits.
-Cache writes occur only during apply and are advisory: failures produce
-warnings without invalidating successfully discovered pins.
+### Authentication, caching, and failures
 
-It reads `tag_name`, rejects drafts and prereleases, strips a leading `v`, and
-validates the version before using it as shell data. It finds each named asset
-and reads its `sha256:` digest from GitHub's release metadata. It does not
-read an AUR version, download a release archive, or execute the PKGBUILD.
+GitHub requests prefer `GH_TOKEN`, then `GITHUB_TOKEN`, then an active
+noninteractive `gh` login for github.com. Without credentials, public releases
+can be queried anonymously. Rejected credentials are reported rather than
+silently retried anonymously; tokens are not logged, cached, or passed as
+subprocess arguments.
 
-The generated file contains `pkgver` and architecture-specific
-`sha256sums_<architecture>` arrays. The PKGBUILD sources `./version.sh` and uses
-those values in its download URLs and makepkg checksum verification. The
-packaging revision, `pkgrel`, stays in the tracked recipe.
+Validated metadata is cached for ten minutes in `bin/.github-releases-v1/`,
+scoped by repository and credentials. Cache reuse still checks the current
+descriptor and asset digests. Expired entries can use conditional requests.
+Requests are serialized, even in parallel mode, and share rate-limit cooldowns
+so one quota failure does not trigger a burst of requests.
 
-Asset names may contain `{version}`, which is replaced with the validated
-release version without the leading `v`. The PowerShell descriptor uses this
-for archives such as `powershell-7.6.9-linux-x64.tar.gz`.
+A failed refresh retains that recipe's existing pins and remains a failure in
+the summary. Other recipes can still succeed. Fresh cache entries remain usable
+during cooldown; stale metadata is not presented as a successful refresh.
+Cache-write problems produce warnings without invalidating otherwise valid pins.
 
-For other tag conventions, an optional `tag_prefix` declares the exact prefix
-to strip before version validation. Codex uses `"tag_prefix": "rust-v"`.
-A configured prefix must match; omitting it retains optional leading-`v`
-handling. Tracked `LICENSE` and `NOTICE` files are packaging inputs, not
-automatically refreshed release metadata; review them when upstream terms change.
-
-Descriptors are validated before network requests or writes, including unique
-package bases and package names. Invalid ownership metadata fails the task and
-prevents AUR installation because the installer cannot safely identify local
-packages.
-
-Release metadata is validated separately for each recipe, including every
-configured architecture. Missing assets or digests, API rate limits, and network
-failures preserve that recipe’s pins and count as failures; successful recipes
-still publish their updates. File write failures also leave other recipes free
-to proceed. Each changed file is written atomically; identical files are left
-alone. Cancellation propagates immediately.
-
-Refresh success and package readiness are separate. A failed refresh does not
-prevent preparing a snapshot from existing pins, and the refresh failure remains
-visible. Missing pins or snapshot ownership failures make only that recipe
-unavailable. The installer checks current committed snapshot inputs and the
-published repository section before requesting a missing local package. Already
-installed packages need no reinstall. Errors reading or parsing ownership
-metadata fail closed rather than treating local packages as ordinary AUR names.
-Readiness also requires a successful metadata-validation record for the current
-recipe inputs and descriptor, so a descriptor-only change cannot reuse an old
-snapshot to send newly declared local packages to the AUR.
-
-A dry run can read fresh caches or query GitHub, but writes neither release
-caches, cooldowns, pins, nor snapshots. On a fresh checkout, snapshot preview
-can report work before pins exist; applying
-snapshot preparation requires the generated pins.
+Dry-run may read caches or query GitHub, but does not write caches, cooldowns,
+pins, snapshots, or Paru config. It also does not execute PKGBUILDs.
 
 ## How Paru sees the recipes
 
-`paru-config` reads the tracked `paru.conf.base` and generates a regular
-configuration file. Its destination follows `PARU_CONF`, then
-`$XDG_CONFIG_HOME/paru/paru.conf`, then `~/.config/paru/paru.conf`.
-Overrides must be absolute and nonempty. Generation and package readiness use
-the same destination; use the same environment when running dotfiles and Paru.
-When the XDG destination does not exist yet, dotfiles creates it so Paru uses it
-instead of falling back to a home or system configuration. The task replaces
-the former config symlink atomically, without overwriting its tracked source.
+The `paru-config` task combines the tracked base options with generated local
+repository sections. It writes a regular file, replacing a former config
+symlink atomically without overwriting that symlink's source.
 
-For the default cache location, the generated portion is:
+| Path | Precedence |
+|---|---|
+| Generated config | `PARU_CONF`, then `$XDG_CONFIG_HOME/paru/paru.conf`, then `~/.config/paru/paru.conf` |
+| Build root (`CloneDir`) | Nonempty `AURDEST`, then an absolute `$XDG_CACHE_HOME/paru/clone`, otherwise `~/.cache/paru/clone` |
+
+Config overrides and `AURDEST` must be absolute. Empty config overrides are
+invalid. Dotfiles creates the selected config destination when absent, so Paru
+does not fall back to a different existing config.
+
+An illustrative generated section looks like:
 
 ```ini
 [options]
-CloneDir = /home/stuart/.cache/paru/clone
+CloneDir = /home/you/.cache/paru/clone
 
 [dotfiles-apm-dotfiles]
-Path = /home/stuart/.cache/paru/clone/apm-dotfiles
+Path = /home/you/.cache/paru/clone/apm-dotfiles
 GenerateSrcinfo
 ```
 
-Paths are calculated for the current user. The build root follows `AURDEST`
-when set, otherwise `$XDG_CACHE_HOME/paru/clone`, falling back to
-`~/.cache/paru/clone`. Use the same build-directory environment when updating
-dotfiles and running Paru. A later `--clonedir` override can break that alignment.
-Paths written into the generated configuration may contain internal spaces,
-but cannot start or end with whitespace or contain newlines, carriage returns,
-or `#`: Paru would trim or reinterpret those characters.
+Paths are generated for the current user; do not copy these literal example
+paths. Use the same environment when running dotfiles and Paru. A later
+`--clonedir` override can break the required alignment between `CloneDir`,
+repository `Path`, and `package_base`. Paths can contain internal spaces but
+not surrounding whitespace, newlines, carriage returns, or `#`.
 
-The task creates one local repository section per package base. `Path` points
-to its prepared snapshot, and dotfiles publishes the validated `.SRCINFO`
-alongside its PKGBUILD and pins.
-`GenerateSrcinfo` remains enabled, but Paru 2.1.0 skips its repository refresh
-when all repositories use local `Path` entries, so it cannot be relied on to
-refresh existing metadata. Dotfiles repairs missing or modified metadata and
-migrates older snapshots that did not commit `.SRCINFO`. The package name comes
-from the recipe, not its source directory name. Check discovery without upgrading anything with:
-
-```bash
-paru -Sl --pkgbuilds
-```
-
-Paru's Path repositories use local files immediately, take priority over the
-AUR, and skip the normal recipe review step. Review tracked recipe changes
-before applying them. See the upstream
-[Paru configuration manual](https://github.com/Morganamilo/paru/blob/v2.1.0/man/paru.conf.5).
+Paru's local `Path` repositories take priority over the AUR and skip the normal
+recipe review step. **Review the tracked PKGBUILD before preparation.**
+`GenerateSrcinfo` alone is insufficient: Paru 2.1.0 can skip repository refresh
+when all repositories use local paths, so dotfiles publishes current `.SRCINFO`
+itself. See the upstream
+[Paru manual](https://github.com/Morganamilo/paru/blob/v2.1.0/man/paru.conf.5).
 
 ## Why there is a disposable Git snapshot
 
-`CleanAfter` remains enabled for normal AUR and local package builds. In Paru
-2.1.0, post-build cleanup looks for `<CloneDir>/<package_base>` and runs Git
-reset/clean there. Building directly from this checkout both misaligns that
-path and makes Git cleanup unsuitable for the source repository.
+Paru's `CleanAfter` resets and cleans `<CloneDir>/<package_base>`. Pointing that
+cleanup at the source checkout would put source edits and generated pins at risk.
 
-Instead, `paru-config` copies `PKGBUILD`, generated `version.sh`, and an optional
-`package.install` script and `LICENSE`/`NOTICE` files into a
-standalone Git repository at exactly that cache path. It also publishes the
-validated `.SRCINFO` and commits all snapshot files when their contents change. Paru can then reset tracked inputs to that commit
-and remove generated files while retaining the version pins needed next time.
-It cannot reset the separate dotfiles checkout.
+Instead, each dotfiles-owned standalone cache repository commits these inputs:
 
-Snapshots carry an ownership marker inside their own `.git` directory. The
-task refuses existing unmanaged directories, linked worktrees, symlinked
-snapshot directories, and repositories pointing outside the snapshot. It does
-not repurpose an unrelated cached package checkout.
-Snapshot inputs must be regular files in both the working tree and the committed
-tree. Replaced input symlinks invalidate reuse even if their contents match;
-refresh replaces the links without modifying their targets and restores regular
-committed inputs for subsequent Git cleanup.
-Snapshot-local Git attributes disable text normalization so cleanup preserves
-the exact input bytes, even with global Windows line-ending rules. Missing or
-changed snapshot attributes are repaired before reuse.
+- `PKGBUILD` and generated `version.sh`.
+- Optional `package.install`, `LICENSE`, and `NOTICE`.
+- Validated, generated `.SRCINFO`.
 
-Before publishing repository entries, apply runs `makepkg --printsrcinfo` on
-temporary copies of each recipe and its pins. Package base, package names, and
-architectures must match `release.json`. This check also runs when only the
-descriptor changed. A mismatch or makepkg failure preserves the cached inputs,
-omits that recipe from the generated configuration, and counts as a failure;
-independent recipes can still proceed. Metadata generation executes the
-PKGBUILD, so only reviewed recipes should be used. Temporary copies protect
-build inputs but do not sandbox that code. Dry runs do not execute PKGBUILDs or
-create temporary build inputs; metadata validation is deferred until apply.
+Paru can then clean build outputs while retaining usable inputs in the snapshot.
+It cannot reset the separate dotfiles checkout. Recipes needing patches or
+other local inputs require extending the snapshot format first; they are not
+copied automatically.
+
+Before publishing a snapshot, apply runs `makepkg --printsrcinfo` on separate
+copies of its inputs. Package base, names, and architectures must match the
+descriptor. **This executes the PKGBUILD; separate copies are not a sandbox.**
+Only reviewed recipes belong here.
+
+Successful validation is cached against the exact inputs and descriptor.
+Ownership, working files, and committed inputs are still checked before reuse.
+Changes, damage, or a missing validation record require another validation;
+failures are not cached. Parallel mode can validate independent recipes with
+up to four workers, then publishes in recipe order.
+
+Snapshot safety is intentionally conservative:
+
+- An ownership marker is required before reusing an existing cache repository.
+- Unmanaged directories, linked worktrees, symlinked snapshot directories, and
+  repositories pointing elsewhere are rejected.
+- Inputs must be regular files in both working and committed trees. A replaced
+  input link is repaired without modifying its target.
+- Exact bytes and `.SRCINFO` are repaired when stale, including legacy snapshots
+  and conflicting global line-ending settings.
+
+A recipe that fails metadata validation is omitted from generated Paru
+repositories and keeps its previous cached inputs. Other recipes can proceed.
+The installer verifies current validated inputs **and** the published repository
+section before requesting a missing local package. Invalid ownership descriptors
+fail closed rather than allowing an AUR fallback.
 
 ## Adding a recipe
 
-1. Create `packages/<recipe>/PKGBUILD` and `release.json`.
-2. Set `package_base` to makepkg's actual package base: the recipe's `pkgbase`,
-   or `pkgname` when there is no explicit `pkgbase`. It must be unique among
-   local recipes. The directory name may differ. The owned package name defaults
-   to `package_base`, so ordinary single-package recipes need no extra field.
-   For split packages or a differing package name, add a `packages` array listing
-   every actual package name. Names must be unique across descriptors. This
-   ownership information lets the installer refuse AUR fallback without executing
-   the PKGBUILD.
-3. Declare the upstream GitHub repository and release asset name for every
-   supported architecture. These names must match published release assets.
-4. Have the PKGBUILD source `./version.sh`, declare a tracked `pkgrel`, and use
-   the generated version and checksum arrays. Construct release URLs according
-   to that upstream's tag convention.
-5. Add `{ name = "<package-name>", aur = true }` in the appropriate category of
-   `conf/packages.toml` if it should be installed automatically. Otherwise,
-   install it explicitly through Paru after preparation.
-6. Run the checks below and verify a build on Arch before installing it.
+1. Create `packages/<recipe>/PKGBUILD` and `release.json`. Give the local package
+   a distinct name where necessary to avoid an AUR recipe taking its place.
+2. Make `package_base`, optional `packages`, and `assets` agree with makepkg's
+   actual package base, package names, and architectures.
+3. Point the descriptor at stable GitHub releases with published SHA-256 asset
+   digests. Arbitrary version commands and VCS recipes are not supported.
+4. Source `./version.sh` in the PKGBUILD. Keep `pkgrel` tracked and construct
+   archive URLs using the upstream tag convention.
+5. Keep extra inputs within the supported snapshot list. Use
+   `install=package.install` for lifecycle hooks.
+6. For automatic installation, add `{ name = "<package-name>", aur = true }`
+   to the appropriate category in [`conf/packages.toml`](../conf/packages.toml).
+7. Run offline checks, review a preparation preview, and verify the build on
+   Arch in an isolated environment before installing.
 
-The snapshot format copies `PKGBUILD`, `version.sh`, and optional
-`package.install`, `LICENSE`, and `NOTICE` files, and publishes validated
-`.SRCINFO` alongside them. `.SRCINFO` is generated from the prepared recipe
-inputs rather than copied from the source checkout.
-Use `install=package.install` for package lifecycle hooks. Recipes needing
-patches or other local files require extending that format first.
-Version discovery currently supports stable GitHub releases
-with published asset digests, not arbitrary version commands or VCS recipes.
+On a fresh checkout, preview can describe snapshot work before pins exist.
+Applying `paru-config` needs pins, so refresh versions first.
 
 ## Logs and troubleshooting
 
-| Log line | Meaning |
+| Symptom or output | Meaning / next step |
 |---|---|
-| `Local package versions: write .../version.sh` | Available version/checksum pins changed |
-| `Paru configuration: refresh local package snapshot ...` | The recipe or pins changed in Paru's cached build inputs |
-| `Paru configuration: write .../paru.conf` | Generated repository paths/options changed |
-| AUR package installation or Paru's upgrade output | A package was actually installed or upgraded |
+| `Local package versions: write .../version.sh` | Available version/checksum pins changed; nothing was installed |
+| `Paru configuration: refresh local package snapshot ...` | Cached build inputs or metadata changed |
+| `Paru configuration: write .../paru.conf` | Available repository paths/options changed |
+| Paru reports no upgrade after refresh | Inspect snapshot `version.sh` and `.SRCINFO`; rerun preparation and check `paru -Sl --pkgbuilds` |
+| Missing release asset/digest or rate limit | Fix the descriptor or retry after the reported cooldown; old pins survive |
+| Pins missing | Apply version discovery before snapshot preparation |
+| Unmanaged cache directory | Inspect and preserve it before moving it; dotfiles will not claim an unrelated repository |
+| `git reset --hard HEAD: No such file or directory` | Check `CloneDir`, repository `Path`, `package_base`, and environment/command-line overrides agree |
+| Local install excluded | Inspect descriptor ownership, metadata validation, and the published repository section; do not force an AUR fallback |
 
-A snapshot refresh alone does not upgrade the installed executable.
-If Paru reports no upgrades after version pins change, compare the snapshot's
-`version.sh` and `.SRCINFO`. Running `paru-config` with the fixed CLI repairs
-stale metadata; `paru -Sl --pkgbuilds` should then show the prepared version.
-
-If pins are missing, run the version task before applying `paru-config`.
-If a cache directory is reported as unmanaged, inspect and preserve it before
-moving it out of the way; dotfiles deliberately refuses to overwrite it.
-If Paru reports `git reset --hard HEAD: No such file or directory`, check that
-its `CloneDir`, the generated repository `Path`, and any `AURDEST` or command-line
-overrides agree. The directory basename must match `package_base`.
+Implementation and focused regressions live in
+[`local_builds.rs`](../cli/src/domains/packages/local_builds.rs),
+[`snapshots.rs`](../cli/src/domains/packages/local_builds/snapshots.rs), and
+[`tests.rs`](../cli/src/domains/packages/local_builds/tests.rs).
 
 ## CI and validation
 
-Recipe-only changes select Linux Rust checks, configuration validation/drift,
-and ShellCheck. They do not request a CLI binary release or Windows package
-integration. Rust implementation changes still use the usual cross-platform
-CI and release rules. Documentation-only changes retain documentation checks.
+Recipe-only changes select offline Linux Rust checks, configuration
+validation/drift, and ShellCheck. They do not request a CLI binary release or
+Windows package integration. Rust implementation changes retain the normal
+cross-platform rules.
 
-The offline checks cover:
+Offline coverage checks real descriptors without generated pins, shell inputs,
+mocked release failures, independent refreshes, retained-pin recovery, preview
+safety, package readiness, and snapshot ownership/cleanup isolation.
+ShellCheck includes tracked PKGBUILDs and install scripts, not downloaded files
+or build outputs.
 
-- Parsing the actual tracked descriptors and checking required fields,
-  safe names, architecture keys, and recipe existence, without generated pins.
-- ShellCheck for `packages/*/PKGBUILD` and `packages/*/*.install`, without traversing downloads, generated
-  pins, or build trees.
-- Mocked release discovery, metadata failures, preview safety, and repeat runs.
-- Independent refreshes and AUR installs after an upstream failure, with and
-  without retained pins, under sequential and parallel scheduling.
-- Unavailable local package filtering, published-config readiness, and isolation
-  of snapshot ownership failures.
-- Snapshot ownership, local commits, refresh behavior, and isolation of Git
-  reset from the tracked source checkout.
+Choose local commands from [Testing](TESTING.md#choosing-coverage), using the
+pinned Rust toolchain. A recipe edit needs more than a successful docs check.
 
-Run these locally using the pinned Rust toolchain:
-
-```bash
-sh .github/workflows/scripts/linux/check.sh fmt clippy test config docs shell ci
-```
-
-CI does not query current GitHub releases or download/install APM to validate a
-recipe. Its Ubuntu and Windows profile jobs do not run native Arch package
-operations. A passing run therefore does not prove release availability,
-checksums of newly published downloads, native package builds, or Paru's full cleanup lifecycle. Verify those on Arch in a
-disposable build/cache environment. Use build-only Paru operation (`paru -B`)
-when testing cleanup, with installation disabled and controlled configuration.
+CI does **not** establish current release availability, archive download
+checksums, native Arch builds/installation, or Paru's full cleanup lifecycle.
+Ubuntu and Windows profile jobs do not perform native Arch package operations.
+For those gaps, use a disposable Arch build/home/cache with controlled config
+and installation blocked. Build-only Paru (`paru -B`) is appropriate for cleanup
+tests; verify that source edits and cached pins both survive.

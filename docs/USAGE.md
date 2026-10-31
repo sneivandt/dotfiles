@@ -1,534 +1,441 @@
 # Usage
 
-Use this guide for commands, options, and runtime behavior. For a first
-installation, follow [Getting started](README.md).
-For configuration syntax, see [Configuration](CONFIGURATION.md). For the work
-each task performs, see [Task reference](TASKS.md).
+Use dotfiles to bring a machine into the state described by this checkout.
+Start with [Getting started](README.md) for a first installation, or the
+[Windows guide](WINDOWS.md) for PowerShell examples.
 
-## Wrapper bootstrap
+The commands below assume an installed `dotfiles` launcher and that you are in
+the intended repository root. Before the launcher is installed, use
+`./bin/dotfiles` on Linux or `.\bin\dotfiles.exe` on Windows. If the binary is
+missing, follow [Wrapper bootstrap](#wrapper-bootstrap).
 
-A wrapper uses `bin/dotfiles` or `bin\dotfiles.exe`. If the usable binary is
-absent, it downloads a compatible GitHub Release asset and verifies SHA-256.
-Initial bootstrap verifies build provenance when `gh` is available; when it is
-absent, bootstrap warns and continues. Verification failure with `gh` present
-blocks the download. See [Build provenance verification](SECURITY.md#build-provenance-verification).
+## Everyday commands
 
-The download repository is discovered from this checkout's `origin` remote.
-GitHub HTTPS, `git@github.com:owner/repo.git`, and
-`ssh://git@github.com/owner/repo.git` URLs are supported. Set
-`DOTFILES_RELEASE_REPO=owner/repo` to explicitly choose another publisher.
-An invalid override, missing origin, or unsupported remote produces an error
-before downloading; there is no fallback to the original project's releases.
-Forks without published binaries can use `--build` or explicitly select an
-existing publisher. Cached binaries and `--build` do not require discovery.
-
-Release CI embeds its publishing repository in the binary. Subsequent CLI
-self-updates use that embedded identity for downloads, checksums, and provenance,
-even if the checkout's remote changes. The wrapper override selects bootstrap
-only; it does not redirect an existing binary's self-updates. Source builds
-without `DOTFILES_RELEASE_REPO` set at build time disable self-update. A source
-build can opt in by setting that variable to a GitHub `owner/repo` when building.
-
-**Even `--help`, `list`, or `--dry-run` can trigger a wrapper download.**
-Bootstrap runs before the CLI parses those arguments. It uses the network and
-writes the binary and download files. Once bootstrapped, invoke the binary
-directly for discovery without that bootstrap step.
-
-To build instead of downloading, use the wrapper-only `--build` switch:
-
-```bash
-./dotfiles.sh --build list --root . --profile base
-```
-
-```powershell
-.\dotfiles.ps1 --build list --root . --profile desktop
-```
-
-This requires Cargo and the [build prerequisites](CONTRIBUTING.md). It writes
-build artifacts and may download dependencies. The wrapper builds with the
-`dev-opt` profile and executes Cargo's reported artifact, including custom
-`CARGO_TARGET_DIR` or target-triple locations. It does not need to copy that
-artifact into `bin/`.
-
-This profile keeps optimization level 1 and omits debug information. Incremental
-compilation reuses work after source edits, at the cost of more build-cache disk
-space. The first build still compiles and optimizes the full dependency graph.
-
-After the `launcher` and `path` tasks converge, open a new shell and use
-`dotfiles`. The launcher is `~/.local/bin/dotfiles` on Linux and
-`%USERPROFILE%\.local\bin\dotfiles.cmd` on Windows; it delegates to the
-repository wrapper rather than being a standalone binary.
-
-## Command summary
-
-| Command | Use it to |
+| I want to… | Command |
 |---|---|
-| `update` (default) | Sync the repository, apply selected desired state, and advance eligible agent package refs |
-| `remove` | Materialize home links and remove a limited set of integrations, **not** restore the original machine |
-| `check` | Validate configuration and run available repository analyzers |
-| `list` | Discover selectors or inspect a command's dependency graph without executing tasks |
-| `log` | Read retained run logs without starting a new run |
-| `help [command]` | Inspect command-specific usage |
-| `completions <shell>` | Emit runtime completion registration; hidden support command |
+| See the available tasks | `dotfiles list --root . --profile desktop` |
+| Preview this checkout | `dotfiles update --root . --profile desktop --no-repo-update --dry-run --verbose` |
+| Apply this checkout | `dotfiles update --root . --profile desktop --no-repo-update` |
+| Sync the repository and apply updates | `dotfiles update --root . --profile desktop` |
+| Validate configuration and repository files | `dotfiles check --root . --profile desktop` |
+| Read the latest run | `dotfiles log --verbose` |
+| Preview removal | `dotfiles remove --root . --profile desktop --dry-run --verbose` |
 
-With no command, `dotfiles` runs `update`. It is **not** a general
-operating-system upgrade command: packages already present are not selected
-just to upgrade them. However, **installing missing Arch packages invokes
-`pacman -Syu --needed --noconfirm`**, so even ordinary `update` can upgrade
-other system packages as part of that transaction.
-
-## Command options
-
-Shared options may appear **before or after an explicit command**. For example,
-`dotfiles --profile base list` and `dotfiles list --profile base` are equivalent.
-Each command still accepts only its own options. When the command is omitted,
-options apply to `update`: `dotfiles --dry-run` is equivalent to `dotfiles update --dry-run`.
-`dotfiles --version` or `dotfiles -V` prints the version without loading
-configuration. `dotfiles <command> --help` gives that command's full syntax.
-
-| Options | Accepted by | Meaning |
-|---|---|---|
-| `-p`, `--profile <PROFILE>`; `--root <PATH>`; `--overlay <PATH>` | update, remove, check, list | Select role, source checkout, and overlay |
-| `-q`, `--quiet` | update, remove, check | Suppress routine output; retain warnings and failures on stderr; incompatible with verbose or an explicit output format |
-| `--format <human\|jsonl>` | update, remove, check | Select human output (default) or versioned JSON Lines; JSON Lines disables prompts |
-| `-v`, `--verbose` | update, remove, check, log | Include diagnostic output; for log viewing, incompatible with `--raw` or `--list` |
-| `--no-parallel` | update, remove, check | Run work sequentially |
-| `--non-interactive` | update, remove, check | Disable normal execution prompts; fail if required selection is unavailable |
-| `--fail-on-skip` | update, remove, check | Fail when applicable work remains unmet, including missing optional check tools |
-| `--no-symbols` | update, remove, check | Use ASCII status words |
-| `-n`, `--dry-run` | update, remove | Preview task changes rather than apply them |
-| `--only <SELECTOR>`; `--skip <SELECTOR>` | update, remove, check; list with `--graph` | Select or exclude tasks; repeat flags or use comma-separated values |
-| `--with-deps` | update; list with an update graph | Include predecessors of `--only` selections; requires `--only` |
-| `--no-repo-update` | update | Omit synchronization of the main checkout and Git overlay |
-| `--skip-attestation` | update, remove | Explicitly bypass self-update provenance verification, not checksum verification |
-| `--format table\|plain\|json` | list; log with `--list` | Format discovery/history output |
-| `--graph update\|remove\|check` | list | Inspect that command's graph |
-| `--all` | list without `--graph` | Include tasks clearly inapplicable to the current platform or profile |
-
-`--skip-attestation` is a CLI self-update option, not a bootstrap option.
-`DOTFILES_SKIP_ATTESTATION=1` bypasses provenance checks in both layers. Neither
-is a routine fix for verification errors.
-
-## Dry-run scope
-
-`--dry-run` suppresses the CLI's planned configuration mutations. It is not a
-sandbox, an offline mode, or a promise of zero filesystem writes.
-
-| Activity | During a dry run |
-|---|---|
-| Wrapper bootstrap or `--build` | Still downloads/builds before the CLI starts |
-| CLI self-update | Can read cached releases or query GitHub; does not write release caches or replace the binary |
-| Repository task | Can query remote refs; does not fetch or merge. Omit it with `--no-repo-update` |
-| Run bookkeeping | Writes logs and acquires the repository lock |
-| Selection | Interactive profile selection and explicit `--overlay` can persist local Git configuration |
-| State inspection | Queries files, package providers, and other external tools; their own caches/side effects are not sandboxed |
-| Overlay scripts | Executes `--check` and, when needed, `--dryrun`; safety depends on the script honoring those modes |
-
-For task/graph discovery without executing probes, use an **existing binary's**
-`list` command. It creates no run log or lock and does not persist selections.
-For a focused machine preview, use `--only`, an explicit `--root` and
-`--profile`, and `--no-repo-update`. Review overlay scripts before including
-them.
+Replace `desktop` with `base` for a shell-focused machine. Neither profile is a
+user-files-only mode. **Back up existing configuration before the first apply:**
+installing links can replace regular files and empty directories without a
+backup. Changes to linked application settings may take effect immediately.
 
 ## Apply configuration
 
-Built-in tasks inspect current state and avoid unnecessary changes. Applications
-may auto-reload changed configuration immediately.
+### Update
 
-Three independent sources of change matter:
+`update` is the default command: running `dotfiles` by itself applies an update.
+Tasks inspect current state and avoid changes that are already satisfied.
+An update can nevertheless change more than the files you just edited:
 
-| Source | Default behavior | How to keep it fixed for a run |
+| What can change | Normal behavior | To leave it alone for this run |
 |---|---|---|
-| CLI binary | Release binaries running from the checkout's `bin/` check before update/remove | Set `DOTFILES_SKIP_SELF_UPDATE=1` |
-| Repository content | Update synchronizes the main checkout and eligible Git overlay | Pass `--no-repo-update` |
-| Agent package refs | Update advances eligible refs | Skip agent packages with `--skip apm` |
+| CLI binary | Eligible release binaries check for a newer version before update/remove | Set `DOTFILES_SKIP_SELF_UPDATE=1` |
+| Main checkout and Git overlay | Fetch and fast-forward to their upstream branches | Pass `--no-repo-update` |
+| Agent dependencies and deployments | Advance eligible refs and reconcile agent packages | Pass `--skip apm` |
+| Local Arch package pins | Refresh release versions and checksums | Pass `--skip local-package-versions` |
 
-`--no-repo-update` alone is not network-free. System packages, agent packages,
-self-update, and overlay scripts can still access the network. `--only` limits scheduled tasks;
-it does not disable self-update, configuration loading, or startup bookkeeping.
-Selecting `repository` with both `--only` and `--no-repo-update` is an error.
+Task filters do not disable startup behavior. `--no-repo-update` is neither an
+offline switch nor a self-update switch. Packages and overlay scripts may
+still use the network.
 
-Repository updates use fetch and fast-forward-only merge, not a reset or
-automatic conflict resolution. If content changes, a guarded child reloads
-configuration and rediscovers overlay tasks with the original arguments.
-The parent retains the run lock until it exits.
-Preview probes use the advertised remote ref rather than a cached tracking ref.
-Missing upstream configuration or an unadvertised ref leaves the update status
-unknown; authentication, transport and configuration errors fail the preview.
+**Package installation is not a harmless refresh.** Existing packages are not
+selected just to upgrade them, and Windows does not run `winget upgrade --all`.
+But installing missing Arch packages uses `pacman -Syu --needed --noconfirm`,
+which can upgrade the wider system.
 
-Release checks are cached for up to 10 minutes and, on Linux, only for the boot
-that created the cache. Source builds do not self-update from their Cargo
-output directory. A restarted child does not repeat the self-update check.
-Self-update and local package discovery share authenticated release fetching,
-ETag revalidation, and credential-scoped rate-limit cooldowns under
-`bin/.github-releases-v1/`. They prefer `GH_TOKEN`, then `GITHUB_TOKEN`, then an
-unattended saved `gh` login. Denied credentials are not silently retried
-anonymously. Fresh metadata remains usable during a cooldown; stale metadata
-does not turn a failed lookup into success. Preview reads but never writes these
-caches. The existing `bin/.dotfiles-version-cache` still records completed
-self-update checks/installations; cached release availability does not imply
-that a binary has been installed.
-An unwritable release-check cache produces a warning but does not invalidate a
-successful version check or prevent restarting into a verified binary update.
-Self-update streams the asset into one guarded file beside the installed binary,
-hashes it incrementally, and verifies that same file before installation.
-Partial-download retries restart both the file and hash. Release metadata is
-limited to 1 MiB and checksum text to 64 KiB; oversized responses fail explicitly.
+To apply only your symlink changes, first preview the same scope:
 
-Release checks authenticate with a non-empty `GH_TOKEN`, then `GITHUB_TOKEN`,
-then the active GitHub CLI login for `github.com`. If you already use
-`gh auth login`, no token export is needed. Without usable credentials, the
-check falls back to anonymous access, which has a lower GitHub API rate limit.
-Tokens obtained from GitHub CLI are never retained in command logs.
+```bash
+dotfiles update --root . --profile desktop --no-repo-update --only symlinks --dry-run --verbose
+```
+
+After reviewing it, remove `--dry-run` to apply. To suppress CLI self-update
+too, prefix the command on Linux with `DOTFILES_SKIP_SELF_UPDATE=1`; see
+[Windows bootstrap](WINDOWS.md#bootstrap) for the PowerShell equivalent.
+
+Repository synchronization never resets or rebases local work. If it changes
+the checkout, dotfiles restarts to load the new configuration before continuing.
+The parent keeps the run lock throughout. See
+[Repository update fails](TROUBLESHOOTING.md#repository-update-fails) for dirty
+or diverged branches.
+
+For focused dependency updates, see [Agent tooling](AGENT-TOOLING.md) and
+[Local package recipes](LOCAL-PACKAGES.md).
 
 ### Select tasks
 
-Discover before filtering:
+Use selectors from `list`, not package names or partial task names:
 
 ```bash
 dotfiles list --root . --profile desktop
-dotfiles update --root . --profile desktop --no-repo-update --only symlinks --dry-run
-dotfiles update --root . --profile desktop --no-repo-update --only "packages,git-hooks" --dry-run
+dotfiles update --root . --profile desktop --no-repo-update --only "symlinks,git-hooks" --dry-run
 ```
 
-Selectors match exactly after case, punctuation, and whitespace normalization.
-`repository` and the full label `dotfiles-repository` both match **Dotfiles
-repository**; `dotfiles` does not. Internal orchestration tasks cannot be
-selected. Unknown selectors and an explicit filter selecting no tasks fail.
+- `--only` runs the named tasks. Repeat the flag or separate selectors with commas.
+- `--skip` excludes tasks and takes precedence over `--only`.
+- Selectors match exactly after case, punctuation, and whitespace normalization.
+  Full task labels also work; arbitrary substrings do not.
+- Unknown selectors and a filter selecting no tasks are errors.
+- `--only packages` means **all active native packages**, not a single package
+  and not the AUR package list.
 
-`--only` does **not** automatically include prerequisites. A filtered-out
-blocking prerequisite warns and is assumed satisfied; a filtered-out
-ordering-only predecessor does not warn. To include both kinds recursively:
+**Dependencies are not automatically included by `--only`.** An omitted
+blocking prerequisite produces a warning and is assumed satisfied. Use
+`--with-deps` to include both blocking prerequisites and ordering predecessors:
 
 ```bash
-dotfiles update --root . --profile desktop --no-repo-update \
-  --only systemd --with-deps --dry-run
+dotfiles list --root . --profile desktop --graph update --only systemd --with-deps
+dotfiles update --root . --profile desktop --no-repo-update --only systemd --with-deps --dry-run
 ```
 
-This can broaden the run to packages, AUR setup, links, and permissions: inspect
-the graph first. `--skip` is applied after dependency expansion and can remove
-a prerequisite again. Task names are not package names: `--only packages`
-selects the whole active package list, not one package.
+Inspect the graph first: this can add packages, AUR setup, symlinks, and file
+permissions. `--skip` is applied after expansion, so it can remove a
+prerequisite again. `--with-deps` is available only for update and update graphs.
 
 ### Unattended runs
 
-Pass `--profile`, `--root`, `--non-interactive`, and `--fail-on-skip` explicitly
-when automation requires a complete result. A present `CI` variable, even
-`CI=false`, enables strict skip handling and non-interactive policy.
-Non-terminal stdin also enables non-interactive policy. Some tasks are
-deliberately inapplicable in CI; strict mode does not turn those into failures.
+Select the repository and profile explicitly, disable prompts, and require a
+complete result when automation depends on one:
 
-Only one task-engine command can run per repository at a time, including
-`check` and previews. Linked worktrees share a lock in the common Git directory.
-`list` and `log` are exempt.
-Only actual lock contention is reported as another active run; filesystem or
-locking-support errors retain their underlying cause.
-Outside Git repositories, the lock uses the platform state directory or home
-fallback; blank or relative state/home paths are ignored so changing the
-working directory cannot select a different lock.
+```bash
+dotfiles update --root . --profile base --no-repo-update --non-interactive --fail-on-skip
+```
+
+This **applies** configuration. Add `--dry-run` to preview instead.
+Non-terminal stdin and JSON Lines output also disable prompts. Any present
+`CI` variable—even `CI=false`—disables prompts and enables strict skip handling.
+Tasks that are genuinely inapplicable are not failures.
+
+Only one update, remove, or check can run against a repository at a time.
+Previews count too; linked worktrees share the same lock. `list` and `log`
+remain available while a run is active.
+
+## Dry-run scope
+
+`--dry-run` previews planned configuration changes. **It is not a sandbox or a
+promise of zero writes.**
+
+| Activity | What a preview still does |
+|---|---|
+| Wrapper bootstrap | Can download a binary, or build one with `--build`, before the CLI starts |
+| CLI release check | Can read caches and query GitHub; does not replace the binary or write release caches |
+| Repository task | Can query remote refs, but does not fetch or merge; omit it with `--no-repo-update` |
+| Bookkeeping | Writes a run log and acquires the repository lock |
+| Selection | Can save an interactive profile choice or an explicit `--overlay` |
+| Inspection | Reads host state and invokes external tools; their effects are not sandboxed |
+| Overlay scripts | Executes `--check` and, when needed, `--dryrun`; the scripts must honor those modes |
+
+For discovery without task probes, use an **existing binary's** `list` command.
+It does not execute tasks or scripts, acquire the run lock, create a run log,
+or save profile/overlay selections.
 
 ## Discover tasks
 
 ```bash
-dotfiles list --root . --profile desktop --format json
+dotfiles list --root . --profile desktop
 dotfiles list --root . --profile desktop --all
 dotfiles list --root . --profile desktop --graph update
-dotfiles list --root . --profile desktop --graph update --only symlinks --with-deps
+dotfiles list --root . --profile desktop --format json
 ```
 
-The default table groups `SELECTOR` and `TASK` rows under underlined
-`UPDATE TASKS`, `REMOVE TASKS`, and `CHECK TASKS` headings. Plain and JSON output
-combine each selector's command membership in one record. Discovery includes
-the update, remove, check, and active overlay task sets. Tasks clearly inapplicable
-to the platform or with no configured work are hidden by default; `--all`
-shows the complete public catalog. Uncertain cases remain visible without
-probing tools or executing scripts. Listing a task does **not** guarantee
-it can run or needs changes on this host.
+The normal listing groups selectors by update, remove, and check. It hides
+tasks whose platform or configuration clearly rules them out; `--all` includes
+them. A visible task is a possibility, not proof that its tools are installed
+or that anything needs changing.
 
-Graph output includes internal nodes. `BLOCKING` predecessors must succeed;
-`AFTER` predecessors provide ordering only. `SELECTION` distinguishes default,
-requested, dependency, filtered, and skipped nodes. Filters annotate selection
-without hiding nodes or their edges. `--format plain` is tab-separated without
-headings; `--format json` provides structured records.
+Graph output shows every node, including internal tasks, with selection labels:
+`default`, `requested`, `dependency`, `filtered`, or `skipped`.
+`requires <-` means the predecessor must succeed; `after <-` means wait for it
+without inheriting its failure. Filters annotate the graph rather than hiding
+its excluded nodes. Internal tasks cannot be selected directly.
 
-Discovery still needs loadable configuration and a profile. If CLI,
-environment, and saved profile selection are all absent, it requests
-`--profile` instead of opening the profile prompt. An explicit linked-worktree
-overlay retains its separate confirmation requirement.
-
-## Update
-
-To preview agent package ref advancement from the current checkout:
-
-```bash
-dotfiles update --root . --profile desktop --no-repo-update --only apm --dry-run --verbose
-```
-
-Remove `--only apm` for the full update pipeline; use `--with-deps` if
-the selected agent packages task needs its prerequisites converged. Remove
-`--no-repo-update` only if you also want repository synchronization.
-See [Agent tooling](AGENT-TOOLING.md) for update eligibility and generated manifest/lock behavior.
+Use `--format plain` for tab-separated records or `--format json` for JSON.
+`list` still needs loadable configuration and an existing profile selection;
+it never opens the profile prompt. Explicit linked-worktree overlays retain
+their separate confirmation requirement.
 
 ## Console output
 
-The header identifies command, dry-run mode, profile, platform, and overlay.
-Check it before interpreting a result. Rows appear as tasks finish, not in
-configuration order.
+Check the header's profile, platform, overlay, and dry-run indicator first.
+Tasks print as they finish, so output order is not configuration order.
 
 | Status | Meaning |
 |---|---|
-| `✓` | Changes applied, or a validation check passed |
-| `~` | Changes planned by a dry run |
-| `○` | Already current; shown with `--verbose` |
-| `⊘` | Skipped, blocked, or interrupted; read the accompanying reason |
-| `✗` | Failed |
+| `✓` / `CHANGED` or `PASSED` | Changes applied, or a check passed |
+| `~` / `PLANNED` | A dry run found changes to make |
+| `○` / `CURRENT` | Already satisfied; shown with `--verbose` |
+| `⊘` / `SKIPPED` | Work was not performed; read the reason |
+| `⊘` / `BLOCKED` | A required predecessor did not complete successfully |
+| `⊘` / `INTERRUPTED` | Work stopped during cancellation |
+| `✗` / `FAILED` | An operation failed |
 
-Symbol rows explicitly name `planned`, `skipped`, `blocked`, and `interrupted`
-states. `--no-symbols` uses `CHANGED`, `PLANNED`, `CURRENT`, `PASSED`, `SKIPPED`,
-`BLOCKED`, `INTERRUPTED`, and `FAILED`; the status word is not repeated after the
-task name. Non-applicable tasks are absent from console totals. Internal tasks
-remain in logs but not normal rows or totals.
+`--verbose` adds current tasks, decisions, and timings. `--no-symbols` uses the
+text labels above; `NO_COLOR` disables color. Inapplicable and internal tasks
+do not appear in normal rows or totals, but remain in logs.
 
-Task names are bold. Successful/current reasons, configuration counts and
-elapsed times are dim; failure, skipped, blocked and interrupted reasons retain
-normal contrast. Green marks applied changes or passed checks, magenta marks
-planned work, yellow marks incomplete work, and red marks failures. The startup
-header emphasizes `dry run` in magenta. Standalone `WARN` and `ERROR` labels are
-bold and colored, with their explanations in normal foreground. Plain output
-and `NO_COLOR` retain wording and spacing without ANSI styling.
-
-Indented lines use concise verb-first descriptions of completed or planned
-actions, such as `install fd` and `write zsh completions`. `--verbose` adds
-current tasks, decisions, and elapsed times; debug details are dim while actions
-and informational explanations retain normal contrast. A transient animated
-spinner shows remaining visible tasks and active task names, for example
-`⠋ 12 tasks left · Packages, Symlinks, Fonts +2`. The spinner is muted cyan;
-counts and overflow are dim, while task names retain normal contrast. Narrow
-terminals shorten names while reserving room for the overflow count.
-`--no-symbols` uses an ASCII spinner. Quiet, JSON Lines and redirected output
-omit the footer; `NO_COLOR` disables its styling. Rows remain in completion
-order, with one blank line between mutation task blocks; ordinary one-line check
-rows stay compact.
-
-Final counts explicitly count tasks, not files, packages or action lines. They
-put incomplete work first: failed, interrupted, blocked, skipped, then changed
-or planned work, current tasks, and elapsed time. Every incomplete outcome is
-bold; the first successful outcome is bold when there is no incomplete work.
-For example: `1 task skipped · 2 tasks changed · 14 tasks current · 2.3s`.
-`No changes` is reserved for runs without failed, interrupted, blocked or skipped
-tasks, and is bold in the default foreground. **A zero exit status with skips is
-not necessarily a complete installation.**
-
-These shared presentation rules apply to `update`, `remove`, and `check`.
-Checks use `passed` totals rather than `changed`.
-The `log` viewer uses `Current` and `Planned` for the corresponding task states;
-raw records retain their original stored status names. Recovery instructions,
-including the exact `dotfiles log --id … -v` command, retain normal contrast.
-
-Failed-command summaries prefer concrete error diagnostics over update notices
-and progress text, falling back to the first nonempty output line. The retained
-log contains the captured output; the short row is not the whole diagnosis.
+Indented actions describe files or packages. The final counts describe
+**tasks**, not the number of action lines. Failed, interrupted, blocked, and
+skipped work appears before successful counts. **Exit 0 with skipped work is
+not necessarily a complete installation.** Use `--fail-on-skip` when it must be.
 
 ## Remove
 
-Preview with the same profile and overlay used to install:
+Preview with the original profile and overlay while their sources still exist:
 
 ```bash
 dotfiles remove --root . --profile desktop --dry-run --verbose
 ```
 
-Removing `--dry-run` materializes selected managed home links, removes hooks
-and the launcher still matching their managed state, and runs active overlay
-scripts' `--remove` actions when their checks report managed state.
-Modified/replaced hooks, unrelated hook names, and modified launchers are
-preserved.
+Remove `--dry-run` only after reviewing the result.
 
-**Remove is not rollback.** It copies current configured sources, not
-pre-install backups; even a missing home target can be materialized. Existing
-non-link targets are preserved. It does not restore packages, Git/agent
-settings, PATH, registry, services, permissions, shell selection, WSL, editor
-extensions, or agent package deployments. See [Remove tasks](TASKS.md#remove-tasks).
-Keep the checkout and sources available until materialization succeeds.
+| Removed integration | Result |
+|---|---|
+| Managed home links | Replaced with real copies of the configured sources |
+| Managed Git hooks and launcher | Removed only if they still match their managed state |
+| Active overlay scripts | Their removal actions run when their checks find managed state |
+
+**Remove is not rollback.** The copies contain current configured content,
+not your pre-install files. Missing home targets can also be materialized;
+existing non-link targets and replaced links are preserved. Keep the checkout
+until materialization succeeds.
+
+Packages, registry settings, PATH, services, system files, permissions, login
+shell, Git/agent settings, completions, editor extensions, and agent deployments
+remain. See [Remove tasks](TASKS.md#remove-tasks) before planning a cleanup.
 
 ## Check
 
-`check` validates configuration and sources and runs available ShellCheck,
-PSScriptAnalyzer, and local agent package checks. It does not install or repair
-configuration and has no `--dry-run` option. Like other engine commands it
-writes a log, locks the repository, and resolves/persists selections.
+`check` validates configuration and sources and runs available repository
+analyzers. It does not install or repair configuration and has no `--dry-run`.
+It does write a log, acquire the run lock, and resolve/save selections.
 
-Configuration warnings fail `config-warnings`; missing analyzer executables
-are visible skips, made fatal by `--fail-on-skip` or CI. A present `pwsh` with a
-missing PSScriptAnalyzer module fails rather than skips.
-Use [Testing — CLI validation](TESTING.md#cli-validation) for canonical
-commands and coverage, and [Validation tasks](TASKS.md#validation-tasks) for
-selectors. Narrowing tasks does not bypass initial configuration loading.
+```bash
+dotfiles check --root . --profile desktop
+```
+
+The `config-warnings` task fails on configuration diagnostics, including
+warnings. Missing optional tools are visible skips; `--fail-on-skip` and CI
+make them fatal. If `pwsh` exists but PSScriptAnalyzer does not, that check fails.
+
+See [Testing](TESTING.md#cli-validation) for scoped checks and prerequisites.
+Task filtering cannot bypass malformed configuration loaded at startup.
 
 ## Logs
 
-Each update/remove/check process has a separate run log. Retention targets the
-newest 50 logs, but active logs are never pruned, so the count can temporarily
-exceed 50. Failed runs print an exact `dotfiles log --id ... -v` command
-when persistent logging is healthy. Prefer that ID: numeric indexes shift
-after subsequent runs.
+After a failure, use the exact `dotfiles log --id … -v` command printed by the
+CLI. IDs stay stable even after later runs; numeric history indexes do not.
 
 ```bash
-dotfiles log                      # newest run
-dotfiles log --list               # history with IDs, outcomes, durations, profiles
+dotfiles log                          # newest run
+dotfiles log --verbose                # newest run, with diagnostics
+dotfiles log --list                   # history and stable run IDs
 dotfiles log --list --format json
-dotfiles log 2                    # third-newest run (zero-based)
-dotfiles log --command install 1  # second-newest historical install run
-dotfiles log --task symlinks      # one selector within the newest run
-dotfiles log --raw                # original stored records
+dotfiles log 2                        # third-newest run
+dotfiles log --task symlinks --verbose # one task in the newest run
+dotfiles log --raw                    # original stored records
 ```
 
-Use the actual ID from history with `--id`; it can be combined with `--task`
-and either `--verbose` or `--raw`. It cannot be combined with an index,
-`--list`, or `--command`. `--verbose` and `--raw` are mutually exclusive.
-Command filters accept `update`, `remove`, and `check`, plus historical
-`install` and `uninstall` filters. The check filter also
-recognizes legacy `test` logs.
+Use the actual history ID with `--id`, optionally adding `--task` and either
+`--verbose` or `--raw`. `--id` cannot be combined with an index, `--list`, or
+`--command`; verbose and raw are mutually exclusive.
 
-Normal viewing shows actions, task outcomes, warnings, run context and requested
-scope (`--only`, `--skip`, dependency inclusion and repository-update policy).
-Task starts, resource checks, debug details and task timings require `--verbose`.
-Task results and timings are stored once; human viewing also suppresses their
-duplicate text entries in older structured logs. `--raw` preserves original records.
+`--command update`, `remove`, or `check` filters history before selecting an
+index. Historical `install` and `uninstall` filters remain supported; they
+are not current execution commands.
 
-Checked command failures and successful stderr are visible by default. Unchecked
-commands with a nonzero exit are labeled `nonzero exit (unchecked)`: the caller
-interprets the exit protocol, so this alone does not mean the task failed. Their
-streams remain available with `--verbose`; nonempty stderr remains visible by
-default. Successful stdout is normally retained only
-as a byte count unless a command requests full capture; `--raw` cannot recover
-uncaptured output. Sanitize paths, private configuration, and tool output
-before sharing logs.
+Normal viewing shows actions, outcomes, warnings, context, and failed-command
+output. Verbose adds task starts, checks, timings, and debug details.
+An unchecked nonzero command exit is not necessarily a task failure: some
+tools use exit codes to report state. Successful stdout is usually not saved;
+`--raw` cannot recover output that was never retained. Oversized subprocess
+output is marked truncated and is not accepted as a complete inventory.
 
-Subprocess capture is limited to 8 MiB of source bytes per stream. Excess output
-is drained but not retained, and the saved prefix is marked as truncated. A
-completed command that exceeds this limit fails, including commands whose
-nonzero exit codes are normally interpreted by the caller; partial output is
-never treated as a complete inventory. Timeouts and cancellation keep their
-original outcome with bounded diagnostics.
+Each restarted or elevated process has a separate log linked to its parent.
+`unfinished` means no finish record exists; the process may still be running.
+Retention targets the newest 50 logs without deleting active ones. Reading
+logs does not start another logged run.
 
-History orders by recorded start time and links restarted/elevated children to
-their parent IDs. `unfinished` means no finish record exists: a run may still
-be active or may have terminated abruptly. Old logs without lifecycle records
-show `unknown`; malformed or unfamiliar records remain readable as raw text.
-An empty or unmatched history remains machine-readable: `--list --format json`
-returns `[]`, and plain format emits no rows.
+### Log locations
 
-Log-directory precedence is platform-specific:
+`DOTFILES_LOG_DIR` overrides the location, including with a relative path.
+Otherwise:
 
-1. `DOTFILES_LOG_DIR`, used as supplied, including relative paths.
-2. On Windows, `LOCALAPPDATA` plus `dotfiles/logs`; otherwise,
-   `XDG_STATE_HOME` plus `dotfiles/logs`.
-3. On Windows, `USERPROFILE` plus `AppData/Local/dotfiles/logs`; otherwise,
-   `HOME` plus `.local/state/dotfiles/logs`.
-4. `./dotfiles/logs`.
+| Platform | Preferred location | Home-directory fallback |
+|---|---|---|
+| Linux | `$XDG_STATE_HOME/dotfiles/logs` | `~/.local/state/dotfiles/logs` |
+| Windows | `%LOCALAPPDATA%\dotfiles\logs` | `%USERPROFILE%\AppData\Local\dotfiles\logs` |
 
-Standard state/home variables must be absolute; empty or relative values are
-ignored. Variables belonging to the other platform do not override the native
-location. Log discovery reports unreadable or invalid directories as errors,
-not empty history, and ignores directories named like log files.
-
-Files use `<utc-timestamp>-<command>-<pid>.log`. Legacy cache-directory logs are
-removed on the next run. Viewing logs does not create another log.
-
-## Shell completions
-
-The `completions` task installs runtime registration for Zsh or PowerShell.
-The shell queries the current binary for profiles, log command values, and
-task selectors. Task completion carries forward `--root`, `--profile`, and
-`--overlay` and uses the same read-only configuration discovery as `list`.
-Format suggestions follow the command even when options precede it. Options
-with unmet requirements or conflicts are omitted; for example, select
-`log --list` before completing `--format`. Graph selectors for
-`list --graph <command>` complete tasks belonging to that command.
-The hidden `completions` command fails if writing or flushing its registration
-to stdout fails.
+Empty or relative standard state/home variables are ignored. The final
+fallback is `./dotfiles/logs`. An unreadable directory is an error, not empty
+history. **Review logs for private paths, configuration, and tool output before
+sharing them.**
 
 ## Repository and overlay paths
 
-Use `--root .` from the intended repository root, or pass an absolute path.
-Without it, the CLI tries `DOTFILES_ROOT`, candidate locations relative to its
-executable, then the current directory. The current directory is **not**
-preferred over the executable's checkout. Wrappers set `DOTFILES_ROOT` to
-their own checkout.
+`--root .` selects the checkout you are standing in. Without `--root`, dotfiles
+tries `DOTFILES_ROOT`, candidate paths relative to its executable, then the
+current directory. Wrappers set `DOTFILES_ROOT` to their own checkout.
 
-`--root` selects configuration, not the executable: an installed launcher may
-still obtain its binary from another checkout. Use that checkout's wrapper or
-built binary when testing its source.
+`--root` chooses configuration, **not the executable**. An installed launcher
+can still obtain a binary from another checkout. Use the intended checkout's
+wrapper or built binary when that distinction matters.
 
-Overlay precedence is `--overlay`, `DOTFILES_OVERLAY`, then repository-local
-Git config `dotfiles.overlay`. An explicit CLI overlay is persisted by engine
-commands, **including previews and check**; `list` does not persist it.
-Relative paths are made absolute relative to the invocation directory.
+Overlay priority is `--overlay`, nonempty `DOTFILES_OVERLAY`, then local Git
+config `dotfiles.overlay`. Relative paths are resolved from the invocation
+directory. Unlike `--profile`, an explicit `--overlay` is saved for future
+engine runs—even during check or dry-run. `list` does not save it.
 
-An explicit overlay whose `.git` is a file is treated as a linked worktree and
-requires a separate `[y/N]` confirmation. No interactive terminal means that
-selection is rejected. Use a stable primary checkout for unattended work.
-See [Overlays](CONFIGURATION.md#overlays) for configuration semantics and
-script trust boundaries.
+An explicit overlay whose `.git` is a file needs a separate confirmation.
+Without an interactive terminal it is rejected. Prefer a stable primary
+checkout for unattended use. See [Overlays](CONFIGURATION.md#overlays) for
+merging and script safety.
+
+## Wrapper bootstrap
+
+The repository wrappers obtain the CLI and forward its arguments:
+
+```bash
+./dotfiles.sh list --root . --profile base
+```
+
+```powershell
+.\dotfiles.ps1 list --root . --profile desktop
+```
+
+If a usable cached binary is absent, the wrapper downloads a release into
+`bin/` and verifies its SHA-256 checksum. It also verifies build provenance
+when `gh` is available. Missing `gh` produces a warning; a failed verification
+with `gh` present blocks bootstrap. See
+[Build provenance verification](SECURITY.md#build-provenance-verification).
+
+**Even wrapper help, list, and dry-run can download files.** Use an existing
+binary directly to avoid bootstrap.
+
+The publisher comes from the checkout's GitHub `origin` remote unless
+`DOTFILES_RELEASE_REPO=owner/repo` explicitly selects another publisher.
+Unsupported/missing remotes fail instead of falling back to this project's
+releases. Forks without release assets can build locally:
+
+```bash
+./dotfiles.sh --build list --root . --profile base
+```
+
+On Windows, use `.\dotfiles.ps1 --build list --root . --profile desktop`.
+This requires the [source-build prerequisites](CONTRIBUTING.md), may download
+Cargo dependencies, and writes build artifacts. The wrapper uses `dev-opt`
+and executes Cargo's reported artifact, including custom target directories;
+it does not need to copy it into `bin/`.
+
+Release binaries retain their publishing repository for self-update.
+Changing `origin` or the bootstrap override does not redirect an existing
+binary's updates. Normal development builds do not self-update.
+
+After the `launcher` and `path` tasks succeed, open a new shell. The installed
+launcher in `~/.local/bin` delegates back to this checkout; it is not a
+standalone installation. Keep the checkout at a stable path.
+
+## Shell completions
+
+The `completions` task installs Zsh or PowerShell registration. Open a new shell
+after installation. Task completion uses the current binary's read-only
+discovery and carries forward `--root`, `--profile`, and `--overlay`; it does
+not prompt for or save a profile.
+
+For managed shell behavior beyond the CLI, see [Application settings](APPLICATIONS.md).
+
+## Command summary
+
+| Command | Purpose |
+|---|---|
+| `update` (default) | Apply desired state and advance eligible dependencies |
+| `remove` | Detach a limited set of integrations, not restore machine defaults |
+| `check` | Validate configuration and repository files |
+| `list` | Discover selectors or inspect a dependency graph |
+| `log` | Read retained runs |
+| `help [command]` | Show command-specific usage |
+| `completions <shell>` | Emit shell registration; hidden support command |
+
+## Command options
+
+Options may appear before or after an explicit command. With no command, they
+apply to `update`. Use `dotfiles <command> --help` for full syntax, and
+`dotfiles --version` or `-V` for the version.
+
+| Option | Commands | Purpose |
+|---|---|---|
+| `-p`, `--profile`; `--root`; `--overlay` | update, remove, check, list | Select role and configuration sources |
+| `-n`, `--dry-run` | update, remove | Preview planned changes |
+| `--only`; `--skip` | update, remove, check; list with `--graph` | Include/exclude selectors |
+| `--with-deps` | update; list with an update graph | Expand `--only` to predecessors |
+| `--no-repo-update` | update | Use current checkout content |
+| `-v`, `--verbose` | update, remove, check, log | Show diagnostics |
+| `-q`, `--quiet` | update, remove, check | Keep only warnings and incomplete outcomes |
+| `--format human\|jsonl` | update, remove, check | Choose execution output |
+| `--no-parallel` | update, remove, check | Run selected work sequentially |
+| `--non-interactive` | update, remove, check | Disable prompts |
+| `--fail-on-skip` | update, remove, check | Fail on unmet applicable work |
+| `--no-symbols` | update, remove, check | Use text status labels |
+| `--format table\|plain\|json` | list; log with `--list` | Choose discovery/history output |
+| `--graph update\|remove\|check` | list | Inspect a command graph |
+| `--all` | list without `--graph` | Include clearly inapplicable tasks |
+| `--skip-attestation` | update, remove | Bypass self-update provenance, never checksums |
+
+`--skip-attestation` does not affect bootstrap; `DOTFILES_SKIP_ATTESTATION=1`
+affects both layers. Neither is a routine workaround for verification errors.
+Selecting `repository` with both `--only` and `--no-repo-update` is an error.
 
 ## Execution output for scripts
 
-Use `--quiet` to omit routine headers, progress, successful task rows, and totals.
-Warnings and failed, blocked, skipped, or interrupted task rows remain on stderr.
-Quiet mode preserves run logs and the normal exit policy; it conflicts with
-`--verbose` and an explicit `--format`.
+Quiet mode preserves logs and exit policy. Warnings and failed, blocked,
+skipped, or interrupted rows remain on stderr. It conflicts with `--verbose`
+and an explicit `--format`.
 
-Use `--format jsonl` on `update`, `remove`, or `check` for one JSON object per
-stdout line. This mode disables prompts, so select a profile explicitly or
-through the usual environment/saved selection. Human progress and summaries
-are suppressed. Parser errors and logging-degradation notices remain on stderr.
+For machine-readable execution, use JSON Lines:
 
 ```bash
-dotfiles --profile base check --only config-warnings --format jsonl
+dotfiles check --root . --profile base --only config-warnings --format jsonl
 ```
 
-Every object has `schema: 1`, `run_id`, `context`, and `type`. Supported types
-are `run_start`, `run_scope`, `run_context`, `task_result`, `task_duration`,
-`message` (warnings/errors), and `run_finish`. Task results include stable
-`task_id`, public `selector`, `name`, `status`, `reason`, and action counters.
-Statuses retain the stored names, including `ok`, `dry_run`, and
-`not_applicable`. Finish records include `outcome`, `elapsed_us`, and `exit_code`.
-This is a result stream; detailed actions and subprocess diagnostics remain
-available in retained logs.
+Each stdout line is one object with `schema: 1`, `run_id`, `context`, and
+`type`. Record types include `run_start`, `run_scope`, `run_context`,
+`task_result`, `task_duration`, `message`, and `run_finish`. Task results carry
+IDs, selectors, statuses, reasons, and action counts; finish records include
+outcome and exit code. Stored statuses use names such as `ok`, `dry_run`, and
+`not_applicable`, rather than the human display labels.
 
-A restart or elevated child creates its own run ID, linked by `parent_run_id`
-in its start record. Consumers must group records by run ID and tolerate
-additional fields and record types. There may be several run/finish pairs in
-one invocation. A force quit can leave unfinished task records; missing finish
-records indicate an unfinished process. Structured results remain available
-when persistent log creation fails.
+JSON Lines disables prompts. Parse errors and logging warnings can still
+appear on stderr; detailed actions and subprocess diagnostics remain in logs.
+Group records by run ID: restarted/elevated children have their own IDs and
+`parent_run_id` links. Tolerate additional fields/types and missing finish
+records after a force quit.
 
-When a downstream consumer closes stdout, discovery ends quietly and engine
-commands continue convergence without further stdout writes. Closing a pipe
-does not cancel managed work. Other console write failures produce exit 1 and
-are reflected in the retained run outcome.
+**Closing stdout does not cancel an update.** A closed pipe stops further
+stdout output, but managed work continues.
 
 ## Interrupting a run
 
-1. First Ctrl-C requests cancellation, stops dispatching new work, and waits
-   for in-flight operations. Completed changes and plans remain in the summary.
-2. Second Ctrl-C asks `Force quit? in-flight operations will be abandoned [y/N]:`.
-   Anything except `y`/`yes` keeps waiting.
-3. Confirming, or pressing Ctrl-C while the question is open, exits immediately
-   with code 130. In non-interactive mode (including CI and JSON Lines), or without terminal
-   interaction, the second Ctrl-C force quits.
+1. Press Ctrl-C once to stop dispatching new work and wait for in-flight work.
+2. Press it again to request a force quit. An interactive prompt defaults to no.
+3. Confirming, or pressing Ctrl-C while that prompt is open, exits immediately.
+   In non-interactive mode the second Ctrl-C force quits without asking.
 
-Cancellation does not roll back changes. Force quitting skips orderly child
-shutdown; external commands may remain active. Check them before retrying.
-After a graceful stop, fix the cause and rerun to converge remaining state.
+Neither graceful cancellation nor force quit rolls back completed changes.
+Force quit can leave external installers running; inspect them before retrying.
 
 ## Exit behavior
 
-| Exit | Meaning |
+| Exit code | Meaning |
 |---|---|
-| `0` | Command succeeded under its skip policy; inspect skipped work |
-| `1` | Configuration/runtime error, task failure, or unmet work under strict policy |
-| `2` | Command-line parsing/usage error |
+| `0` | Succeeded under the selected skip policy |
+| `1` | Configuration/runtime failure, task failure, or unmet work under strict policy |
+| `2` | Invalid command-line usage |
 | `130` | Interrupted; a genuine task failure takes precedence during graceful shutdown |
 
-For symptom-driven recovery, start with [Troubleshooting](TROUBLESHOOTING.md).
+For recovery, use [Troubleshooting](TROUBLESHOOTING.md).

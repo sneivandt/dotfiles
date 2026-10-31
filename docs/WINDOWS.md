@@ -1,53 +1,54 @@
 # Windows guide
 
-Run dotfiles as your normal Windows user. The PowerShell wrapper obtains the
-CLI; the CLI can delegate specific privileged work without elevating the whole
-configuration run. Windows and WSL are separate installations with separate
-home directories and capabilities.
+Run dotfiles from your **normal Windows account**, not an Administrator shell.
+It asks for elevation only where needed. Windows and WSL have separate home
+directories and must be configured separately.
 
-For shared command semantics, use [Usage](USAGE.md); for file formats, use
-[Configuration](CONFIGURATION.md).
+For shared commands and options, see [Usage](USAGE.md). This guide covers
+Windows setup, permissions, packages, and the changes that need a new session.
 
 ## Requirements
 
-| Requirement | Needed for |
+| Requirement | Why |
 |---|---|
-| x86-64 Windows | The published `dotfiles-windows-x86_64.exe` release asset |
-| PowerShell | Running `dotfiles.ps1`; the installed launcher prefers `pwsh`, then Windows PowerShell |
-| Git | Repository synchronization, local selection persistence, and hooks |
-| winget | Installing configured Windows packages |
-| `gh` | Build-provenance verification; initial bootstrap warns if it is absent |
-| Rust/Cargo and native build prerequisites | Only a source build with wrapper `--build`; see [Contributing](CONTRIBUTING.md) |
-| `pwsh` and PSScriptAnalyzer | PowerShell repository validation, separate from bootstrap |
+| x86-64 Windows | The published Windows release asset supports this architecture |
+| PowerShell | Runs `dotfiles.ps1`; Windows PowerShell and `pwsh` are supported by the wrapper |
+| Git | Checkout, repository synchronization, hooks, and saved selections |
+| winget | Installs configured Windows packages |
+| GitHub CLI (`gh`) | Verifies release build provenance; bootstrap warns if it is absent |
+| Rust/Cargo and native build prerequisites | Only needed for a [source build](CONTRIBUTING.md) |
 
-The wrapper rejects unsupported Windows release architectures. A source build
-requires an appropriate Rust target/toolchain; absence of a published asset is
-not evidence that another architecture has native runtime coverage.
-
-Keep the checkout at a stable path. Links and the installed launcher refer
-back to it. Review `conf/` and back up existing home configuration first:
-installing managed links can replace regular files without backup.
+Keep the checkout at a stable path: home links and the installed launcher refer
+back to it. Review `conf/` and **back up existing home configuration** before
+applying. Link installation can replace regular files and empty directories
+without a backup.
 
 ## Bootstrap
 
-Open PowerShell in the intended checkout. These commands first discover tasks,
-then preview configuration:
+Open PowerShell in the checkout. First obtain the CLI and discover tasks:
 
 ```powershell
-# Downloads/verifies the CLI if it is missing; does not run install tasks.
 .\dotfiles.ps1 list --root . --profile desktop
+```
 
-# Use the binary directly once available.
+This downloads/verifies the binary if needed; it does not install configuration.
+Use `base` instead of `desktop` for a shell-focused role. An explicit profile
+does not change the saved default.
+
+Next preview the current checkout:
+
+```powershell
 .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --dry-run --verbose
 ```
 
-Use `base` instead of `desktop` for the shell-focused role. The explicit profile
-does not change a previously saved default. See [Profiles](PROFILES.md).
+Review the selected profile, planned links, registry values, and packages.
+The preview still writes a log and takes the run lock. It can check for a newer
+CLI release, but does not replace the binary or write release caches.
+Wrapper bootstrap happens **before** dry-run takes effect. See
+[Dry-run scope](USAGE.md#dry-run-scope).
 
-**Bootstrap is not covered by CLI dry-run.** Even wrapper help or discovery can
-download files into `bin\`. The CLI preview itself writes logs/lock metadata and
-can check/cache the latest release. To suppress that release check for a preview
-without leaving the environment changed:
+To suppress the CLI release check for one invocation, without leaving the
+environment changed:
 
 ```powershell
 $previousSkipSelfUpdate = $env:DOTFILES_SKIP_SELF_UPDATE
@@ -59,16 +60,15 @@ try {
 }
 ```
 
-Only after reviewing planned changes and backing up affected files, **apply**
-the current checkout:
+After backing up affected files and reviewing the plan, **apply**:
 
 ```powershell
 .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update
 ```
 
-This can update the CLI binary before applying tasks. `--no-repo-update` keeps
-repository content fixed; it is not a general network or self-update switch.
-See [Dry-run scope](USAGE.md#dry-run-scope).
+Without the environment override, apply can update the CLI first.
+`--no-repo-update` keeps repository content fixed, not all network activity.
+Open a new terminal after installation.
 
 For a source build that only discovers tasks:
 
@@ -76,228 +76,202 @@ For a source build that only discovers tasks:
 .\dotfiles.ps1 --build list --root . --profile desktop
 ```
 
-The wrapper executes Cargo's actual artifact, including custom target/output
-locations. It does not need to put a source-built binary in `bin\`.
+The wrapper runs Cargo's reported artifact, including custom output locations.
+A source build need not create `bin\dotfiles.exe`.
 
 ### Download and update failures
 
-Bootstrap verifies SHA-256 and, when `gh` is present, provenance before
-installing the download. Do not turn off verification to work around a failed
-download. See [Troubleshooting](TROUBLESHOOTING.md#the-wrapper-cannot-find-or-download-the-binary).
+Do not disable checksum or provenance verification to make a download work.
+Check the [bootstrap troubleshooting guide](TROUBLESHOOTING.md#the-wrapper-cannot-find-or-download-the-binary).
 
-Self-update renames the running executable to a backup, puts the verified
-download in place, and smoke-tests `--version`. A failed smoke test attempts
-to restore the backup; a rollback failure is reported explicitly. Windows
-sharing violations can prevent replacement or rollback. The updated process
-runs to completion in the same console; a normal self-update is not a
-background installation.
+During self-update, Windows file sharing can prevent executable replacement.
+The updater verifies the download, replaces the binary, and tests `--version`;
+it attempts to restore the previous binary if that test fails. A rollback
+failure is reported explicitly. Read the failure before retrying or moving files.
 
 ## Developer Mode and symlinks
 
-In the full graph, **Home symlinks** waits for **Windows Developer Mode** through
-an ordering-only dependency. Developer Mode lets ordinary users create file
-symlinks. Directory symlinks can fall back to junctions, and already-correct
-links need no change; neither is blocked solely by unavailable Developer Mode.
-Pending file links still require an appropriate capability or elevation.
+Developer Mode lets a normal user create file symlinks. Dotfiles can enable
+it through a narrowly scoped elevated task. Directory links can instead fall
+back to junctions, and already-correct links do not need elevation.
 
-To inspect both operations rather than assuming Developer Mode is ready:
+Preview the link task with its Developer Mode predecessor:
 
 ```powershell
 .\bin\dotfiles.exe list --root . --profile desktop --graph update --only symlinks --with-deps
 .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only symlinks --with-deps --dry-run --verbose
 ```
 
-`--only symlinks` without `--with-deps` deliberately omits the Developer Mode
-task. It does not bypass the symlink task's own capability and elevation checks.
+`--only symlinks` without `--with-deps` omits Developer Mode, but does not bypass
+the link task's own capability checks. Unavailable Developer Mode does not
+automatically block directory links or links that are already correct.
 
-There are two distinct symlink problems:
+If linking fails, distinguish these causes:
 
-- **Home target cannot be linked:** inspect Developer Mode/elevation and the
-  target named in the error. Existing regular files or empty directories may
-  be replaced without backup; nonempty directories fail. Back up and relocate
-  unrelated content rather than deleting it blindly.
-- **Source is a Git symlink placeholder:** Git recorded a symlink, but the
-  checkout contains an ordinary file with its target text. Enabling Developer
-  Mode afterward does not convert that file. Preserve local edits, enable Git
-  symlink support, and restore only affected source entries or create a fresh
-  symlink-capable checkout. The CLI intentionally rejects placeholders instead
-  of deploying their text as configuration.
+| Problem | What to do |
+|---|---|
+| File-link creation is not permitted | Resolve Developer Mode or the requested elevation |
+| A home target conflicts | Back it up; nonempty directories are not recursively deleted |
+| Git checked out a source symlink as plain text | Repair the source checkout, not the home target |
 
-A read-only inspection from the checkout:
+For the last case, inspect the checkout without changing it:
 
 ```powershell
 git config --show-origin --get core.symlinks
 git ls-files --stage -- symlinks | Select-String '^120000 '
 ```
 
-No explicit `core.symlinks` value does not by itself diagnose the problem;
-compare the reported source's on-disk type with its Git mode.
+Git mode `120000` denotes a symlink. Compare the reported source's actual type
+with its Git mode; an unset `core.symlinks` alone is not a diagnosis. Enabling
+Developer Mode later does not turn an existing text placeholder into a link.
+Preserve local edits, enable Git symlink support, then restore only affected
+sources or use a fresh symlink-capable checkout. Dotfiles rejects detected
+placeholders rather than installing their text as configuration.
 
 ## Elevation
 
-The broker plans elevation only for applicable tasks whose current state needs
-a privileged change:
+Dotfiles keeps the main run unelevated. When necessary it names the affected
+tasks and starts a short-lived Administrator child for that scope:
 
-| Task | Reason for Administrator rights |
+| Task | When it needs Administrator rights |
 |---|---|
-| Windows Developer Mode | Machine policy value is not enabled |
-| Home symlinks | File links need creation/correction while unprivileged symlinks are unavailable |
+| `developer-mode` | The machine setting is not enabled |
+| `symlinks` | File links need changing and unprivileged creation is unavailable |
 
-Other Windows catalog tasks do not request brokered elevation. **That does not
-mean every external installer is user-scope:** winget can launch an installer
-with its own UAC prompt.
+The child has its own console and log, linked from the parent run.
+Already-current work does not need a prompt. Dry-run does not request elevation
+to apply changes.
 
-The broker names the tasks and requests one short-lived elevated child,
-restricted to their exact selectors with `--only` and `--no-parallel`.
-The child has a separate console and run log; dependency expansion and the
-parent's broader task filters are not forwarded. The normal parent stays
-unelevated. Its history links to the child's run ID.
+- Declined consent or unavailable prompting leaves affected work skipped.
+  Blocking dependents cannot run, but independent tasks continue.
+- `--fail-on-skip` or CI makes that unmet work fail the command.
+- A child that fails, or cannot start, is a failure—not declined consent.
 
-- **Consent declined or no interactive console:** affected tasks are skipped,
-  blocking dependents are blocked, independent tasks continue.
-- **`--fail-on-skip` or CI:** unavailable required elevation makes the command
-  fail rather than succeed with unmet work.
-- **Elevated child failed:** the command fails and its dependents are blocked.
-- **Elevated process could not start:** the launch error is reported as a
-  failure, not mistaken for declined consent.
-- **Everything already current:** no broker prompt is needed.
+**Winget installers are separate:** they can show their own UAC prompts even
+though dotfiles did not elevate the package task.
 
-Dry-run does not request elevation to apply planned changes. After resolving a
-policy/consent issue, rerun from the ordinary terminal. If you intentionally
-use an elevated terminal for Developer Mode only, scope the actual mutation:
+If you deliberately enable Developer Mode from an Administrator terminal,
+limit the change:
 
 ```powershell
 .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only developer-mode
 ```
 
-Then return to the ordinary terminal for the rest. Do not routinely run the
-whole workflow as another Administrator account; user-scope targets belong to
-the current user's environment.
+Return to the ordinary terminal for the remaining work. Running everything as
+another Administrator account can target that account's home and settings.
 
 ## Packages
 
-Windows package declarations use exact winget IDs. The task queries installed
-state and installs only missing configured packages; selecting `update` does
-not request `winget upgrade --all`.
+Windows uses exact winget IDs from `conf/packages.toml`. It queries installed
+packages and installs missing ones; `update` is not `winget upgrade --all`.
 
 ```powershell
 .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
 ```
 
 If `winget list` fails or its `Id` column cannot be parsed, the task fails
-before treating anything as missing, including during dry-run. Check the
-provider/version and retained output; do not interpret a failed inventory as
-an empty machine.
+rather than treating the machine as empty—even during preview.
 
-Apply prints each package ID and:
+For each missing package, apply:
 
-1. Tries the installer with `--scope user`.
-2. Retries without a scope only for “no applicable installer.”
-3. Reports administrator-required, cancelled, or policy-blocked packages as
-   unmet/skipped and continues with other packages.
+1. Tries a user-scope installer.
+2. Retries without a scope only when no applicable user-scope installer exists.
+3. Continues with other packages after an individual install failure.
 
-If installation discovers the package is already present and returns
-“no applicable upgrade,” the package counts as already correct, not failed
-or newly installed.
+Administrator-required, cancelled, or policy-blocked installs are **failed
+package items**. They make the package task fail even without `--fail-on-skip`;
+continuing with other packages does not turn them into successful installs.
+An “already installed” or “no applicable upgrade” result does count as current.
 
-Winget's own interaction is disabled and source/package agreements are
-accepted by these commands; an installer's UAC dialog can still appear.
-Strict skip policy fails if applicable work remains. Review package sources
-and installation scope before applying.
+Winget's own prompts are disabled and source/package agreements are accepted.
+An installer's UAC prompt can still appear. Read the exact refusal before
+retrying: elevation does not fix a policy block or invalid package ID.
 
-If a package truly requires Administrator rights, an intentionally elevated,
-package-only rerun can complete it. That still covers **all** active configured
-packages; `--only` does not accept a package ID. A policy block requires a
-policy decision, not repeated UAC attempts.
+If an installer genuinely needs Administrator rights and you authorize it,
+use a package-only elevated rerun. Remember that `--only packages` selects
+**all active packages**, not an individual ID.
 
 ## Registry settings
 
-The registry task applies declared current-user values from
-`conf/registry.toml` while preserving undeclared values. Registry tables are
-named settings groups, not role categories. Review them even for the `base`
-profile.
+The `registry` task applies current-user (`HKCU`) values from
+`conf/registry.toml`, preserving undeclared values. Its tables are named
+settings groups, not profile categories: review them even for `base`.
 
 ```powershell
 .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only registry --dry-run --verbose
 ```
 
-Current settings include console, regional formatting, Explorer, taskbar,
-search, Start, desktop icons, and window behavior. Opaque taskbar/Start pin
-formats are intentionally not managed. The task is not a registry backup.
-Some values are read only when the affected application or user session next
-starts; save work before deliberately restarting either.
+Settings include console, regional formatting, Explorer, search, and window
+behavior. Dotfiles does not back up the original values, and `remove` does not
+restore them. Some settings take effect only when the application or user
+session restarts; save work before restarting either.
 
 ## PATH and wrapper
 
-The launcher task writes `%USERPROFILE%\.local\bin\dotfiles.cmd`. It calls the
-repository's `dotfiles.ps1` with `pwsh` if available, otherwise
-`powershell.exe`. The PATH task adds that directory to the persistent user PATH,
-preserving expandable registry tokens and the registry value type. Discovery
-expands `REG_EXPAND_SZ` values before splitting entries, but treats `REG_SZ`
-values literally. Additions that cannot retain their literal meaning, such as a
-directory containing a semicolon or an expanded variable reference, fail before
-writing rather than adding an ineffective entry on every run.
+The launcher task writes `%USERPROFILE%\.local\bin\dotfiles.cmd`, and the PATH
+task adds that directory to persistent user PATH. The launcher calls this
+checkout's `dotfiles.ps1`, preferring `pwsh` over Windows PowerShell.
 
-Open a new terminal after first install. If `dotfiles` still cannot be found:
+Open a new terminal before testing it:
 
 ```powershell
 Get-Command dotfiles -All
 Test-Path "$env:USERPROFILE\.local\bin\dotfiles.cmd"
 ```
 
-Continue using the explicit checkout wrapper/binary until PATH is correct.
-Multiple launchers can select a different checkout; use `--root` to choose
-configuration explicitly, and that checkout's wrapper when its binary matters.
+If PATH is not ready, keep using the explicit wrapper or binary. Multiple
+launchers may point to different checkouts. `--root` selects configuration,
+not the executable; use the desired checkout's wrapper when both matter.
 
 ## PowerShell configuration
 
-Profile content is delivered from `symlinks/` by the active Windows category.
-Edit tracked sources rather than installed links. New sessions load profile
-changes; completion registration is managed by its own `completions` task.
+The Windows symlinks install the managed profile for PowerShell and Windows
+PowerShell. Edit its tracked source under `symlinks/`, not an installed copy.
+New sessions load the changes; CLI completion has its own `completions` task.
 
-The profile adds existing `~/.local/bin` and Cargo's `bin` directory to PATH
-before detecting optional command integrations. Cargo uses `CARGO_HOME` when
-set, otherwise `~/.cargo`; reloading the profile does not duplicate entries
-with alternate separators. Profile fragments are loaded from literal paths,
-including home directories whose names contain brackets.
+The profile adds existing `~/.local/bin` and Cargo's `bin` directory before
+detecting optional command integrations. Cargo uses `CARGO_HOME` when set,
+otherwise `~/.cargo`. See [Application settings](APPLICATIONS.md) for shell
+behavior and customization.
 
-Bootstrap compatibility with Windows PowerShell does not imply analyzer
-compatibility. The repository check requires **`pwsh`**, and once present it
-requires the PSScriptAnalyzer module. Missing `pwsh` is a skip; missing the
-module is a failed check. See [CLI validation](TESTING.md#cli-validation).
+Repository validation is separate from wrapper compatibility: the analyzer
+requires **`pwsh` and PSScriptAnalyzer**. Missing `pwsh` is a skipped check;
+present `pwsh` with a missing module is a failed check. See
+[CLI validation](TESTING.md#cli-validation).
 
 ## WSL
 
-Run the **Linux** wrapper/binary inside the distribution for its Linux home
-configuration. Running the Windows executable on the host does not manage
-`/etc/wsl.conf`, even if the current path happens to expose Linux files.
+Run the **Linux wrapper inside the distribution** to manage its Linux home
+and `/etc` settings. Running the Windows executable does not manage
+`/etc/wsl.conf`.
 
-The Linux **System files** task merges WSL-selected settings: systemd enabled
-and Windows PATH injection disabled, preserving unrelated INI settings. It
-can need sudo inside the distribution and is not selected on native Linux or
-the Windows host.
+For WSL, the Linux `system-files` task merges settings that enable systemd
+and disable Windows PATH injection, preserving unrelated INI settings. It
+can need sudo. Windows separately manages the home `.wslconfig` link.
 
-Save work before applying the required restart. From Windows, this shuts down
-**all running WSL distributions** and their processes:
+Changes to WSL startup settings need a restart. Save all WSL work, then run
+this from Windows:
 
 ```powershell
 wsl --shutdown
 ```
 
-Then reopen the distribution. Until that restart, the systemd task can remain
-inapplicable because editing the configuration did not start the manager.
+**This terminates all running WSL distributions and their processes.** Reopen
+the intended distribution afterward. Until systemd starts, configuring its
+startup setting alone does not make service tasks applicable.
 
 ## Remove
 
-Preview with the original profile/overlay while the sources remain available:
+Preview with the original profile/overlay while the sources still exist:
 
 ```powershell
 .\bin\dotfiles.exe remove --root . --profile desktop --dry-run --verbose
 ```
 
-After review, removing `--dry-run` materializes configured home links and
-removes hooks and the launcher still matching their managed state. Modified
-hooks/launchers and unrelated hook names are preserved. Active overlay scripts
-can also run their removal actions. This is **not** restoration of original Windows
-settings: winget packages, Developer Mode, registry values, PATH, editor
-extensions, and agent package deployments remain. See [Remove tasks](TASKS.md#remove-tasks).
+Applying removal copies managed home-link content into real files and removes
+hooks/launchers that still match their managed state. Modified hooks/launchers
+are preserved; active overlay scripts may perform their own removal actions.
+
+It does **not** uninstall winget packages, disable Developer Mode, restore
+registry or PATH values, or remove editor/agent deployments.
+[Remove is limited cleanup, not rollback](USAGE.md#remove).

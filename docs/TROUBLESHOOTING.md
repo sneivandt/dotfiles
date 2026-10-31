@@ -1,29 +1,31 @@
 # Troubleshooting
 
-**Read the failed run before starting another full install.** A retry can
-change the CLI binary, synchronize repositories, or repeat external work.
-Successful earlier changes are not rolled back when a later task fails.
+**Read the failed run before retrying a full update.** A retry can update the
+CLI, sync repositories, or repeat external work. Earlier successful changes
+are not rolled back when a later task fails.
 
-1. Copy the exact `dotfiles log --id ... -v` command printed after the failure.
-   It keeps selecting that run even after other commands execute.
-2. If no hint is available, use `dotfiles log --list`, then select the run.
-3. Identify the first failing or unmet task, not just its blocked dependents.
-4. Confirm the header's profile, platform, and overlay and the intended
-   checkout. Fix that cause before retrying.
+1. Use the exact `dotfiles log --id … -v` command printed after the failure.
+2. Check its profile, platform, overlay, and requested tasks.
+3. Find the first failed or unmet task—not just dependents marked blocked.
+4. Fix that cause, preview a focused rerun, then apply it when ready.
 
-The examples below assume a bootstrapped CLI on PATH and the current directory
-is the intended repository root. Replace `dotfiles` with an **existing**
-`./bin/dotfiles` or `.\bin\dotfiles.exe` when PATH is uncertain.
-A wrapper invocation can download/build before displaying help or a preview.
+Examples assume you are in the intended checkout with `dotfiles` on PATH.
+If the launcher is uncertain, substitute an **existing** `./bin/dotfiles` or
+`.\bin\dotfiles.exe`. A wrapper may download/build even before showing help.
 
-| Symptom | Start here |
+## Find the symptom
+
+| Problem | Go to |
 |---|---|
-| Failure before the CLI header | [Bootstrap](#the-wrapper-cannot-find-or-download-the-binary), [profile](#no-profile-can-be-selected), [configuration](#configuration-does-not-parse) |
-| Task absent, current, skipped, or blocked | [Task selection](#a-task-does-not-run) |
-| Another run owns the repository | [Run lock](#another-run-holds-the-repository-lock) |
-| Wrong files or private settings | [Overlay selection](#an-overlay-appears-to-be-ignored) |
-| A command ran but output is unclear | [Logs and partial results](#reading-logs-and-partial-results) |
-| Desktop/service settings not active yet | [systemd](#systemd-changes-are-not-visible), [Keyring](#gnome-keyring-does-not-unlock-at-login), [WSL](#wsl-settings-did-not-change) |
+| No usable CLI | [Bootstrap](#the-wrapper-cannot-find-or-download-the-binary), [source build](#cargo-build-fails) |
+| Old version or a stalled upgrade | [Self-update](#the-binary-never-self-updates), [hidden credential popup](#update-waits-with-a-hidden-wsl-popup) |
+| Selection or parsing error | [Profile](#no-profile-can-be-selected), [configuration](#configuration-does-not-parse), [overlay](#an-overlay-appears-to-be-ignored) |
+| Missing/skipped work | [Task selection](#a-task-does-not-run), [elevation](#a-task-was-skipped-because-elevation-was-unavailable) |
+| Concurrent or failed repository run | [Run lock](#another-run-holds-the-repository-lock), [Git synchronization](#repository-update-fails) |
+| Packages or tooling | [Packages](#packages-do-not-install), [Paru](#paru-bootstrap-reports-an-incomplete-rustcargo-prerequisite), [agent packages](#agent-package-update-does-not-run-or-fails), [analyzers](#optional-analyzers-are-not-running) |
+| Windows links | [Symlinks](#a-symlink-cannot-be-created-on-windows) |
+| Settings not active | [systemd](#systemd-changes-are-not-visible), [keyring](#gnome-keyring-does-not-unlock-at-login), [WSL](#wsl-settings-did-not-change) |
+| Removal left settings behind | [Remove is not rollback](#remove-did-not-restore-machine-defaults) |
 
 ## Reading logs and partial results
 
@@ -32,134 +34,290 @@ dotfiles log --list
 dotfiles log --task symlinks --verbose
 ```
 
-The second command filters the **newest** run. Add its real `--id` from history
-when investigating an earlier failure. `--command install` filters history
-before applying a numeric index; update runs are separate from install runs.
+The second command examines the **newest** run. For an older failure, add its
+actual `--id` from history; IDs stay stable when new runs are added.
 
-Failed-command stdout/stderr is visible without `--verbose`; verbose adds other
-diagnostics. Task summaries prefer concrete errors over notices such as
-“update available.” Use the captured command record rather than assuming the
-first printed notice caused the failure. Successful stdout is normally not
-retained, and `--raw` cannot recover omitted output.
+Read captured command diagnostics, not just a short task summary or an
+“update available” notice. Failed-command output and nonempty stderr normally
+appear without verbose; `--verbose` adds checks and other diagnostics.
+Successful stdout is usually not retained, so `--raw` cannot recover it.
 
-`unfinished` means no finish record was written, not necessarily failure: the
-process may still be active. Restarted and elevated child runs have separate
-logs linked by parent ID. Inspect the child if the parent only reports
-delegation/restart.
+Restarted/elevated children have their own linked logs. If the parent only
+reports a restart or delegation, inspect the child. `unfinished` means no finish
+record exists; that can also describe a process still running.
 
-When persistent logging is unavailable, the CLI warns and cannot offer a
-reliable log hint. Check the log directory's permissions and available space;
-see [log-directory precedence](USAGE.md#logs).
-Sanitize paths, private data, and external tool output before sharing a log.
+If logging failed, check free space and permissions at the
+[log location](USAGE.md#log-locations). Sanitize private paths, configuration,
+and external tool output before sharing logs.
 
 ## The wrapper cannot find or download the binary
 
-| Reported failure | Check before retrying |
+| Error | Check |
 |---|---|
-| Latest tag cannot be resolved / download failed | GitHub HTTPS access, DNS/proxy configuration, rate limiting |
-| Unsupported architecture / no matching asset | Release assets support Linux x86-64/AArch64 and Windows x86-64 |
-| Missing checksum / checksum mismatch | Matching asset and release checksum file; do not execute the failed download |
-| Provenance verification failed | `gh` availability/authentication, network access, and the verification error |
-| Binary cannot be executed | Correct OS/architecture, executable permissions on Linux, file-access policy |
+| Cannot resolve a release repository | The checkout's GitHub `origin`, or an explicit `DOTFILES_RELEASE_REPO=owner/repo` |
+| Latest release/download unavailable | DNS, proxy, HTTPS access, rate limits, and whether that publisher has releases |
+| Unsupported architecture | Published assets support Linux x86-64/AArch64 and Windows x86-64 |
+| Missing checksum or checksum mismatch | The matching release asset/checksum file; do not execute the failed download |
+| Provenance verification failed | `gh`, authentication, network access, and the verification error |
+| Binary cannot execute | OS/architecture, Linux executable permission, and local file-access policy |
 
-The wrappers remove failed downloads; do not start by deleting the checkout or
-all of `bin/`. If a known stale/partial binary remains, preserve it separately
-and retry the wrapper only after confirming no run is using it.
+Forks do not silently fall back to this project's binaries. A fork without
+releases needs a deliberate publisher override or a source build.
 
-Initial bootstrap warns and continues if `gh` is absent. If `gh` is available,
-failed provenance verification blocks bootstrap. Self-update is stricter:
-an unverifiable update is not installed. Do not “fix” this by disabling
-checksums or setting `DOTFILES_SKIP_ATTESTATION=1`.
+Bootstrap warns and continues if `gh` is absent. If `gh` is present,
+verification failure blocks it; self-update also refuses unverifiable updates.
+Do not bypass checksums or set `DOTFILES_SKIP_ATTESTATION=1` as a routine fix.
 See [Build provenance verification](SECURITY.md#build-provenance-verification).
 
-A source build is an alternative when build prerequisites are present. These
-commands build and show the version; they do not install configuration:
+Wrappers clean failed downloads. Do not delete the checkout or all of `bin/`.
+If one stale binary must be moved aside, first confirm no run is using it.
+
+## The binary never self-updates
+
+Check these before replacing anything:
+
+- Only update/remove trigger CLI self-update—not help, version, list, log,
+  or check.
+- The binary must be an eligible release build, have an embedded publisher,
+  and run from the selected checkout's `bin/`.
+- `DOTFILES_SKIP_SELF_UPDATE=1` disables the check.
+- Dry-run reports an available update but does not install it.
+- A fresh cache can delay another lookup for up to ten minutes. Linux cache
+  entries also need to match the current boot.
+- A failed release lookup leaves the existing binary usable; a failed download
+  or verification is a separate error.
+
+Changing `origin` or `DOTFILES_RELEASE_REPO` does not change an existing
+binary's embedded self-update publisher.
+
+For authentication, release discovery prefers nonempty `GH_TOKEN`, then
+`GITHUB_TOKEN`, then an unattended saved GitHub CLI login. An expired explicit
+token can override a working login; correct or unset it. Denied credentials
+are not silently retried anonymously.
+
+Anonymous requests share a lower GitHub quota with other users of the same
+public IP. Respect a reported retry deadline instead of repeatedly retrying.
+Normal saved authentication can be set up with `gh auth login --hostname github.com`;
+Linux keyring-only credentials need the special handling below.
+
+If a very old binary cannot recognize current `vYYYY.MM.DD-N` releases, preserve
+that one executable and bootstrap again with its checkout's wrapper. Never
+bypass download verification to force an upgrade.
+
+### Update waits with a hidden WSL popup
+
+“Updating to …” includes `gh attestation verify`, not just downloading. Older
+versions can block on a hidden Linux keyring credential dialog.
+
+Current automatic release checks and verification disable terminal prompts
+and Linux desktop-keyring access in their own `gh` processes. Ordinary `gh`
+commands and system keyring settings are unchanged. Environment tokens and
+non-keyring saved credentials still work.
+
+If verification needs authentication, provide `GH_TOKEN` or `GITHUB_TOKEN`
+through your normal credential handling; do not paste tokens into logs.
+For an older binary, `DOTFILES_SKIP_SELF_UPDATE=1` avoids its updater without
+accepting an unverified download. **It does not disable the rest of update.**
+A source build is another route to the fix.
+
+## Cargo build fails
+
+Use the [build prerequisites](CONTRIBUTING.md) and read the first compiler or
+linker error, not just the wrapper's final status.
+
+To build and print a version without applying configuration:
 
 ```bash
 ./dotfiles.sh --build --version
 ```
 
+On Windows:
+
 ```powershell
 .\dotfiles.ps1 --build --version
 ```
 
-They still write build artifacts and may download Cargo dependencies.
+Builds write artifacts and may download dependencies. The wrapper executes
+Cargo's actual `dev-opt` artifact, including custom target/output paths.
+Do not copy an arbitrary old executable into `bin/` to hide a build failure.
 
-## The binary never self-updates
+## No profile can be selected
 
-`--version`, help, `list`, `log`, and `check` do not trigger CLI self-update.
-Before replacing a binary, distinguish expected behavior from a failed update:
+```bash
+dotfiles list --root . --profile base
+git config --local --get dotfiles.profile
+```
 
-- The binary must run from the selected checkout's `bin/`, not a Cargo output
-  directory. `--root` pointing to another checkout can therefore affect the
-  self-update decision.
-- `DOTFILES_SKIP_SELF_UPDATE=1` disables the check.
-- Development/non-release versions do not use the date-tag update path.
-  Current releases use `vYYYY.MM.DD-N`.
-- A dry run reports an available update but does not replace the binary.
-- A fresh release cache can delay another lookup by up to 10 minutes. Linux
-  cache entries also have to match the current boot.
-- Failed release lookup leaves the existing binary usable; inspect diagnostics
-  for API rate limits, DNS, or proxy failures.
+Use exactly `base` or `desktop`. Priority is CLI, nonempty `DOTFILES_PROFILE`,
+saved Git setting, then interactive prompt. A bad environment value does not
+fall back to the saved setting; surrounding whitespace is not trimmed.
 
-For repeated anonymous release-check rate limits, run `gh auth login --hostname
-github.com` once. Both self-update and local package discovery reuse saved
-credentials that do not require Linux desktop-keyring access when neither
-`GH_TOKEN` nor `GITHUB_TOKEN` is set
-to a non-empty value. For keyring-only credentials, supply an environment token.
-Explicit tokens take precedence; an expired or denied token is reported rather
-than silently falling back to anonymous requests. Correct or unset a stale
-environment token if it overrides a working saved login.
+`list` never prompts for a profile. Update/remove/check also need an existing
+selection in unattended or JSON Lines mode, with non-terminal stdin, or with
+any present `CI` variable. An explicit profile overrides the saved choice
+without updating it. See [Profile selection](PROFILES.md#resolution-priority).
 
-Anonymous API requests share a 60-request hourly quota with everything using
-the same public IP, including other VPN/NAT users. Release discovery caches
-validated metadata for ten minutes and uses conditional requests after expiry.
-Rate-limit diagnostics report a retry delay/deadline; subsequent invocations
-honor that cooldown instead of repeatedly hitting GitHub. A `403` without
-rate-limit evidence remains a permission failure, not an assumed quota failure.
-Failed package refreshes retain existing pins but remain failures in the summary.
+## Configuration does not parse
 
-If an old binary predates support for the current release-tag format, its
-updater may never recognize a new release. After confirming the executable path
-and saving any needed binary, move only that checkout's `bin/dotfiles` or
-`bin\dotfiles.exe` aside and invoke its wrapper to bootstrap again. Do not
-remove unrelated files or bypass verification.
+Start with the filename and complete diagnostic. Common causes are a missing
+required file, malformed TOML, wrong value type, unsupported key/category,
+conflicting targets, unsafe path, or missing source.
 
-### Update waits with a hidden WSL popup
+**Configuration loads before task filtering.** `--only symlinks` cannot bypass
+malformed package configuration. Inactive categories are not a safe place to
+leave invalid definitions.
 
-`Updating to ...` includes `gh attestation verify`, not just the download.
-On Linux/WSL, GitHub CLI can start a GNOME Keyring dialog while retrieving
-credentials, even with terminal input disabled. A hidden dialog can make the
-update appear stuck until verification times out.
+Use [Configuration validation](CONFIGURATION.md#validation) to interpret the
+finding and [CLI validation](TESTING.md#cli-validation) to recheck it.
+`check` does not repair files, and `config-warnings` fails on warning-severity
+diagnostics too.
 
-Automatic release checks and provenance verification disable terminal prompts
-and Linux desktop-keyring access in their `gh` subprocesses only. Environment
-tokens and non-keyring saved credentials remain usable; normal `gh` commands
-and system keyring settings are unchanged. If verification reports missing
-authentication, provide `GH_TOKEN` or `GITHUB_TOKEN` in the invoking shell.
-Do not paste tokens into logs or disable provenance verification.
+## An overlay appears to be ignored
 
-For an older installed binary, `DOTFILES_SKIP_SELF_UPDATE=1` bypasses that
-binary's self-update preflight without accepting an unverified download.
-It does not disable other update work. A source build can pick up the fix
-without invoking the old updater.
+For a sibling overlay called `dotfiles-private`, inspect it from the main
+checkout:
 
-## Cargo build fails
+```bash
+git config --local --get dotfiles.overlay
+dotfiles list --root . --profile desktop --overlay ../dotfiles-private
+```
 
-Use the [Contributing](CONTRIBUTING.md) prerequisites and the canonical build
-commands in [Testing](TESTING.md). Read the first compiler/linker failure,
-not just the wrapper's final exit status.
+Then check:
 
-Wrapper builds use `dev-opt` and execute Cargo's reported artifact. With a
-custom `CARGO_TARGET_DIR` or target triple, looking only in `cli/target/debug`
-can inspect the wrong binary. Do not copy an arbitrary stale executable to
-`bin/` to silence a build failure.
+1. The selected path is the overlay **root**, not its `conf/` directory.
+2. CLI `--overlay` wins over nonempty `DOTFILES_OVERLAY`, which wins over the
+   saved Git setting.
+3. Its sections match the active categories.
+4. Overrides match the resource's identity, not just a table name or position.
+   Inactive overlay entries do not replace active public entries.
+5. Script declarations live in overlay `conf/scripts.toml`, with script paths
+   relative to that overlay root.
+
+Missing optional overlay files add nothing, so a wrong path can look like an
+empty overlay. `list` does not save its selection, but explicit `--overlay`
+on update/remove/check **does**, including dry-run.
+
+Explicit linked-worktree overlays need confirmation and fail without an
+interactive terminal. Use a stable primary checkout for unattended runs.
+See [Overlays](CONFIGURATION.md#overlays).
+
+## A task does not run
+
+Inspect selection before executing more work:
+
+```bash
+dotfiles list --root . --profile desktop
+dotfiles list --root . --profile desktop --graph update --only systemd
+```
+
+| What you see | What to check |
+|---|---|
+| Unknown selector | Use an exact selector/full label from list, not a substring or package ID |
+| Missing from the command | Look under the correct update/remove/check group; try `list --all` |
+| `filtered` or `skipped` in the graph | Check both `--only` and `--skip` |
+| Omitted prerequisite warning | Decide whether to include `--with-deps` |
+| No normal result row | The task may be current or inapplicable; inspect verbose output/logs |
+| `requires …` or blocked | Fix the named prerequisite first |
+| Missing capability/tool | Provide that prerequisite deliberately |
+| No active entries | Check the profile/category selection |
+
+For a focused preview:
+
+```bash
+dotfiles update --root . --profile desktop --no-repo-update --only systemd --dry-run --verbose
+```
+
+Add `--with-deps` only after reviewing its graph: it can bring in package
+installation, AUR setup, links, and permissions. It is not a narrower retry.
+
+## Another run holds the repository lock
+
+Update, remove, and check share a lock, including previews. Linked worktrees
+use the same common Git directory. The error identifies the lock and, when
+available, the owner PID, command, and start time.
+
+Wait for the owner or inspect it. `list` and `log` remain usable.
+**Do not delete the lock file to force concurrent runs.** The process holds
+the lock; leftover owner text alone does not keep it locked.
+
+For a stuck run, follow the [interrupt procedure](USAGE.md#interrupting-a-run).
+After force quit, check for surviving child installers before retrying.
+
+## Repository update fails
+
+Inspect the affected main or overlay checkout:
+
+```bash
+git status --short
+git branch -vv
+git remote -v
+```
+
+Check remote URLs for credentials before sharing the output.
+
+| Cause | Recovery |
+|---|---|
+| Tracked local changes | Preserve and resolve them; synchronization skips a dirty checkout |
+| Detached HEAD | Repository update is inapplicable; choose the intended branch if appropriate |
+| Missing upstream | Configure the intended upstream or deliberately keep current content |
+| Local/diverged commits | Reconcile the branch yourself; dotfiles does not reset or rebase |
+| Authentication/network failure | Inspect the failed Git command and credentials |
+| Fast-forward merge failure | Protect local content, including untracked files that collide |
+
+Untracked files do not fail the readiness check, but can still prevent a merge.
+Main and overlay updates are not one transaction.
+
+Use `--no-repo-update` when you deliberately want to apply the current checkout.
+It does not discard changes or suppress other network activity.
+“Repository synced · restarting to load configuration” is normal: the child
+reloads configuration while the parent retains the lock.
+
+## A task was skipped because elevation was unavailable
+
+| Reason | Meaning |
+|---|---|
+| `elevation declined` | Windows UAC consent was dismissed |
+| `elevation unavailable in a non-interactive session` | No supported prompt path |
+| `sudo credentials unavailable` | Linux sudo was missing, denied, or could not be primed |
+| `sudo credentials unavailable in a non-interactive session` | No usable cached/passwordless authorization |
+| `requires <task>` | A blocking prerequisite was left unmet |
+| `ran in elevated session` | Work was delegated; inspect the child log |
+
+Windows delegates only selected tasks. Linux primes sudo credentials and uses
+sudo for privileged commands; neither requires elevating the whole workflow.
+Independent tasks can continue, while `--fail-on-skip` or CI fails unmet work.
+
+Resolve authorization for the named scope, then retry. Do not bypass policy or
+create passwordless sudo rules just to clear a failure.
+[Winget installer refusals](WINDOWS.md#packages) are different: they count as
+failed package items, not only strict-mode skips.
+
+## Packages do not install
+
+Identify the task: `packages`, `paru`, or `aur-packages`. Native Linux packages
+need pacman; there is no apt/dnf provider. Windows uses winget. AUR packages
+need Arch and a healthy Paru.
+
+```bash
+dotfiles update --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
+```
+
+A failed installed-package query is not an empty machine. Fix the provider
+failure before retrying. Check the exact configured ID, active category, and
+authorization reason.
+
+`--only packages` does not include AUR entries. `--only aur-packages` assumes
+its omitted prerequisites are satisfied unless you add `--with-deps`.
+Local recipe or pin failures belong in [Local package recipes](LOCAL-PACKAGES.md).
+
+**Applying missing Arch packages runs `pacman -Syu --needed --noconfirm` and can
+upgrade the whole system.** Do not use apply as a harmless diagnostic.
+For Windows scope, UAC, and policy failures, see [Windows packages](WINDOWS.md#packages).
 
 ## Paru bootstrap reports an incomplete Rust/Cargo prerequisite
 
-The task checks the installed package with `pacman -Q paru` and the actual
-target executable with `/usr/bin/paru --version`. These read-only probes can
-distinguish “missing” from a library/loader failure:
+These read-only probes separate a missing package, broken executable, and
+incomplete build toolchain:
 
 ```bash
 pacman -Q paru
@@ -167,158 +325,106 @@ pacman -Q paru
 cargo --version
 ```
 
-It checks `git`, `makepkg`, `sudo`, and a working Cargo before cloning/building.
-An installed rustup proxy without a selected toolchain fails `cargo --version`;
-merely finding `cargo` on PATH is not enough.
+Paru bootstrap needs Git, makepkg, sudo, and a **working** Cargo. A rustup proxy
+without a selected toolchain can exist on PATH but fail `cargo --version`.
 
-For a new Arch machine, deliberately provision the distribution-managed
-`base-devel`, `git`, `rust`, and `sudo` prerequisites using Arch's full-upgrade
-workflow, or configure a working rustup toolchain if that is your chosen
-toolchain manager. Do not mix a partial library upgrade with a stale AUR helper.
+Provision the complete Arch build prerequisites using the distribution's
+full-upgrade workflow, or configure rustup if that is your intended toolchain
+manager. Do not repair this through partial library upgrades.
 
-A missing `libalpm.so.*` can mean Paru needs rebuilding against current system
-libraries, not that dotfiles needs a different PATH. The task rebuilds a broken
-helper and validates it again. Under `install-arch`, dotfiles runs in the target
-chroot, so fixing only the live ISO's Cargo or Paru does not repair the target.
+A missing `libalpm.so.*` usually means the helper needs rebuilding against the
+current system libraries. Dotfiles checks the installed package and canonical
+executable, rebuilds a broken helper, and validates it again. Under
+`install-arch`, these probes run inside the target chroot; repairing only the
+live ISO does not repair the installed system.
 
-## No profile can be selected
-
-Use an explicit profile for an unattended or diagnostic invocation:
+## Agent package update does not run or fails
 
 ```bash
-dotfiles list --root . --profile base
-git config --local --get dotfiles.profile
+dotfiles update --root . --profile desktop --no-repo-update --only apm --dry-run --verbose
 ```
 
-Precedence is CLI, nonempty `DOTFILES_PROFILE`, local `dotfiles.profile`, then
-an interactive prompt. The first chosen value must be exactly `base` or
-`desktop`; a typo in the environment does not fall back to saved configuration.
-Empty environment values are ignored; whitespace around a name is not.
+Confirm that the linked fragments exist, APM is available when native planning
+needs it, and the named authentication requirement is met. Review dependency
+expansion before adding `--with-deps`.
 
-`list` never opens the profile prompt. Engine commands also require an existing
-selection with non-terminal stdin, `--non-interactive`, or any present `CI`
-variable (even `CI=false`). An explicit `--profile` overrides a saved choice
-without updating it. See [Profiles](PROFILES.md#resolution-priority).
+If the generated manifest needs changing, preview reports that write and the
+delegated update instead of planning against stale input. With a current
+manifest it delegates to `apm update -g --dry-run`.
 
-## Configuration does not parse
+Apply advances eligible refs and then reconciles local content/deployments even
+when no refs advanced. Edit tracked fragments/plugins, not generated manifests
+or installed plugin copies. See [Agent tooling](AGENT-TOOLING.md).
 
-Read the complete filename and diagnostic before editing. Common causes are:
+## Optional analyzers are not running
 
-- A missing required main `conf/*.toml` file or malformed TOML.
-- A misspelled/unsupported key or category.
-- A value using the wrong field type.
-- Conflicting desired state, an unsafe path, or a missing source.
-- An invalid main or overlay contribution.
-
-Configuration loads before task filtering, including for `list`, so
-`--only symlinks` cannot bypass malformed package configuration.
-Inactive category sections are not a safe place to leave malformed data;
-validation also checks source definitions outside the active role.
-
-Use [CLI validation](TESTING.md#cli-validation) and the
-[configuration reference](CONFIGURATION.md#validation) to narrow the finding.
-`check` does not repair files. Its `config-warnings` task treats reported
-configuration diagnostics as failure, including warning-severity ones.
-
-## An overlay appears to be ignored
-
-From the intended main checkout, inspect saved state and explicitly discover
-with the real overlay root. For example, if it is the sibling directory
-`../dotfiles-private`:
-
-```bash
-git config --local --get dotfiles.overlay
-dotfiles list --root . --profile desktop --overlay ../dotfiles-private
-```
-
-Check the following in order:
-
-1. The path is the **overlay repository root**, not its `conf/` directory.
-2. CLI `--overlay` overrides nonempty `DOTFILES_OVERLAY`, which overrides the
-   saved local Git value.
-3. Its sections match the active categories.
-4. Active overlay entries replace main entries by resource identity, not section
-   name or array position. Conflicts within either source still need correction;
-   inactive overlay entries do not override active main entries.
-5. `scripts.toml` exists in the overlay only, and script paths are relative to
-   that overlay root.
-
-Missing optional overlay files contribute nothing. A misspelled selection can
-therefore look like an empty overlay rather than an override failure.
-`list` does not persist the path, but an explicit overlay on update, check,
-or remove **does**, even in dry-run.
-
-An explicit linked-worktree overlay asks for confirmation and is rejected
-without a usable interactive terminal. Use a stable primary checkout for
-unattended work rather than relying on a transient worktree.
-See [Overlays](CONFIGURATION.md#overlays).
-
-## A task does not run
-
-First discover its exact selector and inspect selection without executing it:
-
-```bash
-dotfiles list --root . --profile desktop
-dotfiles list --root . --profile desktop --graph update --only systemd
-```
-
-| Observation | Likely cause / next step |
+| Tool state | Check result |
 |---|---|
-| Unknown selector | Use the stable selector or full normalized label, not a substring or package name |
-| Not in this command | Check the `COMMANDS` column; update and check have different task sets |
-| `filtered` / `skipped` in graph | Inspect both `--only` and `--skip` |
-| Prerequisite warning | `--only` omitted a blocking dependency; decide whether to include `--with-deps` |
-| No normal console row | It can be current or inapplicable; inspect verbose output/logs |
-| `requires …` / blocked | Fix the named predecessor first |
-| Skipped with a missing tool/capability | Install/configure that prerequisite deliberately, then retry |
-| No active entries | Check role/category selection, not just the task list |
+| No `shellcheck` | ShellCheck skipped |
+| No `apm` | Local APM pack validation skipped |
+| No `pwsh` | PSScriptAnalyzer skipped, even if Windows PowerShell exists |
+| `pwsh` exists, module absent | PSScriptAnalyzer failed |
 
-For a focused preview after identifying the cause:
-
-```bash
-dotfiles update --root . --profile desktop --no-repo-update --only systemd --dry-run --verbose
-```
-
-Add `--with-deps` only after reviewing how much it expands the run. It can add
-packages, AUR setup, symlinks, and permissions.
-Use `update --only apm` to scope the run when the intended work is
-advancing eligible agent package refs.
+Strict runs (`--fail-on-skip` or CI) fail on these skips. Install the
+prerequisites for the checks you intend to run, reopen the shell if PATH changed,
+and retry. Filtering a check out is not evidence it passed.
+See [CLI validation](TESTING.md#cli-validation).
 
 ## A symlink cannot be created on Windows
 
-Distinguish missing capability, a conflicting target, and a bad source checkout:
+Check permission, target conflicts, and source checkout separately:
 
-- Developer Mode must be available or file-link creation needs elevation.
-- An unrelated home file can be replaced without backup; a nonempty directory
-  is not recursively removed. Preserve its contents before resolving it.
-- If Git recorded the source as a symlink but checked it out as ordinary text,
-  repair the source checkout after enabling symlink support. Rerunning link
-  creation alone cannot fix that placeholder.
+- File links need Developer Mode or suitable elevation. Directory links can
+  fall back to junctions.
+- Regular files and empty directories can be replaced without backup;
+  nonempty directories are not recursively removed.
+- A Git symlink checked out as ordinary text must be repaired in the source
+  checkout. Elevating the home-link task does not fix it.
 
-Preview Developer Mode with the link task:
+See [Developer Mode and symlinks](WINDOWS.md#developer-mode-and-symlinks) for
+inspection commands and a preview including Developer Mode.
 
-```powershell
-dotfiles update --root . --profile desktop --no-repo-update --only symlinks --with-deps --dry-run --verbose
+## systemd changes are not visible
+
+First check whether the configured unit is **user** or **system** scope.
+Bare unit names default to user scope. Substitute the actual unit name:
+
+```bash
+systemctl --user status example.service --no-pager
+journalctl --user -u example.service -n 50 --no-pager
 ```
 
-See [Windows symlinks](WINDOWS.md#developer-mode-and-symlinks) for read-only
-checkout inspection. Do not elevate the entire workflow to hide a source or
-target conflict.
+For a system unit, omit `--user`. Check that packages, linked unit files, and
+executable scripts exist. Ordering after those tasks does not mean every
+unrelated failure in them blocks the service task.
+
+Without a user manager, including during Arch chroot provisioning, dotfiles
+enables user units offline rather than starting them. Log in normally to test
+runtime behavior. In WSL, systemd must be running or degraded for unit
+configuration to proceed.
+
+For first-login extension work deferred by `install-arch`, inspect:
+
+```bash
+journalctl --user -u dotfiles-first-login.service -n 50 --no-pager
+```
+
+Do not restart the whole desktop as the first diagnostic.
+See [Application settings](APPLICATIONS.md) for session/service context.
 
 ## GNOME Keyring does not unlock at login
 
-The PAM fragments are selected for **Arch + desktop**. Preview their task:
+The PAM fragments are selected for **Arch + desktop**. Preview them with:
 
 ```bash
 dotfiles update --root . --profile desktop --no-repo-update --only system-files --dry-run --verbose
 ```
 
-If the preview shows needed PAM changes, review them before deliberately
-applying that task. It can also manage other selected system files. Do not
-hand-edit unrelated PAM rules or assume restarting Hyprland repeats PAM login.
+This task can cover other selected system files too. Review before applying;
+do not hand-edit unrelated PAM rules.
 
-After applying, save work and fully log out of the TTY session, then log back
-in. Inspect the login collection:
+After an authorized apply, save work, fully log out of the TTY session, and log
+back in. Restarting Hyprland alone does not repeat PAM login. Inspect the keyring:
 
 ```bash
 busctl --user get-property \
@@ -327,197 +433,32 @@ busctl --user get-property \
   org.freedesktop.Secret.Collection Locked
 ```
 
-`b false` means unlocked. A locked collection can have a password different
-from the Unix login password; update it through the keyring's normal password
-management. Passwordless autologin supplies no password for PAM to unlock it.
-
-## A task was skipped because elevation was unavailable
-
-| Reason | Meaning |
-|---|---|
-| `elevation declined` | Windows UAC consent was dismissed |
-| `elevation unavailable in a non-interactive session` | No supported prompt path; run in a suitable interactive terminal if authorized |
-| `sudo credentials unavailable` | Linux sudo was absent, denied, or could not be primed |
-| `sudo credentials unavailable in a non-interactive session` | Unattended Linux run lacked usable cached/passwordless credentials |
-| `requires <task>` | A blocking predecessor was left unmet |
-| `ran in elevated session` | Not a missing change: inspect the separate child run |
-
-On Windows, only selected privileged tasks are delegated to a short-lived
-child. On Linux, the CLI primes sudo credentials before tasks; it does not
-move the whole run into a Windows-style elevated child.
-Independent work can continue after unavailable elevation. `--fail-on-skip`
-or CI turns unmet elevation into failure.
-
-Resolve authorization for the named work, then retry that scope or the normal
-workflow. Do not create passwordless sudo rules or bypass organizational policy
-merely to make a run green. See [Windows elevation](WINDOWS.md#elevation).
-
-## Another run holds the repository lock
-
-Update, remove, and check—including previews—share a repository
-lock. Linked worktrees use the same common Git directory. The error identifies
-the lock and, when readable, the owner PID, command, and start time.
-
-Wait for the owner or inspect it before interrupting it. `list` and `log`
-remain usable. **Do not delete the lock file to force concurrent runs**:
-the live lock is held by the process, not inferred from file existence.
-Owner text left after a completed process does not itself prevent a new lock.
-
-If a run seems stuck, inspect its active command/log and use the
-[interrupt procedure](USAGE.md#interrupting-a-run). After force quit, check for
-still-running child installers before retrying; partial changes are not undone.
-
-## Repository update fails
-
-Use read-only Git inspection in the affected main or overlay checkout:
-
-```bash
-git status --short
-git branch -vv
-git remote -v
-```
-
-Do not share remote URLs without checking for embedded credentials.
-
-| Cause | Behavior / recovery |
-|---|---|
-| Tracked local changes | Synchronization is skipped; preserve and resolve them intentionally |
-| Detached HEAD | Repository task is inapplicable |
-| No upstream | Configure the intended upstream or intentionally use the current checkout |
-| Local-only/diverged commits | CLI will not reset/rebase them; reconcile the branch yourself |
-| Fetch authentication/network error | Inspect the failing repository and command log; transient fetch errors are retried |
-| Fast-forward merge failure | Read Git's error and protect worktree content, including untracked collisions |
-
-The readiness check ignores untracked files; that does not guarantee a merge
-cannot collide with them. Main and overlay updates are not a single
-transaction.
-
-To intentionally apply local desired state without attempting synchronization,
-use `--no-repo-update`. Preview first. Do not discard user changes merely to
-clear a skipped-task count.
-
-`Repository synced · restarting to load configuration` is normal after content
-changes: the child reloads both static and overlay tasks, omits another
-repository update, and keeps the parent's lock.
-
-## Packages do not install
-
-Determine which task failed: `packages`, `paru`, or `aur-packages`.
-The regular Linux provider looks for pacman; there is no apt/dnf adapter.
-Windows uses winget. AUR work requires Arch and a healthy target-system Paru.
-
-```bash
-dotfiles update --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
-```
-
-A failed installed-package query is not an empty inventory. Correct the
-provider or its output/error before retrying. Check the exact configured ID,
-active category, available provider, and elevation reason. `--only packages`
-does not select AUR entries; selecting AUR alone also assumes bootstrap is
-already satisfied unless `--with-deps` is used.
-
-**Applying missing Arch packages uses `pacman -Syu --needed --noconfirm`** and
-can upgrade the wider system. Schedule that transaction deliberately rather
-than retrying it as a harmless diagnostic.
-
-Windows scope/UAC/policy skips are explained in
-[Windows packages](WINDOWS.md#packages). Elevation does not fix an invalid
-package ID, broken inventory output, or a prohibited installer.
-
-## Agent package update does not run or fails
-
-```bash
-dotfiles update --root . --profile desktop --no-repo-update --only apm --dry-run --verbose
-```
-
-Update previews configuration convergence and pin advancement. Apply uses
-`apm update -g --yes`, followed by `apm install -g` to reconcile local content
-and deployment drift even when no refs changed.
-
-- If symlinks were filtered out, confirm the fragment inputs are present or
-  preview `--with-deps` expansion.
-- If `apm` is missing, provide it deliberately. Update preview can
-  describe a prospective manifest write without it; native dependency planning
-  needs the executable.
-- Authentication failures can be unmet/skipped work. Check the named
-  authentication requirement without publishing credentials.
-- If the generated manifest would change, preview reports the write and
-  delegated update instead of asking APM to plan against stale input.
-- If the generated manifest is current, update preview delegates to
-  `apm update -g --dry-run`.
-
-Edit source fragments, not the generated manifest or deployed plugin tree.
-Use [Agent tooling](AGENT-TOOLING.md) for target-specific support and ownership.
-
-## Optional analyzers are not running
-
-| Tool state | Check outcome |
-|---|---|
-| No `shellcheck` | Shellcheck skipped |
-| No `apm` | Local APM pack validation skipped |
-| No `pwsh` | PSScriptAnalyzer skipped, even if Windows PowerShell exists |
-| `pwsh` present, PSScriptAnalyzer module absent | Failed PowerShell check |
-
-Skipped tools fail strict runs (`--fail-on-skip` or CI). Install only the
-prerequisites needed for the chosen validation, reopen the shell if PATH changed,
-and rerun the check. Deliberately filtering a task out is not equivalent to
-having run it successfully. Canonical commands are in
-[Testing](TESTING.md#cli-validation).
-
-## systemd changes are not visible
-
-First distinguish **user scope**, **system scope**, and **no live user manager**.
-Bare configured names use user scope. Inspect the correct manager; substitute
-the actual configured unit for `example.service`:
-
-```bash
-systemctl --user status example.service --no-pager
-journalctl --user -u example.service -n 50 --no-pager
-```
-
-For a system-scope entry, omit `--user`. Check that required packages, linked
-unit files, and executable scripts exist. The task waits for those other tasks
-but is not blocked by every unrelated failure they encounter.
-
-In an Arch chroot or without a user manager, dotfiles enables user units
-offline; it does not start them. Log in normally before judging runtime state.
-For extensions deferred by `install-arch`, inspect:
-
-```bash
-journalctl --user -u dotfiles-first-login.service -n 50 --no-pager
-```
-
-The first-login work retries until configured extensions converge. In WSL,
-systemd must be running or degraded for the unit task to apply at all; restart
-the distribution after changing its systemd configuration.
-Do not restart the whole desktop as the first diagnostic.
+`b false` means unlocked. If the keyring password differs from the login
+password, change it through the keyring's normal password management.
+Passwordless autologin supplies no password for PAM to unlock it.
 
 ## WSL settings did not change
 
-Run the Linux CLI **inside the distribution**, not the Windows host executable.
-Confirm the WSL category selected the `system-files` entry and that it applied
-successfully. A dry run does not change `/etc/wsl.conf`.
+Run the Linux CLI **inside the distribution**. Confirm `system-files` applied
+the WSL-selected settings; a dry run does not change `/etc/wsl.conf`.
 
-Changes require a distribution restart. After saving all WSL work, run this
-from Windows:
+After saving all WSL work, restart from Windows:
 
 ```powershell
 wsl --shutdown
 ```
 
-This terminates **all running WSL distributions**, not just the one being
-configured. Reopen the intended distribution afterward.
+This terminates **all running distributions and their processes**, not just
+the current one. Reopen the intended distribution afterward.
+See [WSL setup](WINDOWS.md#wsl).
 
 ## Remove did not restore machine defaults
 
-That is expected: remove is not a machine snapshot restore. It materializes
-currently selected home links, removes hooks and the launcher still matching
-their managed state, and invokes active overlay removal scripts. Modified
-hooks/launchers and unrelated hook names are preserved. It leaves packages, registry,
-systemd, shell selection, system files, Git/agent settings, PATH, editor
-extensions, and agent package deployments.
+This is expected. Remove copies selected home-link content into real files,
+removes matching managed hooks/launchers, and runs active overlay removal
+scripts. It does not restore a machine snapshot or uninstall everything that
+update can configure.
 
-Use the original profile and overlay so the intended resources are selected.
-Do not delete the checkout until materialization succeeds, and remember that
-materialized content is the configured source, not your pre-install file.
-See [Remove tasks](TASKS.md#remove-tasks).
+Use the original profile and overlay. Keep the checkout until materialization
+succeeds, and remember that copies contain the current source—not your
+pre-install files. See [Remove](USAGE.md#remove) for what remains.

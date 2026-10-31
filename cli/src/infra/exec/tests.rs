@@ -210,16 +210,6 @@ fn windows_cmd_applies_working_directory_and_child_only_environment_overrides() 
 }
 
 #[test]
-fn stream_summary_ignores_blank_output() {
-    assert_eq!(stream_summary("\n \n"), "");
-}
-
-#[test]
-fn stream_summary_counts_non_empty_lines() {
-    assert_eq!(stream_summary("one\n\n two \n"), "2 lines, 11 bytes");
-}
-
-#[test]
 fn managed_executor_times_out_commands() {
     let token = CancellationToken::new();
     let executor = ProcessExecutor::managed_with_timeout(token, Duration::from_millis(50));
@@ -295,6 +285,106 @@ fn cancelled_executor_does_not_attempt_to_spawn_commands() {
     assert!(result.stderr.is_empty());
     assert!(!result.success);
     assert_eq!(result.code, None, "no process should have been started");
+}
+
+#[test]
+#[ignore = "subprocess fixture launched by the interruption test"]
+fn interruption_child() {
+    use std::io::Write as _;
+
+    io::stdout()
+        .write_all(b"captured before interruption\n")
+        .unwrap();
+    io::stdout().flush().unwrap();
+    io::stderr().write_all(b"ready\n").unwrap();
+    io::stderr().flush().unwrap();
+    let mut input = [0];
+    io::stdin().read_exact(&mut input).unwrap();
+    panic!("the parent must terminate this child before releasing stdin");
+}
+
+#[test]
+fn interrupting_a_started_child_preserves_output_and_never_reports_an_exit_code() {
+    for cancelled in [false, true] {
+        let mut command = new_command(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--ignored",
+                "--exact",
+                "infra::exec::tests::interruption_child",
+                "--nocapture",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = process::spawn(command).unwrap();
+        let mut stderr = process::take_stderr(&mut child).unwrap();
+        let (ready, received) = channel();
+        let reader = std::thread::spawn(move || {
+            let mut marker = [0; 6];
+            let read = stderr.read_exact(&mut marker);
+            ready.send((stderr, marker, read)).unwrap();
+        });
+        match received.recv_timeout(Duration::from_secs(10)) {
+            Ok((captured_stderr, marker, Ok(()))) if marker == *b"ready\n" => {
+                #[cfg(unix)]
+                {
+                    child.stderr = Some(captured_stderr);
+                }
+                #[cfg(windows)]
+                {
+                    *child.stderr() = Some(captured_stderr);
+                }
+            }
+            readiness => {
+                #[cfg(unix)]
+                terminate_child(&child);
+                #[cfg(windows)]
+                terminate_child(&mut child);
+                wait_after_terminate(&mut child);
+                reader.join().unwrap();
+                panic!("interruption fixture did not become ready: {readiness:?}");
+            }
+        }
+        reader.join().unwrap();
+
+        let token = CancellationToken::new();
+        if cancelled {
+            token.cancel();
+        }
+        let settings = CommandSettings::managed(
+            token,
+            if cancelled {
+                Duration::from_secs(5)
+            } else {
+                Duration::ZERO
+            },
+        );
+        let error = collect_child(child, "interruption fixture", &settings).unwrap_err();
+        assert_eq!(error.command(), "interruption fixture");
+        assert_eq!(error.is_cancelled(), cancelled);
+        let result = if cancelled {
+            let ExecError::Cancelled { result, .. } = error else {
+                panic!("wrong interruption classification: {error:?}");
+            };
+            result
+        } else {
+            let ExecError::TimedOut {
+                result, timeout, ..
+            } = error
+            else {
+                panic!("wrong interruption classification: {error:?}");
+            };
+            assert_eq!(timeout, Duration::ZERO);
+            result
+        };
+        assert!(!result.success);
+        assert_eq!(result.code, None);
+        assert!(
+            result.stdout.contains("captured before interruption\n"),
+            "output written before readiness must survive child termination"
+        );
+    }
 }
 
 #[test]
@@ -670,6 +760,8 @@ fn output_retention_records_streams_and_preserves_multiline_boundaries() {
         (OutputLog::Diagnostics, true, false, true),
         (OutputLog::Diagnostics, false, true, true),
         (OutputLog::Full, true, true, true),
+        (OutputLog::Full, false, true, true),
+        (OutputLog::Omit, true, false, false),
         (OutputLog::Omit, false, false, false),
     ] {
         let (log, _tmp, _guard) = crate::infra::logging::isolated_logger();
@@ -721,6 +813,94 @@ fn output_retention_records_streams_and_preserves_multiline_boundaries() {
         assert_eq!(stdout_bytes, result.stdout.len());
         assert_eq!(stderr_bytes, result.stderr.len());
         assert!(!content.contains("\\u001b"));
+    }
+}
+
+#[test]
+fn interrupted_output_retention_preserves_classification_and_redacts_both_error_streams() {
+    use crate::infra::logging::records::{Record, StoredRecord};
+
+    for policy in [OutputLog::Diagnostics, OutputLog::Full, OutputLog::Omit] {
+        let captured = ExecResult::failure("partial stdout\n", "partial stderr\n", None);
+        for (mut error, expected_outcome) in [
+            (
+                ExecError::Cancelled {
+                    command: "fixture".into(),
+                    result: captured.clone(),
+                },
+                "interrupted",
+            ),
+            (
+                ExecError::TimedOut {
+                    command: "fixture".into(),
+                    timeout: Duration::from_secs(2),
+                    result: captured.clone(),
+                },
+                "timed_out",
+            ),
+            (
+                ExecError::OutputLimit {
+                    command: "fixture".into(),
+                    stream: "stderr",
+                    limit: MAX_CAPTURE_BYTES,
+                    result: captured.clone(),
+                },
+                "output_limit",
+            ),
+        ] {
+            let (log, _root, _guard) = crate::infra::logging::isolated_logger();
+            output::log_command_error("fixture", &error, policy, Duration::from_micros(123));
+            let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+            let records: Vec<_> = content
+                .lines()
+                .filter_map(StoredRecord::from_line)
+                .collect();
+            assert_eq!(records.len(), 1, "{policy:?}: {expected_outcome}");
+            let Record::Command {
+                command,
+                outcome,
+                exit_code,
+                elapsed_us,
+                stdout,
+                stderr,
+                stdout_bytes,
+                stderr_bytes,
+            } = &records[0].record
+            else {
+                panic!("expected a command record");
+            };
+            assert_eq!(command, "fixture");
+            assert_eq!(outcome, expected_outcome);
+            assert_eq!(*exit_code, None);
+            assert_eq!(*elapsed_us, 123);
+            assert_eq!(*stdout_bytes, captured.stdout.len());
+            assert_eq!(*stderr_bytes, captured.stderr.len());
+            if policy == OutputLog::Omit {
+                assert_eq!((stdout, stderr), (&None, &None));
+                assert!(!content.contains("partial stdout"));
+                assert!(!content.contains("partial stderr"));
+                error.omit_output();
+                let result = match &error {
+                    ExecError::Cancelled { result, .. }
+                    | ExecError::TimedOut { result, .. }
+                    | ExecError::OutputLimit { result, .. } => result,
+                    ExecError::Spawn { .. } | ExecError::Io { .. } | ExecError::NonZero { .. } => {
+                        panic!("redaction changed the error type: {error:?}")
+                    }
+                };
+                assert_eq!(result.stdout, "[output omitted]");
+                assert_eq!(result.stderr, "[output omitted]");
+                assert!(!result.success);
+                assert_eq!(result.code, None);
+                assert!(!error.to_string().contains("partial"));
+                assert!(!error.concise_message().contains("partial"));
+            } else {
+                assert_eq!(stdout.as_deref(), Some("partial stdout\n"));
+                assert_eq!(stderr.as_deref(), Some("partial stderr\n"));
+                assert!(error.to_string().contains("partial stdout"));
+                assert!(error.to_string().contains("partial stderr"));
+            }
+        }
     }
 }
 

@@ -344,7 +344,10 @@ EOF
 printf '%s\n' "$PWD" > "$DOTFILES_ROOT/child-cwd"
 printf '%s\n' "$DOTFILES_ROOT" "$DOTFILES_WRAPPER" "$DOTFILES_REEXEC_GUARD" > "$DOTFILES_ROOT/child-context"
 printf '%s\n' "$#" > "$DOTFILES_ROOT/child-argc"
-printf '%s\n' "$@" > "$DOTFILES_ROOT/child-args"
+: > "$DOTFILES_ROOT/child-args"
+for argument do
+  printf '%s\0' "$argument" >> "$DOTFILES_ROOT/child-args"
+done
 printf 'child stdout\n'
 printf 'child stderr\n' >&2
 exit 7
@@ -356,19 +359,30 @@ EOF
   export PATH DOTFILES_REEXEC_GUARD
   cd "$tmpdir/caller dir"
   for mode in cached build; do
-    set --
-    [ "$mode" != build ] || set -- --build
-    status=0
-    "$tmpdir/dotfiles.sh" "$@" update --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "" \
-      > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
-    [ "$status" -eq 7 ] || log_error "$mode wrapper lost the child exit code"
-    [ "$(cat "$tmpdir/child-cwd")" = "$PWD" ] || log_error "$mode wrapper changed the child cwd"
-    [ "$(cat "$tmpdir/child-context")" = "$(printf '%s\n' "$tmpdir" sh 1)" ] || log_error "$mode wrapper changed runtime context"
-    expected=$(printf '%s\n' update --dry-run --root . --overlay "../overlay dir" "" --BUILD -- "literal value" --build "")
-    [ "$(cat "$tmpdir/child-argc")" -eq 12 ] || log_error "$mode wrapper changed the argument count"
-    [ "$(cat "$tmpdir/child-args")" = "$expected" ] || log_error "$mode wrapper changed arguments"
-    [ "$(cat "$tmpdir/stdout")" = 'child stdout' ] || log_error "$mode wrapper changed stdout"
-    [ "$(cat "$tmpdir/stderr")" = 'child stderr' ] || log_error "$mode wrapper changed stderr"
+    for arguments in empty complex; do
+      set --
+      if [ "$arguments" = complex ]; then
+        set -- update --dry-run --root . --overlay "../overlay dir" "" --BUILD -- \
+          "literal value" --build '*?[literal]' 'quote"and apostrophe'"'" 'semi;colon' \
+          'back\slash' "$(printf 'line\nbreak\tvalue')" "" ""
+      fi
+      expected_argc=$#
+      : > "$tmpdir/expected-args"
+      for argument do
+        printf '%s\0' "$argument" >> "$tmpdir/expected-args"
+      done
+      [ "$mode" != build ] || set -- --build --build "$@"
+      rm -f "$tmpdir/child-cwd" "$tmpdir/child-args"
+      status=0
+      "$tmpdir/dotfiles.sh" "$@" > "$tmpdir/stdout" 2> "$tmpdir/stderr" || status=$?
+      [ "$status" -eq 7 ] || log_error "$mode/$arguments wrapper lost the child exit code"
+      [ "$(cat "$tmpdir/child-cwd")" = "$PWD" ] || log_error "$mode wrapper changed the child cwd"
+      [ "$(cat "$tmpdir/child-context")" = "$(printf '%s\n' "$tmpdir" sh 1)" ] || log_error "$mode wrapper changed runtime context"
+      [ "$(cat "$tmpdir/child-argc")" -eq "$expected_argc" ] || log_error "$mode wrapper changed the argument count"
+      cmp -s "$tmpdir/child-args" "$tmpdir/expected-args" || log_error "$mode wrapper changed argument bytes or boundaries"
+      [ "$(cat "$tmpdir/stdout")" = 'child stdout' ] || log_error "$mode wrapper changed stdout"
+      [ "$(cat "$tmpdir/stderr")" = 'child stderr' ] || log_error "$mode wrapper changed stderr"
+    done
   done
   [ "$(cat "$tmpdir/cargo-cwd")" = "$tmpdir/cli" ] || log_error "Cargo did not run from cli/"
   rm "$tmpdir/child-cwd"
@@ -406,9 +420,13 @@ printf '%s\n' "$@" > "$DOTFILES_ROOT/child-args"
 exit 7
 BIN
 chmod +x "$executable"
-if [ "${WRAPPER_NO_ARTIFACT:-0}" != 1 ]; then
+if [ "${WRAPPER_ARTIFACT_MODE:-valid}" != missing ]; then
   escaped=$(printf '%s' "$executable" | sed 's/\\/\\\\/g; s/"/\\"/g; s,/,\\u002f,g; s/ /\\u0020/g')
+  printf '{"reason":"compiler-artifact","target":{"name":"another-binary"},"executable":"not-the-dotfiles-artifact"}\n'
   printf '{"reason":"compiler-artifact","target":{"name":"dotfiles"},"executable":"%s"}\n' "$escaped"
+  if [ "${WRAPPER_ARTIFACT_MODE:-valid}" = duplicate ]; then
+    printf '{"reason":"compiler-artifact","target":{"name":"dotfiles"},"executable":"%s"}\n' "$escaped"
+  fi
 fi
 printf '{"reason":"build-finished","success":true}\n'
 EOF
@@ -433,11 +451,15 @@ EOF
     [ ! -s "$fixture/stdout" ] || log_error "$mode leaked Cargo JSON to stdout"
   done
   rm "$fixture/child-cwd"
-  if WRAPPER_NO_ARTIFACT=1 "$fixture/dotfiles.sh" --build --version > "$fixture/stdout" 2> "$fixture/stderr"; then
-    log_error "Missing Cargo artifact did not fail"
-  fi
-  [ ! -e "$fixture/child-cwd" ] || log_error "Missing artifact executed a child"
-  grep -q 'Cargo did not report' "$fixture/stderr" || log_error "Missing artifact failure was not explained"
+  for artifact_mode in missing duplicate; do
+    if WRAPPER_ARTIFACT_MODE="$artifact_mode" "$fixture/dotfiles.sh" --build --version > "$fixture/stdout" 2> "$fixture/stderr"; then
+      log_error "$artifact_mode Cargo artifact did not fail"
+    fi
+    [ ! -e "$fixture/child-cwd" ] || log_error "$artifact_mode artifact executed a child"
+    [ ! -s "$fixture/stdout" ] || log_error "$artifact_mode artifact leaked Cargo output"
+    grep -q 'Cargo did not report a unique dotfiles executable' "$fixture/stderr" ||
+      log_error "$artifact_mode artifact failure was not explained"
+  done
 )}
 
 test_wrapper_chmod_after_checksum()

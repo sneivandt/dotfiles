@@ -81,6 +81,7 @@ while [ "$#" -gt 0 ]; do
     shift
     [ "$(cat "$1/conf/fixture.toml")" = staged-config ]
     [ ! -e "$1/conf/untracked.toml" ]
+    printf 'config\n' >> "$HOOK_INPUT_LOG"
     exit 0
   fi
   shift
@@ -101,7 +102,8 @@ EOF
   printf 'unstaged-config\n' > conf/fixture.toml
   printf 'untracked-config\n' > conf/untracked.toml
   sh "$DIR/hooks/check-ci-guards.sh"
-  [ "$(cat "$HOOK_INPUT_LOG")" = shellcheck ] || log_error "Staged script was not checked"
+  [ "$(cat "$HOOK_INPUT_LOG")" = "$(printf 'config\nshellcheck')" ] ||
+    log_error "Staged script and configuration were not both checked"
 
   printf 'invalid-staged\n' > 'hooks/script with spaces.sh'
   git add hooks
@@ -115,7 +117,8 @@ EOF
   printf 'staged-config\n' > conf/fixture.toml
   : > "$HOOK_INPUT_LOG"
   sh "$DIR/hooks/check-ci-guards.sh"
-  [ "$(cat "$HOOK_INPUT_LOG")" = shellcheck ] || log_error "Unstaged deletion hid a staged script"
+  [ "$(cat "$HOOK_INPUT_LOG")" = "$(printf 'config\nshellcheck')" ] ||
+    log_error "Unstaged deletion hid a staged script or configuration check"
 
   printf 'invalid-staged\n' > conf/fixture.toml
   git add conf/fixture.toml
@@ -186,20 +189,25 @@ EOF
     renamed="renamed $file"
     git mv -- "$file" "$renamed"
     HOOK_EXPECTED_SHELL_FILE=$renamed
+    : > "$HOOK_INPUT_LOG"
     sh hooks/check-ci-guards.sh
+    [ "$(cat "$HOOK_INPUT_LOG")" = shellcheck ] || log_error "Renamed shell input was skipped"
     git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm rename
     git rm -q -- "$renamed"
     : > "$HOOK_INPUT_LOG"
     sh hooks/check-ci-guards.sh
     [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Deleted shell input was analyzed"
     git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm deletion
+    sh hooks/check-ci-guards.sh
+    [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Empty staged diff invoked ShellCheck"
   done
 )}
 
 test_staged_quoted_powershell()
 {(
   log_stage "Checking PowerShell hook arguments with quoted Git filenames"
-  fixture=$(mktemp -d)
+  fixture="$DIR/.ci-quoted-powershell-$$"
+  mkdir "$fixture"
   trap 'rm -rf "$fixture"' EXIT
   mkdir "$fixture/repo" "$fixture/mock-bin"
   cat > "$fixture/mock-bin/pwsh" <<'EOF'
@@ -244,13 +252,17 @@ EOF
     renamed="renamed $file"
     git mv -- "$file" "$renamed"
     HOOK_EXPECTED_FILE=$renamed
+    : > "$HOOK_INPUT_LOG"
     sh "$DIR/hooks/check-rust.sh"
+    [ "$(cat "$HOOK_INPUT_LOG")" = powershell ] || log_error "Renamed PowerShell input was skipped"
     git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm rename
     git rm -q -- "$renamed"
     : > "$HOOK_INPUT_LOG"
     sh "$DIR/hooks/check-rust.sh"
     [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Deleted PowerShell input was analyzed"
     git -c user.name=Fixture -c user.email=fixture@test.local -c core.hooksPath=/dev/null commit -qm deletion
+    sh "$DIR/hooks/check-rust.sh"
+    [ ! -s "$HOOK_INPUT_LOG" ] || log_error "Empty staged diff invoked PSScriptAnalyzer"
   done
   # Ensure argv construction also preserves multiple staged inputs in one batch.
   cat > "$fixture/mock-bin/pwsh" <<'EOF'
@@ -262,16 +274,20 @@ shift 3
 for file do
   [ "$(cat "$file")" = valid-staged ]
 done
+printf 'powershell-batch\n' >> "$HOOK_INPUT_LOG"
 EOF
   printf 'valid-staged\n' > first.ps1
   printf 'valid-staged\n' > 'second file.psd1'
   git add -- first.ps1 'second file.psd1'
+  : > "$HOOK_INPUT_LOG"
   sh "$DIR/hooks/check-rust.sh"
+  [ "$(cat "$HOOK_INPUT_LOG")" = powershell-batch ] || log_error "PowerShell batch was skipped"
   printf 'invalid-staged\n' > 'second file.psd1'
   git add -- 'second file.psd1'
   if sh "$DIR/hooks/check-rust.sh" > "$fixture/output" 2>&1; then
     log_error "Failure in the second PowerShell input was ignored"
   fi
+  grep -q 'PSScriptAnalyzer reported issues' "$fixture/output" || log_error "Unexpected batch failure"
 
 )}
 

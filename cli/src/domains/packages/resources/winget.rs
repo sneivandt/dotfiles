@@ -323,13 +323,6 @@ mod tests {
         WingetProvider.install("Git.Git", &mock).unwrap()
     }
 
-    fn skipped_reason(change: ResourceChange) -> String {
-        let ResourceChange::Skipped { reason, .. } = change else {
-            panic!("expected a skipped resource change");
-        };
-        reason
-    }
-
     #[test]
     fn parse_winget_ids_handles_truncated_name_with_single_space_separator() {
         // A 28-char name padded to width 29 leaves exactly ONE trailing space
@@ -429,23 +422,23 @@ mod tests {
     }
 
     #[test]
-    fn winget_install_failure_prefers_stdout_when_stderr_is_empty() {
-        assert_eq!(
-            install_with_result(ExecResult::failure("No package found", "", Some(1))),
-            ResourceChange::unusable("winget install failed: No package found"),
-        );
-    }
-
-    #[test]
-    fn winget_install_failure_includes_stdout_and_stderr_when_both_present() {
-        assert_eq!(
-            install_with_result(ExecResult::failure(
-                "Installer output",
-                "Access denied",
-                Some(1),
-            )),
-            ResourceChange::unusable("winget install failed: Installer output\nAccess denied"),
-        );
+    fn winget_unrecognized_exit_preserves_diagnostics_without_retrying() {
+        for code in [Some(1), Some(-1), None] {
+            for (stdout, stderr, detail) in [
+                (" No package found \n", "", "No package found"),
+                (
+                    " Installer output \n",
+                    " Access denied \n",
+                    "Installer output\nAccess denied",
+                ),
+            ] {
+                assert_eq!(
+                    install_with_result(ExecResult::failure(stdout, stderr, code)),
+                    ResourceChange::unusable(format!("winget install failed: {detail}")),
+                    "exit={code:?}, stderr={stderr:?}",
+                );
+            }
+        }
     }
 
     #[test]
@@ -492,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn winget_install_skips_rather_than_fails_when_elevation_is_required() {
+    fn winget_scope_retry_reports_elevation_requirement_as_unmet_work() {
         let ResourceChange::Skipped { reason, kind } = install_with_results([
             ExecResult::failure("", "", Some(exit_code::NO_APPLICABLE_INSTALLER)),
             ExecResult::failure("", "", Some(exit_code::COMMAND_REQUIRES_ADMIN)),
@@ -538,39 +531,73 @@ mod tests {
     }
 
     #[test]
-    fn winget_install_skips_when_the_user_declines_the_installer_prompt() {
-        let reason = skipped_reason(install_with_result(ExecResult::failure(
-            "",
-            "",
-            Some(exit_code::INSTALL_CANCELLED_BY_USER),
-        )));
-        assert!(reason.contains("elevation was declined"), "{reason}");
+    fn winget_declined_elevation_is_unmet_work() {
+        assert_eq!(
+            install_with_result(ExecResult::failure(
+                "",
+                "",
+                Some(exit_code::INSTALL_CANCELLED_BY_USER),
+            )),
+            ResourceChange::unusable("Git.Git: installer elevation was declined"),
+        );
     }
 
     #[test]
     fn winget_install_preserves_transport_errors_without_retrying() {
-        for (label, error) in [
-            (
-                "spawn",
-                ExecError::spawn("winget", std::io::Error::other("fixture spawn failure")),
-            ),
-            (
-                "cancelled",
-                ExecError::Cancelled {
-                    command: "winget".into(),
-                    result: ExecResult::failure("", "", None),
-                },
-            ),
-        ] {
-            let expected = error.to_string();
-            let mut mock = MockExecutor::new();
-            mock.expect_execute().once().return_once(move |spec| {
-                assert_install_command(&spec, true);
-                Err(error)
-            });
-            let observed = WingetProvider.install("Git.Git", &mock).unwrap_err();
-            assert_eq!(observed.to_string(), expected, "{label}");
-            assert!(observed.downcast_ref::<ExecError>().is_some(), "{label}");
+        for retry in [false, true] {
+            for (label, error) in [
+                (
+                    "spawn",
+                    ExecError::spawn("winget", std::io::Error::other("fixture spawn failure")),
+                ),
+                (
+                    "cancelled",
+                    ExecError::Cancelled {
+                        command: "winget".into(),
+                        result: ExecResult::failure("partial installer output", "", None),
+                    },
+                ),
+                (
+                    "timeout",
+                    ExecError::TimedOut {
+                        command: "winget".into(),
+                        timeout: std::time::Duration::from_secs(30),
+                        result: ExecResult::failure("partial installer output", "", None),
+                    },
+                ),
+            ] {
+                let expected = error.to_string();
+                let expected_kind = std::mem::discriminant(&error);
+                let mut mock = MockExecutor::new();
+                let mut sequence = mockall::Sequence::new();
+                if retry {
+                    mock.expect_execute()
+                        .once()
+                        .in_sequence(&mut sequence)
+                        .returning(|spec| {
+                            assert_install_command(&spec, true);
+                            Ok(ExecResult::failure(
+                                "",
+                                "",
+                                Some(exit_code::NO_APPLICABLE_INSTALLER),
+                            ))
+                        });
+                }
+                mock.expect_execute()
+                    .once()
+                    .in_sequence(&mut sequence)
+                    .return_once(move |spec| {
+                        assert_install_command(&spec, !retry);
+                        Err(error)
+                    });
+                let observed = WingetProvider.install("Git.Git", &mock).unwrap_err();
+                assert_eq!(observed.to_string(), expected, "{label}, retry={retry}");
+                assert_eq!(
+                    std::mem::discriminant(observed.downcast_ref::<ExecError>().unwrap()),
+                    expected_kind,
+                    "{label}, retry={retry}",
+                );
+            }
         }
     }
 

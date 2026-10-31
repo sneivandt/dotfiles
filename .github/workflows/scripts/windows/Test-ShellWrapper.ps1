@@ -52,64 +52,6 @@ function Test-BuildMode {
 }
 
 # ---------------------------------------------------------------------------
-# Test Cache Mechanism
-# ---------------------------------------------------------------------------
-
-function Test-CacheFreshness {
-    Write-TestStage "Testing cache freshness logic"
-
-    $tmpDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName()))
-    try {
-        $cacheFile = Join-Path $tmpDir ".dotfiles-version-cache"
-        $cacheMaxAge = 3600
-
-        # Test 1: No cache file - should not be fresh
-        $lines = @()
-        if (Test-Path $cacheFile) {
-            $lines = Get-Content $cacheFile
-        }
-        if ($lines.Count -lt 2) {
-            Write-TestPass "Empty cache correctly reports as not fresh"
-        } else {
-            Write-TestFail "Empty cache incorrectly reported as fresh"
-            return $false
-        }
-
-        # Test 2: Fresh cache
-        @('v2026.07.25-1', [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) | Set-Content $cacheFile
-        $lines = Get-Content $cacheFile
-        $cachedTs = [int]$lines[1]
-        $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-        $isFresh = (($now - $cachedTs) -lt $cacheMaxAge)
-
-        if ($isFresh) {
-            Write-TestPass "Fresh cache correctly detected"
-        } else {
-            Write-TestFail "Fresh cache not detected"
-            return $false
-        }
-
-        # Test 3: Stale cache
-        @('v2026.07.25-1', 0) | Set-Content $cacheFile
-        $lines = Get-Content $cacheFile
-        $cachedTs = [int]$lines[1]
-        $now = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-        $isFresh = (($now - $cachedTs) -lt $cacheMaxAge)
-
-        if (-not $isFresh) {
-            Write-TestPass "Stale cache correctly detected"
-        } else {
-            Write-TestFail "Stale cache incorrectly reported as fresh"
-            return $false
-        }
-
-        return $true
-    } finally {
-        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
-    }
-}
-
-# ---------------------------------------------------------------------------
 # Test Version Detection
 # ---------------------------------------------------------------------------
 
@@ -142,59 +84,36 @@ function Test-VersionDetection {
 # ---------------------------------------------------------------------------
 
 function Test-ChecksumVerification {
-    Write-TestStage "Testing checksum verification logic"
-
-    $tmpDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP ([System.IO.Path]::GetRandomFileName()))
+    Write-TestStage "Testing the wrapper's checksum asset selection"
     try {
-        # Create test binary
-        "fake binary content" | Set-Content (Join-Path $tmpDir "dotfiles.exe")
-
-        # Create checksums file
-        @'
-abc123  dotfiles-linux-x86_64
-bad999  dotfiles-windows-x86_64.exe.sig
-def456  dotfiles-windows-x86_64.exe
-'@ | Set-Content (Join-Path $tmpDir "checksums.sha256")
-
-        # Test checksum extraction with exact asset-name matching
-        $checksums = Get-Content (Join-Path $tmpDir "checksums.sha256")
-        $assetName = "dotfiles-windows-x86_64.exe"
-        $expected = foreach ($line in $checksums) {
-            $fields = $line.Trim() -split '\s+'
-            if ($fields.Count -ge 2 -and $fields[1].TrimStart('*') -eq $assetName) {
-                $fields[0].Trim().ToLower()
-                break
+        $wrapper = Join-Path $PSScriptRoot '../../../../dotfiles.ps1'
+        $tokens = $null
+        $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            $wrapper, [ref]$tokens, [ref]$errors)
+        if ($errors.Count -ne 0) { throw "Wrapper parse failed: $errors" }
+        $selector = $ast.Find({ param($node)
+            $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq 'Get-ChecksumForAsset'
+        }, $true)
+        if (-not $selector) { throw 'Wrapper checksum selector is missing' }
+        . ([scriptblock]::Create($selector.Extent.Text))
+        foreach ($case in @(
+            @{ Name = 'exact asset'; Content = "abc123  dotfiles-linux-x86_64`nbad999  dotfiles-windows-x86_64.exe.sig`ndef456  dotfiles-windows-x86_64.exe"; Expected = 'def456' },
+            @{ Name = 'binary marker and CRLF'; Content = "invalid`r`n`tDEF456`t*dotfiles-windows-x86_64.exe`r`n"; Expected = 'def456' },
+            @{ Name = 'only a suffix match'; Content = 'bad999  dotfiles-windows-x86_64.exe.sig'; Expected = $null },
+            @{ Name = 'different platform'; Content = 'abc123  dotfiles-linux-x86_64'; Expected = $null },
+            @{ Name = 'malformed lines'; Content = "single-field`n `n"; Expected = $null }
+        )) {
+            $actual = Get-ChecksumForAsset -ChecksumContent $case.Content -AssetName 'dotfiles-windows-x86_64.exe'
+            if ($actual -cne $case.Expected) {
+                throw "$($case.Name): expected '$($case.Expected)', got '$actual'"
             }
         }
-
-        if ($expected -eq "def456") {
-            Write-TestPass "Checksum extraction works correctly"
-            return $true
-        } else {
-            Write-TestFail "Checksum extraction failed: got '$expected'"
-            return $false
-        }
-    } finally {
-        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
-    }
-}
-
-# ---------------------------------------------------------------------------
-# Test Offline Fallback
-# ---------------------------------------------------------------------------
-
-function Test-OfflineFallback {
-    Write-TestStage "Testing offline fallback behavior"
-
-    # Simulate offline scenario
-    $latestVersion = ""  # Empty simulates offline
-    $localVersion = "v2026.07.25-1"
-
-    if ([string]::IsNullOrEmpty($latestVersion) -and ($localVersion -ne "none")) {
-        Write-TestPass "Offline fallback logic works with cached binary"
+        Write-TestPass 'Real checksum selector matches exact assets and rejects missing checksums'
         return $true
-    } else {
-        Write-TestFail "Offline fallback logic failed"
+    } catch {
+        Write-TestFail "Checksum selection regression failed: $_"
         return $false
     }
 }
@@ -355,51 +274,45 @@ function Test-AttestationVerification {
 }
 
 # ---------------------------------------------------------------------------
-# Test Platform Detection
-# ---------------------------------------------------------------------------
-
-function Test-PlatformDetection {
-    Write-TestStage "Testing platform detection"
-
-    $isWindowsPlatform = ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq 'Windows_NT'))
-
-    if ($isWindowsPlatform) {
-        $expectedBinary = "dotfiles.exe"
-        $expectedAsset = "dotfiles-windows-x86_64.exe"
-    } elseif ($IsLinux) {
-        $expectedBinary = "dotfiles"
-        $arch = (uname -m).Trim()
-        if ($arch -in @('aarch64', 'arm64')) {
-            $expectedAsset = "dotfiles-linux-aarch64"
-        } else {
-            $expectedAsset = "dotfiles-linux-x86_64"
-        }
-    } else {
-        Write-TestPass "Unsupported platform detection path verified"
-        return $true
-    }
-
-    Write-TestPass "Platform detection: Binary=$expectedBinary, Asset=$expectedAsset"
-    return $true
-}
-
-# ---------------------------------------------------------------------------
 # Test Error Handling
 # ---------------------------------------------------------------------------
 
 function Test-ErrorHandling {
-    Write-TestStage "Testing error handling"
-
-    # Test that missing cargo in build mode produces error
-    # Simulate missing cargo scenario
+    Write-TestStage "Testing missing Cargo fails without executing or downloading a binary"
+    $fixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $PSScriptRoot '../../../..') ".wrapper-no-cargo-$([guid]::NewGuid())"))
     $originalPath = $env:PATH
+    $originalLocation = (Get-Location).Path
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
     try {
-        # This test just verifies the logic would work
-        # We can't actually remove cargo from PATH in this test
-        Write-TestPass "Error handling structure verified"
+        [void][System.IO.Directory]::CreateDirectory((Join-Path $fixture 'cli'))
+        $wrapper = Join-Path $fixture 'dotfiles.ps1'
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../../../../dotfiles.ps1') -Destination $wrapper
+        $env:PATH = ''
+        $rejected = $false
+        try {
+            & $wrapper --build --version | Out-Null
+        } catch {
+            if ($_ -notmatch 'cargo not found') { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw 'Wrapper accepted an unavailable Cargo' }
+        if (Test-Path -LiteralPath (Join-Path $fixture 'bin')) { throw 'Build failure attempted bootstrap' }
+        if ((Get-Location).Path -ne $originalLocation) { throw 'Build failure changed the caller location' }
+        Write-TestPass "Missing Cargo is rejected before any bootstrap or child execution"
         return $true
+    } catch {
+        Write-TestFail "Missing Cargo regression failed: $_"
+        return $false
     } finally {
         $env:PATH = $originalPath
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -588,7 +501,7 @@ function Test-NativeExitCode {
     $fixture = Join-Path (Join-Path $PSScriptRoot '..\..\..\..') ".wrapper-native-exit-$([guid]::NewGuid())"
     $fixture = [System.IO.Path]::GetFullPath($fixture)
     $wrapper = Join-Path $fixture 'dotfiles.ps1'
-    $nativeShell = (Get-Command pwsh -CommandType Application).Source
+    $nativeShell = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
     $originalLocation = Get-Location
     $savedEnvironment = @{}
     foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
@@ -679,6 +592,7 @@ function Test-CargoArtifactPath {
                 $targetDirectory = Join-Path (Get-Location) $Matches[1]
             }
             $artifact = Join-Path $targetDirectory "custom-triple/dev-opt/$binaryName"
+            '{"reason":"compiler-artifact","target":{"name":"another-binary"},"executable":"not-the-dotfiles-artifact"}'
             @{
                 reason = 'compiler-artifact'
                 target = @{ name = 'dotfiles' }
@@ -711,22 +625,67 @@ function Test-CargoArtifactPath {
                 throw "$mode changed child arguments"
             }
         }
-        Set-Item Function:cargo -Value { '{"reason":"build-finished","success":true}'; $global:LASTEXITCODE = 0 }
-        $rejected = $false
-        try {
-            & $wrapper --build --version | Out-Null
-        } catch {
-            if ($_ -notmatch 'Cargo did not report') { throw }
-            $rejected = $true
-        }
-        if (-not $rejected) { throw 'Missing Cargo artifact did not fail' }
-        Write-TestPass 'Build mode executes the reported Cargo artifact and rejects missing artifacts'
+        Write-TestPass 'Build mode executes only the reported Cargo artifact from the caller directory'
         return $true
     } catch {
         Write-TestFail "Cargo artifact regression failed: $_"
         return $false
     } finally {
         Set-Location -LiteralPath $originalLocation.Path
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        }
+        Remove-Item -LiteralPath $fixture -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Test-CargoArtifactFailure {
+    Write-TestStage 'Testing missing and ambiguous Cargo artifacts fail before child execution'
+    $fixture = [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $PSScriptRoot '../../../..') ".wrapper-artifact-errors-$([guid]::NewGuid())"))
+    $originalLocation = (Get-Location).Path
+    $savedEnvironment = @{}
+    foreach ($name in @('DOTFILES_ROOT', 'DOTFILES_WRAPPER')) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
+    try {
+        [void][System.IO.Directory]::CreateDirectory((Join-Path $fixture 'cli'))
+        $wrapper = Join-Path $fixture 'dotfiles.ps1'
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../../../../dotfiles.ps1') -Destination $wrapper
+        foreach ($failure in @('missing', 'wrong-target', 'duplicate')) {
+            Set-Item Function:cargo -Value {
+                if ($failure -eq 'wrong-target') {
+                    '{"reason":"compiler-artifact","target":{"name":"another-binary"},"executable":"must-not-run"}'
+                } elseif ($failure -eq 'duplicate') {
+                    foreach ($unused in 1..2) {
+                        @{
+                            reason = 'compiler-artifact'
+                            target = @{ name = 'dotfiles' }
+                            executable = Join-Path $fixture 'must-not-run'
+                        } | ConvertTo-Json -Compress
+                    }
+                }
+                '{"reason":"build-finished","success":true}'
+                $global:LASTEXITCODE = 0
+            }
+            $expectedError = if ($failure -eq 'duplicate') { 'Cargo reported more than one' } else { 'Cargo did not report' }
+            $rejected = $false
+            try {
+                & $wrapper --build --version | Out-Null
+            } catch {
+                if ($_ -notmatch $expectedError) { throw }
+                $rejected = $true
+            }
+            if (-not $rejected) { throw "$failure Cargo artifact did not fail" }
+            if ((Get-Location).Path -ne $originalLocation) { throw "$failure artifact changed the caller location" }
+        }
+        Write-TestPass 'Missing, wrong-target, and ambiguous artifacts cannot execute a child or retain cli/ as cwd'
+        return $true
+    } catch {
+        Write-TestFail "Cargo artifact rejection failed: $_"
+        return $false
+    } finally {
+        Set-Location -LiteralPath $originalLocation
         foreach ($name in $savedEnvironment.Keys) {
             [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
         }
@@ -834,20 +793,18 @@ function Invoke-TestSuite {
     $results = @()
 
     $results += Test-BuildMode
-    $results += Test-CacheFreshness
     $results += Test-VersionDetection
     $results += Test-ChecksumVerification
-    $results += Test-OfflineFallback
     $results += Test-ArgumentForwarding
     $results += Test-UpdateArgumentForwarding
     $results += Test-AdvancedFlagForwarding
     $results += Test-VersionPinnedBootstrapUrl
     $results += Test-AttestationVerification
-    $results += Test-PlatformDetection
     $results += Test-ErrorHandling
     $results += Test-IsolatedWrapperPath
     $results += Test-NativeExitCode
     $results += Test-CargoArtifactPath
+    $results += Test-CargoArtifactFailure
     $results += Test-ReleaseRepository
 
     $passed = ($results | Where-Object { $_ -eq $true }).Count

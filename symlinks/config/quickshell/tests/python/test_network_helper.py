@@ -3,6 +3,7 @@
 import ctypes
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -63,12 +64,18 @@ def decode_password_file(payload):
 
 class NetworkTests(unittest.TestCase):
     def setUp(self):
-        directory = tempfile.TemporaryDirectory()
+        directory = tempfile.TemporaryDirectory(prefix=".network-helper-test-", dir=Path.cwd())
         self.addCleanup(directory.cleanup)
         self.cache_path = Path(directory.name) / "profiles.json"
         cache = patch.object(network, "profile_cache_path", return_value=self.cache_path)
         cache.start()
         self.addCleanup(cache.stop)
+        process = patch.object(
+            network.subprocess, "run",
+            side_effect=AssertionError("Tests must explicitly mock every nmcli process."),
+        )
+        process.start()
+        self.addCleanup(process.stop)
 
     def run_main(self, text, command="action"):
         output, errors = io.StringIO(), io.StringIO()
@@ -80,24 +87,25 @@ class NetworkTests(unittest.TestCase):
     def test_profile_cache_avoids_repeated_detail_queries_and_expires(self):
         inventory = [["Fixture", "uuid", "802-11-wireless"]]
         details = [["802-11-wireless.ssid", "Fixture"]]
-        with patch.object(network, "query", side_effect=[inventory, details, inventory, inventory, details]) as query, \
-             patch.object(network.time, "time", side_effect=[100, 110, 160]):
+        refreshed_details = [["802-11-wireless.ssid", "Changed SSID"]]
+        with patch.object(network, "query", side_effect=[inventory, details, inventory, inventory, refreshed_details]) as query, \
+             patch.object(network.time, "time", side_effect=[100, 159.999, 160]):
             first = network.wifi_profiles()
+            self.assertEqual(first, [profile(name="Fixture", uuid="uuid", ssid="Fixture", key="")])
             self.assertEqual(network.wifi_profiles(), first)
             self.assertEqual(query.call_count, 3)
-            self.assertEqual(network.wifi_profiles(), first)
+            refreshed = [{**first[0], "ssid": "Changed SSID"}]
+            self.assertEqual(network.wifi_profiles(), refreshed)
             self.assertEqual(query.call_count, 5)
+        self.assertEqual(json.loads(self.cache_path.read_text())["profiles"], refreshed)
 
-    def test_profile_inventory_changes_and_actions_invalidate_cache(self):
+    def test_profile_inventory_changes_invalidate_cached_profiles(self):
         inventory = [["Fixture", "uuid", "802-11-wireless"]]
         details = [["802-11-wireless.ssid", "Fixture"]]
         with patch.object(network, "query", side_effect=[inventory, details, [], inventory, details]):
             network.wifi_profiles()
             self.assertEqual(network.wifi_profiles(), [])
             network.wifi_profiles()
-        with patch.object(network, "nmcli", return_value=subprocess.CompletedProcess([], 0, "", "")):
-            network.action({"operation": "wifi", "enabled": True})
-        self.assertFalse(self.cache_path.exists())
 
     def test_disappearing_profile_does_not_fail_status_or_cache_incomplete_inventory(self):
         with patch.object(network, "query", side_effect=[[["Fixture", "uuid", "802-11-wireless"]], []]):
@@ -111,15 +119,113 @@ class NetworkTests(unittest.TestCase):
             with self.assertRaises(network.NetworkError):
                 network.query(["fixture"], missing_ok=True)
 
-    def test_bad_profile_cache_is_ignored_and_cache_write_errors_are_optional(self):
-        inventory = [["Fixture", "uuid", "802-11-wireless"]]
-        for text in ("not json", "[]", '{"version":1}',
-                     json.dumps({"version":1, "inventory":inventory, "updated":100, "profiles":[None]})):
-            self.cache_path.write_text(text)
-            self.assertIsNone(network.read_profile_cache(self.cache_path, inventory, 100))
-        with patch.object(network.os, "replace", side_effect=OSError("fixture failure")):
-            network.write_profile_cache(self.cache_path, inventory, [], 100)
+    def test_profile_cache_rejects_corrupt_stale_and_mismatched_data(self):
+        saved = profile()
+        inventory = [[saved["name"], saved["uuid"], "802-11-wireless"]]
+        # Boolean timestamps would be fresh here if accepted as Python integers.
+        now = 1
+        cached = {"version": 1, "inventory": inventory, "updated": now, "profiles": [saved]}
+        self.cache_path.write_text(json.dumps(cached))
+        self.assertEqual(network.read_profile_cache(self.cache_path, inventory, now), [saved])
+        cases = [
+            ("invalid JSON", "not json"),
+            ("wrong root type", "[]"),
+            ("missing fields", '{"version":1}'),
+            ("unsupported version", json.dumps({**cached, "version": 2})),
+            ("changed inventory", json.dumps({**cached, "inventory": []})),
+            ("missing profile", json.dumps({**cached, "profiles": []})),
+            ("duplicate profile", json.dumps({**cached, "profiles": [saved, saved]})),
+            ("wrong profiles type", json.dumps({**cached, "profiles": {}})),
+            ("wrong profile type", json.dumps({**cached, "profiles": [None]})),
+            *(
+                (f"timestamp {value!r}", json.dumps({**cached, "updated": value}))
+                for value in (True, False, "1", None, float("nan"), float("inf"), now + 1, now - 60)
+            ),
+            *(
+                (f"invalid {field}", json.dumps({**cached, "profiles": [{**saved, field: value}]}))
+                for field, value in (
+                    ("name", "Renamed"), ("uuid", "other-uuid"), ("ssid", None),
+                    ("device", []), ("bssid", 1), ("key", False), ("hidden", "false"),
+                )
+            ),
+        ]
+        for label, text in cases:
+            with self.subTest(case=label):
+                self.cache_path.write_text(text)
+                self.assertIsNone(network.read_profile_cache(self.cache_path, inventory, now))
+
+    def test_failed_cache_replace_preserves_previous_cache_and_cleans_staging_file(self):
+        previous = '{"previous":"cache"}'
+        self.cache_path.write_text(previous)
+        with patch.object(network.os, "replace", side_effect=OSError("fixture failure")) as replace:
+            network.write_profile_cache(self.cache_path, [], [], 100)
+        replace.assert_called_once()
+        self.assertEqual(self.cache_path.read_text(), previous)
         self.assertEqual(list(self.cache_path.parent.glob(".profiles-*")), [])
+
+    def test_cache_write_failure_does_not_discard_discovered_profiles(self):
+        inventory = [["Fixture", "uuid", "802-11-wireless"]]
+        details = [["802-11-wireless.ssid", "Fixture"]]
+        with patch.object(network, "query", side_effect=[inventory, details]), \
+             patch.object(network.os, "replace", side_effect=OSError("fixture failure")) as replace:
+            self.assertEqual(network.wifi_profiles(), [
+                profile(name="Fixture", uuid="uuid", ssid="Fixture", key=""),
+            ])
+        replace.assert_called_once()
+        self.assertFalse(self.cache_path.exists())
+        self.assertEqual(list(self.cache_path.parent.glob(".profiles-*")), [])
+
+    def test_unreadable_profile_cache_is_optional(self):
+        self.cache_path.mkdir()
+        with patch.object(network, "query", side_effect=[[], []]) as query:
+            self.assertEqual(network.wifi_profiles(), [])
+            self.assertEqual(network.wifi_profiles(), [])
+        self.assertEqual(query.call_count, 2)
+        self.assertTrue(self.cache_path.is_dir())
+        self.assertEqual(list(self.cache_path.parent.glob(".profiles-*")), [])
+
+    @patch("network_helper.subprocess.run")
+    def test_nmcli_uses_literal_arguments_bounded_utf8_pipes_and_stable_locale(self, run):
+        args = ["device", "wifi", "list", "ifname", "wlan 0; literal"]
+        for stdin in (None, "synthetic-password\n"):
+            with self.subTest(stdin=stdin):
+                run.reset_mock()
+                run.return_value = subprocess.CompletedProcess([], 4, "", "")
+                with patch.dict(os.environ, {"LC_ALL": "other-locale", "FIXTURE": "preserved"}, clear=True):
+                    result = network.nmcli(args, timeout=7, stdin=stdin)
+                self.assertEqual(result.returncode, 4)
+                run.assert_called_once_with(
+                    ["nmcli", "--colors", "no", "--terse", "--escape", "yes", *args],
+                    input=stdin,
+                    stdin=subprocess.DEVNULL if stdin is None else None,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    encoding="utf-8",
+                    errors="replace",
+                    env={"LC_ALL": "C.UTF-8", "FIXTURE": "preserved"},
+                    timeout=7,
+                    check=False,
+                )
+
+    @patch("network_helper.subprocess.run")
+    def test_failed_state_query_is_not_reported_as_disconnected(self, run):
+        cases = [
+            (8, "private-value", "Could not read NetworkManager state."),
+            (0, "", "NetworkManager status is unavailable."),
+            (0, "disconnected:none:enabled:enabled\n" * 2, "NetworkManager status is unavailable."),
+            (0, "private-value:unsupported\n", "NetworkManager returned an unsupported record."),
+            (0, "private-value\\", "NetworkManager returned an incomplete record."),
+        ]
+        for code, stdout, error in cases:
+            with self.subTest(code=code, stdout=stdout):
+                run.reset_mock()
+                run.return_value = subprocess.CompletedProcess([], code, stdout, "private-value")
+                result = self.run_main("", "status")
+                self.assertFalse(result["ok"])
+                self.assertIn(error, result["error"])
+                self.assertNotIn("state", result)
+                self.assertNotIn("private-value", repr(result))
+                run.assert_called_once()
 
     def test_escaped_unicode_records(self):
         self.assertEqual(
@@ -220,12 +326,26 @@ class NetworkTests(unittest.TestCase):
         self.assertEqual(result, {"ok": False, "error": "The network request is not valid JSON."})
         run.assert_not_called()
 
-    @patch("network_helper.subprocess.run", side_effect=PermissionError("secret123"))
-    def test_nmcli_os_error_is_explicit_and_sanitized(self, run):
-        result = self.run_main(json.dumps({"operation": "connect", "network": access_point(), "password": "secret123"}))
-        self.assertFalse(result["ok"])
-        self.assertIn("Check permissions", result["error"])
-        self.assertNotIn("secret123", repr(result))
+    @patch("network_helper.subprocess.run")
+    def test_nmcli_start_and_timeout_errors_are_explicit_and_sanitized(self, run):
+        failures = [
+            (FileNotFoundError("secret123"), "not installed"),
+            (PermissionError("secret123"), "Check permissions"),
+            (subprocess.TimeoutExpired(["nmcli"], 55, output="secret123", stderr="secret123"),
+             "did not respond in time"),
+        ]
+        for failure, message in failures:
+            with self.subTest(failure=type(failure).__name__):
+                run.reset_mock()
+                run.side_effect = failure
+                result = self.run_main(json.dumps({
+                    "operation": "connect", "network": access_point(), "password": "secret123",
+                }))
+                self.assertFalse(result["ok"])
+                self.assertIn(message, result["error"])
+                self.assertNotIn("secret123", repr(result))
+                run.assert_called_once()
+                self.assertEqual(run.call_args.kwargs["timeout"], 55)
 
     @patch("network_helper.status", side_effect=RuntimeError("programming fault"))
     def test_unexpected_programming_fault_is_not_swallowed(self, status):
@@ -383,18 +503,67 @@ class NetworkTests(unittest.TestCase):
         run.assert_not_called()
 
     @patch("network_helper.nmcli")
-    def test_failure_diagnostics_cannot_expose_secrets(self, run):
-        run.return_value = subprocess.CompletedProcess([], 4, "secret123", "secret123")
-        result = network.action({"operation": "connect", "network": access_point(), "password": "secret123"})
-        self.assertFalse(result["ok"])
-        self.assertTrue(result["needsPassword"])
-        self.assertNotIn("secret123", repr(result))
+    def test_connection_exit_codes_control_retry_without_exposing_diagnostics(self, run):
+        cases = [
+            (0, ""),
+            (3, "timed out"),
+            (4, "Connection failed"),
+            (7, "Check permissions"),
+            (8, "not running"),
+            (10, "no longer available"),
+            (99, "could not complete"),
+        ]
+        for protected in (True, False):
+            for code, message in cases:
+                with self.subTest(protected=protected, code=code):
+                    run.reset_mock()
+                    run.return_value = subprocess.CompletedProcess([], code, "secret123", "secret123")
+                    result = network.action({
+                        "operation": "connect",
+                        "network": access_point(uuid="saved-uuid", protected=protected),
+                        "password": "secret123",
+                    })
+                    run.assert_called_once()
+                    self.assertEqual(result["ok"], code == 0)
+                    self.assertEqual(result["needsPassword"], protected and code in (4, 7))
+                    if code:
+                        self.assertIn(message, result["error"])
+                    else:
+                        self.assertEqual(result["error"], "")
+                    self.assertNotIn("secret123", repr(result))
+
+    @patch("network_helper.nmcli")
+    def test_connection_invalidates_cache_before_and_after_success_or_failure(self, run):
+        for code in (0, 4):
+            with self.subTest(code=code):
+                self.cache_path.write_text("before connection")
+                def connect(*args, **kwargs):
+                    self.assertFalse(self.cache_path.exists())
+                    self.cache_path.write_text("status polled during connection")
+                    return subprocess.CompletedProcess([], code, "", "")
+                run.reset_mock()
+                run.side_effect = connect
+                result = network.action({
+                    "operation": "connect", "network": access_point(uuid="saved-uuid"),
+                })
+                run.assert_called_once()
+                self.assertEqual(result["ok"], code == 0)
+                self.assertFalse(self.cache_path.exists())
 
     @patch("network_helper.nmcli")
     def test_wifi_toggle_does_not_disable_networking(self, run):
-        run.return_value = subprocess.CompletedProcess([], 0, "", "")
-        network.action({"operation": "wifi", "enabled": False})
-        self.assertEqual(run.call_args.args[0], ["--wait", "10", "radio", "wifi", "off"])
+        for enabled in (False, True):
+            for code in (0, 8):
+                with self.subTest(enabled=enabled, code=code):
+                    self.cache_path.write_text("previous cache")
+                    run.reset_mock()
+                    run.return_value = subprocess.CompletedProcess([], code, "private-value", "private-value")
+                    result = network.action({"operation": "wifi", "enabled": enabled})
+                    run.assert_called_once_with(["--wait", "10", "radio", "wifi", "on" if enabled else "off"])
+                    self.assertEqual(result["ok"], code == 0)
+                    self.assertEqual(bool(result["error"]), code != 0)
+                    self.assertNotIn("private-value", repr(result))
+                    self.assertFalse(self.cache_path.exists())
 
     @patch("network_helper.nmcli")
     @patch("network_helper.query")

@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn read_only_selection_obeys_precedence_without_rewriting_persisted_state() {
+    fn selection_obeys_precedence_without_rewriting_persisted_state() {
         use crate::app::config::error::ConfigError;
         use crate::infra::env::MapEnv;
 
@@ -362,40 +362,50 @@ mod tests {
         let config_path = repo.path().join("config");
         let original = std::fs::read(&config_path).unwrap();
 
-        for (cli, environment, expected) in [
-            (Some("base"), Some("invalid"), Ok("base")),
-            (None, Some("base"), Ok("base")),
-            (None, Some(""), Ok("desktop")),
-            (None, None, Ok("desktop")),
-            (Some("invalid"), Some("base"), Err("invalid")),
-            (Some(""), Some("base"), Err("")),
-            (None, Some("invalid"), Err("invalid")),
-            (None, Some(" base "), Err(" base ")),
-        ] {
-            let env = environment.map_or_else(MapEnv::new, |value| {
-                MapEnv::new().with("DOTFILES_PROFILE", value)
-            });
-            let result = resolve_read_only(cli, root.path(), linux_platform(), &env);
-            match expected {
-                Ok(name) => assert_eq!(result.unwrap().name, name, "{cli:?}/{environment:?}"),
-                Err(name) => {
-                    let error = result.unwrap_err();
-                    let Some(ConfigError::InvalidProfile {
-                        name: actual,
-                        available,
-                    }) = error.downcast_ref::<ConfigError>()
-                    else {
-                        panic!("expected invalid-profile error, got {error:#}");
-                    };
-                    assert_eq!(actual, name);
-                    assert_eq!(available, "base, desktop");
+        for read_only in [false, true] {
+            for (cli, environment, expected) in [
+                (Some("base"), Some("invalid"), Ok("base")),
+                (None, Some("base"), Ok("base")),
+                (None, Some(""), Ok("desktop")),
+                (None, None, Ok("desktop")),
+                (Some("invalid"), Some("base"), Err("invalid")),
+                (Some(""), Some("base"), Err("")),
+                (None, Some("invalid"), Err("invalid")),
+                (None, Some(" base "), Err(" base ")),
+            ] {
+                let env = environment.map_or_else(MapEnv::new, |value| {
+                    MapEnv::new().with("DOTFILES_PROFILE", value)
+                });
+                let result = if read_only {
+                    resolve_read_only(cli, root.path(), linux_platform(), &env)
+                } else {
+                    resolve_from_args(cli, root.path(), linux_platform(), &env, true)
+                };
+                match expected {
+                    Ok(name) => assert_eq!(
+                        result.unwrap().name,
+                        name,
+                        "read_only={read_only}, {cli:?}/{environment:?}"
+                    ),
+                    Err(name) => {
+                        let error = result.unwrap_err();
+                        let Some(ConfigError::InvalidProfile {
+                            name: actual,
+                            available,
+                        }) = error.downcast_ref::<ConfigError>()
+                        else {
+                            panic!("expected invalid-profile error, got {error:#}");
+                        };
+                        assert_eq!(actual, name);
+                        assert_eq!(available, "base, desktop");
+                    }
                 }
+                assert_eq!(
+                    std::fs::read(&config_path).unwrap(),
+                    original,
+                    "read_only={read_only}, {cli:?}/{environment:?}: only interactive selection may persist a profile"
+                );
             }
-            assert_eq!(
-                std::fs::read(&config_path).unwrap(),
-                original,
-                "{cli:?}/{environment:?}: discovery must never persist a selection"
-            );
         }
     }
 }

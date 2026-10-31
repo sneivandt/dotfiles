@@ -326,6 +326,116 @@ mod tests {
     }
 
     #[test]
+    fn write_failures_close_only_the_affected_stream_and_retain_the_first_real_error() {
+        use std::io::{Error, ErrorKind};
+
+        for error_stream in [false, true] {
+            for first_kind in [ErrorKind::BrokenPipe, ErrorKind::WriteZero] {
+                let mut state = super::ConsoleState {
+                    enabled: true,
+                    ..super::ConsoleState::default()
+                };
+                state.write_using(error_stream, || {
+                    Err(Error::new(first_kind, "first failure"))
+                });
+                state.write_using(error_stream, || {
+                    panic!("a failed stream must not be retried")
+                });
+                assert_eq!(state.stderr_closed, error_stream);
+                assert_eq!(state.stdout_closed, !error_stream);
+                assert_eq!(
+                    state.output_error.as_ref().map(Error::kind),
+                    (first_kind != ErrorKind::BrokenPipe).then_some(first_kind)
+                );
+
+                let writes = std::cell::Cell::new(0);
+                state.write_using(!error_stream, || {
+                    writes.set(writes.get() + 1);
+                    Ok(())
+                });
+                assert_eq!(writes.get(), 1, "the other stream must remain usable");
+                state.write_using(!error_stream, || {
+                    Err(Error::new(ErrorKind::PermissionDenied, "second failure"))
+                });
+                state.write_using(!error_stream, || {
+                    panic!("both failed streams must stay closed")
+                });
+                assert!(state.stdout_closed && state.stderr_closed);
+                assert_eq!(
+                    state
+                        .output_error
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .as_deref(),
+                    Some(if first_kind == ErrorKind::BrokenPipe {
+                        "second failure"
+                    } else {
+                        "first failure"
+                    }),
+                    "a broken pipe must not mask a later actionable failure"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn finishing_a_run_preserves_output_failures_in_exit_status_and_persistent_records() {
+        use super::super::records::{Record, RunOutcome, StoredRecord};
+        use super::super::{Logger, Output, OutputMode};
+        use std::io::{Error, ErrorKind};
+
+        for (error_stream, kind, expected_code, expected_outcome) in [
+            (false, ErrorKind::BrokenPipe, 0, RunOutcome::Succeeded),
+            (true, ErrorKind::BrokenPipe, 0, RunOutcome::Succeeded),
+            (false, ErrorKind::WriteZero, 1, RunOutcome::Failed),
+            (true, ErrorKind::PermissionDenied, 1, RunOutcome::Failed),
+        ] {
+            for mode in [OutputMode::Human, OutputMode::Quiet, OutputMode::Jsonl] {
+                let root = tempfile::tempdir_in(".").unwrap();
+                let mut log = Logger::new_in("update", root.path());
+                log.set_output_mode(mode);
+                log.start_run(None);
+                {
+                    let mut state = log.console.lock();
+                    state.enabled = true;
+                    state.write_using(error_stream, || {
+                        Err(Error::new(kind, "fixture output failure"))
+                    });
+                    state.enabled = false;
+                }
+
+                assert_eq!(log.finish_run(0), expected_code, "{mode:?}: {kind:?}");
+                assert_eq!(log.finish_run(0), expected_code, "repeated completion");
+                let content = std::fs::read_to_string(log.log_path().unwrap()).unwrap();
+                let finishes: Vec<_> = content
+                    .lines()
+                    .filter_map(StoredRecord::from_line)
+                    .filter_map(|stored| {
+                        if let Record::RunFinish {
+                            outcome, exit_code, ..
+                        } = stored.record
+                        {
+                            Some((outcome, exit_code))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                assert_eq!(
+                    finishes,
+                    [(expected_outcome, expected_code)],
+                    "{mode:?}: retained completion must describe the effective outcome exactly once"
+                );
+                assert_eq!(
+                    content.contains("writing command output: fixture output failure"),
+                    kind != ErrorKind::BrokenPipe,
+                    "{mode:?}: only actionable output failures belong in diagnostics"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn progress_redraws_replace_the_active_row_only_in_human_mode() {
         for mode in [
             super::super::OutputMode::Human,

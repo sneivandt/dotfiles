@@ -571,73 +571,107 @@ fn failed_batch_inventory_errors_remain_errors_not_partial_success() {
 }
 
 #[test]
-fn winget_unmet_install_is_recorded_as_a_package_failure() {
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let r1 = PackageResource::new(
-        "Git.Git".to_string(),
-        PackageManager::Winget,
-        Arc::clone(&executor),
-    );
-    let report =
-        install_missing_packages(PackageManager::Winget, &[&r1], &*executor, &|_| {}).unwrap();
-    assert_eq!(report.applied_count(), 0);
-    assert_eq!(report.failures().len(), 1);
-    let failure = &report.failures()[0];
-    assert_eq!(failure.package, "Git.Git");
-    assert!(
-        failure.reason.contains("winget install failed"),
-        "unexpected failure: {failure:?}"
-    );
-}
+fn winget_install_report_continues_after_individual_failures_without_losing_outcomes() {
+    for (case, failure) in [
+        (
+            "installer failure",
+            Ok(ExecResult::failure(
+                "",
+                "fixture installer failure",
+                Some(1),
+            )),
+        ),
+        (
+            "spawn failure",
+            Err(ExecError::spawn(
+                "winget",
+                std::io::Error::other("fixture installer failure"),
+            )),
+        ),
+        (
+            "timeout",
+            Err(ExecError::TimedOut {
+                command: "winget".into(),
+                timeout: std::time::Duration::from_secs(30),
+                result: ExecResult::failure("", "fixture installer failure", None),
+            }),
+        ),
+    ] {
+        let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let names = ["First.App", "Second.App", "Already.Present"];
+        let mut mock = MockExecutor::new();
+        let mut sequence = mockall::Sequence::new();
+        for (name, outcome) in names.into_iter().zip([
+            failure,
+            Ok(ExecResult::success("")),
+            Ok(ExecResult::failure("", "", Some(-1_978_335_189))),
+        ]) {
+            let recorded = Arc::clone(&events);
+            mock.expect_execute()
+                .once()
+                .in_sequence(&mut sequence)
+                .return_once(move |spec| {
+                    assert_eq!(spec.program(), "winget");
+                    assert_eq!(
+                        spec.arguments(),
+                        [
+                            "install",
+                            "--id",
+                            name,
+                            "--exact",
+                            "--source",
+                            "winget",
+                            "--accept-source-agreements",
+                            "--accept-package-agreements",
+                            "--disable-interactivity",
+                            "--scope",
+                            "user",
+                        ]
+                    );
+                    assert!(!spec.is_checked());
+                    assert_eq!(spec.working_dir(), None);
+                    recorded.lock().unwrap().push(format!("install:{name}"));
+                    outcome
+                });
+        }
+        let executor: Arc<dyn Executor> = Arc::new(mock);
+        let resources = names.map(|name| {
+            PackageResource::new(name.into(), PackageManager::Winget, Arc::clone(&executor))
+        });
+        let report = install_missing_packages(
+            PackageManager::Winget,
+            &resources.iter().collect::<Vec<_>>(),
+            &*executor,
+            &|package| {
+                events.lock().unwrap().push(format!("progress:{package}"));
+            },
+        )
+        .unwrap();
 
-#[test]
-fn winget_install_report_tracks_successful_package_names() {
-    let mut seq = mockall::Sequence::new();
-    let mut mock = MockExecutor::new();
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| Ok(ExecResult::failure("", "", Some(1))));
-    mock.expect_execute()
-        .once()
-        .in_sequence(&mut seq)
-        .returning(|_| Ok(ExecResult::success("")));
-
-    let executor: Arc<dyn Executor> = Arc::new(mock);
-    let first = PackageResource::new(
-        "First.App".to_string(),
-        PackageManager::Winget,
-        Arc::clone(&executor),
-    );
-    let second = PackageResource::new(
-        "Second.App".to_string(),
-        PackageManager::Winget,
-        Arc::clone(&executor),
-    );
-
-    let announced = std::sync::Mutex::new(Vec::new());
-    let report = install_missing_packages(
-        PackageManager::Winget,
-        &[&first, &second],
-        &*executor,
-        &|package| {
-            announced.lock().unwrap().push(package.to_string());
-        },
-    )
-    .unwrap();
-
-    assert_eq!(
-        *announced.lock().unwrap(),
-        vec!["First.App".to_string(), "Second.App".to_string()],
-        "each package is announced before it is installed",
-    );
-    assert_eq!(report.applied_count(), 1);
-    assert_eq!(report.failures().len(), 1);
-    assert_eq!(report.failures()[0].package, "First.App");
+        assert_eq!(report.applied_count(), 1, "{case}");
+        assert_eq!(report.already_correct_count(), 1, "{case}");
+        assert_eq!(report.failures().len(), 1, "{case}");
+        let recorded_failure = &report.failures()[0];
+        assert_eq!(recorded_failure.package, "First.App", "{case}");
+        assert!(
+            recorded_failure
+                .reason
+                .contains("fixture installer failure"),
+            "{case}: {recorded_failure:?}"
+        );
+        assert_eq!(
+            *events.lock().unwrap(),
+            [
+                "progress:First.App",
+                "install:First.App",
+                "progress:Second.App",
+                "install:Second.App",
+                "progress:Already.Present",
+                "install:Already.Present",
+            ],
+            "{case}: announce each package immediately before installing it"
+        );
+    }
 }
 
 #[test]

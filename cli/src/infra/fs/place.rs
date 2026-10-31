@@ -261,15 +261,58 @@ mod tests {
     }
 
     #[test]
-    fn rename_into_place_reports_both_paths_on_failure() {
-        let dir = tempfile::tempdir().unwrap();
-        let staged = dir.path().join("missing");
-        let target = dir.path().join("target");
+    fn rename_into_place_preserves_staging_and_existing_targets_on_failure() {
+        for staged_exists in [false, true] {
+            let root = tempfile::tempdir_in(".").unwrap();
+            let staged = root.path().join("staged");
+            let target = root.path().join("target");
+            let retained = if staged_exists {
+                std::fs::write(&staged, "replacement").unwrap();
+                std::fs::create_dir(&target).unwrap();
+                target.join("keep")
+            } else {
+                target.clone()
+            };
+            std::fs::write(&retained, "existing content").unwrap();
 
-        let error = rename_into_place(&staged, &target).unwrap_err();
+            let error = rename_into_place(&staged, &target).unwrap_err();
 
-        let rendered = format!("{error:#}");
-        assert!(rendered.contains("missing"), "got: {rendered}");
-        assert!(rendered.contains("target"), "got: {rendered}");
+            assert_eq!(
+                error.to_string(),
+                format!("rename {} to {}", staged.display(), target.display())
+            );
+            let source = error.downcast_ref::<std::io::Error>().unwrap();
+            if staged_exists {
+                assert_eq!(std::fs::read_to_string(&staged).unwrap(), "replacement");
+                assert_eq!(std::fs::read_dir(&target).unwrap().count(), 1);
+            } else {
+                assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
+                assert!(!staged.exists());
+            }
+            assert_eq!(
+                std::fs::read_to_string(&retained).unwrap(),
+                "existing content"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomic_replaces_dangling_symlinks_without_creating_their_referents() {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let missing = root.path().join("missing-parent").join("referent");
+        let target = root.path().join("config");
+        std::os::unix::fs::symlink(std::path::absolute(&missing).unwrap(), &target).unwrap();
+
+        write_atomic(&target, [0, 0xff, b'\n']).unwrap();
+
+        assert!(std::fs::symlink_metadata(&target).unwrap().is_file());
+        assert_eq!(std::fs::read(&target).unwrap(), [0, 0xff, b'\n']);
+        assert_eq!(
+            target.metadata().unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(!missing.parent().unwrap().exists());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
     }
 }

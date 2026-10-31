@@ -629,4 +629,62 @@ mod tests {
         let error = resource.apply().unwrap_err().to_string();
         assert!(error.contains("account database unavailable"), "{error}");
     }
+
+    #[test]
+    fn account_lookup_spawn_failure_is_not_reported_as_missing_state() {
+        let mut mock = MockExecutor::new();
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "getent"
+                    && spec.arguments() == ["passwd", "stuart"]
+                    && !spec.is_checked()
+                    && spec.working_dir().is_none()
+            })
+            .returning(|_| {
+                Err(ExecError::spawn(
+                    "getent",
+                    std::io::Error::other("account lookup could not start"),
+                ))
+            });
+        let resource =
+            DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"))
+                .with_root(false);
+
+        let error = resource.current_state().unwrap_err().to_string();
+        assert!(error.contains("account lookup could not start"), "{error}");
+    }
+
+    #[test]
+    fn sudo_probe_spawn_failure_does_not_fall_back_to_interactive_chsh() {
+        let mut mock = MockExecutor::new();
+        mock.expect_which_path()
+            .once()
+            .withf(|program| program == "zsh")
+            .returning(|_| Ok(PathBuf::from("/usr/bin/zsh")));
+        mock.expect_which()
+            .once()
+            .withf(|program| program == "sudo")
+            .return_const(true);
+        mock.expect_execute()
+            .once()
+            .withf(|spec| {
+                spec.program() == "sudo"
+                    && spec.arguments() == ["-n", "true"]
+                    && !spec.is_checked()
+                    && spec.working_dir().is_none()
+            })
+            .returning(|_| {
+                Err(ExecError::spawn(
+                    "sudo",
+                    std::io::Error::other("sudo probe could not start"),
+                ))
+            });
+        let resource =
+            DefaultShellResource::new("zsh".to_string(), Arc::new(mock), env_for("stuart"))
+                .with_root(false);
+
+        let error = resource.apply().unwrap_err().to_string();
+        assert!(error.contains("sudo probe could not start"), "{error}");
+    }
 }

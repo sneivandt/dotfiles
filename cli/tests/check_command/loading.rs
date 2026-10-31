@@ -27,13 +27,13 @@ fn config_loads_from_minimal_repo_for_both_profiles() {
     }
 }
 
-/// Loading config with the desktop profile fixture yields symlinks from both
-/// the `[base]` and `[desktop]` sections.
+/// Loading the same fixture with different profiles changes only the active
+/// sections, rather than treating a desktop section as an unconditional list.
 ///
 /// Uses the [`desktop_profile.toml`](fixtures/desktop_profile.toml) fixture with
 /// both source files created on disk.
 #[test]
-fn config_loads_with_desktop_fixture() {
+fn config_selects_only_active_sections_from_desktop_fixture() {
     let ctx = common::TestContextBuilder::new()
         .with_config_file(
             "symlinks.toml",
@@ -43,17 +43,21 @@ fn config_loads_with_desktop_fixture() {
         .with_symlink_source("config/Code/User/settings.json")
         .build();
 
-    let config = ctx.load_config("desktop");
-    let sources: Vec<_> = config
-        .symlinks
-        .iter()
-        .map(|link| link.source.as_str())
-        .collect();
-    assert_eq!(
-        sources,
-        ["bashrc", "config/Code/User/settings.json"],
-        "desktop fixture must preserve each selected section, not duplicate one"
-    );
+    for (profile, expected) in [
+        ("base", vec!["bashrc"]),
+        ("desktop", vec!["bashrc", "config/Code/User/settings.json"]),
+    ] {
+        let config = ctx.load_config(profile);
+        let sources: Vec<_> = config
+            .symlinks
+            .iter()
+            .map(|link| link.source.as_str())
+            .collect();
+        assert_eq!(
+            sources, expected,
+            "{profile}: preserve each active section and exclude inactive sections"
+        );
+    }
 }
 
 /// Config loading must reject a missing main configuration file.
@@ -68,34 +72,6 @@ fn config_rejects_missing_main_config_file() {
     let error = Config::load(ctx.root_path(), &profile, platform, None)
         .expect_err("missing config should fail");
     assert!(error.to_string().contains("agent-settings.toml"));
-}
-
-// ---------------------------------------------------------------------------
-// Profile resolution
-// ---------------------------------------------------------------------------
-
-/// Both built-in profiles must resolve successfully.
-#[test]
-fn both_builtin_profiles_resolve() {
-    let platform = Platform::detect();
-
-    let base = profiles::resolve("base", platform);
-    let desktop = profiles::resolve("desktop", platform);
-
-    assert!(base.is_ok(), "base profile should resolve");
-    assert!(desktop.is_ok(), "desktop profile should resolve");
-}
-
-/// Requesting a non-existent profile must return an error.
-#[test]
-fn unknown_profile_returns_error() {
-    let platform = Platform::detect();
-
-    let result = profiles::resolve("nonexistent", platform);
-    assert!(
-        result.is_err(),
-        "resolving an unknown profile should return an error"
-    );
 }
 
 // ---------------------------------------------------------------------------

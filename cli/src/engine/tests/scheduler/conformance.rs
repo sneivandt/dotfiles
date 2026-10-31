@@ -323,12 +323,21 @@ fn cancellation_before_dispatch_and_after_start_records_every_task() {
 }
 
 #[test]
-fn interrupted_execution_cancels_dependents_without_a_global_request() {
+fn interrupted_execution_cancels_transitive_dependents_but_not_independent_work() {
     conformance("typed cancellation", |mode, ctx, log| {
         let root = TestTask::new("interrupted").returning(Behavior::Interrupted);
         let child = TestTask::new("child").after(&[&root]);
         let ordered = TestTask::new("ordered").ordered_after(&[&root]);
-        let summary = mode.run(&[&child, &ordered, &root], ctx, log, None);
+        let leaf = TestTask::new("leaf").after(&[&ordered]);
+        let ordered_leaf = TestTask::new("ordered-leaf").ordered_after(&[&child]);
+        let independent = TestTask::new("independent");
+        let summary = mode.run(
+            &[&leaf, &ordered_leaf, &child, &ordered, &root, &independent],
+            ctx,
+            log,
+            None,
+        );
+        root.assert_ran(true);
         root.assert_record(
             log,
             &summary,
@@ -336,7 +345,7 @@ fn interrupted_execution_cancels_dependents_without_a_global_request() {
             TaskOutcome::Cancelled,
             Some("interrupted"),
         );
-        for task in [&child, &ordered] {
+        for task in [&child, &ordered, &leaf, &ordered_leaf] {
             task.assert_ran(false);
             task.assert_record(
                 log,
@@ -346,6 +355,8 @@ fn interrupted_execution_cancels_dependents_without_a_global_request() {
                 Some("cancelled"),
             );
         }
+        independent.assert_ran(true);
+        independent.assert_record(log, &summary, TaskStatus::Ok, TaskOutcome::Satisfied, None);
         assert!(
             !ctx.is_cancelled(),
             "typed interruption alone propagates over both edge kinds"

@@ -63,7 +63,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn marker_converges_idempotently() {
+    fn marker_apply_creates_an_explained_deferral() {
         let home = tempfile::tempdir().unwrap();
         let resource = DeferredExtensionsResource::new(home.path());
 
@@ -76,5 +76,83 @@ mod tests {
                 .contains("dotfiles-first-login service"),
             "the marker should explain who consumes it"
         );
+    }
+
+    #[test]
+    fn marker_discovery_preserves_existing_files_and_rejects_directories() {
+        for (case, content) in [
+            ("empty marker", ""),
+            ("custom marker", "pending extensions\n"),
+        ] {
+            let home = tempfile::tempdir().unwrap();
+            let resource = DeferredExtensionsResource::new(home.path());
+            std::fs::create_dir_all(resource.marker.parent().unwrap()).unwrap();
+            std::fs::write(&resource.marker, content).unwrap();
+
+            assert_eq!(
+                resource.current_state().unwrap(),
+                ResourceState::Correct,
+                "{case}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&resource.marker).unwrap(),
+                content,
+                "{case}"
+            );
+        }
+
+        let home = tempfile::tempdir().unwrap();
+        let resource = DeferredExtensionsResource::new(home.path());
+        std::fs::create_dir_all(&resource.marker).unwrap();
+        let sentinel = resource.marker.join("user-data");
+        std::fs::write(&sentinel, "preserve").unwrap();
+
+        assert!(
+            matches!(
+                resource.current_state().unwrap(),
+                ResourceState::Invalid { reason } if reason.contains("not a regular file")
+            ),
+            "a directory must not be accepted as a completed marker"
+        );
+        assert_eq!(std::fs::read_to_string(sentinel).unwrap(), "preserve");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn marker_symlinks_are_invalid_even_when_the_target_is_a_regular_file() {
+        let home = tempfile::tempdir().unwrap();
+        let resource = DeferredExtensionsResource::new(home.path());
+        let target = home.path().join("user-marker");
+        std::fs::write(&target, "user-owned").unwrap();
+        std::fs::create_dir_all(resource.marker.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&target, &resource.marker).unwrap();
+
+        for target_exists in [true, false] {
+            if !target_exists {
+                std::fs::remove_file(&target).unwrap();
+            }
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { .. }
+                ),
+                "marker discovery must not follow symlinks; target_exists={target_exists}"
+            );
+            assert_eq!(std::fs::read_link(&resource.marker).unwrap(), target);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn marker_inspection_errors_are_not_reported_as_missing() {
+        let home = tempfile::tempdir().unwrap();
+        let parent = home.path().join(".local");
+        std::os::unix::fs::symlink(".local", &parent).unwrap();
+        let resource = DeferredExtensionsResource::new(home.path());
+
+        resource
+            .current_state()
+            .expect_err("a looping parent is an inspection failure, not an absent marker");
+        assert_eq!(std::fs::read_link(parent).unwrap(), Path::new(".local"));
     }
 }

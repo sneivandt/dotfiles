@@ -262,6 +262,72 @@ mod tests {
     }
 
     #[test]
+    fn only_a_true_flag_for_the_requested_target_skips_experimental_enablement() {
+        for (target, config_key, other_key) in [
+            ("copilot-app", "copilot_app", "copilot_cowork"),
+            ("copilot-cowork", "copilot_cowork", "copilot_app"),
+        ] {
+            for (case, contents, enabled) in [
+                ("missing", None, false),
+                ("invalid-json", Some("not json".to_string()), false),
+                ("missing-flag", Some("{}".to_string()), false),
+                (
+                    "wrong-shape",
+                    Some(r#"{"experimental":true}"#.to_string()),
+                    false,
+                ),
+                (
+                    "false",
+                    Some(format!(r#"{{"experimental":{{"{config_key}":false}}}}"#)),
+                    false,
+                ),
+                (
+                    "string",
+                    Some(format!(r#"{{"experimental":{{"{config_key}":"true"}}}}"#)),
+                    false,
+                ),
+                (
+                    "other-target",
+                    Some(format!(r#"{{"experimental":{{"{other_key}":true}}}}"#)),
+                    false,
+                ),
+                (
+                    "enabled",
+                    Some(format!(r#"{{"experimental":{{"{config_key}":true}}}}"#)),
+                    true,
+                ),
+            ] {
+                let dir = tempfile::tempdir_in(".").unwrap();
+                let path = apm_config_path(dir.path());
+                if let Some(contents) = &contents {
+                    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                    std::fs::write(&path, contents).unwrap();
+                }
+                let mut mock = MockExecutor::new();
+                if !enabled {
+                    let home = dir.path().to_path_buf();
+                    mock.expect_execute().once().returning(move |spec| {
+                        assert_apm_command(&spec);
+                        assert_eq!(spec.arguments(), ["experimental", "enable", target]);
+                        assert_eq!(spec.working_dir(), Some(home.as_path()));
+                        Ok(ExecResult::success("enabled"))
+                    });
+                }
+                let ctx = make_context_with_home(dir.path(), Platform::new(Os::Linux, false), mock);
+
+                ensure_experimental_target_enabled(&ctx, target, config_key)
+                    .unwrap_or_else(|error| panic!("{target}/{case}: {error:#}"));
+
+                if let Some(contents) = contents {
+                    assert_eq!(std::fs::read(&path).unwrap(), contents.as_bytes(), "{case}");
+                } else {
+                    assert!(!path.parent().unwrap().exists());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn non_cancelled_target_enablement_failure_remains_best_effort() {
         for target in ["copilot-app", "copilot-cowork"] {
             let dir = tempfile::tempdir_in(".").unwrap();

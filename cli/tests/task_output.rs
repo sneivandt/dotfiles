@@ -110,7 +110,11 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
         ("apm-plugins", "apm"),
         ("psscriptanalyzer", "pwsh"),
     ] {
-        for strict in [false, true] {
+        for (policy, strict, ci, expected_code) in [
+            ("default", false, false, 0),
+            ("explicit strictness", true, false, 1),
+            ("CI presence", false, true, 1),
+        ] {
             let mut command = common::cli_command(
                 repo.root_path(),
                 home.path(),
@@ -122,12 +126,15 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
             if strict {
                 command.arg("--fail-on-skip");
             }
+            if ci {
+                command.env("CI", "");
+            }
             let output = command.output().unwrap();
             let stdout = String::from_utf8(output.stdout).unwrap();
             assert_eq!(
-                output.status.success(),
-                !strict,
-                "{stdout}\n{}",
+                output.status.code(),
+                Some(expected_code),
+                "{selector}, {policy}: {stdout}\n{}",
                 String::from_utf8_lossy(&output.stderr)
             );
             assert!(
@@ -135,7 +142,7 @@ fn unavailable_check_tools_explain_skips_and_fail_when_required() {
                 "{stdout}"
             );
             assert!(
-                stdout.contains(if strict {
+                stdout.contains(if expected_code == 1 {
                     "1 task failed"
                 } else {
                     "1 task skipped"

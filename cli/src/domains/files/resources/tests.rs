@@ -946,45 +946,223 @@ mod symlink {
         }
     }
 
-    #[cfg(unix)]
     #[test]
-    fn symlink_resource_apply_replaces_regular_file_with_symlink() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let source = temp_dir.path().join("source");
-        let target = temp_dir.path().join("target");
+    fn symlink_apply_replaces_only_the_target_and_converges() {
+        for directory in [false, true] {
+            for existing in ["file", "empty directory", "wrong link", "dangling link"] {
+                let fixture = tempfile::tempdir_in(".").unwrap();
+                let root = fixture.path().canonicalize().unwrap();
+                let source = root.join("source");
+                let target = root.join("target");
+                let other = root.join("other");
+                let source_file = if directory {
+                    std::fs::create_dir(&source).unwrap();
+                    source.join("content")
+                } else {
+                    source.clone()
+                };
+                std::fs::write(&source_file, "managed content").unwrap();
+                std::fs::write(&other, "unmanaged content").unwrap();
+                match existing {
+                    "file" => std::fs::write(&target, "replaced content").unwrap(),
+                    "empty directory" => std::fs::create_dir(&target).unwrap(),
+                    "wrong link" => {
+                        crate::infra::fs::create_native_symlink(&other, &target, false).unwrap();
+                    }
+                    "dangling link" => {
+                        crate::infra::fs::create_native_symlink(
+                            &root.join("absent"),
+                            &target,
+                            false,
+                        )
+                        .unwrap();
+                    }
+                    _ => panic!("unexpected target kind: {existing}"),
+                }
+                let resource = SymlinkResource::new(
+                    source,
+                    target.clone(),
+                    Arc::new(crate::infra::exec::MockExecutor::new()),
+                );
+
+                assert!(
+                    matches!(
+                        resource.current_state().unwrap(),
+                        ResourceState::Incorrect { .. }
+                    ),
+                    "directory={directory}, existing={existing}"
+                );
+                assert_eq!(resource.apply().unwrap(), ResourceChange::Applied);
+                assert!(target.symlink_metadata().unwrap().is_symlink());
+                assert!(paths_equal(
+                    &std::fs::read_link(&target).unwrap(),
+                    &resource.source
+                ));
+                assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
+                assert_eq!(resource.apply().unwrap(), ResourceChange::AlreadyCorrect);
+                assert_eq!(
+                    std::fs::read_to_string(&source_file).unwrap(),
+                    "managed content"
+                );
+                assert_eq!(
+                    std::fs::read_to_string(&other).unwrap(),
+                    "unmanaged content"
+                );
+                assert_eq!(std::fs::read_dir(&root).unwrap().count(), 3);
+            }
+        }
+    }
+
+    #[track_caller]
+    fn assert_dry_run_target_unchanged(parent: &Path, target: &Path, existing: &str) {
+        if existing == "missing" {
+            assert!(!parent.exists(), "preview must not create target parents");
+            assert!(target.symlink_metadata().is_err());
+        } else {
+            assert_eq!(std::fs::read_dir(parent).unwrap().count(), 1);
+            match existing {
+                "file" => {
+                    assert!(target.symlink_metadata().unwrap().is_file());
+                    assert_eq!(std::fs::read_to_string(target).unwrap(), "user content");
+                }
+                "directory" => {
+                    assert!(target.symlink_metadata().unwrap().is_dir());
+                    assert_eq!(
+                        std::fs::read_to_string(target.join("user-file")).unwrap(),
+                        "user content"
+                    );
+                }
+                _ => assert!(target.symlink_metadata().unwrap().is_symlink()),
+            }
+        }
+    }
+
+    #[test]
+    fn symlink_apply_and_remove_dry_runs_preserve_every_target_kind() {
+        use crate::engine::{ProcessOpts, process_resources, process_resources_remove};
+        use crate::test_helpers::{ContextBuilder, task_batch};
+
+        for directory in [false, true] {
+            for existing in ["missing", "managed", "file", "directory", "dangling"] {
+                let fixture = tempfile::tempdir_in(".").unwrap();
+                let root = fixture.path().canonicalize().unwrap();
+                let source = root.join("source");
+                let parent = root.join("home");
+                let target = parent.join("target");
+                let source_file = if directory {
+                    std::fs::create_dir(&source).unwrap();
+                    source.join("content")
+                } else {
+                    source.clone()
+                };
+                std::fs::write(&source_file, "managed content").unwrap();
+                if existing != "missing" {
+                    std::fs::create_dir(&parent).unwrap();
+                }
+                match existing {
+                    "managed" => {
+                        crate::infra::fs::create_native_symlink(&source, &target, directory)
+                            .unwrap();
+                    }
+                    "file" => std::fs::write(&target, "user content").unwrap(),
+                    "directory" => {
+                        std::fs::create_dir(&target).unwrap();
+                        std::fs::write(target.join("user-file"), "user content").unwrap();
+                    }
+                    "dangling" => {
+                        crate::infra::fs::create_native_symlink(
+                            Path::new("missing-user-source"),
+                            &target,
+                            false,
+                        )
+                        .unwrap();
+                    }
+                    "missing" => {}
+                    _ => panic!("unexpected target kind: {existing}"),
+                }
+                let original_link = std::fs::read_link(&target).ok();
+                let resource = SymlinkResource::new(
+                    source,
+                    target.clone(),
+                    Arc::new(crate::infra::exec::MockExecutor::new()),
+                );
+                let ctx = ContextBuilder::new(root.clone())
+                    .overlay(None)
+                    .build()
+                    .with_dry_run(true);
+                for remove in [false, true] {
+                    let result = if remove {
+                        process_resources_remove(&ctx, [resource.clone()], "unlink")
+                    } else {
+                        process_resources(&ctx, [resource.clone()], &ProcessOpts::strict("link"))
+                    }
+                    .unwrap();
+                    let expected_change = if remove {
+                        matches!(existing, "missing" | "managed")
+                    } else {
+                        existing != "managed"
+                    };
+                    let stats = task_batch(&result);
+                    assert_eq!(
+                        stats.changed_count(),
+                        u32::from(expected_change),
+                        "directory={directory}, existing={existing}, remove={remove}"
+                    );
+                    assert_eq!(stats.already_ok_count(), u32::from(!expected_change));
+                    assert_eq!(stats.failed_count(), 0);
+                    assert_eq!(stats.skipped_count(), 0);
+                    assert_eq!(
+                        std::fs::read_to_string(&source_file).unwrap(),
+                        "managed content"
+                    );
+                    assert_eq!(std::fs::read_link(&target).ok(), original_link);
+                    assert_dry_run_target_unchanged(&parent, &target, existing);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn symlink_target_inspection_errors_never_trigger_install_or_materialization() {
+        let fixture = tempfile::tempdir_in(".").unwrap();
+        let source = fixture.path().join("source");
         std::fs::write(&source, "managed content").unwrap();
-        std::fs::write(&target, "user content").unwrap();
-
-        let resource = SymlinkResource::new(source.clone(), target.clone(), system_executor());
-
-        let result = resource.apply().unwrap();
-        assert!(matches!(result, ResourceChange::Applied));
-        assert!(
-            std::fs::symlink_metadata(&target).unwrap().is_symlink(),
-            "regular file target must be replaced by a symlink"
+        let resource = SymlinkResource::new(
+            source.clone(),
+            fixture.path().join("invalid\0target"),
+            Arc::new(crate::infra::exec::MockExecutor::new()),
         );
-        let link_target = std::fs::read_link(&target).unwrap();
-        assert_eq!(link_target, source);
+
+        for error in [
+            resource.current_state().unwrap_err(),
+            resource.apply().unwrap_err(),
+            resource.remove().unwrap_err(),
+        ] {
+            assert!(format!("{error:#}").contains("stat target"), "{error:#}");
+        }
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), "managed content");
+        assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 1);
     }
 
     #[test]
     fn remove_materializes_files_and_directories_even_when_links_are_gone() {
         for directory in [false, true] {
             for missing_link in [false, true] {
-                let fixture = tempfile::tempdir().unwrap();
-                let source = fixture.path().join("source");
-                let target = fixture.path().join("target");
+                let fixture = tempfile::tempdir_in(".").unwrap();
+                let root = fixture.path().canonicalize().unwrap();
+                let source = root.join("source");
+                let target = root.join("target");
                 let files = if directory {
                     std::fs::create_dir_all(source.join("sub")).unwrap();
                     &[("a.txt", "aaa"), ("sub/b.txt", "bbb")][..]
                 } else {
                     &[("", "hello dotfiles")][..]
                 };
-                let content_path = |root: &Path, relative: &str| {
+                let content_path = |base: &Path, relative: &str| {
                     if relative.is_empty() {
-                        root.to_path_buf()
+                        base.to_path_buf()
                     } else {
-                        root.join(relative)
+                        base.join(relative)
                     }
                 };
                 for &(relative, content) in files {
@@ -1001,8 +1179,11 @@ mod symlink {
                         .unwrap();
                     }
                 }
-                let resource =
-                    SymlinkResource::new(source.clone(), target.clone(), system_executor());
+                let resource = SymlinkResource::new(
+                    source.clone(),
+                    target.clone(),
+                    Arc::new(crate::infra::exec::MockExecutor::new()),
+                );
                 resource.apply().unwrap();
                 assert_eq!(resource.current_state().unwrap(), ResourceState::Correct);
                 if missing_link {
@@ -1014,7 +1195,7 @@ mod symlink {
                     assert!(target.symlink_metadata().is_err(), "target must be absent");
                 }
 
-                resource.remove().unwrap();
+                assert_eq!(resource.remove().unwrap(), ResourceChange::Applied);
 
                 let metadata = target.symlink_metadata().unwrap();
                 assert!(
@@ -1048,6 +1229,22 @@ mod symlink {
                         );
                     }
                 }
+                let (relative, original_content) = files[0];
+                let materialized_file = content_path(&target, relative);
+                std::fs::write(&materialized_file, "user edit after uninstall").unwrap();
+                assert!(matches!(
+                    resource.remove().unwrap(),
+                    ResourceChange::Skipped { .. }
+                ));
+                assert_eq!(
+                    std::fs::read_to_string(&materialized_file).unwrap(),
+                    "user edit after uninstall"
+                );
+                assert_eq!(
+                    std::fs::read_to_string(content_path(&source, relative)).unwrap(),
+                    original_content
+                );
+                assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
             }
         }
     }

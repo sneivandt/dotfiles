@@ -174,6 +174,38 @@ mod tests {
         }
     }
 
+    #[test]
+    fn invalid_utf8_is_a_read_failure_even_for_optional_configuration() {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let path = root.path().join("settings.toml");
+        let bytes = b"[base]\nitems = [\"\xff\"]\n";
+        std::fs::write(&path, bytes).unwrap();
+
+        for required in [false, true] {
+            let error = read_config(&path, required).unwrap_err();
+
+            assert_eq!(
+                error.to_string(),
+                format!("Failed to read config file: {}", path.display()),
+                "required={required}"
+            );
+            assert_eq!(
+                error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                std::io::ErrorKind::InvalidData,
+                "invalid encoding must not become a missing or empty config"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+        let error = with_optional_document::<()>(&path, |_| {
+            panic!("a failed read must not invoke the decoder")
+        })
+        .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::InvalidData
+        );
+    }
+
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Section {

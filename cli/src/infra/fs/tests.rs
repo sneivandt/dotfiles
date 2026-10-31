@@ -486,19 +486,19 @@ fn does_not_copy_external_symlink_directory_contents() {
 // -----------------------------------------------------------------------
 
 #[test]
-fn ensure_parent_dir_creates_missing_parents() {
-    let dir = tempfile::tempdir().unwrap();
+fn ensure_parent_dir_is_idempotent_and_preserves_existing_content_without_creating_the_file() {
+    let dir = tempfile::tempdir_in(".").unwrap();
     let nested = dir.path().join("a").join("b").join("file.txt");
-    ensure_parent_dir(&nested).unwrap();
-    assert!(dir.path().join("a").join("b").exists());
-}
+    let retained = dir.path().join("keep");
+    std::fs::write(&retained, "existing").unwrap();
 
-#[test]
-fn ensure_parent_dir_noop_when_parent_exists() {
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("file.txt");
-    ensure_parent_dir(&file).unwrap();
-    assert!(dir.path().exists());
+    for _ in 0..2 {
+        ensure_parent_dir(&nested).unwrap();
+        assert!(nested.parent().unwrap().is_dir());
+        assert!(!nested.exists(), "only the parent should be created");
+        assert_eq!(std::fs::read_to_string(&retained).unwrap(), "existing");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
 }
 
 #[test]

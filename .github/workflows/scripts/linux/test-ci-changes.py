@@ -199,6 +199,40 @@ class ClassificationTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(classify([path])["run_release"])
 
+    def test_mixed_selection_is_order_independent_and_never_drops_work(self):
+        paths = [
+            "cli/tests/config_drift.rs", "dotfiles.sh", "dotfiles.ps1",
+            "symlinks/config/git/config", "symlinks/config/zsh/prompt.zsh",
+            "symlinks/config/quickshell/Bar.qml", "README.md",
+        ]
+        expected = classify(paths)
+        for ordered in (list(reversed(paths)), paths[3:] + paths[:3], paths + paths):
+            with self.subTest(paths=ordered):
+                self.assertEqual(classify(ordered), expected)
+        for flag in POLICY["FLAGS"]:
+            self.assertEqual(
+                expected[flag], any(classify([path])[flag] for path in paths), flag,
+            )
+        self.assertEqual(
+            [entry["application"] for entry in expected["app_matrix"]["include"]],
+            ["git", "zsh"],
+        )
+        self.assertEqual(
+            [entry["name"] for entry in expected["lint_matrix"]["include"]],
+            ["ShellCheck", "PSScriptAnalyzer"],
+        )
+        self.assertFalse(expected["docs_only"])
+
+    def test_embedded_documentation_and_similar_prefixes_are_not_docs_only(self):
+        for path in ("cli/src/README.md", "cli/src/docs/guide.md", "docs-build/input",
+                     ".agents-build/input", "cli/tests-extra/input"):
+            with self.subTest(path=path):
+                outputs = classify([path])
+                self.assertFalse(outputs["docs_only"])
+                self.assertTrue(outputs["run_release"])
+                self.assertTrue(outputs["run_build_linux"])
+                self.assertTrue(outputs["run_build_windows"])
+
 
 class PrePushPlanTests(unittest.TestCase):
     def test_docs_stay_focused_and_rust_adds_platform_checks(self):
@@ -404,13 +438,35 @@ class GateTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CONTRACT["check_results"](needs)
 
-    def test_qml_failures_and_skips_block_gate(self):
-        for result in ("failure", "cancelled", "skipped"):
-            with self.subTest(result=result):
-                needs = self.results(["symlinks/config/quickshell/Bar.qml"])
-                needs["desktop-qml"]["result"] = result
+    def test_every_selected_job_must_report_success(self):
+        baseline = self.results([".github/workflows/ci.yml"])
+        for job in baseline:
+            for result in ("failure", "cancelled", "skipped"):
+                with self.subTest(job=job, result=result):
+                    needs = self.results([".github/workflows/ci.yml"])
+                    needs[job]["result"] = result
+                    with self.assertRaises(ValueError):
+                        CONTRACT["check_results"](needs)
+
+    def test_missing_jobs_and_malformed_selection_outputs_fail_closed(self):
+        baseline = self.results(["README.md"])
+        for job in baseline:
+            with self.subTest(missing_job=job):
+                needs = self.results(["README.md"])
+                del needs[job]
                 with self.assertRaises(ValueError):
                     CONTRACT["check_results"](needs)
+        gated_outputs = {
+            output for job, output in CONTRACT["JOB_CONDITIONS"].items()
+            if job not in CONTRACT["INFORMATIONAL_JOBS"]
+        }
+        for output in sorted(gated_outputs):
+            for value in (None, "", "TRUE", "false\n", True):
+                with self.subTest(output=output, value=value):
+                    needs = self.results(["README.md"])
+                    needs["classify-changes"]["outputs"][output] = value
+                    with self.assertRaises(ValueError):
+                        CONTRACT["check_results"](needs)
 
     def test_workflow_contracts(self):
         workflow = CONTRACT["WORKFLOW"].read_text(encoding="utf-8")
@@ -604,7 +660,7 @@ class GitRangeTests(unittest.TestCase):
         )
         if not success:
             self.assertNotEqual(result.returncode, 0, result.stdout)
-            self.assertNotIn("run_release=false", output.read_text(encoding="utf-8"))
+            self.assertEqual(output.read_text(encoding="utf-8"), "")
             return {}
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return {
@@ -733,7 +789,14 @@ class GitRangeTests(unittest.TestCase):
         mock.mkdir(exist_ok=True)
         gh = mock / "gh"
         gh.write_text(
-            '#!/bin/sh\n[ "$1" = release ] && [ "$2" = list ] || exit 90\n'
+            '#!/bin/sh\nset -eu\n'
+            'printf "called\\n" >> "$FIXTURE_GH_LOG"\n'
+            '[ "$#" -eq 12 ] && [ "$1" = release ] && [ "$2" = list ] &&\n'
+            '[ "$3" = --repo ] && [ "$4" = fixture/repository ] &&\n'
+            '[ "$5" = --exclude-drafts ] && [ "$6" = --exclude-pre-releases ] &&\n'
+            '[ "$7" = --limit ] && [ "$8" = 1 ] && [ "$9" = --json ] &&\n'
+            '[ "${10}" = tagName ] && [ "${11}" = --jq ] &&\n'
+            '[ "${12}" = ".[0].tagName // empty" ] || exit 90\n'
             'printf "%s\\n" "$FIXTURE_RELEASE_TAG"\nexit "$FIXTURE_GH_STATUS"\n',
             encoding="utf-8",
         )
@@ -741,7 +804,29 @@ class GitRangeTests(unittest.TestCase):
         self.env.update(
             PATH=str(mock) + os.pathsep + self.env["PATH"],
             FIXTURE_RELEASE_TAG=tag, FIXTURE_GH_STATUS=str(status),
+            FIXTURE_GH_LOG=str(self.root / "gh-calls"),
         )
+
+    def test_release_uses_net_changes_since_an_annotated_published_tag(self):
+        self.git("tag", "-a", "-m", "published fixture", "v2026.01.01-2", self.base)
+        self.mock_release(tag="v2026.01.01-2")
+        self.write("cli/src/main.rs", "fn main() { println!(\"unpublished\"); }\n")
+        self.commit()
+        self.write("cli/src/main.rs", "fn main() {}\n")
+        self.write("README.md", "binary changes were reverted before publishing\n")
+        self.env["HEAD_SHA"] = self.commit()
+        self.assertFalse(self.script("classify-release.sh")["run_release"])
+
+    def test_failed_empty_release_lookup_is_not_an_initial_release(self):
+        self.mock_release(tag="", status=1)
+        self.script("classify-release.sh", success=False)
+        self.assertEqual((self.root / "gh-calls").read_text(), "called\n")
+
+    def test_invalid_release_head_is_rejected_before_api_lookup(self):
+        self.mock_release(tag="")
+        self.env["HEAD_SHA"] = "invalid-head"
+        self.script("classify-release.sh", success=False)
+        self.assertFalse((self.root / "gh-calls").exists())
 
     def test_release_docs_skip_and_unpublished_binary_catch_up(self):
         self.mock_release()

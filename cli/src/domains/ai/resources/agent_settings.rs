@@ -313,10 +313,37 @@ mod tests {
     }
 
     #[test]
-    fn json_set_errors_when_intermediate_is_not_object() {
-        let mut document = serde_json::json!({ "footer": 42 });
-        let resource = json_resource("footer.showBranch", toml::Value::Boolean(true));
-        assert!(resource.set_in_json_document(&mut document).is_err());
+    fn incompatible_parent_values_fail_without_overwriting_either_document_format() {
+        for (format, before, expected_error) in [
+            (
+                SettingsFormat::Json,
+                "{ \"footer\": 42, \"unmanaged\": \"preserve formatting\" }\n",
+                "not a JSON object",
+            ),
+            (
+                SettingsFormat::Toml,
+                "# preserve comment\nfooter = false\nunmanaged = \"preserve\"\n",
+                "not a TOML table",
+            ),
+        ] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let path = dir.path().join("settings");
+            std::fs::write(&path, before).unwrap();
+            let resource = AgentSettingResource::new(
+                "fixture".into(),
+                "footer.showBranch".into(),
+                true.into(),
+                format,
+                path.clone(),
+            );
+
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+            let error = resource.apply().unwrap_err();
+            assert!(error.to_string().contains(expected_error), "{error}");
+            assert!(error.to_string().contains("footer.showBranch"), "{error}");
+            assert_eq!(std::fs::read(&path).unwrap(), before.as_bytes());
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        }
     }
 
     #[test]
@@ -377,10 +404,31 @@ command = "example"
     }
 
     #[test]
-    fn toml_set_errors_when_intermediate_is_not_table() {
-        let mut document: toml::Table = toml::from_str("tui = false\n").unwrap();
-        let resource = toml_resource("tui.theme", toml::Value::String("default".to_string()));
-        assert!(resource.set_in_toml_document(&mut document).is_err());
+    fn unreadable_documents_are_errors_not_missing_settings() {
+        for format in [SettingsFormat::Json, SettingsFormat::Toml] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let path = dir.path().join("settings");
+            std::fs::create_dir(&path).unwrap();
+            let marker = path.join("keep");
+            std::fs::write(&marker, "not a settings document").unwrap();
+            let resource = AgentSettingResource::new(
+                "fixture".into(),
+                "managed".into(),
+                true.into(),
+                format,
+                path.clone(),
+            );
+
+            assert!(resource.current_state().is_err());
+            assert!(resource.apply().is_err());
+            assert!(path.is_dir());
+            assert_eq!(
+                std::fs::read_to_string(&marker).unwrap(),
+                "not a settings document"
+            );
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+            assert_eq!(std::fs::read_dir(&path).unwrap().count(), 1);
+        }
     }
 
     #[test]
@@ -523,6 +571,32 @@ command = "example"
                 assert!(resource.apply().is_err());
                 assert_eq!(std::fs::read_to_string(path).unwrap(), before);
             }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn broken_settings_links_fail_without_replacing_links_or_creating_referents() {
+        for format in [SettingsFormat::Json, SettingsFormat::Toml] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            let path = dir.path().join("settings");
+            std::os::unix::fs::symlink("missing-settings", &path).unwrap();
+            let resource = AgentSettingResource::new(
+                "fixture".into(),
+                "managed".into(),
+                true.into(),
+                format,
+                path.clone(),
+            );
+
+            assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+            assert!(resource.apply().is_err());
+            assert_eq!(
+                std::fs::read_link(&path).unwrap(),
+                PathBuf::from("missing-settings")
+            );
+            assert!(!dir.path().join("missing-settings").exists());
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
         }
     }
 

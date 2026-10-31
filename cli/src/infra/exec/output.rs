@@ -78,21 +78,6 @@ fn log_result(
     });
 }
 
-/// Summarise a captured child-process output stream.
-#[cfg(test)]
-pub(super) fn stream_summary(output: &str) -> String {
-    let line_count = output
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .count();
-    if line_count == 0 {
-        return String::new();
-    }
-
-    let line_word = if line_count == 1 { "line" } else { "lines" };
-    format!("{line_count} {line_word}, {} bytes", output.len())
-}
-
 /// Format stdout/stderr for a failed command error message.
 pub(super) fn failure_output(result: &ExecResult) -> String {
     let stdout = result.stdout.trim();

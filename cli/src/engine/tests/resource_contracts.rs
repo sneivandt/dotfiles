@@ -5,15 +5,25 @@ use std::sync::{
 };
 
 use crate::engine::{
-    IntrinsicState, RemovableResource, Resource, ResourceChange, ResourceResult, ResourceState,
+    BatchCompletion, BatchReport, IntrinsicState, RemovableResource, Resource, ResourceChange,
+    ResourceResult, ResourceState,
 };
 use crate::engine::{ProcessOpts, TaskResult, process_resources, process_resources_remove};
 
-use super::{bail_opts, default_opts, test_context};
+use super::{bail_opts, test_context};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FailureStage {
+    Discovery,
+    Apply,
+    Remove,
+}
 
 #[derive(Clone)]
 struct ContractResource {
     state: Arc<Mutex<ResourceState>>,
+    failure: Arc<Mutex<Option<FailureStage>>>,
+    state_calls: Arc<AtomicUsize>,
     apply_calls: Arc<AtomicUsize>,
     remove_calls: Arc<AtomicUsize>,
 }
@@ -22,9 +32,27 @@ impl ContractResource {
     fn new(state: ResourceState) -> Self {
         Self {
             state: Arc::new(Mutex::new(state)),
+            failure: Arc::default(),
+            state_calls: Arc::new(AtomicUsize::new(0)),
             apply_calls: Arc::new(AtomicUsize::new(0)),
             remove_calls: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    fn failing_once(self, stage: FailureStage) -> Self {
+        *self.failure.lock().unwrap() = Some(stage);
+        self
+    }
+
+    fn check_failure(&self, stage: FailureStage) -> ResourceResult<()> {
+        let mut failure = self.failure.lock().unwrap();
+        if *failure == Some(stage) {
+            *failure = None;
+            return Err(crate::engine::resource::ResourceError::permission_denied(
+                "contract resource",
+            ));
+        }
+        Ok(())
     }
 
     fn state(&self) -> ResourceState {
@@ -47,6 +75,7 @@ impl Resource for ContractResource {
 
     fn apply(&self) -> ResourceResult<ResourceChange> {
         self.apply_calls.fetch_add(1, Ordering::SeqCst);
+        self.check_failure(FailureStage::Apply)?;
         *self.state.lock().unwrap() = ResourceState::Correct;
         Ok(ResourceChange::Applied)
     }
@@ -55,6 +84,7 @@ impl Resource for ContractResource {
 impl RemovableResource for ContractResource {
     fn remove(&self) -> ResourceResult<ResourceChange> {
         self.remove_calls.fetch_add(1, Ordering::SeqCst);
+        self.check_failure(FailureStage::Remove)?;
         *self.state.lock().unwrap() = ResourceState::Missing;
         Ok(ResourceChange::Applied)
     }
@@ -62,6 +92,8 @@ impl RemovableResource for ContractResource {
 
 impl IntrinsicState for ContractResource {
     fn current_state(&self) -> ResourceResult<ResourceState> {
+        self.state_calls.fetch_add(1, Ordering::SeqCst);
+        self.check_failure(FailureStage::Discovery)?;
         Ok(self.state())
     }
 }
@@ -94,6 +126,31 @@ fn state_cases() -> [ResourceState; 5] {
 
 fn batch_stats(result: &TaskResult) -> &crate::engine::TaskStats {
     crate::test_helpers::task_batch(result)
+}
+
+fn assert_partial_failure_result(result: anyhow::Result<TaskResult>, continued: bool, label: &str) {
+    if continued {
+        let outcome = result.unwrap();
+        let stats = batch_stats(&outcome);
+        assert_eq!(stats.changed_count(), 2, "{label}");
+        assert_eq!(stats.failed_count(), 1, "{label}");
+    } else {
+        let error = result.unwrap_err();
+        let report = error.downcast_ref::<BatchReport>().unwrap();
+        assert_eq!(report.completion(), BatchCompletion::Failed, "{label}");
+        assert_eq!(report.stats().changed_count(), 1, "{label}");
+        assert_eq!(report.stats().failed_count(), 1, "{label}");
+        assert_eq!(report.interrupted_count(), 0, "{label}");
+        assert_eq!(report.not_attempted_count(), 1, "{label}");
+        assert_eq!(
+            error
+                .downcast_ref::<crate::engine::resource::ResourceError>()
+                .unwrap()
+                .category(),
+            "permission_denied",
+            "{label}"
+        );
+    }
 }
 
 #[test]
@@ -271,9 +328,104 @@ fn mixed_batches_keep_unsafe_resources_untouched() {
 }
 
 #[test]
-fn contract_lenient_apply_errors_are_nonfatal_failures() {
-    let ctx = test_context(PathBuf::from("/tmp"), None).0;
-    let resource = super::MockResource::new(ResourceState::Missing).with_apply(Err("boom".into()));
-    let result = process_resources(&ctx, [resource], &default_opts()).unwrap();
-    assert_eq!(batch_stats(&result).failed_count(), 1);
+fn retry_after_partial_failure_rediscovers_state_without_repeating_completed_mutations() {
+    for remove in [false, true] {
+        for lenient in [false, true] {
+            if remove && lenient {
+                continue;
+            }
+            for discovery_fails in [false, true] {
+                let label = format!(
+                    "remove={remove}, lenient={lenient}, discovery_fails={discovery_fails}"
+                );
+                let ctx = test_context(PathBuf::from("/fixture"), None).0;
+                let initial = if remove {
+                    ResourceState::Correct
+                } else {
+                    ResourceState::Missing
+                };
+                let converged = if remove {
+                    ResourceState::Missing
+                } else {
+                    ResourceState::Correct
+                };
+                let stage = if discovery_fails {
+                    FailureStage::Discovery
+                } else if remove {
+                    FailureStage::Remove
+                } else {
+                    FailureStage::Apply
+                };
+                let resources = [
+                    ContractResource::new(initial.clone()),
+                    ContractResource::new(initial.clone()).failing_once(stage),
+                    ContractResource::new(initial.clone()),
+                ];
+                let opts = if lenient {
+                    ProcessOpts::lenient("install")
+                } else {
+                    ProcessOpts::strict("install")
+                };
+                let run = || {
+                    if remove {
+                        process_resources_remove(&ctx, resources.clone(), "remove")
+                    } else {
+                        process_resources(&ctx, resources.clone(), &opts)
+                    }
+                };
+                let continued = lenient && !discovery_fails;
+                assert_partial_failure_result(run(), continued, &label);
+                for (index, resource) in resources.iter().enumerate() {
+                    let finished = index == 0 || (index == 2 && continued);
+                    assert_eq!(
+                        &resource.state(),
+                        if finished { &converged } else { &initial },
+                        "first run, item {index}: {label}"
+                    );
+                    let attempted = usize::from(finished || (index == 1 && !discovery_fails));
+                    assert_eq!(
+                        (resource.apply_calls(), resource.remove_calls()),
+                        if remove {
+                            (0, attempted)
+                        } else {
+                            (attempted, 0)
+                        },
+                        "first run, item {index}: {label}"
+                    );
+                }
+
+                for repeat in [1, 2] {
+                    let retry_result = run().unwrap();
+                    let stats = batch_stats(&retry_result);
+                    let changes = if repeat == 1 {
+                        2 - u32::from(continued)
+                    } else {
+                        0
+                    };
+                    assert_eq!(stats.changed_count(), changes, "retry {repeat}: {label}");
+                    assert_eq!(stats.already_ok_count(), 3 - changes, "{label}");
+                    assert_eq!(stats.skipped_count(), 0, "{label}");
+                    assert_eq!(stats.failed_count(), 0, "{label}");
+                    for (index, resource) in resources.iter().enumerate() {
+                        assert_eq!(resource.state(), converged, "{label}");
+                        let mutations = 1 + usize::from(index == 1 && !discovery_fails);
+                        assert_eq!(
+                            (resource.apply_calls(), resource.remove_calls()),
+                            if remove {
+                                (0, mutations)
+                            } else {
+                                (mutations, 0)
+                            },
+                            "retry {repeat}, item {index}: {label}"
+                        );
+                        assert_eq!(
+                            resource.state_calls.load(Ordering::SeqCst),
+                            repeat + usize::from(index != 2 || continued),
+                            "retry {repeat}, item {index}: {label}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 }

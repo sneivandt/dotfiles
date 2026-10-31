@@ -540,27 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn missing_pam_target_is_invalid() {
-        let root = tempfile::tempdir().unwrap();
-        fs::create_dir(root.path().join("system")).unwrap();
-        fs::write(
-            root.path().join("system/login"),
-            "auth optional keyring.so\n",
-        )
-        .unwrap();
-        let target = root.path().join("missing-login");
-        let resource = SystemFileResource::new(
-            entry(root.path(), &target, "login", MergeStrategy::Pam),
-            Arc::new(MockExecutor::new()),
-        );
-
-        assert!(matches!(
-            resource.current_state().unwrap(),
-            ResourceState::Invalid { reason } if reason.contains("is missing")
-        ));
-    }
-
-    #[test]
     fn missing_pam_target_cannot_be_created_by_direct_apply() {
         for fragment in ["", "# Managed login rules\n", "auth optional keyring.so\n"] {
             let root = tempfile::tempdir_in(".").unwrap();
@@ -573,6 +552,10 @@ mod tests {
             );
             resource.temp_dir = root.path().join("staging-must-not-be-created");
 
+            assert!(matches!(
+                resource.current_state().unwrap(),
+                ResourceState::Invalid { reason } if reason.contains("is missing")
+            ));
             let error = resource.apply().unwrap_err();
 
             assert!(error.to_string().contains("is missing"), "{error}");
@@ -943,25 +926,63 @@ mod tests {
     }
 
     #[test]
-    fn valid_missing_system_file_is_planned_without_writing_in_dry_run() {
-        use crate::engine::{ProcessOpts, TaskResult, process_resources};
-        use crate::test_helpers::ContextBuilder;
+    fn system_file_dry_runs_preserve_missing_and_existing_targets() {
+        use crate::engine::{ProcessOpts, process_resources};
+        use crate::test_helpers::{ContextBuilder, task_batch};
 
-        for (merge, fragment) in [
-            (MergeStrategy::Toml, "managed = true\n"),
-            (MergeStrategy::Ini, "[options]\nmanaged=true\n"),
+        for (merge, fragment, current) in [
+            (MergeStrategy::Toml, "managed = true\n", None),
+            (
+                MergeStrategy::Toml,
+                "managed = true\n",
+                Some("managed = false\nunmanaged = 'keep'\n"),
+            ),
+            (MergeStrategy::Ini, "[options]\nmanaged=true\n", None),
+            (
+                MergeStrategy::Ini,
+                "[options]\nmanaged=true\n",
+                Some("[options]\nmanaged=false\n# retain comment\nunmanaged=keep\n"),
+            ),
+            (
+                MergeStrategy::Pam,
+                "auth optional keyring.so\n",
+                Some("# retain comment\nauth include system-auth\n"),
+            ),
         ] {
             let root = tempfile::tempdir_in(".").unwrap();
             fs::create_dir(root.path().join("system")).unwrap();
             fs::write(root.path().join("system/fragment"), fragment).unwrap();
-            let target = root.path().join("target");
+            let parent = root.path().join("target-parent");
+            let target = parent.join("target");
+            if let Some(current) = current {
+                fs::create_dir(&parent).unwrap();
+                fs::write(&target, current).unwrap();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+                }
+            }
+            let original_metadata = fs::metadata(&target).ok();
             let staging = root.path().join("staging-must-not-be-created");
             let mut resource = SystemFileResource::new(
                 entry(root.path(), &target, "fragment", merge),
                 Arc::new(MockExecutor::new()),
             );
             resource.temp_dir = staging.clone();
-            assert_eq!(resource.current_state().unwrap(), ResourceState::Missing);
+            let initial_state = resource.current_state().unwrap();
+            if current.is_some() {
+                assert!(
+                    matches!(
+                        initial_state,
+                        ResourceState::Incorrect { current: difference }
+                            if difference.contains("managed content differs")
+                    ),
+                    "{merge:?}"
+                );
+            } else {
+                assert_eq!(initial_state, ResourceState::Missing);
+            }
             let ctx = ContextBuilder::new(root.path().to_path_buf())
                 .overlay(None)
                 .build()
@@ -970,16 +991,161 @@ mod tests {
             let result =
                 process_resources(&ctx, [resource], &ProcessOpts::strict("configure")).unwrap();
 
-            assert!(
-                matches!(result, TaskResult::Batch(stats) if stats.changed_count() == 1),
-                "{merge:?}"
-            );
-            assert!(!target.exists());
+            let stats = task_batch(&result);
+            assert_eq!(stats.changed_count(), 1, "{merge:?}, current={current:?}");
+            assert_eq!(stats.already_ok_count(), 0);
+            assert_eq!(stats.failed_count(), 0);
+            assert_eq!(stats.skipped_count(), 0);
+            if let Some(current) = current {
+                assert_eq!(fs::read_to_string(&target).unwrap(), current);
+                let before = original_metadata.unwrap();
+                let after = fs::metadata(&target).unwrap();
+                assert_eq!(after.permissions(), before.permissions());
+                assert_eq!(after.modified().unwrap(), before.modified().unwrap());
+                assert_eq!(fs::read_dir(&parent).unwrap().count(), 1);
+            } else {
+                assert!(!target.exists());
+                assert!(!parent.exists(), "preview must not create target parents");
+            }
             assert!(!staging.exists());
             assert_eq!(
                 fs::read_to_string(root.path().join("system/fragment")).unwrap(),
                 fragment
             );
+        }
+    }
+
+    #[test]
+    fn nonregular_system_file_targets_are_never_followed_or_replaced() {
+        for kind in ["directory", "file link", "directory link", "dangling link"] {
+            let fixture = tempfile::tempdir_in(".").unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            fs::create_dir(root.join("system")).unwrap();
+            fs::write(root.join("system/fragment"), "managed = true\n").unwrap();
+            let target = root.join("target");
+            let user = root.join("user");
+            fs::create_dir(&user).unwrap();
+            let user_file = user.join("content");
+            fs::write(&user_file, "user content").unwrap();
+            match kind {
+                "directory" => {
+                    fs::create_dir(&target).unwrap();
+                    fs::write(target.join("content"), "target content").unwrap();
+                }
+                "file link" => {
+                    crate::infra::fs::create_native_symlink(&user_file, &target, false).unwrap();
+                }
+                "directory link" => {
+                    crate::infra::fs::create_native_symlink(&user, &target, true).unwrap();
+                }
+                "dangling link" => {
+                    crate::infra::fs::create_native_symlink(&root.join("absent"), &target, false)
+                        .unwrap();
+                }
+                _ => panic!("unexpected target kind: {kind}"),
+            }
+            let original_link = fs::read_link(&target).ok();
+            let mut resource = SystemFileResource::new(
+                entry(&root, &target, "fragment", MergeStrategy::Toml),
+                Arc::new(MockExecutor::new()),
+            );
+            resource.temp_dir = root.join("staging-must-not-be-created");
+
+            assert!(
+                matches!(
+                    resource.current_state().unwrap(),
+                    ResourceState::Invalid { reason } if reason.contains("not a regular file")
+                ),
+                "{kind}"
+            );
+            let error = resource.apply().unwrap_err();
+            assert!(
+                error.to_string().contains("not a regular file"),
+                "{kind}: {error}"
+            );
+            assert_eq!(fs::read_link(&target).ok(), original_link, "{kind}");
+            if kind == "directory" {
+                assert!(target.symlink_metadata().unwrap().is_dir());
+                assert_eq!(
+                    fs::read_to_string(target.join("content")).unwrap(),
+                    "target content"
+                );
+            } else {
+                assert!(target.symlink_metadata().unwrap().is_symlink(), "{kind}");
+            }
+            assert_eq!(fs::read_to_string(&user_file).unwrap(), "user content");
+            assert!(!resource.temp_dir.exists());
+            assert_eq!(fs::read_dir(&root).unwrap().count(), 3);
+        }
+    }
+
+    #[test]
+    fn system_file_discovery_errors_never_become_missing_or_mutate_files() {
+        for failure in [
+            "missing fragment",
+            "fragment encoding",
+            "target encoding",
+            "target metadata",
+        ] {
+            let root = tempfile::tempdir_in(".").unwrap();
+            fs::create_dir(root.path().join("system")).unwrap();
+            let source = root.path().join("system/fragment");
+            let target = root.path().join("target");
+            let fragment = if failure == "fragment encoding" {
+                &b"\xff"[..]
+            } else {
+                &b"managed = true\n"[..]
+            };
+            if failure != "missing fragment" {
+                fs::write(&source, fragment).unwrap();
+            }
+            let current = if failure == "target encoding" {
+                &b"\xff"[..]
+            } else {
+                &b"unmanaged = 'keep'\n"[..]
+            };
+            fs::write(&target, current).unwrap();
+            let resource_target = if failure == "target metadata" {
+                root.path().join("invalid\0target")
+            } else {
+                target.clone()
+            };
+            let mut resource = SystemFileResource::new(
+                entry(
+                    root.path(),
+                    &resource_target,
+                    "fragment",
+                    MergeStrategy::Toml,
+                ),
+                Arc::new(MockExecutor::new()),
+            );
+            resource.temp_dir = root.path().join("staging-must-not-be-created");
+
+            for error in [
+                resource.current_state().unwrap_err(),
+                resource.apply().unwrap_err(),
+            ] {
+                let message = format!("{error:#}");
+                let expected_path = if failure.contains("fragment") {
+                    &source
+                } else {
+                    &resource_target
+                };
+                assert!(
+                    message.contains(&format!("reading {}", expected_path.display()))
+                        || message
+                            .contains(&format!("reading metadata for {}", expected_path.display())),
+                    "{failure}: {message}"
+                );
+            }
+            assert_eq!(fs::read(&target).unwrap(), current, "{failure}");
+            if failure == "missing fragment" {
+                assert!(!source.exists());
+            } else {
+                assert_eq!(fs::read(&source).unwrap(), fragment, "{failure}");
+            }
+            assert!(!resource.temp_dir.exists());
+            assert_eq!(fs::read_dir(root.path()).unwrap().count(), 2);
         }
     }
 

@@ -151,6 +151,99 @@ fn invalid_remove_selection_fails_without_removing_managed_hooks() {
     }
 }
 
+#[test]
+fn update_and_remove_leave_inactive_profile_links_untouched() {
+    for parallel in [false, true] {
+        let repo = common::TestContextBuilder::new()
+            .with_config_file(
+                "symlinks.toml",
+                "[base]\nsymlinks = ['active']\n\
+                 [desktop]\nsymlinks = ['inactive', 'inactive-missing']\n",
+            )
+            .with_symlink_source_content("active", "active source\n")
+            .with_symlink_source_content("inactive", "inactive source\n")
+            .with_symlink_source_content("inactive-missing", "not installed\n")
+            .build();
+        let home = tempfile::tempdir_in(".").unwrap();
+        let home_path = dunce::canonicalize(home.path()).unwrap();
+        for source in ["active", "inactive"] {
+            let source_path = repo.root_path().join("symlinks").join(source);
+            let target = home_path.join(format!(".{source}"));
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&source_path, &target).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_file(&source_path, &target)
+                .expect("native file symlinks require Developer Mode or an elevated test worker");
+        }
+        let active = home_path.join(".active");
+        let inactive = home_path.join(".inactive");
+
+        for (verb, dry_run, materialized) in [
+            ("update", false, false),
+            ("remove", true, false),
+            ("remove", false, true),
+            ("remove", false, true),
+        ] {
+            let mut command =
+                common::cli_command(repo.root_path(), &home_path, None, verb, "symlinks");
+            if dry_run {
+                command.arg("--dry-run");
+            }
+            if !parallel {
+                command.arg("--no-parallel");
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{verb}, dry_run={dry_run}, parallel={parallel}: {}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                std::fs::symlink_metadata(&active)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink(),
+                !materialized,
+                "{verb}, dry_run={dry_run}: only explicit removal materializes active links"
+            );
+            assert_eq!(std::fs::read(&active).unwrap(), b"active source\n");
+            assert!(
+                std::fs::symlink_metadata(&inactive)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink(),
+                "{verb}, dry_run={dry_run}: selecting base must not uninstall desktop state"
+            );
+            assert_eq!(
+                dunce::canonicalize(&inactive).unwrap(),
+                dunce::canonicalize(repo.root_path().join("symlinks/inactive")).unwrap(),
+                "{verb}: the inactive link must retain its source"
+            );
+            assert_eq!(std::fs::read(&inactive).unwrap(), b"inactive source\n");
+            assert!(
+                home_path
+                    .join(".inactive-missing")
+                    .symlink_metadata()
+                    .is_err(),
+                "{verb}: removal must not materialize an inactive missing target"
+            );
+            for (source, expected) in [
+                ("active", "active source\n"),
+                ("inactive", "inactive source\n"),
+                ("inactive-missing", "not installed\n"),
+            ] {
+                assert_eq!(
+                    std::fs::read_to_string(repo.root_path().join("symlinks").join(source))
+                        .unwrap(),
+                    expected,
+                    "{verb}: managed sources must not be modified"
+                );
+            }
+        }
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn remove_removes_active_overlay_script_state_by_default() {

@@ -494,7 +494,7 @@ fn update_reconciles_renamed_local_skills_when_remote_refs_are_current() {
 #[test]
 fn update_does_not_report_current_when_followup_install_fails() {
     for message in ["archive extraction failed", "fatal: Authentication failed"] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(".").unwrap();
         write_current_manifest_and_lock(dir.path());
         let mut mock = MockExecutor::new();
         let mut seq = mockall::Sequence::new();
@@ -508,13 +508,23 @@ fn update_does_not_report_current_when_followup_install_fails() {
                 assert_eq!(spec.arguments(), ["install", "-g"]);
                 Err(command_failure(message))
             });
-        let ctx = linux_context(dir.path(), mock);
+        let ctx = make_windows_cowork_context(dir.path(), mock);
         let result = update_task().run(&ctx);
         if message.contains("Authentication") {
-            assert!(task_skipped(&result.unwrap()).contains("GitHub"));
+            assert!(matches!(
+                result.unwrap(),
+                TaskResult::Skipped {
+                    reason,
+                    kind: crate::engine::SkipKind::UnmetWork,
+                } if reason.contains("GitHub")
+            ));
         } else {
             assert!(format!("{:#}", result.unwrap_err()).contains(message));
         }
+        assert!(
+            !dir.path().join("OneDrive - Test").exists(),
+            "failed follow-up install must not start Cowork reconciliation"
+        );
     }
 }
 
@@ -560,25 +570,119 @@ fn update_dry_run_uses_native_apm_plan() {
 }
 
 #[test]
-fn update_dry_run_does_not_plan_against_a_stale_manifest() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    write_default_home_fragment(dir.path());
-    let mut mock = MockExecutor::new();
-    expect_which_apm(&mut mock, true);
-    let ctx = linux_context(dir.path(), mock).with_dry_run(true);
+fn stale_or_missing_manifest_previews_preserve_all_managed_target_state() {
+    for update in [false, true] {
+        for manifest in [None, Some("# stale manifest\nname: previous\n")] {
+            let dir = tempfile::tempdir_in(".").unwrap();
+            write_default_home_fragment(dir.path());
+            let manifest_path = dir.path().join(".apm/apm.yml");
+            if let Some(manifest) = manifest {
+                std::fs::write(&manifest_path, manifest).unwrap();
+            }
+            let db_path = write_copilot_app_db(dir.path());
+            let lock_path = dir.path().join(".apm/apm.lock.yaml");
+            std::fs::write(
+                &lock_path,
+                "# retain legacy evidence\n\
+                 dependencies:\n- deployed_files: [cowork://skills/example/SKILL.md]\n",
+            )
+            .unwrap();
+            let target = dir.path().join("OneDrive - Test/Documents/Cowork/skills");
+            std::fs::create_dir_all(target.join("example")).unwrap();
+            let skill_path = target.join("example/SKILL.md");
+            std::fs::write(&skill_path, "stale deployment\n").unwrap();
+            let ownership_path = target.join(".dotfiles-apm-skills.json");
+            std::fs::write(&ownership_path, "[ \"example\" ]\n").unwrap();
+            let snapshots: Vec<_> = [
+                dir.path().join(".apm/config/base.yml"),
+                lock_path,
+                db_path,
+                skill_path,
+                ownership_path,
+            ]
+            .into_iter()
+            .map(|path| {
+                let bytes = std::fs::read(&path).unwrap();
+                (path, bytes)
+            })
+            .collect();
+            let mut mock = MockExecutor::new();
+            if update {
+                expect_which_apm(&mut mock, true);
+            }
+            let ctx = make_windows_cowork_context(dir.path(), mock).with_dry_run(true);
+            let task = if update {
+                update_task()
+            } else {
+                install_task()
+            };
 
-    assert_task_changed(&update_task().run(&ctx).expect("preview update"));
-    assert!(!dir.path().join(".apm").join("apm.yml").exists());
+            assert_task_changed(&task.run(&ctx).expect("preview stale or missing manifest"));
+
+            if let Some(manifest) = manifest {
+                assert_eq!(std::fs::read(&manifest_path).unwrap(), manifest.as_bytes());
+            } else {
+                assert!(!manifest_path.try_exists().unwrap());
+            }
+            for (path, before) in snapshots {
+                assert_eq!(std::fs::read(&path).unwrap(), before, "{}", path.display());
+            }
+        }
+    }
 }
 
 #[test]
-fn install_dry_run_does_not_write_generated_manifest() {
-    let dir = tempfile::tempdir().expect("create temp dir");
-    write_default_home_fragment(dir.path());
-    let ctx = linux_context(dir.path(), MockExecutor::new()).with_dry_run(true);
+fn update_preview_failure_preserves_files_and_failure_classification() {
+    for failure in [
+        "authentication failed",
+        "archive extraction failed",
+        "cancelled",
+    ] {
+        let dir = tempfile::tempdir_in(".").unwrap();
+        write_current_manifest_and_lock(dir.path());
+        let manifest_path = dir.path().join(".apm/apm.yml");
+        let lock_path = dir.path().join(".apm/apm.lock.yaml");
+        let manifest_before = std::fs::read(&manifest_path).unwrap();
+        let lock_before = std::fs::read(&lock_path).unwrap();
+        let home = dir.path().to_path_buf();
+        let mut mock = MockExecutor::new();
+        expect_which_apm(&mut mock, true);
+        mock.expect_execute().once().returning(move |spec| {
+            assert_apm_command(&spec);
+            assert_eq!(spec.working_dir(), Some(home.as_path()));
+            assert_eq!(spec.arguments(), ["update", "-g", "--dry-run"]);
+            Err(if failure == "cancelled" {
+                ExecError::Cancelled {
+                    command: "apm".into(),
+                    result: ExecResult::failure("", "authentication required", None),
+                }
+            } else {
+                command_failure(failure)
+            })
+        });
+        let ctx = linux_context(dir.path(), mock).with_dry_run(true);
 
-    assert_task_changed(&install_task().run(&ctx).expect("preview install"));
-    assert!(!dir.path().join(".apm").join("apm.yml").exists());
+        let result = update_task().run(&ctx);
+
+        match failure {
+            "authentication failed" => assert!(matches!(
+                result.unwrap(),
+                TaskResult::Skipped {
+                    reason,
+                    kind: crate::engine::SkipKind::UnmetWork,
+                } if reason.contains("apm update requires GitHub authentication")
+            )),
+            "cancelled" => assert!(
+                result
+                    .unwrap_err()
+                    .downcast_ref::<ExecError>()
+                    .is_some_and(ExecError::is_cancelled)
+            ),
+            _ => assert!(format!("{:#}", result.unwrap_err()).contains(failure)),
+        }
+        assert_eq!(std::fs::read(&manifest_path).unwrap(), manifest_before);
+        assert_eq!(std::fs::read(&lock_path).unwrap(), lock_before);
+    }
 }
 
 #[test]
@@ -653,7 +757,13 @@ fn native_commands_classify_auth_failures_but_propagate_other_failures() {
         .run(&ctx);
 
         if auth_failure {
-            assert!(task_skipped(&result.expect("auth failure should skip")).contains("GitHub"));
+            assert!(matches!(
+                result.expect("auth failure should leave work unmet"),
+                TaskResult::Skipped {
+                    reason,
+                    kind: crate::engine::SkipKind::UnmetWork,
+                } if reason.contains("GitHub")
+            ));
         } else {
             let error = result.expect_err("non-auth failure should propagate");
             assert_eq!(

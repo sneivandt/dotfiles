@@ -99,6 +99,7 @@ pub(crate) fn process_operation(ctx: &Context, operation: &impl Operation) -> Re
 
 #[cfg(test)]
 mod tests {
+    use std::cell::{Cell, RefCell};
     use std::path::PathBuf;
     use std::sync::{
         Arc,
@@ -107,6 +108,7 @@ mod tests {
 
     use super::*;
     use crate::engine::TaskStats;
+    use crate::infra::exec::{ExecError, ExecResult};
     use crate::infra::logging::MsgKind;
     use crate::test_helpers::make_linux_context;
 
@@ -119,6 +121,7 @@ mod tests {
         preview_calls: Arc<AtomicUsize>,
         apply_calls: Arc<AtomicUsize>,
         fail_at: Option<&'static str>,
+        interrupt: bool,
     }
 
     impl TestOperation {
@@ -129,11 +132,19 @@ mod tests {
                 preview_calls: Arc::new(AtomicUsize::new(0)),
                 apply_calls: Arc::new(AtomicUsize::new(0)),
                 fail_at: None,
+                interrupt: false,
             }
         }
 
         fn check_failure(&self, stage: &'static str) -> Result<()> {
             if self.fail_at == Some(stage) {
+                if self.interrupt {
+                    return Err(ExecError::Cancelled {
+                        command: stage.into(),
+                        result: ExecResult::failure("", "", None),
+                    }
+                    .into());
+                }
                 return Err(
                     std::io::Error::new(std::io::ErrorKind::PermissionDenied, stage).into(),
                 );
@@ -178,6 +189,58 @@ mod tests {
             self.apply_calls.fetch_add(1, Ordering::SeqCst);
             self.check_failure("apply")?;
             Ok(TaskResult::Ok)
+        }
+    }
+
+    struct CheckedPlan(usize);
+
+    #[derive(Default)]
+    struct ConvergingOperation {
+        complete: Cell<bool>,
+        fail_once: Cell<bool>,
+        state_calls: Cell<usize>,
+        consumed_plans: RefCell<Vec<(&'static str, usize)>>,
+    }
+
+    impl Operation for ConvergingOperation {
+        type Plan = CheckedPlan;
+
+        fn current_state(&self, _ctx: &Context) -> Result<OperationState<Self::Plan>> {
+            let version = self.state_calls.get() + 1;
+            self.state_calls.set(version);
+            Ok(if self.complete.get() {
+                OperationState::Complete
+            } else {
+                OperationState::needs_run(CheckedPlan(version))
+            })
+        }
+
+        fn preview(&self, _ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+            assert_eq!(
+                plan.0,
+                self.state_calls.get(),
+                "preview must use the new plan"
+            );
+            self.consumed_plans.borrow_mut().push(("preview", plan.0));
+            Ok(TaskStats::changed().finish())
+        }
+
+        fn apply(&self, _ctx: &Context, plan: &Self::Plan) -> Result<TaskResult> {
+            assert_eq!(
+                plan.0,
+                self.state_calls.get(),
+                "apply must use the new plan"
+            );
+            self.consumed_plans.borrow_mut().push(("apply", plan.0));
+            if self.fail_once.replace(false) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "apply refused",
+                )
+                .into());
+            }
+            self.complete.set(true);
+            Ok(TaskStats::changed().finish())
         }
     }
 
@@ -267,17 +330,83 @@ mod tests {
             ("preview", true, 1, 0),
             ("apply", false, 0, 1),
         ] {
-            let ctx = test_context().with_dry_run(dry_run);
-            let mut operation = TestOperation::new(OperationState::needs_run("planned change"));
-            operation.fail_at = Some(stage);
+            for interrupt in [false, true] {
+                let ctx = test_context().with_dry_run(dry_run);
+                let mut operation = TestOperation::new(OperationState::needs_run("planned change"));
+                operation.fail_at = Some(stage);
+                operation.interrupt = interrupt;
 
-            let error = process_operation(&ctx, &operation).unwrap_err();
-            let cause = error.downcast_ref::<std::io::Error>().unwrap();
-            assert_eq!(cause.kind(), std::io::ErrorKind::PermissionDenied);
-            assert_eq!(cause.to_string(), stage);
-            assert_eq!(operation.state_calls.load(Ordering::SeqCst), 1);
-            assert_eq!(operation.preview_calls(), preview_calls, "{stage}");
-            assert_eq!(operation.apply_calls(), apply_calls, "{stage}");
+                let error = process_operation(&ctx, &operation).unwrap_err();
+                if interrupt {
+                    assert!(matches!(
+                        error.downcast_ref::<ExecError>(),
+                        Some(ExecError::Cancelled { command, .. }) if command == stage
+                    ));
+                } else {
+                    let cause = error.downcast_ref::<std::io::Error>().unwrap();
+                    assert_eq!(cause.kind(), std::io::ErrorKind::PermissionDenied);
+                    assert_eq!(cause.to_string(), stage);
+                }
+                assert_eq!(crate::engine::batch::is_interrupted(&error), interrupt);
+                assert!(
+                    !ctx.is_cancelled(),
+                    "preserving an error must not cancel other work"
+                );
+                assert_eq!(operation.state_calls.load(Ordering::SeqCst), 1);
+                assert_eq!(operation.preview_calls(), preview_calls, "{stage}");
+                assert_eq!(operation.apply_calls(), apply_calls, "{stage}");
+            }
         }
+    }
+
+    #[test]
+    fn repeated_preview_does_not_converge_or_reuse_its_plan_for_apply() {
+        let ctx = make_linux_context(PathBuf::from("/fixture"), None);
+        let operation = ConvergingOperation::default();
+        for (index, dry_run) in [true, true, false, false].into_iter().enumerate() {
+            let result = process_operation(&ctx.with_dry_run(dry_run), &operation).unwrap();
+            if index == 3 {
+                assert!(matches!(result, TaskResult::Ok));
+            } else {
+                assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+            }
+            assert_eq!(operation.state_calls.get(), index + 1);
+            assert_eq!(operation.complete.get(), index >= 2);
+        }
+        assert_eq!(
+            operation.consumed_plans.into_inner(),
+            [("preview", 1), ("preview", 2), ("apply", 3)]
+        );
+    }
+
+    #[test]
+    fn failed_apply_is_replanned_on_retry_then_stays_complete() {
+        let ctx = make_linux_context(PathBuf::from("/fixture"), None);
+        let operation = ConvergingOperation::default();
+        operation.fail_once.set(true);
+
+        let error = process_operation(&ctx, &operation).unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert!(!operation.complete.get());
+        assert_eq!(operation.state_calls.get(), 1);
+        assert_eq!(*operation.consumed_plans.borrow(), [("apply", 1)]);
+
+        let result = process_operation(&ctx, &operation).unwrap();
+        assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+        assert!(operation.complete.get());
+        assert_eq!(operation.state_calls.get(), 2);
+
+        assert!(matches!(
+            process_operation(&ctx, &operation).unwrap(),
+            TaskResult::Ok
+        ));
+        assert_eq!(operation.state_calls.get(), 3);
+        assert_eq!(
+            operation.consumed_plans.into_inner(),
+            [("apply", 1), ("apply", 2)]
+        );
     }
 }

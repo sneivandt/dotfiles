@@ -17,8 +17,6 @@ mod process;
 #[cfg(any(windows, test))]
 pub(crate) mod windows;
 
-#[cfg(test)]
-use output::stream_summary;
 use output::{failure_output, failure_summary, log_command_output};
 #[cfg(any(
     target_os = "android",

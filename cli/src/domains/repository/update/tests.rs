@@ -622,42 +622,153 @@ fn parallel_fetch_cancellation_takes_precedence_over_another_repository_failure(
 }
 
 #[test]
-fn partial_multi_repository_merge_failure_records_that_the_checkout_changed() {
-    use super::models::{CheckedRepository, UpdateTarget, UpdateTargetKind};
+fn partial_multi_repository_merge_failure_or_cancellation_preserves_restart_signal() {
+    for error in [
+        git_error("second merge could not start"),
+        git_non_zero("second merge failed"),
+        cancelled_git_error(),
+    ] {
+        let cancelled = error.is_cancelled();
+        let root = tempfile::tempdir_in(".").unwrap();
+        let main_root = root.path().join("main");
+        let overlay_root = root.path().join("overlay");
+        let config = overlay_config(&main_root, &overlay_root);
+        let executor = ready_repositories_script(&main_root, &overlay_root)
+            .git(&main_root, &["rev-parse", "HEAD"], "main-old")
+            .git(&main_root, &["rev-parse", "@{u}"], "main-new")
+            .git(&main_root, &["rev-list", "--count", "@{u}..HEAD"], "0")
+            .git(&overlay_root, &["rev-parse", "HEAD"], "overlay-old")
+            .git(&overlay_root, &["rev-parse", "@{u}"], "overlay-new")
+            .git(&overlay_root, &["rev-list", "--count", "@{u}..HEAD"], "0")
+            .git(&main_root, &["merge", "--ff-only", "@{u}"], "updated")
+            .command(
+                CommandSpec::new("git")
+                    .args(&["merge", "--ff-only", "@{u}"])
+                    .current_dir(&overlay_root),
+                Err(error),
+            );
+        let ctx = make_update_context(config.root, config.overlay, executor);
+        let signal = UpdateSignal::new();
 
-    let main_root = PathBuf::from("/tmp/main");
-    let overlay_root = PathBuf::from("/tmp/overlay");
-    let repositories = vec![
-        CheckedRepository {
-            target: UpdateTarget::new(UpdateTargetKind::Main, main_root),
-            head_ref: "refs/heads/main".to_string(),
-        },
-        CheckedRepository {
-            target: UpdateTarget::new(UpdateTargetKind::Overlay, overlay_root),
-            head_ref: "refs/heads/main".to_string(),
-        },
-    ];
-    let executor = ScriptedExecutor::new()
-        .ok("")
-        .ok("")
-        .ok("main-old")
-        .ok("main-new")
-        .ok("0")
-        .ok("overlay-old")
-        .ok("overlay-new")
-        .ok("0")
-        .ok("updated")
-        .err(git_error("second merge failed"));
-    let ctx = make_update_context(PathBuf::from("/tmp"), None, executor);
-    let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx);
 
-    let result = apply_repository_updates(&ctx, &repositories, &signal).unwrap();
+        if cancelled {
+            assert!(
+                result
+                    .unwrap_err()
+                    .downcast_ref::<ExecError>()
+                    .unwrap()
+                    .is_cancelled()
+            );
+        } else {
+            let result = result.unwrap();
+            assert!(
+                matches!(&result, TaskResult::Failed(reason)
+                    if reason == "git merge --ff-only failed in overlay repository"),
+                "the overlay failure must remain a failed update: {result:?}"
+            );
+        }
+        assert!(
+            signal.was_updated(),
+            "a successful first merge must prevent later tasks from using stale configuration"
+        );
+    }
+}
 
-    assert!(matches!(result, TaskResult::Failed(_)));
-    assert!(
-        signal.was_updated(),
-        "a successful first merge must prevent later tasks from using stale configuration"
-    );
+fn ready_repositories_script(main: &Path, overlay: &Path) -> ScriptedExecutor {
+    let mut executor = ScriptedExecutor::new();
+    for root in [main, overlay] {
+        executor = executor
+            .git(
+                root,
+                &["symbolic-ref", "--quiet", "HEAD"],
+                "refs/heads/main",
+            )
+            .git(root, &["status", "--porcelain", "--untracked-files=no"], "");
+    }
+    for root in [main, overlay] {
+        executor = executor.git(root, &["fetch", "--quiet"], "");
+    }
+    executor
+}
+
+#[test]
+fn unsafe_overlay_plan_prevents_merging_an_otherwise_ready_main_repository() {
+    for (case, ahead, reason) in [
+        (
+            "diverged",
+            "1",
+            "local branch diverged from upstream in overlay repository",
+        ),
+        (
+            "invalid count",
+            "not-a-count",
+            "could not determine whether the local branch diverged in overlay repository",
+        ),
+    ] {
+        let root = tempfile::tempdir_in(".").unwrap();
+        let main_root = root.path().join("main");
+        let overlay_root = root.path().join("overlay");
+        let config = overlay_config(&main_root, &overlay_root);
+        let executor = ready_repositories_script(&main_root, &overlay_root)
+            .git(&main_root, &["rev-parse", "HEAD"], "main-old")
+            .git(&main_root, &["rev-parse", "@{u}"], "main-new")
+            .git(&main_root, &["rev-list", "--count", "@{u}..HEAD"], "0")
+            .git(&overlay_root, &["rev-parse", "HEAD"], "overlay-old")
+            .git(&overlay_root, &["rev-parse", "@{u}"], "overlay-new")
+            .git(&overlay_root, &["rev-list", "--count", "@{u}..HEAD"], ahead);
+        let ctx = make_update_context(config.root, config.overlay, executor);
+        let signal = UpdateSignal::new();
+
+        let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
+
+        assert!(
+            matches!(&result, TaskResult::Skipped { reason: detail, kind }
+                if kind.is_failure()
+                    && detail == reason),
+            "{case}: unsafe overlay must block the entire update: {result:?}"
+        );
+        assert!(!signal.was_updated(), "{case}: no merge may have occurred");
+    }
+}
+
+#[test]
+fn repeat_update_after_fast_forward_does_not_merge_or_request_another_restart() {
+    let root = tempfile::tempdir_in(".").unwrap();
+    let mut executor = ScriptedExecutor::new();
+    for head in ["old", "new"] {
+        executor = executor
+            .git(
+                root.path(),
+                &["symbolic-ref", "--quiet", "HEAD"],
+                "refs/heads/main",
+            )
+            .git(
+                root.path(),
+                &["status", "--porcelain", "--untracked-files=no"],
+                "",
+            )
+            .git(root.path(), &["fetch", "--quiet"], "")
+            .git(root.path(), &["rev-parse", "HEAD"], head)
+            .git(root.path(), &["rev-parse", "@{u}"], "new");
+        if head == "old" {
+            executor = executor
+                .git(root.path(), &["rev-list", "--count", "@{u}..HEAD"], "0")
+                .git(root.path(), &["merge", "--ff-only", "@{u}"], "updated");
+        }
+    }
+    let ctx = make_update_context(root.path().to_path_buf(), None, executor);
+
+    for first_run in [true, false] {
+        let signal = UpdateSignal::new();
+        let result = UpdateRepository::new(signal.clone()).run(&ctx).unwrap();
+        if first_run {
+            assert_eq!(crate::test_helpers::task_batch(&result).changed_count(), 1);
+        } else {
+            crate::test_helpers::assert_task_ok(&result);
+        }
+        assert_eq!(signal.was_updated(), first_run);
+    }
 }
 
 // -----------------------------------------------------------------------

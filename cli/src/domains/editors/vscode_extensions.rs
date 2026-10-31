@@ -238,38 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn arch_chroot_provisioning_creates_a_first_session_marker() {
-        let home = tempfile::tempdir().unwrap();
-        let ctx = make_linux_context(PathBuf::from("/tmp"), None)
-            .with_home(home.path().to_path_buf())
-            .with_env(
-                MapEnv::new()
-                    .with(
-                        crate::infra::provisioning::ENV_VAR,
-                        crate::infra::provisioning::ARCH_CHROOT,
-                    )
-                    .into_handle(),
-            );
-        let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
-
-        let result = task.run(&ctx).unwrap();
-
-        assert!(
-            matches!(result, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
-            "first provisioning run should report the durable deferral: {result:?}"
-        );
-        assert!(
-            home.path()
-                .join(
-                    crate::domains::editors::resources::deferred_extensions::MARKER_RELATIVE_PATH,
-                )
-                .is_file(),
-            "the first-session service marker should be created"
-        );
-    }
-
-    #[test]
-    fn arch_chroot_provisioning_reuses_an_existing_marker() {
+    fn arch_chroot_provisioning_creates_then_preserves_the_first_session_marker() {
         let home = tempfile::tempdir().unwrap();
         let env = MapEnv::new()
             .with(
@@ -277,22 +246,43 @@ mod tests {
                 crate::infra::provisioning::ARCH_CHROOT,
             )
             .into_handle();
-        let ctx = make_linux_context(PathBuf::from("/tmp"), None)
-            .with_home(home.path().to_path_buf())
-            .with_env(env);
+        let ctx = make_context(
+            home.path().to_path_buf(),
+            None,
+            Platform::new(Os::Linux, false),
+            Arc::new(MockExecutor::new()),
+        )
+        .with_home(home.path().to_path_buf())
+        .with_env(env);
         let task = InstallVsCodeExtensions::new(ConfigHandle::new(vec![ext()]));
         let first = task.run(&ctx).unwrap();
         assert!(
             matches!(first, TaskResult::Batch(ref stats) if stats.changed_count() == 1),
             "first provisioning run should create the marker: {first:?}"
         );
+        let marker = home
+            .path()
+            .join(crate::domains::editors::resources::deferred_extensions::MARKER_RELATIVE_PATH);
+        assert!(
+            std::fs::read_to_string(&marker)
+                .unwrap()
+                .contains("dotfiles-first-login"),
+            "the durable marker must identify its consumer"
+        );
+        let preserved_content = "pending extensions; preserve first-session notes\n";
+        std::fs::write(&marker, preserved_content).unwrap();
 
         let result = task.run(&ctx).unwrap();
 
         assert!(
-            matches!(result, TaskResult::Batch(ref stats) if stats.already_ok_count() == 1),
+            matches!(
+                result,
+                TaskResult::Batch(ref stats)
+                    if stats.already_ok_count() == 1 && stats.changed_count() == 0
+            ),
             "rerunning provisioning should preserve the existing deferral: {result:?}"
         );
+        assert_eq!(std::fs::read_to_string(marker).unwrap(), preserved_content);
     }
 
     #[test]

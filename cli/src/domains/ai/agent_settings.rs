@@ -241,22 +241,79 @@ mod tests {
     }
 
     #[test]
-    fn target_documents_use_shared_user_locations() {
-        let home = Path::new("/home/test");
-        assert_eq!(
-            target_document(AgentHarness::Copilot, home),
-            (
-                SettingsFormat::Json,
-                home.join(".copilot").join("settings.json")
-            )
-        );
-        assert_eq!(
-            target_document(AgentHarness::Codex, home),
-            (
-                SettingsFormat::Toml,
-                home.join(".codex").join("config.toml")
-            )
-        );
+    fn failed_setting_retains_completed_keys_and_retry_converges_remaining_work() {
+        for target in [AgentHarness::Copilot, AgentHarness::Codex] {
+            let home = tempfile::tempdir_in(".").unwrap();
+            let (_, path) = target_document(target, home.path());
+            let before = match target {
+                AgentHarness::Copilot => r#"{"model":"old","footer":false,"unmanaged":"keep"}"#,
+                AgentHarness::Codex => "model = \"old\"\nfooter = false\nunmanaged = \"keep\"\n",
+            };
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, before).unwrap();
+            let ctx = make_linux_context(home.path().into(), None)
+                .with_home(home.path().into())
+                .with_parallel(false);
+            let task = ConfigureAgentSettings::new(ConfigHandle::new(vec![
+                AgentSetting {
+                    target,
+                    key: "model".into(),
+                    value: toml::Value::String("new".into()),
+                },
+                AgentSetting {
+                    target,
+                    key: "footer.showBranch".into(),
+                    value: true.into(),
+                },
+                AgentSetting {
+                    target,
+                    key: "footer.showQuota".into(),
+                    value: false.into(),
+                },
+            ]));
+
+            let error = task
+                .run(&ctx)
+                .expect_err("incompatible parent must stop the batch");
+            assert!(
+                format!("{error:#}").contains("footer.showBranch"),
+                "{error:#}"
+            );
+            let report = error.downcast_ref::<crate::engine::BatchReport>().unwrap();
+            assert_eq!(report.stats().changed_count(), 1);
+            assert_eq!(report.stats().failed_count(), 1);
+            assert_eq!(report.not_attempted_count(), 1);
+            let contents = std::fs::read_to_string(&path).unwrap();
+            match target {
+                AgentHarness::Copilot => {
+                    let mut document: serde_json::Value = serde_json::from_str(&contents).unwrap();
+                    assert_eq!(
+                        document,
+                        serde_json::json!({"model":"new","footer":false,"unmanaged":"keep"})
+                    );
+                    document["footer"] = serde_json::json!({});
+                    std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+                }
+                AgentHarness::Codex => {
+                    let mut document: toml::Table = toml::from_str(&contents).unwrap();
+                    assert_eq!(document["model"].as_str(), Some("new"));
+                    assert_eq!(document["footer"].as_bool(), Some(false));
+                    assert_eq!(document["unmanaged"].as_str(), Some("keep"));
+                    assert_eq!(document.len(), 3);
+                    document.remove("footer");
+                    std::fs::write(&path, toml::to_string(&document).unwrap()).unwrap();
+                }
+            }
+
+            let result = task.run(&ctx).expect("retry after repairing parent value");
+            assert_eq!(task_batch(&result).changed_count(), 2);
+            assert_eq!(task_batch(&result).already_ok_count(), 1);
+            let converged = std::fs::read(&path).unwrap();
+            let repeated = task.run(&ctx).expect("repeat converged settings");
+            assert_eq!(task_batch(&repeated).changed_count(), 0);
+            assert_eq!(task_batch(&repeated).already_ok_count(), 3);
+            assert_eq!(std::fs::read(&path).unwrap(), converged);
+        }
     }
 
     #[test]

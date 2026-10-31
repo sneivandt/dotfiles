@@ -834,9 +834,16 @@ mod tests {
     }
 
     #[test]
-    fn reconcile_keeps_ownership_of_completed_copies_when_a_later_skill_fails() {
-        let dir = tempfile::tempdir().expect("create temp dir");
-        let (_, target_skill, ctx) = setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+    fn reconcile_retains_partial_progress_and_stale_ownership_until_retry_converges() {
+        let dir = tempfile::tempdir_in(".").expect("create fixture");
+        let (source_skill, target_skill, ctx) =
+            setup_skill(dir.path(), "[agent-skills, copilot-cowork]");
+        let target = target_skill.parent().unwrap();
+        let stale_skill = target.join("old");
+        std::fs::create_dir_all(&stale_skill).unwrap();
+        std::fs::write(stale_skill.join("SKILL.md"), "stale managed entry").unwrap();
+        std::fs::write(stale_skill.join("notes.txt"), "Cowork-owned notes").unwrap();
+        write_owned_skills(target, &BTreeSet::from(["old".to_string()])).unwrap();
         std::fs::write(
             dir.path().join(".apm").join("apm.lock.yaml"),
             "dependencies:\n  - deployed_files:\n      - .agents/skills/example/SKILL.md\n\
@@ -847,10 +854,51 @@ mod tests {
         let error = reconcile_cowork_skills(&ctx).expect_err("missing source must fail");
         assert!(error.to_string().contains("z-missing"));
         assert_eq!(
-            read_owned_skills(target_skill.parent().unwrap()).unwrap(),
-            BTreeSet::from(["example".to_string()])
+            read_owned_skills(target).unwrap(),
+            BTreeSet::from(["example".to_string(), "old".to_string()])
         );
-        assert!(target_skill.join("SKILL.md").exists());
+        let completed = std::fs::read(target_skill.join("SKILL.md")).unwrap();
+        assert_eq!(
+            completed,
+            std::fs::read(source_skill.join("SKILL.md")).unwrap()
+        );
+        assert!(stale_skill.join("SKILL.md").is_file());
+        assert!(!target.join("z-missing").exists());
+        let ownership = std::fs::read(target.join(OWNERSHIP_FILE)).unwrap();
+
+        assert!(
+            reconcile_cowork_skills(&ctx)
+                .unwrap_err()
+                .to_string()
+                .contains("z-missing")
+        );
+        assert_eq!(
+            std::fs::read(target.join(OWNERSHIP_FILE)).unwrap(),
+            ownership
+        );
+        assert_eq!(
+            std::fs::read(target_skill.join("SKILL.md")).unwrap(),
+            completed
+        );
+
+        let recovered_source = source_skill.parent().unwrap().join("z-missing");
+        std::fs::create_dir_all(&recovered_source).unwrap();
+        std::fs::write(recovered_source.join("SKILL.md"), "recovered source").unwrap();
+        assert!(reconcile_cowork_skills(&ctx).expect("retry after repairing source"));
+        assert_eq!(
+            std::fs::read_to_string(target.join("z-missing/SKILL.md")).unwrap(),
+            "recovered source"
+        );
+        assert_eq!(
+            read_owned_skills(target).unwrap(),
+            BTreeSet::from(["example".to_string(), "z-missing".to_string()])
+        );
+        assert!(!stale_skill.join("SKILL.md").exists());
+        assert_eq!(
+            std::fs::read_to_string(stale_skill.join("notes.txt")).unwrap(),
+            "Cowork-owned notes"
+        );
+        assert!(!reconcile_cowork_skills(&ctx).expect("repeat converged reconciliation"));
     }
 
     #[test]

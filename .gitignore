@@ -49,3 +49,8 @@ symlinks/config/zsh/completions/_dotfiles
 
 # Release versions and checksums are generated locally by dotfiles update.
 /packages/*/version.sh
+
+# Local documentation previews
+/docs/_site/
+/docs/.jekyll-cache/
+/docs/.jekyll-metadata

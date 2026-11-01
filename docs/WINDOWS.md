@@ -1,3 +1,8 @@
+---
+title: Windows
+nav_order: 4
+---
+
 # Windows guide
 
 Run dotfiles from your **normal Windows account**, not an Administrator shell.

@@ -1,3 +1,8 @@
+---
+title: Security
+nav_order: 12
+---
+
 # Security and trust
 
 Dotfiles can change your account's configuration and request privileged changes.
@@ -25,10 +30,10 @@ not a trust policy, and removal is not rollback.
 
 ## Release downloads
 
-The [Linux](../dotfiles.sh) and [Windows](../dotfiles.ps1) wrappers download the
+The [Linux](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.sh) and [Windows](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.ps1) wrappers download the
 platform asset and its SHA-256 checksum file over HTTPS. They verify the matching
 asset entry before accepting the download. The CLI's
-[self-update path](../cli/src/domains/dotfiles/self_update.rs) also verifies
+[self-update path](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/dotfiles/self_update.rs) also verifies
 downloads before installing them.
 
 A checksum detects corruption or a mismatch with the published checksum. It
@@ -146,7 +151,7 @@ Coordinate any history cleanup separately.
 
 ## Archive extraction
 
-The Zsh [`extract`](../symlinks/config/zsh/functions/extract) helper delegates to
+The Zsh [`extract`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/functions/extract) helper delegates to
 the appropriate archive tool. For RPM files it uses `bsdtar`, supplied by
 `libarchive` on Arch or `libarchive-tools` on Debian/Ubuntu.
 

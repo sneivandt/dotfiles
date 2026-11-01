@@ -1,3 +1,8 @@
+---
+title: Local packages
+nav_order: 9
+---
+
 # Local package recipes
 
 On Arch Linux, dotfiles maintains a small set of PKGBUILDs for official release
@@ -6,11 +11,11 @@ them; Paru builds and installs the packages.
 
 | Package | Recipe | Upstream |
 |---|---|---|
-| `apm-dotfiles` | [`packages/apm/`](../packages/apm/) | Microsoft APM |
-| `github-copilot-app-dotfiles` | [`packages/github-copilot-app/`](../packages/github-copilot-app/) | GitHub Copilot App |
-| `powershell-dotfiles` | [`packages/powershell/`](../packages/powershell/) | Microsoft PowerShell |
-| `github-copilot-cli-dotfiles` | [`packages/github-copilot-cli/`](../packages/github-copilot-cli/) | GitHub Copilot CLI |
-| `openai-codex-dotfiles` | [`packages/openai-codex/`](../packages/openai-codex/) | OpenAI Codex CLI |
+| `apm-dotfiles` | [`packages/apm/`](https://github.com/sneivandt/dotfiles/tree/main/packages/apm/) | Microsoft APM |
+| `github-copilot-app-dotfiles` | [`packages/github-copilot-app/`](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-app/) | GitHub Copilot App |
+| `powershell-dotfiles` | [`packages/powershell/`](https://github.com/sneivandt/dotfiles/tree/main/packages/powershell/) | Microsoft PowerShell |
+| `github-copilot-cli-dotfiles` | [`packages/github-copilot-cli/`](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-cli/) | GitHub Copilot CLI |
+| `openai-codex-dotfiles` | [`packages/openai-codex/`](https://github.com/sneivandt/dotfiles/tree/main/packages/openai-codex/) | OpenAI Codex CLI |
 
 **A refreshed recipe is not an upgraded application.** Dotfiles prepares the
 available version and installs missing selected packages. Paru upgrades packages
@@ -82,7 +87,7 @@ failure does not prevent use of an available APM; see
 | `packages/<recipe>/release.json` | GitHub source, asset names, and owned package names | Yes |
 | Optional `package.install`, `LICENSE`, `NOTICE` | Lifecycle hooks and reviewed legal files | Yes |
 | `packages/<recipe>/version.sh` | Discovered version and SHA-256 arrays | No |
-| [`paru.conf.base`](../symlinks/config/paru/paru.conf.base) | Shared Paru options, including `CleanAfter` | Yes |
+| [`paru.conf.base`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base) | Shared Paru options, including `CleanAfter` | Yes |
 | Effective `paru.conf` | Generated machine-specific options and repository paths | No |
 | `<CloneDir>/<package_base>/` | Disposable Git snapshot and Paru build output | No |
 
@@ -271,7 +276,7 @@ fail closed rather than allowing an AUR fallback.
 5. Keep extra inputs within the supported snapshot list. Use
    `install=package.install` for lifecycle hooks.
 6. For automatic installation, add `{ name = "<package-name>", aur = true }`
-   to the appropriate category in [`conf/packages.toml`](../conf/packages.toml).
+   to the appropriate category in [`conf/packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
 7. Run offline checks, review a preparation preview, and verify the build on
    Arch in an isolated environment before installing.
 
@@ -293,9 +298,9 @@ Applying `local-package-repository` needs pins, so refresh versions first.
 | Local install excluded | Inspect descriptor ownership, metadata validation, and the published repository section; do not force an AUR fallback |
 
 Implementation and focused regressions live in
-[`local_builds.rs`](../cli/src/domains/packages/local_builds.rs),
-[`snapshots.rs`](../cli/src/domains/packages/local_builds/snapshots.rs), and
-[`tests.rs`](../cli/src/domains/packages/local_builds/tests.rs).
+[`local_builds.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds.rs),
+[`snapshots.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds/snapshots.rs), and
+[`tests.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds/tests.rs).
 
 ## CI and validation
 

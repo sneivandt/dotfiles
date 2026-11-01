@@ -1,3 +1,8 @@
+---
+title: CI and releases
+nav_order: 17
+---
+
 # CI and releases
 
 CI answers two different questions: **did the checks selected for this patch
@@ -5,12 +10,12 @@ pass?** and, after a successful push to `main`, **is there an unpublished binary
 change?** A green first answer does not imply a new release.
 
 For local commands, use [Testing](TESTING.md). Workflow files and the
-[path classifier](../.github/workflows/scripts/linux/classify-ci-changes.py)
+[path classifier](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
 are authoritative when changing automation.
 
 ## Reading a run
 
-[`ci.yml`](../.github/workflows/ci.yml) runs for pushes and pull requests to
+[`ci.yml`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/ci.yml) runs for pushes and pull requests to
 `main`, and manual dispatch. It does not use workflow-level path filters that
 could leave required checks pending.
 
@@ -98,7 +103,7 @@ Windows code and one equivalent mutation; see the
 
 ## Scheduled dependency checks
 
-[`dependency-security.yml`](../.github/workflows/dependency-security.yml)
+[`dependency-security.yml`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/dependency-security.yml)
 runs `cargo audit` and `cargo deny check all` weekly and on manual dispatch,
 independently of changed paths. The policy check still runs after an advisory
 failure unless the workflow is cancelled.
@@ -110,7 +115,7 @@ enabled; GitHub can disable schedules in inactive repositories.
 
 ## Release selection
 
-[`release.yml`](../.github/workflows/release.yml) starts after successful
+[`release.yml`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/release.yml) starts after successful
 same-repository push CI on `main`. A read-only selection job compares that exact
 tested SHA with the latest published, non-draft, non-prerelease release.
 
@@ -147,7 +152,7 @@ A successful CI gate or a running release workflow is not publication. See
 Keep job conditions, classifier outputs, and aggregate dependencies aligned.
 Make a new job's gating or informational status explicit. Use least-privilege
 permissions, pin Actions to full commit SHAs, and reuse shared helpers under
-[workflow scripts](../.github/workflows/scripts/).
+[workflow scripts](https://github.com/sneivandt/dotfiles/tree/main/.github/workflows/scripts/).
 
 Run the local `ci` stage and the affected job's focused command. The
 [selection fixtures](TESTING-RECIPES.md#ci-selection-fixtures) use temporary Git

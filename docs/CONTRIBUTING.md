@@ -1,3 +1,8 @@
+---
+title: Contributing
+nav_order: 13
+---
+
 # Contributing
 
 Most changes start with one application's files, not the CLI engine. This guide
@@ -21,7 +26,7 @@ it may download a release or reuse a different binary.
 ### Selecting the pinned toolchain
 
 Use rustup-managed `cargo` and `rustc`, and run them from `cli/`. Rustup reads
-[`rust-toolchain.toml`](../cli/rust-toolchain.toml) there and can install missing
+[`rust-toolchain.toml`](https://github.com/sneivandt/dotfiles/blob/main/cli/rust-toolchain.toml) there and can install missing
 components or targets.
 
 ```sh
@@ -35,7 +40,7 @@ Check the reported toolchain against the file before validation. System-installe
 Rust tools can ignore it. Configure your editor to use the same toolchain and
 restart its Rust language server after switching.
 
-The minimum supported Rust version in [`Cargo.toml`](../cli/Cargo.toml) is a
+The minimum supported Rust version in [`Cargo.toml`](https://github.com/sneivandt/dotfiles/blob/main/cli/Cargo.toml) is a
 separate compatibility check, not the compiler to use for ordinary development.
 If a required compiler or component is unavailable, report the missing coverage
 rather than substituting another version and calling it a pass.
@@ -83,24 +88,24 @@ configuration. A clean working tree does not make a live installation safe.
 
 | What is changing? | Start here |
 |---|---|
-| Application configuration | The application's directory under [`symlinks/`](../symlinks/) |
-| Packages, links, settings, or services | The matching file under [`conf/`](../conf/); see [Configuration](CONFIGURATION.md) |
-| Administrator-owned file content | [`system/`](../system/) and [`conf/system-files.toml`](../conf/system-files.toml) |
-| CLI options or command selection | [`app/cli.rs`](../cli/src/app/cli.rs) and [`app/commands/`](../cli/src/app/commands/) |
-| Task membership or cross-domain dependencies | [`app/catalog.rs`](../cli/src/app/catalog.rs) |
-| How one kind of state is applied | Its module under [`domains/`](../cli/src/domains/) |
-| Process, filesystem, or output mechanics | [`infra/`](../cli/src/infra/) |
+| Application configuration | The application's directory under [`symlinks/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/) |
+| Packages, links, settings, or services | The matching file under [`conf/`](https://github.com/sneivandt/dotfiles/tree/main/conf/); see [Configuration](CONFIGURATION.md) |
+| Administrator-owned file content | [`system/`](https://github.com/sneivandt/dotfiles/tree/main/system/) and [`conf/system-files.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) |
+| CLI options or command selection | [`app/cli.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/cli.rs) and [`app/commands/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app/commands/) |
+| Task membership or cross-domain dependencies | [`app/catalog.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs) |
+| How one kind of state is applied | Its module under [`domains/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/) |
+| Process, filesystem, or output mechanics | [`infra/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra/) |
 | Hooks or automation | [Hooks](HOOKS.md) and [CI and releases](CI.md) |
 
 Read the closest existing implementation before adding a new abstraction.
-Repository [skills](../.agents/skills/) contain focused contributor procedures;
+Repository [skills](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) contain focused contributor procedures;
 they do not replace the source or these guides. For common configuration work,
-start with [shell configuration](../.agents/skills/shell-configuration/SKILL.md),
-[Hyprland sessions](../.agents/skills/hyprland-session/SKILL.md),
-[Quickshell](../.agents/skills/desktop-shell/SKILL.md), or
-[Vim/Neovim](../.agents/skills/editor-configuration/SKILL.md).
-[Self-update](../.agents/skills/self-update/SKILL.md) covers binary replacement;
-[Rust patterns](../.agents/skills/rust-patterns/SKILL.md) routes unfamiliar CLI work.
+start with [shell configuration](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/shell-configuration/SKILL.md),
+[Hyprland sessions](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/hyprland-session/SKILL.md),
+[Quickshell](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/desktop-shell/SKILL.md), or
+[Vim/Neovim](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/editor-configuration/SKILL.md).
+[Self-update](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/self-update/SKILL.md) covers binary replacement;
+[Rust patterns](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/rust-patterns/SKILL.md) routes unfamiliar CLI work.
 
 ### 3. Change the behavior and its proof
 
@@ -136,7 +141,7 @@ For a new configuration section:
 1. Add its typed decoder and semantic validation in the owning domain, including
    invalid-input tests.
 2. Add it to `config_section_inventory!` in
-   [`app/config`](../cli/src/app/config/). This provides its field, typed store
+   [`app/config`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app/config/). This provides its field, typed store
    handle, summary count, and empty unit fixture.
 3. Wire any special loading, overlay behavior, provenance, and platform
    filtering in `Config::load`, and validation in `Config::validate`.
@@ -189,3 +194,40 @@ links, headings, filenames, or selectors. It catches link and catalog drift,
 not incorrect prose: verify behavioral claims against code and tests.
 
 Never use private overlays, credentials, or unsanitized logs as public examples.
+
+### Published documentation
+
+The repository [Docs publishing skill](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)
+covers site configuration and deployment checks for agents.
+
+The documentation home is [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/).
+GitHub Pages publishes `docs/` from `main` using Jekyll. The pinned Just the Docs
+theme in `docs/_config.yml` provides the dark color scheme, sidebar, mobile menu,
+search, and Mermaid rendering; no separate copy of the guides is maintained.
+
+Edit the existing Markdown files. Each guide has YAML front matter with its
+navigation `title` and numeric `nav_order`; `docs/README.md` has `permalink: /`
+and remains the home page. Give new guides a unique navigation order and add
+them to the documentation index. Keep links between guides relative, including
+the `.md` extension and any heading anchor: Jekyll converts those destinations
+to the published pages. Link to repository source files with full GitHub URLs,
+since code and configuration outside `docs/` are not published to the site.
+
+Keep `docs/CNAME` set to `dotfiles.stuartneivandt.com` and the site's `url` in
+`docs/_config.yml` aligned with it. Forks should configure their own Pages URL
+and custom domain before publishing.
+
+Before pushing, run the documentation link check from the repository root:
+
+```sh
+python3 -B .github/workflows/scripts/linux/check-doc-links.py .
+```
+
+For a site preview, use a Ruby environment with the `github-pages` gem and run
+`jekyll serve --source docs --destination /tmp/dotfiles-docs-site`. Check the
+sidebar and mobile menu, search, diagrams, and links to repository files. Restart
+the preview after changing `_config.yml`.
+
+After an authorized push to `main`, inspect the **pages build and deployment**
+run in GitHub Actions. It is separate from the CLI CI/release workflows. Confirm the deploy job succeeds, then check the published pages for rendering
+and navigation problems.

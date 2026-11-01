@@ -1,3 +1,8 @@
+---
+title: Application configuration
+nav_order: 6
+---
+
 # Application settings
 
 This is the map for changing the managed shell and Arch desktop experience.
@@ -13,10 +18,10 @@ does**, start here.
 
 | Setting | Source |
 |---|---|
-| Shared shell environment and pager defaults | [`config/shell/profile.sh`](../symlinks/config/shell/profile.sh) |
-| Zsh completion | [`config/zsh/completion.zsh`](../symlinks/config/zsh/completion.zsh) |
-| Git aliases | [`config/git/aliases`](../symlinks/config/git/aliases) |
-| Download naming and timestamping | [`config/wgetrc`](../symlinks/config/wgetrc) |
+| Shared shell environment and pager defaults | [`config/shell/profile.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/profile.sh) |
+| Zsh completion | [`config/zsh/completion.zsh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/completion.zsh) |
+| Git aliases | [`config/git/aliases`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases) |
+| Download naming and timestamping | [`config/wgetrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/wgetrc) |
 
 ### Environment and paging
 
@@ -73,11 +78,11 @@ the desktop profile; Windows application integration is covered in
 
 | Change | Start here |
 |---|---|
-| Colors, typography, spacing and motion | [`Theme.js`](../symlinks/config/quickshell/Theme.js) |
-| Popup placement, focus, dismissal and scrolling | [`ShellPopup.qml`](../symlinks/config/quickshell/ShellPopup.qml) |
-| Bar contents and layout | [`Bar.qml`](../symlinks/config/quickshell/Bar.qml) |
-| Notification spacing | [`mako/config`](../symlinks/config/mako/config) |
-| Window and application shortcuts | [`binds.lua`](../symlinks/config/hypr/conf/binds.lua) |
+| Colors, typography, spacing and motion | [`Theme.js`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Theme.js) |
+| Popup placement, focus, dismissal and scrolling | [`ShellPopup.qml`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/ShellPopup.qml) |
+| Bar contents and layout | [`Bar.qml`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Bar.qml) |
+| Notification spacing | [`mako/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mako/config) |
+| Window and application shortcuts | [`binds.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua) |
 
 Only one bar popup opens at a time across monitors. The bar reserves space for
 tiled windows, sits below floating windows and hides on fullscreen workspaces.
@@ -90,11 +95,11 @@ Other applications retain their own icons. Context menus, middle-click and
 scrolling remain available.
 
 Copilot's left click goes through
-[`launch-github.sh`](../symlinks/config/hypr/scripts/launch-github.sh) to invoke
+[`launch-github.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/launch-github.sh) to invoke
 the app's **Open GitHub Copilot** action; ordinary tray activation does not
 restore that window. ChatGPT uses normal activation. Copilot launcher failures
 appear in its tooltip and log. The brand SVGs carry Font Awesome Free/CC BY 4.0
-attribution in [`icons/`](../symlinks/config/quickshell/icons).
+attribution in [`icons/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/quickshell/icons).
 
 **Menus.** The volume menu selects the default output and allows amplification
 to 150%, with 100% marked. NetworkManager handles saved networks and Wi-Fi
@@ -118,11 +123,11 @@ and `hyprctl configerrors`; mako uses `makoctl reload`. Fuzzel reads its
 configuration on launch. Existing GTK applications may need reopening.
 
 Keep Hyprlock's simple background and disabled animations while its
-[documented DPMS workaround](../symlinks/config/hypr/hyprlock.conf) is needed.
+[documented DPMS workaround](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf) is needed.
 
 ### Screen locking and suspend
 
-[`hypridle.conf`](../symlinks/config/hypr/hypridle.conf) requests locking after
+[`hypridle.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hypridle.conf) requests locking after
 **10 idle minutes** and turns displays off after **15**. Idle inhibitors can
 postpone these actions. Turning off displays is not suspending the machine.
 
@@ -150,7 +155,7 @@ Volume follows the default output through `pactl` and can exceed 100%.
 Playback uses `playerctl`. Dedicated media keys also work while locked;
 fallback shortcuts do not.
 
-[`brightness.sh`](../symlinks/config/hypr/scripts/brightness.sh) targets display
+[`brightness.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/brightness.sh) targets display
 backlights, never keyboard LEDs, and keeps brightness above zero. With no
 backlight it does nothing. External monitors usually need separate DDC/CI
 configuration unless their driver exposes a backlight.

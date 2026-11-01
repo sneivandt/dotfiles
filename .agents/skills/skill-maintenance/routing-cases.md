@@ -26,6 +26,9 @@ Companions are needed only when the request changes their contract.
 | Change APM fragment target deployment | `agent-tooling` | No local-packages skill unless the APM executable recipe changes |
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
 | Choose Windows coverage after a Rust path-handling change | `cross-platform-verification` | windows-specific-patterns owns implementation choices |
+| Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
+| Correct prose in the Usage guide | No publishing skill needed | Use the owning domain skill only if behavioral verification needs it |
+| Replace the Pages build with a custom Actions workflow | `docs-publishing` | Add ci-cd-patterns for workflow permissions, pins, and guards |
 | Review skill triggers without changing behavior | `skill-maintenance` | No engine skills merely because examples mention tasks |
 
 For each new or revised trigger, add a matching request, a neighboring exclusion,

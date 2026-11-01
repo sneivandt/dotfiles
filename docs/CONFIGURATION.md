@@ -1,3 +1,8 @@
+---
+title: Configuration
+nav_order: 5
+---
+
 # Configuration reference
 
 To change what dotfiles manages, edit the declaration in `conf/`. To change
@@ -32,15 +37,15 @@ apply. A required file may be empty.
 
 | File | Entry field | Purpose |
 |---|---|---|
-| [`symlinks.toml`](../conf/symlinks.toml) | `symlinks` | Link repository content into home |
-| [`packages.toml`](../conf/packages.toml) | `packages` | Install Arch or Windows packages |
-| [`git-config.toml`](../conf/git-config.toml) | `settings` | Set global Git values |
-| [`agent-settings.toml`](../conf/agent-settings.toml) | `settings` | Set selected Copilot/Codex preferences |
-| [`chmod.toml`](../conf/chmod.toml) | `permissions` | Apply Unix file/directory modes |
-| [`registry.toml`](../conf/registry.toml) | `path` and `values` | Set Windows current-user values |
-| [`systemd-units.toml`](../conf/systemd-units.toml) | `units` | Enable/start or disable/stop units |
-| [`system-files.toml`](../conf/system-files.toml) | `files` | Merge fragments into files below `/etc` |
-| [`vscode-extensions.toml`](../conf/vscode-extensions.toml) | `extensions` | Install editor extensions |
+| [`symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) | `symlinks` | Link repository content into home |
+| [`packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml) | `packages` | Install Arch or Windows packages |
+| [`git-config.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml) | `settings` | Set global Git values |
+| [`agent-settings.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) | `settings` | Set selected Copilot/Codex preferences |
+| [`chmod.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml) | `permissions` | Apply Unix file/directory modes |
+| [`registry.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml) | `path` and `values` | Set Windows current-user values |
+| [`systemd-units.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml) | `units` | Enable/start or disable/stop units |
+| [`system-files.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | `files` | Merge fragments into files below `/etc` |
+| [`vscode-extensions.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | `extensions` | Install editor extensions |
 
 Overlays may also provide `conf/scripts.toml`. The main repository's
 `conf/scripts.toml` is not loaded.
@@ -200,7 +205,7 @@ settings = [
 
 Both fields are strings, including booleans written as `"true"` or `"false"`.
 These settings affect **global** Git configuration. Avoid contradicting the
-shared files under [`symlinks/config/git/`](../symlinks/config/git).
+shared files under [`symlinks/config/git/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
 
 On Windows, the task also removes global `core.autocrlf` when no active
 declaration manages it—even if `settings` is empty. Declare that key explicitly

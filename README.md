@@ -7,8 +7,12 @@
 <p align="center">
   <a href="https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/sneivandt/dotfiles/ci.yml?branch=main&style=flat-square&label=CI"></a>
   <a href="https://github.com/sneivandt/dotfiles/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sneivandt/dotfiles?style=flat-square&label=release"></a>
+  <a href="https://dotfiles.stuartneivandt.com/"><img alt="Documentation" src="https://img.shields.io/badge/docs-online-9ece6a?style=flat-square"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
 </p>
+
+**[Read the documentation](https://dotfiles.stuartneivandt.com/)** — getting started,
+usage, configuration, and troubleshooting.
 
 This is my personal setup. The CLI checks existing state and applies the
 required changes, with dry-run previews and structured run logs.
@@ -38,17 +42,17 @@ Desired state lives in [conf/](conf/), with app configuration under
 | WSL | Windows-side WSL networking settings and Linux-side integration |
 
 The selected configuration depends on the profile and platform; see the
-[task reference](docs/TASKS.md) for the full set of managed tasks.
+[task reference](https://dotfiles.stuartneivandt.com/TASKS.html) for the full set of managed tasks.
 
 The `base` profile covers shell tools and core configuration for servers and
 WSL. The `desktop` profile adds GUI apps and desktop services. Both profiles
 are available on Linux and Windows; Linux package management and the Linux
-desktop setup target Arch. An optional [private overlay](docs/CONFIGURATION.md#overlays)
+desktop setup target Arch. An optional [private overlay](https://dotfiles.stuartneivandt.com/CONFIGURATION.html#overlays)
 adds configuration from a separate repository.
 
 ## Usage
 
-Start with [Getting started](docs/README.md#getting-started) to clone the
+Start with [Getting started](https://dotfiles.stuartneivandt.com/#getting-started) to clone the
 repository into a permanent location, review the configuration, and apply it.
 Back up existing configuration before applying: managed symlinks can replace
 existing files without a backup or confirmation prompt.
@@ -70,7 +74,7 @@ On Windows:
 ```
 
 A preview can still bootstrap the CLI, write logs or selection metadata, and
-execute overlay check/preview scripts. See [Dry-run scope](docs/USAGE.md#dry-run-scope).
+execute overlay check/preview scripts. See [Dry-run scope](https://dotfiles.stuartneivandt.com/USAGE.html#dry-run-scope).
 
 After installation, `dotfiles` is available directly in a new shell. Running
 `dotfiles` without a command defaults to `update`.
@@ -86,9 +90,9 @@ After installation, `dotfiles` is available directly in a new shell. Running
 Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.
 
-For more detail, see [Usage](docs/USAGE.md), [Profiles](docs/PROFILES.md),
-[Configuration](docs/CONFIGURATION.md), and [Troubleshooting](docs/TROUBLESHOOTING.md).
+For more detail, see [Usage](https://dotfiles.stuartneivandt.com/USAGE.html), [Profiles](https://dotfiles.stuartneivandt.com/PROFILES.html),
+[Configuration](https://dotfiles.stuartneivandt.com/CONFIGURATION.html), and [Troubleshooting](https://dotfiles.stuartneivandt.com/TROUBLESHOOTING.html).
 
 ## Development
 
-See [Contributing](docs/CONTRIBUTING.md) for building, testing, and changing the CLI.
+See [Contributing](https://dotfiles.stuartneivandt.com/CONTRIBUTING.html) for building, testing, and changing the CLI.

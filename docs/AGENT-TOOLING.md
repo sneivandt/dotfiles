@@ -1,3 +1,8 @@
+---
+title: Agent tooling
+nav_order: 8
+---
+
 # Agent tooling
 
 Dotfiles keeps agent preferences and reusable agent content in version control.
@@ -16,13 +21,13 @@ Start with the source that owns your change:
 
 | I want to… | Edit |
 |---|---|
-| Set a Copilot or Codex preference | [`conf/agent-settings.toml`](../conf/agent-settings.toml) |
-| Add an external plugin or MCP server | A fragment in [`symlinks/apm/config/`](../symlinks/apm/config/) |
-| Change reusable personal agent behavior | [`symlinks/apm/plugins/dot-agent/`](../symlinks/apm/plugins/dot-agent/) |
-| Add a focused reusable skill | [`symlinks/apm/plugins/dot-skill/`](../symlinks/apm/plugins/dot-skill/) |
-| Choose which profiles receive a fragment/plugin | [`conf/symlinks.toml`](../conf/symlinks.toml) |
-| Guide contributors to this repository | [`AGENTS.md`](../AGENTS.md) or [`.agents/skills/`](../.agents/skills/) |
-| Change deployment behavior | [`cli/src/domains/ai/apm/`](../cli/src/domains/ai/apm/) |
+| Set a Copilot or Codex preference | [`conf/agent-settings.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) |
+| Add an external plugin or MCP server | A fragment in [`symlinks/apm/config/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/) |
+| Change reusable personal agent behavior | [`symlinks/apm/plugins/dot-agent/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-agent/) |
+| Add a focused reusable skill | [`symlinks/apm/plugins/dot-skill/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-skill/) |
+| Choose which profiles receive a fragment/plugin | [`conf/symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) |
+| Guide contributors to this repository | [`AGENTS.md`](https://github.com/sneivandt/dotfiles/blob/main/AGENTS.md) or [`.agents/skills/`](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) |
+| Change deployment behavior | [`cli/src/domains/ai/apm/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/) |
 
 Keep employer-specific instructions, private integrations, and secrets out of
 the public sources. Private content belongs in a private overlay. Never edit
@@ -124,7 +129,7 @@ Two consequences matter in practice:
 - Target lists combine. An overlay that omits a base target does not remove it.
 
 For exact merge examples, see
-[`fragments.rs`](../cli/src/domains/ai/apm/fragments.rs).
+[`fragments.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs).
 
 ## Update behavior
 
@@ -238,7 +243,7 @@ The repair has deliberately narrow ownership rules:
 Repair needs Python and database access. It is best-effort, with warnings
 reported separately from the native command's result. It is attempted even after
 an APM or Cowork failure because an earlier step may already have reset workflows.
-See [`autopilot/`](../cli/src/domains/ai/apm/autopilot/) for the implementation
+See [`autopilot/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/autopilot/) for the implementation
 and regression tests.
 
 ### Cowork skills
@@ -276,7 +281,7 @@ desired entry point.
 Before native deployment, legacy `cowork://` lock records are removed to prevent
 native directory cleanup; explicit legacy skill ownership is retained in the
 inventory when the destination exists. Do not delete the inventory to fix drift.
-See [`cowork.rs`](../cli/src/domains/ai/apm/cowork.rs).
+See [`cowork.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs).
 
 Neither compatibility integration should be removed just because APM's version
 changes. A replacement needs isolated evidence for target filtering, ACL-safe

@@ -1,3 +1,8 @@
+---
+title: Troubleshooting
+nav_order: 11
+---
+
 # Troubleshooting
 
 **Read the failed run before retrying a full update.** A retry can update the

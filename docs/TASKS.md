@@ -1,3 +1,8 @@
+---
+title: Task reference
+nav_order: 7
+---
+
 # Task reference
 
 A **task selector** chooses a kind of work, such as `symlinks` or `packages`.

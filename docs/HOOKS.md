@@ -1,3 +1,8 @@
+---
+title: Hooks
+nav_order: 10
+---
+
 # Git hooks
 
 The dotfiles pre-commit hook checks what you have **staged**, before Git creates
@@ -8,8 +13,8 @@ There are two independent hook systems:
 
 | System | Purpose | Source |
 |---|---|---|
-| This repository's pre-commit hook | Check staged changes | [`hooks/`](../hooks/) |
-| Personal Git templates | Protect pushes and clean up merged branches in other repositories too | [`symlinks/config/git/templates/`](../symlinks/config/git/templates/) |
+| This repository's pre-commit hook | Check staged changes | [`hooks/`](https://github.com/sneivandt/dotfiles/tree/main/hooks/) |
+| Personal Git templates | Protect pushes and clean up merged branches in other repositories too | [`symlinks/config/git/templates/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git/templates/) |
 
 ## Before committing
 
@@ -223,18 +228,18 @@ It is separate from both CI and the repository's pre-push **validation script**.
 
 | File | Responsibility |
 |---|---|
-| [`pre-commit`](../hooks/pre-commit) | POSIX `sh` orchestration |
-| [`check-sensitive.sh`](../hooks/check-sensitive.sh) | Added-line scanning and redacted diagnostics |
-| [`sensitive-patterns.ini`](../hooks/sensitive-patterns.ini) | Detection expressions |
-| [`sensitive-allowlist.ini`](../hooks/sensitive-allowlist.ini) | Safe-span exceptions |
-| [`check-rust.sh`](../hooks/check-rust.sh) | Staged Rust and PowerShell checks |
-| [`check-toolchain.sh`](../hooks/check-toolchain.sh) | Staged compiler-pin verification |
-| [`check-ci-guards.sh`](../hooks/check-ci-guards.sh) | Targeted configuration, dependency, shell, wrapper, and release guards |
+| [`pre-commit`](https://github.com/sneivandt/dotfiles/blob/main/hooks/pre-commit) | POSIX `sh` orchestration |
+| [`check-sensitive.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-sensitive.sh) | Added-line scanning and redacted diagnostics |
+| [`sensitive-patterns.ini`](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-patterns.ini) | Detection expressions |
+| [`sensitive-allowlist.ini`](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-allowlist.ini) | Safe-span exceptions |
+| [`check-rust.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-rust.sh) | Staged Rust and PowerShell checks |
+| [`check-toolchain.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-toolchain.sh) | Staged compiler-pin verification |
+| [`check-ci-guards.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-ci-guards.sh) | Targeted configuration, dependency, shell, wrapper, and release guards |
 
 Keep scripts POSIX `sh` compatible and preserve partially staged input,
 rename/deletion handling, unusual filenames, and empty-diff behavior.
-Installation lives in [`git/hooks.rs`](../cli/src/domains/git/hooks.rs) and
-[`resources/hook.rs`](../cli/src/domains/git/resources/hook.rs).
+Installation lives in [`git/hooks.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/hooks.rs) and
+[`resources/hook.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/resources/hook.rs).
 
 ### Changing sensitive patterns
 

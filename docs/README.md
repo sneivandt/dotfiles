@@ -1,4 +1,13 @@
+---
+title: Getting started
+nav_order: 1
+permalink: /
+---
+
 # Dotfiles documentation
+
+Read these guides at [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/),
+or browse the same Markdown files in the repository.
 
 Start here to install the configuration, change it, or work on the Rust CLI.
 This is a personal setup for Arch Linux and Windows, not a collection of
@@ -49,8 +58,8 @@ download a verified CLI when needed; Rust is only needed to
 
 ### 2. Review the configuration
 
-[`conf/`](../conf/) declares what to manage.
-[`symlinks/`](../symlinks/) holds the application files linked into your home.
+[`conf/`](https://github.com/sneivandt/dotfiles/tree/main/conf/) declares what to manage.
+[`symlinks/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/) holds the application files linked into your home.
 Use [Configuration](CONFIGURATION.md) to change those declarations or add a
 [private overlay](CONFIGURATION.md#overlays).
 

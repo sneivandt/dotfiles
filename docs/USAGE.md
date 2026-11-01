@@ -1,3 +1,8 @@
+---
+title: Usage
+nav_order: 2
+---
+
 # Usage
 
 Use dotfiles to bring a machine into the state described by this checkout.

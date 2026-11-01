@@ -1,3 +1,8 @@
+---
+title: Profiles
+nav_order: 3
+---
+
 # Profiles and categories
 
 Choose a **profile** for the machine's role. Dotfiles adds **categories** for

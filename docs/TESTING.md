@@ -1,3 +1,8 @@
+---
+title: Testing
+nav_order: 15
+---
+
 # Testing and validation
 
 Start with the smallest check that can prove your change. Then verify the
@@ -43,8 +48,8 @@ commits; a clean developer checkout is **not** a safe fixture.
 ## Fast local sequence
 
 The canonical entrypoints are
-[`check.sh`](../.github/workflows/scripts/linux/check.sh) and
-[`Check.ps1`](../.github/workflows/scripts/windows/Check.ps1). Select stages for
+[`check.sh`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/check.sh) and
+[`Check.ps1`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/windows/Check.ps1). Select stages for
 your patch rather than always running everything.
 
 Linux:
@@ -96,7 +101,7 @@ The docs stage needs Python and Cargo: its selector check runs a Rust fixture.
 It also validates repository skill metadata and runs the validator's synthetic
 regressions without third-party Python dependencies. The supported frontmatter
 convention and manual routing cases live in
-[Skill maintenance](../.agents/skills/skill-maintenance/SKILL.md#check-the-result).
+[Skill maintenance](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/skill-maintenance/SKILL.md#check-the-result).
 Metadata checks do not measure agent instruction effectiveness.
 
 The link check inspects **tracked** Markdown files and local inline links, not
@@ -142,7 +147,7 @@ to CI. Report unavailable checks explicitly. After pushing, inspect the
 
 ## Integration test suites
 
-Rust integration targets under [`cli/tests/`](../cli/tests/) use fixtures.
+Rust integration targets under [`cli/tests/`](https://github.com/sneivandt/dotfiles/tree/main/cli/tests/) use fixtures.
 They are different from CI's host-mutating integration jobs.
 
 | Target | Main responsibility |
@@ -176,19 +181,19 @@ tests for selection, dependency wiring, elevation policy, and exit status;
 lifecycle/end-to-end fixtures for state across runs.
 
 Shared sequential/parallel scheduler contracts live in
-[`scheduler/conformance.rs`](../cli/src/engine/tests/scheduler/conformance.rs).
+[`scheduler/conformance.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/scheduler/conformance.rs).
 Adjacent tests cover synchronization and output ordering;
-[`batch_reports.rs`](../cli/src/engine/tests/batch_reports.rs) and
-[`parallel.rs`](../cli/src/engine/tests/parallel.rs) cover partial failure,
+[`batch_reports.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/batch_reports.rs) and
+[`parallel.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/tests/parallel.rs) cover partial failure,
 cancellation, and in-flight accounting.
 
-Use [`common::cli_command`](../cli/tests/common/mod.rs) for CLI subprocess
+Use [`common::cli_command`](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/mod.rs) for CLI subprocess
 fixtures. It isolates home/config/cache/state/logs, clears inherited
 `DOTFILES_*` and `GIT_*` overrides, sets a fixture Git boundary, and disables
 self/repository updates. Use injected environments/executors and isolated
 loggers for in-process tests.
 
-[`common/lifecycle.rs`](../cli/tests/common/lifecycle.rs) provides real
+[`common/lifecycle.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/common/lifecycle.rs) provides real
 symlink, Git-hook, and Git-setting lifecycle fixtures. Assert exact changes,
 counts, preserved state, and behavior across fresh contexts, not only a success
 message. Named case tables help repeated input/rejection cases; keep separate

@@ -1,3 +1,8 @@
+---
+title: Architecture
+nav_order: 14
+---
+
 # Architecture
 
 Dotfiles describes the machine state it wants, inspects the state it has, and
@@ -46,10 +51,10 @@ The Rust application has four layers:
 
 | Layer | Responsibility |
 |---|---|
-| [`app/`](../cli/src/app) | CLI syntax, configuration loading, command composition, cross-domain dependencies, restart and elevation policy |
-| [`engine/`](../cli/src/engine) | Task graphs, scheduling, convergence lifecycles, cancellation and result accounting |
-| [`domains/`](../cli/src/domains) | Packages, files, Git, editors, services and other concrete desired state |
-| [`infra/`](../cli/src/infra) | Filesystem, processes, environment, platform capabilities and logging |
+| [`app/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app) | CLI syntax, configuration loading, command composition, cross-domain dependencies, restart and elevation policy |
+| [`engine/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/engine) | Task graphs, scheduling, convergence lifecycles, cancellation and result accounting |
+| [`domains/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains) | Packages, files, Git, editors, services and other concrete desired state |
+| [`infra/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra) | Filesystem, processes, environment, platform capabilities and logging |
 
 Configuration lives outside those layers: `conf/` declares desired state,
 `symlinks/` holds managed home content, and `system/` holds administrator-file
@@ -57,12 +62,12 @@ fragments. Most application-setting changes belong there, not in Rust.
 
 Domains do not import sibling domains to coordinate work. The application
 catalog wires those relationships. The
-[domain-boundary tests](../cli/tests/domain_boundaries.rs) enforce this rule
+[domain-boundary tests](https://github.com/sneivandt/dotfiles/blob/main/cli/tests/domain_boundaries.rs) enforce this rule
 and guard direct environment/platform access.
 
 ## Wrappers
 
-[`dotfiles.sh`](../dotfiles.sh) and [`dotfiles.ps1`](../dotfiles.ps1) locate the
+[`dotfiles.sh`](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.sh) and [`dotfiles.ps1`](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.ps1) locate the
 checkout and binary, handle `--build`, bootstrap when needed, and forward the
 remaining arguments. Rust owns profile selection and command behavior.
 
@@ -74,7 +79,7 @@ prove it includes local Rust edits.
 ## Application layer
 
 For engine commands, startup resolves one
-[`RuntimePolicy`](../cli/src/app/commands/runtime.rs) before logging begins.
+[`RuntimePolicy`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runtime.rs) before logging begins.
 It combines CLI flags, the injected environment and terminal capabilities.
 The context receives its resolved `ExecutionPolicy`; profile prompting,
 restart logic and elevation do not independently reinterpret the environment.
@@ -91,11 +96,11 @@ Important distinctions:
 - Structured JSONL output disables prompts. Terminal-dependent Windows exit
   pauses and interrupt handling remain separate from task prompt policy.
 
-The [`CommandRunner`](../cli/src/app/commands/runner.rs) holds the run lock,
+The [`CommandRunner`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the run lock,
 configuration store and execution context. Static update/remove tasks come
-from [`catalog.rs`](../cli/src/app/catalog.rs); `check` has a
-[separate task set](../cli/src/app/commands/check.rs). The
-[execution coordinator](../cli/src/app/commands/execution/mod.rs) handles
+from [`catalog.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs); `check` has a
+[separate task set](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/check.rs). The
+[execution coordinator](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/mod.rs) handles
 elevation, restart phases, progress and final command status.
 
 Read-only `list` uses configuration and task metadata without executing tasks,
@@ -120,7 +125,7 @@ from `Config::validate`: startup displays them, while `config-diagnostics` fails
 if any remain. Do not conflate these two validation stages or silently replace
 invalid input with a default.
 
-[`ConfigStore`](../cli/src/app/config/store.rs) exposes typed, `Arc`-backed
+[`ConfigStore`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/config/store.rs) exposes typed, `Arc`-backed
 handles into one immutable configuration snapshot. Cloning a handle shares
 ownership; `get()` borrows the data. Tasks, including dynamic script tasks, are
 built once from that snapshot. They do not reload configuration as they run.
@@ -142,8 +147,8 @@ restart; no change means the existing snapshot remains usable. Filtering out
 repository work uses a single graph.
 
 This is a reload boundary, not an independently selectable “reload” task.
-See [`update.rs`](../cli/src/app/commands/update.rs) and
-[`reexec.rs`](../cli/src/app/commands/reexec.rs).
+See [`update.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/update.rs) and
+[`reexec.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/reexec.rs).
 
 ## Task engine
 
@@ -189,7 +194,7 @@ Ready tasks run in scoped threads; resource batches can use Rayon.
 `ctx.parallel()` gates both. `.sequential()` only serializes one batch—it does
 not prevent another task from touching the same document.
 
-Use [`AccessClaim`](../cli/src/engine/access.rs) for that exclusion. Equal
+Use [`AccessClaim`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/access.rs) for that exclusion. Equal
 namespace/key pairs cannot overlap within the run's claim registry:
 
 - A task reserves its full claim set after dependency waits, before its body.
@@ -207,7 +212,7 @@ agent settings claim each target document, not each individual setting.
 
 ## Requirements
 
-A [`Requirement<T>`](../cli/src/engine/requirement.rs) is a named read-only
+A [`Requirement<T>`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/requirement.rs) is a named read-only
 probe that returns either:
 
 | Result | Meaning |
@@ -238,7 +243,7 @@ Requirements do not change selection or discover additional tasks.
 
 ## Resources
 
-A [`Resource`](../cli/src/engine/resource/contract.rs) represents one
+A [`Resource`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs) represents one
 independently convergent item. Its lifecycle is **discover → plan → preview or
 apply**. Discovery is intrinsic to the resource, or uses an injected batch
 lookup when one query can inspect many items.
@@ -264,7 +269,7 @@ An unusable result must not become a successful no-op. Removal is a separate
 managed state, not arbitrary mismatched user data. Unknown ownership prevents
 removal and records failure.
 
-Stopped batches retain a typed [`BatchReport`](../cli/src/engine/batch.rs):
+Stopped batches retain a typed [`BatchReport`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/batch.rs):
 completed statistics, interrupted work and unattempted items. Parallel batches
 join already-started work before reporting. A failed shared inventory query
 leaves all prepared items unattempted and is a task-level error, not an invented
@@ -272,7 +277,7 @@ resource failure. Later cancellation must not erase an earlier genuine failure.
 
 ## Operations
 
-An [`Operation`](../cli/src/engine/operation.rs) handles one idempotent workflow,
+An [`Operation`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/operation.rs) handles one idempotent workflow,
 such as repository synchronization or an overlay script. `current_state()`
 returns complete, not applicable, blocked, or needs-run with an immutable plan.
 
@@ -291,7 +296,7 @@ adapters for runtime decisions. Compile-time `cfg` gates remain appropriate
 where native APIs require them. Paths retain native OS encoding; a non-Unicode
 home path is not a missing environment variable.
 
-The [elevation broker](../cli/src/app/commands/execution/elevation.rs) keeps
+The [elevation broker](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/elevation.rs) keeps
 normal work unelevated. Linux primes sudo credentials for privileged commands;
 Windows delegates selected tasks to an elevated child. Unavailable elevation
 leaves unmet work and blocks blocking dependents, not independent work.
@@ -299,7 +304,7 @@ See [Elevation](SECURITY.md#elevation).
 
 ## Error handling and observability
 
-Use checked [`CommandSpec`](../cli/src/infra/exec/mod.rs) requests unless a
+Use checked [`CommandSpec`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/infra/exec/mod.rs) requests unless a
 nonzero exit has a domain meaning the caller explicitly handles. Preserve
 typed spawn, I/O, nonzero-exit, capture-limit, timeout and cancellation causes
 through helper context and task boundaries.

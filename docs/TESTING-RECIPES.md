@@ -1,3 +1,8 @@
+---
+title: Test recipes
+nav_order: 16
+---
+
 # Test recipes
 
 Use [Testing](TESTING.md#choosing-coverage) to choose coverage first. This page
@@ -218,7 +223,7 @@ The exclusions mirror Linux CI: Windows-only elevation, registry, PATH, and
 Cowork directory-identity code cannot receive native Linux coverage. There is
 also one equivalent agent-settings mutation that canonicalizes a regular file
 without changing its write destination. Keep exclusions aligned with
-[`ci.yml`](../.github/workflows/ci.yml), not a growing local ignore list.
+[`ci.yml`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/ci.yml), not a growing local ignore list.
 
 Linux CI divides the applicable changed-code mutants into eight shards; omit
 `--shard` locally to cover the selected set. Investigate every `MISSED` mutant.

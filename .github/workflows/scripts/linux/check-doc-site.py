@@ -176,7 +176,7 @@ def check_site(root):
             if not noindex:
                 errors.append(f"{route}: missing noindex robots meta tag")
         else:
-            canonical = origin + ("/index.html" if source.stem == "index" else route)
+            canonical = origin + ("/" if source.stem == "index" else route)
             if page.canonicals != [canonical]:
                 errors.append(f"{route}: expected canonical URL {canonical}, found {page.canonicals}")
             expected_urls.add(canonical)

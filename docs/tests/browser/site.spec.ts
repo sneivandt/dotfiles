@@ -13,6 +13,22 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(page).toHaveURL('/');
   await expect(page).toHaveTitle('Dotfiles by Stuart Neivandt');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Introduction');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://dotfiles.stuartneivandt.com/');
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', 'https://dotfiles.stuartneivandt.com/');
+  await expect(page.locator('.sl-markdown-content').getByRole('link', { name: 'Stuart Neivandt', exact: true }))
+    .toHaveAttribute('href', 'https://github.com/sneivandt');
+  await expect(page.locator('.sl-markdown-content p').filter({
+    has: page.getByRole('link', { name: 'Stuart Neivandt', exact: true }),
+  })).toContainText('I started this as a dotfiles repo');
+  const structuredData = page.locator('head script[type="application/ld+json"]');
+  await expect(structuredData).toHaveCount(1);
+  expect(JSON.parse(await structuredData.textContent() ?? '')).toMatchObject({
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Dotfiles',
+    url: 'https://dotfiles.stuartneivandt.com/',
+    creator: { '@type': 'Person', name: 'Stuart Neivandt', url: 'https://github.com/sneivandt' },
+  });
   await expect(page.locator('.hero')).toHaveCount(0);
   await expect(page.getByText('On this page', { exact: true })).toHaveCount(0);
   const setupLink = page.locator('.sl-markdown-content').getByRole('link', { name: 'Getting started', exact: true });

@@ -19,7 +19,7 @@ export default defineConfig({
     sitemap({
       serialize(item) {
         const url = new URL(item.url);
-        if (!url.pathname.endsWith('.html')) {
+        if (url.pathname !== '/' && !url.pathname.endsWith('.html')) {
           url.pathname += url.pathname.endsWith('/') ? 'index.html' : '.html';
         }
         return { ...item, url: url.href };

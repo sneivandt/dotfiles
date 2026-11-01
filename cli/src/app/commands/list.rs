@@ -413,6 +413,7 @@ mod tests {
         let config = empty_config(PathBuf::from("/fixture"));
         for platform in [
             Platform::new(Os::Linux, true),
+            Platform::new(Os::Linux, false),
             Platform::new(Os::Windows, false),
         ] {
             for selector in [
@@ -463,6 +464,13 @@ mod tests {
                 potentially_applicable("paru", &config, platform),
                 platform.uses_pacman()
             );
+            for selector in ["local-package-repository", "local-package-versions"] {
+                assert_eq!(
+                    potentially_applicable(selector, &config, platform),
+                    platform.supports_aur(),
+                    "{selector} requires AUR support on {platform}"
+                );
+            }
             assert_eq!(
                 potentially_applicable("git", &config, platform),
                 platform.is_windows(),

@@ -236,6 +236,102 @@ fn force_quit(log: &dyn Output, non_interactive: bool) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::exec::{CommandSpec, Executor as _, ProcessExecutor};
+    use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
+
+    const CHILD_TEST: &str = "app::interrupt::tests::interrupt_child";
+    const CHILD_ROOT: &str = "DOTFILES_INTERRUPT_TEST_ROOT";
+
+    #[test]
+    #[ignore = "subprocess fixture launched by the interrupt lifecycle test"]
+    fn interrupt_child() {
+        let root = std::path::PathBuf::from(std::env::var_os(CHILD_ROOT).unwrap());
+        let log = Arc::new(crate::infra::logging::Logger::new_in("update", &root));
+        let run = log.run_log().unwrap();
+        run.start_run("update", None);
+        std::fs::write(root.join("run-path"), run.path().to_str().unwrap()).unwrap();
+        let token = CancellationToken::new();
+        #[cfg(unix)]
+        install(&token, &log, true);
+        #[cfg(not(unix))]
+        let state = Arc::new(Escalation::default());
+
+        for interrupt in 0..2 {
+            #[cfg(unix)]
+            nix::sys::signal::raise(nix::sys::signal::Signal::SIGINT).unwrap();
+            #[cfg(not(unix))]
+            handle_interrupt(&state, &token, &log, true);
+
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            if interrupt == 0 {
+                while !token.is_cancelled() {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "first interrupt was not handled"
+                    );
+                    std::thread::yield_now();
+                }
+                // In-flight work may finish after cooperative cancellation.
+                std::fs::write(root.join("completed-work"), "preserved content").unwrap();
+            } else {
+                while std::time::Instant::now() < deadline {
+                    std::thread::yield_now();
+                }
+                panic!("second non-interactive interrupt must exit the process");
+            }
+        }
+    }
+
+    #[test]
+    fn cooperative_interrupt_then_force_quit_preserves_work_and_records_interrupted_exit() {
+        let fixture = tempfile::tempdir().unwrap();
+        let result = ProcessExecutor::system()
+            .execute(
+                CommandSpec::new(std::env::current_exe().unwrap())
+                    .args(&["--ignored", "--exact", CHILD_TEST, "--nocapture"])
+                    .env(CHILD_ROOT, fixture.path().as_os_str())
+                    .timeout(std::time::Duration::from_secs(20))
+                    .unchecked(),
+            )
+            .unwrap();
+        assert_eq!(result.code, Some(130), "{result:?}");
+        assert_eq!(
+            std::fs::read_to_string(fixture.path().join("completed-work")).unwrap(),
+            "preserved content",
+            "the first interrupt must let in-flight work finish"
+        );
+        let path = std::fs::read_to_string(fixture.path().join("run-path")).unwrap();
+        let contents = std::fs::read_to_string(path).unwrap();
+        let records = contents
+            .lines()
+            .filter_map(StoredRecord::from_line)
+            .collect::<Vec<_>>();
+        let finishes = records
+            .iter()
+            .filter_map(|stored| {
+                if let Record::RunFinish {
+                    outcome, exit_code, ..
+                } = &stored.record
+                {
+                    Some((*outcome, *exit_code))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(finishes, [(RunOutcome::Interrupted, 130)], "{contents}");
+        for message in [CANCEL_MESSAGE, FORCE_QUIT_MESSAGE] {
+            let count = contents
+                .lines()
+                .filter(|line| line.ends_with(message))
+                .count();
+            assert_eq!(count, 1, "{message}: {contents}");
+        }
+        assert!(
+            !contents.contains(PROMPT),
+            "non-interactive runs must not prompt"
+        );
+    }
 
     #[test]
     fn non_interactive_interrupts_never_prompt_even_with_terminals() {

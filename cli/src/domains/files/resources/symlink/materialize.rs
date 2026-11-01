@@ -135,11 +135,117 @@ pub(super) fn copy_dir_into_place(
     Ok(())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt as _;
 
+    #[test]
+    fn materialization_refuses_user_files_and_directories_and_cleans_staging() {
+        for directory in [false, true] {
+            let fixture = tempfile::tempdir().unwrap();
+            let source = fixture.path().join("source");
+            let target = fixture.path().join("target");
+            let content = |path: &Path| {
+                if directory {
+                    path.join("content")
+                } else {
+                    path.to_path_buf()
+                }
+            };
+            if directory {
+                std::fs::create_dir(&source).unwrap();
+                std::fs::create_dir(&target).unwrap();
+            }
+            std::fs::write(content(&source), "managed content").unwrap();
+            std::fs::write(content(&target), "user replacement").unwrap();
+
+            let error = copy_into_place(&source, &target, &crate::infra::exec::MockExecutor::new())
+                .unwrap_err();
+
+            assert!(
+                error
+                    .to_string()
+                    .contains("refusing to overwrite non-symlink target"),
+                "{error:#}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(content(&target)).unwrap(),
+                "user replacement"
+            );
+            assert_eq!(
+                std::fs::read_to_string(content(&source)).unwrap(),
+                "managed content"
+            );
+            assert_eq!(
+                std::fs::read_dir(fixture.path()).unwrap().count(),
+                2,
+                "failed staging must leave no temporary entries"
+            );
+        }
+    }
+
+    #[test]
+    fn materialization_cannot_replace_its_own_source() {
+        let fixture = tempfile::tempdir().unwrap();
+        let source = fixture.path().join("source");
+        std::fs::write(&source, "source must survive").unwrap();
+
+        let error = copy_into_place(&source, &source, &crate::infra::exec::MockExecutor::new())
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("refusing to replace the source entry"),
+            "{error:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&source).unwrap(),
+            "source must survive"
+        );
+        assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_directory_staging_preserves_link_and_retry_materializes_content() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let source = root.join("source");
+        let target = root.join("target");
+        std::fs::create_dir(&source).unwrap();
+        crate::infra::fs::create_native_symlink(&source, &target, true).unwrap();
+        let original_link = std::fs::read_link(&target).unwrap();
+        // The directory changed after the caller classified it, before staging.
+        std::fs::remove_dir(&source).unwrap();
+        std::fs::write(&source, "changed source").unwrap();
+        let executor = crate::infra::exec::MockExecutor::new();
+
+        let error = copy_dir_into_place(&source, &target, &executor).unwrap_err();
+
+        assert!(error.to_string().contains("recursive copy"), "{error:#}");
+        assert_eq!(std::fs::read_link(&target).unwrap(), original_link);
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), "changed source");
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
+
+        std::fs::remove_file(&source).unwrap();
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("content"), "restored directory").unwrap();
+        copy_dir_into_place(&source, &target, &executor).unwrap();
+        assert!(std::fs::read_link(&target).is_err());
+        assert_eq!(
+            std::fs::read_to_string(target.join("content")).unwrap(),
+            "restored directory"
+        );
+        assert_eq!(
+            std::fs::read_to_string(source.join("content")).unwrap(),
+            "restored directory"
+        );
+        assert_eq!(std::fs::read_dir(root).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
     #[test]
     fn staging_file_is_private_before_copying_source_content() {
         let fixture = tempfile::tempdir_in(".").unwrap();
@@ -155,6 +261,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 0);
     }
 
+    #[cfg(unix)]
     #[test]
     fn private_staging_retains_the_final_source_permissions() {
         let fixture = tempfile::tempdir_in(".").unwrap();

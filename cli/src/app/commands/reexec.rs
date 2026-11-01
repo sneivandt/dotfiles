@@ -135,23 +135,78 @@ pub(super) fn re_exec_path(root: &std::path::Path) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::exec::{CommandSpec, Executor as _, ProcessExecutor};
     use crate::infra::logging::records::{Record, RunOutcome, StoredRecord};
 
+    const CHILD_TEST: &str = "app::commands::reexec::tests::restart_child";
+    const CHILD_ROLE: &str = "DOTFILES_RESTART_TEST_ROLE";
+    const CHILD_ROOT: &str = "DOTFILES_RESTART_TEST_ROOT";
+
     #[test]
-    fn parent_run_preserves_the_restarted_childs_outcome() {
-        for (code, expected) in [
-            (0, RunOutcome::Succeeded),
-            (1, RunOutcome::Failed),
-            (130, RunOutcome::Interrupted),
-        ] {
-            let dir = tempfile::tempdir().unwrap();
-            let log = crate::infra::logging::Logger::new_in("update", dir.path());
-            let run = log.run_log().unwrap();
-            run.start_run("update", None);
+    #[ignore = "subprocess fixture launched by restart outcome tests"]
+    fn restart_child() {
+        let role = std::env::var(CHILD_ROLE).unwrap();
+        if let Some(code) = role.strip_prefix("exit-") {
+            std::process::exit(code.parse().unwrap());
+        }
+        #[cfg(unix)]
+        if role == "signal" {
+            nix::sys::signal::raise(nix::sys::signal::Signal::SIGTERM).unwrap();
+            panic!("SIGTERM must terminate the replacement process");
+        }
 
-            finish_reexec(&log, code);
+        let root = std::path::PathBuf::from(std::env::var_os(CHILD_ROOT).unwrap());
+        let log = crate::infra::logging::Logger::new_in("update", &root);
+        let run = log.run_log().unwrap();
+        run.start_run("update", None);
+        std::fs::write(root.join("run-path"), run.path().to_str().unwrap()).unwrap();
+        let mut command = if role == "missing" {
+            std::process::Command::new(root.join("missing-executable"))
+        } else {
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--ignored", "--exact", CHILD_TEST, "--nocapture"])
+                .env(CHILD_ROLE, role.strip_prefix("parent-").unwrap());
+            command
+        };
+        command.stdin(std::process::Stdio::null());
+        run_reexec(command, &log);
+    }
 
-            let contents = std::fs::read_to_string(run.path()).unwrap();
+    #[test]
+    fn restarted_process_exit_and_spawn_failure_finish_the_parent_run() {
+        let cases = vec![
+            ("parent-exit-0", 0, RunOutcome::Succeeded, None),
+            ("parent-exit-23", 23, RunOutcome::Failed, None),
+            ("parent-exit-130", 130, RunOutcome::Interrupted, None),
+            ("missing", 1, RunOutcome::Failed, Some("failed to re-exec")),
+        ];
+        #[cfg(unix)]
+        let cases = {
+            let mut cases = cases;
+            cases.push((
+                "parent-signal",
+                1,
+                RunOutcome::Failed,
+                Some("child process terminated by signal"),
+            ));
+            cases
+        };
+        for (role, code, expected_outcome, diagnostic) in cases {
+            let fixture = tempfile::tempdir().unwrap();
+            let result = ProcessExecutor::system()
+                .execute(
+                    CommandSpec::new(std::env::current_exe().unwrap())
+                        .args(&["--ignored", "--exact", CHILD_TEST, "--nocapture"])
+                        .env(CHILD_ROLE, role)
+                        .env(CHILD_ROOT, fixture.path().as_os_str())
+                        .timeout(std::time::Duration::from_secs(20))
+                        .unchecked(),
+                )
+                .unwrap();
+            assert_eq!(result.code, Some(code), "{role}: {result:?}");
+            let path = std::fs::read_to_string(fixture.path().join("run-path")).unwrap();
+            let contents = std::fs::read_to_string(path).unwrap();
             let finishes = contents
                 .lines()
                 .filter_map(StoredRecord::from_line)
@@ -166,11 +221,10 @@ mod tests {
                     }
                 })
                 .collect::<Vec<_>>();
-            assert_eq!(
-                finishes,
-                [(expected, code)],
-                "the parent must not label an interrupted child as failed"
-            );
+            assert_eq!(finishes, [(expected_outcome, code)], "{role}: {contents}");
+            if let Some(diagnostic) = diagnostic {
+                assert!(contents.contains(diagnostic), "{role}: {contents}");
+            }
         }
     }
 }

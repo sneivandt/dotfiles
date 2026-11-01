@@ -10,12 +10,11 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
 </p>
 
-My personal configuration for Arch Linux and Windows, managed by a Rust CLI.
-The CLI checks existing state and applies the required changes. It supports
-dry-run previews and structured run logs.
+This is my personal setup. The CLI checks existing state and applies the
+required changes, with dry-run previews and structured run logs.
 
 Desired state lives in [conf/](conf/), with app configuration under
-[symlinks/](symlinks/).
+[symlinks/](symlinks/) and managed system-file fragments under [system/](system/).
 
 <p align="center">
   <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles update first updates the CLI, then links configuration, refreshes shell completions, and installs missing packages">
@@ -25,25 +24,38 @@ Desired state lives in [conf/](conf/), with app configuration under
 
 | Area | Configuration |
 |---|---|
-| Shell | Zsh, Bash, PowerShell, tmux, PATH, and completions |
-| Editors | Vim/Neovim, VS Code settings, and extensions |
+| Shell | Zsh, Bash, PowerShell, login shell, tmux, PATH, and completions |
+| Editors | Vim/Neovim and VS Code settings, keybindings, and extensions |
 | Terminal | Alacritty and Windows Terminal |
 | Git | Global settings, aliases, and repository hooks |
-| Packages | pacman and paru on Arch Linux; winget on Windows |
-| Arch desktop | Hyprland, Quickshell, mako, fuzzel, and GTK settings |
-| Services | systemd user and system units |
+| Packages | Arch and AUR packages through pacman/paru, local PKGBUILD recipes, and Windows packages through winget |
+| Arch desktop | Hyprland, Quickshell bar and menus, mako notifications, fuzzel launcher, locking, wallpaper, and GTK/font settings |
+| Services | systemd user and system services, sockets, and timers |
+| System configuration | Managed settings under `/etc`, including pacman, PAM, and WSL configuration |
+| SSH and GPG | SSH client and GPG agent configuration |
 | Agent tooling | Agent packages and plugins, Copilot and Codex settings |
 | Windows | Current-user registry values and Developer Mode |
+| WSL | Windows-side WSL networking settings and Linux-side integration |
+
+The selected configuration depends on the profile and platform; see the
+[task reference](docs/TASKS.md) for the full set of managed tasks.
 
 The `base` profile covers shell tools and core configuration for servers and
 WSL. The `desktop` profile adds GUI apps and desktop services. Both profiles
-work on Linux and Windows. An optional private overlay adds configuration from
-a separate repository.
+are available on Linux and Windows; Linux package management and the Linux
+desktop setup target Arch. An optional [private overlay](docs/CONFIGURATION.md#overlays)
+adds configuration from a separate repository.
 
 ## Usage
 
-The wrapper scripts download and verify the CLI when needed. Pass `--build`
-to build from source.
+Start with [Getting started](docs/README.md#getting-started) to clone the
+repository into a permanent location, review the configuration, and apply it.
+Back up existing configuration before applying: managed symlinks can replace
+existing files without a backup or confirmation prompt.
+
+From the checkout, preview the selected profile with the commands below. The
+wrapper scripts download and verify the CLI when needed. Pass `--build` to
+build from source.
 
 On Linux:
 
@@ -57,7 +69,11 @@ On Windows:
 .\dotfiles.ps1 update --profile desktop --dry-run
 ```
 
-After installation, `dotfiles` is available directly in a new shell.
+A preview can still bootstrap the CLI, write logs or selection metadata, and
+execute overlay check/preview scripts. See [Dry-run scope](docs/USAGE.md#dry-run-scope).
+
+After installation, `dotfiles` is available directly in a new shell. Running
+`dotfiles` without a command defaults to `update`.
 
 | Command | What it does |
 |---|---|
@@ -69,6 +85,9 @@ After installation, `dotfiles` is available directly in a new shell.
 
 Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.
+
+For more detail, see [Usage](docs/USAGE.md), [Profiles](docs/PROFILES.md),
+[Configuration](docs/CONFIGURATION.md), and [Troubleshooting](docs/TROUBLESHOOTING.md).
 
 ## Development
 

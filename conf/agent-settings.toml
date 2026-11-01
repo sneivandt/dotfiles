@@ -12,19 +12,22 @@
 
 [base]
 settings = [
-  # Copilot CLI core behaviour
-  { target = "copilot", key = "model",          value = "gpt-6.1-sol" },
-  { target = "copilot", key = "effortLevel",    value = "medium"      },
-  { target = "copilot", key = "banner",         value = "never"       },
-  { target = "copilot", key = "beep",           value = false         },
-  { target = "copilot", key = "memory",         value = true          },
-  { target = "copilot", key = "renderMarkdown", value = true          },
-  { target = "copilot", key = "logLevel",       value = "default"     },
+  # Copilot CLI model, session, and input defaults
+  { target = "copilot", key = "model",                 value = "gpt-6.1-sol" },
+  { target = "copilot", key = "effortLevel",           value = "medium"      },
+  { target = "copilot", key = "banner",                value = "never"       },
+  { target = "copilot", key = "beep",                  value = false         },
+  { target = "copilot", key = "memory",                value = true          },
+  { target = "copilot", key = "renderMarkdown",        value = true          },
+  { target = "copilot", key = "logLevel",              value = "default"     },
+  { target = "copilot", key = "commandHistoryMaxSize", value = 200           },
+  { target = "copilot", key = "editorMode",            value = "normal"      },
+  { target = "copilot", key = "defaultMode",           value = "interactive" },
 
   # Copilot CLI appearance
   { target = "copilot", key = "theme", value = "default" },
 
-  # Copilot CLI footer / status line
+  # Copilot CLI footer
   { target = "copilot", key = "footer.showModelEffort",   value = false },
   { target = "copilot", key = "footer.showDirectory",     value = true  },
   { target = "copilot", key = "footer.showBranch",        value = true  },
@@ -37,23 +40,57 @@ settings = [
   { target = "copilot", key = "footer.showSandbox",       value = false },
   { target = "copilot", key = "footer.showCustom",        value = true  },
 
-  # Codex agent defaults shared by the CLI, IDE extension, and desktop app
-  { target = "codex", key = "approval_policy",        value = "on-request"      },
-  { target = "codex", key = "approvals_reviewer",     value = "auto_review"     },
-  { target = "codex", key = "default_permissions",    value = ":workspace"      },
-  { target = "codex", key = "features.memories",      value = true              },
-  { target = "codex", key = "memories.generate_memories", value = true          },
-  { target = "codex", key = "memories.use_memories",      value = true          },
+  # Codex permissions shared by the CLI, IDE extension, and desktop app
+  { target = "codex", key = "approval_policy",     value = "on-request"  },
+  { target = "codex", key = "approvals_reviewer",  value = "auto_review" },
+  { target = "codex", key = "default_permissions", value = ":workspace"  },
+
+  # Codex memory generation and use
+  { target = "codex", key = "features.memories",          value = true },
+  { target = "codex", key = "memories.generate_memories", value = true },
+  { target = "codex", key = "memories.use_memories",      value = true },
+
+  # Codex model and tool defaults
   { target = "codex", key = "model",                  value = "gpt-6.1-sol"     },
   { target = "codex", key = "model_reasoning_effort", value = "medium"          },
   { target = "codex", key = "web_search",             value = "live"            },
   { target = "codex", key = "file_opener",            value = "vscode-insiders" },
-  { target = "codex", key = "tui.show_tooltips",      value = false             },
+
+  # Keep the default exclusions when passing environment variables to tools.
   { target = "codex", key = "shell_environment_policy.ignore_default_excludes", value = false },
 
+  # Codex CLI: show directory and branch, and preserve terminal scrollback.
+  { target = "codex", key = "tui.status_line",      value = ["current-dir", "git-branch"] },
+  { target = "codex", key = "tui.alternate_screen", value = "never" },
+  { target = "codex", key = "tui.show_tooltips",    value = false   },
+
+  # Resume in the saved session directory; notify only while unfocused.
+  { target = "codex", key = "tui.resume_cwd",             value = "session"   },
+  { target = "codex", key = "tui.notifications",          value = true        },
+  { target = "codex", key = "tui.notification_condition", value = "unfocused" },
+
   # Codex desktop preferences (app-specific keys may change between releases)
-  { target = "codex", key = "desktop.notifications-sound",            value = "none"  },
-  { target = "codex", key = "desktop.followUpQueueMode",              value = "steer" },
-  { target = "codex", key = "desktop.show-context-window-usage",      value = true    },
-  { target = "codex", key = "desktop.ambient-suggestions-enabled",    value = false   },
+  { target = "codex", key = "desktop.notifications-sound",         value = "none"  },
+  { target = "codex", key = "desktop.followUpQueueMode",           value = "steer" },
+  { target = "codex", key = "desktop.show-context-window-usage",   value = true    },
+  { target = "codex", key = "desktop.ambient-suggestions-enabled", value = false   },
+]
+
+[desktop]
+settings = [
+  # Keep CLI sessions connected to the editor and review edit diffs there.
+  { target = "copilot", key = "ide.autoConnect",    value = true },
+  { target = "copilot", key = "ide.openDiffOnEdit", value = true },
+]
+
+[linux]
+settings = [
+  # Linux package management owns CLI updates. Also disable first-party plugin auto-updates.
+  { target = "copilot", key = "autoUpdate", value = false },
+]
+
+[windows]
+settings = [
+  # Windows allows CLI and first-party plugin auto-updates.
+  { target = "copilot", key = "autoUpdate", value = true },
 ]

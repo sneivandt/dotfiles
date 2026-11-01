@@ -139,9 +139,9 @@ DIR="$PWD" sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_site
 ```
 
 The site check runs Astro diagnostics, Markdown-transform fixtures, the static
-build, matching page titles/navigation/filenames, published URL/anchor/asset
-checks, and Playwright. The browser regressions
-exercise the homepage, grouped navigation, search, theme persistence, and every
+build, matching page titles/navigation/filenames, published URL/anchor/asset,
+canonical sitemap, and robots/indexability checks. Browser regressions exercise
+the homepage, grouped navigation, search, theme persistence, and every
 Mermaid diagram at desktop and mobile sizes. Diagram labels must stay at least
 14 CSS pixels. Mobile emulation is not a native phone/browser test.
 

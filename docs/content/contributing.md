@@ -185,8 +185,9 @@ context. Prefer verified defaults over routine root/profile overrides and
 diagnostic flags. Keep necessary task filters and preview flags. Use a small
 Mermaid diagram only when it makes a relationship easier to grasp.
 
-The [homepage](getting-started.md) starts the setup journey, not a directory of
-links. The grouped sidebar moves from setup to everyday use, customization,
+The standalone [introduction](index.md) gives readers a short path to
+[Getting started](getting-started.md), everyday use, and customization.
+The sidebar moves from setup to everyday use, customization,
 subsystem guides, and development. Keep related platform and editor guides
 adjacent and place common tasks before reference detail.
 
@@ -216,13 +217,15 @@ static assets are separate. The same guides remain readable in the repository.
 
 Use the same wording for each guide's front-matter `title`, Markdown H1, and
 sidebar label. Its filename and URL use the lowercase, hyphenated title:
-`getting-started.md` publishes at `/getting-started.html`. Add a `description`
+`getting-started.md` publishes at `/getting-started.html`. The exception is
+`index.md`, which builds `index.html` and is served at `/`. Add a `description`
 and place new guides in the appropriate sidebar group in `docs/astro.config.mjs`.
 All groups start expanded. New visits default to dark mode; the native theme
 control retains an explicit Light or System choice.
 
-The site root redirects to Getting started. Renamed pages do not get
-compatibility routes or old-heading aliases: update their incoming references.
+The site root is a short introduction, separate from Getting started. Renamed
+pages do not get compatibility routes or old-heading aliases: update their
+incoming references.
 The Markdown transform avoids a duplicate displayed H1, retains the current
 title's Markdown fragment, and converts relative `.md` links to published URLs.
 Use full GitHub URLs for source files outside the guides.
@@ -261,7 +264,10 @@ repository's **Settings > Pages > Build and deployment** before publishing.
 This is a repository setting; editing site files does not switch it automatically.
 Keep the custom domain and HTTPS enforcement enabled. The canonical site URL
 is derived from `docs/public/CNAME`, which is also copied into the build.
-Forks must configure their own domain or Pages URL.
+`docs/public/robots.txt` points crawlers to the sitemap; its domain must also
+change in a fork. The sitemap lists the same `.html` URLs used as page
+canonicals. Guides allow indexing, while the 404 page opts out. Forks must
+configure their own domain or Pages URL.
 
 CI builds and checks the site, including Chromium desktop/mobile regressions.
 After the aggregate succeeds for a same-repository push to `main`, the
@@ -279,3 +285,6 @@ python3 -B .github/workflows/scripts/linux/check-doc-links.py .
 After an authorized push, follow both CI and **Publish documentation** for the
 exact commit. Verify the deployed pages, custom domain, HTTPS, and HTTP-to-HTTPS
 redirect separately; a successful upload does not prove the public site works.
+If a search console reports a `noindex` directive, check the deployed page's
+robots metadata and response headers before requesting a fresh crawl. Allowing
+crawlers in `robots.txt` does not override a `noindex` directive.

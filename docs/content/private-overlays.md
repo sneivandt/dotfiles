@@ -130,21 +130,23 @@ Only an overlay's `conf/scripts.toml` is loaded; the main repository cannot
 declare these tasks.
 
 ```toml
-[[base.scripts]]
+[[linux.scripts]]
 name = "Configure private workstation"
-path = "scripts/configure-workstation.ps1"
+path = "scripts/configure-workstation.sh"
 description = "Converge private workstation settings"
 ```
 
 `name` and `path` are required; `description` is optional. Names must be nonempty
 and produce distinct selectors. This example becomes
 `script-configure-private-workstation`: ASCII alphanumeric words are lowercased
-and joined with hyphens.
+and joined with hyphens. The `linux` category keeps this POSIX shell script off
+Windows; use `[[windows.scripts]]` and a `.ps1` file for a Windows-only task.
 
 Paths must stay inside the overlay, including after symlink resolution.
 Scripts run with the overlay root as their working directory. `.ps1` matching
 is case-insensitive and selects PowerShell (`pwsh`, or Windows PowerShell
-when available on Windows); other extensions use POSIX `sh`.
+when available on Windows); other extensions need POSIX `sh` on the selected
+platform.
 
 Implement every protocol mode:
 

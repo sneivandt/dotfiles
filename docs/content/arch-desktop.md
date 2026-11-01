@@ -23,11 +23,12 @@ Hyprland's `conf/env.lua`.
 
 ```mermaid
 flowchart TB
-    accTitle: Arch desktop session
-    accDescr: UWSM coordinates Hyprland and graphical-session services. Those services run the Quickshell interface and supporting desktop daemons.
-    UWSM["UWSM"] --> Hyprland["Hyprland"]
-    UWSM --> Services["User services"]
-    Services --> Shell["Quickshell"]
+    accTitle: Who starts the Arch desktop components
+    accDescr: The managed Zsh profile starts UWSM from tty1. UWSM starts Hyprland and manages graphical-session user services; these services run Quickshell, idle management, wallpaper, and notifications instead of using Hyprland autostart.
+    Login["Zsh login on tty1"] --> UWSM["UWSM session"]
+    UWSM --> Hyprland["Hyprland compositor"]
+    UWSM --> Services["Graphical user services"]
+    Services --> Shell["Quickshell bar"]
     Services --> Daemons["Idle, wallpaper, notifications"]
 ```
 

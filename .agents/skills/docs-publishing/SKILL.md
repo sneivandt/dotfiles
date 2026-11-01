@@ -20,9 +20,12 @@ heading anchors aligned with the site's output.
 
 ## Write for readers
 
-- Put the common workflow and useful first action before inventories, internals,
-  and exceptional cases. Explain terms on first use; do not start the homepage
-  with a table of links or a large hero that pushes setup below the fold.
+- Use the root landing page to briefly introduce the repository and give a clear
+  first action linking to Getting started; keep the setup walkthrough in that
+  guide rather than duplicating it on the landing page. Do not bury the first
+  action beneath a link directory or oversized hero. In guides, put the common
+  workflow before inventories, internals, and exceptions; explain terms on
+  first use.
 - Prefer short, copyable commands using verified defaults. Avoid routine
   `--root .`, profile overrides, and diagnostic flags. Keep flags that express
   the example's purpose, such as a targeted preview or explicit unattended input.
@@ -35,9 +38,10 @@ heading anchors aligned with the site's output.
   detailed Arch desktop and editor behavior belongs in its owning guide. Put
   advanced recipe maintenance after everyday package use. Keep related platforms
   and editors adjacent in the sidebar, and order groups from setup to development.
-- Match page title, sidebar text, filename, and URL. Update incoming references
-  after moves; do not add old-name redirects or compatibility heading aliases.
-  The root-to-Getting-started redirect is the site entry point, not a rename shim.
+- For guides, match page title, sidebar text, filename, and URL. Update incoming
+  references after moves; do not add old-name redirects or compatibility heading
+  aliases. The root introduction is its own page at `/`, not a redirect to
+  Getting started or a guide subject to the filename/title rule.
 - Keep the README brief with the shared site icon and one prominent root website
   link. Do not turn it into a second documentation directory.
 - Verify behavioral claims against the owning code/tests, not just existing prose.
@@ -51,7 +55,8 @@ heading anchors aligned with the site's output.
   Match the front-matter title, Markdown H1, and sidebar label. Filenames and
   URLs use the lowercase, hyphenated title: `getting-started.md` publishes at
   `/getting-started.html`. Keep a description and place guides in the explicit,
-  expanded sidebar groups. The root redirects to Getting started.
+  expanded sidebar groups. Keep the site root at `/` as a separate landing page
+  with a prominent path to the Getting started guide.
 - Keep guide links relative with `.md` extensions. The
   [Markdown transform](../../../docs/src/remark-docs.mjs) rewrites published
   destinations and preserves each Markdown title's anchor without a
@@ -65,6 +70,10 @@ heading anchors aligned with the site's output.
 - The canonical site URL comes from `docs/public/CNAME`. Pages must use
   **GitHub Actions**, not branch/Jekyll publishing. Forks need their own domain
   configuration. CNAME does not configure DNS or enforce HTTPS.
+- Keep the landing page and guides indexable: no `noindex` metadata or robots
+  exclusion on those pages; the 404 page remains nonindexable. Sitemap entries
+  must match the pages' canonical URLs, including `.html` for guides, and
+  `robots.txt` should point to the sitemap. Check the built output for all three.
 
 Use the [site checks](../../../docs/content/testing.md#documentation-site) and
 preview procedure in the publishing guide. Inspect navigation on desktop/mobile,

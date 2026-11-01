@@ -18,13 +18,13 @@ read [Usage](commands-and-usage.md); for desired-state declarations, read
 
 ```mermaid
 flowchart TB
-    accTitle: The path from a command to managed state
-    accDescr: The wrapper or CLI loads configuration, selects tasks and schedules dependencies, inspects current state, previews or applies the plan, and records results.
-    A([Wrapper or CLI]) --> B["Load configuration"]
-    B --> C["Select and schedule"]
-    C --> D["Inspect and plan"]
-    D --> E["Preview or apply"]
-    E --> F(["Results and run log"])
+    accTitle: Tasks, resources, and operations
+    accDescr: The command loads configuration and schedules tasks. A task may converge independent resources or a whole-workflow operation; both report outcomes to the command summary and run log.
+    Command["Command and configuration"] --> Task["Task: eligibility and dependencies"]
+    Task --> Resources["Resources: independent items"]
+    Task --> Operation["Operation: whole workflow"]
+    Resources --> Result["Results and run log"]
+    Operation --> Result
 ```
 
 Three boundaries explain most of the design:

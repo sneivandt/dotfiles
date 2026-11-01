@@ -1,7 +1,7 @@
 <h1 align="center"><img src="docs/public/favicon.svg" width="24" height="24" align="bottom" alt=""> Dotfiles</h1>
 
 <p align="center">
-  <strong>Declarative system configuration for Arch Linux and Windows, powered by a Rust CLI.</strong>
+  <strong>My Arch Linux and Windows configuration, managed with a Rust CLI.</strong>
 </p>
 
 <p align="center">
@@ -11,14 +11,15 @@
 </p>
 
 > [!TIP]
-> **[Open the documentation website](https://dotfiles.stuartneivandt.com/)**
->
-> Follow the setup guide or explore how to customize and use this configuration.
+> **[Explore the documentation](https://dotfiles.stuartneivandt.com/)** for a guided
+> first setup, everyday commands, and ways to make the configuration your own.
 
-This is my personal setup. The CLI checks existing state and applies the
-required changes, with dry-run previews and structured run logs.
+Keep shell, editor, desktop, and system settings together in a repository.
+The CLI checks what is already in place, previews the selected work, and
+applies the changes. This is a personal setup, not a general-purpose
+installer: review it before using it on your machine.
 
-Desired state lives in [conf/](conf/), with app configuration under
+Desired state lives in [conf/](conf/), with application settings under
 [symlinks/](symlinks/) and managed system-file fragments under [system/](system/).
 
 <p align="center">
@@ -51,7 +52,7 @@ desktop setup target Arch.
 
 ## Usage
 
-Start with [Getting started](https://dotfiles.stuartneivandt.com/#getting-started) to clone the
+Start with [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html) to clone the
 repository into a permanent location, review the configuration, and apply it.
 Back up existing configuration before applying: managed symlinks can replace
 existing files without a backup or confirmation prompt.

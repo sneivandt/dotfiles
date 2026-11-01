@@ -228,6 +228,16 @@ requires **`pwsh` and PSScriptAnalyzer**. Missing `pwsh` is a skipped check;
 present `pwsh` with a missing module is a failed check. See
 [CLI validation](testing.md#cli-validation).
 
+## Windows Terminal
+
+The `windows-desktop` category links the tracked
+[`settings.json`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json)
+into Windows Terminal's packaged-app `LocalState` directory. It selects a
+PowerShell 7 (`pwsh.exe`) profile by default and includes an Arch WSL profile.
+If either is unavailable on your machine, edit the tracked settings before
+installing the link. Windows Terminal may write changes back through the link;
+review the repository diff after editing settings in the app.
+
 ## WSL
 
 Run the **Linux wrapper inside the distribution** to manage its Linux home

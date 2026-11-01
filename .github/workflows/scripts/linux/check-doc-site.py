@@ -7,6 +7,7 @@ import re
 import runpy
 import sys
 from urllib.parse import unquote, urljoin, urlsplit
+from xml.etree import ElementTree
 
 
 class Page(HTMLParser):
@@ -20,6 +21,8 @@ class Page(HTMLParser):
         self.titles = []
         self.nav_links = []
         self.icons = []
+        self.robots = []
+        self.canonicals = []
         self.in_title = False
         self.in_nav = False
         self.nav_link = None
@@ -45,10 +48,14 @@ class Page(HTMLParser):
             self.assets.append(attrs["src"])
         if tag == "link" and attrs.get("href"):
             relations = attrs.get("rel", "").split()
+            if "canonical" in relations:
+                self.canonicals.append(attrs["href"])
             if "stylesheet" in relations or "icon" in relations:
                 self.assets.append(attrs["href"])
             if "icon" in relations:
                 self.icons.append(attrs["href"])
+        if tag == "meta" and attrs.get("name", "").lower() in {"robots", "googlebot"}:
+            self.robots.append(attrs.get("content", ""))
 
     def handle_data(self, text):
         if self.in_title:
@@ -67,6 +74,33 @@ class Page(HTMLParser):
             self.nav_link = None
 
 
+def sitemap_urls(output, origin, errors):
+    index = output / "sitemap-index.xml"
+    if not index.is_file():
+        errors.append("Missing published sitemap-index.xml")
+        return set()
+    try:
+        namespaces = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        sitemap_files = [item.text for item in ElementTree.parse(index).findall(".//s:loc", namespaces)]
+        if not sitemap_files:
+            errors.append("Published sitemap index contains no sitemaps")
+        urls = []
+        for item in sitemap_files:
+            location = urlsplit(item or "")
+            if not (item or "").startswith(origin + "/") or ".." in location.path.split("/"):
+                errors.append(f"Invalid sitemap location {item!r}")
+                continue
+            child = output / location.path.lstrip("/")
+            if not child.is_file():
+                errors.append(f"Missing published sitemap {item}")
+                continue
+            urls.extend(tag.text for tag in ElementTree.parse(child).findall(".//s:loc", namespaces))
+        return set(urls)
+    except ElementTree.ParseError as error:
+        errors.append(f"Invalid published sitemap XML: {error}")
+        return set()
+
+
 def check_site(root):
     output = root / "docs/dist"
     domain = (root / "docs/public/CNAME").read_text(encoding="utf-8").strip()
@@ -78,9 +112,27 @@ def check_site(root):
     errors = []
     if "/index.html" not in pages:
         return ["Missing built homepage; run npm --prefix docs run build first"]
+    if not (root / "docs/content/index.md").is_file():
+        errors.append("Missing Markdown homepage docs/content/index.md")
+    sidebar_routes = {
+        urlsplit(urljoin(origin + "/index.html", href)).path
+        for href, _ in pages["/index.html"].nav_links
+    }
+    indexed_urls = sitemap_urls(output, origin, errors)
+    robots = output / "robots.txt"
+    if not robots.is_file():
+        errors.append("Missing published robots.txt")
+    elif not re.search(
+        rf"(?im)^sitemap:\s*{re.escape(origin)}/sitemap-index\.xml\s*$",
+        robots.read_text(encoding="utf-8"),
+    ):
+        errors.append("Published robots.txt does not declare the canonical sitemap")
+    expected_urls = set()
     heading_anchors = runpy.run_path(str(Path(__file__).with_name("check-doc-links.py")))["markdown_anchors"]
     for source in sorted((root / "docs/content").glob("*.md")):
         route = "/" + source.stem + ".html"
+        if source.stem != "404" and route not in sidebar_routes:
+            errors.append(f"{source.name}: missing from homepage navigation")
         if route not in pages:
             errors.append(f"{source.name}: missing published route {route}")
             continue
@@ -94,13 +146,32 @@ def check_site(root):
         elif source.stem != "404":
             title = page.titles[0].strip()
             slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-            if source.stem != slug:
+            if source.stem != "index" and source.stem != slug:
                 errors.append(f"{route}: filename and URL do not match title {title!r}")
             source_title = re.search(r"^# (.+)$", source_text, re.MULTILINE)
             if source_title is None or source_title[1] != title:
                 errors.append(f"{source.name}: Markdown title does not match page title {title!r}")
         if "/favicon.svg" not in page.icons:
             errors.append(f"{route}: missing site favicon")
+        noindex = any(
+            re.search(r"(?:^|[,\s])(?:noindex|none)(?:$|[,\s])", value, re.I)
+            for value in page.robots
+        )
+        if source.stem == "404":
+            if not noindex:
+                errors.append(f"{route}: missing noindex robots meta tag")
+        else:
+            canonical = origin + ("/index.html" if source.stem == "index" else route)
+            if page.canonicals != [canonical]:
+                errors.append(f"{route}: expected canonical URL {canonical}, found {page.canonicals}")
+            expected_urls.add(canonical)
+            if noindex:
+                errors.append(f"{route}: indexable guide has a noindex robots meta tag")
+    if indexed_urls != expected_urls:
+        errors.append(
+            f"Sitemap URLs differ from canonical guide URLs: "
+            f"missing={sorted(expected_urls - indexed_urls)}, extra={sorted(indexed_urls - expected_urls)}"
+        )
     for route, page in pages.items():
         if page.duplicates:
             errors.append(f"{route}: duplicate IDs {sorted(page.duplicates)}")

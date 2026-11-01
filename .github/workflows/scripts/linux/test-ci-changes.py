@@ -813,6 +813,7 @@ class GitRangeTests(unittest.TestCase):
         check_site = runpy.run_path(str(SCRIPTS / "check-doc-site.py"))["check_site"]
         homepage = (
             '<link rel="shortcut icon" href="/favicon.svg">'
+            '<link rel="canonical" href="https://docs.example.invalid/getting-started.html">'
             '<h1 id="getting-started">Getting started</h1><h2 id="setup">Setup</h2>'
             '<nav aria-label="Main"><a href="/commands-and-usage.html#commands">Commands and usage</a></nav>'
             '<a href="https://example.invalid/external">External</a>'
@@ -820,29 +821,65 @@ class GitRangeTests(unittest.TestCase):
         )
         fixture = {
             "docs/public/CNAME": "docs.example.invalid\n",
+            "docs/content/404.md": "The missing page has no Markdown title.\n",
+            "docs/content/index.md": "# Dotfiles\n\n## Start here\n",
             "docs/content/getting-started.md": "# Getting started\n\n## Setup\n",
             "docs/content/commands-and-usage.md": "# Commands and usage\n\n## Commands\n",
-            "docs/dist/index.html": '<a href="/getting-started.html">Getting started</a>',
+            "docs/dist/index.html": (
+                '<link rel="icon" href="/favicon.svg">'
+                '<link rel="canonical" href="https://docs.example.invalid/index.html">'
+                '<h1 id="dotfiles">Dotfiles</h1><h2 id="start-here">Start here</h2>'
+                '<nav aria-label="Main">'
+                '<a href="/index.html">Dotfiles</a>'
+                '<a href="/getting-started.html">Getting started</a>'
+                '<a href="/commands-and-usage.html">Commands and usage</a>'
+                '</nav>'
+            ),
             "docs/dist/getting-started.html": homepage,
             "docs/dist/commands-and-usage.html": (
                 '<link rel="icon" href="/favicon.svg">'
+                '<link rel="canonical" href="https://docs.example.invalid/commands-and-usage.html">'
                 '<h1 id="commands-and-usage">Commands and usage</h1><h2 id="commands">Commands</h2>'
                 '<a href="/getting-started.html#setup">Setup</a>'
+            ),
+            "docs/dist/404.html": (
+                '<link rel="icon" href="/favicon.svg">'
+                '<meta name="robots" content="noindex"><h1>Page not found</h1>'
             ),
             "docs/dist/favicon.svg": "<svg/>",
             "docs/dist/assets/example.svg": "<svg/>",
             "docs/dist/CNAME": "docs.example.invalid\n",
+            "docs/dist/robots.txt": "User-agent: *\nAllow: /\nSitemap: https://docs.example.invalid/sitemap-index.xml\n",
+            "docs/dist/sitemap-index.xml": (
+                '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                '<sitemap><loc>https://docs.example.invalid/sitemap-0.xml</loc></sitemap></sitemapindex>'
+            ),
+            "docs/dist/sitemap-0.xml": (
+                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                '<url><loc>https://docs.example.invalid/index.html</loc></url>'
+                '<url><loc>https://docs.example.invalid/getting-started.html</loc></url>'
+                '<url><loc>https://docs.example.invalid/commands-and-usage.html</loc></url>'
+                '</urlset>'
+            ),
         }
         for path, content in fixture.items():
             self.write(path, content)
         self.assertEqual(check_site(self.repo), [])
         cases = [
             ("docs/dist/index.html", None, "Missing built homepage"),
+            ("docs/content/index.md", None, "Missing Markdown homepage"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('id="dotfiles"', 'id="wrong"'), "missing heading anchors"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace(">Dotfiles<", ">Welcome<"), "Markdown title does not match page title"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="/commands-and-usage.html"', 'href="/getting-started.html"'), "missing from homepage navigation"),
             ("docs/dist/commands-and-usage.html", None, "missing published route /commands-and-usage.html"),
             ("docs/dist/getting-started.html", homepage.replace('id="setup"', 'id="renamed"'), "missing heading anchors"),
             ("docs/dist/getting-started.html", homepage + "<h1>Extra title</h1>", "expected one page title"),
             ("docs/dist/getting-started.html", homepage + '<span id="setup"></span>', "duplicate IDs"),
             ("docs/dist/getting-started.html", homepage.replace("shortcut icon", "stylesheet"), "missing site favicon"),
+            ("docs/dist/getting-started.html", homepage.replace("<h1", '<meta name="robots" content="index, noindex"><h1'), "noindex robots meta tag"),
+            ("docs/dist/getting-started.html", homepage.replace("<h1", '<meta name="googlebot" content="none"><h1'), "noindex robots meta tag"),
+            ("docs/dist/404.html", fixture["docs/dist/404.html"].replace('content="noindex"', 'content="index, follow"'), "missing noindex robots meta tag"),
+            ("docs/dist/getting-started.html", homepage.replace("<h1", '<link rel="canonical" href="https://docs.example.invalid/getting-started"><h1'), "expected canonical URL"),
             ("docs/dist/getting-started.html", homepage.replace("#commands", "#absent"), "broken anchor"),
             ("docs/dist/getting-started.html", homepage.replace("commands-and-usage.html", "commands-and-usage.md"), "broken destination"),
             ("docs/dist/getting-started.html", homepage.replace(">Getting started<", ">Welcome<"), "filename and URL do not match title"),
@@ -851,6 +888,11 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/favicon.svg", None, "broken destination /favicon.svg"),
             ("docs/dist/assets/example.svg", None, "broken destination /assets/example.svg"),
             ("docs/dist/CNAME", "wrong.example.invalid\n", "published CNAME"),
+            ("docs/dist/robots.txt", None, "Missing published robots.txt"),
+            ("docs/dist/robots.txt", "User-agent: *\nAllow: /\n", "does not declare the canonical sitemap"),
+            ("docs/dist/sitemap-index.xml", None, "Missing published sitemap-index.xml"),
+            ("docs/dist/sitemap-0.xml", None, "Missing published sitemap"),
+            ("docs/dist/sitemap-0.xml", fixture["docs/dist/sitemap-0.xml"].replace("getting-started.html", "getting-started"), "Sitemap URLs differ from canonical guide URLs"),
         ]
         for path, content, message in cases:
             with self.subTest(path=path, message=message):

@@ -8,16 +8,32 @@ async function assertNoPageOverflow(page: Page) {
   expect(dimensions.page).toBeLessThanOrEqual(dimensions.viewport + 1);
 }
 
-test('the homepage leads to setup, with grouped navigation and a favicon', async ({ page, isMobile }) => {
+test('the homepage introduces the repository and links to setup, with grouped navigation and a favicon', async ({ page, isMobile }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
   await expect(page.locator('.hero')).toHaveCount(0);
-  expect(await page.locator('#getting-started').evaluate((element) => element.getBoundingClientRect().top))
-    .toBeLessThan(650);
+  expect(await page.locator('.sl-markdown-content').getByRole('link', { name: 'Getting started', exact: true })
+    .evaluate((element) => element.getBoundingClientRect().top))
+    .toBeLessThan(await page.evaluate(() => window.innerHeight));
+  for (const [label, href] of [
+    ['Getting started', 'getting-started.html'],
+    ['Commands and usage', 'commands-and-usage.html'],
+    ['Configuration reference', 'configuration-reference.html'],
+  ]) {
+    await expect(page.locator('.sl-markdown-content').getByRole('link', { name: label, exact: true }))
+      .toHaveAttribute('href', href);
+  }
   await expect(page.locator('link[rel~="icon"]')).toHaveAttribute('href', '/favicon.svg');
   await expect(page.getByText('Built with Starlight')).toHaveCount(0);
   await expect(page.getByText('This site uses Just the Docs')).toHaveCount(0);
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
+  const sidebar = page.locator('#starlight__sidebar');
+  const introduction = sidebar.getByRole('link', { name: 'About this project', exact: true });
+  await expect(introduction).toHaveAttribute('href', '/index.html');
+  const startHeading = sidebar.getByText('Start here', { exact: true });
+  expect(await introduction.evaluate((element) => element.getBoundingClientRect().top))
+    .toBeLessThan(await startHeading.evaluate((element) => element.getBoundingClientRect().top));
   for (const group of ['Start here', 'Use dotfiles', 'Customize', 'Subsystem guides', 'Development']) {
     const section = page.locator('#starlight__sidebar details')
       .filter({ has: page.getByText(group, { exact: true }) });
@@ -40,6 +56,9 @@ test('the homepage leads to setup, with grouped navigation and a favicon', async
     .filter({ has: page.getByText('Customize', { exact: true }) });
   await expect(customize.getByRole('link', { name: 'Private overlays', exact: true }))
     .toHaveAttribute('href', '/private-overlays.html');
+  await page.locator('#starlight__sidebar a[href="/getting-started.html"]').click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
+  if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.locator('#starlight__sidebar a[href="/commands-and-usage.html"]').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Commands and usage');
   await expect(page.getByText('On this page', { exact: true }).filter({ visible: true })).toBeVisible();
@@ -91,6 +110,7 @@ test('light, dark, and system themes work and retain the reader’s choice', asy
 for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-desktop', 'architecture', 'ai-agent-configuration', 'package-management', 'ci-and-releases']) {
   for (const theme of ['light', 'dark'] as const) {
     test(`${guide} has readable, accessible diagrams in ${theme} mode`, async ({ page }) => {
+      test.setTimeout(60_000);
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
       page.on('console', (message) => {
@@ -101,7 +121,7 @@ for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-deskto
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       const diagram = page.locator('pre.mermaid svg');
       // Mermaid loads asynchronously; shared runners can delay a cold render.
-      await expect(diagram).toBeVisible({ timeout: 15_000 });
+      await expect(diagram).toBeVisible({ timeout: 30_000 });
       await expect(diagram.locator('title')).not.toBeEmpty();
       await expect(diagram.locator('desc')).not.toBeEmpty();
       await expect(diagram).toHaveAttribute('aria-labelledby', /.+/);

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { defineConfig } from 'astro/config';
 import { unified } from '@astrojs/markdown-remark';
+import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
 import { remarkDocs } from './src/remark-docs.mjs';
@@ -11,11 +12,19 @@ export default defineConfig({
   site: `https://${domain}`,
   trailingSlash: 'never',
   build: { format: 'file' },
-  redirects: { '/': '/getting-started.html' },
   markdown: {
     processor: unified({ remarkPlugins: [remarkDocs] }),
   },
   integrations: [
+    sitemap({
+      serialize(item) {
+        const url = new URL(item.url);
+        if (!url.pathname.endsWith('.html')) {
+          url.pathname += url.pathname.endsWith('/') ? 'index.html' : '.html';
+        }
+        return { ...item, url: url.href };
+      },
+    }),
     mermaid({
       autoTheme: true,
       enableLog: false,
@@ -40,12 +49,14 @@ export default defineConfig({
       credits: false,
       disable404Route: true,
       components: { ThemeProvider: './src/components/ThemeProvider.astro' },
+      head: [{ tag: 'meta', attrs: { name: 'robots', content: 'index, follow' } }],
       social: [
         { icon: 'github', label: 'GitHub repository', href: 'https://github.com/sneivandt/dotfiles' },
       ],
       editLink: { baseUrl: 'https://github.com/sneivandt/dotfiles/edit/main/docs/' },
       customCss: ['./src/styles/custom.css'],
       sidebar: [
+        'index',
         {
           label: 'Start here',
           items: ['getting-started', 'profiles-and-categories'],

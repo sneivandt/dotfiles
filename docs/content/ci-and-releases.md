@@ -21,12 +21,16 @@ could leave required checks pending.
 
 ```mermaid
 flowchart TB
-    accTitle: From changed paths to release eligibility
-    accDescr: Changed paths select the checks to run. The ci-success aggregate verifies their results before a main-branch push can become eligible for a release.
-    A[Changed paths] --> B[Select checks]
-    B --> C[Run selected jobs]
-    C --> D[ci-success]
-    D --> E[Release eligibility]
+    accTitle: CI gates documentation and binary publication separately
+    accDescr: Changed paths select CI jobs. The ci-success gate verifies their results. Only a successful same-repository push to main can publish the checked documentation artifact or select an unpublished binary or publishing change for release.
+    Changes["Changed paths"] --> Jobs["Selected CI jobs"]
+    Jobs --> Gate["ci-success"]
+    Gate --> Push{"Successful push to main?"}
+    Push -- No --> Done["No publication"]
+    Push -- Yes --> Docs["Publish tested site artifact"]
+    Push -- Yes --> Select{"Binary or publishing change pending?"}
+    Select -- Yes --> Release["Build and publish release"]
+    Select -- No --> Done
 ```
 
 The last step applies only to successful, same-repository **push** CI on `main`.

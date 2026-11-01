@@ -18,12 +18,21 @@ desktop and editor workflows have their own [subsystem guides](#desktop-and-edit
 
 | Setting | Source |
 |---|---|
+| Bash and Zsh interactive startup | [`bashrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/bashrc), [`zshrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zshrc) |
+| Bash and Zsh login profiles | [`bash_profile`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/bash_profile), [`zprofile`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile) |
 | Shared shell environment and pager defaults | [`config/shell/profile.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/profile.sh) |
+| Shared commands and aliases | [`config/shell/aliases.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/aliases.sh) |
 | Zsh completion | [`config/zsh/completion.zsh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/completion.zsh) |
 | Git aliases | [`config/git/aliases`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases) |
 | Download naming and timestamping | [`config/wgetrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/wgetrc) |
 
 ### Environment and paging
+
+The login profiles source shared environment settings; interactive startup
+files source shared aliases when present. Put
+behavior common to Bash and Zsh in `config/shell/`; keep shell-specific
+behavior in its own startup file. The [Windows guide](windows-and-wsl.md#powershell-configuration)
+covers PowerShell's separate profile.
 
 The shared profile keeps nonempty supplied `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`,
 `XDG_DATA_HOME`, `TERMINFO` and `TERMINFO_DIRS` values. Unset **or empty** values

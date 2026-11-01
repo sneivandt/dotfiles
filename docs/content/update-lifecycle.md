@@ -20,16 +20,6 @@ installed, use `./dotfiles.sh` or `.\dotfiles.ps1` instead.
 
 ## What happens in a normal update
 
-```mermaid
-flowchart TB
-    accTitle: A normal dotfiles update
-    accDescr: The wrapper obtains a usable binary, the CLI checks its release, repositories synchronize, selected tasks run, and the result is recorded in logs. Changed code or repositories cause a restart before later work.
-    Binary["Usable CLI"] --> Release["CLI release check"]
-    Release --> Repository["Repository sync"]
-    Repository --> Tasks["Selected tasks"]
-    Tasks --> Result["Summary and logs"]
-```
-
 ### 1. Obtain a usable CLI
 
 The wrapper uses its cached binary, downloading and verifying a release when
@@ -76,6 +66,17 @@ If a checkout changes, dotfiles restarts and reloads configuration before
 continuing with the selected work. This ensures new declarations and task
 definitions are used rather than the old in-memory configuration. The parent
 keeps the run lock across the restart.
+
+```mermaid
+flowchart TB
+    accTitle: How repository changes affect an update
+    accDescr: After synchronization, an unchanged checkout uses the loaded configuration. A changed checkout restarts the current binary to reload configuration before selected tasks run; both paths end with a task summary and logs.
+    Sync["Repository sync"] --> Changed{"Checkout changed?"}
+    Changed -- No --> Tasks["Run selected tasks"]
+    Changed -- Yes --> Reload["Restart and reload configuration"]
+    Reload --> Tasks
+    Tasks --> Result["Summary and logs"]
+```
 
 A dry run can compare remote refs, but does not fetch, merge, or preview the
 contents of commits it has not downloaded. A later apply may therefore load

@@ -24,6 +24,7 @@ packages = [
   "man-pages",
   "neovim",
   "openssh",
+  "pacman-contrib",
   "reflector",
   "ripgrep",
   "rustup",

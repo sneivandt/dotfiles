@@ -6,6 +6,15 @@ units = [
   "clean-home-tmp.timer",
 ]
 
+# Packaged weekly maintenance timers. Reflector uses
+# /etc/xdg/reflector/reflector.conf for mirror selection.
+[arch]
+units = [
+  { name = "fstrim.timer", scope = "system" },
+  { name = "paccache.timer", scope = "system" },
+  { name = "reflector.timer", scope = "system" },
+]
+
 [arch-desktop]
 units = [
   { name = "NetworkManager.service", scope = "system" },

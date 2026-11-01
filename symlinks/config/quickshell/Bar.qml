@@ -16,7 +16,6 @@ PanelWindow {
     required property var modelData
     required property var audio
     required property var network
-    required property var notifications
     required property var markets
     required property date currentDate
     required property var menuController
@@ -116,13 +115,6 @@ PanelWindow {
             Row {
                 id: controlRow
                 BarBlock {
-                    id: notificationsButton
-                    glyph: "\uf0f3"
-                    tooltip: "Notifications and history"
-                    selected: notificationMenu.visible && !notificationMenu.closing
-                    onActivated: bar.toggleMenu(notificationMenu)
-                }
-                BarBlock {
                     id: stocksButton
                     glyph: "\uf201"
                     tooltip: "Markets"
@@ -190,11 +182,6 @@ PanelWindow {
         }
     }
 
-    NotificationMenu {
-        id: notificationMenu
-        anchorItem: notificationsButton
-        notifications: bar.notifications
-    }
     VolumeMenu {
         id: volumeMenu
         anchorItem: volumeButton

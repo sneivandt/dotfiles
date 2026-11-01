@@ -64,6 +64,28 @@ struct Entry {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TreeSnapshot(BTreeMap<PathBuf, Entry>);
 
+impl TreeSnapshot {
+    /// Compare all state outside explicitly allowed subtrees. Updating a child
+    /// can change its parent directory's length/mtime, but not its permissions.
+    pub(crate) fn assert_changes_confined_to(mut self, mut after: Self, allowed: &[&Path]) {
+        for entries in [&mut self.0, &mut after.0] {
+            entries.retain(|path, entry| {
+                if allowed.iter().any(|allowed| path.starts_with(allowed)) {
+                    return false;
+                }
+                if matches!(entry.contents, Contents::Directory)
+                    && allowed.iter().any(|allowed| allowed.starts_with(path))
+                {
+                    entry.len = 0;
+                    entry.modified = None;
+                }
+                true
+            });
+        }
+        assert_eq!(after, self, "apply changed state outside its allowed paths");
+    }
+}
+
 fn snapshot_tree(path: &Path, key: &Path, entries: &mut BTreeMap<PathBuf, Entry>) {
     let metadata = std::fs::symlink_metadata(path).expect("snapshot metadata");
     let link = std::fs::read_link(path).ok();

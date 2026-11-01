@@ -12,7 +12,9 @@ mod lifecycle;
 
 use std::path::Path;
 
+use dotfiles_cli::testing::config::ConfigStore;
 use dotfiles_cli::testing::platform::{Os, Platform};
+use dotfiles_cli::testing::tasks::Task;
 use dotfiles_cli::testing::tasks::files::symlinks::{InstallSymlinks, UninstallSymlinks};
 use dotfiles_cli::testing::tasks::git::git_config::ConfigureGit;
 use dotfiles_cli::testing::tasks::git::hooks::{InstallGitHooks, UninstallGitHooks};
@@ -165,6 +167,91 @@ fn symlinks_preview_apply_repeat_and_conservative_uninstall() {
             0,
             "native symlinks need no subprocess"
         );
+    }
+}
+
+#[test]
+fn symlink_apply_changes_only_configured_targets() {
+    for parallel in [false, true] {
+        let fixture = symlink_fixture();
+        write(
+            &fixture.home.join("Documents/personal.txt"),
+            "retain sibling\n",
+        );
+        write(
+            &fixture.home.join(".unmanaged/nested"),
+            "retain unrelated tree\n",
+        );
+        let before = fixture.snapshot();
+
+        let run = fixture.run(false, parallel, |store| {
+            Box::new(InstallSymlinks::new(store.symlinks))
+        });
+        run.assert_batch(3, 0);
+        run.assert_actions("link", LINK_SUBJECTS, false);
+        assert_symlinks_installed(&fixture);
+        before.assert_changes_confined_to(
+            fixture.snapshot(),
+            &[
+                Path::new("home/.first"),
+                Path::new("home/.folder"),
+                Path::new("home/Documents/profile.ps1"),
+            ],
+        );
+        assert_eq!(fixture.command_count(), 0);
+    }
+}
+
+#[test]
+fn symlink_config_transition_preserves_removed_and_inactive_targets() {
+    for parallel in [false, true] {
+        let fixture = symlink_fixture();
+        let initial = fixture.run(false, parallel, |store| {
+            Box::new(InstallSymlinks::new(store.symlinks))
+        });
+        initial.assert_batch(3, 0);
+        assert_symlinks_installed(&fixture);
+
+        write(
+            &fixture.repo.join("symlinks/replacement"),
+            "new desired content\n",
+        );
+        fixture.config(
+            "symlinks.toml",
+            "[base]\nsymlinks = [{ source = 'replacement', target = '.first' }]\n\
+             [desktop]\nsymlinks = [{ source = 'profile file', target = 'Documents/profile.ps1' }]\n",
+        );
+        // The old folder declaration is gone; the profile declaration is now
+        // inactive. Neither change authorizes removing its installed link.
+        let before = fixture.snapshot();
+        assert_lifecycle(
+            &fixture,
+            parallel,
+            |store| Box::new(InstallSymlinks::new(store.symlinks)),
+            "link",
+            &["~/.first → symlinks/replacement"],
+            1,
+            || {
+                assert_link(
+                    &fixture.home.join(".first"),
+                    &fixture.repo.join("symlinks/replacement"),
+                );
+                assert_eq!(
+                    std::fs::read(fixture.home.join(".first")).unwrap(),
+                    b"new desired content\n"
+                );
+                assert_link(
+                    &fixture.home.join(".folder"),
+                    &fixture.repo.join("symlinks/folder"),
+                );
+                assert_link(
+                    &fixture.home.join("Documents/profile.ps1"),
+                    &fixture.repo.join("symlinks/profile file"),
+                );
+            },
+        );
+        before.assert_changes_confined_to(fixture.snapshot(), &[Path::new("home/.first")]);
+        assert_eq!(fixture.command_count(), 0);
     }
 }
 
@@ -425,6 +512,55 @@ fn git_settings_preview_apply_and_fresh_repeat_include_windows_cleanup() {
                 "Git lifecycle mutations use isolated native config, never commands"
             );
         }
+    }
+}
+
+#[test]
+fn git_config_transition_updates_selected_keys_and_preserves_other_values() {
+    for os in [Os::Linux, Os::Windows] {
+        let fixture = git_fixture(os);
+        let task = |store: ConfigStore| -> Box<dyn Task> {
+            Box::new(ConfigureGit::with_config_path(
+                store.git_settings,
+                fixture.home.join(".gitconfig"),
+            ))
+        };
+        let initial = fixture.run(false, false, task);
+        initial.assert_batch(if os == Os::Windows { 4 } else { 3 }, 0);
+        assert_git_settings(&fixture, os);
+
+        let path = fixture.home.join(".gitconfig");
+        git2::Config::open(&path)
+            .unwrap()
+            .set_str("fixture.second", "user edit")
+            .unwrap();
+        fixture.config(
+            "git-config.toml",
+            "[base]\nsettings = [{ key = 'fixture.first', value = 'updated' }]\n\
+             [desktop]\nsettings = [{ key = 'fixture.second', value = 'inactive' }]\n",
+        );
+        let before = fixture.snapshot();
+        assert_lifecycle(
+            &fixture,
+            true,
+            task,
+            "configure",
+            &["fixture.first = updated"],
+            if os == Os::Windows { 2 } else { 1 },
+            || {
+                let config = git2::Config::open(&path).unwrap();
+                for (key, value) in [
+                    ("fixture.first", "updated"),
+                    ("fixture.second", "user edit"),
+                    ("fixture.third", "three"),
+                    ("fixture.unmanaged", "retain"),
+                ] {
+                    assert_eq!(config.get_string(key).unwrap(), value, "{key}");
+                }
+            },
+        );
+        before.assert_changes_confined_to(fixture.snapshot(), &[Path::new("home/.gitconfig")]);
+        assert_eq!(fixture.command_count(), 0);
     }
 }
 

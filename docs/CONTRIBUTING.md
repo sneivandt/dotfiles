@@ -204,6 +204,7 @@ The documentation home is [dotfiles.stuartneivandt.com](https://dotfiles.stuartn
 GitHub Pages publishes `docs/` from `main` using Jekyll. The pinned Just the Docs
 theme in `docs/_config.yml` provides the dark color scheme, sidebar, mobile menu,
 search, and Mermaid rendering; no separate copy of the guides is maintained.
+`docs/_includes/mermaid_config.js` gives diagrams a matching dark theme.
 
 Edit the existing Markdown files. Each guide has YAML front matter with its
 navigation `title` and numeric `nav_order`; `docs/README.md` has `permalink: /`

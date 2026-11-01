@@ -1,6 +1,7 @@
 ---
 title: Dotfiles
 description: A personal dotfiles project turned configuration engine for Arch Linux and Windows, and a place to explore agentic engineering.
+tableOfContents: false
 ---
 
 # Dotfiles

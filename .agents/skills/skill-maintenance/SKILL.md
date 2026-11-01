@@ -49,14 +49,22 @@ description: >
 
 ## Check the result
 
-For each changed trigger, try a matching request, a nearby non-matching request,
-and a cross-subsystem request. Check that the descriptions select the intended
-owner and only necessary companions. Walk one realistic change through the body:
+Use the [routing review cases](routing-cases.md). For each changed trigger,
+try a matching request, a nearby non-matching request, and a cross-subsystem
+request. Check that the descriptions select the intended owner and only necessary companions. Walk one realistic change through the body:
 can an agent find the current API, avoid side effects, and choose useful coverage?
 This is a routing review, not proof of a model's runtime behavior.
 
 Review frontmatter, paths, and contradictions with neighboring skills, then use
 the documentation check in [Testing](../../../docs/TESTING.md#choosing-coverage).
 Its link check covers tracked Markdown only: when a commit is requested, stage
-new skills before running it; otherwise inspect their links explicitly. The
-check does not validate YAML frontmatter or instruction effectiveness.
+new skills before running it; otherwise inspect their links explicitly.
+
+The docs stage also runs [metadata validation](scripts/check-skills.py) and its
+[regression fixtures](scripts/test-check-skills.py). Repository frontmatter uses
+only a plain lowercase hyphenated `name` and a two-space-indented YAML block
+`description` (`>` or `|`, optionally with chomping). The validator rejects
+unsupported forms, missing/duplicate keys, empty descriptions, directory/name
+mismatches, and duplicate names; it is not a general YAML parser. Extend the
+convention and fixtures deliberately if new metadata is needed. Neither metadata
+validation nor the manual routing cases prove instruction effectiveness.

@@ -94,7 +94,13 @@ configuration. A clean working tree does not make a live installation safe.
 
 Read the closest existing implementation before adding a new abstraction.
 Repository [skills](../.agents/skills/) contain focused contributor procedures;
-they do not replace the source or these guides.
+they do not replace the source or these guides. For common configuration work,
+start with [shell configuration](../.agents/skills/shell-configuration/SKILL.md),
+[Hyprland sessions](../.agents/skills/hyprland-session/SKILL.md),
+[Quickshell](../.agents/skills/desktop-shell/SKILL.md), or
+[Vim/Neovim](../.agents/skills/editor-configuration/SKILL.md).
+[Self-update](../.agents/skills/self-update/SKILL.md) covers binary replacement;
+[Rust patterns](../.agents/skills/rust-patterns/SKILL.md) routes unfamiliar CLI work.
 
 ### 3. Change the behavior and its proof
 

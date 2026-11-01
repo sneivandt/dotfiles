@@ -101,14 +101,10 @@ exact plain/ANSI rendering. Preserve these implementation constraints:
 Do not hardcode indentation, duplicate task recording, rephrase a task reason as
 detail, or build task-local buffering.
 
-Command arguments are logged by default. Use `CommandSpec::redact_arguments()`
-when they contain sensitive values, and separately avoid exposing secrets in
-stdout, stderr, resource descriptions, or errors. `OutputLog::Diagnostics`
-retains failed streams and successful stderr; `Full` also retains successful
-stdout. Use `OutputLog::Omit` for sensitive streams; it also removes streams
-from checked-command errors. Successful and unchecked results remain available
-to the caller, which must avoid logging them itself. Argument redaction is
-independent. Use synthetic values in log fixtures and snapshots.
+For command argument redaction and stream-retention policy, use the
+[subprocess boundary](../error-handling-patterns/SKILL.md#subprocess-boundary).
+Avoid exposing sensitive data in resource descriptions, errors, and rendering;
+use synthetic values in log fixtures and snapshots.
 
 When summary semantics change, test statuses, visibility, details, progress
 denominator, totals, both verbose modes, and `--no-symbols`. Preserve durable run

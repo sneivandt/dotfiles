@@ -34,6 +34,7 @@ Preserve the executable rules in
 | semantic diagnostics or validation tasks | `config-validation` |
 | packages, symlinks, profiles, overlays, Agent tooling | the corresponding domain skill |
 | local PKGBUILD releases, Paru snapshots or configuration | `local-packages` |
+| binary self-update verification and replacement | `self-update` |
 | tests, fixtures, snapshots | `testing-patterns` |
 | Windows-only code or behavior | `windows-specific-patterns` |
 | local verification after Rust changes | `cross-platform-verification` |

@@ -71,7 +71,7 @@ With no stage names, the scripts run their default stages:
 | `test` | Full Rust test suite, not shell/PowerShell integration scripts |
 | `rustdoc` | Private-item documentation and configured rustdoc lints |
 | `config` | CLI configuration, source paths, and required config files |
-| `docs` | Local Markdown links/heading anchors and the static task-selector catalog; Linux entrypoint only |
+| `docs` | Local Markdown links/heading anchors, repository skill metadata/validator fixtures, and the static task-selector catalog; Linux entrypoint only |
 | `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint; Linux entrypoint only |
 | `shell` | Shared ShellCheck discovery and rules |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
@@ -93,8 +93,14 @@ includes both, while Windows `-All` adds `msrv`. These options can require
 downloads or additional tools; they do not run mutation tests or host integration.
 
 The docs stage needs Python and Cargo: its selector check runs a Rust fixture.
-It checks **tracked** Markdown files and local inline links, not external URLs,
-reference-style links, Mermaid rendering, or the truth of the prose. A quick
+It also validates repository skill metadata and runs the validator's synthetic
+regressions without third-party Python dependencies. The supported frontmatter
+convention and manual routing cases live in
+[Skill maintenance](../.agents/skills/skill-maintenance/SKILL.md#check-the-result).
+Metadata checks do not measure agent instruction effectiveness.
+
+The link check inspects **tracked** Markdown files and local inline links, not
+external URLs, reference-style links, Mermaid rendering, or the truth of the prose. A quick
 link-only check is:
 
 ```sh

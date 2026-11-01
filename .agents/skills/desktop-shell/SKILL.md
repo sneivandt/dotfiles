@@ -3,8 +3,8 @@ name: desktop-shell
 description: >
   Use for the Quickshell QML/JavaScript UI and Python helper under
   symlinks/config/quickshell/: bars, popups, workspace layout, shared state,
-  and network actions. Not for Rust CLI output, shell bootstrap, or unrelated
-  application configuration.
+  and network actions. Not for Rust CLI output, shell bootstrap, or Hyprland/session
+  configuration (use hyprland-session).
 ---
 
 # Desktop Shell

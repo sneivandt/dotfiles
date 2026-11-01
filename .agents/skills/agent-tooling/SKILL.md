@@ -8,6 +8,9 @@ description: >
 
 # Agent Tooling
 
+Start with [Agent tooling](../../../docs/AGENT-TOOLING.md) for deployment
+ownership, fragment merging, target compatibility, and adapter behavior.
+
 ## Choose the owner
 
 | Change | Location |
@@ -18,70 +21,38 @@ description: >
 | stable Copilot/Codex preference | `conf/agent-settings.toml` |
 | install and pin-update behavior | `cli/src/domains/ai/apm.rs` and `cli/src/domains/ai/apm/` |
 
-For placement and target behavior, start with [Agent tooling](../../../docs/AGENT-TOOLING.md).
-If available, the personal `agent-customization` skill adds public-vs-private audience
-guidance; it is not a prerequisite for working in this repository.
+The personal `agent-customization` skill is optional audience guidance;
+repository work must remain possible without it.
 
-Harness settings are owned by the `agent-settings` task and do not invoke APM.
-The `agent-packages` task owns agent package convergence and its compatibility
-adapters.
+## Decisions and pitfalls
 
-## Agent package rules
+- Edit source fragments/plugins, not generated manifests, deployed content, or
+  lock data in the live home. Keep secrets and private content out of public files.
+- Keep explicit base targets; dependency-level filters restrict whole packages.
+  Split packages when primitive compatibility differs. Cowork receives skills
+  only, so its skills must work without MCP, hooks, prompts, or agents.
+- A new fragment needs its `conf/symlinks.toml` entry. Keep self-defined MCP
+  dependencies direct unless transitive trust is deliberate. Local plugins use
+  `apm.yml`, `includes: auto`, `.apm/<primitive>/`, and forward-slash references.
+- `agent-settings` manages harness keys independently; `agent-packages` owns APM
+  convergence (`apm` is a compatibility selector). Ref advancement belongs to
+  the update pipeline, not an ordinary install.
+- Preserve native update followed by install before target adapters, including
+  failure classification and workflow-policy restoration. Do not reintroduce
+  separate prune, fingerprints, or outdated-output parsing.
+- Before removing either compatibility adapter, inspect current upstream code
+  and prove the replacement against the
+  [deployment contracts](../../../docs/AGENT-TOOLING.md#deployment-targets)
+  in isolated fixtures on the relevant platforms. A version bump is insufficient.
+- Native APM owns syntax/schema validation; dotfiles owns cross-file local
+  source relationships. Extend
+  [validation.rs](../../../cli/src/domains/ai/apm/validation.rs) and the
+  [fixture](../../../cli/src/domains/ai/apm/test_fixture.rs) accordingly.
 
-- Keep `base.yml`'s top-level `targets`; it prevents deployment to unintended
-  harnesses.
-- Use dependency-level `targets` to narrow one package. Filters apply to the
-  whole package, so split packages when primitive compatibility differs.
-- `copilot-cowork` remains experimental and receives skills only. A
-  Cowork-targeted skill must remain useful without MCP, hooks, prompts, agents,
-  commands, or instructions.
-- Keep Cowork's APM feature enablement and path precedence, but use the custom
-  file-level reconciliation while upstream replaces destination directories.
-  Lockfile `target_subset` values remain authoritative deployment policy.
-- Keep self-defined MCP servers direct unless transitive MCP trust is deliberate.
-- Local plugins use `apm.yml`, `includes: auto`, and `.apm/<primitive>/`.
-- Reference local plugins with forward-slash paths such as
-  `~/.apm/plugins/dot-agent`.
-- New config fragments also need the matching `conf/symlinks.toml` entry.
-- Never place secrets or private/employer content in public APM files.
-- Edit versioned plugin/fragment sources, not deployed copies or generated
-  manifests under the user's home. Local install and pin-update commands mutate
-  that environment; do not run them merely to review skill content.
+## Validate the changed contract
 
-## Deployment ownership
-
-The CLI labels this task **Agent packages**; its selector is `agent-packages`
-(`apm` remains a compatibility alias).
-
-Dotfiles owns fragment merging, generated-manifest persistence, conditional
-target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot
-fixup. In the update pipeline, the CLI must invoke `apm update -g --yes`
-followed by `apm install -g`: native update
-can stop at unchanged refs without reconciling local content or deployment drift.
-The follow-up install must finish before target adapters run; preserve failure
-classification and workflow-policy restoration across both commands.
-Native APM owns install/update planning, local-source integrity,
-deployment convergence, and stale/orphan cleanup. Do not reintroduce
-fingerprints, success markers, `apm outdated` parsing, or a separate
-`apm prune`. Keep dependency-ref advancement behind
-`dotfiles update` (also the default command) in the command pipeline.
-
-Before deleting either compatibility adapter, verify current upstream code and
-exercise the replacement in isolated fixtures across the platform contracts in
-[Deployment targets](../../../docs/AGENT-TOOLING.md#deployment-targets). Retain the adapter
-when upstream still violates a contract or native-platform evidence is missing;
-an APM version bump alone does not make it obsolete.
-
-Do not duplicate native APM schema validation in Rust. Dotfiles' validator owns
-cross-file local-plugin/source relationships; native APM owns fragment/package
-syntax. Consult [cross-file validation](../../../cli/src/domains/ai/apm/validation.rs)
-and the existing [APM fixture](../../../cli/src/domains/ai/apm/test_fixture.rs)
-before extending coverage.
-
-## Validation
-
-Use the APM checks under [CLI validation](../../../docs/TESTING.md#cli-validation)
-and preview reconciliation as described in
-[Dry-run testing](../../../docs/TESTING.md#dry-run-testing). For Rust or
-agent-settings changes, select additional coverage from
+Use [CLI validation](../../../docs/TESTING.md#cli-validation) and
 [Choosing coverage](../../../docs/TESTING.md#choosing-coverage).
+Preview reconciliation follows [Dry-run testing](../../../docs/TESTING.md#dry-run-testing).
+Packing is not deployment proof. Do not deploy to the live home to test content
+or an adapter; use synthetic fragments, lockfiles, and target directories.

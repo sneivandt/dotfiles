@@ -15,7 +15,10 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # Python preserves Git's NUL-delimited filenames and Markdown destinations.
 docs_links()
 {
-  log_stage "Checking documentation links"
+  log_stage "Checking documentation links and repository skill metadata"
+  _skill_checks="$DIR/.agents/skills/skill-maintenance/scripts"
+  python3 -B "$_skill_checks/test-check-skills.py" || return 1
+  python3 -B "$_skill_checks/check-skills.py" "$DIR" || return 1
   python3 -B "$SCRIPT_DIR/check-doc-links.py" "$DIR"
 }
 

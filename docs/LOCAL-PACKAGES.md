@@ -234,11 +234,13 @@ copies of its inputs. Package base, names, and architectures must match the
 descriptor. **This executes the PKGBUILD; separate copies are not a sandbox.**
 Only reviewed recipes belong here.
 
-Successful validation is cached against the exact inputs and descriptor.
+Successful validation is cached against the exact inputs, descriptor, and a
+versioned validation protocol.
 Ownership, working files, and committed inputs are still checked before reuse.
 Changes, damage, or a missing validation record require another validation;
 failures are not cached. Parallel mode can validate independent recipes with
-up to four workers, then publishes in recipe order.
+up to four workers, then publishes in recipe order while retaining task log
+context and cancellation propagation.
 
 Snapshot safety is intentionally conservative:
 

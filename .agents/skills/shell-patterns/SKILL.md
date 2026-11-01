@@ -3,7 +3,8 @@ name: shell-patterns
 description: >
   Use for dotfiles.sh, dotfiles.ps1, or POSIX hook scripts: bootstrap,
   checksum/provenance verification, wrapper-owned flags, argument forwarding,
-  and shell portability. Not for application tasks.
+  and shell portability. Not for managed shell startup, prompts, completion, or history
+  (use shell-configuration), or Rust application tasks.
 ---
 
 # Shell Patterns

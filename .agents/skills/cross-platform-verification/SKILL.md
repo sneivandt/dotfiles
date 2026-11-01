@@ -8,29 +8,14 @@ description: >
 
 # Cross-Platform Verification
 
-## Choose the smallest sufficient check
-
-1. Classify the changed behavior using
-   [Choosing coverage](../../../docs/TESTING.md#choosing-coverage).
-2. Run the affected test targets together with the same runner/profile. Add
-   formatting and compilation/lint checks for changed Rust or wrapper code.
-3. Widen to the full sequence for shared engine, catalog, or config-loader
-   changes, or when focused failures reveal broader impact. Do not run every
-   stage by default for a local change.
-4. Use the [platform coverage matrix](../../../docs/TESTING.md#platform-coverage-parity)
-   for Windows-sensitive compilation and native-runtime coverage.
-
-The [local check scripts](../../../docs/TESTING.md#fast-local-sequence) own stage
-commands. A stage marked `SKIP` is not a pass, even if the overall script exits
-successfully. Report material coverage gaps rather than claiming parity.
-
-Cross-target compilation does not prove Windows runtime behavior. Retain Windows
-CI or VM coverage for registry, elevation, symlinks, and path handling, and
-report unavailable target toolchains.
-
-Typical failures are stale `cfg` gates, platform-only imports in shared code,
-hardcoded separators, and executable-suffix assumptions.
-
-Use fixture-based integration checks; do not substitute a real machine install
-for missing test coverage. Avoid bootstrap downloads or running an old installed
-binary when the behavior under test is in the current Rust source.
+1. Select checks from [Choosing coverage](../../../docs/TESTING.md#choosing-coverage)
+   and use the [local stages](../../../docs/TESTING.md#fast-local-sequence)
+   for exact commands. Group affected test targets; broaden for shared engine,
+   catalog, or loader changes and failures that reveal wider impact.
+2. For platform-sensitive changes, consult
+   [Platform coverage parity](../../../docs/TESTING.md#platform-coverage-parity).
+   Cross-target compilation cannot prove native registry, elevation, symlink,
+   or Windows path behavior. Report the remaining native-runtime gap.
+3. Use isolated fixtures and the current source with the pinned toolchain.
+   Do not substitute a host install or a bootstrap-downloaded binary for tests.
+   A skipped stage is unavailable coverage, even if the runner exits successfully.

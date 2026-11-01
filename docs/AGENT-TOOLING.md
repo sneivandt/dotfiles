@@ -156,6 +156,11 @@ leave local plugin edits or deployment drift to reconcile. Dotfiles therefore
 still runs the install pass when refs or the generated manifest are unchanged.
 Native APM owns resolution, local-source verification, and stale deployment
 cleanup; dotfiles owns fragment merging and its two compatibility integrations.
+Keep this ownership boundary when changing the implementation: separate prune
+commands, dotfiles success fingerprints/markers, and parsing `apm outdated`
+would introduce another convergence policy alongside the native planner.
+The follow-up install precedes both target adapters; preserve error
+classification and workflow-policy restoration if any phase fails.
 
 On Arch, `apm-dotfiles` supplies the executable through the
 [local package recipe](LOCAL-PACKAGES.md). **Updating agent dependencies is not

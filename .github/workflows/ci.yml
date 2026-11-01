@@ -20,6 +20,7 @@ jobs:
   classify-changes:
     name: "CI: Classify changes"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
       run_docs_checks: ${{ steps.classify.outputs.run_docs_checks }}
@@ -100,6 +101,7 @@ jobs:
   rust-fmt:
     name: "Rust: Format Check"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_fmt == 'true'
     defaults:
@@ -133,6 +135,7 @@ jobs:
   managed-script-regressions:
     name: "Regression: Managed scripts (${{ matrix.name }})"
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_managed_scripts == 'true'
     strategy:
@@ -179,6 +182,7 @@ jobs:
   docs:
     name: "Docs: Consistency"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_docs_checks == 'true'
     steps:
@@ -197,6 +201,7 @@ jobs:
   validate-config:
     name: "Config: Validate all"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classify-changes, build-linux]
     if: needs.classify-changes.outputs.run_validate_config == 'true' && needs.build-linux.result == 'success'
     steps:
@@ -213,6 +218,7 @@ jobs:
   test-stocks:
     name: "Regression: Stock ticker"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_stocks == 'true'
     steps:
@@ -225,6 +231,7 @@ jobs:
   test-hook-inputs:
     name: "Regression: Isolated hook inputs"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_hook_inputs == 'true'
     steps:
@@ -236,6 +243,7 @@ jobs:
   audit:
     name: "Security: Cargo Audit"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_audit == 'true'
     defaults:
@@ -257,6 +265,7 @@ jobs:
   deny:
     name: "Security: Cargo Deny"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_deny == 'true'
     defaults:
@@ -279,6 +288,7 @@ jobs:
   build-linux:
     name: "Build: Linux"
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_build_linux == 'true'
     defaults:
@@ -320,6 +330,7 @@ jobs:
   msrv:
     name: "Rust: MSRV"
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
     defaults:
@@ -354,6 +365,7 @@ jobs:
   coverage:
     name: "Rust: Coverage (${{ matrix.name }})"
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     continue-on-error: true
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_rust_checks == 'true'
@@ -473,6 +485,7 @@ jobs:
   build-windows:
     name: "Build: Windows"
     runs-on: windows-latest
+    timeout-minutes: 120
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_build_windows == 'true'
     defaults:
@@ -515,6 +528,7 @@ jobs:
   integration-linux:
     name: "Integration: ${{ matrix.profile }} on Linux"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [classify-changes, build-linux]
     if: needs.classify-changes.outputs.run_profile_linux == 'true'
     strategy:
@@ -539,6 +553,7 @@ jobs:
   integration-windows:
     name: "Integration: ${{ matrix.profile }} on Windows"
     runs-on: windows-latest
+    timeout-minutes: 60
     needs: [classify-changes, build-windows]
     if: needs.classify-changes.outputs.run_profile_windows == 'true'
     strategy:
@@ -563,6 +578,7 @@ jobs:
   test-install-uninstall:
     name: "Integration: Install/Uninstall round-trip"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [classify-changes, build-linux]
     if: needs.classify-changes.outputs.run_roundtrip_linux == 'true'
     steps:
@@ -582,6 +598,7 @@ jobs:
   test-install-uninstall-windows:
     name: "Integration: Install/Uninstall round-trip (Windows)"
     runs-on: windows-latest
+    timeout-minutes: 60
     needs: [classify-changes, build-windows]
     if: needs.classify-changes.outputs.run_roundtrip_windows == 'true'
     steps:
@@ -629,6 +646,7 @@ jobs:
   test-applications-windows:
     name: "App: ${{ matrix.application }} (Windows)"
     runs-on: windows-latest
+    timeout-minutes: 60
     needs: [classify-changes, build-windows]
     if: needs.classify-changes.outputs.run_app_windows == 'true'
     strategy:
@@ -659,6 +677,7 @@ jobs:
   test-git-hooks:
     name: "Security: Pre-commit Sensitive Data Detection"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [classify-changes]
     if: needs.classify-changes.outputs.run_git_hooks == 'true'
     steps:
@@ -674,6 +693,7 @@ jobs:
   test-shell-wrapper-linux:
     name: "Shell Wrapper: Linux (dotfiles.sh)"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [classify-changes, build-linux]
     if: needs.classify-changes.outputs.run_wrapper_linux == 'true'
     steps:
@@ -693,6 +713,7 @@ jobs:
   test-shell-wrapper-windows:
     name: "Shell Wrapper: Windows (dotfiles.ps1)"
     runs-on: windows-latest
+    timeout-minutes: 60
     needs: [classify-changes, build-windows]
     if: needs.classify-changes.outputs.run_wrapper_windows == 'true'
     steps:
@@ -711,6 +732,7 @@ jobs:
   ci-success:
     name: "All CI Checks Passed"
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: always()
     needs:
       - classify-changes

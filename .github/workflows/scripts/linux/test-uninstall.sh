@@ -50,6 +50,16 @@ assert_materialized() {
   log_verbose "✓ materialized content: $materialized_path"
 }
 
+# Check link identity/timestamps as well as contents: recreating an equivalent
+# link is still an unnecessary change on the second apply.
+assert_installed_unchanged() {
+  assert_symlink "$1" "$2" || return 1
+  if [ "$(stat -c '%d:%i:%y:%z' "$1")" != "$4" ] || ! cmp -s "$1" "$3"; then
+    printf '%sERROR: second apply changed installed link or content: %s%s\n' "${RED}" "$1" "${NC}" >&2
+    return 1
+  fi
+}
+
 test_assertion_helpers() {
   fixture="$(mktemp -d)"
   trap 'rm -rf "$fixture"' EXIT
@@ -75,6 +85,22 @@ test_assertion_helpers() {
   printf 'changed\n' > "$fixture/materialized"
   if assert_materialized "$fixture/materialized" "$fixture/source" "$fixture/snapshot" 2>/dev/null; then
     log_error "assert_materialized accepted changed content"
+  fi
+
+  rm "$fixture/link"
+  ln -s "$fixture/source" "$fixture/link"
+  link_state=$(stat -c '%d:%i:%y:%z' "$fixture/link")
+  assert_installed_unchanged "$fixture/link" "$fixture/source" "$fixture/snapshot" "$link_state"
+  # Keep the old inode allocated to reliably distinguish a recreated link.
+  mv "$fixture/link" "$fixture/previous-link"
+  ln -s "$fixture/source" "$fixture/link"
+  if assert_installed_unchanged "$fixture/link" "$fixture/source" "$fixture/snapshot" "$link_state" 2>/dev/null; then
+    log_error "assert_installed_unchanged accepted a replaced link"
+  fi
+  link_state=$(stat -c '%d:%i:%y:%z' "$fixture/link")
+  printf 'changed\n' > "$fixture/source"
+  if assert_installed_unchanged "$fixture/link" "$fixture/source" "$fixture/snapshot" "$link_state" 2>/dev/null; then
+    log_error "assert_installed_unchanged accepted changed content"
   fi
 
   rm -rf "$fixture"
@@ -104,6 +130,16 @@ test_install_uninstall_base_profile()
   cp -L "$HOME/.bashrc" "$snapshot/bashrc"
   cp -L "$HOME/.zshrc" "$snapshot/zshrc"
   cp -L "$HOME/.config/git/config" "$snapshot/git-config"
+
+  bashrc_state=$(stat -c '%d:%i:%y:%z' "$HOME/.bashrc")
+  zshrc_state=$(stat -c '%d:%i:%y:%z' "$HOME/.zshrc")
+  git_config_state=$(stat -c '%d:%i:%y:%z' "$HOME/.config/git/config")
+
+  log_verbose "Running second install to check convergence..."
+  "$BINARY_PATH" update --root "$DIR" -p base --skip agent-packages
+  assert_installed_unchanged "$HOME/.bashrc" "$DIR/symlinks/bashrc" "$snapshot/bashrc" "$bashrc_state"
+  assert_installed_unchanged "$HOME/.zshrc" "$DIR/symlinks/zshrc" "$snapshot/zshrc" "$zshrc_state"
+  assert_installed_unchanged "$HOME/.config/git/config" "$DIR/symlinks/config/git/config" "$snapshot/git-config" "$git_config_state"
 
   # Run uninstall
   log_verbose "Running uninstall..."

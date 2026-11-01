@@ -81,6 +81,29 @@ function Assert-Materialized {
     Write-TestPass "materialized content: $Path"
 }
 
+# Capture the link's timestamps rather than its target's timestamps.
+function Get-LinkState {
+    param([string]$Path)
+    $item = Get-Item -LiteralPath $Path -Force
+    return "$($item.CreationTimeUtc.Ticks):$($item.LastWriteTimeUtc.Ticks)"
+}
+
+function Assert-InstalledUnchanged {
+    param(
+        [string]$Path,
+        [string]$ExpectedSource,
+        [string]$InstalledSnapshot,
+        [string]$LinkState
+    )
+    Assert-Symlink $Path $ExpectedSource
+    $actualHash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    $snapshotHash = (Get-FileHash -LiteralPath $InstalledSnapshot -Algorithm SHA256).Hash
+    if ((Get-LinkState $Path) -ne $LinkState -or $actualHash -ne $snapshotHash) {
+        throw "Assertion failed: second apply changed installed link or content: $Path"
+    }
+    Write-TestPass "second apply preserved link and content: $Path"
+}
+
 # ---------------------------------------------------------------------------
 # Test the full install -> uninstall round-trip for the base profile.
 # ---------------------------------------------------------------------------
@@ -128,6 +151,16 @@ function Test-InstallUninstallBaseProfile {
             $psProfileSnapshot,
             [System.IO.File]::ReadAllBytes($psProfile)
         )
+
+        $gitConfigState = Get-LinkState $gitConfig
+        $psProfileState = Get-LinkState $psProfile
+        Write-Information "Running second install to check convergence..." -InformationAction Continue
+        & $env:BINARY_PATH update --root $env:DIR -p base --skip packages,agent-packages,vscode-extensions
+        if ($LASTEXITCODE -ne 0) {
+            throw "Second install command failed with exit code $LASTEXITCODE"
+        }
+        Assert-InstalledUnchanged $gitConfig $gitConfigSource $gitConfigSnapshot $gitConfigState
+        Assert-InstalledUnchanged $psProfile $psProfileSource $psProfileSnapshot $psProfileState
 
         Write-Information "Running uninstall..." -InformationAction Continue
         & $env:BINARY_PATH remove --root $env:DIR -p base

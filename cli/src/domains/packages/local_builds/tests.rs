@@ -1171,7 +1171,7 @@ fn failed_release_does_not_block_other_updates_or_aur_installs() {
             let entries = logger.task_entries();
             let version_entry = entries
                 .iter()
-                .find(|entry| entry.name == "Local package versions")
+                .find(|entry| entry.name == "Local package updates")
                 .unwrap();
             assert_eq!(version_entry.status, TaskStatus::Failed);
             assert!(

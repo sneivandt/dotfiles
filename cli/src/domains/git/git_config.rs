@@ -15,7 +15,7 @@ pub struct ConfigureGit {
     config_path: Option<PathBuf>,
 }
 
-const NAME: &str = "Git settings";
+const NAME: &str = "Global Git settings";
 
 impl ConfigureGit {
     /// Create the task with a handle to its configuration slice.

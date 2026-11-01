@@ -116,7 +116,7 @@ expansion and merged target-overlap checks. Some domains retain unfiltered
 views for source validation.
 
 Loading errors stop task construction. Additional semantic diagnostics come
-from `Config::validate`: startup displays them, while `config-warnings` fails
+from `Config::validate`: startup displays them, while `config-diagnostics` fails
 if any remain. Do not conflate these two validation stages or silently replace
 invalid input with a default.
 

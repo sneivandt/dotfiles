@@ -32,8 +32,8 @@ impl ValidateConfigWarnings {
 
 impl Task for ValidateConfigWarnings {
     task_metadata! {
-        name: "Validate config warnings",
-        selector: "config-warnings",
+        name: "Configuration diagnostics",
+        selector: "config-diagnostics",
     }
 
     fn run(&self, ctx: &Context) -> Result<TaskResult> {

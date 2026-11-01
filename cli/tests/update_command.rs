@@ -448,7 +448,7 @@ fn minimal_update_catalog_applicability_is_platform_specific_and_scheduler_indep
             if platform.os == Os::Windows {
                 expected.extend(["developer-mode", "registry"]);
             } else {
-                expected.extend(["file-permissions", "shell"]);
+                expected.extend(["file-permissions", "login-shell"]);
             }
             expected.sort_unstable();
             assert_eq!(applicable, expected, "{platform:?}, parallel={parallel}");

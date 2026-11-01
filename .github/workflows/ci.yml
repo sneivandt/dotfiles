@@ -208,7 +208,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Run typed configuration validation
-        run: ./bin/dotfiles check --root . -p desktop --only config-warnings,symlink-sources,config-files
+        run: ./bin/dotfiles check --root . -p desktop --only config-diagnostics,symlink-sources,config-files
 
   test-stocks:
     name: "Regression: Stock ticker"
@@ -531,7 +531,7 @@ jobs:
         run: chmod +x bin/dotfiles
       - name: Dry-run update
         # APM is not provisioned in this profile matrix.
-        run: ./bin/dotfiles update --root . -p ${{ matrix.profile }} -n --skip apm,vscode-extensions
+        run: ./bin/dotfiles update --root . -p ${{ matrix.profile }} -n --skip agent-packages,vscode-extensions
       - name: Run validation
         # Linters have dedicated jobs; APM is not provisioned in this matrix.
         run: ./bin/dotfiles check --root . -p ${{ matrix.profile }} --skip shellcheck,psscriptanalyzer,apm-plugins
@@ -554,7 +554,7 @@ jobs:
       - name: Dry-run update
         # APM is not provisioned in this profile matrix.
         shell: bash
-        run: ./bin/dotfiles.exe update --root . -p ${{ matrix.profile }} -n --skip apm,vscode-extensions
+        run: ./bin/dotfiles.exe update --root . -p ${{ matrix.profile }} -n --skip agent-packages,vscode-extensions
       - name: Run validation
         shell: bash
         # Linters have dedicated jobs; APM is not provisioned in this matrix.
@@ -618,7 +618,7 @@ jobs:
       - name: Make binary executable
         run: chmod +x bin/dotfiles
       - name: Install dotfiles with base profile
-        run: ./bin/dotfiles update --root . -p base -v --skip apm
+        run: ./bin/dotfiles update --root . -p base -v --skip agent-packages
       - name: Test ${{ matrix.application }}
         env:
           DIR: ${{ github.workspace }}
@@ -648,7 +648,7 @@ jobs:
         # Skip unavailable external installers: winget installs fail inside CI
         # and windows-latest does not provide a VS Code CLI launcher. This job
         # validates the git symlink and config chain instead.
-        run: .\bin\dotfiles.exe update --root . -p base -v --skip apm,packages,vscode-extensions
+        run: .\bin\dotfiles.exe update --root . -p base -v --skip agent-packages,packages,vscode-extensions
       - name: Test ${{ matrix.application }}
         shell: pwsh
         env:

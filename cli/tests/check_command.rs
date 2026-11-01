@@ -36,7 +36,7 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
             home.path(),
             None,
             "check",
-            "config-warnings,config-files",
+            "config-diagnostics,config-files",
         );
         command.args(["--no-parallel", "--no-symbols"]);
         if verbose {
@@ -59,7 +59,7 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
         assert_eq!(blocks.len(), if verbose { 4 } else { 3 }, "{text}");
         if verbose {
             assert!(
-                blocks[1].starts_with("PASSED Validate config warnings"),
+                blocks[1].starts_with("PASSED Configuration diagnostics"),
                 "{text}"
             );
             assert!(
@@ -68,7 +68,7 @@ fn check_console_compacts_only_non_verbose_single_line_tasks() {
             );
         } else {
             assert_eq!(
-                blocks[1], "PASSED Validate config warnings\nPASSED Validate config files",
+                blocks[1], "PASSED Configuration diagnostics\nPASSED Validate config files",
                 "{text}"
             );
         }
@@ -101,7 +101,7 @@ fn check_command_fails_on_config_warnings() {
         home.path(),
         None,
         "check",
-        "config-warnings",
+        "config-diagnostics",
     )
     .args(["--no-symbols", "--fail-on-skip"])
     .output()
@@ -115,7 +115,7 @@ fn check_command_fails_on_config_warnings() {
         !output.status.success(),
         "check command should fail on warnings: {text}"
     );
-    assert!(text.contains("FAILED Validate config warnings"), "{text}");
+    assert!(text.contains("FAILED Configuration diagnostics"), "{text}");
     assert!(
         text.contains("invalid_no_dot") && text.contains("vscode-extensions.toml"),
         "{text}"

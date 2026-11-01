@@ -35,7 +35,7 @@ impl ConfigureSystemFiles {
 
 impl Task for ConfigureSystemFiles {
     task_metadata! {
-        name: "System files",
+        name: "System configuration files",
         selector: "system-files",
     }
 

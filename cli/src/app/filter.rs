@@ -155,6 +155,21 @@ pub fn task_matches_filter(task: &dyn Task, filter: &str) -> bool {
 
     normalized_filter == normalize_task_filter(task.selector())
         || normalized_filter == normalize_task_filter(task.name())
+        || legacy_task_filters(task.selector()).contains(&normalized_filter.as_str())
+}
+
+/// Previous public selectors and labels remain accepted by both filter flags.
+/// Keep listings and completions on the canonical task metadata.
+fn legacy_task_filters(selector: &str) -> &'static [&'static str] {
+    match selector {
+        "agent-packages" => &["apm"],
+        "local-package-repository" => &["paru-config", "paru-configuration"],
+        "login-shell" => &["shell", "default-shell"],
+        "config-diagnostics" => &["config-warnings", "validate-config-warnings"],
+        "git" => &["git-settings"],
+        "registry" => &["windows-registry"],
+        _ => &[],
+    }
 }
 
 fn omitted_blocking_dependencies<'a>(

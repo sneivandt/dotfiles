@@ -874,14 +874,14 @@ mod tests {
             "dotfiles",
             "check",
             "--only",
-            "config-warnings",
+            "config-diagnostics",
             "--skip",
             "shellcheck",
         ]);
         let Command::Check(opts) = cli.command else {
             panic!("expected check command");
         };
-        assert_eq!(opts.tasks.only, ["config-warnings"]);
+        assert_eq!(opts.tasks.only, ["config-diagnostics"]);
         assert_eq!(opts.tasks.skip, ["shellcheck"]);
     }
 

@@ -158,7 +158,7 @@ fn structured_runs_report_success_preview_and_failure_without_human_output() {
     for (verb, selector, dry_run, expected_status) in [
         ("update", "completions", false, "changed"),
         ("update", "completions", true, "dry_run"),
-        ("check", "config-warnings", false, "passed"),
+        ("check", "config-diagnostics", false, "passed"),
         ("remove", "completions", false, "error"),
     ] {
         let repo = common::TestContextBuilder::new().build();

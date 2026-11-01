@@ -196,7 +196,7 @@ $StageActions = @{
         Invoke-CargoStage @(
             'run', '--locked', '--profile', $CargoProfile, '--manifest-path', $Manifest,
             '--', 'check', '--root', $RepoRoot, '--profile', 'desktop',
-            '--only', 'config-warnings,symlink-sources,config-files'
+            '--only', 'config-diagnostics,symlink-sources,config-files'
         )
     }
 

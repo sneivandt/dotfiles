@@ -139,7 +139,7 @@ stage_config()
   have cargo || { note "cargo not installed; skipping"; return 2; }
   sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   cargo run --locked --profile "$CARGO_PROFILE" --manifest-path "$MANIFEST" -- \
-    check --root "$REPO_ROOT" --profile desktop --only config-warnings,symlink-sources,config-files || return 1
+    check --root "$REPO_ROOT" --profile desktop --only config-diagnostics,symlink-sources,config-files || return 1
 }
 
 # Mirrors the CI documentation consistency job.

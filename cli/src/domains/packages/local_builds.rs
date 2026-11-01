@@ -21,7 +21,7 @@ use crate::infra::logging::OutputExt as _;
 pub struct ConfigureParu;
 
 impl Task for ConfigureParu {
-    task_metadata! { name: "Paru configuration", selector: "paru-config", }
+    task_metadata! { name: "Local package repository", selector: "local-package-repository", }
 
     fn ordering_dependencies(&self) -> &[crate::engine::TaskId] {
         const DEPS: &[crate::engine::TaskId] =
@@ -315,7 +315,7 @@ pub struct UpdateLocalPackageVersions;
 
 impl Task for UpdateLocalPackageVersions {
     task_metadata! {
-        name: "Local package versions",
+        name: "Local package updates",
         selector: "local-package-versions",
         update_only: true,
     }

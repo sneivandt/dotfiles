@@ -426,12 +426,12 @@ identity**, not the same section name or array position:
 |---|---|
 | Packages | Package name; case-insensitive on Windows |
 | Symlinks | Normalized home target after glob expansion |
-| Git settings | Key; section/variable ignore case, subsection does not |
+| Global Git settings | Key; section/variable ignore case, subsection does not |
 | Agent settings | Harness and exact, case-sensitive key |
 | Registry | Case-insensitive path and value name |
 | Permissions | Normalized home-relative path |
 | Systemd units | Scope and exact unit name |
-| System files | Normalized destination path |
+| System configuration files | Normalized destination path |
 | VS Code extensions | Case-insensitive extension ID |
 
 Unmatched main entries remain, followed by overlay entries. Missing or empty
@@ -540,7 +540,7 @@ String-or-table fields reject a third entry type rather than coercing it.
 ## Validation
 
 `dotfiles check` covers configuration diagnostics, required files, declared
-sources and available analyzers. Its `config-warnings` task fails on all
+sources and available analyzers. Its `config-diagnostics` task fails on all
 aggregated diagnostics, including warning-severity findings.
 
 The Rust `config_drift` suite checks relationships between real declarations

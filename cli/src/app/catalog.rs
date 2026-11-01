@@ -182,7 +182,11 @@ mod tests {
                 .ordering_dependencies()
                 .contains(&id::<ApplyFilePermissions>())
         );
-        for name in ["Systemd units", "System files", "Paru package manager"] {
+        for name in [
+            "Systemd units",
+            "System configuration files",
+            "Paru package manager",
+        ] {
             assert!(
                 !find(name).dependencies().contains(&id::<InstallPackages>()),
                 "{name} must not be blocked by unrelated package failures"
@@ -225,7 +229,7 @@ mod tests {
             "git hooks should wait for repository update without being blocked by it"
         );
         assert!(
-            find("Default shell")
+            find("Login shell")
                 .ordering_dependencies()
                 .contains(&id::<InstallPackages>()),
             "shell configuration should wait for packages without being blocked by package failures"
@@ -260,7 +264,7 @@ mod tests {
                 .contains(&id::<ConfigureParu>())
         );
         assert!(
-            find("paru-config")
+            find("local-package-repository")
                 .ordering_dependencies()
                 .contains(&id::<UpdateLocalPackageVersions>())
         );
@@ -272,11 +276,15 @@ mod tests {
             "release discovery must wait for packages that supply curl"
         );
         assert!(
-            !find("apm")
+            !find("agent-packages")
                 .dependencies()
                 .contains(&id::<UpdateLocalPackageVersions>())
         );
-        assert!(!find("apm").dependencies().contains(&id::<ConfigureParu>()));
+        assert!(
+            !find("agent-packages")
+                .dependencies()
+                .contains(&id::<ConfigureParu>())
+        );
     }
 
     #[test]
@@ -286,14 +294,17 @@ mod tests {
         let tasks = update_tasks_for_run(&store, &repo_updated, ApmPackageMode::UpdatePins);
 
         assert_eq!(
-            tasks.iter().filter(|task| task.selector() == "apm").count(),
+            tasks
+                .iter()
+                .filter(|task| task.selector() == "agent-packages")
+                .count(),
             1,
             "update mode should select one mode-aware APM task"
         );
         assert!(
             tasks
                 .iter()
-                .find(|task| task.selector() == "apm")
+                .find(|task| task.selector() == "agent-packages")
                 .is_some_and(|task| task.update_only()),
             "the update-mode APM task should declare update-only membership"
         );

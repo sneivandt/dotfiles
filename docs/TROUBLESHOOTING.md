@@ -169,7 +169,7 @@ leave invalid definitions.
 
 Use [Configuration validation](CONFIGURATION.md#validation) to interpret the
 finding and [CLI validation](TESTING.md#cli-validation) to recheck it.
-`check` does not repair files, and `config-warnings` fails on warning-severity
+`check` does not repair files, and `config-diagnostics` fails on warning-severity
 diagnostics too.
 
 ## An overlay appears to be ignored
@@ -341,7 +341,7 @@ live ISO does not repair the installed system.
 ## Agent package update does not run or fails
 
 ```bash
-dotfiles update --root . --profile desktop --no-repo-update --only apm --dry-run --verbose
+dotfiles update --root . --profile desktop --no-repo-update --only agent-packages --dry-run --verbose
 ```
 
 Confirm that the linked fragments exist, APM is available when native planning

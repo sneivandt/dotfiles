@@ -2,7 +2,7 @@
 
 Dotfiles keeps agent preferences and reusable agent content in version control.
 Two tasks apply them: **Agent settings** (`agent-settings`) manages selected
-Copilot/Codex settings; **Agent packages** (`apm`) deploys content through
+Copilot/Codex settings; **Agent packages** (`agent-packages`) deploys content through
 [Microsoft APM](https://github.com/microsoft/apm). Repository instructions are
 a third, separate concern: they guide work on this checkout without deployment.
 
@@ -132,10 +132,10 @@ From the repository root, with the dotfiles CLI and APM already available:
 
 ```bash
 # Preview this checkout's agent-package changes.
-dotfiles update --root . --no-repo-update --only apm --dry-run --verbose
+dotfiles update --root . --no-repo-update --only agent-packages --dry-run --verbose
 
 # Apply after reviewing the plan and package sources.
-dotfiles update --root . --no-repo-update --only apm
+dotfiles update --root . --no-repo-update --only agent-packages
 ```
 
 A scoped run does not install its prerequisites for you. New plugin links may

@@ -195,7 +195,7 @@ To check this checkout using the current source, without wrapper bootstrap:
 ```sh
 cd cli
 cargo run --locked --profile ci -- check --root .. --profile desktop \
-  --only config-warnings,symlink-sources,config-files
+  --only config-diagnostics,symlink-sources,config-files
 ```
 
 This is the local `config` stage. It fails on configuration diagnostics, checks
@@ -231,7 +231,7 @@ cargo run --locked --profile ci -- update --root .. --profile desktop \
 ```
 
 For removal, use `remove` instead of `update` and omit `--no-repo-update`.
-Substitute `apm` or another selector as appropriate.
+Substitute `agent-packages` or another selector as appropriate.
 
 A preview must not apply normal managed-state changes, but it can inspect the
 host and write logs or selection metadata. Overlay scripts execute their own

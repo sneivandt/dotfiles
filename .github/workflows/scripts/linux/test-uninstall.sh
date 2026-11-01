@@ -91,7 +91,7 @@ test_install_uninstall_base_profile()
 
   # Run install
   log_verbose "Running install..."
-  "$BINARY_PATH" update --root "$DIR" -p base --skip apm
+  "$BINARY_PATH" update --root "$DIR" -p base --skip agent-packages
   log_verbose "Install complete"
 
   # Verify representative symlinks were created

@@ -7,10 +7,10 @@
 mod common;
 
 #[test]
-fn list_displays_agent_packages_with_the_stable_apm_selector() {
+fn list_displays_agent_packages_with_canonical_selector_and_legacy_alias() {
     let repo = common::IntegrationTestContext::new();
     let home = tempfile::tempdir().unwrap();
-    for selector in ["", "apm", "Agent packages"] {
+    for selector in ["", "agent-packages", "apm", "Agent packages"] {
         for format in ["json", "plain", "table"] {
             let mut command =
                 common::cli_command(repo.root_path(), home.path(), None, "list", selector);
@@ -25,7 +25,10 @@ fn list_displays_agent_packages_with_the_stable_apm_selector() {
             );
             if format == "json" {
                 let rows: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
-                let row = rows.iter().find(|row| row["selector"] == "apm").unwrap();
+                let row = rows
+                    .iter()
+                    .find(|row| row["selector"] == "agent-packages")
+                    .unwrap();
                 assert_eq!(row["task"], "Agent packages");
                 if !selector.is_empty() {
                     assert_eq!(row["selection"], "requested");
@@ -36,7 +39,7 @@ fn list_displays_agent_packages_with_the_stable_apm_selector() {
                 assert!(
                     stdout
                         .lines()
-                        .any(|line| line.split_whitespace().next() == Some("apm")),
+                        .any(|line| line.split_whitespace().next() == Some("agent-packages")),
                     "{stdout}"
                 );
             }
@@ -87,7 +90,7 @@ fn list_hides_empty_configuration_and_all_restores_the_catalog() {
                     "{selector}: {format}, all={all}"
                 );
             }
-            for selector in ["apm", "launcher", "shellcheck"] {
+            for selector in ["agent-packages", "launcher", "shellcheck"] {
                 assert!(
                     selectors.iter().any(|value| value == selector),
                     "uncertain or unconditional {selector} must remain visible"
@@ -139,7 +142,7 @@ fn graph_dependency_expansion_is_available_only_for_update() {
     for (graph, selector) in [
         ("update", "symlinks"),
         ("remove", "symlinks"),
-        ("check", "config-warnings"),
+        ("check", "config-diagnostics"),
     ] {
         for with_deps in [false, true] {
             let mut command =
@@ -178,6 +181,56 @@ fn graph_dependency_expansion_is_available_only_for_update() {
             assert!(
                 !repo.root_path().join(".git/dotfiles-run.lock").exists(),
                 "listing must not acquire a run lock"
+            );
+        }
+    }
+}
+
+#[test]
+fn renamed_tasks_accept_legacy_selectors_and_labels_in_both_filter_flags() {
+    let repo = common::IntegrationTestContext::new();
+    let home = tempfile::tempdir().unwrap();
+    for (graph, canonical, legacy) in [
+        ("update", "agent-packages", "APM"),
+        ("update", "local-package-repository", "paru-config"),
+        ("update", "local-package-repository", "Paru configuration"),
+        ("update", "login-shell", "shell"),
+        ("update", "login-shell", "Default shell"),
+        ("update", "local-package-versions", "Local package versions"),
+        ("update", "git", "Git settings"),
+        ("update", "registry", "Windows registry"),
+        ("update", "system-files", "System files"),
+        ("check", "config-diagnostics", "config-warnings"),
+        ("check", "config-diagnostics", "Validate config warnings"),
+    ] {
+        for flag in ["--only", "--skip"] {
+            let run = |filter: &str| {
+                let output = common::cli_command(repo.root_path(), home.path(), None, "list", "")
+                    .args(["--graph", graph, "--format", "json", flag, filter])
+                    .output()
+                    .unwrap();
+                assert!(
+                    output.status.success(),
+                    "{graph} {flag} {filter}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()
+            };
+            let expected = run(canonical);
+            assert_eq!(run(legacy), expected, "{graph} {flag} {legacy}");
+            let row = expected
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["selector"] == canonical)
+                .unwrap();
+            assert_eq!(
+                row["selection"],
+                if flag == "--only" {
+                    "requested"
+                } else {
+                    "skipped"
+                }
             );
         }
     }

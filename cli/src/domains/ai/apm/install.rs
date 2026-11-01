@@ -66,7 +66,7 @@ impl InstallApmPackages {
 impl Task for InstallApmPackages {
     fn meta(&self) -> TaskMeta<'_> {
         TaskMeta::new("Agent packages")
-            .with_selector("apm")
+            .with_selector("agent-packages")
             .with_update_only(self.mode == ApmPackageMode::UpdatePins)
     }
 

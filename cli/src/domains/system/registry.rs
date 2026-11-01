@@ -13,7 +13,7 @@ crate::engine::config_task! {
     pub struct ApplyRegistry(Vec<RegistryEntry>);
 }
 
-const NAME: &str = "Windows registry";
+const NAME: &str = "User registry settings";
 
 impl Task for ApplyRegistry {
     task_metadata! {

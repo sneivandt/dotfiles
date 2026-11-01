@@ -46,6 +46,11 @@ Selection is explicit:
 - `--skip` can remove those predecessors again.
 - Unknown selectors and explicitly empty selections are errors.
 
+Listings and completions use canonical selectors. For compatibility, `apm`,
+`paru-config`, `shell` and `config-warnings` still select `agent-packages`,
+`local-package-repository`, `login-shell` and `config-diagnostics`, respectively.
+Previous full console labels remain accepted by `--only` and `--skip` too.
+
 Inspect expansion before applying:
 
 ```bash
@@ -92,25 +97,25 @@ that runtime prerequisites or elevation are available.
 
 | Selector | Console label | Available when | Remove |
 |---|---|---|---|
+| `agent-packages` | Agent packages | Active APM fragments provide work | — |
 | `agent-settings` | Agent settings | Harness settings are configured | — |
-| `apm` | Agent packages | Active APM fragments provide work | — |
 | `aur-packages` | AUR packages | Arch/AUR support and AUR entries | — |
 | `completions` | Shell completions | Supported shell registration | — |
 | `developer-mode` | Windows Developer Mode | Windows | — |
 | `file-permissions` | File permissions | Unix modes are supported and configured | — |
-| `git` | Git settings | Configured values, or Windows autocrlf cleanup | — |
+| `git` | Global Git settings | Configured values, or Windows autocrlf cleanup | — |
 | `git-hooks` | Git hooks | Repository hook sources provide work | yes |
 | `launcher` | Dotfiles launcher | Linux or Windows | yes |
-| `local-package-versions` | Local package versions | Arch/AUR support and local recipes | — |
+| `local-package-repository` | Local package repository | Arch/AUR support | — |
+| `local-package-versions` | Local package updates | Arch/AUR support and local recipes | — |
+| `login-shell` | Login shell | Linux, outside CI | — |
 | `packages` | System packages | Non-AUR packages are configured | — |
 | `paru` | Paru package manager | Pacman platform | — |
-| `paru-config` | Paru configuration | Arch/AUR support | — |
 | `path` | Shell PATH | Linux or Windows | — |
-| `registry` | Windows registry | Windows values are configured | — |
+| `registry` | User registry settings | Windows values are configured | — |
 | `repository` | Dotfiles repository | A checkout is eligible for synchronization | — |
-| `shell` | Default shell | Linux, outside CI | — |
 | `symlinks` | Home symlinks | Links are configured | yes |
-| `system-files` | System files | Linux fragments are configured, outside CI | — |
+| `system-files` | System configuration files | Linux fragments are configured, outside CI | — |
 | `systemd` | Systemd units | Supported platform and configured units, outside CI | — |
 | `vscode-extensions` | VS Code extensions | Extensions are configured | — |
 
@@ -199,7 +204,7 @@ gets its own [dynamic task](#dynamic-overlay-tasks).
 
 ### System convergence tasks
 
-#### Git settings
+#### Global Git settings
 
 Converges `conf/git-config.toml` values in **global** Git configuration.
 Repeated occurrences of managed keys are handled without altering unrelated
@@ -215,7 +220,7 @@ Converges selected dot-separated keys in Copilot JSON and Codex TOML documents,
 preserving undeclared and harness-owned keys. It does not deploy skills/plugins.
 See [Agent harness settings](CONFIGURATION.md#agent-harness-settings).
 
-#### System files
+#### System configuration files
 
 On Linux outside CI, merges declared `system/` fragments into files below
 `/etc`. TOML, INI and PAM have different ownership rules; review the
@@ -262,7 +267,7 @@ the validated `/usr/bin/paru`, not an arbitrary PATH copy.
 #### AUR packages
 
 Installs missing `aur = true` entries after successful Paru bootstrap. It also
-waits for local Paru configuration without making recipe failures block every
+waits for local package repository preparation without making recipe failures block every
 unrelated AUR package.
 
 Preview queries pacman's installed-package database without requiring the
@@ -289,7 +294,7 @@ Directories recurse and retain traversal bits; ordinary files have execute
 bits cleared unless explicitly configured otherwise. Missing content is not
 created. Changes through links can affect the checkout.
 
-#### Default shell
+#### Login shell
 
 On Linux outside CI, sets the account login shell to **zsh**. This choice is
 task-defined, not configurable through TOML. It waits for packages and reports
@@ -313,7 +318,7 @@ including Arch chroot provisioning, it creates per-user enablement links for
 the next real login—not running services inside the chroot.
 See [Unit configuration](CONFIGURATION.md#systemd-units).
 
-#### Windows registry
+#### User registry settings
 
 Converges current-user values, preserving undeclared ones. This is separate
 from machine-level Developer Mode and does not request brokered elevation.
@@ -346,7 +351,7 @@ ownership, authentication and cleanup. This task is broader than copying skills.
 
 ### Local PKGBUILD packages
 
-`local-package-versions` discovers stable release pins. `paru-config` prepares
+`local-package-versions` discovers stable release pins. `local-package-repository` prepares
 disposable Git snapshots and configures Paru to use them. They are ordered
 without making a recipe failure block unrelated AUR work.
 
@@ -410,7 +415,7 @@ staged privately on Unix and receive source permissions before publication.
 
 | Selector | Console label | Scope |
 |---|---|---|
-| `config-warnings` | Validate config warnings | Fail on aggregated diagnostics, including warning-severity findings |
+| `config-diagnostics` | Configuration diagnostics | Fail on aggregated diagnostics, including warning-severity findings |
 | `symlink-sources` | Validate symlink sources | Symlink/glob and chmod sources, including inactive categories |
 | `config-files` | Validate config files | Required main TOML inventory; warn if `hooks/` is absent |
 | `apm-plugins` | Validate APM plugins | Native `apm pack --dry-run --verbose` for main-checkout plugins |
@@ -437,10 +442,10 @@ These examples inspect or preview rather than apply. Use the intended checkout:
 dotfiles update --root . --profile base --no-repo-update --only symlinks --dry-run
 
 # Inspect everything dependency expansion would add.
-dotfiles list --root . --profile desktop --graph update --only apm --with-deps
+dotfiles list --root . --profile desktop --graph update --only agent-packages --with-deps
 
 # Preview regular packages and APM, without adding AUR tasks.
-dotfiles update --root . --profile desktop --no-repo-update --only "packages,apm" --dry-run
+dotfiles update --root . --profile desktop --no-repo-update --only "packages,agent-packages" --dry-run
 ```
 
 For scripts, select the real overlay, discover its selector with `list`, then

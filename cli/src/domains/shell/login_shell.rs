@@ -12,12 +12,12 @@ use crate::engine::{
 #[derive(Debug)]
 pub struct ConfigureShell;
 
-const NAME: &str = "Default shell";
+const NAME: &str = "Login shell";
 
 impl Task for ConfigureShell {
     task_metadata! {
         name: NAME,
-        selector: "shell",
+        selector: "login-shell",
     }
 
     fn should_run(&self, ctx: &Context) -> bool {

@@ -367,10 +367,18 @@ mod tests {
     #[test]
     fn sudo_primes_foreground_credentials_for_single_and_sequential_tasks() {
         let cases: &[(&str, bool, &[&str])] = &[
-            ("single parallel", true, &["System files"]),
-            ("single sequential", false, &["System files"]),
-            ("multiple sequential", false, &["System files", "Packages"]),
-            ("multiple parallel", true, &["System files", "Packages"]),
+            ("single parallel", true, &["System configuration files"]),
+            ("single sequential", false, &["System configuration files"]),
+            (
+                "multiple sequential",
+                false,
+                &["System configuration files", "Packages"],
+            ),
+            (
+                "multiple parallel",
+                true,
+                &["System configuration files", "Packages"],
+            ),
         ];
         for &(case, parallel, names) in cases {
             let (ctx, log) = make_static_context("fixture-root".into(), None);
@@ -414,7 +422,7 @@ mod tests {
             let plan = prepare_sudo_elevation(
                 &ctx,
                 &log,
-                &["System files"],
+                &["System configuration files"],
                 true,
                 || cached,
                 || panic!("cached or non-interactive runs must not prompt"),
@@ -432,7 +440,7 @@ mod tests {
         let plan = prepare_sudo_elevation(
             &ctx,
             &log,
-            &["System files"],
+            &["System configuration files"],
             false,
             || panic!("missing sudo must not be invoked"),
             || panic!("missing sudo must not prompt"),
@@ -450,8 +458,14 @@ mod tests {
         for result in [Ok(false), Err(std::io::Error::other("fixture failure"))] {
             let (ctx, log) = make_static_context("fixture-root".into(), None);
             let ctx = ctx.with_parallel(false).with_non_interactive(false);
-            let plan =
-                prepare_sudo_elevation(&ctx, &log, &["System files"], true, || false, || result);
+            let plan = prepare_sudo_elevation(
+                &ctx,
+                &log,
+                &["System configuration files"],
+                true,
+                || false,
+                || result,
+            );
             assert_eq!(
                 plan,
                 ElevationPlan::Unavailable {

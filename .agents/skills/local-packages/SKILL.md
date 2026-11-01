@@ -2,7 +2,7 @@
 name: local-packages
 description: >
   Use for packages/*/PKGBUILD and release.json, local-package-versions,
-  paru-config, disposable PKGBUILD snapshots, or Paru local repository cleanup.
+  local-package-repository, disposable PKGBUILD snapshots, or Paru local repository cleanup.
   Not for ordinary conf/packages.toml entries or package providers alone, or
   APM agent dependency/deployment manifests.
 ---

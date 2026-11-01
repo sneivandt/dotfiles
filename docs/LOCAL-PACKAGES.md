@@ -31,7 +31,7 @@ the second upgrades packages, not just these local recipes.
 To inspect only local recipe preparation from this checkout:
 
 ```bash
-dotfiles update --root . --no-repo-update --only local-package-versions,paru-config --dry-run
+dotfiles update --root . --no-repo-update --only local-package-versions,local-package-repository --dry-run
 ```
 
 After reviewing the recipes and plan, remove `--dry-run` to prepare them.
@@ -60,9 +60,9 @@ flowchart LR
 | Task | Changes | Does not do |
 |---|---|---|
 | `local-package-versions` | Refreshes successful recipes' version/checksum pins | Download archives, execute recipes, or install packages |
-| `paru-config` | Validates recipe metadata, prepares snapshots, and writes available repositories into Paru config | Install or upgrade packages |
+| `local-package-repository` | Validates recipe metadata, prepares snapshots, and writes available repositories into Paru config | Install or upgrade packages |
 | `aur-packages` | Installs missing selected packages whose inputs are ready | Upgrade every already-installed package |
-| `apm` | Deploys agent dependencies using `apm` on PATH | Upgrade the APM executable |
+| `agent-packages` | Deploys agent dependencies using `apm` on PATH | Upgrade the APM executable |
 
 Preparation waits for version discovery, but can use retained pins after an
 upstream failure. Installation requires healthy Paru and ready inputs. A missing
@@ -176,7 +176,7 @@ pins, snapshots, or Paru config. It also does not execute PKGBUILDs.
 
 ## How Paru sees the recipes
 
-The `paru-config` task combines the tracked base options with generated local
+The `local-package-repository` task combines the tracked base options with generated local
 repository sections. It writes a regular file, replacing a former config
 symlink atomically without overwriting that symlink's source.
 
@@ -274,15 +274,15 @@ fail closed rather than allowing an AUR fallback.
    Arch in an isolated environment before installing.
 
 On a fresh checkout, preview can describe snapshot work before pins exist.
-Applying `paru-config` needs pins, so refresh versions first.
+Applying `local-package-repository` needs pins, so refresh versions first.
 
 ## Logs and troubleshooting
 
 | Symptom or output | Meaning / next step |
 |---|---|
-| `Local package versions: write .../version.sh` | Available version/checksum pins changed; nothing was installed |
-| `Paru configuration: refresh local package snapshot ...` | Cached build inputs or metadata changed |
-| `Paru configuration: write .../paru.conf` | Available repository paths/options changed |
+| `Local package updates: write .../version.sh` | Available version/checksum pins changed; nothing was installed |
+| `Local package repository: refresh local package snapshot ...` | Cached build inputs or metadata changed |
+| `Local package repository: write .../paru.conf` | Available repository paths/options changed |
 | Paru reports no upgrade after refresh | Inspect snapshot `version.sh` and `.SRCINFO`; rerun preparation and check `paru -Sl --pkgbuilds` |
 | Missing release asset/digest or rate limit | Fix the descriptor or retry after the reported cooldown; old pins survive |
 | Pins missing | Apply version discovery before snapshot preparation |

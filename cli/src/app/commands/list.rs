@@ -105,10 +105,10 @@ fn potentially_applicable(selector: &str, config: &Config, platform: Platform) -
             platform.supports_aur() && config.packages.iter().any(|package| package.is_aur)
         }
         "paru" => platform.uses_pacman(),
-        "paru-config" | "local-package-versions" => platform.supports_aur(),
+        "local-package-repository" | "local-package-versions" => platform.supports_aur(),
         "system-files" => platform.is_linux() && !config.system_files.is_empty(),
         "systemd" => platform.supports_systemd() && !config.units.is_empty(),
-        "shell" => platform.is_linux(),
+        "login-shell" => platform.is_linux(),
         "vscode-extensions" => !config.vscode_extensions.is_empty(),
         "agent-settings" => !config.agent_settings.is_empty(),
         "symlinks" => !config.symlinks.is_empty(),
@@ -433,7 +433,7 @@ mod tests {
                 );
             }
             for selector in [
-                "apm",
+                "agent-packages",
                 "repository",
                 "git-hooks",
                 "launcher",
@@ -442,7 +442,7 @@ mod tests {
                 "psscriptanalyzer",
                 "apm-plugins",
                 "config-files",
-                "config-warnings",
+                "config-diagnostics",
                 "script-example",
                 "unknown",
             ] {
@@ -456,7 +456,7 @@ mod tests {
                 platform.is_windows()
             );
             assert_eq!(
-                potentially_applicable("shell", &config, platform),
+                potentially_applicable("login-shell", &config, platform),
                 platform.is_linux()
             );
             assert_eq!(
@@ -586,7 +586,7 @@ mod tests {
         let listings = collect_listings(&store, None).expect("collect task listings");
         let apm = listings
             .iter()
-            .find(|listing| listing.selector == "apm")
+            .find(|listing| listing.selector == "agent-packages")
             .expect("APM task listing");
 
         assert_eq!(command_membership(apm), "update");

@@ -38,7 +38,7 @@ An update can nevertheless change more than the files you just edited:
 |---|---|---|
 | CLI binary | Eligible release binaries check for a newer version before update/remove | Set `DOTFILES_SKIP_SELF_UPDATE=1` |
 | Main checkout and Git overlay | Fetch and fast-forward to their upstream branches | Pass `--no-repo-update` |
-| Agent dependencies and deployments | Advance eligible refs and reconcile agent packages | Pass `--skip apm` |
+| Agent dependencies and deployments | Advance eligible refs and reconcile agent packages | Pass `--skip agent-packages` |
 | Local Arch package pins | Refresh release versions and checksums | Pass `--skip local-package-versions` |
 
 Task filters do not disable startup behavior. `--no-repo-update` is neither an
@@ -220,7 +220,7 @@ It does write a log, acquire the run lock, and resolve/save selections.
 dotfiles check --root . --profile desktop
 ```
 
-The `config-warnings` task fails on configuration diagnostics, including
+The `config-diagnostics` task fails on configuration diagnostics, including
 warnings. Missing optional tools are visible skips; `--fail-on-skip` and CI
 make them fatal. If `pwsh` exists but PSScriptAnalyzer does not, that check fails.
 
@@ -400,7 +400,7 @@ and an explicit `--format`.
 For machine-readable execution, use JSON Lines:
 
 ```bash
-dotfiles check --root . --profile base --only config-warnings --format jsonl
+dotfiles check --root . --profile base --only config-diagnostics --format jsonl
 ```
 
 Each stdout line is one object with `schema: 1`, `run_id`, `context`, and

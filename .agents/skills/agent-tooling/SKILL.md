@@ -23,7 +23,8 @@ If available, the personal `agent-customization` skill adds public-vs-private au
 guidance; it is not a prerequisite for working in this repository.
 
 Harness settings are owned by the `agent-settings` task and do not invoke APM.
-The `apm` task owns agent package convergence and its compatibility adapters.
+The `agent-packages` task owns agent package convergence and its compatibility
+adapters.
 
 ## Agent package rules
 
@@ -49,7 +50,8 @@ The `apm` task owns agent package convergence and its compatibility adapters.
 
 ## Deployment ownership
 
-The CLI labels this task **Agent packages**; its selector remains `apm`.
+The CLI labels this task **Agent packages**; its selector is `agent-packages`
+(`apm` remains a compatibility alias).
 
 Dotfiles owns fragment merging, generated-manifest persistence, conditional
 target orchestration, Cowork's ACL-safe exception, and the Copilot App autopilot

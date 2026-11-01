@@ -19,10 +19,10 @@ local function mediaBind(key, fallback, command, repeating)
     end
 end
 
-mediaBind("XF86AudioMute", "F1", "pactl set-sink-mute @DEFAULT_SINK@ toggle", false)
-mediaBind("XF86AudioLowerVolume", "F2", "pactl set-sink-volume @DEFAULT_SINK@ -5%", true)
-mediaBind("XF86AudioRaiseVolume", "F3", "pactl set-sink-volume @DEFAULT_SINK@ +5%", true)
-mediaBind("XF86AudioMicMute", "F4", "pactl set-source-mute @DEFAULT_SOURCE@ toggle", false)
+mediaBind("XF86AudioMute", "F1", "~/.config/hypr/scripts/volume.sh mute", false)
+mediaBind("XF86AudioLowerVolume", "F2", "~/.config/hypr/scripts/volume.sh down", true)
+mediaBind("XF86AudioRaiseVolume", "F3", "~/.config/hypr/scripts/volume.sh up", true)
+mediaBind("XF86AudioMicMute", "F4", "~/.config/hypr/scripts/volume.sh mic-mute", false)
 mediaBind("XF86MonBrightnessDown", "F5", "~/.config/hypr/scripts/brightness.sh down", true)
 mediaBind("XF86MonBrightnessUp", "F6", "~/.config/hypr/scripts/brightness.sh up", true)
 mediaBind("XF86AudioPlay", nil, "playerctl play-pause", false)

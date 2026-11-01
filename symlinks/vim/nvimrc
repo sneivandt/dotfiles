@@ -1,6 +1,15 @@
 " Neovim-specific configuration
 " This file is sourced after the main vimrc
 
+" Built-in completion: fuzzy candidates, with nearby matches first.
+if has('nvim-0.11')
+  set completeopt+=fuzzy
+endif
+if has('nvim-0.12')
+  set completeopt+=nearest
+  nnoremap <leader>u :Undotree<cr>
+endif
+
 " Terminal navigation
 augroup NeovimTerminal
   autocmd!

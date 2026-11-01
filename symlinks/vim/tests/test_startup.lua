@@ -12,6 +12,14 @@ check(vim.fn.maparg(",t", "n") == ":terminal<CR>", "Terminal mapping must be loa
 check(vim.fn.maparg("<C-e>", "n") == ":NvimTreeToggle<CR>", "Plugin mapping must be loaded")
 check(vim.fn.maparg("<BS>", "n") == ":<C-U>TmuxNavigateLeft<CR>", "Neovim must override shared navigation")
 
+if vim.fn.has("nvim-0.11") == 1 then
+  check(vim.tbl_contains(vim.opt.completeopt:get(), "fuzzy"), "Fuzzy completion must be enabled")
+end
+if vim.fn.has("nvim-0.12") == 1 then
+  check(vim.tbl_contains(vim.opt.completeopt:get(), "nearest"), "Nearby completion must be enabled")
+  check(vim.fn.maparg(",u", "n") == ":Undotree<CR>", "Undo tree mapping must be loaded")
+end
+
 -- Mode changes happen after commands return to the event loop. Poll for the
 -- observable state with a deadline instead of assuming a fixed startup delay.
 local function await_state(predicate, message, continuation)

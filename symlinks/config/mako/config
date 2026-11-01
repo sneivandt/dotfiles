@@ -27,11 +27,15 @@ max-icon-size=32
 icon-location=left
 
 # Behaviour
+# Retain recent notifications in memory for the bar history menu.
+max-history=100
 default-timeout=8000
 group-by=app-name
 
 # Progress bar (e.g. volume, brightness)
 [category=progress]
+# Transient feedback should not fill notification history.
+history=0
 border-color=#7aa2f7
 default-timeout=2000
 group-by=category

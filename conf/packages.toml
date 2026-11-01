@@ -64,6 +64,7 @@ packages = [
   "hyprlock",
   "hyprpaper",
   "hyprpolkitagent",
+  "libnotify",
   "libpulse",
   "mako",
   "network-manager-applet",

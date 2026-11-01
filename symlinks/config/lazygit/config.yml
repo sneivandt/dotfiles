@@ -17,3 +17,11 @@ gui:
       - "#283457"
     unstagedChangesColor:
       - "#f7768e"
+
+# Use the diff view's width, rather than the full terminal width.
+git:
+  diffRenderers:
+    - name: delta
+      command: 'delta --paging=never --width={{.width}} {{if ge .width 160}}--side-by-side{{end}} --line-numbers --hyperlinks --hyperlinks-file-link-format="lazygit-edit://{path}:{line}"'
+    - name: raw
+      type: rawGit

@@ -29,6 +29,10 @@ ShellRoot {
     NetworkState {
         id: networkState
     }
+    NotificationState {
+        id: notificationState
+        active: shell.openMenu !== null && shell.openMenu.visible && shell.openMenu.isNotificationMenu === true
+    }
     MarketState {
         id: marketState
     }
@@ -61,6 +65,7 @@ ShellRoot {
             audio: audioState
             network: networkState
             markets: marketState
+            notifications: notificationState
             currentDate: clock.date
             menuController: shell
         }

@@ -92,6 +92,8 @@
         "*.csproj": "$(capture).csproj.user",
         "*.sln": "$(capture).suo, $(capture).sln.DotSettings, $(capture).sln.DotSettings.user",
         "CMakeLists.txt": "CMakePresets.json, CMakeUserPresets.json",
+        "Cargo.toml": "Cargo.lock",
+        "pyproject.toml": "poetry.lock, uv.lock, pdm.lock, .python-version, .ruff.toml, ruff.toml, mypy.ini, pytest.ini, tox.ini, setup.cfg, setup.py",
         "package.json": "package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock, bun.lockb, npm-shrinkwrap.json"
     },
     "extensions.ignoreRecommendations": true,

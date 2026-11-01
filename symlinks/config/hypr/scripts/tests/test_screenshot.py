@@ -11,6 +11,7 @@ command() {
     if [ "$1" = "-v" ]; then
         case "$2" in
             grim) [ "${NO_GRIM:-0}" = 0 ]; return ;;
+            notify-send) [ "${NO_NOTIFY:-0}" = 0 ]; return ;;
             slurp) [ "${NO_SLURP:-0}" = 0 ]; return ;;
         esac
     fi
@@ -35,6 +36,10 @@ grim() {
     printf '%s\n' "$@" > "$HOME/arguments-$$"
     printf 'image' > "${@: -1}"
     [ "${CAPTURE_FAIL:-0}" = 0 ]
+}
+notify-send() {
+    printf '%s\n' "$@" > "$HOME/notification-$$"
+    return "${NOTIFY_STATUS:-0}"
 }
 wl-copy() {
     cat > "$HOME/clipboard-$$"
@@ -72,17 +77,39 @@ class ScreenshotTests(ScriptFixture):
         result = self.capture(CANCEL="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.work / "screenshots").exists())
+        self.assertEqual(list(self.work.glob("notification-*")), [])
 
     def test_failed_capture_removes_partial_image(self):
         result = self.capture(CAPTURE_FAIL="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.images(), [])
         self.assertEqual(list(self.work.glob("clipboard-*")), [])
+        self.assertEqual(list(self.work.glob("notification-*")), [])
 
     def test_clipboard_failure_keeps_successful_capture(self):
         result = self.capture(CLIPBOARD_FAIL="1")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([image.read_text() for image in self.images()], ["image"])
+
+    def test_success_feedback_includes_clipboard_status_and_path(self):
+        result = self.capture()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        notification = next(self.work.glob("notification-*")).read_text()
+        self.assertIn("Screenshot saved and copied", notification)
+        self.assertIn(str(self.images()[0]), notification)
+
+    def test_clipboard_failure_feedback_is_accurate(self):
+        result = self.capture(CLIPBOARD_FAIL="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        notification = next(self.work.glob("notification-*")).read_text()
+        self.assertIn("clipboard unavailable", notification)
+        self.assertNotIn("saved and copied", notification)
+
+    def test_notifications_are_optional(self):
+        for env in ({"NO_NOTIFY": "1"}, {"NOTIFY_STATUS": "1"}):
+            with self.subTest(env=env):
+                result = self.capture(**env)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_fullscreen_fallback_without_slurp(self):
         result = self.capture(NO_SLURP="1")
@@ -96,6 +123,7 @@ class ScreenshotTests(ScriptFixture):
         self.assertEqual(result.returncode, 1)
         self.assertIn("grim not found", result.stderr)
         self.assertFalse((self.work / "screenshots").exists())
+        self.assertEqual(list(self.work.glob("notification-*")), [])
 
 
 if __name__ == "__main__":

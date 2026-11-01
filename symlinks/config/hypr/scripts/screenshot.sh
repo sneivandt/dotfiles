@@ -35,4 +35,12 @@ trap 'exit 143' TERM
 partial_file=$FILENAME
 grim "$@" "$FILENAME"
 partial_file=""
-wl-copy < "$FILENAME" 2>/dev/null || true
+if wl-copy < "$FILENAME" 2>/dev/null; then
+  summary="Screenshot saved and copied"
+else
+  summary="Screenshot saved; clipboard unavailable"
+fi
+if command -v notify-send >/dev/null 2>&1; then
+  notify-send --app-name=dotfiles --expire-time=4000 \
+    --icon=applets-screenshooter-symbolic "$summary" "$FILENAME" || true
+fi

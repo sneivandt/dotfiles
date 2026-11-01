@@ -56,6 +56,12 @@ In a Neovim terminal, Escape leaves terminal input mode and keeps the terminal
 window focused so you can inspect output. Alt+Escape leaves terminal input and
 returns to the previous window. Re-entering a terminal window restores input mode.
 
+## Completion and undo history
+
+Neovim 0.11+ uses fuzzy built-in insert completion; 0.12+ also ranks matches
+by proximity to the cursor. On 0.12+, `,u` opens the built-in `:Undotree` to
+navigate the persistent undo history. Plain Vim keeps its existing behavior.
+
 ## Plugin management
 
 | Neovim command | Purpose |

@@ -26,7 +26,7 @@ Paru installs them.
 
 For example:
 
-```toml
+```toml title="conf/packages.toml"
 [arch]
 packages = ["ripgrep"]
 
@@ -206,7 +206,7 @@ produce a newer Arch package. Release discovery manages `pkgver`, not `pkgrel`.
 A descriptor names a stable GitHub release source and one asset per architecture.
 For example, the APM descriptor is:
 
-```json
+```json title="packages/apm/release.json" {5-6}
 {
   "package_base": "apm-dotfiles",
   "repository": "microsoft/apm",

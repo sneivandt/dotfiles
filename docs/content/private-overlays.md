@@ -31,7 +31,7 @@ Overlay configuration files are optional. They use the same
 [category rules](profiles-and-categories.md) as the main repository. For example,
 an overlay's `conf/git-config.toml` could contain:
 
-```toml
+```toml title="dotfiles-private/conf/git-config.toml"
 [base]
 settings = [{ key = "core.editor", value = "nvim" }]
 ```
@@ -129,7 +129,7 @@ Use scripts only for work that declarative configuration cannot express.
 Only an overlay's `conf/scripts.toml` is loaded; the main repository cannot
 declare these tasks.
 
-```toml
+```toml title="dotfiles-private/conf/scripts.toml" {3}
 [[linux.scripts]]
 name = "Configure private workstation"
 path = "scripts/configure-workstation.sh"

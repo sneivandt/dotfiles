@@ -11,7 +11,8 @@ async function assertNoPageOverflow(page: Page) {
 test('the homepage introduces the repository and links to setup, with grouped navigation and a favicon', async ({ page, isMobile }) => {
   await page.goto('/');
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
+  await expect(page).toHaveTitle('Dotfiles by Stuart Neivandt');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Introduction');
   await expect(page.locator('.hero')).toHaveCount(0);
   await expect(page.getByText('On this page', { exact: true })).toHaveCount(0);
   const setupLink = page.locator('.sl-markdown-content').getByRole('link', { name: 'Getting started', exact: true });
@@ -66,7 +67,7 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
   await homeLink.click();
   await expect(page).toHaveURL('/index.html');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Introduction');
   await expect(page.getByText('On this page', { exact: true })).toHaveCount(0);
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.locator('#starlight__sidebar a[href="/commands-and-usage.html"]').click();

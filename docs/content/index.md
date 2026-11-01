@@ -1,10 +1,13 @@
 ---
-title: Dotfiles
+title: Introduction
 description: A personal dotfiles project turned configuration engine for Arch Linux and Windows, and a place to explore agentic engineering.
+head:
+  - tag: title
+    content: Dotfiles by Stuart Neivandt
 tableOfContents: false
 ---
 
-# Dotfiles
+# Introduction
 
 This repository keeps my Arch Linux and Windows shell, editor, desktop, and
 system settings together. [Getting started](getting-started.md) walks through

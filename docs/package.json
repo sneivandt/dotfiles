@@ -21,6 +21,7 @@
     "astro-mermaid": "2.2.0",
     "github-slugger": "2.0.0",
     "mermaid": "12.2.0",
+    "starlight-theme-flexoki": "0.3.0",
     "unist-util-visit": "5.2.0"
   },
   "devDependencies": {

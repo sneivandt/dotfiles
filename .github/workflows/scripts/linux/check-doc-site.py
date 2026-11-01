@@ -129,9 +129,8 @@ def check_site(root):
         for href, _ in pages["/index.html"].nav_links
     }
     homepage = pages["/index.html"]
-    homepage_title = homepage.titles[0].strip() if homepage.titles else ""
-    if homepage.site_title_links != [("/index.html", homepage_title)]:
-        errors.append("Homepage header must link to the introduction with its title")
+    if homepage.site_title_links != [("/index.html", "Dotfiles")]:
+        errors.append("Homepage header must link to the introduction with the site title")
     if "/index.html" in sidebar_routes:
         errors.append("Homepage must not appear in sidebar navigation")
     indexed_urls = sitemap_urls(output, origin, errors)

@@ -211,15 +211,17 @@ The repository [Docs publishing skill](https://github.com/sneivandt/dotfiles/blo
 covers readable guide prose, examples, navigation, and site publishing for agents.
 
 The documentation home is [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/).
-The site uses Astro and Starlight, with locked dependencies in `docs/package-lock.json`.
+The site uses Astro and Starlight with Flexoki theme styling, with locked
+dependencies in `docs/package-lock.json`.
 Markdown guides live in `docs/content/`; site configuration, components, and
 static assets are separate. The same guides remain readable in the repository.
 
 Use the same wording for each guide's front-matter `title`, Markdown H1, and
 sidebar label. Its filename and URL use the lowercase, hyphenated title:
 `getting-started.md` publishes at `/getting-started.html`. The exception is
-`index.md`, which builds `index.html` and is served at `/`; its title appears
-in the site header instead of the sidebar. Add a `description` and place new
+`index.md`, which builds `index.html` and is served at `/`; its Introduction
+heading is separate from the Dotfiles site title linked in the header and it
+does not appear in the sidebar. Add a `description` and place new
 guides in the appropriate sidebar group in `docs/astro.config.mjs`.
 All groups start expanded. New visits default to dark mode; the native theme
 control retains an explicit Light or System choice.

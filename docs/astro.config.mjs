@@ -54,7 +54,13 @@ export default defineConfig({
         { icon: 'github', label: 'GitHub repository', href: 'https://github.com/sneivandt/dotfiles' },
       ],
       editLink: { baseUrl: 'https://github.com/sneivandt/dotfiles/edit/main/docs/' },
-      customCss: ['./src/styles/custom.css'],
+      customCss: [
+        'starlight-theme-flexoki/styles/layers.css',
+        'starlight-theme-flexoki/styles/theme.css',
+        'starlight-theme-flexoki/styles/base.css',
+        'starlight-theme-flexoki/accent-themes/cyan.css',
+        './src/styles/custom.css',
+      ],
       sidebar: [
         {
           label: 'Start here',

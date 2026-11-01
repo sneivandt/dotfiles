@@ -103,7 +103,7 @@ also an error. An explicit valid `--profile` overrides the bad environment value
 
 For category-based TOML sections, hyphens mean **AND**:
 
-```toml
+```toml title="conf/packages.toml" {4-5}
 [base]
 packages = ["git"]
 

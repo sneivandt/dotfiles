@@ -55,7 +55,7 @@ Private overlays may also provide
 
 Except for registry records, configuration is grouped by category:
 
-```toml
+```toml title="conf/symlinks.toml" {9-10}
 [base]
 symlinks = ["config/git/config"]
 
@@ -105,7 +105,7 @@ symlinks = ["config/git/config", "ssh/config"]
 The table form requires both `source` and `target`. It is useful for Windows
 locations or for sharing one source across several destinations:
 
-```toml
+```toml title="conf/symlinks.toml" {9}
 [windows]
 symlinks = [
   { source = "config/nuget/nuget.config", target = "AppData/Roaming/NuGet/nuget.config" },
@@ -169,7 +169,7 @@ than introducing another deployment route.
 
 ## Packages
 
-```toml
+```toml title="conf/packages.toml" {5}
 [arch]
 packages = [
   "git",
@@ -277,7 +277,7 @@ Permission changes through managed links can affect the source checkout.
 Registry sections are labels, **not categories**. Every record applies on
 Windows regardless of profile:
 
-```toml
+```toml title="conf/registry.toml" {2}
 [explorer]
 path = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer'
 
@@ -303,7 +303,7 @@ are not applied there. Existing undeclared values are preserved.
 
 ## systemd units
 
-```toml
+```toml title="conf/systemd-units.toml" {7}
 [linux]
 units = ["clean-home-tmp.timer"]
 

@@ -1,16 +1,3 @@
-:root {
-  --sl-color-accent-low: #202e4d;
-  --sl-color-accent: #416fcb;
-  --sl-color-accent-high: #b5ceff;
-  --sl-content-width: 48rem;
-}
-
-:root[data-theme='light'] {
-  --sl-color-accent-low: #e8efff;
-  --sl-color-accent: #315eb4;
-  --sl-color-accent-high: #203d75;
-}
-
 .page-title-anchor {
   display: block;
   scroll-margin-top: 6rem;

@@ -40,8 +40,9 @@ heading anchors aligned with the site's output.
   and editors adjacent in the sidebar, and order groups from setup to development.
 - For guides, match page title, sidebar text, filename, and URL. Update incoming
   references after moves; do not add old-name redirects or compatibility heading
-  aliases. The root introduction is its own page at `/`, not a redirect to
-  Getting started or a guide subject to the filename/title rule.
+  aliases. The root Introduction page is its own page at `/`, not a redirect to
+  Getting started or a guide subject to the filename/title rule; its heading
+  differs from the Dotfiles site title linked in the header.
 - Keep the README brief with the shared site icon and one prominent root website
   link. Do not turn it into a second documentation directory.
 - Verify behavioral claims against the owning code/tests, not just existing prose.

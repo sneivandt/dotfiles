@@ -589,11 +589,11 @@ fn native_transport_accepts_bodyless_gzip_not_modified_response() {
         "HTTP/1.1 304 Not Modified\r\nContent-Type: application/json; charset=utf-8\r\nContent-Encoding: gzip\r\nETag: \"cached-tag\"\r\nConnection: close\r\n\r\n".to_owned(),
     );
     let result = http.get(&url, &[("If-None-Match", "\"cached-tag\"")]);
-    let request = server.join().unwrap();
     let reply = result.expect("304 has no body to decompress");
     assert_eq!(reply.status, 304);
     assert_eq!(reply.headers["etag"], "\"cached-tag\"");
     assert!(reply.body.is_empty());
+    let request = server.join().unwrap();
     assert!(
         request
             .to_ascii_lowercase()

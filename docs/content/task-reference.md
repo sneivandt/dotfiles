@@ -96,33 +96,34 @@ not applicable or unmet rather than changed; failure is not a rollback.
 
 ### Catalog overview
 
-These are all static public **update** selectors. Only rows marked “yes” also
-belong to **remove**. Availability describes broad eligibility, not a guarantee
-that runtime prerequisites or elevation are available.
+These are all static public **update** selectors. Follow a label for its
+details. Availability describes broad eligibility, not a guarantee that
+runtime prerequisites or elevation are available. Only `git-hooks`, `launcher`
+and `symlinks` also belong to [remove](#remove-tasks).
 
-| Selector | Console label | Available when | Remove |
-|---|---|---|---|
-| `agent-packages` | Agent packages | Active APM fragments provide work | — |
-| `agent-settings` | Agent settings | Harness settings are configured | — |
-| `aur-packages` | AUR packages | Arch/AUR support and AUR entries | — |
-| `completions` | Shell completions | Supported shell registration | — |
-| `developer-mode` | Windows Developer Mode | Windows | — |
-| `file-permissions` | File permissions | Unix modes are supported and configured | — |
-| `git` | Global Git settings | Configured values, or Windows autocrlf cleanup | — |
-| `git-hooks` | Git hooks | Repository hook sources provide work | yes |
-| `launcher` | Dotfiles launcher | Linux or Windows | yes |
-| `local-package-repository` | Local package repository | Arch/AUR support | — |
-| `local-package-versions` | Local package updates | Arch/AUR support and local recipes | — |
-| `login-shell` | Login shell | Linux, outside CI | — |
-| `packages` | System packages | Non-AUR packages are configured | — |
-| `paru` | Paru package manager | Pacman platform | — |
-| `path` | Shell PATH | Linux or Windows | — |
-| `registry` | User registry settings | Windows values are configured | — |
-| `repository` | Dotfiles repository | A checkout is eligible for synchronization | — |
-| `symlinks` | Home symlinks | Links are configured | yes |
-| `system-files` | System configuration files | Linux fragments are configured, outside CI | — |
-| `systemd` | Systemd units | Supported platform and configured units, outside CI | — |
-| `vscode-extensions` | VS Code extensions | Extensions are configured | — |
+| Selector | Console label and availability |
+|---|---|
+| `agent-packages` | [Agent packages](#agent-packages) — active APM fragments |
+| `agent-settings` | [Agent settings](#agent-settings) — configured harness settings |
+| `aur-packages` | [AUR packages](#aur-packages) — Arch/AUR support and AUR entries |
+| `completions` | [Shell completions](#shell-completions) — supported shell registration |
+| `developer-mode` | [Windows Developer Mode](#windows-developer-mode) — Windows |
+| `file-permissions` | [File permissions](#file-permissions) — supported Unix modes and configured paths |
+| `git` | [Global Git settings](#global-git-settings) — configured values or Windows autocrlf cleanup |
+| `git-hooks` | [Git hooks](#git-hooks) — repository hook sources |
+| `launcher` | [Dotfiles launcher](#dotfiles-launcher) — Linux or Windows |
+| `local-package-repository` | [Local package repository](#local-pkgbuild-packages) — Arch/AUR support |
+| `local-package-versions` | [Local package updates](#local-pkgbuild-packages) — Arch/AUR support and local recipes |
+| `login-shell` | [Login shell](#login-shell) — Linux, outside CI |
+| `packages` | [System packages](#system-packages) — configured non-AUR packages |
+| `paru` | [Paru package manager](#paru-package-manager) — pacman platform |
+| `path` | [Shell PATH](#shell-path) — Linux or Windows |
+| `registry` | [User registry settings](#user-registry-settings) — configured Windows values |
+| `repository` | [Dotfiles repository](#dotfiles-repository) — eligible checkout |
+| `symlinks` | [Home symlinks](#home-symlinks) — configured links |
+| `system-files` | [System configuration files](#system-configuration-files) — Linux fragments, outside CI |
+| `systemd` | [Systemd units](#systemd-units) — supported platform and configured units, outside CI |
+| `vscode-extensions` | [VS Code extensions](#vs-code-extensions) — configured extensions |
 
 `local-package-versions` is explicitly update-only metadata: it advances local
 recipe release pins. That is not an ordering tier or a remove capability.

@@ -828,9 +828,9 @@ class GitRangeTests(unittest.TestCase):
             "docs/dist/index.html": (
                 '<link rel="icon" href="/favicon.svg">'
                 '<link rel="canonical" href="https://docs.example.invalid/index.html">'
+                '<header><a class="site-title" href="/index.html">Dotfiles</a></header>'
                 '<h1 id="dotfiles">Dotfiles</h1><h2 id="start-here">Start here</h2>'
                 '<nav aria-label="Main">'
-                '<a href="/index.html">Dotfiles</a>'
                 '<a href="/getting-started.html">Getting started</a>'
                 '<a href="/commands-and-usage.html">Commands and usage</a>'
                 '</nav>'
@@ -869,7 +869,9 @@ class GitRangeTests(unittest.TestCase):
             ("docs/dist/index.html", None, "Missing built homepage"),
             ("docs/content/index.md", None, "Missing Markdown homepage"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('id="dotfiles"', 'id="wrong"'), "missing heading anchors"),
-            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace(">Dotfiles<", ">Welcome<"), "Markdown title does not match page title"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<h1 id="dotfiles">Dotfiles</h1>', '<h1 id="dotfiles">Welcome</h1>'), "Markdown title does not match page title"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('class="site-title"', 'class="other"'), "Homepage header must link"),
+            ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('<nav aria-label="Main">', '<nav aria-label="Main"><a href="/index.html">Dotfiles</a>'), "Homepage must not appear in sidebar navigation"),
             ("docs/dist/index.html", fixture["docs/dist/index.html"].replace('href="/commands-and-usage.html"', 'href="/getting-started.html"'), "missing from homepage navigation"),
             ("docs/dist/commands-and-usage.html", None, "missing published route /commands-and-usage.html"),
             ("docs/dist/getting-started.html", homepage.replace('id="setup"', 'id="renamed"'), "missing heading anchors"),

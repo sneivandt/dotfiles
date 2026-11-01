@@ -13,7 +13,9 @@ the dotfiles CLI are different operations.
 ## Choose packages
 
 Edit [`conf/packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
-[Categories](profiles-and-categories.md) select entries for the current machine:
+[Categories](profiles-and-categories.md) select entries for the current machine.
+The AUR (Arch User Repository) provides community-maintained Arch packages;
+Paru installs them.
 
 | Source | Declaration | Installer |
 |---|---|---|

@@ -6,8 +6,9 @@ description: Understand the Hyprland session, Quickshell bar, desktop services, 
 # Arch desktop
 
 The Arch `desktop` profile builds a Wayland desktop around **Hyprland** for
-windows and workspaces and **Quickshell** for the bar and menus. UWSM and systemd
-manage the graphical session and its background services.
+windows and workspaces and **Quickshell** for the bar and menus. UWSM (Universal
+Wayland Session Manager) starts the graphical session; systemd manages its
+background services.
 
 This guide covers the running desktop, not installing Arch itself. Begin with
 [Getting started](getting-started.md) and choose `desktop`; Arch detection adds

@@ -218,14 +218,15 @@ static assets are separate. The same guides remain readable in the repository.
 Use the same wording for each guide's front-matter `title`, Markdown H1, and
 sidebar label. Its filename and URL use the lowercase, hyphenated title:
 `getting-started.md` publishes at `/getting-started.html`. The exception is
-`index.md`, which builds `index.html` and is served at `/`. Add a `description`
-and place new guides in the appropriate sidebar group in `docs/astro.config.mjs`.
+`index.md`, which builds `index.html` and is served at `/`; its title appears
+in the site header instead of the sidebar. Add a `description` and place new
+guides in the appropriate sidebar group in `docs/astro.config.mjs`.
 All groups start expanded. New visits default to dark mode; the native theme
 control retains an explicit Light or System choice.
 
-The site root is a short introduction, separate from Getting started. Renamed
-pages do not get compatibility routes or old-heading aliases: update their
-incoming references.
+The site root is a short introduction, separate from Getting started. The
+header title links back to it on desktop and mobile. Renamed pages do not get
+compatibility routes or old-heading aliases: update their incoming references.
 The Markdown transform avoids a duplicate displayed H1, retains the current
 title's Markdown fragment, and converts relative `.md` links to published URLs.
 Use full GitHub URLs for source files outside the guides.

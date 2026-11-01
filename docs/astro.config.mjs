@@ -56,7 +56,6 @@ export default defineConfig({
       editLink: { baseUrl: 'https://github.com/sneivandt/dotfiles/edit/main/docs/' },
       customCss: ['./src/styles/custom.css'],
       sidebar: [
-        'index',
         {
           label: 'Start here',
           items: ['getting-started', 'profiles-and-categories'],

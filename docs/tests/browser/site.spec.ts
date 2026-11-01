@@ -11,11 +11,16 @@ async function assertNoPageOverflow(page: Page) {
 test('the homepage introduces the repository and links to setup, with grouped navigation and a favicon', async ({ page, isMobile }) => {
   await page.goto('/');
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('About this project');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
   await expect(page.locator('.hero')).toHaveCount(0);
-  expect(await page.locator('.sl-markdown-content').getByRole('link', { name: 'Getting started', exact: true })
-    .evaluate((element) => element.getBoundingClientRect().top))
-    .toBeLessThan(await page.evaluate(() => window.innerHeight));
+  const setupLink = page.locator('.sl-markdown-content').getByRole('link', { name: 'Getting started', exact: true });
+  expect(await setupLink.evaluate((element) => element.getBoundingClientRect().bottom))
+    .toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
+  if (isMobile) {
+    await page.setViewportSize({ width: 375, height: 667 });
+    expect(await setupLink.evaluate((element) => element.getBoundingClientRect().bottom))
+      .toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
+  }
   for (const [label, href] of [
     ['Getting started', 'getting-started.html'],
     ['Commands and usage', 'commands-and-usage.html'],
@@ -29,11 +34,11 @@ test('the homepage introduces the repository and links to setup, with grouped na
   await expect(page.getByText('This site uses Just the Docs')).toHaveCount(0);
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   const sidebar = page.locator('#starlight__sidebar');
-  const introduction = sidebar.getByRole('link', { name: 'About this project', exact: true });
-  await expect(introduction).toHaveAttribute('href', '/index.html');
+  const homeLink = page.getByRole('banner').getByRole('link', { name: 'Dotfiles', exact: true });
+  await expect(homeLink).toHaveAttribute('href', '/index.html');
+  await expect(sidebar.getByRole('link', { name: 'Dotfiles', exact: true })).toHaveCount(0);
   const startHeading = sidebar.getByText('Start here', { exact: true });
-  expect(await introduction.evaluate((element) => element.getBoundingClientRect().top))
-    .toBeLessThan(await startHeading.evaluate((element) => element.getBoundingClientRect().top));
+  await expect(startHeading).toBeVisible();
   for (const group of ['Start here', 'Use dotfiles', 'Customize', 'Subsystem guides', 'Development']) {
     const section = page.locator('#starlight__sidebar details')
       .filter({ has: page.getByText(group, { exact: true }) });
@@ -58,11 +63,32 @@ test('the homepage introduces the repository and links to setup, with grouped na
     .toHaveAttribute('href', '/private-overlays.html');
   await page.locator('#starlight__sidebar a[href="/getting-started.html"]').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Getting started');
+  await homeLink.click();
+  await expect(page).toHaveURL('/index.html');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Dotfiles');
   if (isMobile) await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await page.locator('#starlight__sidebar a[href="/commands-and-usage.html"]').click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Commands and usage');
   await expect(page.getByText('On this page', { exact: true }).filter({ visible: true })).toBeVisible();
   await assertNoPageOverflow(page);
+});
+
+test('task catalog labels jump to details without horizontal overflow', async ({ page, isMobile }) => {
+  if (isMobile) await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto('/task-reference.html');
+  const catalog = page.locator('main table').filter({ hasText: 'agent-packages' });
+  const detail = catalog.getByRole('link', { name: 'Agent packages', exact: true });
+  await expect(detail).toHaveAttribute('href', '#agent-packages');
+  if (isMobile) {
+    const dimensions = await catalog.evaluate((element) => ({
+      content: element.scrollWidth,
+      visible: element.clientWidth,
+    }));
+    expect(dimensions.content).toBeLessThanOrEqual(dimensions.visible + 1);
+  }
+  await detail.click();
+  await expect(page).toHaveURL(/task-reference\.html#agent-packages$/);
+  await expect(page.locator('#agent-packages')).toBeVisible();
 });
 
 test('search opens the relevant section of the published guide', async ({ page }) => {

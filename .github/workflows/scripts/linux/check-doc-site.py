@@ -20,12 +20,14 @@ class Page(HTMLParser):
         self.h1_count = 0
         self.titles = []
         self.nav_links = []
+        self.site_title_links = []
         self.icons = []
         self.robots = []
         self.canonicals = []
         self.in_title = False
         self.in_nav = False
         self.nav_link = None
+        self.site_title_link = None
         self.feed(text)
 
     def handle_starttag(self, tag, attributes):
@@ -44,6 +46,8 @@ class Page(HTMLParser):
             self.links.append(attrs["href"])
             if self.in_nav:
                 self.nav_link = [attrs["href"], ""]
+            if "site-title" in attrs.get("class", "").split():
+                self.site_title_link = [attrs["href"], ""]
         if tag in {"script", "img"} and attrs.get("src"):
             self.assets.append(attrs["src"])
         if tag == "link" and attrs.get("href"):
@@ -62,6 +66,8 @@ class Page(HTMLParser):
             self.titles[-1] += text
         if self.nav_link is not None:
             self.nav_link[1] += text
+        if self.site_title_link is not None:
+            self.site_title_link[1] += text
 
     def handle_endtag(self, tag):
         if tag == "h1":
@@ -72,6 +78,10 @@ class Page(HTMLParser):
             href, label = self.nav_link
             self.nav_links.append((href, " ".join(label.split())))
             self.nav_link = None
+        if tag == "a" and self.site_title_link is not None:
+            href, label = self.site_title_link
+            self.site_title_links.append((href, " ".join(label.split())))
+            self.site_title_link = None
 
 
 def sitemap_urls(output, origin, errors):
@@ -118,6 +128,12 @@ def check_site(root):
         urlsplit(urljoin(origin + "/index.html", href)).path
         for href, _ in pages["/index.html"].nav_links
     }
+    homepage = pages["/index.html"]
+    homepage_title = homepage.titles[0].strip() if homepage.titles else ""
+    if homepage.site_title_links != [("/index.html", homepage_title)]:
+        errors.append("Homepage header must link to the introduction with its title")
+    if "/index.html" in sidebar_routes:
+        errors.append("Homepage must not appear in sidebar navigation")
     indexed_urls = sitemap_urls(output, origin, errors)
     robots = output / "robots.txt"
     if not robots.is_file():
@@ -131,7 +147,7 @@ def check_site(root):
     heading_anchors = runpy.run_path(str(Path(__file__).with_name("check-doc-links.py")))["markdown_anchors"]
     for source in sorted((root / "docs/content").glob("*.md")):
         route = "/" + source.stem + ".html"
-        if source.stem != "404" and route not in sidebar_routes:
+        if source.stem not in {"404", "index"} and route not in sidebar_routes:
             errors.append(f"{source.name}: missing from homepage navigation")
         if route not in pages:
             errors.append(f"{source.name}: missing published route {route}")

@@ -134,12 +134,17 @@ impl HttpClient for UreqClient {
         })
         .collect();
         let mut body = String::new();
-        response
-            .into_body()
-            .into_reader()
-            .take(u64::try_from(MAX_METADATA_BYTES)? + 1)
-            .read_to_string(&mut body)
-            .context("reading GitHub release metadata")?;
+        // A 304 has no body, even when representation headers advertise gzip.
+        // Do not construct a decoder for that empty stream; latest() reuses the
+        // validated cached metadata after checking the conditional response.
+        if status != 304 {
+            response
+                .into_body()
+                .into_reader()
+                .take(u64::try_from(MAX_METADATA_BYTES)? + 1)
+                .read_to_string(&mut body)
+                .context("reading GitHub release metadata")?;
+        }
         ensure!(
             body.len() <= MAX_METADATA_BYTES,
             "GitHub response exceeds the {MAX_METADATA_BYTES}-byte limit"

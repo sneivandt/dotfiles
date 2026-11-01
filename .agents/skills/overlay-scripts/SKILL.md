@@ -9,6 +9,8 @@ description: >
 # Overlay Scripts
 
 Never copy private overlay content into this repository or its skills.
+The user-facing setup, precedence, and protocol live in
+[Private overlays](../../../docs/content/private-overlays.md).
 
 ## Overlay resolution
 
@@ -28,8 +30,8 @@ test selection. Use temporary repositories and synthetic overlay fixtures.
 
 ## Config and scripts
 
-- `SectionLoader` appends optional overlay sections to public desired state
-  under the same category rules; overlays extend rather than replace.
+- `SectionLoader` applies category filtering and resource-aware overlay precedence.
+  Matching active identities replace base entries; unmatched base entries remain.
   Use `toml-configuration` for generic section loading and merge mechanics;
   add this skill when overlay selection or script execution also changes.
 - Script paths are overlay-relative. Reject absolute paths and `..`, and preserve

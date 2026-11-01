@@ -26,7 +26,7 @@
 
 ## Validation
 <!--
-Choose focused coverage using docs/TESTING.md.
+Choose focused coverage using docs/content/testing.md.
 List exact commands or test cases and their results; distinguish PASS, FAIL, and SKIP.
 For mutation changes, identify isolated dry-run, repeat/idempotency, and failure cases.
 A real install, package update, or desktop restart is not required merely to complete this form.

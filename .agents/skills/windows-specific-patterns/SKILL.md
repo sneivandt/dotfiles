@@ -58,5 +58,5 @@ where the changed code handles paths. Do not approximate Windows path rules by
 testing only Unix-looking strings on the host.
 
 Use the native-runtime caveats and checks under
-[Platform coverage parity](../../../docs/TESTING.md#platform-coverage-parity)
+[Platform coverage parity](../../../docs/content/testing.md#platform-coverage-parity)
 after Windows-sensitive changes.

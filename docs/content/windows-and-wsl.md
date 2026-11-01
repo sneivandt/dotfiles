@@ -1,15 +1,15 @@
 ---
-title: Windows
-nav_order: 4
+title: Windows and WSL
+description: Prepare Windows, handle elevation and symlink requirements, and understand Windows-side and Linux-side WSL configuration.
 ---
 
-# Windows guide
+# Windows and WSL
 
 Run dotfiles from your **normal Windows account**, not an Administrator shell.
 It asks for elevation only where needed. Windows and WSL have separate home
 directories and must be configured separately.
 
-For shared commands and options, see [Usage](USAGE.md). This guide covers
+For shared commands and options, see [Usage](commands-and-usage.md). This guide covers
 Windows setup, permissions, packages, and the changes that need a new session.
 
 ## Requirements
@@ -21,7 +21,7 @@ Windows setup, permissions, packages, and the changes that need a new session.
 | Git | Checkout, repository synchronization, hooks, and saved selections |
 | winget | Installs configured Windows packages |
 | GitHub CLI (`gh`) | Verifies release build provenance; bootstrap warns if it is absent |
-| Rust/Cargo and native build prerequisites | Only needed for a [source build](CONTRIBUTING.md) |
+| Rust/Cargo and native build prerequisites | Only needed for a [source build](contributing.md) |
 
 Keep the checkout at a stable path: home links and the installed launcher refer
 back to it. Review `conf/` and **back up existing home configuration** before
@@ -30,55 +30,56 @@ without a backup.
 
 ## Bootstrap
 
-Open PowerShell in the checkout. First obtain the CLI and discover tasks:
+Open PowerShell in the checkout and preview an update:
 
 ```powershell
-.\dotfiles.ps1 list --root . --profile desktop
+.\dotfiles.ps1 update --dry-run
 ```
 
-This downloads/verifies the binary if needed; it does not install configuration.
-Use `base` instead of `desktop` for a shell-focused role. An explicit profile
-does not change the saved default.
-
-Next preview the current checkout:
-
-```powershell
-.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --dry-run --verbose
-```
+This downloads/verifies the CLI if needed and previews configuration changes.
+With no existing profile selection, choose `desktop` for a workstation or
+`base` for a shell-focused role when prompted. The choice is saved.
+Use `.\dotfiles.ps1 list` afterward to discover tasks.
 
 Review the selected profile, planned links, registry values, and packages.
 The preview still writes a log and takes the run lock. It can check for a newer
 CLI release, but does not replace the binary or write release caches.
 Wrapper bootstrap happens **before** dry-run takes effect. See
-[Dry-run scope](USAGE.md#dry-run-scope).
+[Dry-run scope](commands-and-usage.md#dry-run-scope).
 
-To suppress the CLI release check for one invocation, without leaving the
-environment changed:
+<details>
+<summary>Skip a CLI release check for one invocation</summary>
+
+This optional override leaves the environment as it was:
 
 ```powershell
 $previousSkipSelfUpdate = $env:DOTFILES_SKIP_SELF_UPDATE
 try {
     $env:DOTFILES_SKIP_SELF_UPDATE = '1'
-    .\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --dry-run --verbose
+    .\bin\dotfiles.exe update --dry-run
 } finally {
     $env:DOTFILES_SKIP_SELF_UPDATE = $previousSkipSelfUpdate
 }
 ```
 
+</details>
+
 After backing up affected files and reviewing the plan, **apply**:
 
 ```powershell
-.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update
+.\dotfiles.ps1 update
 ```
 
-Without the environment override, apply can update the CLI first.
-`--no-repo-update` keeps repository content fixed, not all network activity.
-Open a new terminal after installation.
+Normal updates can update the CLI and synchronize the repository first.
+Use `--no-repo-update` only when you want to keep repository content fixed;
+it does not disable CLI self-update or all network activity.
+Open a new terminal after installation. The examples below use the wrapper so
+they also work before the launcher is installed.
 
 For a source build that only discovers tasks:
 
 ```powershell
-.\dotfiles.ps1 --build list --root . --profile desktop
+.\dotfiles.ps1 --build list --profile desktop
 ```
 
 The wrapper runs Cargo's reported artifact, including custom output locations.
@@ -87,7 +88,7 @@ A source build need not create `bin\dotfiles.exe`.
 ### Download and update failures
 
 Do not disable checksum or provenance verification to make a download work.
-Check the [bootstrap troubleshooting guide](TROUBLESHOOTING.md#the-wrapper-cannot-find-or-download-the-binary).
+Check the [bootstrap troubleshooting guide](troubleshooting.md#the-wrapper-cannot-find-or-download-the-binary).
 
 During self-update, Windows file sharing can prevent executable replacement.
 The updater verifies the download, replaces the binary, and tests `--version`;
@@ -103,8 +104,8 @@ back to junctions, and already-correct links do not need elevation.
 Preview the link task with its Developer Mode predecessor:
 
 ```powershell
-.\bin\dotfiles.exe list --root . --profile desktop --graph update --only symlinks --with-deps
-.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only symlinks --with-deps --dry-run --verbose
+.\dotfiles.ps1 list --graph update --only symlinks --with-deps
+.\dotfiles.ps1 update --only symlinks --with-deps --dry-run
 ```
 
 `--only symlinks` without `--with-deps` omits Developer Mode, but does not bypass
@@ -159,7 +160,7 @@ If you deliberately enable Developer Mode from an Administrator terminal,
 limit the change:
 
 ```powershell
-.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only developer-mode
+.\dotfiles.ps1 update --only developer-mode
 ```
 
 Return to the ordinary terminal for the remaining work. Running everything as
@@ -167,30 +168,13 @@ another Administrator account can target that account's home and settings.
 
 ## Packages
 
-Windows uses exact winget IDs from `conf/packages.toml`. It queries installed
-packages and installs missing ones; `update` is not `winget upgrade --all`.
+Windows installs selected packages through winget. See
+[Package management](package-management.md#windows) for exact IDs, scope
+fallback, upgrades, and how installation failures are handled.
 
 ```powershell
-.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
+.\dotfiles.ps1 update --only packages --dry-run
 ```
-
-If `winget list` fails or its `Id` column cannot be parsed, the task fails
-rather than treating the machine as empty—even during preview.
-
-For each missing package, apply:
-
-1. Tries a user-scope installer.
-2. Retries without a scope only when no applicable user-scope installer exists.
-3. Continues with other packages after an individual install failure.
-
-Administrator-required, cancelled, or policy-blocked installs are **failed
-package items**. They make the package task fail even without `--fail-on-skip`;
-continuing with other packages does not turn them into successful installs.
-An “already installed” or “no applicable upgrade” result does count as current.
-
-Winget's own prompts are disabled and source/package agreements are accepted.
-An installer's UAC prompt can still appear. Read the exact refusal before
-retrying: elevation does not fix a policy block or invalid package ID.
 
 If an installer genuinely needs Administrator rights and you authorize it,
 use a package-only elevated rerun. Remember that `--only packages` selects
@@ -203,7 +187,7 @@ The `registry` task applies current-user (`HKCU`) values from
 settings groups, not profile categories: review them even for `base`.
 
 ```powershell
-.\bin\dotfiles.exe update --root . --profile desktop --no-repo-update --only registry --dry-run --verbose
+.\dotfiles.ps1 update --only registry --dry-run
 ```
 
 Settings include console, regional formatting, Explorer, search, and window
@@ -236,13 +220,13 @@ New sessions load the changes; CLI completion has its own `completions` task.
 
 The profile adds existing `~/.local/bin` and Cargo's `bin` directory before
 detecting optional command integrations. Cargo uses `CARGO_HOME` when set,
-otherwise `~/.cargo`. See [Application settings](APPLICATIONS.md) for shell
+otherwise `~/.cargo`. See [Application settings](application-settings.md) for shell
 behavior and customization.
 
 Repository validation is separate from wrapper compatibility: the analyzer
 requires **`pwsh` and PSScriptAnalyzer**. Missing `pwsh` is a skipped check;
 present `pwsh` with a missing module is a failed check. See
-[CLI validation](TESTING.md#cli-validation).
+[CLI validation](testing.md#cli-validation).
 
 ## WSL
 
@@ -270,13 +254,14 @@ startup setting alone does not make service tasks applicable.
 Preview with the original profile/overlay while the sources still exist:
 
 ```powershell
-.\bin\dotfiles.exe remove --root . --profile desktop --dry-run --verbose
+.\dotfiles.ps1 remove --dry-run
 ```
 
-Applying removal copies managed home-link content into real files and removes
+If the saved selection changed, pass the original `--profile` and `--overlay`
+explicitly. Applying removal copies managed home-link content into real files and removes
 hooks/launchers that still match their managed state. Modified hooks/launchers
 are preserved; active overlay scripts may perform their own removal actions.
 
 It does **not** uninstall winget packages, disable Developer Mode, restore
 registry or PATH values, or remove editor/agent deployments.
-[Remove is limited cleanup, not rollback](USAGE.md#remove).
+[Remove is limited cleanup, not rollback](commands-and-usage.md#remove).

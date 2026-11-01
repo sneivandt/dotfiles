@@ -32,7 +32,11 @@ class ClassificationTests(unittest.TestCase):
         rust = {"rust_checks", "rust_fmt", "build_linux", "build_windows"}
         cases = [
             ("README.md", set()),
-            ("docs/TESTING.md", set()),
+            ("docs/content/testing.md", set()),
+            ("docs/astro.config.mjs", set()),
+            ("docs/package-lock.json", set()),
+            ("docs/src/styles/custom.css", set()),
+            (".github/workflows/pages.yml", set()),
             (".agents/skills/ci-cd-patterns/SKILL.md", set()),
             ("cli/README.md", set()),
             ("symlinks/vim/README.md", set()),
@@ -98,6 +102,7 @@ class ClassificationTests(unittest.TestCase):
             (LINUX + "test-stocks.sh", {"stocks", "lint"}),
             (LINUX + "test-docs.sh", {"lint"}),
             (LINUX + "check-doc-links.py", set()),
+            (LINUX + "check-doc-site.py", set()),
             (LINUX + "test-workflows.sh", {"lint"}),
             (LINUX + "test-desktop-qml.sh", {"lint", "desktop_qml"}),
             ("symlinks/config/quickshell/Bar.qml",
@@ -169,8 +174,8 @@ class ClassificationTests(unittest.TestCase):
                 self.assertEqual([item["application"] for item in outputs["app_matrix"]["include"]], apps)
                 self.assertEqual(outputs["run_lint"], bool(linters))
                 self.assertEqual(outputs["run_app_tests"], bool(apps))
-        self.assertFalse(classify(["docs/README.md", "dotfiles.sh"])["docs_only"])
-        self.assertTrue(classify(["docs/README.md", "AGENTS.md"])["docs_only"])
+        self.assertFalse(classify(["docs/content/getting-started.md", "dotfiles.sh"])["docs_only"])
+        self.assertTrue(classify(["docs/content/getting-started.md", "AGENTS.md"])["docs_only"])
 
     def test_editor_matrices_include_plugin_free_regressions(self):
         matrix = classify(["symlinks/vim/vimrc"])["app_matrix"]["include"]
@@ -237,8 +242,9 @@ class ClassificationTests(unittest.TestCase):
 class PrePushPlanTests(unittest.TestCase):
     def test_docs_stay_focused_and_rust_adds_platform_checks(self):
         commands, deferred = PRE_PUSH["plan"](classify(["README.md"]), "1.91")
-        self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0][2][-3:], ["--strict", "docs", "ci"])
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(commands[0][2], ["npm", "ci", "--no-audit", "--no-fund"])
+        self.assertEqual(commands[1][2][-3:], ["--strict", "docs", "ci"])
         self.assertEqual(deferred, [])
         commands, deferred = PRE_PUSH["plan"](classify(["cli/src/main.rs"]), "1.91")
         flattened = [argument for _, _, command in commands for argument in command]
@@ -473,6 +479,16 @@ class GateTests(unittest.TestCase):
         CONTRACT["check"](workflow)
         release = CONTRACT["WORKFLOW"].with_name("release.yml").read_text(encoding="utf-8")
         CONTRACT["check_release"](release)
+        pages = CONTRACT["WORKFLOW"].with_name("pages.yml").read_text(encoding="utf-8")
+        CONTRACT["check_pages"](pages, workflow)
+        for broken in (
+            pages.replace("github.event.workflow_run.event == 'push'", "true"),
+            pages.replace("github.event.workflow_run.head_repository.full_name == github.repository", "true"),
+            pages.replace("run-id: ${{ github.event.workflow_run.id }}", "run-id: 1"),
+            pages.replace("if: steps.current.outputs.current == 'true'", "if: always()", 1),
+        ):
+            with self.assertRaises(ValueError):
+                CONTRACT["check_pages"](broken, workflow)
         for broken in (
             workflow.replace("      - docs\n", ""),
             workflow.replace("      - desktop-qml\n", ""),
@@ -706,7 +722,14 @@ class GitRangeTests(unittest.TestCase):
     def test_pre_push_uses_committed_failure_and_rejects_invalid_range(self):
         shutil.copyfile(SCRIPTS / "pre-push.py", self.repo / LINUX / "pre-push.py")
         self.write("cli/Cargo.toml", '[package]\nrust-version = "1.91"\n')
+        self.write("docs/package.json", '{"private":true}\n')
         self.write(LINUX + "check.sh", "#!/bin/sh\nexit 17\n")
+        tools = self.root / "tools"
+        tools.mkdir()
+        npm = tools / "npm"
+        npm.write_text('#!/bin/sh\n[ "$*" = "ci --no-audit --no-fund" ] || exit 92\n')
+        npm.chmod(0o755)
+        self.env["PATH"] = str(tools) + os.pathsep + self.env["PATH"]
         base = self.commit()
         self.write("README.md", "changed\n")
         head = self.commit()
@@ -773,6 +796,70 @@ class GitRangeTests(unittest.TestCase):
         archive.mkdir()
         (archive / "source with spaces.md").write_text("[missing](<missing.md>)\n")
         self.assertEqual(len(helper["check"](archive)), 1)
+
+    def test_doc_links_follow_unstaged_moves_and_ignore_generated_files(self):
+        helper = runpy.run_path(str(SCRIPTS / "check-doc-links.py"))
+        self.write("docs/guide.md", "# Guide\n")
+        self.git("add", ".")
+        (self.repo / "docs/guide.md").unlink()
+        self.write("docs/content/guide.md", "[missing](missing.md)\n")
+        self.write(".gitignore", "docs/node_modules/\n")
+        self.write("docs/node_modules/generated.md", "[ignored](absent.md)\n")
+        failures = helper["check"](self.repo)
+        self.assertEqual(len(failures), 1, failures)
+        self.assertIn("docs/content/guide.md: broken link", failures[0])
+
+    def test_built_docs_preserve_routes_anchors_and_assets(self):
+        check_site = runpy.run_path(str(SCRIPTS / "check-doc-site.py"))["check_site"]
+        homepage = (
+            '<link rel="shortcut icon" href="/favicon.svg">'
+            '<h1 id="getting-started">Getting started</h1><h2 id="setup">Setup</h2>'
+            '<nav aria-label="Main"><a href="/commands-and-usage.html#commands">Commands and usage</a></nav>'
+            '<a href="https://example.invalid/external">External</a>'
+            '<img src="/assets/example.svg">'
+        )
+        fixture = {
+            "docs/public/CNAME": "docs.example.invalid\n",
+            "docs/content/getting-started.md": "# Getting started\n\n## Setup\n",
+            "docs/content/commands-and-usage.md": "# Commands and usage\n\n## Commands\n",
+            "docs/dist/index.html": '<a href="/getting-started.html">Getting started</a>',
+            "docs/dist/getting-started.html": homepage,
+            "docs/dist/commands-and-usage.html": (
+                '<link rel="icon" href="/favicon.svg">'
+                '<h1 id="commands-and-usage">Commands and usage</h1><h2 id="commands">Commands</h2>'
+                '<a href="/getting-started.html#setup">Setup</a>'
+            ),
+            "docs/dist/favicon.svg": "<svg/>",
+            "docs/dist/assets/example.svg": "<svg/>",
+            "docs/dist/CNAME": "docs.example.invalid\n",
+        }
+        for path, content in fixture.items():
+            self.write(path, content)
+        self.assertEqual(check_site(self.repo), [])
+        cases = [
+            ("docs/dist/index.html", None, "Missing built homepage"),
+            ("docs/dist/commands-and-usage.html", None, "missing published route /commands-and-usage.html"),
+            ("docs/dist/getting-started.html", homepage.replace('id="setup"', 'id="renamed"'), "missing heading anchors"),
+            ("docs/dist/getting-started.html", homepage + "<h1>Extra title</h1>", "expected one page title"),
+            ("docs/dist/getting-started.html", homepage + '<span id="setup"></span>', "duplicate IDs"),
+            ("docs/dist/getting-started.html", homepage.replace("shortcut icon", "stylesheet"), "missing site favicon"),
+            ("docs/dist/getting-started.html", homepage.replace("#commands", "#absent"), "broken anchor"),
+            ("docs/dist/getting-started.html", homepage.replace("commands-and-usage.html", "commands-and-usage.md"), "broken destination"),
+            ("docs/dist/getting-started.html", homepage.replace(">Getting started<", ">Welcome<"), "filename and URL do not match title"),
+            ("docs/content/getting-started.md", "# Welcome\n\n## Setup\n", "Markdown title does not match page title"),
+            ("docs/dist/getting-started.html", homepage.replace(">Commands and usage<", ">Wrong label<"), "navigation label"),
+            ("docs/dist/favicon.svg", None, "broken destination /favicon.svg"),
+            ("docs/dist/assets/example.svg", None, "broken destination /assets/example.svg"),
+            ("docs/dist/CNAME", "wrong.example.invalid\n", "published CNAME"),
+        ]
+        for path, content, message in cases:
+            with self.subTest(path=path, message=message):
+                if content is None:
+                    (self.repo / path).unlink()
+                else:
+                    self.write(path, content)
+                self.assertIn(message, "\n".join(check_site(self.repo)))
+                self.write(path, fixture[path])
 
     def test_empty_manual_missing_and_invalid_ranges(self):
         self.assertFalse(self.script()["run_build_linux"])

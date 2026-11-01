@@ -1,6 +1,6 @@
 ---
 title: Architecture
-nav_order: 14
+description: Understand the Rust CLI's layers, task scheduling, resources, operations, and cross-platform execution boundaries.
 ---
 
 # Architecture
@@ -11,19 +11,20 @@ the dependency graph decides when work can run, and each item or workflow owns
 its own convergence rules.
 
 This guide is for contributors choosing where a change belongs. For commands,
-read [Usage](USAGE.md); for desired-state declarations, read
-[Configuration](CONFIGURATION.md).
+read [Usage](commands-and-usage.md); for desired-state declarations, read
+[Configuration](configuration-reference.md).
 
 ## System view
 
 ```mermaid
-flowchart TD
-    A[Wrapper or CLI] --> B[Load profile and configuration]
-    B --> C[Select tasks]
-    C --> D[Schedule dependencies]
-    D --> E[Inspect state and plan]
-    E --> F[Preview or apply]
-    F --> G[Results and run log]
+flowchart TB
+    accTitle: The path from a command to managed state
+    accDescr: The wrapper or CLI loads configuration, selects tasks and schedules dependencies, inspects current state, previews or applies the plan, and records results.
+    A([Wrapper or CLI]) --> B["Load configuration"]
+    B --> C["Select and schedule"]
+    C --> D["Inspect and plan"]
+    D --> E["Preview or apply"]
+    E --> F(["Results and run log"])
 ```
 
 Three boundaries explain most of the design:
@@ -73,7 +74,7 @@ remaining arguments. Rust owns profile selection and command behavior.
 
 Builds use Cargo's reported executable path rather than assuming a target
 directory. Downloads receive the checks described in
-[Release downloads](SECURITY.md#release-downloads). Finding a binary does not
+[Release downloads](security-and-trust.md#release-downloads). Finding a binary does not
 prove it includes local Rust edits.
 
 ## Application layer
@@ -185,7 +186,7 @@ read-only and stable for that phase. Inputs that a predecessor may create
 must be checked inside `run()`, after the wait. A task with no configured work
 returns `NotApplicable`, not a changed result.
 
-See [Task reference](TASKS.md#scheduling-model) for filtering and the difference
+See [Task reference](task-reference.md#scheduling-model) for filtering and the difference
 between a declared graph and its runtime assessment.
 
 ### Parallelism and shared state
@@ -300,7 +301,7 @@ The [elevation broker](https://github.com/sneivandt/dotfiles/blob/main/cli/src/a
 normal work unelevated. Linux primes sudo credentials for privileged commands;
 Windows delegates selected tasks to an elevated child. Unavailable elevation
 leaves unmet work and blocks blocking dependents, not independent work.
-See [Elevation](SECURITY.md#elevation).
+See [Elevation](security-and-trust.md#elevation).
 
 ## Error handling and observability
 
@@ -338,7 +339,7 @@ Argument redaction and captured-output policy are separate. By default failed
 streams and successful stderr are retained, while successful stdout is
 summarized by size. `OutputLog::Omit` excludes streams from logs and checked
 errors; it is opt-in, not automatic secret scrubbing.
-See [Secrets](SECURITY.md#secrets).
+See [Secrets](security-and-trust.md#secrets).
 
 ## Extending the system
 
@@ -355,5 +356,5 @@ Start with the smallest boundary that expresses the change:
 | Parsing or transformation only | A plain function or module |
 
 Do not introduce a task just to split a function. Follow
-[Change checklists](CONTRIBUTING.md#change-checklists) and choose focused
-coverage from [Testing](TESTING.md).
+[Change checklists](contributing.md#change-checklists) and choose focused
+coverage from [Testing](testing.md).

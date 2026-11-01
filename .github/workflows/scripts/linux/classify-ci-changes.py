@@ -43,6 +43,7 @@ def documentation(path: str) -> bool:
     # Source-tree assets can be embedded with include_str!, even Markdown.
     return not path.startswith("cli/src/") and (
         path.endswith(".md") or path.startswith(("docs/", ".agents/"))
+        or path == ".github/workflows/pages.yml"
     )
 
 
@@ -113,7 +114,7 @@ def classify(paths: list[str], *, full: bool = False) -> dict[str, object]:
             enable("desktop_qml")
         elif path == LINUX + "test-workflows.sh":
             pass  # Always executed by classify-changes.
-        elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py"}:
+        elif path in {LINUX + "test-docs.sh", LINUX + "check-doc-links.py", LINUX + "check-doc-site.py"}:
             pass
         elif path == LINUX + "test-static-analysis.sh":
             linters.update(LINTERS)

@@ -1,80 +1,65 @@
 ---
-title: Application configuration
-nav_order: 6
+title: Arch desktop
+description: Understand the Hyprland session, Quickshell bar, desktop services, appearance, shortcuts, and screen locking.
 ---
 
-# Application settings
+# Arch desktop
 
-This is the map for changing the managed shell and Arch desktop experience.
-Edit tracked sources under `symlinks/`, not installed copies or generated
-files. Links may make this checkout live application configuration, so some
-edits take effect immediately.
+The Arch `desktop` profile builds a Wayland desktop around **Hyprland** for
+windows and workspaces and **Quickshell** for the bar and menus. UWSM and systemd
+manage the graphical session and its background services.
 
-To change **which machines receive a file**, use
-[Configuration](CONFIGURATION.md#category-sections). To change **what the file
-does**, start here.
+This guide covers the running desktop, not installing Arch itself. Begin with
+[Getting started](getting-started.md) and choose `desktop`; Arch detection adds
+the `arch` category automatically. [Package management](package-management.md)
+explains installation and upgrades.
 
-## Shell application configuration
+## Session and services
 
-| Setting | Source |
-|---|---|
-| Shared shell environment and pager defaults | [`config/shell/profile.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/profile.sh) |
-| Zsh completion | [`config/zsh/completion.zsh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/completion.zsh) |
-| Git aliases | [`config/git/aliases`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases) |
-| Download naming and timestamping | [`config/wgetrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/wgetrc) |
+The managed Zsh login profile starts `hyprland-uwsm.desktop` through UWSM on
+`tty1` when a session may start. Other terminals remain ordinary shells.
+UWSM owns session identity; application environment settings belong in
+Hyprland's `conf/env.lua`.
 
-### Environment and paging
+```mermaid
+flowchart TB
+    accTitle: Arch desktop session
+    accDescr: UWSM coordinates Hyprland and graphical-session services. Those services run the Quickshell interface and supporting desktop daemons.
+    UWSM["UWSM"] --> Hyprland["Hyprland"]
+    UWSM --> Services["User services"]
+    Services --> Shell["Quickshell"]
+    Services --> Daemons["Idle, wallpaper, notifications"]
+```
 
-The shared profile keeps nonempty supplied `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`,
-`XDG_DATA_HOME`, `TERMINFO` and `TERMINFO_DIRS` values. Unset **or empty** values
-use home-directory defaults. The default terminal search path also retains
-the system terminfo database.
+Long-running daemons are user services, not duplicated Hyprland autostart
+commands. They include Quickshell, Hypridle, Hyprpaper, Mako, Gammastep, the
+keyring, and the authentication agent. NetworkManager is a system service;
+the old `dhcpcd` service and standalone network tray applet are disabled.
+PipeWire and WirePlumber provide audio.
 
-`LESS` is different: a supplied value, including an empty one, is preserved.
-The default is `-imRj8`; add `-X` if you want pager output left in terminal
-scrollback.
+Service selection lives in
+[`conf/systemd-units.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml);
+custom units live under
+[`config/systemd/user/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/systemd/user/).
+Keep their graphical-session lifetime and safety settings when customizing.
 
-### Completion
+The desktop portal uses Hyprland for screen sharing and GTK for file choosers.
+That selection belongs in
+[`hyprland-portals.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/xdg-desktop-portal/hyprland-portals.conf).
 
-Zsh attempts approximate completion only after a repeated Tab with unchanged
-input, cursor position and history entry. A first Tab does not immediately
-fall back to approximate matches.
+## Where to customize
 
-Dotfiles command completion comes from the CLI's
-[Shell completions task](TASKS.md#shell-completions), not a separate hand-edited
-selector list.
+Edit tracked sources under `symlinks/config/`, not installed copies.
+These may already be live links. For a different machine's settings, use a
+[private overlay](private-overlays.md); an overlay replaces a matching linked
+source rather than patching the contents of the base file.
 
-### Git shortcuts
+[`hyprland.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprland.lua)
+loads the Lua modules in `hypr/conf/`: monitors, environment, input, appearance,
+window rules, and bindings. Use the existing Lua format, not a configuration
+snippet for a different Hyprland syntax.
 
-- `git gr <pattern>` searches case-insensitively with line numbers. Color is
-  automatic for terminal output, not forced into redirected output.
-- `git contributors` summarizes `HEAD`. Pass a revision range such as
-  `main..HEAD` to select different commits.
-
-Alias definitions belong in the linked Git files. Desired global key/value
-overrides belong in [Git settings](CONFIGURATION.md#git-settings).
-
-### Downloads
-
-Wget preserves URL filenames and uses timestamping to reuse unchanged
-downloads. Request these behaviors explicitly when needed:
-
-| Flag | Use it for |
-|---|---|
-| `--adjust-extension` | Web-page filename extensions |
-| `--trust-server-names` | Redirected filenames |
-| `--content-disposition` | Names supplied by response headers |
-
-Extension adjustment can prevent timestamping from recognizing a file
-previously downloaded from the same URL.
-
-## Desktop application configuration
-
-The Arch desktop uses Hyprland and a Quickshell bar. These settings belong to
-the desktop profile; Windows application integration is covered in
-[Windows](WINDOWS.md).
-
-### Arch desktop appearance
+## Arch desktop appearance
 
 | Change | Start here |
 |---|---|
@@ -112,7 +97,7 @@ inventory changes invalidate that cache. Market refreshes keep each symbol's
 last successful quote and timestamp on failure, marking stale data rather
 than hiding every cached quote because one request failed.
 
-### Reloading changes
+## Reloading changes
 
 Quickshell watches linked sources and keeps the last valid shell when a reload
 fails. Editing this checkout can therefore reload the live UI without running
@@ -125,7 +110,7 @@ configuration on launch. Existing GTK applications may need reopening.
 Keep Hyprlock's simple background and disabled animations while its
 [documented DPMS workaround](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf) is needed.
 
-### Screen locking and suspend
+## Screen locking and suspend
 
 [`hypridle.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hypridle.conf) requests locking after
 **10 idle minutes** and turns displays off after **15**. Idle inhibitors can
@@ -139,7 +124,24 @@ The delay is bounded by logind's `InhibitDelayMaxSec`: a failed locker does
 **not** guarantee suspend will be prevented. Resume turns displays on but
 does not unlock the session.
 
-### Hyprland media keys
+## Everyday shortcuts
+
+`Super` is the Windows/logo key. The full mapping is in
+[`binds.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua).
+
+| Shortcut | Action |
+|---|---|
+| Super + Return | Open Alacritty |
+| Super + P | Open the application launcher |
+| Super + O / V | Choose a browser / editor |
+| Super + G / C | Open GitHub Copilot / ChatGPT |
+| Super + Q | Close the focused window |
+| Super + 1–9 | Change workspace |
+| Super + Shift + 1–9 | Move the window to a workspace |
+| Super + End | Lock the session |
+| Super + Shift + S | Select an area for a screenshot |
+
+## Hyprland media keys
 
 Bindings use standard `XF86` symbols, not physical F-key positions. Keyboard
 Fn mode determines which symbols are sent. Fallback shortcuts are:
@@ -159,3 +161,22 @@ fallback shortcuts do not.
 backlights, never keyboard LEDs, and keeps brightness above zero. With no
 backlight it does nothing. External monitors usually need separate DDC/CI
 configuration unless their driver exposes a backlight.
+
+## Diagnose a desktop problem
+
+Check the owning component before restarting the whole session:
+
+```sh
+hyprctl configerrors
+systemctl --user status quickshell.service
+journalctl --user -u quickshell.service -b
+```
+
+Substitute the affected service for Quickshell. These inspect the running
+session; reloading, locking, suspending, and changing connectivity are separate
+actions. Review journal output before sharing it.
+
+Use [Troubleshooting](troubleshooting.md#systemd-changes-are-not-visible) for
+inactive units and keyring issues. Contributors can check helpers and UI logic
+with the isolated [application tests](testing.md#application-configuration)
+without restarting the desktop.

@@ -49,7 +49,7 @@ of adding a near-duplicate.
 
 ## Verify
 
-Use the dotfiles checkout's `docs/TESTING.md` for scoped checks and previews,
+Use the dotfiles checkout's `docs/content/testing.md` for scoped checks and previews,
 and its `agent-tooling` skill for implementation details. Skill-text-only edits
 need frontmatter, link, and routing review, not a live install or deployment.
 For behavior changes, prefer current-source checks with isolated homes and

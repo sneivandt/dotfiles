@@ -45,5 +45,5 @@ reason to load every engine skill.
 
 Repository-wide invariants live in
 [AGENTS.md](../../../AGENTS.md), architecture in
-[Architecture](../../../docs/ARCHITECTURE.md), and the change workflow in
-[Contributing](../../../docs/CONTRIBUTING.md).
+[Architecture](../../../docs/content/architecture.md), and the change workflow in
+[Contributing](../../../docs/content/contributing.md).

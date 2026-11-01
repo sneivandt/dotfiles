@@ -1,20 +1,21 @@
 ---
 title: Task reference
-nav_order: 7
+description: Find task selectors, dependencies, managed state, and the boundaries of update, remove, and validation tasks.
 ---
 
 # Task reference
 
 A **task selector** chooses a kind of work, such as `symlinks` or `packages`.
 It does not choose one file, package or service inside that task. Entries come
-from the selected [configuration](CONFIGURATION.md), profile and overlay.
+from the selected [configuration](configuration-reference.md), profile and overlay.
 
-Start with read-only discovery from the intended checkout:
+Start with read-only discovery using your configured checkout and profile.
+Pass `--profile base` or `--profile desktop` if you have not selected one yet:
 
 ```bash
-dotfiles list --root . --profile desktop
-dotfiles list --root . --profile desktop --all
-dotfiles list --root . --profile desktop --graph update
+dotfiles list
+dotfiles list --all
+dotfiles list --graph update
 ```
 
 Ordinary discovery hides public tasks that clearly have no platform/configured
@@ -27,7 +28,7 @@ Plain/JSON listings contain each selector once with its command membership.
 Graphs retain all nodes, including filtered and internal nodes, and cannot be
 combined with `--all`.
 
-For command syntax and preview side effects, see [Usage](USAGE.md#select-tasks).
+For command syntax and preview side effects, see [Usage](commands-and-usage.md#select-tasks).
 
 ## Scheduling model
 
@@ -59,8 +60,7 @@ Previous full console labels remain accepted by `--only` and `--skip` too.
 Inspect expansion before applying:
 
 ```bash
-dotfiles list --root . --profile desktop --graph update \
-  --only systemd --with-deps --format json
+dotfiles list --graph update --only systemd --with-deps
 ```
 
 The default graph format uses one block per task, with predecessors first.
@@ -138,7 +138,7 @@ directory junctions that can be created without it.
 
 Pending file symlinks may still need their own elevation. The CLI normally
 stays unelevated and delegates only affected tasks.
-See [Windows elevation](WINDOWS.md#elevation).
+See [Windows elevation](windows-and-wsl.md#elevation).
 
 #### Dotfiles launcher
 
@@ -173,7 +173,7 @@ diverged commits produce unmet work, not a reset or rebase. Other branch-query
 errors remain failures.
 
 Apply fetches and uses `git merge --ff-only @{u}`. A successfully changed
-checkout triggers the guarded [configuration restart](ARCHITECTURE.md#repository-updates-are-a-restart-boundary)
+checkout triggers the guarded [configuration restart](architecture.md#repository-updates-are-a-restart-boundary)
 before later tasks run. The parent keeps the run lock. Updating two repositories
 is not a transaction: a later failure does not undo an earlier success.
 
@@ -189,7 +189,7 @@ When the destination is already the tracked source, it is neither copied over
 itself nor removed.
 
 Existing hooks at managed names can be replaced without composition or backup.
-Save custom hooks first. [Hooks](HOOKS.md) explains what the installed hooks do.
+Save custom hooks first. [Hooks](git-hooks.md) explains what the installed hooks do.
 
 #### Shell completions
 
@@ -223,13 +223,13 @@ cleanup. On other platforms, empty settings mean no work.
 
 Converges selected dot-separated keys in Copilot JSON and Codex TOML documents,
 preserving undeclared and harness-owned keys. It does not deploy skills/plugins.
-See [Agent harness settings](CONFIGURATION.md#agent-harness-settings).
+See [Agent harness settings](configuration-reference.md#agent-harness-settings).
 
 #### System configuration files
 
 On Linux outside CI, merges declared `system/` fragments into files below
 `/etc`. TOML, INI and PAM have different ownership rules; review the
-[configuration format](CONFIGURATION.md#system-files) before editing.
+[configuration format](configuration-reference.md#system-files) before editing.
 
 Malformed or non-regular destinations fail. Missing PAM service files are not
 created. Changed content is staged and installed as `root:root`, mode `0644`,
@@ -252,7 +252,7 @@ Windows tries winget with `--scope user`, then retries without scope only for
 may request UAC. Administrator-required, declined or policy-blocked installs
 are recorded as **failed package items**; other installs can continue, but the
 command fails even without `--fail-on-skip`. These are not harmless missing-tool
-skips. See [Windows packages](WINDOWS.md#packages).
+skips. See [Windows packages](windows-and-wsl.md#packages).
 
 #### Paru package manager
 
@@ -290,7 +290,7 @@ being recursively deleted. Move unrelated targets aside before applying.
 
 Linked sources stay live. On Windows, the task independently assesses
 elevation and rejects Git symlink placeholders checked out as ordinary files.
-See [Symlinks](CONFIGURATION.md#symlinks) for path and glob rules.
+See [Symlinks](configuration-reference.md#symlinks) for path and glob rules.
 
 #### File permissions
 
@@ -321,7 +321,7 @@ It needs systemctl, is excluded in CI, and inside WSL requires systemd already
 running or degraded. System units can require sudo. Without a user manager,
 including Arch chroot provisioning, it creates per-user enablement links for
 the next real login—not running services inside the chroot.
-See [Unit configuration](CONFIGURATION.md#systemd-units).
+See [Unit configuration](configuration-reference.md#systemd-units).
 
 #### User registry settings
 
@@ -351,7 +351,7 @@ the generated manifest is already current; it describes, but does not run,
 the follow-up install. When a new manifest is needed, preview reports the
 write/delegated work rather than planning against stale input.
 
-See [Agent tooling](AGENT-TOOLING.md) for target integrations, generated-state
+See [AI agent configuration](ai-agent-configuration.md) for target integrations, generated-state
 ownership, authentication and cleanup. This task is broader than copying skills.
 
 ### Local PKGBUILD packages
@@ -366,7 +366,7 @@ install targets and counted as failures when missing. Descriptor names
 establish local ownership: failure must not silently fall back to the AUR.
 
 `CleanAfter` cleans the cache, not this checkout. See
-[Local package recipes](LOCAL-PACKAGES.md) for the current recipes, version
+[Package management](package-management.md#local-arch-packages) for the current recipes, version
 discovery, snapshot ownership and adding packages.
 
 ## Dynamic overlay tasks
@@ -391,7 +391,7 @@ restart, not added during task execution.
 A missing/unreadable script or another check failure fails the task. A remove
 dry run inspects state and reports removal, invoking neither `--remove` nor
 `--dryrun`. Script safety is cooperative: even preview executes script code.
-See [Overlay scripts](CONFIGURATION.md#overlay-scripts) for the full protocol.
+See [Overlay scripts](private-overlays.md#overlay-scripts) for the full protocol.
 
 ## Remove tasks
 
@@ -428,14 +428,14 @@ staged privately on Unix and receive source permissions before publication.
 | `psscriptanalyzer` | PSScriptAnalyzer | PowerShell scripts discovered in the main repository |
 
 All commands load configuration before filtering. `--only` cannot bypass a
-malformed [required file](CONFIGURATION.md#files).
+malformed [required file](configuration-reference.md#files).
 
 Missing `apm`, `shellcheck`, `sh` or `pwsh` causes a visible unmet skip;
 `--fail-on-skip` or CI makes these unsuccessful. If `pwsh` exists but the
 PSScriptAnalyzer module does not, the analyzer fails. Local plugin checks
 do not validate every remote package or private overlay script.
 
-Use [CLI validation](TESTING.md#cli-validation) for commands, then select
+Use [CLI validation](testing.md#cli-validation) for commands, then select
 additional integration/configuration-drift coverage as appropriate.
 
 ## Filtering examples
@@ -444,13 +444,13 @@ These examples inspect or preview rather than apply. Use the intended checkout:
 
 ```bash
 # Just home links; omitted prerequisites are assumed satisfied.
-dotfiles update --root . --profile base --no-repo-update --only symlinks --dry-run
+dotfiles update --only symlinks --dry-run
 
 # Inspect everything dependency expansion would add.
-dotfiles list --root . --profile desktop --graph update --only agent-packages --with-deps
+dotfiles list --graph update --only agent-packages --with-deps
 
 # Preview regular packages and APM, without adding AUR tasks.
-dotfiles update --root . --profile desktop --no-repo-update --only "packages,agent-packages" --dry-run
+dotfiles update --only packages,agent-packages --dry-run
 ```
 
 For scripts, select the real overlay, discover its selector with `list`, then

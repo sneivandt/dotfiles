@@ -2,7 +2,7 @@
 # Each section is a category conjunction
 # Target will be ~/.<path>, or the explicit `target` of a { source, target } entry
 # A `*` source segment links every entry of that directory; see
-# docs/CONFIGURATION.md for the full glob rules
+# docs/content/configuration-reference.md for the full glob rules
 # Platform categories (linux, windows) are auto-detected; use them to restrict
 # symlinks to a specific platform.
 #

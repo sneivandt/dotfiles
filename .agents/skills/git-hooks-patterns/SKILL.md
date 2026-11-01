@@ -51,7 +51,7 @@ renames, deletions, and empty diffs when changing discovery or filtering.
 The full hook integration script creates commits. Run it only in a fresh
 disposable repository, never the user's checkout even when clean. Follow the
 scratch-repository procedure in
-[Wrapper and hook tests](../../../docs/TESTING.md#wrapper-and-hook-tests).
+[Wrapper and hook tests](../../../docs/content/testing.md#wrapper-and-hook-tests).
 
 Use `shell-patterns` for POSIX conventions and `ci-cd-patterns` when changing CI
 parity scope.

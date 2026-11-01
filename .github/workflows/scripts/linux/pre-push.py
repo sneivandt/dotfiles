@@ -28,7 +28,10 @@ def plan(selection, msrv):
             stages.append(stage)
     for item in selection["lint_matrix"]["include"]:
         stages.append("shell" if item["name"] == "ShellCheck" else "powershell")
-    commands = [("core checks", ".", ["sh", ".github/workflows/scripts/linux/check.sh", "--strict", *stages])]
+    commands = [
+        ("documentation dependencies", "docs", ["npm", "ci", "--no-audit", "--no-fund"]),
+        ("core checks", ".", ["sh", ".github/workflows/scripts/linux/check.sh", "--strict", *stages]),
+    ]
     if selection["run_config_drift"] and not selection["run_rust_checks"]:
         commands.append(("configuration drift", "cli", ["cargo", "test", "--locked", "--profile", "ci", "--test", "config_drift"]))
     if selection["run_rust_checks"]:
@@ -105,7 +108,7 @@ def main():
     for label, directory, command in commands:
         print(f"LOCAL {label}: (cd {directory} && {shlex.join(command)})", flush=True)
     print("REMAINING CI: " + (", ".join(deferred) or "always-on workflow checks"), flush=True)
-    print("Mutation testing is separate; see docs/TESTING.md#focused-mutation-testing.\n"
+    print("Mutation testing is separate; see docs/content/testing.md#focused-mutation-testing.\n"
           "Local success does not prove native Windows, host integration, publishing, or live desktop behavior.", flush=True)
     if args.plan:
         return

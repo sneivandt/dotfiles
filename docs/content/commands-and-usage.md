@@ -1,33 +1,34 @@
 ---
-title: Usage
-nav_order: 2
+title: Commands and usage
+description: Preview and apply configuration, select tasks, inspect logs, and understand the CLI's commands and options.
 ---
 
-# Usage
+# Commands and usage
 
 Use dotfiles to bring a machine into the state described by this checkout.
-Start with [Getting started](README.md) for a first installation, or the
-[Windows guide](WINDOWS.md) for PowerShell examples.
+Start with [Getting started](getting-started.md) for a first installation, or the
+[Windows guide](windows-and-wsl.md) for PowerShell examples.
 
-The commands below assume an installed `dotfiles` launcher and that you are in
-the intended repository root. Before the launcher is installed, use
-`./bin/dotfiles` on Linux or `.\bin\dotfiles.exe` on Windows. If the binary is
-missing, follow [Wrapper bootstrap](#wrapper-bootstrap).
+The examples use the checkout behind your installed `dotfiles` launcher and
+your saved profile. Before installation, use `./dotfiles.sh` on Linux or
+`.\dotfiles.ps1` on Windows; see [Wrapper bootstrap](#wrapper-bootstrap).
+Update, remove, and check prompt when no profile is selected. Read-only `list`
+needs an existing selection or an explicit `--profile`.
 
 ## Everyday commands
 
 | I want to… | Command |
 |---|---|
-| See the available tasks | `dotfiles list --root . --profile desktop` |
-| Preview this checkout | `dotfiles update --root . --profile desktop --no-repo-update --dry-run --verbose` |
-| Apply this checkout | `dotfiles update --root . --profile desktop --no-repo-update` |
-| Sync the repository and apply updates | `dotfiles update --root . --profile desktop` |
-| Validate configuration and repository files | `dotfiles check --root . --profile desktop` |
-| Read the latest run | `dotfiles log --verbose` |
-| Preview removal | `dotfiles remove --root . --profile desktop --dry-run --verbose` |
+| See the available tasks | `dotfiles list` |
+| Preview an update | `dotfiles update --dry-run` |
+| Sync the repository and apply updates | `dotfiles update` |
+| Validate configuration and repository files | `dotfiles check` |
+| Read the latest run | `dotfiles log` |
+| Preview removal | `dotfiles remove --dry-run` |
 
-Replace `desktop` with `base` for a shell-focused machine. Neither profile is a
-user-files-only mode. **Back up existing configuration before the first apply:**
+Use `--profile base` or `--profile desktop` to override the saved role for one
+run. Neither profile is a user-files-only mode.
+**Back up existing configuration before the first apply:**
 installing links can replace regular files and empty directories without a
 backup. Changes to linked application settings may take effect immediately.
 
@@ -37,50 +38,27 @@ backup. Changes to linked application settings may take effect immediately.
 
 `update` is the default command: running `dotfiles` by itself applies an update.
 Tasks inspect current state and avoid changes that are already satisfied.
-An update can nevertheless change more than the files you just edited:
+The [Update lifecycle](update-lifecycle.md) explains the CLI release check,
+repository synchronization, restarts, dependency updates, and partial results.
 
-| What can change | Normal behavior | To leave it alone for this run |
-|---|---|---|
-| CLI binary | Eligible release binaries check for a newer version before update/remove | Set `DOTFILES_SKIP_SELF_UPDATE=1` |
-| Main checkout and Git overlay | Fetch and fast-forward to their upstream branches | Pass `--no-repo-update` |
-| Agent dependencies and deployments | Advance eligible refs and reconcile agent packages | Pass `--skip agent-packages` |
-| Local Arch package pins | Refresh release versions and checksums | Pass `--skip local-package-versions` |
-
-Task filters do not disable startup behavior. `--no-repo-update` is neither an
-offline switch nor a self-update switch. Packages and overlay scripts may
-still use the network.
-
-**Package installation is not a harmless refresh.** Existing packages are not
-selected just to upgrade them, and Windows does not run `winget upgrade --all`.
-But installing missing Arch packages uses `pacman -Syu --needed --noconfirm`,
-which can upgrade the wider system.
-
-To apply only your symlink changes, first preview the same scope:
+To work on symlinks, first preview that selection:
 
 ```bash
-dotfiles update --root . --profile desktop --no-repo-update --only symlinks --dry-run --verbose
+dotfiles update --only symlinks --dry-run
 ```
 
-After reviewing it, remove `--dry-run` to apply. To suppress CLI self-update
-too, prefix the command on Linux with `DOTFILES_SKIP_SELF_UPDATE=1`; see
-[Windows bootstrap](WINDOWS.md#bootstrap) for the PowerShell equivalent.
-
-Repository synchronization never resets or rebases local work. If it changes
-the checkout, dotfiles restarts to load the new configuration before continuing.
-The parent keeps the run lock throughout. See
-[Repository update fails](TROUBLESHOOTING.md#repository-update-fails) for dirty
-or diverged branches.
-
-For focused dependency updates, see [Agent tooling](AGENT-TOOLING.md) and
-[Local package recipes](LOCAL-PACKAGES.md).
+After reviewing it, remove `--dry-run` to apply. Startup can still check for a
+CLI update: filters select tasks, not startup behavior. Use the
+[lifecycle controls](update-lifecycle.md#control-what-advances) when you need to
+keep a binary, checkout, or dependency set fixed.
 
 ### Select tasks
 
 Use selectors from `list`, not package names or partial task names:
 
 ```bash
-dotfiles list --root . --profile desktop
-dotfiles update --root . --profile desktop --no-repo-update --only "symlinks,git-hooks" --dry-run
+dotfiles list
+dotfiles update --only symlinks,git-hooks --dry-run
 ```
 
 - `--only` runs the named tasks. Repeat the flag or separate selectors with commas.
@@ -96,21 +74,21 @@ blocking prerequisite produces a warning and is assumed satisfied. Use
 `--with-deps` to include both blocking prerequisites and ordering predecessors:
 
 ```bash
-dotfiles list --root . --profile desktop --graph update --only systemd --with-deps
-dotfiles update --root . --profile desktop --no-repo-update --only systemd --with-deps --dry-run
+dotfiles list --graph update --only systemd --with-deps
+dotfiles update --only systemd --with-deps --dry-run
 ```
 
-Inspect the graph first: this can add packages, AUR setup, symlinks, and file
-permissions. `--skip` is applied after expansion, so it can remove a
+Inspect the graph first: this can add repository work, packages, AUR setup,
+symlinks, and file permissions. `--skip` is applied after expansion, so it can remove a
 prerequisite again. `--with-deps` is available only for update and update graphs.
 
 ### Unattended runs
 
-Select the repository and profile explicitly, disable prompts, and require a
+Select the profile explicitly, disable prompts, and require a
 complete result when automation depends on one:
 
 ```bash
-dotfiles update --root . --profile base --no-repo-update --non-interactive --fail-on-skip
+dotfiles update --profile base --non-interactive --fail-on-skip
 ```
 
 This **applies** configuration. Add `--dry-run` to preview instead.
@@ -144,10 +122,10 @@ or save profile/overlay selections.
 ## Discover tasks
 
 ```bash
-dotfiles list --root . --profile desktop
-dotfiles list --root . --profile desktop --all
-dotfiles list --root . --profile desktop --graph update
-dotfiles list --root . --profile desktop --format json
+dotfiles list
+dotfiles list --all
+dotfiles list --graph update
+dotfiles list --format json
 ```
 
 The normal listing groups selectors by update, remove, and check. It hides
@@ -195,10 +173,11 @@ not necessarily a complete installation.** Use `--fail-on-skip` when it must be.
 Preview with the original profile and overlay while their sources still exist:
 
 ```bash
-dotfiles remove --root . --profile desktop --dry-run --verbose
+dotfiles remove --dry-run
 ```
 
-Remove `--dry-run` only after reviewing the result.
+Remove `--dry-run` only after reviewing the result. If your saved selection has
+changed, pass the original `--profile` and `--overlay` explicitly.
 
 | Removed integration | Result |
 |---|---|
@@ -213,7 +192,7 @@ until materialization succeeds.
 
 Packages, registry settings, PATH, services, system files, permissions, login
 shell, Git/agent settings, completions, editor extensions, and agent deployments
-remain. See [Remove tasks](TASKS.md#remove-tasks) before planning a cleanup.
+remain. See [Remove tasks](task-reference.md#remove-tasks) before planning a cleanup.
 
 ## Check
 
@@ -222,14 +201,14 @@ analyzers. It does not install or repair configuration and has no `--dry-run`.
 It does write a log, acquire the run lock, and resolve/save selections.
 
 ```bash
-dotfiles check --root . --profile desktop
+dotfiles check
 ```
 
 The `config-diagnostics` task fails on configuration diagnostics, including
 warnings. Missing optional tools are visible skips; `--fail-on-skip` and CI
 make them fatal. If `pwsh` exists but PSScriptAnalyzer does not, that check fails.
 
-See [Testing](TESTING.md#cli-validation) for scoped checks and prerequisites.
+See [Testing](testing.md#cli-validation) for scoped checks and prerequisites.
 Task filtering cannot bypass malformed configuration loaded at startup.
 
 ## Logs
@@ -292,33 +271,28 @@ current directory. Wrappers set `DOTFILES_ROOT` to their own checkout.
 can still obtain a binary from another checkout. Use the intended checkout's
 wrapper or built binary when that distinction matters.
 
-Overlay priority is `--overlay`, nonempty `DOTFILES_OVERLAY`, then local Git
-config `dotfiles.overlay`. Relative paths are resolved from the invocation
-directory. Unlike `--profile`, an explicit `--overlay` is saved for future
-engine runs—even during check or dry-run. `list` does not save it.
-
-An explicit overlay whose `.git` is a file needs a separate confirmation.
-Without an interactive terminal it is rejected. Prefer a stable primary
-checkout for unattended use. See [Overlays](CONFIGURATION.md#overlays) for
-merging and script safety.
+Use `--overlay <PATH>` for private or machine-specific additions. Unlike
+`--profile`, an explicit overlay is saved for future runs, including during
+check or dry-run; `list` does not save it. See [Private overlays](private-overlays.md)
+for setup, path precedence, linked-worktree confirmation, merging, and scripts.
 
 ## Wrapper bootstrap
 
 The repository wrappers obtain the CLI and forward its arguments:
 
 ```bash
-./dotfiles.sh list --root . --profile base
+./dotfiles.sh list --profile base
 ```
 
 ```powershell
-.\dotfiles.ps1 list --root . --profile desktop
+.\dotfiles.ps1 list --profile desktop
 ```
 
 If a usable cached binary is absent, the wrapper downloads a release into
 `bin/` and verifies its SHA-256 checksum. It also verifies build provenance
 when `gh` is available. Missing `gh` produces a warning; a failed verification
 with `gh` present blocks bootstrap. See
-[Build provenance verification](SECURITY.md#build-provenance-verification).
+[Build provenance verification](security-and-trust.md#build-provenance-verification).
 
 **Even wrapper help, list, and dry-run can download files.** Use an existing
 binary directly to avoid bootstrap.
@@ -329,11 +303,11 @@ Unsupported/missing remotes fail instead of falling back to this project's
 releases. Forks without release assets can build locally:
 
 ```bash
-./dotfiles.sh --build list --root . --profile base
+./dotfiles.sh --build list --profile base
 ```
 
-On Windows, use `.\dotfiles.ps1 --build list --root . --profile desktop`.
-This requires the [source-build prerequisites](CONTRIBUTING.md), may download
+On Windows, use `.\dotfiles.ps1 --build list --profile desktop`.
+This requires the [source-build prerequisites](contributing.md), may download
 Cargo dependencies, and writes build artifacts. The wrapper uses `dev-opt`
 and executes Cargo's reported artifact, including custom target directories;
 it does not need to copy it into `bin/`.
@@ -353,7 +327,7 @@ after installation. Task completion uses the current binary's read-only
 discovery and carries forward `--root`, `--profile`, and `--overlay`; it does
 not prompt for or save a profile.
 
-For managed shell behavior beyond the CLI, see [Application settings](APPLICATIONS.md).
+For managed shell behavior beyond the CLI, see [Application settings](application-settings.md).
 
 ## Command summary
 
@@ -402,10 +376,10 @@ Quiet mode preserves logs and exit policy. Warnings and failed, blocked,
 skipped, or interrupted rows remain on stderr. It conflicts with `--verbose`
 and an explicit `--format`.
 
-For machine-readable execution, use JSON Lines:
+For a focused, non-interactive diagnostic stream, use JSON Lines:
 
 ```bash
-dotfiles check --root . --profile base --only config-diagnostics --format jsonl
+dotfiles check --profile base --only config-diagnostics --format jsonl
 ```
 
 Each stdout line is one object with `schema: 1`, `run_id`, `context`, and
@@ -443,4 +417,4 @@ Force quit can leave external installers running; inspect them before retrying.
 | `2` | Invalid command-line usage |
 | `130` | Interrupted; a genuine task failure takes precedence during graceful shutdown |
 
-For recovery, use [Troubleshooting](TROUBLESHOOTING.md).
+For recovery, use [Troubleshooting](troubleshooting.md).

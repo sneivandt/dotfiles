@@ -1,4 +1,4 @@
-<h1 align="center">Dotfiles</h1>
+<h1 align="center"><img src="docs/public/favicon.svg" width="32" height="32" align="absmiddle" alt=""> Dotfiles</h1>
 
 <p align="center">
   <strong>Declarative system configuration for Arch Linux and Windows, powered by a Rust CLI.</strong>
@@ -7,12 +7,13 @@
 <p align="center">
   <a href="https://github.com/sneivandt/dotfiles/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/sneivandt/dotfiles/ci.yml?branch=main&style=flat-square&label=CI"></a>
   <a href="https://github.com/sneivandt/dotfiles/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/sneivandt/dotfiles?style=flat-square&label=release"></a>
-  <a href="https://dotfiles.stuartneivandt.com/"><img alt="Documentation" src="https://img.shields.io/badge/docs-online-9ece6a?style=flat-square"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-9ece6a?style=flat-square"></a>
 </p>
 
-**[Read the documentation](https://dotfiles.stuartneivandt.com/)** — getting started,
-usage, configuration, and troubleshooting.
+> [!TIP]
+> **[Open the documentation website](https://dotfiles.stuartneivandt.com/)**
+>
+> Follow the setup guide or explore how to customize and use this configuration.
 
 This is my personal setup. The CLI checks existing state and applies the
 required changes, with dry-run previews and structured run logs.
@@ -21,7 +22,7 @@ Desired state lives in [conf/](conf/), with app configuration under
 [symlinks/](symlinks/) and managed system-file fragments under [system/](system/).
 
 <p align="center">
-  <img src="docs/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles update first updates the CLI, then links configuration, refreshes shell completions, and installs missing packages">
+  <img src="docs/public/assets/terminal-screenshot.svg" width="760" alt="Animated terminal session: one dotfiles update first updates the CLI, then links configuration, refreshes shell completions, and installs missing packages">
 </p>
 
 ## What it manages
@@ -41,14 +42,12 @@ Desired state lives in [conf/](conf/), with app configuration under
 | Windows | Current-user registry values and Developer Mode |
 | WSL | Windows-side WSL networking settings and Linux-side integration |
 
-The selected configuration depends on the profile and platform; see the
-[task reference](https://dotfiles.stuartneivandt.com/TASKS.html) for the full set of managed tasks.
+The selected configuration depends on the profile and platform.
 
 The `base` profile covers shell tools and core configuration for servers and
 WSL. The `desktop` profile adds GUI apps and desktop services. Both profiles
 are available on Linux and Windows; Linux package management and the Linux
-desktop setup target Arch. An optional [private overlay](https://dotfiles.stuartneivandt.com/CONFIGURATION.html#overlays)
-adds configuration from a separate repository.
+desktop setup target Arch.
 
 ## Usage
 
@@ -64,17 +63,18 @@ build from source.
 On Linux:
 
 ```sh
-./dotfiles.sh update --profile base --dry-run
+./dotfiles.sh update --dry-run
 ```
 
 On Windows:
 
 ```powershell
-.\dotfiles.ps1 update --profile desktop --dry-run
+.\dotfiles.ps1 update --dry-run
 ```
 
+A first run prompts for a profile if none is selected and remembers the choice.
 A preview can still bootstrap the CLI, write logs or selection metadata, and
-execute overlay check/preview scripts. See [Dry-run scope](https://dotfiles.stuartneivandt.com/USAGE.html#dry-run-scope).
+execute overlay check/preview scripts.
 
 After installation, `dotfiles` is available directly in a new shell. Running
 `dotfiles` without a command defaults to `update`.
@@ -90,9 +90,9 @@ After installation, `dotfiles` is available directly in a new shell. Running
 Use `--dry-run` to preview changes, `--only <selector>` to select tasks, and
 `--no-repo-update` to run against the current checkout without syncing it.
 
-For more detail, see [Usage](https://dotfiles.stuartneivandt.com/USAGE.html), [Profiles](https://dotfiles.stuartneivandt.com/PROFILES.html),
-[Configuration](https://dotfiles.stuartneivandt.com/CONFIGURATION.html), and [Troubleshooting](https://dotfiles.stuartneivandt.com/TROUBLESHOOTING.html).
+For more detail, see [Usage](https://dotfiles.stuartneivandt.com/commands-and-usage.html), [Profiles](https://dotfiles.stuartneivandt.com/profiles-and-categories.html),
+[Configuration](https://dotfiles.stuartneivandt.com/configuration-reference.html), and [Troubleshooting](https://dotfiles.stuartneivandt.com/troubleshooting.html).
 
 ## Development
 
-See [Contributing](https://dotfiles.stuartneivandt.com/CONTRIBUTING.html) for building, testing, and changing the CLI.
+See [Contributing](https://dotfiles.stuartneivandt.com/contributing.html) for building, testing, and changing the CLI.

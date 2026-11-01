@@ -46,7 +46,7 @@ fixtures. Cover login versus interactive behavior, absent tools, spaces,
 user overrides, repeat sourcing, and failure paths relevant to the change.
 Do not source the changed profile in the user's live shell to validate it.
 
-Use [Application configuration](../../../docs/TESTING.md#application-configuration)
+Use [Application configuration](../../../docs/content/testing.md#application-configuration)
 for commands and dependencies. Use `shell-patterns` for bootstrap wrappers,
 `symlink-management` when link declarations change, and `profile-system` only
 when profile resolution changes.

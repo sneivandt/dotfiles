@@ -1,6 +1,6 @@
 ---
-title: Profiles
-nav_order: 3
+title: Profiles and categories
+description: Choose a base or desktop role and understand how platform categories select the configuration to apply.
 ---
 
 # Profiles and categories
@@ -19,16 +19,18 @@ Use **task filters** separately when you want to run only part of that work.
 For example:
 
 ```bash
-dotfiles list --root . --profile base
-dotfiles list --root . --profile desktop
+dotfiles list --profile base
+dotfiles list --profile desktop
 ```
 
 Names are exactly `base` and `desktop`, in lowercase. `linux`, `arch`, `windows`,
 and `wsl` describe the environment; they are not valid profile names.
 
-**Base does not mean harmless or unprivileged.** Platform settings can still
+:::caution[Profiles are roles, not safety levels]
+Base does not mean harmless or unprivileged. Platform settings can still
 install packages, change the login shell, or manage system files. Review the
-[preview](USAGE.md#dry-run-scope) before applying either role.
+[preview](commands-and-usage.md#dry-run-scope) before applying either role.
+:::
 
 ## Automatic categories
 
@@ -48,10 +50,12 @@ release. Windows and Linux inside WSL select different environments, even
 when they run on the same computer.
 
 ```mermaid
-flowchart LR
-    role["Role: desktop"] --> categories["base + desktop + linux + arch"]
-    host["Host: Arch Linux"] --> categories
-    categories --> sections["All matching configuration sections"]
+flowchart TB
+    accTitle: How profiles select configuration
+    accDescr: The desktop role and Arch Linux host combine to activate base, desktop, linux, and arch. All matching configuration sections contribute.
+    role["desktop"] --> categories["base + desktop<br/>linux + arch"]
+    host["Arch Linux"] --> categories
+    categories --> sections["Matching TOML sections"]
 ```
 
 Categories choose configuration; they do not add support for missing tools.
@@ -113,7 +117,7 @@ sections contribute; the most specific one is not a replacement for the rest.
 
 Not every table is a category. For example, registry tables are named settings
 groups and are not filtered by role. See
-[Category sections](CONFIGURATION.md#category-sections) for the file-specific
+[Category sections](configuration-reference.md#category-sections) for the file-specific
 rules and overlay merging.
 
 ## Changing profiles or categories
@@ -121,12 +125,12 @@ rules and overlay merging.
 ### Preview a different role
 
 ```bash
-dotfiles list --root . --profile desktop
-dotfiles update --root . --profile desktop --no-repo-update --dry-run --verbose
+dotfiles list --profile desktop
+dotfiles update --profile desktop --dry-run
 ```
 
 Neither command changes the saved profile. The preview still has the
-[bookkeeping and external-tool effects](USAGE.md#dry-run-scope) of any dry run.
+[bookkeeping and external-tool effects](commands-and-usage.md#dry-run-scope) of any dry run.
 
 **Switching from desktop to base does not uninstall desktop configuration.**
 It stops selecting desktop-only entries. Their packages, services, links, and
@@ -134,7 +138,7 @@ settings remain. Removing a declaration has the same limitation.
 
 If you need cleanup, plan it while the original profile and sources are still
 available. `remove` uses the current selection and supports only the limited
-[remove tasks](TASKS.md#remove-tasks); it is not a general migration command.
+[remove tasks](task-reference.md#remove-tasks); it is not a general migration command.
 
 ### Distinguish profiles from task filters
 
@@ -144,11 +148,11 @@ configuration sections match.
 
 If expected work is missing, check the category selection, task filters, and
 runtime capabilities separately. Already-current tasks are hidden unless you
-use `--verbose`. See [A task does not run](TROUBLESHOOTING.md#a-task-does-not-run).
+use `--verbose`. See [A task does not run](troubleshooting.md#a-task-does-not-run).
 
 ### Extend the built-in model
 
 Custom profiles and category tags are not supported in configuration alone.
 An invented heading is an error, not a new machine role. Use the existing
-categories and a [private overlay](CONFIGURATION.md#overlays) for personal
+categories and a [private overlay](private-overlays.md) for personal
 configuration; adding a new built-in role requires a CLI change.

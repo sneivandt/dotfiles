@@ -1,0 +1,30 @@
+{
+  "name": "dotfiles-docs",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "check": "astro check",
+    "build": "astro build",
+    "preview": "astro preview",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.5",
+    "@astrojs/starlight": "0.42.8",
+    "astro": "7.4.4",
+    "astro-mermaid": "2.2.0",
+    "github-slugger": "2.0.0",
+    "mermaid": "12.2.0",
+    "unist-util-visit": "5.2.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@playwright/test": "1.64.1",
+    "typescript": "6.0.3"
+  }
+}

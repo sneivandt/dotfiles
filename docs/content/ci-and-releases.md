@@ -1,6 +1,6 @@
 ---
 title: CI and releases
-nav_order: 17
+description: Understand change-aware CI, required checks, platform coverage, documentation publishing, and binary release selection.
 ---
 
 # CI and releases
@@ -9,7 +9,7 @@ CI answers two different questions: **did the checks selected for this patch
 pass?** and, after a successful push to `main`, **is there an unpublished binary
 change?** A green first answer does not imply a new release.
 
-For local commands, use [Testing](TESTING.md). Workflow files and the
+For local commands, use [Testing](testing.md). Workflow files and the
 [path classifier](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
 are authoritative when changing automation.
 
@@ -20,7 +20,9 @@ are authoritative when changing automation.
 could leave required checks pending.
 
 ```mermaid
-flowchart LR
+flowchart TB
+    accTitle: From changed paths to release eligibility
+    accDescr: Changed paths select the checks to run. The ci-success aggregate verifies their results before a main-branch push can become eligible for a release.
     A[Changed paths] --> B[Select checks]
     B --> C[Run selected jobs]
     C --> D[ci-success]
@@ -30,7 +32,8 @@ flowchart LR
 The last step applies only to successful, same-repository **push** CI on `main`.
 Pull request CI cannot publish a release.
 
-Always-on work includes documentation consistency, actionlint, workflow
+Always-on work includes documentation consistency and the Starlight site build
+and browser regressions, actionlint, workflow
 contracts, and classification regressions. The `ci-success` job runs even after
 an earlier failure and verifies that every selected gating job succeeded and
 every unselected job was skipped. Missing outputs, cancellation, unexpected
@@ -99,7 +102,7 @@ Mutation jobs run for PR/main-push changes to Rust source under `cli/src/`,
 with eight shards covering the applicable changed-code set. Standalone test,
 lockfile-only, and CI-only changes do not select them. Linux excludes native
 Windows code and one equivalent mutation; see the
-[mutation recipe](TESTING-RECIPES.md#focused-mutation-testing).
+[mutation testing guide](testing.md#focused-mutation-testing).
 
 ## Scheduled dependency checks
 
@@ -112,6 +115,22 @@ This separate workflow neither satisfies `ci-success` nor triggers a release.
 Enable Actions failure notifications and configure Dependabot alerts/security
 updates in repository settings separately. Check that the schedule remains
 enabled; GitHub can disable schedules in inactive repositories.
+
+## Documentation publishing
+
+The documentation job checks source links, builds Starlight, checks the output
+routes and assets, and exercises navigation, search, themes, and diagrams in
+Chromium. It is part of `ci-success`, including on docs-only changes.
+
+For a push to `main`, it uploads the verified static site. After the aggregate
+succeeds, [Publish documentation](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/pages.yml)
+downloads the artifact from that exact CI run and deploys it to GitHub Pages.
+PRs and fork runs cannot publish. A completed build that no longer matches
+`main` is skipped rather than rolling the site backward.
+
+The repository's Pages source must be **GitHub Actions**. See
+[Published documentation](contributing.md#published-documentation) for the
+one-time setting, domain configuration, and local preview.
 
 ## Release selection
 
@@ -145,7 +164,7 @@ in `Cargo.toml` is not the release version.
 
 When reporting a release, verify the published tag, commit, and expected assets.
 A successful CI gate or a running release workflow is not publication. See
-[download verification](SECURITY.md#release-downloads) for the client side.
+[download verification](security-and-trust.md#release-downloads) for the client side.
 
 ## Changing automation
 
@@ -155,6 +174,6 @@ permissions, pin Actions to full commit SHAs, and reuse shared helpers under
 [workflow scripts](https://github.com/sneivandt/dotfiles/tree/main/.github/workflows/scripts/).
 
 Run the local `ci` stage and the affected job's focused command. The
-[selection fixtures](TESTING-RECIPES.md#ci-selection-fixtures) use temporary Git
+[selection fixtures](testing.md#ci-selection-fixtures) use temporary Git
 repositories and mocked release APIs; they do not publish. Preserve tests for
 both affected and unaffected paths, deletions/renames, and unintended skips.

@@ -8,7 +8,7 @@
 # Only listed keys are managed. Volatile harness state, credentials, integrations,
 # and every other key are preserved. Agent package deployment is a separate task:
 # dotfiles merges symlinks/apm/config/*.yml, invokes APM, and reconciles its
-# Copilot App and Cowork adapters. See docs/AGENT-TOOLING.md for ownership.
+# Copilot App and Cowork adapters. See docs/content/ai-agent-configuration.md for ownership.
 
 [base]
 settings = [

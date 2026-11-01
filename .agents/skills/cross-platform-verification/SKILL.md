@@ -8,12 +8,12 @@ description: >
 
 # Cross-Platform Verification
 
-1. Select checks from [Choosing coverage](../../../docs/TESTING.md#choosing-coverage)
-   and use the [local stages](../../../docs/TESTING.md#fast-local-sequence)
+1. Select checks from [Choosing coverage](../../../docs/content/testing.md#choosing-coverage)
+   and use the [local stages](../../../docs/content/testing.md#fast-local-sequence)
    for exact commands. Group affected test targets; broaden for shared engine,
    catalog, or loader changes and failures that reveal wider impact.
 2. For platform-sensitive changes, consult
-   [Platform coverage parity](../../../docs/TESTING.md#platform-coverage-parity).
+   [Platform coverage parity](../../../docs/content/testing.md#platform-coverage-parity).
    Cross-target compilation cannot prove native registry, elevation, symlink,
    or Windows path behavior. Report the remaining native-runtime gap.
 3. Use isolated fixtures and the current source with the pinned toolchain.

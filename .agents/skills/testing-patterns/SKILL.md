@@ -74,4 +74,4 @@ failure disappear.
 ## Scope validation
 
 Test target selection and commands live in
-[Testing](../../../docs/TESTING.md). CI topology belongs in `ci-cd-patterns`.
+[Testing](../../../docs/content/testing.md). CI topology belongs in `ci-cd-patterns`.

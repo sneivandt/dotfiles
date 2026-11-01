@@ -27,7 +27,10 @@ Companions are needed only when the request changes their contract.
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
 | Choose Windows coverage after a Rust path-handling change | `cross-platform-verification` | windows-specific-patterns owns implementation choices |
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
-| Correct prose in the Usage guide | No publishing skill needed | Use the owning domain skill only if behavioral verification needs it |
+| Simplify examples in Commands and usage | `docs-publishing` | Verify defaults in the owning code; no engine changes just for prose |
+| Move desktop documentation into a subsystem guide | `docs-publishing` | Keep one explanation, matching title/file/URL, and updated references |
+| Explain a changed self-update behavior to users | `docs-publishing` | Add self-update only for implementation work or a behavioral question it owns |
+| Change an internal agent instruction without editing human guides | `skill-maintenance` | No docs-publishing skill merely because the instruction is Markdown |
 | Replace the Pages build with a custom Actions workflow | `docs-publishing` | Add ci-cd-patterns for workflow permissions, pins, and guards |
 | Review skill triggers without changing behavior | `skill-maintenance` | No engine skills merely because examples mention tasks |
 

@@ -12,7 +12,7 @@ case "$actual" in
   "rustc $expected "*) ;;
   *)
     printf 'Pinned Rust %s required; PATH selected %s.\n' "$expected" "$actual" >&2
-    printf 'Select the pinned toolchain as described in docs/CONTRIBUTING.md#selecting-the-pinned-toolchain.\n' >&2
+    printf 'Select the pinned toolchain as described in docs/content/contributing.md#selecting-the-pinned-toolchain.\n' >&2
     exit 1
     ;;
 esac

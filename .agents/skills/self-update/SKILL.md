@@ -47,7 +47,7 @@ Use the existing injected HTTP/provenance fixtures and temporary binary paths
 in the owning modules. Cover failed download/checksum/provenance before
 replacement, replacement failure, smoke-test failure, rollback, and successful
 installation as relevant. Never replace the live `bin/dotfiles` to test a patch.
-Use [Testing](../../../docs/TESTING.md#choosing-coverage) for commands and native
+Use [Testing](../../../docs/content/testing.md#choosing-coverage) for commands and native
 Windows coverage limits.
 
 Add `shell-patterns` when changing wrapper parity, `ci-cd-patterns` when changing

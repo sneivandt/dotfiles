@@ -38,5 +38,5 @@ description: >
 
 Cover selector filtering, unsafe and duplicate paths, every merge strategy,
 missing/correct/incorrect/invalid state, staging arguments, dry-run safety, and
-convergence. Use [Testing](../../../docs/TESTING.md#choosing-coverage) for the
+convergence. Use [Testing](../../../docs/content/testing.md#choosing-coverage) for the
 validation sequence.

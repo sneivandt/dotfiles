@@ -50,9 +50,13 @@ section, update the typed model and required inventory where applicable,
 `SectionLoader` collection, config/handle inventory, semantic validation, real
 data, fixtures, and owning task. Do not copy a hand-written public/overlay merge.
 
-Preserve public-then-overlay ordering and per-entry provenance for source paths.
-Overlay lists append; they are not a generic last-writer-wins override. Test
-conflicting desired values rather than silently selecting one.
+Preserve resource-aware precedence through
+[`merge::OverlayEntry`](../../../cli/src/app/config/merge.rs): active overlay
+entries replace matching base identities, with unmatched base entries first.
+Retain complete entries and source origins; this is not whole-file merging.
+Validate within-source conflicts before replacement, and retain both sources
+in unfiltered validation views. See
+[Private overlays](../../../docs/content/private-overlays.md#merge-rules).
 Use `SectionLoader::collect_views` when both active and unfiltered validation
 inputs are needed. It decodes each source once and stamps origins before deriving
 the views. Use `collect_filtered` for active-only lists and `collect` for registry
@@ -60,10 +64,10 @@ values. Preserve source spans when decoding; do not reparse to recover diagnosti
 
 Cover unknown fields, malformed types, optional overlay absence, required main
 absence, category inclusion/exclusion, and merged data. Use the TOML checks in
-[Testing](../../../docs/TESTING.md#choosing-coverage).
+[Testing](../../../docs/content/testing.md#choosing-coverage).
 
 Use `config-validation` for diagnostic and drift-test details, `profile-system`
 for profile resolution, and `overlay-scripts` for overlay path selection and
 script execution. Section loading and merge mechanics belong here. The complete
 contributor checklist lives in
-[Contributing](../../../docs/CONTRIBUTING.md#change-checklists).
+[Contributing](../../../docs/content/contributing.md#change-checklists).

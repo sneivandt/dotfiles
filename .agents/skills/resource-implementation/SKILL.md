@@ -56,4 +56,4 @@ resource and its tests, before implementing.
 Cover missing, correct, incorrect, invalid, and unknown state as applicable;
 assert that dry-run invokes no mutation and a second apply converges. For
 removal, cover both managed and user-replaced targets. Use
-[Testing](../../../docs/TESTING.md#choosing-coverage) to select coverage.
+[Testing](../../../docs/content/testing.md#choosing-coverage) to select coverage.

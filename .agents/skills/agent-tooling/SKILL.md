@@ -8,7 +8,7 @@ description: >
 
 # Agent Tooling
 
-Start with [Agent tooling](../../../docs/AGENT-TOOLING.md) for deployment
+Start with [Agent tooling](../../../docs/content/ai-agent-configuration.md) for deployment
 ownership, fragment merging, target compatibility, and adapter behavior.
 
 ## Choose the owner
@@ -42,7 +42,7 @@ repository work must remain possible without it.
   separate prune, fingerprints, or outdated-output parsing.
 - Before removing either compatibility adapter, inspect current upstream code
   and prove the replacement against the
-  [deployment contracts](../../../docs/AGENT-TOOLING.md#deployment-targets)
+  [deployment contracts](../../../docs/content/ai-agent-configuration.md#deployment-targets)
   in isolated fixtures on the relevant platforms. A version bump is insufficient.
 - Native APM owns syntax/schema validation; dotfiles owns cross-file local
   source relationships. Extend
@@ -51,8 +51,8 @@ repository work must remain possible without it.
 
 ## Validate the changed contract
 
-Use [CLI validation](../../../docs/TESTING.md#cli-validation) and
-[Choosing coverage](../../../docs/TESTING.md#choosing-coverage).
-Preview reconciliation follows [Dry-run testing](../../../docs/TESTING.md#dry-run-testing).
+Use [CLI validation](../../../docs/content/testing.md#cli-validation) and
+[Choosing coverage](../../../docs/content/testing.md#choosing-coverage).
+Preview reconciliation follows [Dry-run testing](../../../docs/content/testing.md#dry-run-testing).
 Packing is not deployment proof. Do not deploy to the live home to test content
 or an adapter; use synthetic fragments, lockfiles, and target directories.

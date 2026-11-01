@@ -53,5 +53,5 @@ errors and warnings on stderr with their existing prefixes. Avoid free-form
 ellipsis progress and duplicate status lines.
 
 Use `git-hooks-patterns` for staged checks, `logging-patterns` for the Rust
-console contract, and [Testing](../../../docs/TESTING.md#choosing-coverage) for
+console contract, and [Testing](../../../docs/content/testing.md#choosing-coverage) for
 lint and wrapper checks.

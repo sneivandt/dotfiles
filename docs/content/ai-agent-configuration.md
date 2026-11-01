@@ -1,9 +1,9 @@
 ---
-title: Agent tooling
-nav_order: 8
+title: AI agent configuration
+description: Configure agent harness settings, compose APM packages and plugins, and understand their update and deployment behavior.
 ---
 
-# Agent tooling
+# AI agent configuration
 
 Dotfiles keeps agent preferences and reusable agent content in version control.
 Two tasks apply them: **Agent settings** (`agent-settings`) manages selected
@@ -48,7 +48,7 @@ Removing a declaration stops managing the key; it does **not** delete the stored
 value. Conflicting declarations for the same harness/key fail before writes.
 This task does not run APM.
 
-See [Agent harness settings](CONFIGURATION.md#agent-harness-settings) for the
+See [Agent harness settings](configuration-reference.md#agent-harness-settings) for the
 schema. Use the source file for current preferences, including declared
 Codex desktop settings; do not assume all settings apply to every agent surface.
 
@@ -92,11 +92,13 @@ The symlink configuration selects source fragments that appear under
 such as `arch.yml` does not select a platform: its symlink category does.
 
 ```mermaid
-flowchart LR
-    Sources["Selected source fragments"] --> Merge["Merge by filename"]
-    Home["Unmanaged home fragments"] --> Merge
-    Merge --> Manifest["Generated apm.yml"]
-    Manifest --> APM["APM deployment"]
+flowchart TB
+    accTitle: From configuration fragments to agent deployment
+    accDescr: Selected managed sources and unmanaged home fragments merge by filename into a generated apm.yml manifest, which APM uses for deployment.
+    Sources["Sources"] --> Merge["Merge by filename"]
+    Home["Home"] --> Merge
+    Merge --> Manifest["apm.yml"]
+    Manifest --> APM["Deploy with APM"]
 ```
 
 Planning reads selected **source files**, even before their home links exist.
@@ -106,7 +108,7 @@ preview of a stale or broken managed link. Other YAML files already in
 
 Order is by effective filename, not by public/private origin. `private.yml`
 sorts after `base.yml`; `90-private.yml` sorts before it. This is not the
-[TOML overlay merge](CONFIGURATION.md#merge-rules).
+[TOML overlay merge](private-overlays.md#merge-rules).
 
 ### Merge rules
 
@@ -133,18 +135,18 @@ For exact merge examples, see
 
 ## Update behavior
 
-From the repository root, with the dotfiles CLI and APM already available:
+With the dotfiles CLI, a selected profile, and APM already available:
 
 ```bash
 # Preview this checkout's agent-package changes.
-dotfiles update --root . --no-repo-update --only agent-packages --dry-run --verbose
+dotfiles update --only agent-packages --dry-run
 
 # Apply after reviewing the plan and package sources.
-dotfiles update --root . --no-repo-update --only agent-packages
+dotfiles update --only agent-packages
 ```
 
 A scoped run does not install its prerequisites for you. New plugin links may
-need the symlink task first; see [Task selection](TASKS.md). In a normal update,
+need the symlink task first; see [Task selection](task-reference.md). In a normal update,
 agent deployment is coordinated with symlink and package installation. APM can
 come from any installation method as long as `apm` is on PATH.
 
@@ -168,7 +170,7 @@ The follow-up install precedes both target adapters; preserve error
 classification and workflow-policy restoration if any phase fails.
 
 On Arch, `apm-dotfiles` supplies the executable through the
-[local package recipe](LOCAL-PACKAGES.md). **Updating agent dependencies is not
+[local package recipe](package-management.md#local-arch-packages). **Updating agent dependencies is not
 upgrading the APM executable.**
 
 ### Pin-update behavior
@@ -187,7 +189,7 @@ Neither path executes the follow-up install or the target repairs. The native
 preview may contact upstream services. Dotfiles does not write its generated
 manifest, lock cleanup, or Cowork inventory during preview, but dry-run is
 **not a sandbox** for wrapper bootstrap, CLI bookkeeping, or native tools.
-See [Usage](USAGE.md).
+See [Usage](commands-and-usage.md).
 
 ## Deployment targets
 
@@ -304,7 +306,7 @@ dependency set.
 
 ## Overlays
 
-An overlay uses the same fragment/plugin layout. Keep its links in compatible
+A [private overlay](private-overlays.md) uses the same fragment/plugin layout. Keep its links in compatible
 categories and validate the combined configuration. Filename order still
 governs merging; private origin grants no automatic priority.
 
@@ -324,8 +326,8 @@ target compatibility before previewing deployment.
 - Successful packing does not establish deployment compatibility with every
   target. Private plugins need validation in their own source context too.
 
-Use [CLI validation](TESTING.md#cli-validation) for commands and
-[Choosing coverage](TESTING.md#choosing-coverage) for implementation changes.
+Use [CLI validation](testing.md#cli-validation) for commands and
+[Choosing coverage](testing.md#choosing-coverage) for implementation changes.
 Never deploy to the live home merely to test a skill edit.
 
 ## Authentication and failure diagnosis

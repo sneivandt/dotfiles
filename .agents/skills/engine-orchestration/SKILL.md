@@ -118,6 +118,6 @@ its harness runs both modes and compares outcomes and records. Keep
 concurrency-only synchronization in `parallel.rs` and start/result ordering in
 `output.rs`. Use `task_execution` for filesystem-backed task behavior and the
 affected command suites listed under
-[Integration test suites](../../../docs/TESTING.md#integration-test-suites).
-Update [Task reference](../../../docs/TASKS.md) when public task metadata or
+[Integration test suites](../../../docs/content/testing.md#integration-test-suites).
+Update [Task reference](../../../docs/content/task-reference.md) when public task metadata or
 command membership changes.

@@ -1,6 +1,6 @@
 ---
-title: Configuration
-nav_order: 5
+title: Configuration reference
+description: Declare packages, symlinks, services, and settings in TOML, with category selection and private overlays.
 ---
 
 # Configuration reference
@@ -12,7 +12,7 @@ fragments live under `system/`.
 **Edit sources, not generated output.** Installed files may be live links into
 this checkout, so source edits can affect applications immediately, before
 another update. Shell preferences, desktop appearance and keybindings are
-covered in [Application settings](APPLICATIONS.md).
+covered in [Application settings](application-settings.md).
 
 ## Making a configuration change
 
@@ -22,8 +22,8 @@ covered in [Application settings](APPLICATIONS.md).
 3. Check that file's path rules. Not every home-relative path has the same
    meaning.
 4. Validate the selected configuration and preview the relevant
-   [task](TASKS.md). See [Testing](TESTING.md#cli-validation) for commands and
-   [preview limits](TESTING.md#dry-run-testing).
+   [task](task-reference.md). See [Testing](testing.md#cli-validation) for commands and
+   [preview limits](testing.md#dry-run-testing).
 5. Back up existing targets before applying. Removing a declaration usually
    stops management; it does not undo an earlier change.
 
@@ -47,7 +47,8 @@ apply. A required file may be empty.
 | [`system-files.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | `files` | Merge fragments into files below `/etc` |
 | [`vscode-extensions.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | `extensions` | Install editor extensions |
 
-Overlays may also provide `conf/scripts.toml`. The main repository's
+Private overlays may also provide
+[`conf/scripts.toml`](private-overlays.md#overlay-scripts). The main repository's
 `conf/scripts.toml` is not loaded.
 
 ## Category sections
@@ -75,7 +76,7 @@ Unknown or misspelled tags are errors, not new custom categories.
 
 `base` is always active. Selecting the `desktop` profile adds `desktop`;
 the CLI supplies platform categories. Profiles describe a machine's role, not
-its operating system. See [Profiles](PROFILES.md) for selection precedence,
+its operating system. See [Profiles](profiles-and-categories.md) for selection precedence,
 persistence and platform combinations.
 
 ## Path conventions
@@ -132,7 +133,7 @@ rejected.
 **Installation does not back up existing files.** A regular file or empty
 directory at a managed target can be replaced. A nonempty real directory
 fails rather than being recursively deleted. See
-[Home symlinks](TASKS.md#home-symlinks) and [Remove tasks](TASKS.md#remove-tasks)
+[Home symlinks](task-reference.md#home-symlinks) and [Remove tasks](task-reference.md#remove-tasks)
 before taking over an existing application's configuration.
 
 ### Glob patterns
@@ -163,7 +164,7 @@ symlinks = [
 ```
 
 That example requires entries under `symlinks/skills/`. For this repository's
-agent content, prefer its existing [APM deployment](AGENT-TOOLING.md) rather
+agent content, prefer its existing [APM deployment](ai-agent-configuration.md) rather
 than introducing another deployment route.
 
 ## Packages
@@ -185,14 +186,14 @@ provider-specific, not portable aliases. Use Arch names in Arch categories
 and winget IDs in Windows categories.
 
 Regular Arch entries use pacman. `aur = true` sends an entry through Paru;
-that includes configured [local recipes](LOCAL-PACKAGES.md), not just remote
+that includes configured [local recipes](package-management.md#local-arch-packages), not just remote
 AUR recipes. The host's package-manager repositories and policies, including
 `IgnorePkg`, remain in effect.
 
 **When regular Arch packages are missing, installation uses `pacman -Syu`.**
 It can upgrade other installed packages too. If every declared package is
 already installed, this task does not perform an upgrade merely because the
-command is `update`. See [System packages](TASKS.md#system-packages).
+command is `update`. See [System packages](task-reference.md#system-packages).
 
 ## Git settings
 
@@ -213,7 +214,7 @@ if you want the task to manage a value instead. This cleanup is separate from
 the repository-local Git values used to remember profiles and overlays.
 
 For Git aliases such as `git gr` and `git contributors`, see
-[Application settings](APPLICATIONS.md#git-shortcuts).
+[Application settings](application-settings.md#git-shortcuts).
 
 ## Agent harness settings
 
@@ -247,7 +248,7 @@ parent/child keys are checked too.
 An overlay replaces an exact, case-sensitive key for the same harness. Other
 keys remain managed. Removing a declaration leaves the stored preference in
 place. Skills, plugins, hooks and MCP configuration belong to
-[Agent tooling](AGENT-TOOLING.md), not this file.
+[AI agent configuration](ai-agent-configuration.md), not this file.
 
 ## File permissions
 
@@ -340,7 +341,7 @@ materialization does not strand them in the removed checkout.
 Offline disable removes matching existing `.wants`/`.requires` links even if
 the unit file disappeared or its install directives changed. Offline enablement
 honors `WantedBy=`/`RequiredBy=` resets and systemd-style continued assignments.
-See [Systemd units](TASKS.md#systemd-units) for task applicability.
+See [Systemd units](task-reference.md#systemd-units) for task applicability.
 
 ## System files
 
@@ -395,122 +396,20 @@ extensions = ["rust-lang.rust-analyzer", "tamasfe.even-better-toml"]
 Use full `<publisher>.<extension>` strings. Repeated IDs, including case-only
 variants, are installed once using the first spelling. The task needs an
 available VS Code CLI and installs missing extensions; Arch chroot provisioning
-defers this to first login. See [VS Code extensions](TASKS.md#vs-code-extensions).
+defers this to first login. See [VS Code extensions](task-reference.md#vs-code-extensions).
 
-## Overlays
+## Private overlays
 
-An overlay holds private or machine-specific desired state in a second
-repository. It uses the same `conf/`, `symlinks/` and `system/` layout, with
-optional scripts. Do not copy private content or credentials into the public
-repository to make an example or test.
-
-### Selection and persistence
-
-Overlay selection precedence is:
-
-1. `--overlay <PATH>`
-2. `DOTFILES_OVERLAY`
-3. Repository-local Git setting `dotfiles.overlay`
-
-Relative paths resolve from the **invoking working directory**, not the
-dotfiles root. Explicit selections are saved as absolute paths for later runs.
-Previously saved relative paths retain their working-directory meaning until
-replaced. Read-only task discovery resolves the selection without saving it.
-
-Explicitly selecting a linked Git worktree requires confirmation, defaulting
-to no. Non-interactive execution rejects a new worktree selection, including
-CI on an attached terminal. An ordinary checkout with a `.git` directory does
-not need that confirmation. The startup header shows the resolved path.
-
-### Merge rules
-
-An active overlay entry replaces a main entry with the same **resource
-identity**, not the same section name or array position:
-
-| Configuration | Replacement identity |
-|---|---|
-| Packages | Package name; case-insensitive on Windows |
-| Symlinks | Normalized home target after glob expansion |
-| Global Git settings | Key; section/variable ignore case, subsection does not |
-| Agent settings | Harness and exact, case-sensitive key |
-| Registry | Case-insensitive path and value name |
-| Permissions | Normalized home-relative path |
-| Systemd units | Scope and exact unit name |
-| System configuration files | Normalized destination path |
-| VS Code extensions | Case-insensitive extension ID |
-
-Unmatched main entries remain, followed by overlay entries. Missing or empty
-overlay files contribute nothing. Inactive overlay categories cannot override
-active main entries.
-
-Replacement retains the entire overlay entry and its source origin. It does
-not merge the contents of two symlink source files. Within-source conflicts
-are checked before replacement, and source-validation views retain both
-repositories' declarations.
-
-APM's YAML fragments have separate
-[configuration-fragment rules](AGENT-TOOLING.md#configuration-fragments).
-
-### Conflicting desired state
-
-Within either repository, active Git settings and Windows registry entries
-cannot assign different values to the same target. Identical assignments are
-allowed. Conflicts stop loading before any task runs, even with `--only` or
-`--dry-run`.
-
-Git values compare literally; registry values must agree in both type and
-data. Diagnostics identify the competing declarations with
-`git.conflicting-values` or `registry.conflicting-values`. Inactive Git
-categories and registry entries off Windows do not participate in these
-active-value checks. Agent settings also check overlapping parent/child keys,
-as described [above](#agent-harness-settings).
-
-## Overlay scripts
-
-Use a script only when declarative configuration cannot express the private
-work. In the overlay's `conf/scripts.toml`:
-
-```toml
-[[base.scripts]]
-name = "Configure private workstation"
-path = "scripts/configure-workstation.ps1"
-description = "Converge private workstation settings"
-```
-
-`name` and `path` are required; `description` is optional. Names must be
-nonempty and produce distinct selectors. This one becomes
-`script-configure-private-workstation`: ASCII alphanumeric words are
-lowercased and joined with hyphens.
-
-Paths must stay inside the overlay, including after symlink resolution.
-Scripts run with the overlay root as the working directory. `.ps1` matching
-is case-insensitive and selects PowerShell (`pwsh`, or Windows PowerShell
-when available on Windows); other extensions use `sh`.
-
-Implement every protocol mode:
-
-| Invocation | Required behavior |
-|---|---|
-| `--check` | Inspect only. Exit 0 when configured; exit 1 when absent/needs work; other failures fail the task. |
-| No flag | Apply idempotently; fail with a nonzero exit. |
-| `--dryrun` | Describe needed application without mutation. Note the spelling. |
-| `--remove` | Conservatively remove the script's managed state. |
-
-Update checks first, applying or previewing only when the check returns 1.
-Remove uses the same check: 0 means something to remove, 1 means nothing.
-A remove dry run checks and reports removal but invokes neither `--remove`
-nor `--dryrun`. Missing or unreadable scripts fail, including disappearance
-between inspection and execution.
-
-**Inspection and preview execute code; they are not sandboxed.** Both must
-be read-only. Keep secrets out of output, which may enter the console and run
-log. Active scripts appear as [dynamic tasks](TASKS.md#dynamic-overlay-tasks).
+Keep personal or machine-specific additions in a separate
+[Private overlay](private-overlays.md). That guide covers layout, setup,
+selection, resource-by-resource merging, scripts, and cleanup. An overlay
+extends valid base configuration; it cannot hide conflicting declarations.
 
 ## Agent package configuration
 
 Agent packages use YAML fragments under `symlinks/apm/config/`, selected by
 `conf/symlinks.toml`. They are separate from `agent-settings.toml` preferences.
-Use [Agent tooling](AGENT-TOOLING.md) for package sources, deployment targets,
+Use [AI agent configuration](ai-agent-configuration.md) for package sources, deployment targets,
 generated files and cleanup.
 
 ## Removing configuration
@@ -519,13 +418,13 @@ Deleting a record generally means **stop managing it**, not **undo it**.
 Packages, Git/registry/harness values, services and merged system files remain.
 
 For links or overlay scripts, keep the declaration active while running the
-intended [remove task](TASKS.md#remove-tasks), then delete it. Symlink removal
+intended [remove task](task-reference.md#remove-tasks), then delete it. Symlink removal
 materializes matching links as local content rather than restoring a backup.
 It also creates a copy for an absent configured target and preserves existing
 non-link files/directories.
 
 APM has its own stale-deployment cleanup and
-[last-fragment caveat](AGENT-TOOLING.md#removing-packages-and-targets).
+[last-fragment caveat](ai-agent-configuration.md#removing-packages-and-targets).
 
 ## Loading and reload behavior
 
@@ -533,7 +432,7 @@ All required files are loaded before tasks are selected. `--only` cannot
 bypass a malformed file or incompatible declarations in another section.
 When repository synchronization changes content, the CLI restarts with fresh
 configuration before later tasks run; this is not a separate selectable reload
-task. See the [restart boundary](ARCHITECTURE.md#repository-updates-are-a-restart-boundary).
+task. See the [restart boundary](architecture.md#repository-updates-are-a-restart-boundary).
 
 ### Unknown keys are errors
 
@@ -550,30 +449,13 @@ aggregated diagnostics, including warning-severity findings.
 
 The Rust `config_drift` suite checks relationships between real declarations
 and tracked sources. Parsing one file or checking one platform does not prove
-all category combinations work. See [Choosing coverage](TESTING.md#choosing-coverage).
+all category combinations work. See [Choosing coverage](testing.md#choosing-coverage).
 
-## Shell application configuration
+## Application preferences
 
-Shell environment defaults, pager behavior, completion, Git shortcuts and
-download settings now have a dedicated home in
-[Application settings](APPLICATIONS.md#shell-application-configuration).
-
-## Desktop application configuration
-
-Desktop settings are application sources, not another TOML schema.
-See [Application settings](APPLICATIONS.md#desktop-application-configuration).
-
-### Arch desktop appearance
-
-See [Arch desktop appearance](APPLICATIONS.md#arch-desktop-appearance) for
-the shared theme, bar, tray, menus and reload behavior.
-
-### Screen locking and suspend
-
-See [Screen locking and suspend](APPLICATIONS.md#screen-locking-and-suspend)
-for idle timings and the limits of sleep inhibition.
-
-### Hyprland media keys
-
-See [Hyprland media keys](APPLICATIONS.md#hyprland-media-keys) for shortcuts,
-volume controls and brightness behavior.
+The formats above select and install application sources; they do not describe
+every application's own settings syntax. Start with
+[Application settings](application-settings.md) for shared shell preferences,
+[Arch desktop](arch-desktop.md) for the graphical session, and the
+[VS Code](visual-studio-code.md) or [Vim and Neovim](vim-and-neovim.md) guides
+for editor behavior and plugins.

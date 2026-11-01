@@ -35,15 +35,24 @@ changes usually do not need engine changes.
   category does not authorize deleting previously managed state; `remove` is
   a separate capability, not a universal undo.
 
+## Human documentation
+
+- Update the owning guide when user-visible behavior changes. Use
+  [docs-publishing](.agents/skills/docs-publishing/SKILL.md) for guide prose,
+  README links, navigation, and site changes.
+- Keep one clear explanation per topic, short commands using real defaults, and
+  matching page titles, filenames, and URLs. Update references when moving content;
+  do not add rename-compatibility routes.
+
 ## Before pushing
 
-- Choose coverage from [Testing](docs/TESTING.md#choosing-coverage), including
+- Choose coverage from [Testing](docs/content/testing.md#choosing-coverage), including
   affected script/application regressions. Use the pinned Rust toolchain.
-- Validate the committed patch with the [pre-push checker](docs/TESTING.md#before-pushing).
+- Validate the committed patch with the [pre-push checker](docs/content/testing.md#before-pushing).
   A successful commit hook or focused test alone is not push validation.
 - Fix selected local failures. Report unavailable checks and remaining Windows,
   integration, and mutation coverage explicitly; a skip is not a pass.
-- For changed Rust behavior, consider [focused mutation testing](docs/TESTING.md#focused-mutation-testing),
+- For changed Rust behavior, consider [focused mutation testing](docs/content/testing.md#focused-mutation-testing),
   especially error handling, scheduling, previews, and partial failures.
 - After an authorized push, monitor the exact commit's aggregate CI and inspect
   informational failures separately. Verify publication when reporting a release.

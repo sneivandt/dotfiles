@@ -16,8 +16,12 @@ LINK = re.compile(r'\]\(\s*(?:<([^>\n]*)>|((?:\\.|[^\s()\\]|\([^()]*\))+))')
 def markdown_files(root):
     if subprocess.run(["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-        paths = subprocess.check_output(["git", "-C", str(root), "ls-files", "-z", "*.md"])
-        return [root / os.fsdecode(path) for path in paths.split(b"\0") if path]
+        paths = subprocess.check_output([
+            "git", "-C", str(root), "ls-files", "--cached", "--others",
+            "--exclude-standard", "-z", "*.md",
+        ])
+        return [root / os.fsdecode(path) for path in paths.split(b"\0")
+                if path and (root / os.fsdecode(path)).is_file()]
     return [path for path in root.rglob("*.md") if ".git" not in path.relative_to(root).parts]
 
 

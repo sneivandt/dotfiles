@@ -149,7 +149,7 @@ stage_docs()
     sh "$REPO_ROOT/hooks/check-toolchain.sh" "$REPO_ROOT/cli" || return 1
   fi
   DIR="$REPO_ROOT" sh "$REPO_ROOT/.github/workflows/scripts/linux/test-docs.sh" \
-    docs_links docs_task_selectors || return 1
+    docs_links docs_task_selectors docs_site || return 1
 }
 
 stage_ci()

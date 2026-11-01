@@ -1,6 +1,6 @@
 ---
-title: Security
-nav_order: 12
+title: Security and trust
+description: Understand trust boundaries, verified downloads, elevation, private overlays, and the privacy of logs and secrets.
 ---
 
 # Security and trust
@@ -77,7 +77,7 @@ avoid hidden authentication dialogs, including under WSL. If credentials exist
 only in that keyring, supply `GH_TOKEN` or `GITHUB_TOKEN` in the invoking
 environment. This affects the child process, not your system keyring or normal
 interactive `gh`. Missing credentials never authorize an unverified update.
-See [Troubleshooting](TROUBLESHOOTING.md) for recovery.
+See [Troubleshooting](troubleshooting.md) for recovery.
 
 ## Elevation
 
@@ -98,7 +98,7 @@ A skipped privileged task did not apply the change.
 This is not privilege removal: if you launch the CLI from an elevated shell,
 it keeps those privileges. System packages, system-scoped units, and files under
 `/etc` are examples of privileged work. Windows symlinks have additional
-[platform requirements](WINDOWS.md).
+[platform requirements](windows-and-wsl.md).
 
 ## Private overlays
 
@@ -115,14 +115,14 @@ or change files. **Dry-run is not a sandbox.**
 Path validation constrains specific managed resources, such as relative home
 links and system-file destinations under `/etc`. It does not confine every
 external command to those directories. See
-[Configuration](CONFIGURATION.md#overlays) for the overlay format.
+[Private overlays](private-overlays.md) for setup, merging, and the script protocol.
 
 ## Secrets
 
 Keep credentials, private keys, tokens, connection strings, and private
 machine/overlay values out of tracked files, examples, fixtures, and uploads.
 
-The [pre-commit scanner](HOOKS.md#scan-scope) checks added staged text using
+The [pre-commit scanner](git-hooks.md#scan-scope) checks added staged text using
 versioned patterns and redacts matches. It is local and bypassable; it does not
 scan every historical, binary, or encoded value. A clean scan is useful, but not
 proof that a patch contains no secrets.
@@ -162,13 +162,13 @@ overwrite inside the destination or make extracted code trustworthy.
 
 ## Dependency and CI controls
 
-[CI](CI.md) runs selected build, test, and dependency checks. Its aggregate gate
+[CI](ci-and-releases.md) runs selected build, test, and dependency checks. Its aggregate gate
 requires selected jobs to succeed; coverage and mutation reports are
 informational. The separate scheduled dependency workflow runs weekly and on
 manual dispatch. Enable failure notifications and GitHub's Dependabot features
 separately rather than assuming a workflow does that for you.
 
-[Release publication](CI.md#release-selection) is tied to successful
+[Release publication](ci-and-releases.md#release-selection) is tied to successful
 same-repository push CI on `main` and the exact tested commit. Publishing uses
 scoped permissions, checksums, and attestations; attestations must be retrievable
 before the release is published. These controls do not protect against every
@@ -182,7 +182,7 @@ to full commit SHAs. Preserve failure reporting, idempotency, and preview tests
 without calling those controls isolation or rollback.
 
 Use synthetic secrets and isolated fixtures, never private overlay excerpts.
-[Contributing](CONTRIBUTING.md) and [Testing](TESTING.md) describe the workflow.
+[Contributing](contributing.md) and [Testing](testing.md) describe the workflow.
 
 ## Reporting a vulnerability
 

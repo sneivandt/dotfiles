@@ -58,4 +58,4 @@ source captures in number; do not assume general shell glob syntax or recursive
 Read [source and target validation](../../../cli/src/domains/files/config/symlinks.rs)
 and [materialization](../../../cli/src/domains/files/resources/symlink/materialize.rs).
 Use `windows-specific-patterns` for capability/junction behavior. Use the TOML
-and dry-run coverage in [Testing](../../../docs/TESTING.md#choosing-coverage).
+and dry-run coverage in [Testing](../../../docs/content/testing.md#choosing-coverage).

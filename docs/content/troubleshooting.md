@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-nav_order: 11
+description: Diagnose failed or skipped tasks, bootstrap and package problems, configuration errors, and platform-specific symptoms.
 ---
 
 # Troubleshooting
@@ -52,7 +52,7 @@ reports a restart or delegation, inspect the child. `unfinished` means no finish
 record exists; that can also describe a process still running.
 
 If logging failed, check free space and permissions at the
-[log location](USAGE.md#log-locations). Sanitize private paths, configuration,
+[log location](commands-and-usage.md#log-locations). Sanitize private paths, configuration,
 and external tool output before sharing logs.
 
 ## The wrapper cannot find or download the binary
@@ -72,7 +72,7 @@ releases needs a deliberate publisher override or a source build.
 Bootstrap warns and continues if `gh` is absent. If `gh` is present,
 verification failure blocks it; self-update also refuses unverifiable updates.
 Do not bypass checksums or set `DOTFILES_SKIP_ATTESTATION=1` as a routine fix.
-See [Build provenance verification](SECURITY.md#build-provenance-verification).
+See [Build provenance verification](security-and-trust.md#build-provenance-verification).
 
 Wrappers clean failed downloads. Do not delete the checkout or all of `bin/`.
 If one stale binary must be moved aside, first confirm no run is using it.
@@ -127,7 +127,7 @@ A source build is another route to the fix.
 
 ## Cargo build fails
 
-Use the [build prerequisites](CONTRIBUTING.md) and read the first compiler or
+Use the [build prerequisites](contributing.md) and read the first compiler or
 linker error, not just the wrapper's final status.
 
 To build and print a version without applying configuration:
@@ -149,7 +149,7 @@ Do not copy an arbitrary old executable into `bin/` to hide a build failure.
 ## No profile can be selected
 
 ```bash
-dotfiles list --root . --profile base
+dotfiles list --profile base
 git config --local --get dotfiles.profile
 ```
 
@@ -160,7 +160,7 @@ fall back to the saved setting; surrounding whitespace is not trimmed.
 `list` never prompts for a profile. Update/remove/check also need an existing
 selection in unattended or JSON Lines mode, with non-terminal stdin, or with
 any present `CI` variable. An explicit profile overrides the saved choice
-without updating it. See [Profile selection](PROFILES.md#resolution-priority).
+without updating it. See [Profile selection](profiles-and-categories.md#resolution-priority).
 
 ## Configuration does not parse
 
@@ -172,8 +172,8 @@ conflicting targets, unsafe path, or missing source.
 malformed package configuration. Inactive categories are not a safe place to
 leave invalid definitions.
 
-Use [Configuration validation](CONFIGURATION.md#validation) to interpret the
-finding and [CLI validation](TESTING.md#cli-validation) to recheck it.
+Use [Configuration validation](configuration-reference.md#validation) to interpret the
+finding and [CLI validation](testing.md#cli-validation) to recheck it.
 `check` does not repair files, and `config-diagnostics` fails on warning-severity
 diagnostics too.
 
@@ -184,35 +184,30 @@ checkout:
 
 ```bash
 git config --local --get dotfiles.overlay
-dotfiles list --root . --profile desktop --overlay ../dotfiles-private
+dotfiles list --overlay ../dotfiles-private
 ```
 
 Then check:
 
 1. The selected path is the overlay **root**, not its `conf/` directory.
-2. CLI `--overlay` wins over nonempty `DOTFILES_OVERLAY`, which wins over the
-   saved Git setting.
+2. A higher-priority flag or environment value is not overriding the saved path.
 3. Its sections match the active categories.
 4. Overrides match the resource's identity, not just a table name or position.
    Inactive overlay entries do not replace active public entries.
 5. Script declarations live in overlay `conf/scripts.toml`, with script paths
    relative to that overlay root.
 
-Missing optional overlay files add nothing, so a wrong path can look like an
-empty overlay. `list` does not save its selection, but explicit `--overlay`
-on update/remove/check **does**, including dry-run.
-
-Explicit linked-worktree overlays need confirmation and fail without an
-interactive terminal. Use a stable primary checkout for unattended runs.
-See [Overlays](CONFIGURATION.md#overlays).
+Missing optional files add nothing, so a wrong path can look like an empty
+overlay. See [Private overlays](private-overlays.md#selection-and-persistence)
+for selection, persistence, and linked-worktree requirements.
 
 ## A task does not run
 
 Inspect selection before executing more work:
 
 ```bash
-dotfiles list --root . --profile desktop
-dotfiles list --root . --profile desktop --graph update --only systemd
+dotfiles list
+dotfiles list --graph update --only systemd
 ```
 
 | What you see | What to check |
@@ -229,7 +224,7 @@ dotfiles list --root . --profile desktop --graph update --only systemd
 For a focused preview:
 
 ```bash
-dotfiles update --root . --profile desktop --no-repo-update --only systemd --dry-run --verbose
+dotfiles update --only systemd --dry-run --verbose
 ```
 
 Add `--with-deps` only after reviewing its graph: it can bring in package
@@ -245,7 +240,7 @@ Wait for the owner or inspect it. `list` and `log` remain usable.
 **Do not delete the lock file to force concurrent runs.** The process holds
 the lock; leftover owner text alone does not keep it locked.
 
-For a stuck run, follow the [interrupt procedure](USAGE.md#interrupting-a-run).
+For a stuck run, follow the [interrupt procedure](commands-and-usage.md#interrupting-a-run).
 After force quit, check for surviving child installers before retrying.
 
 ## Repository update fails
@@ -294,7 +289,7 @@ Independent tasks can continue, while `--fail-on-skip` or CI fails unmet work.
 
 Resolve authorization for the named scope, then retry. Do not bypass policy or
 create passwordless sudo rules just to clear a failure.
-[Winget installer refusals](WINDOWS.md#packages) are different: they count as
+[Winget installer refusals](windows-and-wsl.md#packages) are different: they count as
 failed package items, not only strict-mode skips.
 
 ## Packages do not install
@@ -304,7 +299,7 @@ need pacman; there is no apt/dnf provider. Windows uses winget. AUR packages
 need Arch and a healthy Paru.
 
 ```bash
-dotfiles update --root . --profile desktop --no-repo-update --only packages --dry-run --verbose
+dotfiles update --only packages --dry-run --verbose
 ```
 
 A failed installed-package query is not an empty machine. Fix the provider
@@ -313,11 +308,12 @@ authorization reason.
 
 `--only packages` does not include AUR entries. `--only aur-packages` assumes
 its omitted prerequisites are satisfied unless you add `--with-deps`.
-Local recipe or pin failures belong in [Local package recipes](LOCAL-PACKAGES.md).
+Local recipe or pin failures belong in
+[Package management](package-management.md#logs-and-troubleshooting).
 
 **Applying missing Arch packages runs `pacman -Syu --needed --noconfirm` and can
 upgrade the whole system.** Do not use apply as a harmless diagnostic.
-For Windows scope, UAC, and policy failures, see [Windows packages](WINDOWS.md#packages).
+For Windows scope, UAC, and policy failures, see [Windows packages](windows-and-wsl.md#packages).
 
 ## Paru bootstrap reports an incomplete Rust/Cargo prerequisite
 
@@ -346,7 +342,7 @@ live ISO does not repair the installed system.
 ## Agent package update does not run or fails
 
 ```bash
-dotfiles update --root . --profile desktop --no-repo-update --only agent-packages --dry-run --verbose
+dotfiles update --only agent-packages --dry-run --verbose
 ```
 
 Confirm that the linked fragments exist, APM is available when native planning
@@ -359,7 +355,7 @@ manifest it delegates to `apm update -g --dry-run`.
 
 Apply advances eligible refs and then reconciles local content/deployments even
 when no refs advanced. Edit tracked fragments/plugins, not generated manifests
-or installed plugin copies. See [Agent tooling](AGENT-TOOLING.md).
+or installed plugin copies. See [AI agent configuration](ai-agent-configuration.md).
 
 ## Optional analyzers are not running
 
@@ -373,7 +369,7 @@ or installed plugin copies. See [Agent tooling](AGENT-TOOLING.md).
 Strict runs (`--fail-on-skip` or CI) fail on these skips. Install the
 prerequisites for the checks you intend to run, reopen the shell if PATH changed,
 and retry. Filtering a check out is not evidence it passed.
-See [CLI validation](TESTING.md#cli-validation).
+See [CLI validation](testing.md#cli-validation).
 
 ## A symlink cannot be created on Windows
 
@@ -386,7 +382,7 @@ Check permission, target conflicts, and source checkout separately:
 - A Git symlink checked out as ordinary text must be repaired in the source
   checkout. Elevating the home-link task does not fix it.
 
-See [Developer Mode and symlinks](WINDOWS.md#developer-mode-and-symlinks) for
+See [Developer Mode and symlinks](windows-and-wsl.md#developer-mode-and-symlinks) for
 inspection commands and a preview including Developer Mode.
 
 ## systemd changes are not visible
@@ -415,14 +411,14 @@ journalctl --user -u dotfiles-first-login.service -n 50 --no-pager
 ```
 
 Do not restart the whole desktop as the first diagnostic.
-See [Application settings](APPLICATIONS.md) for session/service context.
+See [Application settings](application-settings.md) for session/service context.
 
 ## GNOME Keyring does not unlock at login
 
 The PAM fragments are selected for **Arch + desktop**. Preview them with:
 
 ```bash
-dotfiles update --root . --profile desktop --no-repo-update --only system-files --dry-run --verbose
+dotfiles update --only system-files --dry-run --verbose
 ```
 
 This task can cover other selected system files too. Review before applying;
@@ -455,7 +451,7 @@ wsl --shutdown
 
 This terminates **all running distributions and their processes**, not just
 the current one. Reopen the intended distribution afterward.
-See [WSL setup](WINDOWS.md#wsl).
+See [WSL setup](windows-and-wsl.md#wsl).
 
 ## Remove did not restore machine defaults
 
@@ -466,4 +462,4 @@ update can configure.
 
 Use the original profile and overlay. Keep the checkout until materialization
 succeeds, and remember that copies contain the current source—not your
-pre-install files. See [Remove](USAGE.md#remove) for what remains.
+pre-install files. See [Remove](commands-and-usage.md#remove) for what remains.

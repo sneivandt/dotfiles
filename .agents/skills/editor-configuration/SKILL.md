@@ -8,7 +8,7 @@ description: >
 
 # Editor Configuration
 
-Read the [editor guide](../../../symlinks/vim/README.md) for entry points,
+Read [Vim and Neovim](../../../docs/content/vim-and-neovim.md) for entry points,
 bootstrap, parser installation, plugin maintenance, and troubleshooting.
 
 ## Choose the layer
@@ -43,7 +43,7 @@ changing Escape or navigation mappings.
 
 Start with the [plugin-free tests](../../../symlinks/vim/tests/), which use
 isolated homes and stub plugin loading. Use
-[Application configuration](../../../docs/TESTING.md#application-configuration)
+[Application configuration](../../../docs/content/testing.md#application-configuration)
 for commands and the separate CI plugin-restore checks. Headless/stubbed tests
 prove their assertions, not interactive rendering or real plugin integration.
 Keep the tracked lockfile unchanged during verification unless updating its

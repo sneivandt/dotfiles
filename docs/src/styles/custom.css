@@ -1,0 +1,55 @@
+:root {
+  --sl-color-accent-low: #202e4d;
+  --sl-color-accent: #416fcb;
+  --sl-color-accent-high: #b5ceff;
+  --sl-content-width: 48rem;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e8efff;
+  --sl-color-accent: #315eb4;
+  --sl-color-accent-high: #203d75;
+}
+
+.page-title-anchor {
+  display: block;
+  scroll-margin-top: 6rem;
+}
+
+.sl-markdown-content pre.mermaid {
+  display: block;
+  padding: 1rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  background: var(--sl-color-bg-sidebar);
+}
+
+.sl-markdown-content pre.mermaid svg {
+  display: block;
+  flex: none;
+  max-width: none;
+  height: auto;
+  margin-inline: auto;
+}
+
+.sl-markdown-content .mermaid .node rect,
+.sl-markdown-content .mermaid .node polygon,
+.sl-markdown-content .mermaid .node path {
+  /* Mermaid's generated theme selectors include a per-diagram SVG ID. */
+  fill: var(--sl-color-accent-low) !important;
+  stroke: var(--sl-color-accent) !important;
+}
+
+.sl-markdown-content .mermaid .nodeLabel {
+  color: var(--sl-color-text) !important;
+}
+
+.sl-markdown-content .mermaid .flowchart-link {
+  stroke: var(--sl-color-gray-2) !important;
+}
+
+.sl-markdown-content .mermaid marker path {
+  fill: var(--sl-color-gray-2) !important;
+  stroke: var(--sl-color-gray-2) !important;
+}

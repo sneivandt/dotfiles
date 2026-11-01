@@ -1,9 +1,104 @@
 ---
-title: Local packages
-nav_order: 9
+title: Package management
+description: Select packages, understand pacman, Paru, and winget installation, and maintain the local Arch recipes.
 ---
 
-# Local package recipes
+# Package management
+
+Dotfiles installs the packages selected by your profile. It uses native
+package managers rather than maintaining a separate application store.
+Installing missing packages, upgrading existing applications, and updating
+the dotfiles CLI are different operations.
+
+## Choose packages
+
+Edit [`conf/packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
+[Categories](profiles-and-categories.md) select entries for the current machine:
+
+| Source | Declaration | Installer |
+|---|---|---|
+| Arch repositories | Package name in an Arch category | pacman |
+| AUR | `{ name = "spotify", aur = true }`, for example | Paru |
+| Maintained local Arch recipe | Its owned package name with `aur = true` | Paru's prepared local repository |
+| Windows | Exact winget ID, such as `Git.Git` | winget |
+
+For example:
+
+```toml
+[arch]
+packages = ["ripgrep"]
+
+[windows]
+packages = ["Git.Git"]
+```
+
+Use the appropriate existing category rather than adding duplicate sections.
+A [private overlay](private-overlays.md) can add packages or replace a matching
+entry. See [Package declarations](configuration-reference.md#packages) for the
+complete format.
+
+Other Linux distributions can use shared configuration, but dotfiles does not
+install their system packages. Provide the needed tools with that distribution's
+package manager.
+
+## Install and upgrade
+
+Use the normal update preview to include package prerequisites:
+
+```sh
+dotfiles update --dry-run
+```
+
+Review the package actions, then remove `--dry-run` to apply. The native
+`packages` task and Arch's `aur-packages` task query installed state and request
+missing packages. Failed inventory is an error, not an empty machine.
+
+Deleting an entry stops selecting it; it does **not** uninstall the application.
+`dotfiles remove` leaves packages installed too. Use the package manager for a
+deliberate uninstall.
+
+### Arch Linux
+
+Pacman installs ordinary packages. Installing any missing native package uses
+`pacman -Syu --needed --noconfirm`, so it can also synchronize databases and
+upgrade the wider system. This is not an add-only operation.
+
+The `paru` task prepares a working AUR helper, including repairing a detected
+broken helper after library changes. AUR installation runs without an extra
+sudo wrapper around Paru. The local-recipe preparation described below runs
+before those packages are requested.
+
+Dotfiles does not request already-installed AUR packages merely to upgrade
+them. For normal dotfiles maintenance followed by a full package upgrade:
+
+```sh
+dotfiles update
+paru -Syu
+```
+
+The second command upgrades repository and AUR/local packages, not only the
+ones declared in this checkout. Review its transaction.
+
+### Windows
+
+Winget uses exact IDs and installs missing packages; dotfiles does not run
+`winget upgrade --all`. Use winget separately when you intend to upgrade
+already-installed applications.
+
+For each missing package, installation first requests user scope. It retries
+without a scope only when no suitable user-scope installer exists. Winget
+prompts are disabled and agreements accepted, but an installer can still
+request UAC consent.
+
+Administrator-required, cancelled, and policy-blocked installs count as
+**failed items**. Independent packages may continue, but that does not turn the
+task into a success. An “already installed” or “no applicable upgrade” response
+counts as current. A failed or unparseable `winget list` fails even in preview.
+
+Keep the main run unelevated. See [Windows elevation](windows-and-wsl.md#elevation)
+before retrying an installer that genuinely requires Administrator rights.
+
+## Local Arch packages
 
 On Arch Linux, dotfiles maintains a small set of PKGBUILDs for official release
 binaries. You review the recipes here; dotfiles discovers versions and prepares
@@ -21,22 +116,12 @@ them; Paru builds and installs the packages.
 available version and installs missing selected packages. Paru upgrades packages
 that are already installed.
 
-## Normal use
+### Prepare recipes
 
-For a normal machine update followed by package upgrades:
-
-```bash
-dotfiles update
-paru -Syu
-```
-
-These are applying commands. The first runs the full selected dotfiles update;
-the second upgrades packages, not just these local recipes.
-
-To inspect only local recipe preparation from this checkout:
+To inspect only local recipe preparation for your configured checkout and profile:
 
 ```bash
-dotfiles update --root . --no-repo-update --only local-package-versions,local-package-repository --dry-run
+dotfiles update --only local-package-versions,local-package-repository --dry-run
 ```
 
 After reviewing the recipes and plan, remove `--dry-run` to prepare them.
@@ -52,14 +137,16 @@ An explicit first installation, such as `paru -S apm-dotfiles`, works once
 preparation succeeds. Running Paru alone uses the **last prepared snapshot**;
 it does not discover a newer GitHub release or read your latest source edits.
 
-### What happens during an update
+### Preparation lifecycle
 
 ```mermaid
-flowchart LR
-    Release["GitHub release metadata"] --> Pins["Local version.sh pins"]
-    Recipe["Reviewed PKGBUILD"] --> Snapshot["Paru build snapshot"]
+flowchart TB
+    accTitle: Preparing and installing a local Arch package
+    accDescr: GitHub release metadata updates version.sh pins. The pins and reviewed PKGBUILD form a snapshot that Paru can build and install.
+    Release["GitHub release"] --> Pins["version.sh"]
+    Recipe["PKGBUILD"] --> Snapshot["Build snapshot"]
     Pins --> Snapshot
-    Snapshot --> Paru["Paru build and install"]
+    Snapshot --> Paru["Paru install"]
 ```
 
 | Task | Changes | Does not do |
@@ -77,9 +164,9 @@ installed from the AUR instead.
 
 Agent deployment is independent of how APM was installed. An unrelated package
 failure does not prevent use of an available APM; see
-[Agent tooling](AGENT-TOOLING.md).
+[AI agent configuration](ai-agent-configuration.md).
 
-## Files and ownership
+### Files and ownership
 
 | Edit or inspect | Purpose | Tracked? |
 |---|---|---|
@@ -98,7 +185,7 @@ create a remote, or publish anything.
 Keep `pkgrel` in the PKGBUILD and bump it when a packaging-only change should
 produce a newer Arch package. Release discovery manages `pkgver`, not `pkgrel`.
 
-### Package-specific notes
+#### Package-specific notes
 
 - The Arch category selects APM, PowerShell, Copilot CLI, and Codex. The desktop
   Arch category additionally selects the Copilot App.
@@ -112,7 +199,7 @@ produce a newer Arch package. Release discovery manages `pkgver`, not `pkgrel`.
   CLI recipes also install completions and licenses; preserve those when
   changing packaging.
 
-## Version discovery
+### Version discovery
 
 A descriptor names a stable GitHub release source and one asset per architecture.
 For example, the APM descriptor is:
@@ -157,7 +244,7 @@ PowerShell uses this for versioned archive names.
 Tracked license/notice files are not release metadata. Review and refresh them
 separately when upstream terms change.
 
-### Authentication, caching, and failures
+#### Authentication, caching, and failures
 
 GitHub requests prefer `GH_TOKEN`, then `GITHUB_TOKEN`, then an active
 noninteractive `gh` login for github.com. Without credentials, public releases
@@ -179,7 +266,7 @@ Cache-write problems produce warnings without invalidating otherwise valid pins.
 Dry-run may read caches or query GitHub, but does not write caches, cooldowns,
 pins, snapshots, or Paru config. It also does not execute PKGBUILDs.
 
-## How Paru sees the recipes
+### How Paru sees the recipes
 
 The `local-package-repository` task combines the tracked base options with generated local
 repository sections. It writes a regular file, replacing a former config
@@ -218,7 +305,7 @@ when all repositories use local paths, so dotfiles publishes current `.SRCINFO`
 itself. See the upstream
 [Paru manual](https://github.com/Morganamilo/paru/blob/v2.1.0/man/paru.conf.5).
 
-## Why there is a disposable Git snapshot
+### Why there is a disposable Git snapshot
 
 Paru's `CleanAfter` resets and cleans `<CloneDir>/<package_base>`. Pointing that
 cleanup at the source checkout would put source edits and generated pins at risk.
@@ -263,7 +350,7 @@ The installer verifies current validated inputs **and** the published repository
 section before requesting a missing local package. Invalid ownership descriptors
 fail closed rather than allowing an AUR fallback.
 
-## Adding a recipe
+### Adding a recipe
 
 1. Create `packages/<recipe>/PKGBUILD` and `release.json`. Give the local package
    a distinct name where necessary to avoid an AUR recipe taking its place.
@@ -283,7 +370,7 @@ fail closed rather than allowing an AUR fallback.
 On a fresh checkout, preview can describe snapshot work before pins exist.
 Applying `local-package-repository` needs pins, so refresh versions first.
 
-## Logs and troubleshooting
+### Logs and troubleshooting
 
 | Symptom or output | Meaning / next step |
 |---|---|
@@ -302,7 +389,7 @@ Implementation and focused regressions live in
 [`snapshots.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds/snapshots.rs), and
 [`tests.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/local_builds/tests.rs).
 
-## CI and validation
+### CI and validation
 
 Recipe-only changes select offline Linux Rust checks, configuration
 validation/drift, and ShellCheck. They do not request a CLI binary release or
@@ -315,7 +402,7 @@ safety, package readiness, and snapshot ownership/cleanup isolation.
 ShellCheck includes tracked PKGBUILDs and install scripts, not downloaded files
 or build outputs.
 
-Choose local commands from [Testing](TESTING.md#choosing-coverage), using the
+Choose local commands from [Testing](testing.md#choosing-coverage), using the
 pinned Rust toolchain. A recipe edit needs more than a successful docs check.
 
 CI does **not** establish current release availability, archive download

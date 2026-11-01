@@ -51,6 +51,8 @@ symlinks/config/zsh/completions/_dotfiles
 /packages/*/version.sh
 
 # Local documentation previews
-/docs/_site/
-/docs/.jekyll-cache/
-/docs/.jekyll-metadata
+/docs/node_modules/
+/docs/.astro/
+/docs/dist/
+/docs/playwright-report/
+/docs/test-results/

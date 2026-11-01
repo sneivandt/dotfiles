@@ -556,7 +556,7 @@ mod tests {
             .into_iter()
             .map(|listing| listing.selector)
             .collect();
-        let documented: HashSet<_> = include_str!("../../../../docs/TASKS.md")
+        let documented: HashSet<_> = include_str!("../../../../docs/content/task-reference.md")
             .lines()
             .filter_map(|line| {
                 line.strip_prefix("| `")?
@@ -572,7 +572,7 @@ mod tests {
             .collect();
         assert_eq!(
             documented, actual,
-            "docs/TASKS.md must list exactly the public catalog selectors"
+            "docs/content/task-reference.md must list exactly the public catalog selectors"
         );
     }
 

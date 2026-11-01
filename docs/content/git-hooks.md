@@ -1,6 +1,6 @@
 ---
-title: Hooks
-nav_order: 10
+title: Git hooks
+description: Understand staged checks, sensitive-pattern scanning, Git templates, and how to diagnose a rejected commit.
 ---
 
 # Git hooks
@@ -97,7 +97,7 @@ the scan, even for an empty diff.
 This is not a general secret detector. It does not cover binary data, unchanged
 history, or every encoded/unknown credential format. Inspect findings locally;
 do not share raw sensitive input or unsanitized logs. See
-[Secrets](SECURITY.md#secrets).
+[Secrets](security-and-trust.md#secrets).
 
 ## Full guard mode
 
@@ -127,8 +127,8 @@ snapshot.
 You can run `sh hooks/check-ci-guards.sh` directly for its basic targeted checks.
 Without full mode it omits config drift, cargo-deny, and wrapper tests.
 Neither invocation runs every CI job or checks the full `ci-success` contract.
-Use [Testing](TESTING.md#fast-local-sequence) for the canonical local stages and
-[Before pushing](TESTING.md#before-pushing) for push validation.
+Use [Testing](testing.md#fast-local-sequence) for the canonical local stages and
+[Before pushing](testing.md#before-pushing) for push validation.
 
 ## Installation and removal
 
@@ -151,8 +151,8 @@ linked worktrees. A global/shared hooks path can affect other repositories.
 When you deliberately want to deploy:
 
 ```bash
-dotfiles update --root . --no-repo-update --only git-hooks --dry-run
-dotfiles update --root . --no-repo-update --only git-hooks
+dotfiles update --only git-hooks --dry-run
+dotfiles update --only git-hooks
 ```
 
 **Install can replace a differing destination hook.** Preserve custom hooks
@@ -162,8 +162,8 @@ take effect directly from the checkout.
 To inspect removal, then apply only after review:
 
 ```bash
-dotfiles remove --root . --only git-hooks --dry-run
-dotfiles remove --root . --only git-hooks
+dotfiles remove --only git-hooks --dry-run
+dotfiles remove --only git-hooks
 ```
 
 Removal deletes only hooks matching the current managed source/state. Modified
@@ -254,7 +254,7 @@ addresses at `example.com` are not generally allowlisted.
 
 ### Running the hook test suite
 
-Follow [Wrapper and hook tests](TESTING.md#wrapper-and-hook-tests). The full
+Follow [Wrapper and hook tests](testing.md#wrapper-and-hook-tests). The full
 integration suite creates commits and can leave a fixture committed when a test
 fails to block it. Run it only in the prescribed fresh disposable repository,
 **never this checkout**, even when clean. A dirty-tree guard is not isolation.

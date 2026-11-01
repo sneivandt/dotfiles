@@ -131,7 +131,7 @@ function Test-PinnedToolchain
     if ($LASTEXITCODE -ne 0 -or $actual -notlike "rustc $expected *")
     {
         Write-Note "Pinned Rust $expected required; PATH selected $actual."
-        Write-Note 'Select the pinned toolchain as described in docs/CONTRIBUTING.md#selecting-the-pinned-toolchain.'
+        Write-Note 'Select the pinned toolchain as described in docs/content/contributing.md#selecting-the-pinned-toolchain.'
         return $false
     }
     return $true

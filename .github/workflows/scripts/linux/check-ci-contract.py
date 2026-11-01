@@ -172,6 +172,35 @@ def check_release(workflow: str) -> None:
         if command not in jobs[name]:
             raise ValueError(f"release {name} must use the checked remote tag helper")
 
+def check_pages(workflow: str, ci_workflow: str) -> None:
+    deploy = job_blocks(workflow)["deploy"]
+    for guard in (
+        "github.event.workflow_run.conclusion == 'success'",
+        "github.event.workflow_run.event == 'push'",
+        "github.event.workflow_run.head_branch == 'main'",
+        "github.event.workflow_run.head_repository.full_name == github.repository",
+        "run-id: ${{ github.event.workflow_run.id }}",
+        'BUILD_SHA: ${{ github.event.workflow_run.head_sha }}',
+        'if [ "$current_sha" = "$BUILD_SHA" ]; then',
+        "name: docs-site",
+    ):
+        if guard not in deploy:
+            raise ValueError(f"Pages deployment is missing {guard}")
+    if "actions/checkout@" in deploy:
+        raise ValueError("Pages deployment must use the verified artifact, not execute a checkout")
+    if deploy.count("if: steps.current.outputs.current == 'true'") != 4:
+        raise ValueError("all Pages artifact and deployment steps must reject superseded builds")
+    docs = job_blocks(ci_workflow)["docs"]
+    for required in (
+        "docs_links docs_task_selectors docs_site",
+        "npx playwright install --with-deps chromium",
+        "name: docs-site",
+        "path: docs/dist/",
+        "if: github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    ):
+        if required not in docs:
+            raise ValueError(f"CI documentation artifact is missing {required}")
+
 
 def check_results(needs: dict) -> None:
     expected_jobs = JOB_CONDITIONS.keys() - INFORMATIONAL_JOBS
@@ -196,6 +225,8 @@ if __name__ == "__main__":
     try:
         check(WORKFLOW.read_text(encoding="utf-8"))
         check_release(WORKFLOW.with_name("release.yml").read_text(encoding="utf-8"))
+        check_pages(WORKFLOW.with_name("pages.yml").read_text(encoding="utf-8"),
+                    WORKFLOW.read_text(encoding="utf-8"))
         if sys.argv[1:] == ["--results"]:
             check_results(json.loads(os.environ["CI_NEEDS"]))
     except ValueError as error:

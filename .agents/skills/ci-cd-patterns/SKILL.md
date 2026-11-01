@@ -53,5 +53,5 @@ action-version inventories in guidance.
 Start with [CI](../../../.github/workflows/ci.yml) and
 [change classification](../../../.github/workflows/scripts/linux/classify-ci-changes.py)
 (the `.sh` entry point delegates to it).
-Use [Testing](../../../docs/TESTING.md) for canonical commands and the current CI
+Use [Testing](../../../docs/content/testing.md) for canonical commands and the current CI
 coverage matrix.

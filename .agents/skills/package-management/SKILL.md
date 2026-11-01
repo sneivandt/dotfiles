@@ -9,6 +9,9 @@ description: >
 
 # Package Management
 
+Use [Package management](../../../docs/content/package-management.md) for the
+human workflow and provider/upgrade distinctions.
+
 ## Architecture
 
 - Config owns exact package identifiers and explicit metadata such as `aur`.
@@ -60,4 +63,4 @@ and the affected [provider](../../../cli/src/domains/packages/resources/).
 Test provider commands, state mapping, batching, missing-manager behavior,
 query failures, and dry-run planning using mocks, not real package installs.
 Use `toml-configuration` if entry syntax changes and
-[Testing](../../../docs/TESTING.md) for commands.
+[Testing](../../../docs/content/testing.md) for commands.

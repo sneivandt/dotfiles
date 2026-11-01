@@ -86,4 +86,4 @@ Read the [result types](../../../cli/src/engine/stats.rs) and
 [mutation/error handling](../../../cli/src/engine/apply.rs). Cover
 already-correct, dry-run, mutation, failure, and cancellation outcomes. Use
 `logging-patterns` only when user-visible rendering changes and
-[Testing](../../../docs/TESTING.md) for commands.
+[Testing](../../../docs/content/testing.md) for commands.

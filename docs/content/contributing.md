@@ -1,14 +1,14 @@
 ---
 title: Contributing
-nav_order: 13
+description: Find the right place for a change, set up the pinned toolchain, and follow the contribution and verification workflow.
 ---
 
 # Contributing
 
 Most changes start with one application's files, not the CLI engine. This guide
 helps you find the right place, make a bounded change, and verify what you will
-push. Use [Architecture](ARCHITECTURE.md) for design details and
-[Testing](TESTING.md) for exact checks.
+push. Use [Architecture](architecture.md) for design details and
+[Testing](testing.md) for exact checks.
 
 ## Development setup
 
@@ -64,7 +64,7 @@ environment variable before invoking Cargo. Changing these settings rebuilds
 affected artifacts.
 
 Install optional analyzers only for the checks you need. The
-[local stages](TESTING.md#fast-local-sequence) explain their requirements.
+[local stages](testing.md#fast-local-sequence) explain their requirements.
 
 ## Contribution workflow
 
@@ -89,13 +89,13 @@ configuration. A clean working tree does not make a live installation safe.
 | What is changing? | Start here |
 |---|---|
 | Application configuration | The application's directory under [`symlinks/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/) |
-| Packages, links, settings, or services | The matching file under [`conf/`](https://github.com/sneivandt/dotfiles/tree/main/conf/); see [Configuration](CONFIGURATION.md) |
+| Packages, links, settings, or services | The matching file under [`conf/`](https://github.com/sneivandt/dotfiles/tree/main/conf/); see [Configuration](configuration-reference.md) |
 | Administrator-owned file content | [`system/`](https://github.com/sneivandt/dotfiles/tree/main/system/) and [`conf/system-files.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) |
 | CLI options or command selection | [`app/cli.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/cli.rs) and [`app/commands/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app/commands/) |
 | Task membership or cross-domain dependencies | [`app/catalog.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs) |
 | How one kind of state is applied | Its module under [`domains/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/) |
 | Process, filesystem, or output mechanics | [`infra/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra/) |
-| Hooks or automation | [Hooks](HOOKS.md) and [CI and releases](CI.md) |
+| Hooks or automation | [Hooks](git-hooks.md) and [CI and releases](ci-and-releases.md) |
 
 Read the closest existing implementation before adding a new abstraction.
 Repository [skills](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) contain focused contributor procedures;
@@ -120,16 +120,16 @@ not a universal undo operation.
 
 ### 4. Review, commit, and verify the push
 
-Start with [Choosing coverage](TESTING.md#choosing-coverage). Before committing,
+Start with [Choosing coverage](testing.md#choosing-coverage). Before committing,
 review the diff for unintended behavior, private data, generated files, and
 stale examples. Stage explicit paths or hunks and inspect `git diff --cached`.
-The [commit hooks](HOOKS.md) inspect the index, which may differ from your
+The [commit hooks](git-hooks.md) inspect the index, which may differ from your
 working files.
 
-After committing, run the [pre-push checker](TESTING.md#before-pushing).
+After committing, run the [pre-push checker](testing.md#before-pushing).
 It verifies the committed range, not unstaged fixes. Resolve local failures and
 record unavailable checks. After pushing, follow the exact commit's
-[CI result](CI.md#reading-a-run), including informational failures.
+[CI result](ci-and-releases.md#reading-a-run), including informational failures.
 
 ## Change checklists
 
@@ -148,7 +148,7 @@ For a new configuration section:
 4. Implement the resource or operation, register its task, and add real
    configuration plus command/configuration tests.
 5. Keep conditional symlinks aligned with categories and document the format
-   in [Configuration](CONFIGURATION.md).
+   in [Configuration](configuration-reference.md).
 
 ### Tasks and workflows
 
@@ -165,7 +165,7 @@ app layer. List order does not schedule work.
 Use a failure-blocking dependency when success is required, and an ordering-only
 dependency when the task should wait and then recheck state itself. Preserve
 selection, `--with-deps`, and discovery behavior; update the
-[task reference](TASKS.md). [Architecture](ARCHITECTURE.md) explains the contracts
+[task reference](task-reference.md). [Architecture](architecture.md) explains the contracts
 and existing task helpers.
 
 ### Platform-specific changes
@@ -175,21 +175,30 @@ gates around platform-only APIs so the other build still compiles. Tests should
 not change process-global state or invoke real package managers or elevation.
 
 Cross-target compilation is not a Windows runtime test. See
-[Platform coverage parity](TESTING.md#platform-coverage-parity).
+[Platform coverage parity](testing.md#platform-coverage-parity).
 
 ## Documentation
 
 Write for the person doing the work. Put common tasks before edge cases, explain
-terms when introducing them, and keep examples copyable and safe in context.
-Use a small Mermaid diagram only when it makes a relationship easier to grasp.
+terms when introducing them, and keep examples short, copyable, and safe in
+context. Prefer verified defaults over routine root/profile overrides and
+diagnostic flags. Keep necessary task filters and preview flags. Use a small
+Mermaid diagram only when it makes a relationship easier to grasp.
 
-The [documentation index](README.md) is the reader's map. Put user behavior in
-Usage, desired-state formats in Configuration, design in Architecture, and
-verification in Testing. Link to one canonical explanation instead of repeating
-it in several guides. Split a long page when its readers or tasks genuinely
-differ; preserve incoming links when moving content.
+The [homepage](getting-started.md) starts the setup journey, not a directory of
+links. The grouped sidebar moves from setup to everyday use, customization,
+subsystem guides, and development. Keep related platform and editor guides
+adjacent and place common tasks before reference detail.
 
-Keep the root README a landing page. Run the documentation check after changing
+Give each explanation one home: commands and logs in
+[Commands and usage](commands-and-usage.md), the update story in
+[Update lifecycle](update-lifecycle.md), formats and private additions under
+Customize, and detailed platform/editor/package workflows in Subsystem guides.
+Link instead of repeating the same instructions. Split pages when their readers
+or tasks genuinely differ; update incoming references when moving content.
+
+Keep the root README a landing page with the shared icon and one prominent
+website link. Run the documentation check after changing
 links, headings, filenames, or selectors. It catches link and catalog drift,
 not incorrect prose: verify behavioral claims against code and tests.
 
@@ -198,37 +207,75 @@ Never use private overlays, credentials, or unsanitized logs as public examples.
 ### Published documentation
 
 The repository [Docs publishing skill](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)
-covers site configuration and deployment checks for agents.
+covers readable guide prose, examples, navigation, and site publishing for agents.
 
 The documentation home is [dotfiles.stuartneivandt.com](https://dotfiles.stuartneivandt.com/).
-GitHub Pages publishes `docs/` from `main` using Jekyll. The pinned Just the Docs
-theme in `docs/_config.yml` provides the dark color scheme, sidebar, mobile menu,
-search, and Mermaid rendering; no separate copy of the guides is maintained.
-`docs/_includes/mermaid_config.js` gives diagrams a matching dark theme.
+The site uses Astro and Starlight, with locked dependencies in `docs/package-lock.json`.
+Markdown guides live in `docs/content/`; site configuration, components, and
+static assets are separate. The same guides remain readable in the repository.
 
-Edit the existing Markdown files. Each guide has YAML front matter with its
-navigation `title` and numeric `nav_order`; `docs/README.md` has `permalink: /`
-and remains the home page. Give new guides a unique navigation order and add
-them to the documentation index. Keep links between guides relative, including
-the `.md` extension and any heading anchor: Jekyll converts those destinations
-to the published pages. Link to repository source files with full GitHub URLs,
-since code and configuration outside `docs/` are not published to the site.
+Use the same wording for each guide's front-matter `title`, Markdown H1, and
+sidebar label. Its filename and URL use the lowercase, hyphenated title:
+`getting-started.md` publishes at `/getting-started.html`. Add a `description`
+and place new guides in the appropriate sidebar group in `docs/astro.config.mjs`.
+All groups start expanded. New visits default to dark mode; the native theme
+control retains an explicit Light or System choice.
 
-Keep `docs/CNAME` set to `dotfiles.stuartneivandt.com` and the site's `url` in
-`docs/_config.yml` aligned with it. Forks should configure their own Pages URL
-and custom domain before publishing.
+The site root redirects to Getting started. Renamed pages do not get
+compatibility routes or old-heading aliases: update their incoming references.
+The Markdown transform avoids a duplicate displayed H1, retains the current
+title's Markdown fragment, and converts relative `.md` links to published URLs.
+Use full GitHub URLs for source files outside the guides.
 
-Before pushing, run the documentation link check from the repository root:
+Use Starlight's built-in callouts, navigation, search, and theme controls before
+adding custom components. Mermaid is bundled locally and follows the reader's
+theme. Give each diagram an `accTitle` and `accDescr`, use short labels, and
+prefer compact top-to-bottom layouts. Diagrams keep their native text size;
+the container scrolls if a figure cannot fit. Do not scale labels into illegibility.
+
+From the repository root, with the Node version selected by `docs/.node-version`:
+
+```sh
+cd docs
+npm ci
+npx playwright install chromium
+npm run dev
+```
+
+The dev server prints its local URL. For the production rendering and search
+index, build first, then preview:
+
+```sh
+npm run build
+npm run preview
+```
+
+The same commands work from PowerShell. Inspect desktop and narrow-screen
+navigation, search, light/dark/system themes, diagrams, and source links.
+The automated [documentation checks](testing.md#documentation-site) cover these
+contracts without changing the host's managed configuration.
+
+GitHub Pages must use **GitHub Actions** as its publishing source, not
+**Deploy from a branch**. For the initial migration, change this in the
+repository's **Settings > Pages > Build and deployment** before publishing.
+This is a repository setting; editing site files does not switch it automatically.
+Keep the custom domain and HTTPS enforcement enabled. The canonical site URL
+is derived from `docs/public/CNAME`, which is also copied into the build.
+Forks must configure their own domain or Pages URL.
+
+CI builds and checks the site, including Chromium desktop/mobile regressions.
+After the aggregate succeeds for a same-repository push to `main`, the
+**Publish documentation** workflow deploys the artifact from that exact CI run.
+It does not rebuild or execute repository code with deployment credentials,
+and it skips builds superseded on `main`.
+
+Before pushing, run the [local docs stage](testing.md#fast-local-sequence).
+For a link-only check from the repository root:
 
 ```sh
 python3 -B .github/workflows/scripts/linux/check-doc-links.py .
 ```
 
-For a site preview, use a Ruby environment with the `github-pages` gem and run
-`jekyll serve --source docs --destination /tmp/dotfiles-docs-site`. Check the
-sidebar and mobile menu, search, diagrams, and links to repository files. Restart
-the preview after changing `_config.yml`.
-
-After an authorized push to `main`, inspect the **pages build and deployment**
-run in GitHub Actions. It is separate from the CLI CI/release workflows. Confirm the deploy job succeeds, then check the published pages for rendering
-and navigation problems.
+After an authorized push, follow both CI and **Publish documentation** for the
+exact commit. Verify the deployed pages, custom domain, HTTPS, and HTTP-to-HTTPS
+redirect separately; a successful upload does not prove the public site works.

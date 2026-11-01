@@ -1,36 +1,35 @@
 ---
 title: Testing
-nav_order: 15
+description: Choose focused validation, run local checks, and understand isolation, mutation testing, and platform coverage gaps.
 ---
 
-# Testing and validation
+# Testing
 
 Start with the smallest check that can prove your change. Then verify the
 committed patch before pushing. A local pass is not proof of a complete machine
 installation, and a skipped check is not a pass.
 
 Commands below start at the repository root unless they explicitly enter `cli/`.
-[Test recipes](TESTING-RECIPES.md) contains longer fixture setups;
-[CI and releases](CI.md) explains what runs after a push.
+[CI and releases](ci-and-releases.md) explains what runs after a push.
 
 ## Choosing coverage
 
 | Change | Start with | Broaden coverage when... |
 |---|---|---|
-| Documentation or skills | Local `docs` stage | Headings, paths, or selectors changed: check incoming references too |
+| Documentation or skills | Local `docs` stage | Headings, paths, or selectors changed: check incoming references too; site changes also need a visual review |
 | TOML, categories, or source layout | `config_drift` and local `config` stage | Loading, merging, or profile behavior changed |
 | Task selection or dependencies | Affected command suite and `task_execution` | Shared catalog or scheduler behavior changed |
 | A concrete resource | Domain unit tests and affected `lifecycle_contracts` / `e2e_apply` cases | Shared planning, adapters, or failure accounting changed |
 | Process execution | `cargo test --locked --profile ci infra::exec::` from `cli/` | Timeout, cancellation, or native process behavior changed: test Windows too |
-| Wrappers or hooks | [Isolated wrapper/hook fixtures](TESTING-RECIPES.md#wrapper-and-hook-tests) | Integration behavior changed: use a disposable environment |
+| Wrappers or hooks | [Isolated wrapper/hook fixtures](#wrapper-and-hook-tests) | Integration behavior changed: use a disposable environment |
 | Desktop or application content | [Desktop shell](#desktop-shell) / [Application configuration](#application-configuration) | Rendering, focus, or session behavior needs native testing |
 | CI selection or workflows | Local `ci` stage and the changed job's command | Dependencies or triggers changed: include classification fixtures |
-| Local Arch recipes | [Local-package validation](LOCAL-PACKAGES.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
+| Local Arch recipes | [Local-package validation](package-management.md#ci-and-validation) | A real package build/install is needed: use disposable Arch |
 
 For Rust changes, also run formatting and host Clippy. Add Windows-target
 Clippy for platform-sensitive code, and the full Rust suite for shared
 configuration, catalog, or engine changes. Use the
-[pinned toolchain](CONTRIBUTING.md#selecting-the-pinned-toolchain).
+[pinned toolchain](contributing.md#selecting-the-pinned-toolchain).
 
 ### Isolation and side effects
 
@@ -76,7 +75,7 @@ With no stage names, the scripts run their default stages:
 | `test` | Full Rust test suite, not shell/PowerShell integration scripts |
 | `rustdoc` | Private-item documentation and configured rustdoc lints |
 | `config` | CLI configuration, source paths, and required config files |
-| `docs` | Local Markdown links/heading anchors, repository skill metadata/validator fixtures, and the static task-selector catalog; Linux entrypoint only |
+| `docs` | Markdown links, skill metadata/fixtures, task selectors, and the Starlight build, published links, and browser regressions; Linux entrypoint only |
 | `ci` | Workflow contracts, path/release classification, aggregate gating, and actionlint; Linux entrypoint only |
 | `shell` | Shared ShellCheck discovery and rules |
 | `powershell` | PSScriptAnalyzer at Warning/Error severity |
@@ -97,23 +96,60 @@ Rust version from `Cargo.toml`; Linux `qml` runs Qt Quick Test. `--all` on Linux
 includes both, while Windows `-All` adds `msrv`. These options can require
 downloads or additional tools; they do not run mutation tests or host integration.
 
-The docs stage needs Python and Cargo: its selector check runs a Rust fixture.
+The docs stage needs Python, Cargo, the Node version in `docs/.node-version`,
+and the [site dependencies and Chromium runtime](#documentation-site).
+Its selector check runs a Rust fixture.
 It also validates repository skill metadata and runs the validator's synthetic
 regressions without third-party Python dependencies. The supported frontmatter
 convention and manual routing cases live in
 [Skill maintenance](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/skill-maintenance/SKILL.md#check-the-result).
 Metadata checks do not measure agent instruction effectiveness.
 
-The link check inspects **tracked** Markdown files and local inline links, not
-external URLs, reference-style links, Mermaid rendering, or the truth of the prose. A quick
+The source link check inspects tracked and unignored new Markdown files,
+including unstaged moves. It checks local inline links, not external URLs,
+reference-style links, Mermaid rendering, or the truth of the prose. A quick
 link-only check is:
 
 ```sh
 python3 -B .github/workflows/scripts/linux/check-doc-links.py .
 ```
 
-New documents must be staged before this tracked-file check can inspect their
-outgoing links.
+Generated site output and `node_modules` are ignored. New documents do not
+need to be staged to check their links.
+
+## Documentation site
+
+Install the locked dependencies and browser runtime once:
+
+```sh
+cd docs
+npm ci
+npx playwright install chromium
+```
+
+On a minimal Linux machine, Playwright may report missing system libraries.
+Its `install --with-deps chromium` command can install those libraries, but that
+is a host package change: use an authorized environment or a disposable runner.
+CI uses that option on its disposable Ubuntu runner.
+
+For site-only changes, run from the repository root:
+
+```sh
+DIR="$PWD" sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_site
+```
+
+The site check runs Astro diagnostics, Markdown-transform fixtures, the static
+build, matching page titles/navigation/filenames, published URL/anchor/asset
+checks, and Playwright. The browser regressions
+exercise the homepage, grouped navigation, search, theme persistence, and every
+Mermaid diagram at desktop and mobile sizes. Diagram labels must stay at least
+14 CSS pixels. Mobile emulation is not a native phone/browser test.
+
+Use `npm run dev` from `docs/` for editing. Use `npm run build` followed by
+`npm run preview` when inspecting production search and rendering. The browser
+suite starts and stops its own loopback preview on port 4322; keep that port free.
+It uses Astro's programmatic server so a separate preview can stay open for review.
+Neither preview publishes the site or applies machine configuration.
 
 ## Before pushing
 
@@ -135,15 +171,16 @@ CI-selected local checks with strict skip handling. **Unstaged fixes cannot
 satisfy a committed patch.** It reuses the Cargo target cache and redirects CLI
 state and logs into temporary directories.
 
-Have the pinned compiler on `PATH` and required tools, MSRV, and Windows target
-installed first; this checker does not install them. Cargo and dependency
-checks may still need network/cache access. It is a manual command, not an
-installed Git hook, and does not push.
+Have the pinned compiler on `PATH` and required tools, MSRV, Windows target,
+and Playwright Chromium runtime installed first; this checker does not install
+them. It restores locked npm dependencies inside the isolated checkout.
+Cargo and dependency checks may still need network/cache access. It is a
+manual command, not an installed Git hook, and does not push.
 
 Resolve selected local failures before publishing. Its `REMAINING CI` list
 identifies native Windows, host integration, mutation, or publication work left
 to CI. Report unavailable checks explicitly. After pushing, inspect the
-[exact commit's aggregate and informational results](CI.md#reading-a-run).
+[exact commit's aggregate and informational results](ci-and-releases.md#reading-a-run).
 
 ## Integration test suites
 
@@ -209,6 +246,9 @@ cargo run --locked --profile ci -- check --root .. --profile desktop \
   --only config-diagnostics,symlink-sources,config-files
 ```
 
+These source-build examples keep `--root ..` so a custom Cargo output directory
+cannot make the CLI select a different checkout.
+
 This is the local `config` stage. It fails on configuration diagnostics, checks
 configured symlink/permission sources including retained inactive definitions,
 and verifies required TOML files. Structural conflicts can fail during loading,
@@ -238,10 +278,10 @@ Preview the smallest affected selection with the current build:
 ```sh
 cd cli
 cargo run --locked --profile ci -- update --root .. --profile desktop \
-  --no-repo-update --only symlinks --dry-run --verbose
+  --only symlinks --dry-run --verbose
 ```
 
-For removal, use `remove` instead of `update` and omit `--no-repo-update`.
+For removal, use `remove` instead of `update`.
 Substitute `agent-packages` or another selector as appropriate.
 
 A preview must not apply normal managed-state changes, but it can inspect the
@@ -250,7 +290,7 @@ check/preview code. Only preview trusted configuration.
 
 Prove non-mutation using fixture assertions on files, commands, and state;
 the words "dry run" in output are not proof. See
-[Private overlays](SECURITY.md#private-overlays).
+[Private overlays](security-and-trust.md#private-overlays).
 
 ## Focused mutation testing
 
@@ -259,49 +299,144 @@ wrong branch, lost error, or incorrect preview. Consider it for behavior changes
 especially failure handling, scheduling, and partial success.
 
 Run `cargo-mutants` in a disposable checkout, never the shared working copy.
-The [mutation recipe](TESTING-RECIPES.md#focused-mutation-testing) covers a
-committed diff and explains native-code exclusions. Inspect each `MISSED`
-result: add an assertion for observable behavior or explain why the mutation
+Inspect each `MISSED` result: add an assertion for observable behavior or explain why the mutation
 is equivalent. Ordinary tests and `--all` do not run mutation testing.
+
+With `cargo-mutants` installed, select the affected module in that disposable
+checkout. For example:
+
+```sh
+cd cli
+cargo mutants --file src/app/filter.rs --cargo-arg=--profile=ci --cargo-arg=--locked
+```
+
+Use `--in-diff` with a unified Git diff for changed-line coverage. Record any
+narrowed scope and inspect `mutants.out` before cleaning up. CI handles its
+changed-code selection, shards, and native-code exclusions; see
+[Mutation coverage](ci-and-releases.md#platform-coverage) instead of copying that setup into
+each local command. Linux checks do not provide native Windows mutation coverage.
 
 ## Wrapper and hook tests
 
-Start with [isolated wrapper and hook recipes](TESTING-RECIPES.md#wrapper-and-hook-tests).
-They use fixture tools rather than installing the CLI. The full commit-hook
-suite creates real commits and must use the separate disposable-repository
-recipe. [Hooks](HOOKS.md) explains checks against your real staged index.
+### Isolated regressions
+
+These use fixture tools rather than bootstrapping or installing the real CLI:
+
+```sh
+sh .github/workflows/scripts/linux/test-hook-inputs.sh \
+  test_staged_ci_guards test_ci_change_classification test_staged_ci_guard_deletions
+sh .github/workflows/scripts/linux/test-shell-wrapper.sh \
+  test_wrapper_preserves_runtime_context test_wrapper_uses_cargo_artifact
+```
+
+With no selector, `test-hook-inputs.sh` runs all input regressions. Its build
+metadata case needs the pinned Rust compiler; without it, that case skips.
+
+On Windows, dot-source the wrapper suite to load only the isolated functions:
+
+```powershell
+. .\.github\workflows\scripts\windows\Test-ShellWrapper.ps1
+Test-IsolatedWrapperPath
+Test-CargoArtifactPath
+```
+
+Full wrapper suites can build/copy binaries or use `BINARY_PATH`. Read their
+setup before running all cases.
+
+### Checking your real index
+
+These inspect staged content and do not create commits:
+
+```sh
+sh hooks/check-sensitive.sh
+sh hooks/check-rust.sh
+sh hooks/check-ci-guards.sh
+DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
+```
+
+The Rust and CI guards export the index and reuse caches without stashing or
+overwriting working files. Full mode remains staged-change-aware; it is not
+committed-range validation. See [Git hooks](git-hooks.md).
+
+### Full commit-hook suite
+
+**Never run `test-git-hooks.sh` in your developer checkout.** It creates real
+commits. A clean tree is not a safe fixture; do not use its force override.
+
+The full suite runs in CI's disposable checkout. Prefer the isolated local
+regressions above; use a disposable repository and home if you need full
+integration coverage. Do not reuse a failed fixture, because its existing
+commits can make a later check see an empty diff.
 
 ## Cleanup retention and Git templates
 
-Run the [maintenance fixtures](TESTING-RECIPES.md#cleanup-retention-and-git-templates)
-to test cleanup and Git templates without starting services or deleting real
-user files.
+```sh
+python3 -B .github/workflows/scripts/linux/test-maintenance.py
+```
+
+These fixtures check merge/rebase cleanup, protected branches, worktrees, and
+file/link/directory retention in temporary repositories and directories. They
+do not start services or delete real user files.
 
 ## Desktop shell
 
-Use the [desktop recipes](TESTING-RECIPES.md#desktop-shell) for Quickshell QML,
-Python helpers, lock scripts, and stock-cache concurrency. QML tests need
-Qt 6.8 or newer Quick Test and use inert Quickshell mocks.
+QML tests need Qt 6.8 or newer Quick Test and use inert Quickshell mocks:
+
+```sh
+sh .github/workflows/scripts/linux/check.sh --strict qml
+```
+
+Python helpers, lock scripts, and stock-cache concurrency use isolated fixtures:
+
+```sh
+python3 -B -m unittest discover \
+  -s symlinks/config/quickshell/tests/python -p 'test_*.py'
+python3 -B -m unittest discover \
+  -s symlinks/config/hypr/scripts/tests -p 'test_*.py'
+sh .github/workflows/scripts/linux/test-stocks.sh
+```
 
 Offscreen tests cover logic/layout, not native rendering, focus, or a live
-compositor/network session. Record that manual coverage separately.
+compositor/network session. Helpers mock desktop actions and market requests.
+On Windows use `python -B`; Linux-only cases skip. Record native manual
+coverage separately.
 
 ## Application configuration
 
-[Application recipes](TESTING-RECIPES.md#application-configuration) cover shell,
-Vim, and PowerShell fixtures using isolated homes and mock commands. Required
-native tools still need to be installed; a missing-tool skip gives no coverage.
+These use isolated homes and mock commands:
+
+```sh
+python3 -B .github/workflows/scripts/linux/test-shell-config.py
+python3 -B -m unittest discover -s symlinks/vim/tests -p 'test_*.py'
+pwsh -NoProfile -File symlinks/config/powershell/tests/Test-Prompt.ps1
+```
+
+The PowerShell fixture covers first-start discovery, custom Cargo paths,
+literal profile-fragment directories, and PATH deduplication on reload.
+Install required native tools; a missing-tool skip gives no coverage.
 
 ## CI gates
 
 The `ci-success` gate checks that selected jobs succeeded and unselected jobs
-were intentionally skipped. See [CI and releases](CI.md) for scheduling and
+were intentionally skipped. See [CI and releases](ci-and-releases.md) for scheduling and
 informational jobs; do not interpret an omitted job as a pass.
+
+### CI selection fixtures
+
+```sh
+python3 -B .github/workflows/scripts/linux/test-ci-changes.py
+```
+
+These cover classification, aggregate gating, publishing contracts,
+renames/deletions, unusual paths, and invalid ranges. Temporary Git repositories
+and mocked `gh` calls keep fixture commits and tags local; nothing is published.
+Use `ClassificationTests GateTests` as arguments for just those cases.
+Also run the local `ci` stage when workflow syntax or contracts change.
 
 ### Release selection
 
 Publishing compares the exact tested commit to the last published release,
-not merely the previous push. See [Release selection](CI.md#release-selection)
+not merely the previous push. See [Release selection](ci-and-releases.md#release-selection)
 for why a docs-only push can recover a previously failed release.
 
 ## Platform coverage parity
@@ -316,7 +451,7 @@ cargo clippy --locked --profile ci --target x86_64-pc-windows-gnu \
 
 It does **not** exercise Windows registry, UAC, symlink/junction, path, or
 process behavior. Native Windows tests are still required. The
-[CI coverage matrix](CI.md#platform-coverage) lists those boundaries.
+[CI coverage matrix](ci-and-releases.md#platform-coverage) lists those boundaries.
 
 Executor tests launch their ignored child-process fixture themselves; do not
 run it manually with `--ignored`.

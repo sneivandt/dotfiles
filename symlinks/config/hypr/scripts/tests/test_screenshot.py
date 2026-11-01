@@ -96,7 +96,11 @@ class ScreenshotTests(ScriptFixture):
         self.assertEqual(result.returncode, 0, result.stderr)
         notification = next(self.work.glob("notification-*")).read_text()
         self.assertIn("Screenshot saved and copied", notification)
-        self.assertIn(str(self.images()[0]), notification)
+        # Git Bash uses /d/... while Python uses D:\... on Windows.
+        # Compare the actual capture argument with the notification argument.
+        capture_path = next(self.work.glob("arguments-*")).read_text().splitlines()[-1]
+        self.assertEqual(capture_path.replace("\\", "/").split("/")[-1], self.images()[0].name)
+        self.assertEqual(notification.splitlines()[-1], capture_path)
 
     def test_clipboard_failure_feedback_is_accurate(self):
         result = self.capture(CLIPBOARD_FAIL="1")

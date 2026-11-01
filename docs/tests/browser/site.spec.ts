@@ -100,7 +100,8 @@ for (const guide of ['profiles-and-categories', 'update-lifecycle', 'arch-deskto
       await page.goto(`/${guide}.html`);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       const diagram = page.locator('pre.mermaid svg');
-      await expect(diagram).toBeVisible();
+      // Mermaid loads asynchronously; shared runners can delay a cold render.
+      await expect(diagram).toBeVisible({ timeout: 15_000 });
       await expect(diagram.locator('title')).not.toBeEmpty();
       await expect(diagram.locator('desc')).not.toBeEmpty();
       await expect(diagram).toHaveAttribute('aria-labelledby', /.+/);

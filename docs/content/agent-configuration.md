@@ -26,12 +26,11 @@ When the Copilot App is detected, dotfiles enables its managed workflows in
 
 ## Responsibilities
 
-Start with the source that owns your change:
-
 A configuration *fragment* is a YAML file containing part of the APM
 configuration. Dotfiles combines the selected fragments before deployment.
+Choose the source that owns your change:
 
-| I want to… | Edit |
+| Change | Source |
 |---|---|
 | Set a Copilot or Codex preference | [`conf/agent-settings.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) |
 | Add an external plugin or MCP server | A YAML configuration fragment in [`symlinks/apm/config/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/) |

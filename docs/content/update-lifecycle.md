@@ -5,7 +5,7 @@ description: Understand what a normal update does, how the CLI and repositories 
 
 # Update lifecycle
 
-`dotfiles update` does more than copy configuration files. It can update the
+`dotfiles update` does more than link configuration files. It can update the
 CLI, synchronize the configuration repositories, and then bring your machine
 into the selected state. These are separate steps with different controls.
 
@@ -83,6 +83,11 @@ contents of commits it has not downloaded. A later apply may therefore load
 new configuration. To review a fixed checkout, use `--no-repo-update` for both
 the preview and the applying run.
 
+A preview is not a saved execution plan. The applying run inspects current
+state again, and upstream releases or package inventories may have changed.
+`--no-repo-update` keeps repository synchronization out of that run; it does
+not freeze the CLI or external dependencies.
+
 ### 4. Apply the selected state
 
 Tasks inspect the machine and change what is needed for the profile and
@@ -94,7 +99,7 @@ Some update tasks also advance dependencies:
 | Area | What update means |
 |---|---|
 | Native and AUR packages | Install missing selected packages; see the upgrade distinctions in [Package management](package-management.md#install-and-upgrade) |
-| Local Arch recipes | Discover upstream releases and prepare reviewed build snapshots; Paru upgrades already-installed packages |
+| Local Arch recipes | Discover upstream releases and prepare build snapshots from tracked recipes; Paru upgrades already-installed packages |
 | Agent packages | Update dependencies when their declared version rules allow it, then apply package content; see [Agent configuration](agent-configuration.md) |
 | VS Code extensions | Install missing IDs, not pin or upgrade every existing extension |
 | Neovim plugins | Managed by lazy.nvim in the editor, not by the dotfiles task graph |
@@ -133,7 +138,7 @@ want a narrower operation:
 | Keep the CLI version | `DOTFILES_SKIP_SELF_UPDATE=1` | Does not disable wrapper bootstrap or repository/task network access |
 | Keep checkout contents fixed | `--no-repo-update` | Does not disable the CLI release check |
 | Run specific configuration work | `--only <selectors>` | Filters tasks, not startup; prerequisites require `--with-deps` |
-| Leave agent deployments alone | `--skip agent-packages` | Does not stop other tasks or update the APM executable |
+| Leave agent deployments alone | `--skip agent-packages` | Agent preferences and the APM executable are managed separately |
 | Keep custom package version pins | `--skip custom-package-versions` | Existing pins can still be used by recipe preparation |
 
 See [Task selection](commands-and-usage.md#select-tasks) for filter combinations.

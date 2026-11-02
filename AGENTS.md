@@ -38,8 +38,10 @@ changes usually do not need engine changes.
 ## Human documentation
 
 - Update the owning guide when user-visible behavior changes. Use
-  [docs-publishing](.agents/skills/docs-publishing/SKILL.md) for guide prose,
-  README links, navigation, and site changes.
+  [docs-writing](.agents/skills/docs-writing/SKILL.md) for clear, accurate,
+  natural prose at the right level of detail. Use
+  [docs-publishing](.agents/skills/docs-publishing/SKILL.md) for documentation
+  organization, README/site links, navigation, and publishing.
 - Keep one clear explanation per topic, short commands using real defaults, and
   matching page titles, filenames, and URLs. Update references when moving content;
   do not add rename-compatibility routes.

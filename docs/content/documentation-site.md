@@ -81,12 +81,28 @@ In **Settings > Pages > Build and deployment**, select **GitHub Actions** as
 the publishing source, not **Deploy from a branch**. This is a repository
 setting; editing site files does not change it.
 
-The canonical site URL comes from
+Astro derives its site URL from
 [`public/CNAME`](https://github.com/sneivandt/dotfiles/blob/main/docs/public/CNAME),
 which is also copied into the build. Keep the custom domain and HTTPS
 enforcement configured in Pages. CNAME does not configure DNS or enable HTTPS.
-Forks must use their own domain or Pages URL and update the sitemap URL in
-[`public/robots.txt`](https://github.com/sneivandt/dotfiles/blob/main/docs/public/robots.txt).
+
+When changing the domain, update these together:
+
+- `public/CNAME`, which contains the hostname, not a full URL.
+- The homepage's explicit canonical, social, and structured-data URLs in
+  [`content/index.md`](https://github.com/sneivandt/dotfiles/blob/main/docs/content/index.md).
+- The sitemap URL in
+  [`public/robots.txt`](https://github.com/sneivandt/dotfiles/blob/main/docs/public/robots.txt)
+  and the published-site links in the root README.
+- Domain-specific expectations in the
+  [browser tests](https://github.com/sneivandt/dotfiles/blob/main/docs/tests/browser/site.spec.ts).
+
+The current site assumes a domain root. Publishing a fork under a Pages project
+path such as `/dotfiles/` needs an Astro base-path configuration and a review of
+root-relative links and assets; changing CNAME alone is not enough. Forks need
+their own Pages and Actions setup. Publication accepts only a successful push
+CI run on `main` from the same repository, not a pull-request run or a run
+from another repository.
 
 The sitemap must match page canonicals: `/` for the introduction and `.html`
 URLs for guides. Guides allow indexing; the 404 page does not.
@@ -100,7 +116,7 @@ the verified CI artifact rather than rebuilding it.
 
 | Symptom | Check |
 |---|---|
-| A push did not publish | The exact commit's CI and publication results; PR, fork, and superseded runs do not deploy |
+| A push did not publish | The exact commit's CI and publication results; PR, cross-repository, and superseded runs do not deploy |
 | The site shows old content | The deployed commit and successful Pages deployment, not only a local build |
 | The custom domain fails | Pages domain settings, DNS, and HTTPS; CNAME alone is insufficient |
 | A guide is not indexable | The deployed page's robots metadata and response headers, then its canonical URL and sitemap entry |

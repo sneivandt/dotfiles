@@ -64,6 +64,9 @@ synchronize databases and upgrade other installed packages. This is not an
 add-only operation.
 :::
 
+If all selected native packages are already installed, dotfiles does not run
+a system upgrade just because the command is named `update`.
+
 The `paru` task prepares a working AUR helper, including repairing a detected
 broken helper after library changes. AUR installation runs without an extra
 sudo wrapper around Paru.

@@ -36,10 +36,10 @@ an overlay's `conf/git-config.toml` could contain:
 settings = [{ key = "core.editor", value = "nvim" }]
 ```
 
-This replaces the matching Git setting without discarding the other base
-settings. Symlink sources belong under the overlay's `symlinks/`; system-file
-fragments belong under its `system/`. Their paths stay relative to the
-repository that declared them, not the main checkout.
+This adds `core.editor`, or replaces a main declaration for that key, without
+discarding other settings. Symlink sources belong under the overlay's
+`symlinks/`; system-file fragments belong under its `system/`. Their paths stay
+relative to the repository that declared them, not the main checkout.
 
 ## Select and preview
 
@@ -56,6 +56,10 @@ explicit overlay path for future runs, even though it does not apply ordinary
 configuration changes. Check the resolved path and profile in the header.
 After reviewing the result, normal `dotfiles update` runs use the saved overlay.
 
+Check that the directory exists and contains the intended files. Missing
+optional configuration contributes nothing, so a mistyped path can look like
+an empty overlay rather than producing a missing-file error.
+
 :::caution[Review overlay scripts before previewing]
 `--check` and `--dryrun` execute overlay code with your access. They can use the
 network, expose private data, or mutate files if implemented incorrectly.
@@ -70,15 +74,19 @@ Selection priority is:
 2. Nonempty `DOTFILES_OVERLAY`
 3. Repository-local Git setting `dotfiles.overlay`
 
-Relative paths resolve from the **invoking working directory**. Explicit
-selections in update, remove, and check are saved as absolute paths. Existing
-saved relative paths retain their working-directory meaning until replaced.
-Read-only `list` never saves a selection.
+Relative paths resolve from the **invoking working directory**, not the main
+checkout. A path passed with `--overlay` to update, remove, or check is saved
+as an absolute path. Environment selections are not saved. Existing saved
+relative paths retain their working-directory meaning until replaced.
+Read-only `list` never saves a selection. Check for a persistence warning if a
+later run does not remember the path.
 
-Explicitly selecting a linked Git worktree (`.git` is a file) requires
-confirmation, defaulting to no. Non-interactive execution declines it, including
-CI on an attached terminal. Prefer a stable primary checkout for an unattended
-overlay; an ordinary `.git` directory does not need that confirmation.
+Passing a linked Git worktree (`.git` is a file) with `--overlay` requires
+confirmation, defaulting to no. Update, remove, and check decline it in
+non-interactive mode, including CI. `list` can ask when both input and error
+output are terminals. The prompt applies to the explicit flag, not every use
+of a saved overlay. Prefer a stable primary checkout for an unattended overlay;
+an ordinary `.git` directory does not need that confirmation.
 
 ## Merge rules
 

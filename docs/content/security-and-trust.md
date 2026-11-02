@@ -23,6 +23,7 @@ question than "is this safe?"
 | Release binaries and upstream packages | Verification ties bytes to a publisher/build; it is not a review of all dependencies |
 | Tools found on `PATH` | Package managers, installers, and agent tools execute outside the CLI's control |
 | An elevated task | Scoped elevation reduces privilege exposure, but does not sandbox the code it runs |
+| Enabled services and timers | They keep running after dotfiles exits, including [automatic file cleanup](application-settings.md#automatic-cleanup) |
 | Logs and diagnostic output | Paths, arguments, and tool output can contain private information |
 
 Back up files you care about before applying configuration. Task selection is

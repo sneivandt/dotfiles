@@ -1,14 +1,14 @@
 ---
 name: docs-publishing
 description: >
-  Use when writing or reorganizing README.md or docs/content/ guides, documenting
-  changed user behavior, or changing the Astro/Starlight site's navigation, themes,
-  search, diagrams, domain, or Pages publishing. Owns human-readable documentation
-  and site consistency. Not for internal agent instructions (skill-maintenance)
-  or CLI binary release implementation (ci-cd-patterns).
+  Use for documentation organization and site management: adding or moving
+  docs/content/ pages, README/site links, Astro/Starlight navigation, themes,
+  search, diagrams, domain configuration, site checks, or Pages publishing.
+  Not for prose-only editing (docs-writing), internal agent instructions
+  (skill-maintenance), or CLI binary releases (ci-cd-patterns).
 ---
 
-# Documentation Quality and Publishing
+# Documentation Management and Publishing
 
 Start with [site configuration](../../../docs/astro.config.mjs),
 [domain declaration](../../../docs/public/CNAME), and the
@@ -16,29 +16,19 @@ Start with [site configuration](../../../docs/astro.config.mjs),
 CI builds Astro from `docs/`; Pages deploys that verified artifact after the
 aggregate succeeds for a push to `main`. Binary release selection is separate.
 The root README directs readers to the published guides; keep its URLs and
-heading anchors aligned with the site's output.
+heading anchors aligned with the site's output. Use
+[docs-writing](../docs-writing/SKILL.md) for prose quality, factual accuracy,
+examples, and the amount of detail.
 
-## Write for readers
+## Organize the documentation
 
 - Use the root landing page to briefly introduce the repository and give a clear
   first action linking to Getting started; keep the setup walkthrough in that
   guide rather than duplicating it on the landing page. Do not bury the first
-  action beneath a link directory or oversized hero. In guides, put the common
-  workflow before inventories, internals, and exceptions; explain terms on
-  first use.
-- Prefer short, copyable commands using verified defaults. Avoid routine
-  `--root .`, profile overrides, and diagnostic flags. Keep flags that express
-  the example's purpose, such as a targeted preview or explicit unattended input.
-  Explain side effects where they matter, without repeating every caveat everywhere.
-- Give each explanation one home. Commands and logs belong in Commands and usage;
-  the end-to-end update story in Update lifecycle; formats and private additions
-  under Customize; topic workflows and maintenance guides under Platforms,
-  Packages, AI agents, or Editors; repository-wide implementation and validation
-  under Development.
-  Link instead of duplicating.
-- Document stable reader tasks and meaningful behavior, not a narrative of each
-  fix or individual test assertion. Put implementation details in their owning
-  maintenance reference; keep safety warnings beside the actions they affect.
+  action beneath a link directory or oversized hero.
+- Follow the [topic ownership rules](../../../docs/content/contributing.md#documentation)
+  when adding or moving material. Link to the owning guide rather than creating
+  another explanation of the same workflow.
 - Keep Application settings focused on shared preferences and finding sources;
   detailed Arch desktop and editor behavior belongs in its owning guide. Keep
   each topic's maintenance guide beside its everyday guide. Use top-level
@@ -52,8 +42,6 @@ heading anchors aligned with the site's output.
   differs from the Dotfiles site title linked in the header.
 - Keep the README brief with the shared site icon and one prominent root website
   link. Do not turn it into a second documentation directory.
-- Verify behavioral claims against the owning code/tests, not just existing prose.
-  Use public synthetic examples, never private overlays or unsanitized logs.
 
 ## Maintain the site
 
@@ -79,9 +67,13 @@ heading anchors aligned with the site's output.
   choices. Reuse Starlight's theme provider and picker, with theme credit text
   disabled. Use Starlight's default expanded sidebar groups on desktop and
   mobile; preserve its native reader toggles and saved desktop choices.
-- The canonical site URL comes from `docs/public/CNAME`. Pages must use
-  **GitHub Actions**, not branch/Jekyll publishing. Forks need their own domain
-  configuration. CNAME does not configure DNS or enforce HTTPS.
+- Astro derives its site URL from `docs/public/CNAME`. Keep the homepage's
+  explicit canonical/social/structured-data URLs, `public/robots.txt`, README
+  links, and domain-specific browser assertions aligned when changing domains.
+  The current site assumes a domain root, not a Pages project subpath.
+  Pages must use **GitHub Actions**, not branch/Jekyll publishing. Forks need
+  their own domain and publication setup. CNAME does not configure DNS or
+  enforce HTTPS.
 - Keep the landing page and guides indexable: no `noindex` metadata or robots
   exclusion on those pages; the 404 page remains nonindexable. Sitemap entries
   must match the pages' canonical URLs, including `.html` for guides, and
@@ -97,8 +89,9 @@ mobile emulation is not native phone coverage.
 
 After an authorized push, follow CI and **Publish documentation** for the exact
 commit, including informational results. The deployment workflow must download
-the artifact from that CI run, reject PR/fork/superseded runs, and avoid executing
-a checkout with deployment credentials. Verify the deployed site,
+the artifact from that CI run, reject pull-request, cross-repository, and
+superseded runs, and avoid executing a checkout with deployment credentials.
+Verify the deployed site,
 HTTPS, and HTTP-to-HTTPS redirect separately. A successful build alone does not
 prove deployment or browser-side rendering. DNS changes, deployment, and agent
 package installation remain subject to the user's requested scope.

@@ -9,7 +9,8 @@ tableOfContents:
 # Getting started
 
 Dotfiles uses a Rust command-line program to apply the packages, files, and
-settings declared in this repository to **Arch Linux or Windows**.
+settings declared in this repository to an existing **Arch Linux or Windows**
+installation. It does not install the operating system.
 
 This is a personal setup, not a collection of universally safe defaults.
 Review the configuration before applying changes.
@@ -25,8 +26,12 @@ preview the selected work, then apply it.
 ### 1. Choose a permanent checkout
 
 You need Git and a POSIX shell on Linux, or Git and PowerShell on Windows.
-Downloading the CLI on Linux also needs `curl` or `wget`. See the
-[Windows requirements](windows-and-wsl.md#requirements) before continuing there.
+Published binaries support Linux x86-64/AArch64 and Windows x86-64.
+Downloading the CLI on Linux also needs `curl` or `wget`. Install GitHub CLI
+(`gh`) for build-provenance verification: bootstrap warns if it is missing,
+but later CLI self-updates require it. See
+[verification requirements](security-and-trust.md#build-provenance-verification)
+and, on Windows, the [platform requirements](windows-and-wsl.md#requirements).
 
 Fork the repository if you want to maintain your own changes, then clone your
 fork into a directory you intend to keep. To use this repository directly:
@@ -128,10 +133,17 @@ Nonempty directories cause a failure rather than being recursively removed.
 Review any overlay scripts too: they are executable code.
 :::
 
+Review the selected services as well as files. Linux profiles include
+[automatic cleanup](application-settings.md#automatic-cleanup) of old content
+under `~/tmp`; Arch desktops also clean old screenshots. Installing
+[Git hooks](git-hooks.md#installation-and-removal) can replace existing hooks
+at managed names, so preserve any custom hooks first.
+
 ### 3. Preview the selected work
 
-Run the preview from your checkout. With no existing profile selection, the
-CLI asks you to choose `base` or `desktop` and remembers your answer.
+Run the preview from your checkout in an interactive terminal. With no existing
+profile selection, the CLI asks you to choose `base` or `desktop` and remembers
+your answer. For unattended use, supply `--profile base` or `--profile desktop`.
 For this first setup, `--no-repo-update` keeps repository synchronization out
 of the run so you can work with the configuration you just reviewed.
 
@@ -171,8 +183,9 @@ preview; `--only symlinks` selects all active links, not just the Git example.
 
 ### 4. Apply what you reviewed
 
-These commands **change your machine**. They keep the same checkout content
-as the preview by leaving repository synchronization disabled.
+These commands **change your machine**. Like the preview, they leave repository
+synchronization disabled and use the checkout's current content. They inspect
+state again; they do not execute a saved, frozen plan.
 
 On Linux:
 

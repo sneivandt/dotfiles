@@ -216,6 +216,12 @@ context. Prefer verified defaults over routine root/profile overrides and
 diagnostic flags. Keep necessary task filters and preview flags. Use a small
 Mermaid diagram only when it makes a relationship easier to grasp.
 
+Use direct language and ordinary punctuation. Avoid em dashes, decorative
+sentence breaks, canned openings, and repeated summaries. Prefer a period or
+comma when a sentence needs a pause. Preserve exact commands, quoted output,
+and meaningful technical symbols. Use formatting to make information easier
+to find, not to emphasize every sentence.
+
 Give each explanation one home: commands and logs in
 [Commands and usage](commands-and-usage.md), the update story in
 [Update lifecycle](update-lifecycle.md), formats and private additions under
@@ -253,6 +259,8 @@ behavioral claims against code and tests.
 Never use private overlays, credentials, or unsanitized logs as public examples.
 
 Use [Documentation site](documentation-site.md) for local preview, site
-implementation, domain setup, and publishing troubleshooting. The repository
-[Docs publishing skill](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)
-provides the corresponding workflow for agents.
+implementation, domain setup, and publishing troubleshooting. Agents use
+[Docs writing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-writing/SKILL.md)
+for prose quality and
+[Docs publishing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-publishing/SKILL.md)
+for documentation organization and site management.

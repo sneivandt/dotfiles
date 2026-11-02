@@ -16,8 +16,8 @@
 </p>
 
 Keep shell, editor, desktop, and system settings together in a repository.
-The CLI checks what is already in place, previews the selected work, and
-applies the changes. This is a personal setup, not a general-purpose
+The CLI checks what is already in place and applies the selected changes.
+Use dry-run to preview them first. This is a personal setup, not a general-purpose
 installer: review it before using it on your machine.
 
 Desired state lives in [conf/](conf/), with application settings under
@@ -37,7 +37,7 @@ Desired state lives in [conf/](conf/), with application settings under
 | Git | Global settings, aliases, and repository hooks |
 | Packages | Arch and AUR packages through pacman/paru, custom Arch packages from dotfiles-managed recipes, and Windows packages through winget |
 | Arch desktop | Hyprland, Quickshell bar and menus, mako notifications, fuzzel launcher, locking, wallpaper, and GTK/font settings |
-| Services | systemd user and system services, sockets, and timers |
+| Services | systemd services, sockets, and timers, including automatic cleanup of old temporary files and screenshots |
 | System configuration | Managed settings under `/etc`, including pacman, PAM, and WSL configuration |
 | SSH and GPG | SSH client and GPG agent configuration |
 | Agent tooling | Agent packages and plugins, Copilot and Codex settings |
@@ -53,5 +53,5 @@ desktop setup target Arch.
 
 ## Reference
 
-- [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html) — setup and usage.
-- [Contributing](https://dotfiles.stuartneivandt.com/contributing.html) — building, testing, and changing the CLI.
+- [Getting started](https://dotfiles.stuartneivandt.com/getting-started.html): setup and usage.
+- [Contributing](https://dotfiles.stuartneivandt.com/contributing.html): building, testing, and changing the CLI.

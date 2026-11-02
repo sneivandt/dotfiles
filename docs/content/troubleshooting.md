@@ -9,7 +9,8 @@ description: Diagnose failed or skipped tasks, bootstrap and package problems, c
 CLI, sync repositories, or repeat external work. Earlier successful changes
 are not rolled back when a later task fails.
 
-1. Use the exact `dotfiles log --id … -v` command printed after the failure.
+1. Copy the log-viewing command printed after the failure. It selects the run
+   by its stable `--id`, not by its position in history.
 2. Check its profile, platform, overlay, and requested tasks.
 3. Find the first failed or unmet task, not just dependents marked blocked.
 4. Fix that cause, preview a focused rerun, then apply it when ready.

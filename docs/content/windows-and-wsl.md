@@ -30,6 +30,11 @@ without a backup.
 
 ## Bootstrap
 
+Use [Getting started](getting-started.md) to clone and review the configuration.
+If you use a fork without releases, choose its
+[binary publisher or source-build route](getting-started.md#1-choose-a-permanent-checkout)
+before running the wrapper.
+
 Open PowerShell in the checkout and preview an update:
 
 ```powershell
@@ -59,9 +64,6 @@ synchronize the repository first. `--no-repo-update` does not disable CLI
 self-update or all network activity.
 Open a new terminal after installation. The examples below use the wrapper so
 they also work before the launcher is installed.
-
-For a fork without release binaries, follow the
-[setup choices](getting-started.md#1-choose-a-permanent-checkout).
 
 ### Download and update failures
 
@@ -220,9 +222,16 @@ Run the **Linux wrapper inside the distribution** to manage its Linux home
 and `/etc` settings. Running the Windows executable does not manage
 `/etc/wsl.conf`.
 
-For WSL, the Linux `system-files` task merges settings that enable systemd
-and disable Windows PATH injection, preserving unrelated INI settings. It
-can need sudo. Windows separately manages the home `.wslconfig` link.
+| Where dotfiles runs | Managed file | Current settings |
+|---|---|---|
+| Windows | `%USERPROFILE%\.wslconfig`, linked from [`symlinks/wslconfig`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig) | NAT networking for WSL 2 |
+| Inside each Linux distribution | `/etc/wsl.conf`, merged from [`system/wsl.conf`](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf) | Enable systemd and disable automatic Windows PATH injection |
+
+The Windows file controls WSL 2 globally; the Linux file configures that
+distribution. The Linux `system-files` task preserves unrelated INI settings
+and can need sudo. Disabling PATH injection means Windows commands are not
+automatically discoverable by name inside Linux; use their full paths or add
+only the directories you need.
 
 Changes to WSL startup settings need a restart. Save all WSL work, then run
 this from Windows:

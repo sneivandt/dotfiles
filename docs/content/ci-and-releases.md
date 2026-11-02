@@ -5,9 +5,10 @@ description: Understand change-aware CI, required checks, platform coverage, doc
 
 # CI and releases
 
-CI answers two different questions: **did the checks selected for this patch
-pass?** and, after a successful push to `main`, **is there an unpublished binary
-change?** A green first answer does not imply a new release.
+CI verifies that the checks selected for a patch pass. After a successful push
+to `main`, separate workflows publish the documentation and decide whether a
+new CLI release is needed. A docs-only push can update the website without
+releasing a new binary.
 
 For local commands, use [Testing](testing.md). Workflow files and the
 [path classifier](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/scripts/linux/classify-ci-changes.py)
@@ -129,8 +130,9 @@ Chromium. It is part of `ci-success`, including on docs-only changes.
 For a push to `main`, it uploads the verified static site. After the aggregate
 succeeds, [Publish documentation](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/pages.yml)
 downloads the artifact from that exact CI run and deploys it to GitHub Pages.
-PRs and fork runs cannot publish. A completed build that no longer matches
-`main` is skipped rather than rolling the site backward.
+Pull-request runs and runs from a different repository cannot publish.
+A completed build that no longer matches `main` is skipped rather than rolling
+the site backward.
 
 See [Documentation site](documentation-site.md) for Pages settings, domain
 configuration, local preview, and publishing troubleshooting.

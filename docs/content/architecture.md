@@ -10,6 +10,10 @@ changes only what needs attention. It is not a list of installation scripts:
 the dependency graph decides when work can run, and each item or workflow owns
 its own convergence rules.
 
+Here, **convergence** means bringing observed state into agreement with the
+configuration. Running the same work again should leave already-correct state
+alone.
+
 This guide is for contributors choosing where a change belongs. For commands,
 read [Usage](commands-and-usage.md); for desired-state declarations, read
 [Configuration](configuration-reference.md).
@@ -226,9 +230,10 @@ Call `process_requirement()` inside `run()`. It checks the `Preview` or
 still uses the ordinary resource/operation dry-run gate. Do not query the
 same input again or install a hidden prerequisite.
 
-Preview may need fewer inputs than apply. For example, an APM install preview
-can describe local changes without an installed APM executable; a native
-pin-update preview needs the tool. Neither proves installation has happened.
+Preview may need fewer inputs than apply. For example, an AUR package preview
+queries pacman's installed-package database without needing the Paru executable
+that a preceding task only planned to install. It does not prove installation
+will succeed.
 
 Requirements also support conservative early dispatch. A task declares its
 ordering requirements, and the application adds a provider-stability
@@ -353,7 +358,7 @@ See [Secrets](security-and-trust.md#secrets).
 
 Start with the smallest boundary that expresses the change:
 
-| You need… | Change… |
+| Need | Owning layer |
 |---|---|
 | Different packages, settings or application content | `conf/`, `symlinks/`, or `system/` |
 | Another independently managed item | A resource and thin task adapter |

@@ -28,10 +28,13 @@ Companions are needed only when the request changes their contract.
 | Change an optional overlay section's generic TOML loader | `toml-configuration` | Add overlay-scripts only for resolution or execution changes |
 | Choose Windows coverage after a Rust path-handling change | `cross-platform-verification` | windows-specific-patterns owns implementation choices |
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
-| Simplify examples in Commands and usage | `docs-publishing` | Verify defaults in the owning code; no engine changes just for prose |
-| Move desktop documentation into a subsystem guide | `docs-publishing` | Keep one explanation, matching title/file/URL, and updated references |
-| Explain a changed self-update behavior to users | `docs-publishing` | Add self-update only for implementation work or a behavioral question it owns |
-| Change an internal agent instruction without editing human guides | `skill-maintenance` | No docs-publishing skill merely because the instruction is Markdown |
+| Audit the guides for accuracy, readability, and excessive detail | `docs-writing` | Verify claims against sources; add docs-publishing only for site or organization changes |
+| Simplify examples in Commands and usage | `docs-writing` | Verify defaults in the owning code; no engine changes just for prose |
+| Remove em dashes and formulaic wording from the README | `docs-writing` | Preserve exact commands, quoted output, and meaningful technical punctuation |
+| Move desktop documentation into a subsystem guide | `docs-publishing` | Add docs-writing when rewriting prose; preserve one explanation, matching title/file/URL, and incoming references |
+| Explain a changed self-update behavior to users | `docs-writing` | Add self-update only for implementation work or a behavioral question it owns |
+| Change an internal agent instruction without editing human guides | `skill-maintenance` | Neither docs skill is needed merely because the instruction is Markdown |
+| Change the documentation domain without rewriting guide prose | `docs-publishing` | Keep homepage metadata, robots, README links, and browser assertions aligned; no docs-writing skill |
 | Replace the Pages build with a custom Actions workflow | `docs-publishing` | Add ci-cd-patterns for workflow permissions, pins, and guards |
 | Review skill triggers without changing behavior | `skill-maintenance` | No engine skills merely because examples mention tasks |
 

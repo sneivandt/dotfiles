@@ -27,10 +27,20 @@ explains installation and upgrades.
 | Super + O / V | Choose a browser / editor |
 | Super + G / C | Open GitHub Copilot / ChatGPT |
 | Super + Q | Close the focused window |
+| Super + J / K | Focus the next / previous window in the layout |
+| Super + Shift + J / K | Swap the window with the next / previous layout position |
+| Super + T | Toggle floating mode |
+| Super + F | Toggle maximized mode |
 | Super + 1–9 | Change workspace |
 | Super + Shift + 1–9 | Move the window to a workspace |
 | Super + End | Lock the session |
 | Super + Shift + S | Select an area for a screenshot |
+
+Screenshots are saved under `~/screenshots` and copied to the clipboard when
+available. Cancelling area selection saves nothing. Move images you want to
+keep elsewhere: the desktop's
+[cleanup timer](application-settings.md#automatic-cleanup) deletes old files
+from this directory.
 
 ## Hyprland media keys
 
@@ -204,5 +214,5 @@ actions. Review journal output before sharing it.
 
 Use [Troubleshooting](troubleshooting.md#systemd-changes-are-not-visible) for
 inactive units and keyring issues. Contributors can check helpers and UI logic
-with the isolated [application tests](testing.md#application-configuration)
+with the isolated [desktop shell tests](testing.md#desktop-shell)
 without restarting the desktop.

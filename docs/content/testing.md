@@ -9,7 +9,8 @@ Start with the smallest check that can prove your change. Then verify the
 committed patch before pushing. A local pass is not proof of a complete machine
 installation, and a skipped check is not a pass.
 
-Commands below start at the repository root unless they explicitly enter `cli/`.
+Each example starts at the repository root unless it says otherwise or includes
+a `cd` command. Return to the root before following a separate example.
 [CI and releases](ci-and-releases.md) explains what runs after a push.
 
 ## Choosing coverage
@@ -132,18 +133,35 @@ Its `install --with-deps chromium` command can install those libraries, but that
 is a host package change: use an authorized environment or a disposable runner.
 CI uses that option on its disposable Ubuntu runner.
 
-For site-only changes, run from the repository root:
+For site-only changes on Linux, run from the repository root:
 
 ```sh
 DIR="$PWD" sh .github/workflows/scripts/linux/test-docs.sh docs_links docs_site
 ```
 
-The site check runs Astro diagnostics, Markdown-transform fixtures, the static
-build, matching page titles/navigation/filenames, published URL/anchor/asset,
-canonical sitemap, and robots/indexability checks. Browser regressions exercise
+On Windows, the same source-link and site checks can run directly from the
+repository root in PowerShell. Run them in order and stop if a command fails:
+
+```powershell
+python -B .github\workflows\scripts\linux\check-doc-links.py .
+npm --prefix docs run check
+npm --prefix docs test
+npm --prefix docs run build
+python -B .github\workflows\scripts\linux\check-doc-site.py .
+npm --prefix docs run test:browser
+```
+
+This Windows sequence does not replace the full `docs` stage's skill metadata
+and Rust selector checks.
+
+The site check runs Astro diagnostics, Markdown-transform fixtures, and a
+production build. It checks matching titles, navigation labels, and filenames,
+then verifies published links, anchors, assets, canonicals, the sitemap, and
+indexing metadata. Browser regressions exercise
 the homepage, top-level topic navigation, search, theme persistence, warning
-callouts, and every Mermaid diagram at desktop and mobile sizes. Diagram labels must stay at least
-14 CSS pixels. Mobile emulation is not a native phone/browser test.
+callouts, and every Mermaid diagram at desktop and mobile sizes. Diagram labels
+must stay at least 14 CSS pixels. Mobile emulation is not a native phone/browser
+test.
 
 The browser suite starts and stops its own loopback preview on port 4322;
 keep that port free. For manual preview and changes to the content pipeline,
@@ -172,7 +190,7 @@ state and logs into temporary directories.
 Have the pinned compiler on `PATH` and required tools, MSRV, Windows target,
 and Playwright Chromium runtime installed first; this checker does not install
 them. It restores locked npm dependencies inside the isolated checkout.
-Cargo and dependency checks may still need network/cache access. It is a
+Cargo and dependency checks may still need network or cache access. It is a
 manual command, not an installed Git hook, and does not push.
 
 Resolve selected local failures before publishing. Its `REMAINING CI` list
@@ -451,6 +469,12 @@ not merely the previous push. See [Release selection](ci-and-releases.md#release
 for why a docs-only push can recover a previously failed release.
 
 ## Platform coverage parity
+
+For Linux checks from Windows, use a checkout on WSL's Linux filesystem, such
+as `~/src/dotfiles`, rather than a Windows-mounted path under `/mnt/c`.
+Some fixtures create temporary files **inside the checkout** and require Unix
+permission bits or filenames that Windows filesystems cannot represent.
+Changing only `TMPDIR` does not relocate those fixtures.
 
 Linux cross-target Clippy catches Windows type/import errors:
 

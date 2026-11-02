@@ -18,12 +18,13 @@ dotfiles list --all
 dotfiles list --graph update
 ```
 
-Ordinary discovery hides public tasks that clearly have no platform/configured
-work. `--all` shows the complete public catalog. Neither checks runtime
-prerequisites or changes machine state, so a listed task may still find its
-tool unavailable when executed.
+The default list hides tasks that cannot apply to the selected platform or
+configuration. `--all` shows the complete public catalog. Neither listing
+checks runtime prerequisites or applies changes, so a listed task may still
+find its tool unavailable when executed.
 
-The table groups selectors alphabetically by command: update, remove, check.
+The default table output groups selectors alphabetically within update, remove,
+and check.
 Plain/JSON listings contain each selector once with its command membership.
 Graphs retain all nodes, including filtered and internal nodes, and cannot be
 combined with `--all`.
@@ -81,7 +82,7 @@ not applicable or unmet rather than changed; failure is not a rollback.
 See [Architecture](architecture.md#requirements) for runtime readiness
 assessment and conditional scheduling.
 
-## Installation tasks
+## Update tasks
 
 ### Catalog overview
 
@@ -114,7 +115,7 @@ and `symlinks` also belong to [remove](#remove-tasks).
 | `systemd` | [Systemd units](#systemd-units): supported platform and configured units, outside CI |
 | `vscode-extensions` | [VS Code extensions](#vs-code-extensions): configured extensions |
 
-### Host capability and wrapper tasks
+### Host setup and launcher tasks
 
 #### Windows Developer Mode
 
@@ -191,11 +192,11 @@ An internal task records the number of active overlay script definitions.
 It is not a public selector and does not execute those scripts; each script
 gets its own [dynamic task](#dynamic-overlay-tasks).
 
-### System convergence tasks
+### System and application tasks
 
 #### Global Git settings
 
-Converges `conf/git-config.toml` values in **global** Git configuration.
+Applies `conf/git-config.toml` values to **global** Git configuration.
 Repeated occurrences of managed keys are handled without altering unrelated
 keys. Profile/overlay persistence instead uses repository-local configuration.
 
@@ -205,7 +206,7 @@ cleanup. On other platforms, empty settings mean no work.
 
 #### Agent settings
 
-Converges selected dot-separated keys in Copilot JSON and Codex TOML documents,
+Applies selected dot-separated keys to Copilot JSON and Codex TOML documents,
 preserving undeclared and harness-owned keys. It does not deploy skills/plugins.
 See [Agent harness settings](configuration-reference.md#agent-harness-settings).
 
@@ -308,7 +309,7 @@ See [Unit configuration](configuration-reference.md#systemd-units).
 
 #### User registry settings
 
-Converges current-user values, preserving undeclared ones. This is separate
+Applies current-user values, preserving undeclared ones. This is separate
 from machine-level Developer Mode and does not request brokered elevation.
 Some applications read these settings only at startup. Remove does not restore
 former values.
@@ -320,7 +321,7 @@ missing ones after its package waits. A missing CLI is unmet work, not success.
 
 Arch chroot provisioning instead defers installation to
 `dotfiles-first-login.service`, which retries until configured extensions
-converge in a real user session.
+are installed in a real user session.
 
 #### Agent packages
 

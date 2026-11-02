@@ -29,8 +29,9 @@ covered in [Application settings](application-settings.md).
 5. Back up existing targets before applying. Removing a declaration usually
    stops management; it does not undo an earlier change.
 
-Examples show standalone file syntax. When editing an existing file, extend
-its section rather than adding a second table with the same name.
+Examples are valid TOML excerpts, not replacements for the complete
+configuration. Extend the existing section rather than adding a second table
+with the same name.
 
 ## Files
 
@@ -333,6 +334,10 @@ With a live manager:
 User unit files usually arrive through symlinks; packages may provide others.
 System-scope changes can require sudo. Inside WSL, systemd must already be
 running or degraded; changing `wsl.conf` cannot start it in the current session.
+
+Some selected units perform [automatic cleanup](application-settings.md#automatic-cleanup).
+To stop managing a service and also stop it running, first apply an explicit
+`enabled = false` declaration. Deleting its entry alone does not disable it.
 
 Without a user manager, the task prepares per-user enablement links for the
 next login rather than starting services. Disabling a unit removes its matching

@@ -181,15 +181,16 @@ These templates are **not** installed by the repository's `git-hooks` task.
 ### Merged-branch cleanup
 
 `post-merge` and `post-rewrite` after a **rebase** run the shared
-`clean-merged-branches` helper. It considers local branches merged into
-`origin/HEAD`, while preserving:
+`clean-merged-branches` helper. It automatically deletes eligible **local**
+branches merged into `origin/HEAD`, while preserving:
 
 - The current branch and the default branch.
 - `main`, `master`, `dev`, and `develop`.
 - Branches checked out in any worktree.
 - Any branch Git refuses to delete safely with `git branch -d`.
 
-Without `origin/HEAD`, cleanup does nothing. An amend does not trigger it.
+It does not delete remote branches. Without `origin/HEAD`, cleanup does nothing.
+An amend does not trigger it.
 Existing repositories need a newly introduced template entrypoint, such as
 `post-rewrite`, installed explicitly; do not overwrite a repository-specific
 hook to do so.

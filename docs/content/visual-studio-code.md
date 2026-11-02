@@ -34,8 +34,8 @@ files in the following places:
 |---|---|
 | Linux desktop | `.config/Code/User/` and `.config/Code - Insiders/User/` |
 | Windows desktop | `AppData/Roaming/Code/User/` and `AppData/Roaming/Code - Insiders/User/` |
-| VS Code Server | `.vscode-server/data/Machine/settings.json` |
-| VS Code Server Insiders | `.vscode-server-insiders/data/Machine/settings.json` |
+| Desktop profile, VS Code Server | `.vscode-server/data/Machine/settings.json` |
+| Desktop profile, VS Code Server Insiders | `.vscode-server-insiders/data/Machine/settings.json` |
 
 The server locations receive **settings only**, not desktop keybindings.
 Dotfiles must run in the home that owns those files; configuring Windows does
@@ -100,6 +100,10 @@ check which Insiders/stable launcher is on PATH before reinstalling anything.
 For settings that do not apply, check the selected profile, actual user/server
 home, symlink destination, and workspace overrides. The shared file is not a
 promise that every extension supports every target environment.
+
+Selecting `base` does not install the server settings links listed above.
+If you need editor settings on a shell-focused remote host, declare those
+links in an appropriate category in your configuration or overlay.
 
 Agent integrations have additional configuration beyond extensions; see
 [Agent configuration](agent-configuration.md).

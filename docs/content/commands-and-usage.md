@@ -12,12 +12,13 @@ Start with [Getting started](getting-started.md) for a first installation, or th
 The examples use the checkout behind your installed `dotfiles` launcher and
 your saved profile. Before installation, use `./dotfiles.sh` on Linux or
 `.\dotfiles.ps1` on Windows; see [Wrapper bootstrap](#wrapper-bootstrap).
-Update, remove, and check prompt when no profile is selected. Read-only `list`
-needs an existing selection or an explicit `--profile`.
+In an interactive terminal, update, remove, and check prompt when no profile
+is selected. Read-only `list` needs an existing selection or an explicit
+`--profile`. See [Unattended runs](#unattended-runs) for automation.
 
 ## Everyday commands
 
-| I want to… | Command |
+| Goal | Command |
 |---|---|
 | See the available tasks | `dotfiles list` |
 | Preview an update | `dotfiles update --dry-run` |
@@ -78,9 +79,11 @@ dotfiles list --graph update --only systemd --with-deps
 dotfiles update --only systemd --with-deps --dry-run
 ```
 
-Inspect the graph first: this can add repository work, packages, AUR setup,
-symlinks, and file permissions. `--skip` is applied after expansion, so it can remove a
-prerequisite again. `--with-deps` is available only for update and update graphs.
+Inspect the graph first: the systemd example adds package work, AUR setup,
+custom package preparation, symlinks, and file permissions where applicable.
+Other selections, such as `git-hooks`, can also add repository synchronization.
+`--skip` is applied after expansion, so it can remove a prerequisite again.
+`--with-deps` is available only for update and update graphs.
 
 ### Unattended runs
 
@@ -213,8 +216,9 @@ Task filtering cannot bypass malformed configuration loaded at startup.
 
 ## Logs
 
-After a failure, use the exact `dotfiles log --id … -v` command printed by the
-CLI. IDs stay stable even after later runs; numeric history indexes do not.
+After a failure, use the exact log-viewing command printed by the CLI. It
+selects the run with `--id` and adds `-v` for diagnostics. IDs stay stable even
+after later runs; numeric history indexes do not.
 
 ```bash
 dotfiles log                          # newest run

@@ -6,16 +6,16 @@ description: Maintain dotfiles-managed Arch PKGBUILDs, release descriptors, gene
 # Arch package recipes
 
 This guide is for maintaining the Arch package recipes under
-[`packages/`](https://github.com/sneivandt/dotfiles/tree/main/packages/).
+[packages/](https://github.com/sneivandt/dotfiles/tree/main/packages/).
 For choosing, installing, upgrading, or removing applications, use
 [Package management](package-management.md), which also lists the
 [current custom Arch packages](package-management.md#custom-arch-packages).
 
-A **PKGBUILD** is a shell recipe that tells Arch's `makepkg` how to produce a
-package. Each dotfiles-managed recipe has a **release descriptor**, `release.json`,
+A PKGBUILD is a shell recipe that tells Arch's `makepkg` how to produce a
+package. Each dotfiles-managed recipe has a release descriptor, `release.json`,
 that tells dotfiles where to find the upstream binary release. Dotfiles
-generates version/checksum **pins**, then copies the recipe and pins into a
-disposable build **snapshot** for Paru.
+generates version/checksum pins, then copies the recipe and pins into a
+disposable build snapshot for Paru.
 
 The source recipe, prepared snapshot, and installed application are separate.
 Changing or preparing a recipe does not by itself upgrade an installed package.
@@ -47,13 +47,23 @@ as a reference; the same format applies to every application.
    Use `install=package.install` for lifecycle hooks.
 6. For automatic installation, add `{ name = "<package-name>", aur = true }`
    to the appropriate category in
-   [`conf/packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
+   [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
 7. Run [offline checks](#ci-and-validation), review a preparation preview, and
    verify the build on Arch in an isolated environment before installing.
 
 ## Prepare recipes
 
-To inspect only Arch package recipe preparation for your configured checkout and profile:
+Use an Arch Linux environment with a configured dotfiles checkout and selected
+profile. Version discovery needs access to GitHub release metadata, or usable
+cached metadata. Applying preparation needs makepkg and the recipe's shell
+inputs; it executes the reviewed PKGBUILD to generate metadata. The checkout,
+build-cache directory, and generated Paru configuration must be writable.
+
+Paru is needed for the later listing, build, and installation commands, not
+for the preparation preview. This scoped run does not install missing tools.
+Use [Getting started](getting-started.md) for an initial machine setup.
+
+To inspect only recipe preparation:
 
 ```bash
 dotfiles update --only custom-package-versions,custom-package-repository --dry-run
@@ -108,7 +118,7 @@ installed from the AUR instead.
 | `packages/<recipe>/release.json` | GitHub source, asset names, and owned package names | Yes |
 | Optional `package.install`, `LICENSE`, `NOTICE` | Lifecycle hooks and reviewed legal files | Yes |
 | `packages/<recipe>/version.sh` | Discovered version and SHA-256 arrays | No |
-| [`paru.conf.base`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base) | Shared Paru options, including `CleanAfter` | Yes |
+| [paru.conf.base](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/paru/paru.conf.base) | Shared Paru options, including `CleanAfter` | Yes |
 | Effective `paru.conf` | Generated machine-specific options and repository paths | No |
 | `<CloneDir>/<package_base>/` | Disposable Git snapshot and Paru build output | No |
 
@@ -279,7 +289,7 @@ Snapshot safety is intentionally conservative:
 
 A recipe that fails metadata validation is omitted from generated Paru
 repositories and keeps its previous cached inputs. Other recipes can proceed.
-The installer verifies current validated inputs **and** the published repository
+The installer verifies current validated inputs and the published repository
 section before requesting a missing custom package. Invalid ownership descriptors
 fail closed rather than allowing an AUR fallback.
 
@@ -298,9 +308,9 @@ fail closed rather than allowing an AUR fallback.
 | Custom package install excluded | Inspect descriptor ownership, metadata validation, and the published repository section; do not force an AUR fallback |
 
 Implementation and focused regressions live in
-[`arch_recipes.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes.rs),
-[`snapshots.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/snapshots.rs), and
-[`tests.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/tests.rs).
+[arch_recipes.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes.rs),
+[snapshots.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/snapshots.rs), and
+[tests.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/packages/arch_recipes/tests.rs).
 
 ## CI and validation
 

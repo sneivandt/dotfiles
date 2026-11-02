@@ -5,8 +5,8 @@ description: Understand the Hyprland session, Quickshell bar, desktop services, 
 
 # Arch desktop
 
-The Arch `desktop` profile builds a Wayland desktop around **Hyprland** for
-windows and workspaces and **Quickshell** for the bar and menus. UWSM (Universal
+The Arch desktop profile builds a Wayland desktop around Hyprland for
+windows and workspaces and Quickshell for the bar and menus. UWSM (Universal
 Wayland Session Manager) starts the graphical session; systemd manages its
 background services.
 
@@ -18,7 +18,7 @@ explains installation and upgrades.
 ## Everyday shortcuts
 
 `Super` is the Windows/logo key. The full mapping is in
-[`binds.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua).
+[binds.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua).
 
 | Shortcut | Action |
 |---|---|
@@ -58,7 +58,7 @@ Volume follows the default output through `pactl` and can exceed 100%.
 Playback uses `playerctl`. Dedicated media keys also work while locked;
 fallback shortcuts do not.
 
-[`brightness.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/brightness.sh)
+[brightness.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/brightness.sh)
 targets display backlights, never keyboard LEDs, and keeps brightness above
 zero. With no backlight it does nothing. External monitors usually need
 separate DDC/CI configuration unless their driver exposes a backlight.
@@ -104,11 +104,11 @@ The Markets menu refreshes on startup and every five minutes, with a manual
 refresh control in the menu. Each symbol keeps its last successful quote and
 timestamp when a request fails. The menu marks stale data rather than hiding
 every cached quote because one request failed. Configure the symbols in
-[`stocks.py`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/stocks.py).
+[stocks.py](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/scripts/stocks.py).
 
 ## Screen locking and suspend
 
-[`hypridle.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hypridle.conf)
+[hypridle.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hypridle.conf)
 requests locking after **10 idle minutes** and turns displays off after **15**.
 Idle inhibitors can postpone these actions. Turning off displays is not
 suspending the machine.
@@ -126,29 +126,29 @@ does not unlock the session.
 The managed Hyprlock configuration uses a solid background and disables
 animations to avoid a display-reconnect crash observed in Hyprlock 0.9.5.
 Before changing those settings, check the upstream issue recorded in
-[`hyprlock.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf)
+[hyprlock.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprlock.conf)
 and verify that your installed version fixes it.
 
 ## Where to customize
 
 Edit tracked sources under
-[`symlinks/config/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/),
+[symlinks/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/),
 not installed copies. These may already be live links. For a different
 machine's settings, use a [private overlay](private-overlays.md); an overlay
 replaces a matching linked source rather than patching the base file's contents.
 
 | Change | Start here |
 |---|---|
-| Monitor arrangement | [`monitors.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/monitors.lua) |
-| Keyboard, mouse, and touchpad | [`input.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/input.lua) |
-| Window and application shortcuts | [`binds.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua) |
-| Window appearance | [`appearance.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/appearance.lua) |
-| Bar colors, typography, spacing, and motion | [`Theme.js`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Theme.js) |
-| Bar contents and layout | [`Bar.qml`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Bar.qml) |
-| Popup placement, focus, dismissal, and scrolling | [`ShellPopup.qml`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/ShellPopup.qml) |
-| Notification spacing | [`mako/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mako/config) |
+| Monitor arrangement | [monitors.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/monitors.lua) |
+| Keyboard, mouse, and touchpad | [input.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/input.lua) |
+| Window and application shortcuts | [binds.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/binds.lua) |
+| Window appearance | [appearance.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/appearance.lua) |
+| Bar colors, typography, spacing, and motion | [Theme.js](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Theme.js) |
+| Bar contents and layout | [Bar.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/Bar.qml) |
+| Popup placement, focus, dismissal, and scrolling | [ShellPopup.qml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/quickshell/ShellPopup.qml) |
+| Notification spacing | [mako/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/mako/config) |
 
-[`hyprland.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprland.lua)
+[hyprland.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/hyprland.lua)
 loads the Lua modules in `hypr/conf/`. Use the existing Lua format, not a
 configuration snippet for a different Hyprland syntax.
 
@@ -165,11 +165,11 @@ configuration on launch. Existing GTK applications may need reopening.
 ## Session and services
 
 The managed
-[`zprofile`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile)
+[zprofile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile)
 starts `hyprland-uwsm.desktop` through UWSM on `tty1` when a session may start.
 Other terminals remain ordinary shells. UWSM owns session identity;
 application environment settings belong in
-[`conf/env.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/env.lua).
+[conf/env.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/hypr/conf/env.lua).
 
 ```mermaid
 flowchart TB
@@ -189,14 +189,14 @@ the old `dhcpcd` service and standalone network tray applet are disabled.
 PipeWire and WirePlumber provide audio.
 
 Service selection lives in
-[`conf/systemd-units.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml);
+[conf/systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml);
 custom units live under
-[`config/systemd/user/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/systemd/user/).
+[config/systemd/user/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/systemd/user/).
 Keep their graphical-session lifetime and safety settings when customizing.
 
 The desktop portal uses Hyprland for screen sharing and GTK for file choosers.
 That selection belongs in
-[`hyprland-portals.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/xdg-desktop-portal/hyprland-portals.conf).
+[hyprland-portals.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/xdg-desktop-portal/hyprland-portals.conf).
 
 ## Diagnose a desktop problem
 

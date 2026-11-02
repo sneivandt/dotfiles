@@ -12,7 +12,7 @@ the dotfiles CLI are different operations.
 
 ## Choose packages
 
-Edit [`conf/packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
+Edit [conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml).
 [Categories](profiles-and-categories.md) select entries for the current machine.
 The AUR (Arch User Repository) provides community-maintained Arch packages;
 Paru is the helper that builds and installs them.
@@ -119,18 +119,18 @@ separately.
 ## Custom Arch packages
 
 Custom Arch packages use recipes maintained in this repository to package
-upstream binary releases. These **PKGBUILDs** are dotfiles-managed recipes,
+upstream binary releases. These PKGBUILDs are dotfiles-managed recipes,
 rather than recipes fetched from the AUR. A normal update discovers available
 versions, prepares copies of the reviewed recipes for Paru, and installs missing
 selected packages.
 
 | Package | Recipe | Upstream |
 |---|---|---|
-| `apm-dotfiles` | [`packages/apm/`](https://github.com/sneivandt/dotfiles/tree/main/packages/apm/) | Microsoft APM |
-| `github-copilot-app-dotfiles` | [`packages/github-copilot-app/`](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-app/) | GitHub Copilot App |
-| `powershell-dotfiles` | [`packages/powershell/`](https://github.com/sneivandt/dotfiles/tree/main/packages/powershell/) | Microsoft PowerShell |
-| `github-copilot-cli-dotfiles` | [`packages/github-copilot-cli/`](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-cli/) | GitHub Copilot CLI |
-| `openai-codex-dotfiles` | [`packages/openai-codex/`](https://github.com/sneivandt/dotfiles/tree/main/packages/openai-codex/) | OpenAI Codex CLI |
+| `apm-dotfiles` | [packages/apm/](https://github.com/sneivandt/dotfiles/tree/main/packages/apm/) | Microsoft APM |
+| `github-copilot-app-dotfiles` | [packages/github-copilot-app/](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-app/) | GitHub Copilot App |
+| `powershell-dotfiles` | [packages/powershell/](https://github.com/sneivandt/dotfiles/tree/main/packages/powershell/) | Microsoft PowerShell |
+| `github-copilot-cli-dotfiles` | [packages/github-copilot-cli/](https://github.com/sneivandt/dotfiles/tree/main/packages/github-copilot-cli/) | GitHub Copilot CLI |
+| `openai-codex-dotfiles` | [packages/openai-codex/](https://github.com/sneivandt/dotfiles/tree/main/packages/openai-codex/) | OpenAI Codex CLI |
 
 **A refreshed recipe is not an upgraded application.** Run the
 [Arch upgrade workflow](#arch-linux) to upgrade packages that are already
@@ -139,7 +139,7 @@ discover a newer release or read your latest source edits.
 
 You do not need to edit a recipe just to select one of these packages.
 
-**For maintainers:** See [Arch package recipes](arch-package-recipes.md) for
+For maintainers: See [Arch package recipes](arch-package-recipes.md) for
 adding or changing a recipe. Preparation failures have their own
 [troubleshooting table](arch-package-recipes.md#logs-and-troubleshooting).
 

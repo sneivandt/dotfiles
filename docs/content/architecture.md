@@ -10,7 +10,7 @@ changes only what needs attention. It is not a list of installation scripts:
 the dependency graph decides when work can run, and each item or workflow owns
 its own convergence rules.
 
-Here, **convergence** means bringing observed state into agreement with the
+Here, convergence means bringing observed state into agreement with the
 configuration. Running the same work again should leave already-correct state
 alone.
 
@@ -35,11 +35,11 @@ Three boundaries explain most of the design:
 
 | Boundary | Question it answers | Example |
 |---|---|---|
-| **Task** | Should this work run, and what must precede it? | Home symlinks |
-| **Resource** | Is this independently managed item correct? | One home-directory link |
-| **Operation** | What plan will converge this workflow as a whole? | Synchronizing a repository |
+| Task | Should this work run, and what must precede it? | Home symlinks |
+| Resource | Is this independently managed item correct? | One home-directory link |
+| Operation | What plan will converge this workflow as a whole? | Synchronizing a repository |
 
-A **Requirement** checks an input without creating it. An **AccessClaim**
+A Requirement checks an input without creating it. An AccessClaim
 prevents concurrent work from touching the same shared state. Neither is a
 substitute for a dependency.
 
@@ -56,10 +56,10 @@ The Rust application has four layers:
 
 | Layer | Responsibility |
 |---|---|
-| [`app/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app) | CLI syntax, configuration loading, command composition, cross-domain dependencies, restart and elevation policy |
-| [`engine/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/engine) | Task graphs, scheduling, convergence lifecycles, cancellation and result accounting |
-| [`domains/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains) | Packages, files, Git, editors, services and other concrete desired state |
-| [`infra/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra) | Filesystem, processes, environment, platform capabilities and logging |
+| [app/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/app) | CLI syntax, configuration loading, command composition, cross-domain dependencies, restart and elevation policy |
+| [engine/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/engine) | Task graphs, scheduling, convergence lifecycles, cancellation and result accounting |
+| [domains/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains) | Packages, files, Git, editors, services and other concrete desired state |
+| [infra/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/infra) | Filesystem, processes, environment, platform capabilities and logging |
 
 Configuration lives outside those layers: `conf/` declares desired state,
 `symlinks/` holds managed home content, and `system/` holds administrator-file
@@ -72,7 +72,7 @@ and guard direct environment/platform access.
 
 ## Wrappers
 
-[`dotfiles.sh`](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.sh) and [`dotfiles.ps1`](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.ps1) locate the
+[dotfiles.sh](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.sh) and [dotfiles.ps1](https://github.com/sneivandt/dotfiles/blob/main/dotfiles.ps1) locate the
 checkout and binary, handle `--build`, bootstrap when needed, and forward the
 remaining arguments. Rust owns profile selection and command behavior.
 
@@ -83,7 +83,7 @@ verification.
 ## Application layer
 
 For engine commands, startup resolves one
-[`RuntimePolicy`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runtime.rs) before logging begins.
+[RuntimePolicy](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runtime.rs) before logging begins.
 It combines CLI flags, the injected environment and terminal capabilities.
 The context receives its resolved `ExecutionPolicy`; profile prompting,
 restart logic and elevation do not independently reinterpret the environment.
@@ -100,14 +100,14 @@ Important distinctions:
 - Structured JSONL output disables prompts. Terminal-dependent Windows exit
   pauses and interrupt handling remain separate from task prompt policy.
 
-The [`CommandRunner`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the run lock,
+The [CommandRunner](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/runner.rs) holds the run lock,
 configuration store and execution context. Static update/remove tasks come
-from [`catalog.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs); `check` has a
+from [catalog.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/catalog.rs); `check` has a
 [separate task set](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/check.rs). The
 [execution coordinator](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/execution/mod.rs) handles
 elevation, restart phases, progress and final command status.
 
-Read-only `list` uses configuration and task metadata without executing tasks,
+Read-only listing uses configuration and task metadata without executing tasks,
 probing runtime prerequisites, creating a run log, acquiring the run lock or
 persisting selections. Its graph explains selection, not predicted changes.
 
@@ -129,7 +129,7 @@ from `Config::validate`: startup displays them, while `config-diagnostics` fails
 if any remain. Do not conflate these two validation stages or silently replace
 invalid input with a default.
 
-[`ConfigStore`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/config/store.rs) exposes typed, `Arc`-backed
+[ConfigStore](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/config/store.rs) exposes typed, `Arc`-backed
 handles into one immutable configuration snapshot. Cloning a handle shares
 ownership; `get()` borrows the data. Tasks, including dynamic script tasks, are
 built once from that snapshot. They do not reload configuration as they run.
@@ -151,8 +151,8 @@ restart; no change means the existing snapshot remains usable. Filtering out
 repository work uses a single graph.
 
 This is a reload boundary, not an independently selectable “reload” task.
-See [`update.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/update.rs) and
-[`reexec.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/reexec.rs).
+See [update.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/update.rs) and
+[reexec.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/app/commands/reexec.rs).
 
 ## Task engine
 
@@ -198,7 +198,7 @@ Ready tasks run in scoped threads; resource batches can use Rayon.
 `ctx.parallel()` gates both. `.sequential()` only serializes one batch; it does
 not prevent another task from touching the same document.
 
-Use [`AccessClaim`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/access.rs) for that exclusion. Equal
+Use [AccessClaim](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/access.rs) for that exclusion. Equal
 namespace/key pairs cannot overlap within the run's claim registry:
 
 - A task reserves its full claim set after dependency waits, before its body.
@@ -216,7 +216,7 @@ agent settings claim each target document, not each individual setting.
 
 ## Requirements
 
-A [`Requirement<T>`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/requirement.rs) is a named read-only
+A [requirement](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/requirement.rs) is a named read-only
 probe that returns either:
 
 | Result | Meaning |
@@ -255,7 +255,7 @@ symlink prerequisite. The declared graph and `--with-deps` expansion do not chan
 
 ## Resources
 
-A [`Resource`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs) represents one
+A [Resource](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/resource/contract.rs) represents one
 independently convergent item. Its lifecycle is **discover → plan → preview or
 apply**. Discovery is intrinsic to the resource, or uses an injected batch
 lookup when one query can inspect many items.
@@ -281,7 +281,7 @@ An unusable result must not become a successful no-op. Removal is a separate
 managed state, not arbitrary mismatched user data. Unknown ownership prevents
 removal and records failure.
 
-Stopped batches retain a typed [`BatchReport`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/batch.rs):
+Stopped batches retain a typed [BatchReport](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/batch.rs):
 completed statistics, interrupted work and unattempted items. Parallel batches
 join already-started work before reporting. A failed shared inventory query
 leaves all prepared items unattempted and is a task-level error, not an invented
@@ -289,7 +289,7 @@ resource failure. Later cancellation must not erase an earlier genuine failure.
 
 ## Operations
 
-An [`Operation`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/operation.rs) handles one idempotent workflow,
+An [Operation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/engine/operation.rs) handles one idempotent workflow,
 such as repository synchronization or an overlay script. `current_state()`
 returns complete, not applicable, blocked, or needs-run with an immutable plan.
 
@@ -316,7 +316,7 @@ See [Elevation](security-and-trust.md#elevation).
 
 ## Error handling and observability
 
-Use checked [`CommandSpec`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/infra/exec/mod.rs) requests unless a
+Use checked [CommandSpec](https://github.com/sneivandt/dotfiles/blob/main/cli/src/infra/exec/mod.rs) requests unless a
 nonzero exit has a domain meaning the caller explicitly handles. Preserve
 typed spawn, I/O, nonzero-exit, capture-limit, timeout and cancellation causes
 through helper context and task boundaries.
@@ -343,7 +343,7 @@ of normal rows/totals, and finished rows retain completion order.
 Run logs are schema-versioned, with one physical line per event. Restarted and
 elevated processes have separate run IDs linked to their parent. Keep log-reader
 compatibility with legacy text logs. See the
-[Logs reference](commands-and-usage.md#logs) for viewing, retention, and
+[Logs reference](cli-reference.md#logs) for viewing, retention, and
 interpretation of unfinished runs.
 
 Argument redaction and captured-output policy are separate.

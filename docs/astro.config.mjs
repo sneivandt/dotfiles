@@ -65,15 +65,15 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Start here',
-          items: ['getting-started', 'profiles-and-categories'],
+          items: ['getting-started', 'profiles-and-categories', 'security-and-trust'],
         },
         {
           label: 'Use dotfiles',
-          items: ['commands-and-usage', 'update-lifecycle', 'troubleshooting', 'task-reference', 'security-and-trust'],
+          items: ['commands-and-usage', 'update-lifecycle', 'troubleshooting', 'cli-reference', 'task-reference'],
         },
         {
           label: 'Customize',
-          items: ['configuration-reference', 'private-overlays', 'application-settings'],
+          items: ['application-settings', 'configuration-reference', 'private-overlays', 'git-configuration'],
         },
         {
           label: 'Platforms',
@@ -93,7 +93,7 @@ export default defineConfig({
         },
         {
           label: 'Development',
-          items: ['contributing', 'architecture', 'testing', 'documentation-site', 'git-hooks', 'ci-and-releases'],
+          items: ['contributing', 'testing', 'git-hooks', 'architecture', 'documentation-site', 'ci-and-releases'],
         },
       ],
     }),

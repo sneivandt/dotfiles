@@ -5,7 +5,7 @@ description: Customize shared VS Code settings, manage extensions, and understan
 
 # Visual Studio Code
 
-The `desktop` profile installs **VS Code Insiders** on Arch and Windows.
+The desktop profile installs VS Code Insiders on Arch and Windows.
 Settings are shared with stable VS Code when it is present, but extension
 installation targets one detected editor, preferring Insiders.
 
@@ -16,9 +16,9 @@ list of extensions. Changing one does not automatically change the others.
 ## Settings and keybindings
 
 Edit the tracked
-[`settings.json`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/settings.json)
+[settings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/settings.json)
 and
-[`keybindings.json`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/keybindings.json).
+[keybindings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/Code/User/keybindings.json).
 VS Code's settings UI can write through those links into the checkout, so
 review the repository diff after changing preferences in the editor.
 
@@ -44,7 +44,7 @@ override user settings.
 
 ## Extensions
 
-[`conf/vscode-extensions.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml)
+[conf/vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml)
 is the source of truth for the extension list. Entries are Marketplace IDs,
 grouped by [profile categories](profiles-and-categories.md). For example:
 

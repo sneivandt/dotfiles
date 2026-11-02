@@ -16,7 +16,7 @@ are authoritative when changing automation.
 
 ## Reading a run
 
-[`ci.yml`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/ci.yml) runs for pushes and pull requests to
+[ci.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/ci.yml) runs for pushes and pull requests to
 `main`, and manual dispatch. It does not use workflow-level path filters that
 could leave required checks pending.
 
@@ -76,7 +76,7 @@ empty diff runs the always-on checks. Unavailable comparison ranges use
 conservative full CI instead. Full CI alone does not request publication or
 mutation testing.
 
-Cargo verification uses the `ci` profile and `--locked`. Downstream integration
+Cargo verification uses the CI build profile and `--locked`. Downstream integration
 jobs reuse uploaded binaries rather than downloading an unrelated release.
 Configuration-only Linux checks use `config_drift` instead of the full Rust suite
 when full Rust coverage was not selected.
@@ -111,7 +111,7 @@ Windows code and one equivalent mutation; see the
 
 ## Scheduled dependency checks
 
-[`dependency-security.yml`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/dependency-security.yml)
+[dependency-security.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/dependency-security.yml)
 runs `cargo audit` and `cargo deny check all` weekly and on manual dispatch,
 independently of changed paths. The policy check still runs after an advisory
 failure unless the workflow is cancelled.
@@ -139,7 +139,7 @@ configuration, local preview, and publishing troubleshooting.
 
 ## Release selection
 
-[`release.yml`](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/release.yml) starts after successful
+[release.yml](https://github.com/sneivandt/dotfiles/blob/main/.github/workflows/release.yml) starts after successful
 same-repository push CI on `main`. A read-only selection job compares that exact
 tested SHA with the latest published, non-draft, non-prerelease release.
 

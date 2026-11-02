@@ -39,8 +39,9 @@ engine for my Arch Linux and Windows machines, and a place to experiment with
 how coding agents can help build and maintain software, even when that means
 building more than I strictly need.
 
-This is my own setup, **not a general-purpose tool**. If you want to try it,
-start with [Getting started](getting-started.md) to review the configuration
+This is my own setup, not a general-purpose tool.
+
+Start with **[Getting started](getting-started.md)** to review the configuration
 and preview changes before applying anything to your machine.
 
 The Rust CLI checks what's already in place and applies the work selected for

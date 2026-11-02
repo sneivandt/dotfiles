@@ -5,9 +5,13 @@ description: Choose a base or desktop role and understand how platform categorie
 
 # Profiles and categories
 
-Choose a **profile** for the machine's role. Dotfiles adds **categories** for
+Choose a profile for the machine's role. Dotfiles adds categories for
 the operating environment, then uses those categories to select configuration.
-Use **task filters** separately when you want to run only part of that work.
+Use task filters separately when you want to run only part of that work.
+
+The examples assume an installed dotfiles launcher. Before installation, use
+your checkout's `./dotfiles.sh` on Linux or `.\dotfiles.ps1` on Windows;
+[Getting started](getting-started.md) explains bootstrap and the first run.
 
 ## Built-in role profiles
 
@@ -62,7 +66,7 @@ flowchart TB
 
 The active categories select TOML sections. A hyphen in a section name means
 **AND**: every category in the name must be active. This excerpt from
-[`conf/packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml)
+[conf/packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml)
 shows two matching sections:
 
 ```toml title="conf/packages.toml" {4-5}
@@ -73,7 +77,7 @@ packages = ["git"]
 packages = ["quickshell"]
 ```
 
-Choose the `desktop` role on Arch Linux and the active categories are `base`,
+Choose the desktop role on Arch Linux and the active categories are `base`,
 `desktop`, `linux`, and `arch`. Both sections match, so both package lists
 contribute. Choose `base` on the same machine and only `[arch]` matches this
 example.

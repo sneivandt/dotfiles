@@ -11,7 +11,7 @@ To add a skill, package, or preference, start with
 user-facing setup, target selection, and removal instructions.
 
 The implementation lives under
-[`cli/src/domains/ai/apm/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/).
+[cli/src/domains/ai/apm/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/).
 Native APM owns dependency resolution, local-source verification, and stale
 deployment cleanup. Dotfiles owns fragment merging and two compatibility
 integrations: Copilot App workflow policy and Cowork skill copying.
@@ -38,9 +38,9 @@ dotfiles prune commands, success fingerprints/markers, or decisions based on
 Preserve authentication-error classification and workflow-policy restoration
 when any phase fails.
 
-See [`install.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/install.rs),
-[`commands.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/commands.rs),
-and [`managed_targets.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/managed_targets.rs).
+See [install.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/install.rs),
+[commands.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/commands.rs),
+and [managed_targets.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/managed_targets.rs).
 
 ### Preview boundary
 
@@ -80,7 +80,7 @@ The distinction between named MCP entries and other dependencies matters:
 an MCP server name is its merge identity, while other entries deduplicate by
 serialized content. This is not the TOML overlay merge.
 Exact examples and regressions live in
-[`fragments.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs).
+[fragments.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/fragments.rs).
 
 ## Target adapters
 
@@ -125,7 +125,7 @@ Repair needs Python and database access. It is best-effort, with warnings
 reported separately from the native result. Attempt it even after an APM or
 Cowork failure: an earlier step may already have reset workflow policy.
 Implementation and regression tests live in
-[`autopilot/`](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/autopilot/).
+[autopilot/](https://github.com/sneivandt/dotfiles/tree/main/cli/src/domains/ai/apm/autopilot/).
 
 ### Cowork copy and cleanup
 
@@ -137,7 +137,7 @@ Linux. Otherwise dotfiles reads `copilot_cowork_skills_dir` from
 detection to continue. Unreadable or malformed configuration and non-string
 paths fail rather than redirecting deployment to a fallback directory. The
 environment override bypasses that lower-priority configuration.
-See [`targets.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/targets.rs)
+See [targets.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/targets.rs)
 for resolution and invalid-input regressions.
 
 Dotfiles enables the
@@ -161,7 +161,7 @@ Before native deployment, legacy `cowork://` lock records are removed to prevent
 native directory cleanup. Explicit legacy skill ownership is retained in the
 inventory when the destination exists. The inventory is required for safe
 cleanup; deleting it is not a repair strategy.
-See [`cowork.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs).
+See [cowork.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/ai/apm/cowork.rs).
 
 ## Validating implementation changes
 

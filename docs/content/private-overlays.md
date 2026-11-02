@@ -78,7 +78,7 @@ Relative paths resolve from the **invoking working directory**, not the main
 checkout. A path passed with `--overlay` to update, remove, or check is saved
 as an absolute path. Environment selections are not saved. Existing saved
 relative paths retain their working-directory meaning until replaced.
-Read-only `list` never saves a selection. Check for a persistence warning if a
+Read-only listing never saves a selection. Check for a persistence warning if a
 later run does not remember the path.
 
 Passing a linked Git worktree (`.git` is a file) with `--overlay` requires

@@ -6,7 +6,7 @@ description: Find the source for a common application change, understand when ed
 # Application settings
 
 Application preferences live in tracked files under
-[`symlinks/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
+[symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
 Edit those sources, not installed copies or generated files. A home-directory
 link may make this checkout live configuration, so some changes take effect
 immediately.
@@ -22,17 +22,17 @@ shared by the shells.
 
 | I want to change... | Start here |
 |---|---|
-| Git identity, defaults, or aliases | [`config/git/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config), [`config/git/aliases`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases), and [Git settings](configuration-reference.md#git-settings) |
+| Git identity, defaults, aliases, or templates | [Git configuration](git-configuration.md) |
 | Bash/Zsh environment or shared commands | [Shared shell sources](#shell-application-configuration) below |
-| User command directories on PATH | [`config/shell/path.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/path.sh) for Bash/Zsh, or the [PowerShell profile](windows-and-wsl.md#powershell-configuration) |
-| Bash or Zsh prompt | [`config/bash/prompt.bash`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/bash/prompt.bash) or [`config/zsh/prompt.zsh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/prompt.zsh) |
+| User command directories on PATH | [config/shell/path.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/path.sh) for Bash/Zsh, or the [PowerShell profile](windows-and-wsl.md#powershell-configuration) |
+| Bash or Zsh prompt | [config/bash/prompt.bash](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/bash/prompt.bash) or [config/zsh/prompt.zsh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/prompt.zsh) |
 | PowerShell behavior | [PowerShell configuration](windows-and-wsl.md#powershell-configuration) |
 | Terminal colors, fonts, or keys | [Alacritty settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/alacritty/alacritty.toml) or [Windows Terminal settings](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json) |
-| tmux behavior | [`config/tmux/tmux.conf`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/tmux/tmux.conf) |
+| tmux behavior | [config/tmux/tmux.conf](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/tmux/tmux.conf) |
 | Desktop shortcuts, monitors, bar, or appearance | [Arch desktop](arch-desktop.md#where-to-customize) |
 | Editor settings, keybindings, or plugins | [Visual Studio Code](visual-studio-code.md) or [Vim and Neovim](vim-and-neovim.md) |
 | Agent preferences, skills, or integrations | [Agent configuration](agent-configuration.md) |
-| SSH client defaults | [`ssh/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
+| SSH client defaults | [ssh/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/ssh/config) |
 | Automatic deletion of old temporary files or screenshots | [Automatic cleanup](#automatic-cleanup) below |
 
 Source paths in this table are beneath `symlinks/`. Linked source files open
@@ -48,7 +48,7 @@ the link. Some settings UIs, including VS Code's, can write back through the
 link; review `git diff` afterward.
 
 For a new file or destination, update
-[`conf/symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml),
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml),
 then preview the link task before applying. **Back up existing targets:** installing a managed
 link can replace a file without making a backup. The
 [first-run example](getting-started.md#2-review-the-configuration) shows the
@@ -63,14 +63,13 @@ sources.
 
 | Setting | Source |
 |---|---|
-| Bash and Zsh interactive startup | [`bashrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/bashrc), [`zshrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zshrc) |
-| Bash and Zsh login profiles | [`bash_profile`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/bash_profile), [`zprofile`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile) |
-| Shared shell environment and pager defaults | [`config/shell/profile.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/profile.sh) |
-| Shared commands and aliases | [`config/shell/aliases.sh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/aliases.sh) |
-| Zsh completion | [`config/zsh/completion.zsh`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/completion.zsh) |
-| Zsh command helpers | [`config/zsh/functions/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/zsh/functions/) |
-| Git aliases | [`config/git/aliases`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/aliases) |
-| Download naming and timestamping | [`config/wgetrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/wgetrc) |
+| Bash and Zsh interactive startup | [bashrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/bashrc), [zshrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zshrc) |
+| Bash and Zsh login profiles | [bash_profile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/bash_profile), [zprofile](https://github.com/sneivandt/dotfiles/blob/main/symlinks/zprofile) |
+| Shared shell environment and pager defaults | [config/shell/profile.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/profile.sh) |
+| Shared commands and aliases | [config/shell/aliases.sh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/shell/aliases.sh) |
+| Zsh completion | [config/zsh/completion.zsh](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/completion.zsh) |
+| Zsh command helpers | [config/zsh/functions/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/zsh/functions/) |
+| Download naming and timestamping | [config/wgetrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/wgetrc) |
 
 ### Environment and paging
 
@@ -102,40 +101,14 @@ Dotfiles command completion comes from the CLI's
 [Shell completions task](task-reference.md#shell-completions), not a separate
 hand-edited selector list.
 
-### Git shortcuts
-
-Common shortcuts include:
-
-| Command | Purpose |
-|---|---|
-| `git st` | Show concise status and branch information |
-| `git dis` | Review staged changes |
-| `git lo` | Show a compact commit graph |
-| `git gr <pattern>` | Search tracked content |
-
-Run `git alias` to list all configured aliases.
-
-Alias definitions belong in the linked Git files. Desired global key/value
-overrides belong in [Git settings](configuration-reference.md#git-settings).
-
-If a preference does not take effect, inspect its effective value and source
-in the affected repository:
-
-```sh
-git config --show-origin --get core.autocrlf
-```
-
-Replace the key as needed. Other global files, included files, and repository
-settings can override the linked configuration; a correct symlink alone does
-not prove which value Git uses.
-
 ### Downloads and archives
 
 Wget preserves URL filenames and uses timestamping to reuse unchanged
 downloads. Change its shared defaults in `config/wgetrc`.
 
-In Zsh, [`extract <file>`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/functions/extract)
-chooses the extraction tool for the archive format. That tool must be installed;
+In Zsh, the [extract helper](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/zsh/functions/extract)
+accepts `extract <file>` and chooses the tool for the archive format. That tool
+must be installed;
 RPM extraction uses `bsdtar`, supplied by `libarchive` on Arch.
 Keep the extractor's normal path protections when customizing the helper.
 Extract untrusted archives into a fresh directory and review the contents
@@ -158,9 +131,9 @@ do not follow symlinks, and remove old empty subdirectories too. Deletion does
 not use the desktop trash or make a backup.
 
 Retention commands live in
-[`clean-home-tmp.service`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service)
+[clean-home-tmp.service](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-home-tmp.service)
 and
-[`clean-screenshots.service`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service);
+[clean-screenshots.service](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/systemd/user/clean-screenshots.service);
 their adjacent `.timer` files control scheduling. Inspect the active timers
 without running cleanup:
 

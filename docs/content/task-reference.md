@@ -5,7 +5,7 @@ description: Find task selectors, dependencies, managed state, and the boundarie
 
 # Task reference
 
-A **task selector** chooses a kind of work, such as `symlinks` or `packages`.
+A task selector chooses a kind of work, such as `symlinks` or `packages`.
 It does not choose one file, package or service inside that task. Entries come
 from the selected [configuration](configuration-reference.md), profile and overlay.
 
@@ -23,70 +23,13 @@ configuration. `--all` shows the complete public catalog. Neither listing
 checks runtime prerequisites or applies changes, so a listed task may still
 find its tool unavailable when executed.
 
-The default table output groups selectors alphabetically within update, remove,
-and check.
-Plain/JSON listings contain each selector once with its command membership.
-Graphs retain all nodes, including filtered and internal nodes, and cannot be
-combined with `--all`.
-
 For command syntax and preview side effects, see [Usage](commands-and-usage.md#select-tasks).
-
-## Scheduling model
-
-Tasks run when their dependencies allow, not in catalog order.
-
-| Dependency | Meaning when both tasks are selected |
-|---|---|
-| `requires <-` (`blocking` in JSON) | Predecessor failure or unmet work blocks the dependent |
-| `after <-` (`after` in JSON) | Wait, then inspect this task even if the predecessor failed |
-
-For example, AUR installation requires a working Paru bootstrap. Systemd only
-waits for package and symlink work: an unrelated failure there must not prevent
-it inspecting units that are available.
-
-Selection is explicit:
-
-- `--only` matches exact normalized selectors or full labels; it does not
-  automatically add prerequisites.
-- Filtering out a blocking prerequisite warns and assumes it is satisfied.
-- On update, `--with-deps` recursively includes both kinds of predecessor.
-- `--skip` can remove those predecessors again.
-- Unknown selectors and explicitly empty selections are errors.
-
-Listings and completions use canonical selectors. For compatibility, `apm`,
-`paru-config`, `shell` and `config-warnings` still select `agent-packages`,
-`custom-package-repository`, `login-shell` and `config-diagnostics`, respectively.
-Previous full console labels remain accepted by `--only` and `--skip` too.
-The former `local-package-versions` and `local-package-repository` selectors
-also remain aliases for `custom-package-versions` and `custom-package-repository`.
-
-Inspect expansion before applying:
-
-```bash
-dotfiles list --graph update --only systemd --with-deps
-```
-
-The default graph format uses one block per task, with predecessors first.
-Selection markers are `default`, `requested`, `dependency`, `filtered` and
-`skipped`. Internal orchestration is marked `internal`; it is not selectable
-and stays out of ordinary task rows and totals. Plain output uses tab-separated
-rows; JSON supplies structured edges and selection fields.
-
-This is a **selection graph, not a change plan**. Use `--skip repository` to
-exclude repository work from a listing; `list` does not accept
-`--no-repo-update`.
-
-Independent ready tasks may run concurrently, with console rows in completion
-order. `--no-parallel` disables parallel execution. Tasks may finish current,
-not applicable or unmet rather than changed; failure is not a rollback.
-See [Architecture](architecture.md#requirements) for runtime readiness
-assessment and conditional scheduling.
 
 ## Update tasks
 
 ### Catalog overview
 
-These are all static public **update** selectors. Follow a label for its
+These are all static public update selectors. Follow a label for its
 details. Availability describes broad eligibility, not a guarantee that
 runtime prerequisites or elevation are available. Only `git-hooks`, `launcher`
 and `symlinks` also belong to [remove](#remove-tasks).
@@ -228,9 +171,9 @@ task skipped; a failed installed-package query fails the task.
 A failed batch transaction rechecks state to retain partial progress without
 turning the transaction into success.
 
-**Missing Arch packages invoke `pacman -Syu --needed --noconfirm`.** This can
-upgrade the wider system. If all declared packages are already present, this
-task does not run an upgrade solely because the command is `update`.
+**Installing missing Arch packages can upgrade the whole system.**
+The command is `pacman -Syu --needed --noconfirm`. If all declared packages are already present, this
+task does not run an upgrade solely because the command is named update.
 
 Windows installs missing IDs through winget. Installer failures fail the task,
 even if other packages succeed; installers can request their own UAC consent.
@@ -285,7 +228,7 @@ created. Changes through links can affect the checkout.
 
 #### Login shell
 
-On Linux outside CI, sets the account login shell to **zsh**. This choice is
+On Linux outside CI, sets the account login shell to zsh. This choice is
 task-defined, not configurable through TOML. It waits for packages and reports
 missing zsh as unmet work.
 
@@ -418,6 +361,64 @@ or private overlay script.
 
 Use [CLI validation](testing.md#cli-validation) for commands, then select
 additional integration/configuration-drift coverage as appropriate.
+
+## Scheduling model
+
+Tasks run when their dependencies allow, not in catalog order.
+
+| Dependency | Meaning when both tasks are selected |
+|---|---|
+| `requires <-` (`blocking` in JSON) | Predecessor failure or unmet work blocks the dependent |
+| `after <-` (`after` in JSON) | Wait, then inspect this task even if the predecessor failed |
+
+For example, AUR installation requires a working Paru bootstrap. Systemd only
+waits for package and symlink work: an unrelated failure there must not prevent
+it inspecting units that are available.
+
+Selection is explicit:
+
+- `--only` matches exact normalized selectors or full labels; it does not
+  automatically add prerequisites.
+- Filtering out a blocking prerequisite warns and assumes it is satisfied.
+- On update, `--with-deps` recursively includes both kinds of predecessor.
+- `--skip` can remove those predecessors again.
+- Unknown selectors and explicitly empty selections are errors.
+
+Listings and completions use canonical selectors. For compatibility, `apm`,
+`paru-config`, `shell` and `config-warnings` still select `agent-packages`,
+`custom-package-repository`, `login-shell` and `config-diagnostics`, respectively.
+Previous full console labels remain accepted by `--only` and `--skip` too.
+The former `local-package-versions` and `local-package-repository` selectors
+also remain aliases for `custom-package-versions` and `custom-package-repository`.
+
+Inspect expansion before applying:
+
+```bash
+dotfiles list --graph update --only systemd --with-deps
+```
+
+The default graph format uses one block per task, with predecessors first.
+Selection markers are `default`, `requested`, `dependency`, `filtered` and
+`skipped`. Internal orchestration is marked `internal`; it is not selectable
+and stays out of ordinary task rows and totals. Plain output uses tab-separated
+rows; JSON supplies structured edges and selection fields.
+
+This is a **selection graph, not a change plan**. Use `--skip repository` to
+exclude repository work from a listing; `list` does not accept
+`--no-repo-update`.
+
+Independent ready tasks may run concurrently, with console rows in completion
+order. `--no-parallel` disables parallel execution. Tasks may finish current,
+not applicable or unmet rather than changed; failure is not a rollback.
+See [Architecture](architecture.md#requirements) for runtime readiness
+assessment and conditional scheduling.
+
+
+The default table output groups selectors alphabetically within update, remove,
+and check.
+Plain/JSON listings contain each selector once with its command membership.
+Graphs retain all nodes, including filtered and internal nodes, and cannot be
+combined with `--all`.
 
 ## Filtering examples
 

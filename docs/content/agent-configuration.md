@@ -32,19 +32,19 @@ Choose the source that owns your change:
 
 | Change | Source |
 |---|---|
-| Set a Copilot or Codex preference | [`conf/agent-settings.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) |
-| Add an external plugin or MCP server | A YAML configuration fragment in [`symlinks/apm/config/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/) |
-| Change reusable personal agent behavior | [`symlinks/apm/plugins/dot-agent/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-agent/) |
-| Add a focused reusable skill | [`symlinks/apm/plugins/dot-skill/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-skill/) |
-| Choose which profiles receive a fragment/plugin | [`conf/symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) |
-| Guide contributors to this repository | [`AGENTS.md`](https://github.com/sneivandt/dotfiles/blob/main/AGENTS.md) or [`.agents/skills/`](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) |
+| Set a Copilot or Codex preference | [conf/agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) |
+| Add an external plugin or MCP server | A YAML configuration fragment in [symlinks/apm/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/) |
+| Change reusable personal agent behavior | [symlinks/apm/plugins/dot-agent/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-agent/) |
+| Add a focused reusable skill | [symlinks/apm/plugins/dot-skill/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/plugins/dot-skill/) |
+| Choose which profiles receive a fragment/plugin | [conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) |
+| Guide contributors to this repository | [AGENTS.md](https://github.com/sneivandt/dotfiles/blob/main/AGENTS.md) or [.agents/skills/](https://github.com/sneivandt/dotfiles/tree/main/.agents/skills/) |
 
 Keep employer-specific instructions, private integrations, and secrets out of
 the public sources. Private content belongs in a [private overlay](private-overlays.md).
 Never edit the generated combined configuration, `~/.apm/apm.yml`, lock data,
 or deployed harness copies as a substitute for changing their sources.
 
-**For maintainers:** See [Agent deployment internals](agent-deployment-internals.md)
+For maintainers: See [Agent deployment internals](agent-deployment-internals.md)
 for changes to the deployment implementation rather than agent content.
 
 ## Harness settings
@@ -88,7 +88,7 @@ Separate remaining limitations from completed work.
 
 APM calls an individual skill, prompt, hook, or other content item a
 *primitive*. The existing
-[`dot-skill/apm.yml`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/plugins/dot-skill/apm.yml)
+[dot-skill/apm.yml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/plugins/dot-skill/apm.yml)
 uses `includes: auto`, which discovers primitives beneath `.apm/`.
 You do not need a new dependency or symlink declaration for each skill added
 to this already-selected plugin.
@@ -100,7 +100,7 @@ it does not prove the instructions are useful or compatible with every target.
 ### Add a package or configuration fragment
 
 The combined APM configuration is called a *manifest*. The existing
-[`base.yml`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/config/base.yml)
+[base.yml](https://github.com/sneivandt/dotfiles/blob/main/symlinks/apm/config/base.yml)
 shows how it selects the two local plugins:
 
 ```yaml
@@ -134,9 +134,25 @@ trust another package to declare them for you. Dependency-level `targets`
 restrict a whole package. Split packages if their content needs different
 destinations.
 
+## Deployment targets
+
+Keep the base fragment's explicit targets. Without them, APM can discover
+application directories you did not intend to manage. The primary dotfiles
+deployment uses the targets in the generated manifest.
+
+| Surface | Selection | Deployment |
+|---|---|---|
+| Shared agent skills | Base target `agent-skills` | Native APM; `~/.agents/skills` |
+| Copilot MCP configuration | Base target `copilot` | Native APM; `~/.copilot/mcp-config.json` |
+| Copilot App workflows | Host has `~/.copilot/data.db` | APM installs workflows; dotfiles enables them in autopilot |
+| Cowork skills | A Cowork path is configured or detected | Dotfiles copies selected shared skills |
+
+The last two are **host-detected additions**, not ordinary entries in the base
+target list. Removing a target from that list does not disable these integrations.
+
 ## Validate, preview, and apply
 
-On a machine with dotfiles, a selected profile, and `apm` on PATH:
+On a machine with dotfiles, a selected profile, and APM on PATH:
 
 ```sh
 dotfiles check --only config-diagnostics,symlink-sources,apm-plugins
@@ -182,7 +198,7 @@ flowchart TB
     Manifest --> APM["APM deployment"]
 ```
 
-Planning reads selected **source files**, even before their home links exist.
+Planning reads selected source files, even before their home links exist.
 A selected source replaces the home input with the same filename, allowing
 preview of a stale or broken managed link. Other YAML files already in
 `~/.apm/config/` still participate.
@@ -235,21 +251,9 @@ native preview may contact upstream services. It does not write the generated
 manifest, remove legacy lock entries, or update Cowork's ownership inventory.
 The general [dry-run limits](commands-and-usage.md#dry-run-scope) still apply.
 
-## Deployment targets
+## Detected integrations
 
-Keep the base fragment's explicit targets. Without them, APM can discover
-application directories you did not intend to manage. The primary dotfiles
-deployment uses the targets in the generated manifest.
-
-| Surface | Selection | Deployment |
-|---|---|---|
-| Shared agent skills | Base target `agent-skills` | Native APM; `~/.agents/skills` |
-| Copilot MCP configuration | Base target `copilot` | Native APM; `~/.copilot/mcp-config.json` |
-| Copilot App workflows | Host has `~/.copilot/data.db` | APM installs workflows; dotfiles enables them in autopilot |
-| Cowork skills | A Cowork path is configured or detected | Dotfiles copies selected shared skills |
-
-The last two are **host-detected additions**, not ordinary entries in the base
-target list. Removing a target from that list does not disable these integrations.
+These additions depend on the host, not just the manifest's target list.
 
 ### Copilot App workflows
 
@@ -285,7 +289,7 @@ while preserving the destination directories and their Windows permissions.
 If a package restricts its targets, include `copilot-cowork` to send its skills
 here.
 
-Cleanup removes **only `SKILL.md` for skills recorded as managed**; directories,
+Cleanup removes **only the entry point for skills recorded as managed** (`SKILL.md`); directories,
 other files, and unrelated skills remain. Keep the destination's
 `.dotfiles-apm-skills.json` inventory: deleting it prevents dotfiles from
 identifying content it may safely remove. For path-resolution failures or
@@ -294,7 +298,7 @@ copy conflicts, see the
 
 ## Removing packages and targets
 
-Remove a dependency from its **source fragment**, then run the agent packages
+Remove a dependency from its source fragment, then run the agent packages
 task while a valid fragment remains. Native APM handles stale deployments;
 Cowork uses the narrower inventory-based cleanup described above.
 
@@ -348,7 +352,7 @@ A [private overlay](private-overlays.md) uses the same fragment/plugin layout. K
 categories and validate the combined configuration. Filename order still
 governs merging; private origin grants no automatic priority.
 
-Unexpected dependency? Inspect all selected source fragments **and** unmanaged
+Unexpected dependency? Inspect all selected source fragments and unmanaged
 home fragments before changing generated state.
 
 ## Authentication and failure diagnosis

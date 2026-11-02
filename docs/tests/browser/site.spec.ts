@@ -92,19 +92,27 @@ test('the homepage introduces the repository and links to setup, with grouped na
   }
   const start = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Start here', { exact: true }) });
-  await expect(start.getByRole('link')).toHaveText(['Getting started', 'Profiles and categories']);
+  await expect(start.getByRole('link')).toHaveText([
+    'Getting started', 'Profiles and categories', 'Security and trust',
+  ]);
   const usage = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Use dotfiles', { exact: true }) });
+  await expect(usage.getByRole('link')).toHaveText([
+    'Commands and usage', 'Update lifecycle', 'Troubleshooting', 'CLI reference', 'Task reference',
+  ]);
   await expect(usage.getByRole('link', { name: 'Update lifecycle', exact: true }))
     .toHaveAttribute('href', '/update-lifecycle.html');
   const customize = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Customize', { exact: true }) });
+  await expect(customize.getByRole('link')).toHaveText([
+    'Application settings', 'Configuration reference', 'Private overlays', 'Git configuration',
+  ]);
   await expect(customize.getByRole('link', { name: 'Private overlays', exact: true }))
     .toHaveAttribute('href', '/private-overlays.html');
   const development = page.locator('#starlight__sidebar details')
     .filter({ has: page.getByText('Development', { exact: true }) });
   await expect(development.getByRole('link')).toHaveText([
-    'Contributing', 'Architecture', 'Testing', 'Documentation site', 'Git hooks', 'CI and releases',
+    'Contributing', 'Testing', 'Git hooks', 'Architecture', 'Documentation site', 'CI and releases',
   ]);
   for (const [label, href] of [
     ['Agent deployment internals', '/agent-deployment-internals.html'],
@@ -140,6 +148,61 @@ test('everyday guides link maintainers to their advanced guides', async ({ page 
     await expect(page).toHaveURL(`/${target}.html`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
   }
+});
+
+test('split guides retain task-local context and link to their reference', async ({ page }) => {
+  await page.goto('/commands-and-usage.html');
+  await expect(page.locator('main #command-options')).toHaveCount(0);
+  const reference = page.locator('main').getByRole('link', { name: 'CLI reference', exact: true });
+  await reference.click();
+  await expect(page).toHaveURL('/cli-reference.html');
+  await expect(page.locator('#command-options')).toBeAttached();
+  await expect(page.locator('#using-a-fork')).toBeAttached();
+  await expect(page.locator('#log-locations')).toBeAttached();
+  await expect(page.locator('#execution-output-for-scripts')).toBeAttached();
+
+  await page.goto('/git-hooks.html');
+  await expect(page.locator('main #merged-branch-cleanup')).toHaveCount(0);
+  await page.locator('main').getByRole('link', { name: 'Git configuration', exact: true }).click();
+  await expect(page).toHaveURL('/git-configuration.html');
+  await expect(page.locator('#shortcuts')).toBeAttached();
+  await expect(page.locator('#merged-branch-cleanup')).toBeAttached();
+  await expect(page.locator('#push-protection')).toBeAttached();
+  await assertNoPageOverflow(page);
+});
+
+test('lookup and prerequisite information precedes advanced details', async ({ page }) => {
+  for (const [guide, earlier, later] of [
+    ['task-reference', 'catalog-overview', 'scheduling-model'],
+    ['contributing', '2-find-the-owning-files', 'development-setup'],
+    ['testing', 'before-pushing', 'specialized-checks'],
+    ['agent-configuration', 'deployment-targets', 'validate-preview-and-apply'],
+  ]) {
+    await page.goto(`/${guide}.html`);
+    const order = await page.evaluate(({ earlier, later }) => {
+      const first = document.getElementById(earlier);
+      const second = document.getElementById(later);
+      if (!first || !second) throw new Error(`Missing headings: ${earlier}, ${later}`);
+      return Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }, { earlier, later });
+    expect(order).toBe(true);
+  }
+});
+
+test('guide links use ordinary labels without boxed code', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  const routes = await page.locator('#starlight__sidebar a[href]').evaluateAll(
+    (links) => links.map((link) => link.getAttribute('href')!),
+  );
+  expect(routes).toHaveLength(26);
+  for (const route of ['/', ...routes]) {
+    await page.goto(route);
+    await expect(page.locator('.sl-markdown-content a code')).toHaveCount(0);
+  }
+  await page.goto('/cli-reference.html');
+  await expect(page.locator('main :not(pre) > code').first()).toBeVisible();
+  await expect(page.locator('main pre').first()).toBeVisible();
 });
 
 test('advanced guides remain visible within top-level topic navigation', async ({ page, isMobile }) => {

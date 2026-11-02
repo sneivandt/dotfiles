@@ -30,6 +30,9 @@ Companions are needed only when the request changes their contract.
 | Enable dark mode and fix Mermaid on the published docs site | `docs-publishing` | No desktop-shell skill |
 | Audit the guides for accuracy, readability, and excessive detail | `docs-writing` | Verify claims against sources; add docs-publishing only for site or organization changes |
 | Simplify examples in Commands and usage | `docs-writing` | Verify defaults in the owning code; no engine changes just for prose |
+| Make each guide understandable when shared directly | `docs-writing` | Supply task-local context; add docs-publishing only for page or navigation changes |
+| Reduce boxed text and balance links versus bold in the guides | `docs-writing` | Preserve exact syntax and safety warnings; no CSS workaround |
+| Change the colors of inline code without rewriting prose | `docs-publishing` | Rendering only, not a docs-writing task |
 | Remove em dashes and formulaic wording from the README | `docs-writing` | Preserve exact commands, quoted output, and meaningful technical punctuation |
 | Move desktop documentation into a subsystem guide | `docs-publishing` | Add docs-writing when rewriting prose; preserve one explanation, matching title/file/URL, and incoming references |
 | Explain a changed self-update behavior to users | `docs-writing` | Add self-update only for implementation work or a behavioral question it owns |

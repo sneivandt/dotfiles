@@ -32,8 +32,13 @@ without a backup.
 
 Use [Getting started](getting-started.md) to clone and review the configuration.
 If you use a fork without releases, choose its
-[binary publisher or source-build route](commands-and-usage.md#using-a-fork)
+[binary publisher or source-build route](cli-reference.md#using-a-fork)
 before running the wrapper.
+
+The examples below assume downloaded release binaries. If you chose source
+builds, keep `--build` after the wrapper name in every command, for example
+`.\dotfiles.ps1 --build update --no-repo-update --dry-run`.
+Build mode is not remembered between invocations.
 
 Open PowerShell in the checkout and preview an update:
 
@@ -196,7 +201,7 @@ not the executable; use the desired checkout's wrapper when both matter.
 
 The Windows symlinks install the managed profile for PowerShell and Windows
 PowerShell. Edit the tracked
-[`Microsoft.PowerShell_profile.ps1`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/powershell/Microsoft.PowerShell_profile.ps1),
+[Microsoft.PowerShell_profile.ps1](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/powershell/Microsoft.PowerShell_profile.ps1),
 not an installed copy.
 The profile provides a path and Git-aware prompt, command history, and
 history-based suggestions when the installed PSReadLine supports them.
@@ -209,7 +214,7 @@ installed separately by the [completions task](commands-and-usage.md#shell-compl
 ## Windows Terminal
 
 The `windows-desktop` category links the tracked
-[`settings.json`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json)
+[settings.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json)
 into Windows Terminal's packaged-app `LocalState` directory. It selects a
 PowerShell 7 (`pwsh.exe`) profile by default and includes an Arch WSL profile.
 If either is unavailable on your machine, edit the tracked settings before
@@ -224,8 +229,8 @@ and `/etc` settings. Running the Windows executable does not manage
 
 | Where dotfiles runs | Managed file | Current settings |
 |---|---|---|
-| Windows | `%USERPROFILE%\.wslconfig`, linked from [`symlinks/wslconfig`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig) | NAT networking for WSL 2 |
-| Inside each Linux distribution | `/etc/wsl.conf`, merged from [`system/wsl.conf`](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf) | Enable systemd and disable automatic Windows PATH injection |
+| Windows | `%USERPROFILE%\.wslconfig`, linked from [symlinks/wslconfig](https://github.com/sneivandt/dotfiles/blob/main/symlinks/wslconfig) | NAT networking for WSL 2 |
+| Inside each Linux distribution | `/etc/wsl.conf`, merged from [system/wsl.conf](https://github.com/sneivandt/dotfiles/blob/main/system/wsl.conf) | Enable systemd and disable automatic Windows PATH injection |
 
 The Windows file controls WSL 2 globally; the Linux file configures that
 distribution. The Linux `system-files` task preserves unrelated INI settings

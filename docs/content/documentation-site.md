@@ -14,7 +14,7 @@ prerequisites live in [Testing](testing.md#documentation-site).
 ## Preview locally
 
 Use the Node version in
-[`docs/.node-version`](https://github.com/sneivandt/dotfiles/blob/main/docs/.node-version).
+[docs/.node-version](https://github.com/sneivandt/dotfiles/blob/main/docs/.node-version).
 From the repository root:
 
 ```sh
@@ -38,18 +38,18 @@ search, theme choices, diagrams, and source links before publishing.
 ## Find the owning source
 
 The site uses Astro and Starlight with Flexoki styling. Dependencies are pinned
-in [`docs/package.json`](https://github.com/sneivandt/dotfiles/blob/main/docs/package.json)
+in [docs/package.json](https://github.com/sneivandt/dotfiles/blob/main/docs/package.json)
 and its lockfile.
 
 | Change | Source |
 |---|---|
-| Guide prose | [`docs/content/`](https://github.com/sneivandt/dotfiles/tree/main/docs/content/) |
-| Navigation, integrations, and site defaults | [`astro.config.mjs`](https://github.com/sneivandt/dotfiles/blob/main/docs/astro.config.mjs) |
-| Content loading | [`src/content.config.ts`](https://github.com/sneivandt/dotfiles/blob/main/docs/src/content.config.ts) |
-| Markdown links and title anchors | [`src/remark-docs.mjs`](https://github.com/sneivandt/dotfiles/blob/main/docs/src/remark-docs.mjs) |
-| Theme initialization | [`src/components/ThemeProvider.astro`](https://github.com/sneivandt/dotfiles/blob/main/docs/src/components/ThemeProvider.astro) |
-| Layout and styling | [`src/styles/custom.css`](https://github.com/sneivandt/dotfiles/blob/main/docs/src/styles/custom.css) |
-| Domain and static assets | [`public/`](https://github.com/sneivandt/dotfiles/tree/main/docs/public/) |
+| Guide prose | [docs/content/](https://github.com/sneivandt/dotfiles/tree/main/docs/content/) |
+| Navigation, integrations, and site defaults | [astro.config.mjs](https://github.com/sneivandt/dotfiles/blob/main/docs/astro.config.mjs) |
+| Content loading | [src/content.config.ts](https://github.com/sneivandt/dotfiles/blob/main/docs/src/content.config.ts) |
+| Markdown links and title anchors | [src/remark-docs.mjs](https://github.com/sneivandt/dotfiles/blob/main/docs/src/remark-docs.mjs) |
+| Theme initialization | [src/components/ThemeProvider.astro](https://github.com/sneivandt/dotfiles/blob/main/docs/src/components/ThemeProvider.astro) |
+| Layout and styling | [src/styles/custom.css](https://github.com/sneivandt/dotfiles/blob/main/docs/src/styles/custom.css) |
+| Domain and static assets | [public/](https://github.com/sneivandt/dotfiles/tree/main/docs/public/) |
 
 Keep the content loader and Starlight's `markdown.processedDirs` aligned on
 `content/`; otherwise native callouts and heading links are not processed.
@@ -70,6 +70,12 @@ toggles preserved. Overflowing navigation uses a full-width, contrasting
 scrollbar in both themes. New visits default to dark mode, while the theme
 control retains explicit Light and System choices.
 
+Keep source and topic links visually distinct from literal syntax: ordinary
+link labels should not also be boxed as inline code. Use
+[Docs writing](https://github.com/sneivandt/dotfiles/blob/main/.agents/skills/docs-writing/SKILL.md#choose-links-code-and-emphasis)
+for link, code, and bold-emphasis choices; do not compensate for excessive
+markup by hiding code styling in the theme.
+
 Prefer Starlight's built-in callouts, navigation, search, and theme controls to
 custom components. Mermaid is bundled locally and follows the selected theme.
 Give diagrams an `accTitle` and `accDescr`, use short labels, and retain readable
@@ -82,7 +88,7 @@ the publishing source, not **Deploy from a branch**. This is a repository
 setting; editing site files does not change it.
 
 Astro derives its site URL from
-[`public/CNAME`](https://github.com/sneivandt/dotfiles/blob/main/docs/public/CNAME),
+[public/CNAME](https://github.com/sneivandt/dotfiles/blob/main/docs/public/CNAME),
 which is also copied into the build. Keep the custom domain and HTTPS
 enforcement configured in Pages. CNAME does not configure DNS or enable HTTPS.
 
@@ -90,9 +96,9 @@ When changing the domain, update these together:
 
 - `public/CNAME`, which contains the hostname, not a full URL.
 - The homepage's explicit canonical, social, and structured-data URLs in
-  [`content/index.md`](https://github.com/sneivandt/dotfiles/blob/main/docs/content/index.md).
+  [content/index.md](https://github.com/sneivandt/dotfiles/blob/main/docs/content/index.md).
 - The sitemap URL in
-  [`public/robots.txt`](https://github.com/sneivandt/dotfiles/blob/main/docs/public/robots.txt)
+  [public/robots.txt](https://github.com/sneivandt/dotfiles/blob/main/docs/public/robots.txt)
   and the published-site links in the root README.
 - Domain-specific expectations in the
   [browser tests](https://github.com/sneivandt/dotfiles/blob/main/docs/tests/browser/site.spec.ts).

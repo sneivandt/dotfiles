@@ -12,6 +12,11 @@ plugins; Neovim adds plugins through lazy.nvim.
 Because the installed paths point into the checkout, editing configuration or
 updating the Neovim lockfile can modify tracked repository files.
 
+On first use, starting Neovim downloads its plugin manager and missing plugins;
+it is not a read-only configuration check. Git and network access are required.
+Run `:TSInstallConfigured` separately for syntax parsers. See
+[First launch](#first-launch) before opening the managed Neovim configuration.
+
 ## Everyday shortcuts
 
 The leader key is comma: `,w` means press comma, then `w`. These shortcuts
@@ -43,23 +48,23 @@ Several familiar Vim keys are remapped in both editors:
 | `/` / `?` | Search forward / backward with Vim's “very magic” regex syntax, where most punctuation has a special meaning |
 
 See the shared mappings in
-[`vimrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/vimrc)
+[vimrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/vimrc)
 and Neovim additions in
-[`nvimrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/nvimrc)
+[nvimrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/nvimrc)
 for the full set.
 
 ## Configuration entry points
 
 | File | Responsibility |
 |---|---|
-| [`vimrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/vimrc) | Shared editing behavior and mappings |
-| [`init.vim`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/init.vim) | Neovim entry point; sources `~/.vim/vimrc` and `~/.vim/nvimrc` |
-| [`nvimrc`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/nvimrc) | Neovim terminal behavior, plugin bootstrap, and additional mappings |
-| [`lua/lazy-bootstrap.lua`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lua/lazy-bootstrap.lua) | lazy.nvim bootstrap, plugin declarations, and plugin configuration |
-| [`lazy-lock.json`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lazy-lock.json) | Tracked plugin revisions |
+| [vimrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/vimrc) | Shared editing behavior and mappings |
+| [init.vim](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/init.vim) | Neovim entry point; sources `~/.vim/vimrc` and `~/.vim/nvimrc` |
+| [nvimrc](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/nvimrc) | Neovim terminal behavior, plugin bootstrap, and additional mappings |
+| [lua/lazy-bootstrap.lua](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lua/lazy-bootstrap.lua) | lazy.nvim bootstrap, plugin declarations, and plugin configuration |
+| [lazy-lock.json](https://github.com/sneivandt/dotfiles/blob/main/symlinks/vim/lazy-lock.json) | Tracked plugin revisions |
 
 The links are declared in
-[`conf/symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml).
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml).
 They apply to Linux profiles, not only the desktop role. See
 [Configuration reference](configuration-reference.md#symlinks) for their lifecycle
 and [Package management](package-management.md) for installing the editors.

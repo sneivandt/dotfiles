@@ -85,8 +85,8 @@ See [Troubleshooting](troubleshooting.md) for recovery.
 Start the CLI as your normal user. It arranges privileges for selected work
 rather than requiring the whole session to run as root or Administrator.
 
-On **Linux**, it uses cached sudo credentials or, in an interactive session,
-primes them in the foreground. On **Windows**, tasks needing elevation run in
+On Linux, it uses cached sudo credentials or, in an interactive session,
+primes them in the foreground. On Windows, tasks needing elevation run in
 one short-lived UAC-elevated child restricted to their selectors.
 Non-interactive/CI sessions do not prompt for fresh sudo credentials or UAC
 consent.

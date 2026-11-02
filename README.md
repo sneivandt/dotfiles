@@ -46,8 +46,8 @@ Desired state lives in [conf/](conf/), with application settings under
 
 The selected configuration depends on the profile and platform.
 
-The `base` profile covers shell tools and core configuration for servers and
-WSL. The `desktop` profile adds GUI apps and desktop services. Both profiles
+The base profile covers shell tools and core configuration for servers and
+WSL. The desktop profile adds GUI apps and desktop services. Both profiles
 are available on Linux and Windows; Linux package management and the Linux
 desktop setup target Arch.
 

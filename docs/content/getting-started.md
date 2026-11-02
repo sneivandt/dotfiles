@@ -9,7 +9,7 @@ tableOfContents:
 # Getting started
 
 Dotfiles uses a Rust command-line program to apply the packages, files, and
-settings declared in this repository to an existing **Arch Linux or Windows**
+settings declared in this repository to an existing Arch Linux or Windows
 installation. It does not install the operating system.
 
 This is a personal setup, not a collection of universally safe defaults.
@@ -47,7 +47,7 @@ Moving or deleting the checkout can break applications.
 The wrapper scripts, `dotfiles.sh` and `dotfiles.ps1`, download and verify the
 CLI when needed. Using this repository directly requires no Rust installation.
 **A new fork has no release binaries:** choose a
-[binary publisher or source build](commands-and-usage.md#using-a-fork) before
+[binary publisher or source build](cli-reference.md#using-a-fork) before
 running its wrapper.
 
 ### 2. Review the configuration
@@ -59,9 +59,9 @@ declarations. [Profiles and categories](profiles-and-categories.md) walks throug
 that selection.
 
 There are two parts to an application configuration: a declaration says
-**which file to install**, and a source file contains **the application's
-settings**. For example, this is part of the real
-[`conf/symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml):
+which file to install, and a source file contains the application's
+settings. For example, this is part of the real
+[conf/symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml):
 
 ```toml title="conf/symlinks.toml"
 [base]
@@ -76,14 +76,14 @@ Both profiles include `base`, so both select this entry:
 | Part | In this example |
 |---|---|
 | Declaration | `"config/git/config"` in `conf/symlinks.toml` |
-| Source to review or edit | [`symlinks/config/git/config`](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config) |
+| Source to review or edit | [symlinks/config/git/config](https://github.com/sneivandt/dotfiles/blob/main/symlinks/config/git/config) |
 | Destination in your home | `~/.config/git/config` |
 | What applying does | Creates a link from the home destination to the source in this checkout |
 
 Open that source and review its Git identity, defaults, and included files.
 To change a Git preference, edit the source; to stop selecting this link,
 change the declaration. Other files under
-[`conf/`](https://github.com/sneivandt/dotfiles/tree/main/conf/) declare packages,
+[conf/](https://github.com/sneivandt/dotfiles/tree/main/conf/) declare packages,
 services, and settings rather than links.
 
 **Installed links are live, not copied snapshots.** Once this link is installed,
@@ -139,7 +139,7 @@ changes. Read [Dry-run scope](commands-and-usage.md#dry-run-scope) before relyin
 :::
 
 Check the reported profile, platform, and overlay first. For the Git example,
-look under **Home symlinks** for a planned link to `~/.config/git/config`
+look under Home symlinks for a planned link to `~/.config/git/config`
 from this checkout. If it already points to the right source, it needs no
 change; `--verbose` shows already-current work too.
 

@@ -26,9 +26,35 @@ organization, routes, navigation, rendering, or publication.
 3. Keep the detail needed to act correctly. Explain unfamiliar terms on first
    use, but do not teach every underlying tool. Put algorithms and rare
    implementation cases in the owning maintenance reference.
-4. Give each explanation one home and link to it. Do not duplicate setup steps
-   across landing pages and platform guides, or turn the README into a second
-   documentation directory. Split pages by reader task, not length alone.
+4. Read each page as a shared link, not a chapter requiring earlier pages.
+   Establish its task, platform and setup assumptions, define essential terms,
+   and show how to recognize the result. Keep enough local context to complete
+   that task; link out for full installation and deeper reference.
+5. Give each full explanation one home. Brief definitions, platform-specific
+   examples, and safety warnings may repeat where the reader acts. Do not
+   duplicate whole workflows or turn the README into a documentation directory.
+   Split by distinct reader tasks or audiences, not length alone. Put a
+   reference's lookup table before its explanatory internals.
+
+## Choose links, code, and emphasis
+
+- Use plain prose for tool names and concepts. Link to the owning guide or
+  tracked source when it helps the reader act, normally at the first useful
+  mention or in a source table. Avoid linking every repeated mention.
+- Use readable, ordinary link labels, including filenames when those identify
+  the source. Do not wrap link labels in backticks: a link does not also need
+  a dark inline-code box.
+- Reserve inline code for exact commands, flags, configuration keys, literal
+  values, output, and paths that must be typed or distinguished precisely.
+  Keep it in syntax/reference tables and copyable examples; do not box every
+  mention of a command, profile, application, or file in narrative prose.
+- Use bold sparingly for a consequential warning, essential distinction, or
+  primary action. Ordinary definitions and names usually need no emphasis.
+  Use headings for structure and links for destinations, not bold for either.
+  Avoid stacking bold, code, and links or highlighting whole routine paragraphs.
+- Review the rendered page for competing emphasis. Retain safety information
+  and exact syntax while reducing decoration; do not solve overuse by merely
+  hiding inline-code styling in CSS.
 
 ## Use natural language and punctuation
 
@@ -71,7 +97,9 @@ organization, routes, navigation, rendering, or publication.
 ## Review the finished text
 
 Read the page in order as its intended reader. Can they find the first action,
-understand what it changes, and recognize success or failure? Remove duplication
+understand what it changes, and recognize success or failure without reading
+another guide first? Follow its links to check that they supply deeper context,
+not a missing essential step. Remove duplication
 and unnecessary detail without deleting safety information or exceptions needed
 for the task. Check links after changing headings or paths. Re-read punctuation
 and wording for a natural voice; automated link and site checks cannot assess

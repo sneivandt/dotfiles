@@ -7,9 +7,9 @@ description: Declare packages, symlinks, services, and settings in TOML, with ca
 
 To change what dotfiles manages, edit its declaration in the
 [files listed below](#files). To change an application's settings, edit its
-source under [`symlinks/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
+source under [symlinks/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/).
 Administrator-file fragments live under
-[`system/`](https://github.com/sneivandt/dotfiles/tree/main/system/).
+[system/](https://github.com/sneivandt/dotfiles/tree/main/system/).
 
 **Edit sources, not generated output.** Installed files may be live links into
 this checkout, so source edits can affect applications immediately, before
@@ -24,14 +24,31 @@ covered in [Application settings](application-settings.md).
 3. Check that file's path rules. Not every home-relative path has the same
    meaning.
 4. Validate the selected configuration and preview the relevant
-   [task](task-reference.md). See [Testing](testing.md#cli-validation) for commands and
-   [preview limits](testing.md#dry-run-testing).
+   [task](task-reference.md), as in the example below.
 5. Back up existing targets before applying. Removing a declaration usually
    stops management; it does not undo an earlier change.
 
 Examples are valid TOML excerpts, not replacements for the complete
 configuration. Extend the existing section rather than adding a second table
 with the same name.
+
+For a symlink declaration, use this sequence with the installed launcher for
+your intended checkout and a saved profile:
+
+```sh
+dotfiles check --only config-diagnostics,symlink-sources,config-files
+dotfiles update --no-repo-update --only symlinks --dry-run
+```
+
+Resolve failed or skipped checks before applying. The preview should show the
+intended destinations under Home symlinks; add `--verbose` to see links that
+are already current. For another kind of change, select its task instead.
+The preview uses current checkout content, but still has the
+[documented side effects](commands-and-usage.md#dry-run-scope).
+
+Not installed yet? [Getting started](getting-started.md) covers the wrapper,
+profile selection, backups, and the first apply. Contributors changing the
+loader or configuration model should also use [Testing](testing.md#cli-validation).
 
 ## Files
 
@@ -40,18 +57,18 @@ apply. A required file may be empty.
 
 | File | Entry field | Purpose |
 |---|---|---|
-| [`symlinks.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) | `symlinks` | Link repository content into home |
-| [`packages.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml) | `packages` | Install Arch or Windows packages |
-| [`git-config.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml) | `settings` | Set global Git values |
-| [`agent-settings.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) | `settings` | Set selected Copilot/Codex preferences |
-| [`chmod.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml) | `permissions` | Apply Unix file/directory modes |
-| [`registry.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml) | `path` and `values` | Set Windows current-user values |
-| [`systemd-units.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml) | `units` | Enable/start or disable/stop units |
-| [`system-files.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | `files` | Merge fragments into files below `/etc` |
-| [`vscode-extensions.toml`](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | `extensions` | Install editor extensions |
+| [symlinks.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/symlinks.toml) | `symlinks` | Link repository content into home |
+| [packages.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/packages.toml) | `packages` | Install Arch or Windows packages |
+| [git-config.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/git-config.toml) | `settings` | Set global Git values |
+| [agent-settings.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/agent-settings.toml) | `settings` | Set selected Copilot/Codex preferences |
+| [chmod.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/chmod.toml) | `permissions` | Apply Unix file/directory modes |
+| [registry.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/registry.toml) | `path` and `values` | Set Windows current-user values |
+| [systemd-units.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/systemd-units.toml) | `units` | Enable/start or disable/stop units |
+| [system-files.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/system-files.toml) | `files` | Merge fragments into files below `/etc` |
+| [vscode-extensions.toml](https://github.com/sneivandt/dotfiles/blob/main/conf/vscode-extensions.toml) | `extensions` | Install editor extensions |
 
 Private overlays may also provide
-[`conf/scripts.toml`](private-overlays.md#overlay-scripts). The main repository's
+[conf/scripts.toml](private-overlays.md#overlay-scripts). The main repository's
 `conf/scripts.toml` is not loaded.
 
 ## Category sections
@@ -77,7 +94,7 @@ Unknown or misspelled tags are errors, not new custom categories.
 
 ### Profiles
 
-`base` is always active. Selecting the `desktop` profile adds `desktop`;
+`base` is always active. Selecting the desktop profile adds `desktop`;
 the CLI supplies platform categories. Profiles describe a machine's role, not
 its operating system. See [Profiles](profiles-and-categories.md) for selection precedence,
 persistence and platform combinations.
@@ -193,7 +210,8 @@ that includes configured [dotfiles-managed recipes](package-management.md#custom
 AUR recipes. The host's package-manager repositories and policies, including
 `IgnorePkg`, remain in effect.
 
-**When regular Arch packages are missing, installation uses `pacman -Syu`.**
+**Installing missing Arch packages can upgrade the whole system.**
+The installer uses `pacman -Syu`.
 It can upgrade other installed packages too. If every declared package is
 already installed, this task does not perform an upgrade merely because the
 command is `update`. See [System packages](task-reference.md#system-packages).
@@ -209,7 +227,7 @@ settings = [
 
 Both fields are strings, including booleans written as `"true"` or `"false"`.
 These settings affect **global** Git configuration. Avoid contradicting the
-shared files under [`symlinks/config/git/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
+shared files under [symlinks/config/git/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git).
 
 On Windows, the task also removes global `core.autocrlf` when no active
 declaration manages it, even if `settings` is empty. Declare that key explicitly
@@ -217,7 +235,7 @@ if you want the task to manage a value instead. This cleanup is separate from
 the repository-local Git values used to remember profiles and overlays.
 
 For Git aliases such as `git gr` and `git contributors`, see
-[Application settings](application-settings.md#git-shortcuts).
+[Git configuration](git-configuration.md#shortcuts).
 
 ## Agent harness settings
 
@@ -263,7 +281,7 @@ permissions = [
 ]
 ```
 
-Both fields are required. `mode` is a three- or four-digit octal **string**.
+Both fields are required. `mode` is a three- or four-digit octal string.
 `path` uses the dot-prefixed home convention: `ssh/config` means
 `~/.ssh/config`. `./` components normalize; absolute paths, parent traversal
 and home itself are invalid.
@@ -318,7 +336,7 @@ units = [
 ]
 ```
 
-A string means an enabled **user** unit. A table requires `name` and `scope`;
+A string means an enabled user unit. A table requires `name` and `scope`;
 `scope` is `user` or `system`, and `enabled` defaults to `true`.
 Include a supported suffix: `.service`, `.timer`, `.socket`, `.target`, `.path`,
 `.mount`, `.automount` or `.swap`.
@@ -347,7 +365,7 @@ after managed home links are replaced with local copies during removal.
 See [Systemd units](task-reference.md#systemd-units) for when the task can run.
 Contributors changing offline unit lookup or enablement parsing should start
 with the
-[`systemd_unit.rs` implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/systemd_unit.rs)
+[systemd_unit.rs implementation](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/systemd_unit.rs)
 and its
 [regression tests](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/system/resources/tests/systemd_unit.rs).
 
@@ -416,7 +434,7 @@ extends valid base configuration; it cannot hide conflicting declarations.
 ## Agent package configuration
 
 Agent packages use YAML fragments under
-[`symlinks/apm/config/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/),
+[symlinks/apm/config/](https://github.com/sneivandt/dotfiles/tree/main/symlinks/apm/config/),
 selected by `conf/symlinks.toml`. They are separate from
 `agent-settings.toml` preferences.
 Use [Agent configuration](agent-configuration.md) for package sources, deployment targets,

@@ -23,11 +23,11 @@ installed, use `./dotfiles.sh` or `.\dotfiles.ps1` instead.
 ### 1. Obtain a usable CLI
 
 The wrapper uses its cached binary, downloading and verifying a release when
-needed. This happens **before** the CLI processes the command, including help
+needed. This happens before the CLI processes the command, including help
 or dry-run. An installed launcher delegates to that checkout's wrapper.
 
 This is bootstrap, not the regular self-update check. See
-[Wrapper bootstrap](commands-and-usage.md#wrapper-bootstrap) for source builds,
+[Wrapper bootstrap](cli-reference.md#wrapper-bootstrap) for source builds,
 verification, and choosing a publisher.
 
 ### 2. Check the CLI release
@@ -123,7 +123,7 @@ dotfiles log
 dotfiles log --list
 ```
 
-The [Logs reference](commands-and-usage.md#logs) explains IDs, task filtering,
+The [Logs reference](cli-reference.md#logs) explains IDs, task filtering,
 verbosity, raw records, retention, and storage locations.
 [Troubleshooting](troubleshooting.md) starts with how to diagnose a partial run
 before retrying.

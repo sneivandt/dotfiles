@@ -29,6 +29,11 @@ examples, and the amount of detail.
 - Follow the [topic ownership rules](../../../docs/content/contributing.md#documentation)
   when adding or moving material. Link to the owning guide rather than creating
   another explanation of the same workflow.
+- Keep everyday workflows before exhaustive reference, and source-finding
+  guidance before configuration schemas. Commands and usage owns routine
+  operations; CLI reference owns exact syntax and output contracts. Personal
+  Git configuration belongs under Customize, separate from contributor hooks.
+  Keep meaningful topic groups rather than adding a generic Reference group.
 - Keep Application settings focused on shared preferences and finding sources;
   detailed Arch desktop and editor behavior belongs in its owning guide. Keep
   each topic's maintenance guide beside its everyday guide. Use top-level

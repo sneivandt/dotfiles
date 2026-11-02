@@ -9,12 +9,14 @@ The dotfiles pre-commit hook checks what you have **staged**, before Git creates
 the commit. It catches common mistakes early; it does not replace CI, pre-push
 validation, or a review for sensitive data.
 
-There are two independent hook systems:
+This guide covers checks for contributors to this repository, implemented in
+[hooks/](https://github.com/sneivandt/dotfiles/tree/main/hooks/). Run the examples
+from this checkout. Git invokes the pre-commit check only after
+[hook installation](#installation-and-removal).
 
-| System | Purpose | Source |
-|---|---|---|
-| This repository's pre-commit hook | Check staged changes | [`hooks/`](https://github.com/sneivandt/dotfiles/tree/main/hooks/) |
-| Personal Git templates | Protect pushes and clean up merged branches in other repositories too | [`symlinks/config/git/templates/`](https://github.com/sneivandt/dotfiles/tree/main/symlinks/config/git/templates/) |
+Personal aliases, push protection, and automatic branch cleanup belong to
+[Git configuration](git-configuration.md). Those templates are a separate
+integration that can affect other repositories.
 
 ## Before committing
 
@@ -48,7 +50,7 @@ A failure stops the commit. Checks are selected by staged paths:
 | Present `.ps1`, `.psm1`, or `.psd1` file | PSScriptAnalyzer on those staged files |
 | Only TOML data, shell, or workflow files | No Rust compilation solely because of that path; extra guards need full mode |
 
-Clippy uses the `ci` profile, all targets, a locked dependency graph, and warnings
+Clippy uses the CI build profile, all targets, a locked dependency graph, and warnings
 as errors. The hook checks the compiler against the staged
 `cli/rust-toolchain.toml`; it does not install or switch toolchains.
 
@@ -101,7 +103,7 @@ do not share raw sensitive input or unsanitized logs. See
 
 ## Full guard mode
 
-Opt into broader, still **path-triggered**, checks:
+Opt into broader, still path-triggered, checks:
 
 ```bash
 DOTFILES_HOOKS_FULL=1 sh hooks/pre-commit
@@ -172,47 +174,6 @@ including through a filesystem alias, install/removal leaves it intact.
 Neither operation resets `core.hooksPath`. Missing `hooks/` or Git metadata makes
 the task inapplicable.
 
-## Application-wide templates
-
-Git copies template entrypoints when initializing or cloning a repository.
-Their shared helpers resolve from the managed template directory at runtime.
-These templates are **not** installed by the repository's `git-hooks` task.
-
-### Merged-branch cleanup
-
-`post-merge` and `post-rewrite` after a **rebase** run the shared
-`clean-merged-branches` helper. It automatically deletes eligible **local**
-branches merged into `origin/HEAD`, while preserving:
-
-- The current branch and the default branch.
-- `main`, `master`, `dev`, and `develop`.
-- Branches checked out in any worktree.
-- Any branch Git refuses to delete safely with `git branch -d`.
-
-It does not delete remote branches. Without `origin/HEAD`, cleanup does nothing.
-An amend does not trigger it.
-Existing repositories need a newly introduced template entrypoint, such as
-`post-rewrite`, installed explicitly; do not overwrite a repository-specific
-hook to do so.
-
-### Push protection
-
-The template pre-push hook blocks branch updates to `main`, `master`, `develop`,
-and the destination remote's default branch. It prefers that remote's cached
-HEAD, then tries a read-only, noninteractive `ls-remote --symref` lookup.
-If discovery fails, the named protections still apply.
-
-Add exact branch names, not globs, with:
-
-```bash
-git config --add dotfiles.protectedBranch release/stable
-git config --add dotfiles.protectedBranch dev
-```
-
-GitHub remotes whose URL owner matches `github.user` (or `github.username`) are
-exempt. This is a local configured-name check, not a GitHub permission check.
-It is separate from both CI and the repository's pre-push **validation script**.
-
 ## Diagnosing a failure
 
 | Symptom | Check next |
@@ -229,18 +190,18 @@ It is separate from both CI and the repository's pre-push **validation script**.
 
 | File | Responsibility |
 |---|---|
-| [`pre-commit`](https://github.com/sneivandt/dotfiles/blob/main/hooks/pre-commit) | POSIX `sh` orchestration |
-| [`check-sensitive.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-sensitive.sh) | Added-line scanning and redacted diagnostics |
-| [`sensitive-patterns.ini`](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-patterns.ini) | Detection expressions |
-| [`sensitive-allowlist.ini`](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-allowlist.ini) | Safe-span exceptions |
-| [`check-rust.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-rust.sh) | Staged Rust and PowerShell checks |
-| [`check-toolchain.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-toolchain.sh) | Staged compiler-pin verification |
-| [`check-ci-guards.sh`](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-ci-guards.sh) | Targeted configuration, dependency, shell, wrapper, and release guards |
+| [pre-commit](https://github.com/sneivandt/dotfiles/blob/main/hooks/pre-commit) | POSIX `sh` orchestration |
+| [check-sensitive.sh](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-sensitive.sh) | Added-line scanning and redacted diagnostics |
+| [sensitive-patterns.ini](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-patterns.ini) | Detection expressions |
+| [sensitive-allowlist.ini](https://github.com/sneivandt/dotfiles/blob/main/hooks/sensitive-allowlist.ini) | Safe-span exceptions |
+| [check-rust.sh](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-rust.sh) | Staged Rust and PowerShell checks |
+| [check-toolchain.sh](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-toolchain.sh) | Staged compiler-pin verification |
+| [check-ci-guards.sh](https://github.com/sneivandt/dotfiles/blob/main/hooks/check-ci-guards.sh) | Targeted configuration, dependency, shell, wrapper, and release guards |
 
 Keep scripts POSIX `sh` compatible and preserve partially staged input,
 rename/deletion handling, unusual filenames, and empty-diff behavior.
-Installation lives in [`git/hooks.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/hooks.rs) and
-[`resources/hook.rs`](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/resources/hook.rs).
+Installation lives in [git/hooks.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/hooks.rs) and
+[resources/hook.rs](https://github.com/sneivandt/dotfiles/blob/main/cli/src/domains/git/resources/hook.rs).
 
 ### Changing sensitive patterns
 

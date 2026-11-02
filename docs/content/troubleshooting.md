@@ -15,8 +15,8 @@ are not rolled back when a later task fails.
 3. Find the first failed or unmet task, not just dependents marked blocked.
 4. Fix that cause, preview a focused rerun, then apply it when ready.
 
-Examples assume you are in the intended checkout with `dotfiles` on PATH.
-If the launcher is uncertain, substitute an **existing** `./bin/dotfiles` or
+Examples assume you are in the intended checkout with dotfiles on PATH.
+If the launcher is uncertain, substitute an existing `./bin/dotfiles` or
 `.\bin\dotfiles.exe`. A wrapper may download/build even before showing help.
 
 ## Find the symptom
@@ -40,18 +40,18 @@ dotfiles log --list
 dotfiles log --task symlinks --verbose
 ```
 
-The second command examines the **newest** run. For an older failure, add its
+The second command examines the newest run. For an older failure, add its
 actual `--id` from history; IDs stay stable when new runs are added.
 
 Read the failed command's diagnostics, not just the task summary or an
 “update available” notice. If the run only reports a restart or elevation,
 follow its link to the child process's log.
 
-The [Logs reference](commands-and-usage.md#logs) explains verbose/raw output,
+The [Logs reference](cli-reference.md#logs) explains verbose/raw output,
 missing output, and unfinished runs.
 
 If logging failed, check free space and permissions at the
-[log location](commands-and-usage.md#log-locations). Sanitize private paths, configuration,
+[log location](cli-reference.md#log-locations). Sanitize private paths, configuration,
 and external tool output before sharing logs.
 
 ## The wrapper cannot find or download the binary
@@ -67,9 +67,9 @@ and external tool output before sharing logs.
 
 Forks do not silently fall back to this project's binaries. A fork without
 releases needs a deliberate publisher override or a source build; the
-[fork instructions](commands-and-usage.md#using-a-fork) show both choices.
+[fork instructions](cli-reference.md#using-a-fork) show both choices.
 
-Bootstrap warns and continues if `gh` is absent. If `gh` is present,
+Bootstrap warns and continues if GitHub CLI is absent. If `gh` is present,
 verification failure blocks it; self-update also refuses unverifiable updates.
 Do not bypass checksums or set `DOTFILES_SKIP_ATTESTATION=1` as a routine fix.
 See [Build provenance verification](security-and-trust.md#build-provenance-verification).
@@ -178,7 +178,7 @@ dotfiles list --overlay ../dotfiles-private
 
 Then check:
 
-1. The selected path is the overlay **root**, not its `conf/` directory.
+1. The selected path is the overlay root, not its `conf/` directory.
 2. A higher-priority flag or environment value is not overriding the saved path.
 3. Its sections match the active categories.
 4. The override names the same package, destination, or setting as the base
@@ -301,8 +301,8 @@ its omitted prerequisites are satisfied unless you add `--with-deps`.
 Arch package recipe or pin failures belong in
 [Arch package recipes](arch-package-recipes.md#logs-and-troubleshooting).
 
-**Applying missing Arch packages runs `pacman -Syu --needed --noconfirm` and can
-upgrade the whole system.** Do not use apply as a harmless diagnostic.
+**Installing missing Arch packages can upgrade the whole system.** It runs
+`pacman -Syu --needed --noconfirm`; do not use apply as a harmless diagnostic.
 For Windows scope, UAC, and policy failures, see [Windows packages](windows-and-wsl.md#packages).
 
 ## Paru bootstrap reports an incomplete Rust/Cargo prerequisite
@@ -316,7 +316,7 @@ pacman -Q paru
 cargo --version
 ```
 
-Paru bootstrap needs Git, makepkg, sudo, and a **working** Cargo. A rustup proxy
+Paru bootstrap needs Git, makepkg, sudo, and a working Cargo. A rustup proxy
 without a selected toolchain can exist on PATH but fail `cargo --version`.
 
 Provision the complete Arch build prerequisites using the distribution's
@@ -371,7 +371,7 @@ inspection commands and a preview including Developer Mode.
 
 ## systemd changes are not visible
 
-First check whether the configured unit is **user** or **system** scope.
+First check whether the configured unit is user or system scope.
 Bare unit names default to user scope. Substitute the actual unit name:
 
 ```bash
@@ -399,7 +399,7 @@ See [Arch desktop](arch-desktop.md#session-and-services) for session/service con
 
 ## GNOME Keyring does not unlock at login
 
-The PAM fragments are selected for **Arch + desktop**. Preview them with:
+The PAM fragments are selected for Arch + desktop. Preview them with:
 
 ```bash
 dotfiles update --only system-files --dry-run --verbose

@@ -1,6 +1,6 @@
 ---
 title: Commands and usage
-description: Preview and apply configuration, select tasks, inspect logs, and understand the CLI's commands and options.
+description: Preview and apply configuration, select tasks, interpret results, and inspect failed runs.
 ---
 
 # Commands and usage
@@ -9,11 +9,11 @@ Use dotfiles to bring a machine into the state described by this checkout.
 Start with [Getting started](getting-started.md) for a first installation, or the
 [Windows guide](windows-and-wsl.md) for PowerShell examples.
 
-The examples use the checkout behind your installed `dotfiles` launcher and
+The examples use the checkout behind your installed dotfiles launcher and
 your saved profile. Before installation, use `./dotfiles.sh` on Linux or
-`.\dotfiles.ps1` on Windows; see [Wrapper bootstrap](#wrapper-bootstrap).
+`.\dotfiles.ps1` on Windows; see [Wrapper bootstrap](cli-reference.md#wrapper-bootstrap).
 In an interactive terminal, update, remove, and check prompt when no profile
-is selected. Read-only `list` needs an existing selection or an explicit
+is selected. Read-only listing needs an existing selection or an explicit
 `--profile`. See [Unattended runs](#unattended-runs) for automation.
 
 ## Everyday commands
@@ -33,11 +33,45 @@ run. Neither profile is a user-files-only mode.
 installing links can replace regular files and empty directories without a
 backup. Changes to linked application settings may take effect immediately.
 
+## Dry-run scope
+
+`--dry-run` previews planned configuration changes. **It is not a sandbox or a
+promise of zero writes.**
+
+| Activity | What a preview still does |
+|---|---|
+| Wrapper bootstrap | Can download a binary, or build one with `--build`, before the CLI starts |
+| CLI release check | Can read caches and query GitHub; does not replace the binary or write release caches |
+| Repository task | Can query remote refs, but does not fetch or merge; omit it with `--no-repo-update` |
+| Bookkeeping | Writes a run log and acquires the repository lock |
+| Selection | Can save an interactive profile choice or an explicit `--overlay` |
+| Inspection | Reads host state and invokes external tools; their effects are not sandboxed |
+| Overlay scripts | Executes `--check` and, when needed, `--dryrun`; the scripts must honor those modes |
+
+For discovery without task probes, use an existing binary's `list` command.
+It does not execute tasks or scripts, acquire the run lock, create a run log,
+or save profile/overlay selections.
+
+## Discover tasks
+
+Use `dotfiles list` to find the selectors available to your profile and platform.
+To include inapplicable tasks or inspect selection and dependencies:
+
+```sh
+dotfiles list --all
+dotfiles list --graph update
+```
+
+A listed task may still need tools that are not installed. A graph explains
+selection, not what will change. See [Task reference](task-reference.md) for
+each task and [Task discovery output](cli-reference.md#task-discovery-output)
+for graph markers and structured formats.
+
 ## Apply configuration
 
 ### Update
 
-`update` is the default command: running `dotfiles` by itself applies an update.
+Update is the default: running the launcher without a command applies an update.
 Tasks inspect current state and avoid changes that are already satisfied.
 The [Update lifecycle](update-lifecycle.md) explains the CLI release check,
 repository synchronization, restarts, dependency updates, and partial results.
@@ -55,7 +89,7 @@ keep a binary, checkout, or dependency set fixed.
 
 ### Select tasks
 
-Use selectors from `list`, not package names or partial task names:
+Use selectors from the task listing, not package names or partial task names:
 
 ```bash
 dotfiles list
@@ -70,7 +104,7 @@ dotfiles update --only symlinks,git-hooks --dry-run
 - `--only packages` means **all selected pacman or winget packages**, not a
   single package and not the AUR package list.
 
-**Dependencies are not automatically included by `--only`.** An omitted
+**Dependencies are not included automatically.** An omitted
 blocking prerequisite produces a warning and is assumed satisfied. Use
 `--with-deps` to include prerequisites and other tasks the selection must wait for:
 
@@ -103,50 +137,6 @@ Only one update, remove, or check can run against a repository at a time.
 Previews count too; linked worktrees share the same lock. `list` and `log`
 remain available while a run is active.
 
-## Dry-run scope
-
-`--dry-run` previews planned configuration changes. **It is not a sandbox or a
-promise of zero writes.**
-
-| Activity | What a preview still does |
-|---|---|
-| Wrapper bootstrap | Can download a binary, or build one with `--build`, before the CLI starts |
-| CLI release check | Can read caches and query GitHub; does not replace the binary or write release caches |
-| Repository task | Can query remote refs, but does not fetch or merge; omit it with `--no-repo-update` |
-| Bookkeeping | Writes a run log and acquires the repository lock |
-| Selection | Can save an interactive profile choice or an explicit `--overlay` |
-| Inspection | Reads host state and invokes external tools; their effects are not sandboxed |
-| Overlay scripts | Executes `--check` and, when needed, `--dryrun`; the scripts must honor those modes |
-
-For discovery without task probes, use an **existing binary's** `list` command.
-It does not execute tasks or scripts, acquire the run lock, create a run log,
-or save profile/overlay selections.
-
-## Discover tasks
-
-```bash
-dotfiles list
-dotfiles list --all
-dotfiles list --graph update
-dotfiles list --format json
-```
-
-The normal listing groups selectors by update, remove, and check. It hides
-tasks whose platform or configuration clearly rules them out; `--all` includes
-them. A visible task is a possibility, not proof that its tools are installed
-or that anything needs changing.
-
-Graph output shows every node, including internal tasks, with selection labels:
-`default`, `requested`, `dependency`, `filtered`, or `skipped`.
-`requires <-` means the predecessor must succeed; `after <-` means wait for it
-without inheriting its failure. Filters annotate the graph rather than hiding
-its excluded nodes. Internal tasks cannot be selected directly.
-
-Use `--format plain` for tab-separated records or `--format json` for JSON.
-`list` still needs loadable configuration and an existing profile selection;
-it never opens the profile prompt. Explicit linked-worktree overlays retain
-their separate confirmation requirement.
-
 ## Console output
 
 Check the header's profile, platform, overlay, and dry-run indicator first.
@@ -167,9 +157,45 @@ text labels above; `NO_COLOR` disables color. Inapplicable and internal tasks
 do not appear in normal rows or totals, but remain in logs.
 
 Indented actions describe files or packages. The final counts describe
-**tasks**, not the number of action lines. Failed, interrupted, blocked, and
+tasks, not the number of action lines. Failed, interrupted, blocked, and
 skipped work appears before successful counts. **Exit 0 with skipped work is
 not necessarily a complete installation.** Use `--fail-on-skip` when it must be.
+
+## Check
+
+The check command validates configuration and sources and runs available repository
+analyzers. It does not install or repair configuration and has no `--dry-run`.
+It does write a log, acquire the run lock, and resolve/save selections.
+
+```bash
+dotfiles check
+```
+
+The `config-diagnostics` task fails on configuration diagnostics, including
+warnings. Missing optional tools are visible skips; `--fail-on-skip` and CI
+make them fatal.
+
+See [Testing](testing.md#cli-validation) for scoped checks and prerequisites.
+Task filtering cannot bypass malformed configuration loaded at startup.
+
+## Logs
+
+After a failure, use the log-viewing command printed by the CLI. It selects
+the failed run with a stable `--id`, even after later runs.
+
+```sh
+dotfiles log                          # newest run
+dotfiles log --list                   # history and stable run IDs
+dotfiles log --task symlinks --verbose # one task in the newest run
+```
+
+Read the failed command's diagnostics and the first failed or unmet task.
+If the process restarted or delegated elevation, follow the linked child log.
+Earlier changes are not rolled back when a later task fails.
+
+Review logs for private paths, configuration, and tool output before sharing
+them. The [log reference](cli-reference.md#logs) covers older runs, filters,
+raw output, retention, and storage locations.
 
 ## Remove
 
@@ -197,157 +223,6 @@ Packages, registry settings, PATH, services, system files, permissions, login
 shell, Git/agent settings, completions, editor extensions, and agent deployments
 remain. See [Remove tasks](task-reference.md#remove-tasks) before planning a cleanup.
 
-## Check
-
-`check` validates configuration and sources and runs available repository
-analyzers. It does not install or repair configuration and has no `--dry-run`.
-It does write a log, acquire the run lock, and resolve/save selections.
-
-```bash
-dotfiles check
-```
-
-The `config-diagnostics` task fails on configuration diagnostics, including
-warnings. Missing optional tools are visible skips; `--fail-on-skip` and CI
-make them fatal.
-
-See [Testing](testing.md#cli-validation) for scoped checks and prerequisites.
-Task filtering cannot bypass malformed configuration loaded at startup.
-
-## Logs
-
-After a failure, use the exact log-viewing command printed by the CLI. It
-selects the run with `--id` and adds `-v` for diagnostics. IDs stay stable even
-after later runs; numeric history indexes do not.
-
-```bash
-dotfiles log                          # newest run
-dotfiles log --verbose                # newest run, with diagnostics
-dotfiles log --list                   # history and stable run IDs
-dotfiles log --list --format json
-dotfiles log 2                        # third-newest run
-dotfiles log --task symlinks --verbose # one task in the newest run
-dotfiles log --raw                    # original stored records
-```
-
-Use the actual history ID with `--id`, optionally adding `--task` and either
-`--verbose` or `--raw`. `--id` cannot be combined with an index, `--list`, or
-`--command`; verbose and raw are mutually exclusive.
-
-`--command update`, `remove`, or `check` filters history before selecting an
-index. Historical `install` and `uninstall` filters remain supported; they
-are not current execution commands.
-
-Normal viewing shows actions, outcomes, warnings, context, and failed-command
-output. Verbose adds task starts, checks, timings, and debug details.
-An unchecked nonzero command exit is not necessarily a task failure: some
-tools use exit codes to report state. Successful stdout is usually not saved;
-`--raw` cannot recover output that was never retained. Oversized subprocess
-output is marked truncated and is not accepted as a complete inventory.
-
-Each restarted or elevated process has a separate log linked to its parent.
-`unfinished` means no finish record exists; the process may still be running.
-Retention targets the newest 50 logs without deleting active ones. Reading
-logs does not start another logged run.
-
-### Log locations
-
-`DOTFILES_LOG_DIR` overrides the location, including with a relative path.
-Otherwise:
-
-| Platform | Preferred location | Home-directory fallback |
-|---|---|---|
-| Linux | `$XDG_STATE_HOME/dotfiles/logs` | `~/.local/state/dotfiles/logs` |
-| Windows | `%LOCALAPPDATA%\dotfiles\logs` | `%USERPROFILE%\AppData\Local\dotfiles\logs` |
-
-Empty or relative standard state/home variables are ignored. The final
-fallback is `./dotfiles/logs`. An unreadable directory is an error, not empty
-history. **Review logs for private paths, configuration, and tool output before
-sharing them.**
-
-## Repository and overlay paths
-
-`--root .` selects the checkout you are standing in. Without `--root`, dotfiles
-tries `DOTFILES_ROOT`, candidate paths relative to its executable, then the
-current directory. Wrappers set `DOTFILES_ROOT` to their own checkout.
-
-`--root` chooses configuration, **not the executable**. An installed launcher
-can still obtain a binary from another checkout. Use the intended checkout's
-wrapper or built binary when that distinction matters.
-
-Use `--overlay <PATH>` for private or machine-specific additions. Unlike
-`--profile`, an explicit overlay is saved for future runs, including during
-check or dry-run; `list` does not save it. See [Private overlays](private-overlays.md)
-for setup, path precedence, linked-worktree confirmation, merging, and scripts.
-
-## Wrapper bootstrap
-
-The repository wrappers obtain the CLI and forward its arguments:
-
-```bash
-./dotfiles.sh list --profile base
-```
-
-```powershell
-.\dotfiles.ps1 list --profile desktop
-```
-
-If a usable cached binary is absent, the wrapper downloads a release into
-`bin/` and verifies its SHA-256 checksum. It also verifies build provenance
-when `gh` is available. Missing `gh` produces a warning; a failed verification
-with `gh` present blocks bootstrap. See
-[Build provenance verification](security-and-trust.md#build-provenance-verification).
-
-**Even wrapper help, list, and dry-run can download files.** Use an existing
-binary directly to avoid bootstrap.
-
-The publisher comes from the checkout's GitHub `origin` remote unless
-`DOTFILES_RELEASE_REPO=owner/repo` explicitly selects another publisher.
-Unsupported/missing remotes fail instead of falling back to this project's
-releases. Forks without release assets need a deliberate publisher choice or
-a [source build](contributing.md#source-builds). The
-[fork instructions below](#using-a-fork) explain both routes. `--build` selects
-source compilation for that invocation only. Without it, the wrapper uses its
-download/cached-binary route.
-
-Release binaries retain their publishing repository for self-update.
-Changing `origin` or the bootstrap override does not redirect an existing
-binary's updates. Normal development builds do not self-update.
-
-After the `launcher` and `path` tasks succeed, open a new shell. The installed
-launcher in `~/.local/bin` delegates back to this checkout; it is not a
-standalone installation. Keep the checkout at a stable path.
-
-### Using a fork
-
-**A new fork does not have release binaries.** Choose one of these routes
-before running its wrapper:
-
-- **Use this project's released CLI with your fork's configuration.** If you
-  trust this project's releases, explicitly select that publisher in your
-  current terminal:
-
-  ```sh
-  export DOTFILES_RELEASE_REPO=sneivandt/dotfiles
-  ```
-
-  In PowerShell:
-
-  ```powershell
-  $env:DOTFILES_RELEASE_REPO = 'sneivandt/dotfiles'
-  ```
-
-  This chooses the binary, not the configuration repository. The downloaded
-  binary also uses that publisher for self-updates. If your fork publishes
-  compatible releases, you can use its default publisher instead.
-
-- **Build the CLI from your fork.** Install the
-  [source-build prerequisites](contributing.md#development-setup), then add
-  `--build` after the wrapper name in each command you run. For example,
-  `./dotfiles.sh --build --version` or
-  `.\dotfiles.ps1 --build --version` builds and prints the version without
-  applying configuration. Build mode is not remembered between runs.
-
 ## Shell completions
 
 The `completions` task installs Zsh or PowerShell registration. Open a new shell
@@ -356,75 +231,6 @@ discovery and carries forward `--root`, `--profile`, and `--overlay`; it does
 not prompt for or save a profile.
 
 For managed shell behavior beyond the CLI, see [Application settings](application-settings.md).
-
-## Command summary
-
-| Command | Purpose |
-|---|---|
-| `update` (default) | Apply configured state and update dependencies when their version rules allow it |
-| `remove` | Detach a limited set of integrations, not restore machine defaults |
-| `check` | Validate configuration and repository files |
-| `list` | Discover selectors or inspect a dependency graph |
-| `log` | Read retained runs |
-| `help [command]` | Show command-specific usage |
-| `completions <shell>` | Emit shell registration; hidden support command |
-
-## Command options
-
-Options may appear before or after an explicit command. With no command, they
-apply to `update`. Use `dotfiles <command> --help` for full syntax, and
-`dotfiles --version` or `-V` for the version.
-
-| Option | Commands | Purpose |
-|---|---|---|
-| `-p`, `--profile`; `--root`; `--overlay` | update, remove, check, list | Select role and configuration sources |
-| `-n`, `--dry-run` | update, remove | Preview planned changes |
-| `--only`; `--skip` | update, remove, check; list with `--graph` | Include/exclude selectors |
-| `--with-deps` | update; list with an update graph | Expand `--only` to predecessors |
-| `--no-repo-update` | update | Use current checkout content |
-| `-v`, `--verbose` | update, remove, check, log | Show diagnostics |
-| `-q`, `--quiet` | update, remove, check | Keep only warnings and incomplete outcomes |
-| `--format human\|jsonl` | update, remove, check | Choose execution output |
-| `--no-parallel` | update, remove, check | Run selected work sequentially |
-| `--non-interactive` | update, remove, check | Disable prompts |
-| `--fail-on-skip` | update, remove, check | Fail on unmet applicable work |
-| `--no-symbols` | update, remove, check | Use text status labels |
-| `--format table\|plain\|json` | list; log with `--list` | Choose discovery/history output |
-| `--graph update\|remove\|check` | list | Inspect a command graph |
-| `--all` | list without `--graph` | Include clearly inapplicable tasks |
-| `--skip-attestation` | update, remove | Bypass self-update provenance, never checksums |
-
-`--skip-attestation` does not affect bootstrap; `DOTFILES_SKIP_ATTESTATION=1`
-affects both layers. Neither is a routine workaround for verification errors.
-Selecting `repository` with both `--only` and `--no-repo-update` is an error.
-
-## Execution output for scripts
-
-Quiet mode preserves logs and exit policy. Warnings and failed, blocked,
-skipped, or interrupted rows remain on stderr. It conflicts with `--verbose`
-and an explicit `--format`.
-
-For a focused, non-interactive diagnostic stream, use JSON Lines:
-
-```bash
-dotfiles check --profile base --only config-diagnostics --format jsonl
-```
-
-Each stdout line is one object with `schema: 1`, `run_id`, `context`, and
-`type`. Record types include `run_start`, `run_scope`, `run_context`,
-`task_result`, `task_duration`, `message`, and `run_finish`. Task results carry
-IDs, selectors, statuses, reasons, and action counts; finish records include
-outcome and exit code. Stored statuses use names such as `ok`, `dry_run`, and
-`not_applicable`, rather than the human display labels.
-
-JSON Lines disables prompts. Parse errors and logging warnings can still
-appear on stderr; detailed actions and subprocess diagnostics remain in logs.
-Group records by run ID: restarted/elevated children have their own IDs and
-`parent_run_id` links. Tolerate additional fields/types and missing finish
-records after a force quit.
-
-**Closing stdout does not cancel an update.** A closed pipe stops further
-stdout output, but managed work continues.
 
 ## Interrupting a run
 
@@ -436,13 +242,4 @@ stdout output, but managed work continues.
 Neither graceful cancellation nor force quit rolls back completed changes.
 Force quit can leave external installers running; inspect them before retrying.
 
-## Exit behavior
-
-| Exit code | Meaning |
-|---|---|
-| `0` | Succeeded under the selected skip policy |
-| `1` | Configuration/runtime failure, task failure, or unmet work under strict policy |
-| `2` | Invalid command-line usage |
-| `130` | Interrupted; a genuine task failure takes precedence during graceful shutdown |
-
-For recovery, use [Troubleshooting](troubleshooting.md).
+For exhaustive options and exit codes, use the [CLI reference](cli-reference.md).
